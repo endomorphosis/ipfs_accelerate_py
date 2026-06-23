@@ -389,6 +389,9 @@ class PortalTaskState:
     recommended_actions: list[str] = field(default_factory=list)
     completed_task_ids: list[str] = field(default_factory=list)
     ready_task_ids: list[str] = field(default_factory=list)
+    selectable_ready_task_ids: list[str] = field(default_factory=list)
+    eligible_ready_task_ids: list[str] = field(default_factory=list)
+    strict_deprioritized_ready_task_ids: list[str] = field(default_factory=list)
     waiting_task_ids: list[str] = field(default_factory=list)
     blocked_task_ids: list[str] = field(default_factory=list)
     task_statuses: dict[str, str] = field(default_factory=dict)
@@ -411,10 +414,14 @@ class PortalTaskState:
     last_merge_error: str = ""
     completed_count: int = 0
     ready_count: int = 0
+    selectable_ready_count: int = 0
+    eligible_ready_count: int = 0
+    strict_deprioritized_ready_count: int = 0
     waiting_count: int = 0
     blocked_count: int = 0
     task_count: int = 0
     strategy_generation: int = 0
+    selection_idle_reason: str = ""
 
     def save(self, path: Path) -> None:
         write_json_atomic(path, asdict(self))
@@ -455,6 +462,13 @@ class PortalTaskState:
                 recommended_actions=[str(item) for item in payload.get("recommended_actions", []) or []],
                 completed_task_ids=[str(item) for item in payload.get("completed_task_ids", []) or []],
                 ready_task_ids=[str(item) for item in payload.get("ready_task_ids", []) or []],
+                selectable_ready_task_ids=[
+                    str(item) for item in payload.get("selectable_ready_task_ids", []) or []
+                ],
+                eligible_ready_task_ids=[str(item) for item in payload.get("eligible_ready_task_ids", []) or []],
+                strict_deprioritized_ready_task_ids=[
+                    str(item) for item in payload.get("strict_deprioritized_ready_task_ids", []) or []
+                ],
                 waiting_task_ids=[str(item) for item in payload.get("waiting_task_ids", []) or []],
                 blocked_task_ids=[str(item) for item in payload.get("blocked_task_ids", []) or []],
                 task_statuses={str(key): str(value) for key, value in (payload.get("task_statuses") or {}).items()},
@@ -497,10 +511,14 @@ class PortalTaskState:
                 last_merge_error=str(payload.get("last_merge_error") or ""),
                 completed_count=int(payload.get("completed_count") or 0),
                 ready_count=int(payload.get("ready_count") or 0),
+                selectable_ready_count=int(payload.get("selectable_ready_count") or 0),
+                eligible_ready_count=int(payload.get("eligible_ready_count") or 0),
+                strict_deprioritized_ready_count=int(payload.get("strict_deprioritized_ready_count") or 0),
                 waiting_count=int(payload.get("waiting_count") or 0),
                 blocked_count=int(payload.get("blocked_count") or 0),
                 task_count=int(payload.get("task_count") or 0),
                 strategy_generation=int(payload.get("strategy_generation") or 0),
+                selection_idle_reason=str(payload.get("selection_idle_reason") or ""),
             )
         except (AttributeError, TypeError, ValueError):
             return cls()
@@ -525,6 +543,9 @@ def state_file_repair_reason(path: Path) -> str:
         "active_attempt",
         "completed_count",
         "ready_count",
+        "selectable_ready_count",
+        "eligible_ready_count",
+        "strict_deprioritized_ready_count",
         "waiting_count",
         "blocked_count",
         "task_count",
@@ -762,10 +783,16 @@ class PortalImplementationDaemon:
             state.last_progress_at = now
         state.completed_task_ids = []
         state.ready_task_ids = []
+        state.selectable_ready_task_ids = []
+        state.eligible_ready_task_ids = []
+        state.strict_deprioritized_ready_task_ids = []
         state.waiting_task_ids = []
         state.blocked_task_ids = []
         state.completed_count = 0
         state.ready_count = 0
+        state.selectable_ready_count = 0
+        state.eligible_ready_count = 0
+        state.strict_deprioritized_ready_count = 0
         state.waiting_count = 0
         state.blocked_count = 0
         state.task_count = 0
@@ -781,6 +808,7 @@ class PortalImplementationDaemon:
             self._clear_active_execution_state(state)
             state.recommended_task_id = ""
             state.recommended_actions = []
+        state.selection_idle_reason = reason
         state.save(self.state_path)
         payload = {
             "reason": reason,
@@ -795,9 +823,13 @@ class PortalImplementationDaemon:
             "task_count": 0,
             "completed_count": 0,
             "ready_count": 0,
+            "selectable_ready_count": 0,
+            "eligible_ready_count": 0,
+            "strict_deprioritized_ready_count": 0,
             "waiting_count": 0,
             "blocked_count": 0,
             "active_task_id": state.active_task_id,
+            "selection_idle_reason": reason,
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),
@@ -869,6 +901,21 @@ class PortalImplementationDaemon:
         transient_merge_deferral_task_ids = set(transient_merge_deferrals)
         recent_outcomes = self._latest_implementation_finished_by_task()
         successfully_merged_task_ids = self._successfully_merged_task_ids()
+        merged_status_repair: dict[str, Any] = {}
+        stale_merged_completed_task_ids = [
+            task.task_id
+            for task in tasks
+            if task.task_id in successfully_merged_task_ids and task.task_id not in status_completed_task_ids
+        ]
+        if stale_merged_completed_task_ids:
+            merged_status_repair = self._mark_tasks_completed_in_todo(
+                stale_merged_completed_task_ids,
+                primary_task_id=stale_merged_completed_task_ids[0],
+                completion_reason="merged_status_repair",
+            )
+            repaired_task_ids = set(merged_status_repair.get("updated_task_ids") or [])
+            repaired_task_ids.update(merged_status_repair.get("already_completed_task_ids") or [])
+            status_completed_task_ids.update(repaired_task_ids)
 
         previous_completed = set(previous.completed_task_ids)
         completed_set: set[str] = set()
@@ -932,6 +979,7 @@ class PortalImplementationDaemon:
             unresolved_merge_failures,
             recent_outcomes,
         )
+        selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         state = PortalTaskState.load(self.state_path)
         state.heartbeat_at = now
         if newly_completed or not state.last_progress_at:
@@ -939,9 +987,15 @@ class PortalImplementationDaemon:
         state.completed_task_ids = sorted(completed_set)
         state.completed_count = len(state.completed_task_ids)
         state.ready_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "ready"]
+        state.selectable_ready_task_ids = list(selection_scope["selectable_ready_task_ids"])
+        state.eligible_ready_task_ids = list(selection_scope["eligible_ready_task_ids"])
+        state.strict_deprioritized_ready_task_ids = list(selection_scope["strict_deprioritized_ready_task_ids"])
         state.waiting_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "waiting"]
         state.blocked_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "blocked"]
         state.ready_count = len(state.ready_task_ids)
+        state.selectable_ready_count = len(state.selectable_ready_task_ids)
+        state.eligible_ready_count = len(state.eligible_ready_task_ids)
+        state.strict_deprioritized_ready_count = len(state.strict_deprioritized_ready_task_ids)
         state.waiting_count = len(state.waiting_task_ids)
         state.blocked_count = len(state.blocked_task_ids)
         state.task_count = len(tasks)
@@ -990,6 +1044,7 @@ class PortalImplementationDaemon:
             state.active_task_track = selected.track
             state.recommended_task_id = selected.task_id
             state.recommended_actions = self._build_recommended_actions(selected)
+            state.selection_idle_reason = ""
         else:
             state.active_task_id = ""
             state.active_task_title = ""
@@ -998,6 +1053,7 @@ class PortalImplementationDaemon:
             self._clear_active_execution_state(state)
             state.recommended_task_id = ""
             state.recommended_actions = []
+            state.selection_idle_reason = str(selection_scope["selection_idle_reason"])
 
         state.save(self.state_path)
         for task_id in newly_completed:
@@ -1032,15 +1088,23 @@ class PortalImplementationDaemon:
                 "waiting_count": state.waiting_count,
                 "blocked_count": state.blocked_count,
                 "active_task_id": state.active_task_id,
+                "selectable_ready_count": state.selectable_ready_count,
+                "eligible_ready_count": state.eligible_ready_count,
+                "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
+                "selection_idle_reason": state.selection_idle_reason,
             },
         )
         return {
             "task_count": state.task_count,
             "completed_count": state.completed_count,
             "ready_count": state.ready_count,
+            "selectable_ready_count": state.selectable_ready_count,
+            "eligible_ready_count": state.eligible_ready_count,
+            "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
             "waiting_count": state.waiting_count,
             "blocked_count": state.blocked_count,
             "active_task_id": state.active_task_id,
+            "selection_idle_reason": state.selection_idle_reason,
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),
@@ -1049,6 +1113,7 @@ class PortalImplementationDaemon:
             "merged_worktree_cleanup": merged_worktree_cleanup,
             "event_log_repair": event_log_repair,
             "state_file_repair": state_file_repair,
+            "merged_status_repair": merged_status_repair,
             "active_task_claims": sorted(active_task_claims),
         }
 
@@ -6144,6 +6209,41 @@ Rules:
         work_items = self._task_metadata_int(task, "work item count")
         return (self._task_candidate_rank(task), -packet_work_items, -work_items)
 
+    @staticmethod
+    def _strict_off_mission_deprioritized_task_ids(strategy: dict[str, Any]) -> set[str]:
+        return {
+            str(receipt.get("task_id") or "")
+            for receipt in strategy.get("objective_task_janitor_receipts", [])
+            if isinstance(receipt, dict)
+            and str(receipt.get("action") or "") == "deprioritize"
+            and str(receipt.get("retired_task_reason") or "").startswith("off_mission_")
+        }
+
+    def _selection_scope(
+        self,
+        tasks: list[PortalTask],
+        resolved_statuses: dict[str, str],
+        strategy: dict[str, Any],
+    ) -> dict[str, Any]:
+        selectable_ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
+        strict_ready = [task.task_id for task in selectable_ready if task.task_id in strict_deprioritized]
+        eligible_ready = [task.task_id for task in selectable_ready if task.task_id not in strict_deprioritized]
+        reason = ""
+        if not eligible_ready:
+            if strict_ready:
+                reason = "all_selectable_ready_tasks_deprioritized_as_off_mission"
+            elif selectable_ready:
+                reason = "no_eligible_ready_tasks_after_selection_filters"
+            else:
+                reason = "no_shard_selectable_ready_tasks"
+        return {
+            "selectable_ready_task_ids": [task.task_id for task in selectable_ready],
+            "eligible_ready_task_ids": eligible_ready,
+            "strict_deprioritized_ready_task_ids": strict_ready,
+            "selection_idle_reason": reason,
+        }
+
     def _select_next_task(
         self,
         tasks: list[PortalTask],
@@ -6153,13 +6253,7 @@ Rules:
         recent_outcomes: dict[str, dict[str, Any]],
     ) -> PortalTask | None:
         ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
-        strict_deprioritized = {
-            str(receipt.get("task_id") or "")
-            for receipt in strategy.get("objective_task_janitor_receipts", [])
-            if isinstance(receipt, dict)
-            and str(receipt.get("action") or "") == "deprioritize"
-            and str(receipt.get("retired_task_reason") or "").startswith("off_mission_")
-        }
+        strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
         if strict_deprioritized:
             ready = [task for task in ready if task.task_id not in strict_deprioritized]
         if not ready:

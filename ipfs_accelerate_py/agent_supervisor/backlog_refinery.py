@@ -415,6 +415,9 @@ def refill_state_counts(
         "completed_count": count("completed_count", completed),
         "blocked_count": count("blocked_count", blocked),
         "ready_count": count("ready_count", ready),
+        "selectable_ready_count": count("selectable_ready_count", ready),
+        "eligible_ready_count": count("eligible_ready_count", ready),
+        "strict_deprioritized_ready_count": count("strict_deprioritized_ready_count", 0),
         "waiting_count": count("waiting_count", waiting),
     }
 
@@ -446,9 +449,10 @@ def should_refill_backlog(
     current_open = effective_open_task_count(todo_text, state_path=state_path, task_prefix=task_prefix)
     task_count = len(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
     state_counts = refill_state_counts(todo_text, state_path=state_path, task_prefix=task_prefix)
+    ready_for_refill = int(state_counts.get("eligible_ready_count", state_counts.get("ready_count") or 0) or 0)
     no_ready_existing_work = (
         bool(state_counts)
-        and int(state_counts.get("ready_count") or 0) == 0
+        and ready_for_refill == 0
         and int(state_counts.get("completed_count") or 0) > 0
         and (int(state_counts.get("waiting_count") or 0) > 0 or int(state_counts.get("blocked_count") or 0) > 0)
     )
