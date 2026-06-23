@@ -6036,6 +6036,43 @@ def test_implementation_daemon_limits_merge_reconciliation_per_pass(tmp_path):
     assert deferred["deferred_count"] == 2
 
 
+def test_implementation_daemon_zero_merge_reconciliation_disables_failed_merge_retry(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        merge_reconciliation_max_merges=0,
+    )
+    event = {
+        "task_id": "ACCEL-001",
+        "attempt": 1,
+        "branch": "implementation/accel-001",
+        "implementation_commit": "commit1",
+        "title": "Recover failed merge",
+    }
+    merge_attempts: list[str] = []
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
+    daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
+
+    def fake_merge(branch, task, attempt, baseline_ref=""):
+        merge_attempts.append(branch)
+        return {"merged": False, "reason": "should_not_run"}
+
+    daemon._merge_branch_to_main = fake_merge  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert result == []
+    assert merge_attempts == []
+
+
 def test_implementation_daemon_reconciles_merge_lock_deferrals(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

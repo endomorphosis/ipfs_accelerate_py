@@ -4504,7 +4504,7 @@ class PortalImplementationDaemon:
         if max_merges > 0:
             selected_candidates = candidates[:max_merges]
         else:
-            selected_candidates = candidates
+            selected_candidates = []
         for event in selected_candidates:
             task_id = str(event.get("task_id") or "")
             attempt = int(event.get("attempt") or 0)
