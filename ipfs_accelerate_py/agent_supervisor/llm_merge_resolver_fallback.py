@@ -182,6 +182,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         codex_result = _run_codex(prompt, workspace)
         if codex_result == 0:
             return 0
+        if not _copilot_has_auth():
+            print("copilot fallback is not authenticated; returning codex result", file=sys.stderr)
+            return codex_result if codex_result is not None else 127
         copilot_result = _run_copilot(prompt, workspace)
         if copilot_result == 127 and codex_result is not None:
             return codex_result

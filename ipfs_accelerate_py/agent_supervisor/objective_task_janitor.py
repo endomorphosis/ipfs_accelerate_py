@@ -35,6 +35,29 @@ GOAL_METADATA_KEYS = (
     "goal packet goals",
     "graph parents",
 )
+CODEBASE_SCAN_BACKLOG_TITLE_PREFIXES = (
+    "review swallowed exception path",
+    "resolve code annotation",
+)
+CODEBASE_SCAN_BACKLOG_MARKERS = (
+    "codebase scan filed this finding",
+    "codebase refill scan",
+)
+WORKTREE_CLEANUP_BACKLOG_MARKERS = (
+    "backlogged worktree",
+    "backlogged worktree merge",
+    "dirty backlogged worktrees",
+    "preflight-conflicting backlogged worktree",
+    "unsupported_status",
+    "worktree reconciliation",
+)
+GUARDRAIL_REPAIR_MARKERS = (
+    "dependency guardrail",
+    "generated dirty",
+    "reconciliation guardrail",
+    "retry budget",
+    "retry-budget",
+)
 
 
 @dataclass(frozen=True)
@@ -72,7 +95,20 @@ def _task_goal_ids(task: PortalTask) -> list[str]:
 
 
 def _task_haystack(task: PortalTask) -> str:
-    return " ".join([task.task_id, task.title, task.track, task.priority, *task.metadata.values()]).lower()
+    return " ".join(
+        [
+            task.task_id,
+            task.title,
+            task.track,
+            task.priority,
+            task.completion,
+            task.acceptance,
+            *task.outputs,
+            *task.validation,
+            *task.depends_on,
+            *task.metadata.values(),
+        ]
+    ).lower()
 
 
 def _goal_haystack(goal: ObjectiveGoal) -> str:
@@ -88,6 +124,24 @@ def _is_generated_objective_task(task: PortalTask) -> bool:
     if any(task.metadata.get(key) for key in ("goal id", "missing evidence", "goal packet", "bundle shard")):
         return True
     return "objective scan" in task.title.lower() or "objective gap" in task.acceptance.lower()
+
+
+def _is_guardrail_repair_task(task: PortalTask) -> bool:
+    haystack = _task_haystack(task)
+    return any(marker in haystack for marker in GUARDRAIL_REPAIR_MARKERS)
+
+
+def _is_codebase_scan_backlog_task(task: PortalTask) -> bool:
+    title = task.title.lower().strip()
+    haystack = _task_haystack(task)
+    return title.startswith(CODEBASE_SCAN_BACKLOG_TITLE_PREFIXES) or any(
+        marker in haystack for marker in CODEBASE_SCAN_BACKLOG_MARKERS
+    )
+
+
+def _is_worktree_cleanup_backlog_task(task: PortalTask) -> bool:
+    haystack = _task_haystack(task)
+    return any(marker in haystack for marker in WORKTREE_CLEANUP_BACKLOG_MARKERS)
 
 
 def _critical_goal_ids(goals: Sequence[ObjectiveGoal], mission_terms: Sequence[str]) -> set[str]:
@@ -180,6 +234,38 @@ def reconcile_objective_task_strategy(
                     task_id=task.task_id,
                     action="deprioritize",
                     retired_task_reason="off_mission_objective_generated_task",
+                    goal_ids=goal_ids,
+                    title=task.title,
+                    priority=task.priority,
+                    track=task.track,
+                )
+            )
+            continue
+
+        if (
+            _is_codebase_scan_backlog_task(task)
+            and not mission_aligned
+            and not _is_guardrail_repair_task(task)
+        ):
+            deprioritize_receipts.append(
+                ObjectiveTaskJanitorReceipt(
+                    task_id=task.task_id,
+                    action="deprioritize",
+                    retired_task_reason="off_mission_codebase_scan_task",
+                    goal_ids=goal_ids,
+                    title=task.title,
+                    priority=task.priority,
+                    track=task.track,
+                )
+            )
+            continue
+
+        if _is_worktree_cleanup_backlog_task(task) and not mission_aligned:
+            deprioritize_receipts.append(
+                ObjectiveTaskJanitorReceipt(
+                    task_id=task.task_id,
+                    action="deprioritize",
+                    retired_task_reason="off_mission_worktree_cleanup_task",
                     goal_ids=goal_ids,
                     title=task.title,
                     priority=task.priority,

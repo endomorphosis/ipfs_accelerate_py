@@ -93,6 +93,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_daemon_objective_refill_callback,
     build_configured_implementation_daemon_runner,
     build_implementation_daemon_defaults_from_paths,
+    build_portal_implementation_daemon_from_args,
 )
 from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
@@ -3838,25 +3839,33 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     supervisor.ensure_event_log_file = lambda: {"repaired": False, "reason": "valid"}
     supervisor.repair_main_checkout_merge_state = lambda: {"attempted": False, "repaired": False, "reason": "clean"}
     supervisor.ensure_managed_daemon_pid_file = lambda: {"adopted": False, "reason": "not_running"}
-    supervisor.run_once = lambda: {"stuck": False, "recovered": True}
+    run_once_calls: list[bool] = []
+
+    def fake_run_once(*, include_refill=True):
+        run_once_calls.append(include_refill)
+        return {"stuck": False, "recovered": True}
+
+    supervisor.run_once = fake_run_once
     supervisor._supervisor_loop_recovery_delay_seconds = lambda: 0.0
 
     supervisor.run_forever()
 
     assert RecoveringLoop.calls == 2
+    assert run_once_calls == [False, True]
     events = [
         json.loads(line)
         for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     assert [event["type"] for event in events] == [
+        "supervisor_preflight_maintenance_pass",
         "supervisor_loop_finished",
         "supervisor_loop_recovery_pass",
         "supervisor_loop_restarting_after_recovery",
         "supervisor_loop_finished",
     ]
-    assert events[0]["status"] == "max_restarts_reached"
-    assert events[1]["recovery"]["recovered"] is True
+    assert events[1]["status"] == "max_restarts_reached"
+    assert events[2]["recovery"]["recovered"] is True
     assert events[-1]["status"] == "stopped"
 
 
@@ -3949,6 +3958,34 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     assert args.codebase_scan_cooldown_seconds == 900
     assert args.task_shard_count == 4
     assert args.task_shard_index == 2
+
+
+def test_configured_daemon_builder_preserves_shard_and_cleanup_args(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    args = parse_implementation_daemon_args(
+        [
+            "--todo-path",
+            str(repo / "todo.md"),
+            "--state-dir",
+            str(repo / "state"),
+            "--state-prefix",
+            "agent_lane_1",
+            "--merged-worktree-cleanup-max",
+            "13",
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            "2",
+        ]
+    )
+
+    daemon, context = build_portal_implementation_daemon_from_args(args, repo_root=repo)
+
+    assert context.parsed is args
+    assert daemon.merged_worktree_cleanup_max == 13
+    assert daemon.task_shard_count == 4
+    assert daemon.task_shard_index == 2
 
 
 def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
@@ -4156,6 +4193,104 @@ def test_implementation_daemon_selects_only_configured_task_shard(tmp_path):
     assert result["active_task_id"] == "ACCEL-001"
     assert state.recommended_task_id == "ACCEL-001"
     assert state.ready_count == 3
+
+
+def test_implementation_daemon_filters_repo_wide_task_claims(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Claimed task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-003 Unclaimed task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    claim_path = daemon._implementation_task_claim_path("ACCEL-001")
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation_task_claim",
+                "pid": os.getpid(),
+                "repo_root": str(repo.resolve()),
+                "task_id": "ACCEL-001",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(repo / "state.json")
+
+    assert result["active_task_id"] == "ACCEL-003"
+    assert result["active_task_claims"] == ["ACCEL-001"]
+    assert state.recommended_task_id == "ACCEL-003"
+    assert state.ready_count == 2
+
+
+def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Claimed task",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    claim_path = daemon._implementation_task_claim_path(task.task_id)
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation_task_claim",
+                "pid": os.getpid(),
+                "repo_root": str(repo.resolve()),
+                "state_dir": str((repo / "other-lane").resolve()),
+                "task_id": task.task_id,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["skipped"] is True
+    assert result["reason"] == "task_claim_lock_exists"
+    assert result["lock_owner_pid"] == os.getpid()
+    assert result["lock_owner_task_id"] == task.task_id
+    assert result["lock_owner_state_dir"] == str((repo / "other-lane").resolve())
 
 
 def test_validation_command_splitter_preserves_quoted_semicolons():
@@ -5881,6 +6016,93 @@ def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
     assert events[-1]["type"] == "merge_reconcile_exception"
 
 
+def test_implementation_daemon_defers_merge_reconciliation_when_main_checkout_dirty(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "agent@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Agent"], cwd=repo, check=True)
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], cwd=repo, text=True, capture_output=True, check=True)
+    (repo / "dirty.txt").write_text("dirty checkout\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "type": "implementation_finished",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "task_id": "ACCEL-002",
+        "attempt": 1,
+        "branch": "implementation/accel-002",
+        "implementation_commit": "abc123",
+        "title": "Recover failed merge",
+    }
+    merge_attempts: list[str] = []
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": merge_attempts.append(branch)  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert merge_attempts == []
+    assert result == [
+        {
+            "resolved": False,
+            "reason": "main_checkout_dirty",
+            "candidate_count": 1,
+            "processed_count": 0,
+            "dirty_paths": ["dirty.txt"],
+        }
+    ]
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "merge_reconciliation_deferred"
+    assert events[-1]["reason"] == "main_checkout_dirty"
+
+
+def test_implementation_daemon_abandons_stale_failed_merge_candidates(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        merge_reconciliation_max_age_seconds=60,
+    )
+    event = {
+        "type": "implementation_finished",
+        "timestamp": "2000-01-01T00:00:00+00:00",
+        "task_id": "ACCEL-002",
+        "attempt": 1,
+        "branch": "implementation/accel-002",
+        "implementation_commit": "abc123",
+        "title": "Recover stale merge",
+    }
+    merge_attempts: list[str] = []
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": merge_attempts.append(branch)  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert merge_attempts == []
+    assert result[0]["reason"] == "stale_failed_merge_candidate"
+    assert result[0]["task_id"] == "ACCEL-002"
+    assert result[0]["implementation_commit"] == "abc123"
+    assert result[0]["merge_result"]["attempted"] is False
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "merge_reconciled"
+    assert events[-1]["reason"] == "stale_failed_merge_candidate"
+
+
 def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6015,7 +6237,7 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
     )
     daemon._find_live_inflight_implementation = lambda: None  # type: ignore[method-assign]
 
-    def assert_state_recovered_before_reconcile(*, skip_task_ids=None):
+    def assert_state_recovered_before_reconcile(*, skip_task_ids=None, deprioritized_task_ids=None):
         recovered = TodoTaskState.load(state_path)
         assert recovered.implementation_in_progress is False
         assert recovered.active_phase == ""
@@ -6207,7 +6429,8 @@ def test_implementation_daemon_reconciles_merge_lock_deferrals(tmp_path):
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
 
     assert daemon._failed_merge_candidates() == [event]
-    assert daemon._unresolved_merge_failures_by_task()["ACCEL-003"] == event
+    assert daemon._transient_merge_deferrals_by_task()["ACCEL-003"] == event
+    assert "ACCEL-003" not in daemon._unresolved_merge_failures_by_task()
 
 
 def test_implementation_daemon_blocks_unresolved_merge_failures_instead_of_retry_loop(tmp_path):
@@ -6253,7 +6476,7 @@ def test_implementation_daemon_blocks_unresolved_merge_failures_instead_of_retry
         },
     }
 
-    daemon._reconcile_failed_merges = lambda skip_task_ids=None: []  # type: ignore[method-assign]
+    daemon._reconcile_failed_merges = lambda **_kwargs: []  # type: ignore[method-assign]
     daemon._cleanup_already_merged_worktrees = lambda: []  # type: ignore[method-assign]
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]

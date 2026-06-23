@@ -16,6 +16,7 @@ import math
 import os
 import re
 import subprocess
+import warnings
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1
@@ -32,6 +33,16 @@ DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX = os.environ.get(
     "IPFS_ACCELERATE_AGENT_OBJECTIVE_TASK_SUMMARY_PREFIX",
     "Close objective gap",
 )
+
+
+def parse_python_ast_quietly(text: str) -> ast.AST:
+    """Parse Python source without surfacing scanner-only syntax warnings."""
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=SyntaxWarning)
+        return ast.parse(text)
+
+
 DEFAULT_DISCOVERY_OUTPUT_PATH = os.environ.get(
     "IPFS_ACCELERATE_AGENT_DISCOVERY_OUTPUT_PATH",
     "data/agent_supervisor/discovery",
@@ -319,7 +330,7 @@ def symbol_terms(path: Path, text: str) -> set[str]:
     symbols: set[str] = set()
     if suffix == ".py":
         try:
-            tree = ast.parse(text)
+            tree = parse_python_ast_quietly(text)
         except SyntaxError:
             tree = None
         if tree is not None:
@@ -402,7 +413,7 @@ def ast_dataset_payload(path: Path, text: str, *, max_chars: int = DEFAULT_AST_D
     if suffix == ".py":
         ast_kind = "python_ast"
         try:
-            tree = ast.parse(text)
+            tree = parse_python_ast_quietly(text)
             ast_text = ast.dump(tree, include_attributes=True)
         except SyntaxError as exc:
             parse_error = f"{type(exc).__name__}: {exc}"

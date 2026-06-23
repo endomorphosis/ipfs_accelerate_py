@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -57,6 +58,8 @@ DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGED_WO
 DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX = 25
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
+MERGE_RECONCILIATION_MAX_AGE_ENV = "IPFS_ACCELERATE_AGENT_MERGE_RECONCILIATION_MAX_AGE_SECONDS"
+DEFAULT_MERGE_RECONCILIATION_MAX_AGE_SECONDS = 86400
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
@@ -68,6 +71,8 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
     }
 )
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
+IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
+IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
 SHARED_WORKTREE_PATHS = ("wallet_interface/ui/node_modules",)
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
@@ -384,6 +389,9 @@ class PortalTaskState:
     recommended_actions: list[str] = field(default_factory=list)
     completed_task_ids: list[str] = field(default_factory=list)
     ready_task_ids: list[str] = field(default_factory=list)
+    selectable_ready_task_ids: list[str] = field(default_factory=list)
+    eligible_ready_task_ids: list[str] = field(default_factory=list)
+    strict_deprioritized_ready_task_ids: list[str] = field(default_factory=list)
     waiting_task_ids: list[str] = field(default_factory=list)
     blocked_task_ids: list[str] = field(default_factory=list)
     task_statuses: dict[str, str] = field(default_factory=dict)
@@ -406,10 +414,14 @@ class PortalTaskState:
     last_merge_error: str = ""
     completed_count: int = 0
     ready_count: int = 0
+    selectable_ready_count: int = 0
+    eligible_ready_count: int = 0
+    strict_deprioritized_ready_count: int = 0
     waiting_count: int = 0
     blocked_count: int = 0
     task_count: int = 0
     strategy_generation: int = 0
+    selection_idle_reason: str = ""
 
     def save(self, path: Path) -> None:
         write_json_atomic(path, asdict(self))
@@ -450,6 +462,13 @@ class PortalTaskState:
                 recommended_actions=[str(item) for item in payload.get("recommended_actions", []) or []],
                 completed_task_ids=[str(item) for item in payload.get("completed_task_ids", []) or []],
                 ready_task_ids=[str(item) for item in payload.get("ready_task_ids", []) or []],
+                selectable_ready_task_ids=[
+                    str(item) for item in payload.get("selectable_ready_task_ids", []) or []
+                ],
+                eligible_ready_task_ids=[str(item) for item in payload.get("eligible_ready_task_ids", []) or []],
+                strict_deprioritized_ready_task_ids=[
+                    str(item) for item in payload.get("strict_deprioritized_ready_task_ids", []) or []
+                ],
                 waiting_task_ids=[str(item) for item in payload.get("waiting_task_ids", []) or []],
                 blocked_task_ids=[str(item) for item in payload.get("blocked_task_ids", []) or []],
                 task_statuses={str(key): str(value) for key, value in (payload.get("task_statuses") or {}).items()},
@@ -492,10 +511,14 @@ class PortalTaskState:
                 last_merge_error=str(payload.get("last_merge_error") or ""),
                 completed_count=int(payload.get("completed_count") or 0),
                 ready_count=int(payload.get("ready_count") or 0),
+                selectable_ready_count=int(payload.get("selectable_ready_count") or 0),
+                eligible_ready_count=int(payload.get("eligible_ready_count") or 0),
+                strict_deprioritized_ready_count=int(payload.get("strict_deprioritized_ready_count") or 0),
                 waiting_count=int(payload.get("waiting_count") or 0),
                 blocked_count=int(payload.get("blocked_count") or 0),
                 task_count=int(payload.get("task_count") or 0),
                 strategy_generation=int(payload.get("strategy_generation") or 0),
+                selection_idle_reason=str(payload.get("selection_idle_reason") or ""),
             )
         except (AttributeError, TypeError, ValueError):
             return cls()
@@ -520,6 +543,9 @@ def state_file_repair_reason(path: Path) -> str:
         "active_attempt",
         "completed_count",
         "ready_count",
+        "selectable_ready_count",
+        "eligible_ready_count",
+        "strict_deprioritized_ready_count",
         "waiting_count",
         "blocked_count",
         "task_count",
@@ -630,6 +656,7 @@ class PortalImplementationDaemon:
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
         merge_reconciliation_max_merges: int | None = None,
+        merge_reconciliation_max_age_seconds: int | None = None,
         merged_worktree_cleanup_max: int | None = None,
         task_shard_count: int = 1,
         task_shard_index: int = 0,
@@ -658,6 +685,11 @@ class PortalImplementationDaemon:
             _env_int(DAEMON_MERGE_RECONCILIATION_MAX_ENV, DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX)
             if merge_reconciliation_max_merges is None
             else int(merge_reconciliation_max_merges)
+        )
+        self.merge_reconciliation_max_age_seconds = (
+            _env_int(MERGE_RECONCILIATION_MAX_AGE_ENV, DEFAULT_MERGE_RECONCILIATION_MAX_AGE_SECONDS)
+            if merge_reconciliation_max_age_seconds is None
+            else int(merge_reconciliation_max_age_seconds)
         )
         self.merged_worktree_cleanup_max = (
             _env_int(DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV, DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX)
@@ -751,10 +783,16 @@ class PortalImplementationDaemon:
             state.last_progress_at = now
         state.completed_task_ids = []
         state.ready_task_ids = []
+        state.selectable_ready_task_ids = []
+        state.eligible_ready_task_ids = []
+        state.strict_deprioritized_ready_task_ids = []
         state.waiting_task_ids = []
         state.blocked_task_ids = []
         state.completed_count = 0
         state.ready_count = 0
+        state.selectable_ready_count = 0
+        state.eligible_ready_count = 0
+        state.strict_deprioritized_ready_count = 0
         state.waiting_count = 0
         state.blocked_count = 0
         state.task_count = 0
@@ -770,6 +808,7 @@ class PortalImplementationDaemon:
             self._clear_active_execution_state(state)
             state.recommended_task_id = ""
             state.recommended_actions = []
+        state.selection_idle_reason = reason
         state.save(self.state_path)
         payload = {
             "reason": reason,
@@ -784,9 +823,13 @@ class PortalImplementationDaemon:
             "task_count": 0,
             "completed_count": 0,
             "ready_count": 0,
+            "selectable_ready_count": 0,
+            "eligible_ready_count": 0,
+            "strict_deprioritized_ready_count": 0,
             "waiting_count": 0,
             "blocked_count": 0,
             "active_task_id": state.active_task_id,
+            "selection_idle_reason": reason,
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),
@@ -858,6 +901,21 @@ class PortalImplementationDaemon:
         transient_merge_deferral_task_ids = set(transient_merge_deferrals)
         recent_outcomes = self._latest_implementation_finished_by_task()
         successfully_merged_task_ids = self._successfully_merged_task_ids()
+        merged_status_repair: dict[str, Any] = {}
+        stale_merged_completed_task_ids = [
+            task.task_id
+            for task in tasks
+            if task.task_id in successfully_merged_task_ids and task.task_id not in status_completed_task_ids
+        ]
+        if stale_merged_completed_task_ids:
+            merged_status_repair = self._mark_tasks_completed_in_todo(
+                stale_merged_completed_task_ids,
+                primary_task_id=stale_merged_completed_task_ids[0],
+                completion_reason="merged_status_repair",
+            )
+            repaired_task_ids = set(merged_status_repair.get("updated_task_ids") or [])
+            repaired_task_ids.update(merged_status_repair.get("already_completed_task_ids") or [])
+            status_completed_task_ids.update(repaired_task_ids)
 
         previous_completed = set(previous.completed_task_ids)
         completed_set: set[str] = set()
@@ -908,7 +966,12 @@ class PortalImplementationDaemon:
                 continue
             resolved_statuses[task.task_id] = "ready"
 
-        selectable_tasks = [task for task in tasks if self._task_belongs_to_shard(task.task_id)]
+        active_task_claims = self._active_implementation_task_claims(task.task_id for task in tasks)
+        selectable_tasks = [
+            task
+            for task in tasks
+            if self._task_belongs_to_shard(task.task_id) and task.task_id not in active_task_claims
+        ]
         selected = self._select_next_task(
             selectable_tasks,
             resolved_statuses,
@@ -916,6 +979,7 @@ class PortalImplementationDaemon:
             unresolved_merge_failures,
             recent_outcomes,
         )
+        selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         state = PortalTaskState.load(self.state_path)
         state.heartbeat_at = now
         if newly_completed or not state.last_progress_at:
@@ -923,9 +987,15 @@ class PortalImplementationDaemon:
         state.completed_task_ids = sorted(completed_set)
         state.completed_count = len(state.completed_task_ids)
         state.ready_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "ready"]
+        state.selectable_ready_task_ids = list(selection_scope["selectable_ready_task_ids"])
+        state.eligible_ready_task_ids = list(selection_scope["eligible_ready_task_ids"])
+        state.strict_deprioritized_ready_task_ids = list(selection_scope["strict_deprioritized_ready_task_ids"])
         state.waiting_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "waiting"]
         state.blocked_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "blocked"]
         state.ready_count = len(state.ready_task_ids)
+        state.selectable_ready_count = len(state.selectable_ready_task_ids)
+        state.eligible_ready_count = len(state.eligible_ready_task_ids)
+        state.strict_deprioritized_ready_count = len(state.strict_deprioritized_ready_task_ids)
         state.waiting_count = len(state.waiting_task_ids)
         state.blocked_count = len(state.blocked_task_ids)
         state.task_count = len(tasks)
@@ -974,6 +1044,7 @@ class PortalImplementationDaemon:
             state.active_task_track = selected.track
             state.recommended_task_id = selected.task_id
             state.recommended_actions = self._build_recommended_actions(selected)
+            state.selection_idle_reason = ""
         else:
             state.active_task_id = ""
             state.active_task_title = ""
@@ -982,6 +1053,7 @@ class PortalImplementationDaemon:
             self._clear_active_execution_state(state)
             state.recommended_task_id = ""
             state.recommended_actions = []
+            state.selection_idle_reason = str(selection_scope["selection_idle_reason"])
 
         state.save(self.state_path)
         for task_id in newly_completed:
@@ -1016,15 +1088,23 @@ class PortalImplementationDaemon:
                 "waiting_count": state.waiting_count,
                 "blocked_count": state.blocked_count,
                 "active_task_id": state.active_task_id,
+                "selectable_ready_count": state.selectable_ready_count,
+                "eligible_ready_count": state.eligible_ready_count,
+                "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
+                "selection_idle_reason": state.selection_idle_reason,
             },
         )
         return {
             "task_count": state.task_count,
             "completed_count": state.completed_count,
             "ready_count": state.ready_count,
+            "selectable_ready_count": state.selectable_ready_count,
+            "eligible_ready_count": state.eligible_ready_count,
+            "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
             "waiting_count": state.waiting_count,
             "blocked_count": state.blocked_count,
             "active_task_id": state.active_task_id,
+            "selection_idle_reason": state.selection_idle_reason,
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),
@@ -1033,6 +1113,8 @@ class PortalImplementationDaemon:
             "merged_worktree_cleanup": merged_worktree_cleanup,
             "event_log_repair": event_log_repair,
             "state_file_repair": state_file_repair,
+            "merged_status_repair": merged_status_repair,
+            "active_task_claims": sorted(active_task_claims),
         }
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
@@ -1050,27 +1132,32 @@ class PortalImplementationDaemon:
 
         started_at = utc_now()
         attempt = state.implementation_attempts.get(task.task_id, 0) + 1
+        task_claim_path = self._implementation_task_claim_path(task.task_id)
+        task_claim_metadata = self._build_implementation_task_claim_metadata(task, attempt, started_at)
         lock_path = self._implementation_lock_path()
         lock_metadata = self._build_implementation_lock_metadata(task, attempt, started_at)
-        lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
-            lock_path,
-            lock_kind="implementation",
-            owner_active=self._implementation_lock_owner_is_active,
+        task_claim_fd, task_claim_reason, existing_task_claim = self._try_acquire_lock(
+            task_claim_path,
+            lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+            owner_active=self._implementation_task_claim_owner_is_active,
         )
-        if lock_fd is None:
+        if task_claim_fd is None:
             result = {
                 "skipped": True,
-                "reason": lock_reason,
+                "reason": f"task_claim_{task_claim_reason}",
                 "task_id": task.task_id,
                 "attempt": attempt,
             }
-            if existing_lock:
-                result["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
-                result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
+            if existing_task_claim:
+                result["lock_owner_pid"] = int(existing_task_claim.get("pid") or 0)
+                result["lock_owner_task_id"] = str(existing_task_claim.get("task_id") or "")
+                result["lock_owner_state_dir"] = str(existing_task_claim.get("state_dir") or "")
             self._record_event("implementation_skipped", result)
             return result
 
-        acquired_lock = True
+        acquired_task_claim = True
+        lock_fd: int | None = None
+        acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         prompt = self._build_implementation_prompt(task, attempt)
         workspace_path = self.repo_root
@@ -1086,7 +1173,28 @@ class PortalImplementationDaemon:
         todo_update_result: dict[str, Any] = {}
 
         try:
+            self._write_lock_metadata(task_claim_fd, task_claim_metadata)
+            task_claim_fd = None
+            lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
+                lock_path,
+                lock_kind="implementation",
+                owner_active=self._implementation_lock_owner_is_active,
+            )
+            if lock_fd is None:
+                result = {
+                    "skipped": True,
+                    "reason": lock_reason,
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                }
+                if existing_lock:
+                    result["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
+                    result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
+                self._record_event("implementation_skipped", result)
+                return result
+            acquired_lock = True
             self._write_lock_metadata(lock_fd, lock_metadata)
+            lock_fd = None
             if self.use_ephemeral_worktree:
                 return self._run_implementation_in_ephemeral_worktree(
                     task=task,
@@ -1218,11 +1326,26 @@ class PortalImplementationDaemon:
             self._record_event("implementation_finished", result)
             return result
         finally:
+            if lock_fd is not None:
+                try:
+                    os.close(lock_fd)
+                except OSError:
+                    pass
+            if task_claim_fd is not None:
+                try:
+                    os.close(task_claim_fd)
+                except OSError:
+                    pass
             try:
                 if acquired_lock and lock_path.exists():
                     lock_path.unlink()
             except OSError:
                 logger.warning("Failed to remove implementation lock %s", lock_path)
+            try:
+                if acquired_task_claim and task_claim_path.exists():
+                    task_claim_path.unlink()
+            except OSError:
+                logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
 
     def _mark_task_completed_in_todo(self, task_id: str) -> dict[str, Any]:
         return self._mark_tasks_completed_in_todo(
@@ -1265,23 +1388,36 @@ class PortalImplementationDaemon:
         ]
         target_set = set(target_task_ids)
         current_task_id = ""
+        header_indices: dict[str, int] = {}
         status_indices: dict[str, int] = {}
         for index, line in enumerate(lines):
             if line.startswith(self.task_header_prefix):
                 header = line[3:].strip()
                 current_task_id = header.split(" ", 1)[0] if header else ""
+                if current_task_id in target_set:
+                    header_indices[current_task_id] = index
                 continue
             if current_task_id in target_set and line.startswith("- Status:"):
                 status_indices[current_task_id] = index
                 current_task_id = ""
 
-        missing_task_ids = [task_id for task_id in target_task_ids if task_id not in status_indices]
+        missing_status_task_ids = [
+            task_id
+            for task_id in target_task_ids
+            if task_id in header_indices and task_id not in status_indices
+        ]
+        missing_task_ids = [
+            task_id
+            for task_id in target_task_ids
+            if task_id not in header_indices and task_id not in status_indices
+        ]
         if primary_task_id in missing_task_ids:
             result = {
                 "updated": False,
                 "task_id": primary_task_id,
                 "reason": "status_line_missing",
                 "missing_task_ids": missing_task_ids,
+                "missing_status_task_ids": missing_status_task_ids,
             }
             self._record_event("todo_status_update_failed", result)
             return result
@@ -1300,6 +1436,23 @@ class PortalImplementationDaemon:
             lines[status_index] = "- Status: completed" + newline
             updated_task_ids.append(task_id)
 
+        inserted_status_task_ids: list[str] = []
+        for task_id in sorted(missing_status_task_ids, key=lambda value: header_indices[value], reverse=True):
+            header_index = header_indices[task_id]
+            insert_at = header_index + 1
+            while insert_at < len(lines) and not lines[insert_at].strip():
+                insert_at += 1
+            insertion: list[str] = []
+            if insert_at == header_index + 1:
+                insertion.append("\n")
+            insertion.append("- Status: completed\n")
+            if insert_at >= len(lines) or lines[insert_at].startswith(self.task_header_prefix):
+                insertion.append("\n")
+            lines[insert_at:insert_at] = insertion
+            inserted_status_task_ids.append(task_id)
+            updated_task_ids.append(task_id)
+        inserted_status_task_ids.reverse()
+
         if not updated_task_ids:
             result = {
                 "updated": False,
@@ -1310,6 +1463,8 @@ class PortalImplementationDaemon:
                 "updated_task_ids": [],
                 "already_completed_task_ids": already_completed_task_ids,
                 "missing_task_ids": missing_task_ids,
+                "missing_status_task_ids": missing_status_task_ids,
+                "inserted_status_task_ids": inserted_status_task_ids,
             }
             if bundle_work_order is not None:
                 result["bundle_work_order"] = bundle_work_order
@@ -1348,6 +1503,8 @@ class PortalImplementationDaemon:
             "updated_task_ids": updated_task_ids,
             "already_completed_task_ids": already_completed_task_ids,
             "missing_task_ids": missing_task_ids,
+            "missing_status_task_ids": missing_status_task_ids,
+            "inserted_status_task_ids": inserted_status_task_ids,
         }
         if bundle_work_order is not None:
             result["bundle_work_order"] = bundle_work_order
@@ -4563,6 +4720,25 @@ class PortalImplementationDaemon:
         target_branch = self._main_branch_name()
         deprioritized_task_ids = {str(task_id) for task_id in (deprioritized_task_ids or set()) if str(task_id)}
         candidates = self._failed_merge_candidates(skip_task_ids=skip_task_ids)
+        fresh_candidates, stale_candidates = self._partition_stale_failed_merge_candidates(candidates)
+        for event in stale_candidates:
+            result = self._stale_failed_merge_candidate_result(event)
+            self._record_event("merge_reconciled", result)
+            results.append(result)
+        candidates = fresh_candidates
+        if candidates:
+            main_checkout_dirty_paths = sorted(self._dirty_worktree_paths(self.repo_root))
+            if main_checkout_dirty_paths:
+                result = {
+                    "resolved": False,
+                    "reason": "main_checkout_dirty",
+                    "candidate_count": len(candidates),
+                    "processed_count": 0,
+                    "dirty_paths": main_checkout_dirty_paths,
+                }
+                self._record_event("merge_reconciliation_deferred", result)
+                results.append(result)
+                return results
         max_merges = int(self.merge_reconciliation_max_merges)
         selected_candidates = self._select_failed_merge_candidates_for_reconciliation(
             candidates,
@@ -4724,6 +4900,48 @@ class PortalImplementationDaemon:
             )
         return results
 
+    def _partition_stale_failed_merge_candidates(
+        self,
+        candidates: Sequence[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        max_age_seconds = int(self.merge_reconciliation_max_age_seconds)
+        if max_age_seconds <= 0:
+            return list(candidates), []
+        fresh: list[dict[str, Any]] = []
+        stale: list[dict[str, Any]] = []
+        for event in candidates:
+            if not str(event.get("timestamp") or ""):
+                fresh.append(event)
+            elif self._event_age_seconds(event) > max_age_seconds:
+                stale.append(event)
+            else:
+                fresh.append(event)
+        return fresh, stale
+
+    def _stale_failed_merge_candidate_result(self, event: dict[str, Any]) -> dict[str, Any]:
+        task_id = str(event.get("task_id") or "")
+        attempt = int(event.get("attempt") or 0)
+        branch = str(event.get("branch") or "")
+        implementation_commit = str(event.get("implementation_commit") or "")
+        return {
+            "task_id": task_id,
+            "attempt": attempt,
+            "branch": branch,
+            "implementation_commit": implementation_commit,
+            "merge_ref": branch if branch else implementation_commit,
+            "merge_ref_source": "branch" if branch else "implementation_commit",
+            "resolved": False,
+            "reason": "stale_failed_merge_candidate",
+            "max_age_seconds": int(self.merge_reconciliation_max_age_seconds),
+            "candidate_timestamp": str(event.get("timestamp") or ""),
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "reason": "stale_failed_merge_candidate",
+            },
+            "cleanup_result": {},
+        }
+
     @classmethod
     def _select_failed_merge_candidates_for_reconciliation(
         cls,
@@ -4781,9 +4999,12 @@ class PortalImplementationDaemon:
                 implementation_commit = str(event.get("implementation_commit") or "")
                 merge_result = event.get("merge_result") or {}
                 merge_reason = merge_result.get("reason") if isinstance(merge_result, dict) else ""
+                reconcile_reason = str(event.get("reason") or "")
                 if implementation_commit and event.get("resolved"):
                     reconciled_commits.add(implementation_commit)
                 elif implementation_commit and merge_reason == "baseline_not_ancestor_of_target":
+                    abandoned_commits.add(implementation_commit)
+                elif implementation_commit and reconcile_reason == "stale_failed_merge_candidate":
                     abandoned_commits.add(implementation_commit)
                 elif (
                     implementation_commit
@@ -4925,6 +5146,15 @@ class PortalImplementationDaemon:
     def _implementation_lock_path(self) -> Path:
         return self.state_path.parent / "implementation.lock"
 
+    def _implementation_task_claim_path(self, task_id: str) -> Path:
+        safe_task_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", task_id).strip("._-") or "task"
+        digest = hashlib.sha1(task_id.encode("utf-8")).hexdigest()[:12]
+        lock_filename = f"{safe_task_id[:96]}-{digest}.lock"
+        return (
+            checkout_mutation_lock_path(self.repo_root, lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME)
+            / lock_filename
+        )
+
     def _build_implementation_lock_metadata(self, task: PortalTask, attempt: int, started_at: str) -> dict[str, Any]:
         return {
             "kind": "implementation",
@@ -4936,6 +5166,27 @@ class PortalImplementationDaemon:
             "attempt": attempt,
             "started_at": started_at,
         }
+
+    def _build_implementation_task_claim_metadata(
+        self,
+        task: PortalTask,
+        attempt: int,
+        started_at: str,
+    ) -> dict[str, Any]:
+        return checkout_lock_metadata(
+            kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+            repo_root=self.repo_root,
+            task_id=task.task_id,
+            attempt=attempt,
+            owner_script=Path(sys.argv[0]).name,
+            extra={
+                "state_dir": str(self.state_path.parent.resolve()),
+                "state_path": str(self.state_path.resolve()),
+                "started_at": started_at,
+                "task_shard_count": self.task_shard_count,
+                "task_shard_index": self.task_shard_index,
+            },
+        )
 
     def _build_merge_lock_metadata(
         self,
@@ -4962,6 +5213,27 @@ class PortalImplementationDaemon:
         if state_dir and Path(state_dir).resolve() != self.state_path.parent.resolve():
             return False
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
+
+    def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
+        repo_root = str(metadata.get("repo_root") or "")
+        if repo_root:
+            try:
+                if Path(repo_root).resolve() != self.repo_root.resolve():
+                    return False
+            except OSError:
+                return False
+        return self._lock_owner_is_active(metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
+
+    def _active_implementation_task_claims(self, task_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+        active_claims: dict[str, dict[str, Any]] = {}
+        for task_id in task_ids:
+            claim_path = self._implementation_task_claim_path(task_id)
+            if not claim_path.exists():
+                continue
+            metadata = load_json_dict(claim_path)
+            if metadata is not None and self._implementation_task_claim_owner_is_active(metadata):
+                active_claims[task_id] = metadata
+        return active_claims
 
     def _merge_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         repo_root = str(metadata.get("repo_root") or "")
@@ -5971,6 +6243,41 @@ Rules:
         work_items = self._task_metadata_int(task, "work item count")
         return (self._task_candidate_rank(task), -packet_work_items, -work_items)
 
+    @staticmethod
+    def _strict_off_mission_deprioritized_task_ids(strategy: dict[str, Any]) -> set[str]:
+        return {
+            str(receipt.get("task_id") or "")
+            for receipt in strategy.get("objective_task_janitor_receipts", [])
+            if isinstance(receipt, dict)
+            and str(receipt.get("action") or "") == "deprioritize"
+            and str(receipt.get("retired_task_reason") or "").startswith("off_mission_")
+        }
+
+    def _selection_scope(
+        self,
+        tasks: list[PortalTask],
+        resolved_statuses: dict[str, str],
+        strategy: dict[str, Any],
+    ) -> dict[str, Any]:
+        selectable_ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
+        strict_ready = [task.task_id for task in selectable_ready if task.task_id in strict_deprioritized]
+        eligible_ready = [task.task_id for task in selectable_ready if task.task_id not in strict_deprioritized]
+        reason = ""
+        if not eligible_ready:
+            if strict_ready:
+                reason = "all_selectable_ready_tasks_deprioritized_as_off_mission"
+            elif selectable_ready:
+                reason = "no_eligible_ready_tasks_after_selection_filters"
+            else:
+                reason = "no_shard_selectable_ready_tasks"
+        return {
+            "selectable_ready_task_ids": [task.task_id for task in selectable_ready],
+            "eligible_ready_task_ids": eligible_ready,
+            "strict_deprioritized_ready_task_ids": strict_ready,
+            "selection_idle_reason": reason,
+        }
+
     def _select_next_task(
         self,
         tasks: list[PortalTask],
@@ -5980,6 +6287,9 @@ Rules:
         recent_outcomes: dict[str, dict[str, Any]],
     ) -> PortalTask | None:
         ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
+        if strict_deprioritized:
+            ready = [task for task in ready if task.task_id not in strict_deprioritized]
         if not ready:
             return None
         ready_task_ids = {task.task_id for task in ready}
