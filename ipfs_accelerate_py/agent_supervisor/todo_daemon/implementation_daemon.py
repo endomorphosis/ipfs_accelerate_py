@@ -4990,6 +4990,7 @@ class PortalImplementationDaemon:
 
     def _failed_merge_candidates(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
+        current_task_ids = self._current_todo_task_ids_for_reconciliation()
         candidates: dict[tuple[str, str], dict[str, Any]] = {}
         reconciled_commits: set[str] = set()
         abandoned_commits: set[str] = set()
@@ -5018,6 +5019,8 @@ class PortalImplementationDaemon:
                 continue
             task_id = str(event.get("task_id") or "")
             if task_id in skip_task_ids:
+                continue
+            if current_task_ids is not None and task_id not in current_task_ids:
                 continue
             implementation_commit = str(event.get("implementation_commit") or "")
             if (
@@ -5051,6 +5054,13 @@ class PortalImplementationDaemon:
             if isinstance(cleanup, dict) and not cleanup.get("cleaned", False):
                 unresolved.append(event)
         return unresolved
+
+    def _current_todo_task_ids_for_reconciliation(self) -> set[str] | None:
+        try:
+            tasks = parse_task_file(self.todo_path, self.task_header_prefix)
+        except (OSError, UnicodeDecodeError):
+            return None
+        return {task.task_id for task in tasks}
 
     @staticmethod
     def _merge_result_needs_reconciliation(merge_result: dict[str, Any]) -> bool:
