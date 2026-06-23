@@ -1388,23 +1388,36 @@ class PortalImplementationDaemon:
         ]
         target_set = set(target_task_ids)
         current_task_id = ""
+        header_indices: dict[str, int] = {}
         status_indices: dict[str, int] = {}
         for index, line in enumerate(lines):
             if line.startswith(self.task_header_prefix):
                 header = line[3:].strip()
                 current_task_id = header.split(" ", 1)[0] if header else ""
+                if current_task_id in target_set:
+                    header_indices[current_task_id] = index
                 continue
             if current_task_id in target_set and line.startswith("- Status:"):
                 status_indices[current_task_id] = index
                 current_task_id = ""
 
-        missing_task_ids = [task_id for task_id in target_task_ids if task_id not in status_indices]
+        missing_status_task_ids = [
+            task_id
+            for task_id in target_task_ids
+            if task_id in header_indices and task_id not in status_indices
+        ]
+        missing_task_ids = [
+            task_id
+            for task_id in target_task_ids
+            if task_id not in header_indices and task_id not in status_indices
+        ]
         if primary_task_id in missing_task_ids:
             result = {
                 "updated": False,
                 "task_id": primary_task_id,
                 "reason": "status_line_missing",
                 "missing_task_ids": missing_task_ids,
+                "missing_status_task_ids": missing_status_task_ids,
             }
             self._record_event("todo_status_update_failed", result)
             return result
@@ -1423,6 +1436,23 @@ class PortalImplementationDaemon:
             lines[status_index] = "- Status: completed" + newline
             updated_task_ids.append(task_id)
 
+        inserted_status_task_ids: list[str] = []
+        for task_id in sorted(missing_status_task_ids, key=lambda value: header_indices[value], reverse=True):
+            header_index = header_indices[task_id]
+            insert_at = header_index + 1
+            while insert_at < len(lines) and not lines[insert_at].strip():
+                insert_at += 1
+            insertion: list[str] = []
+            if insert_at == header_index + 1:
+                insertion.append("\n")
+            insertion.append("- Status: completed\n")
+            if insert_at >= len(lines) or lines[insert_at].startswith(self.task_header_prefix):
+                insertion.append("\n")
+            lines[insert_at:insert_at] = insertion
+            inserted_status_task_ids.append(task_id)
+            updated_task_ids.append(task_id)
+        inserted_status_task_ids.reverse()
+
         if not updated_task_ids:
             result = {
                 "updated": False,
@@ -1433,6 +1463,8 @@ class PortalImplementationDaemon:
                 "updated_task_ids": [],
                 "already_completed_task_ids": already_completed_task_ids,
                 "missing_task_ids": missing_task_ids,
+                "missing_status_task_ids": missing_status_task_ids,
+                "inserted_status_task_ids": inserted_status_task_ids,
             }
             if bundle_work_order is not None:
                 result["bundle_work_order"] = bundle_work_order
@@ -1471,6 +1503,8 @@ class PortalImplementationDaemon:
             "updated_task_ids": updated_task_ids,
             "already_completed_task_ids": already_completed_task_ids,
             "missing_task_ids": missing_task_ids,
+            "missing_status_task_ids": missing_status_task_ids,
+            "inserted_status_task_ids": inserted_status_task_ids,
         }
         if bundle_work_order is not None:
             result["bundle_work_order"] = bundle_work_order
