@@ -58,6 +58,8 @@ DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGED_WO
 DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX = 25
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
+MERGE_RECONCILIATION_MAX_AGE_ENV = "IPFS_ACCELERATE_AGENT_MERGE_RECONCILIATION_MAX_AGE_SECONDS"
+DEFAULT_MERGE_RECONCILIATION_MAX_AGE_SECONDS = 86400
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
@@ -633,6 +635,7 @@ class PortalImplementationDaemon:
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
         merge_reconciliation_max_merges: int | None = None,
+        merge_reconciliation_max_age_seconds: int | None = None,
         merged_worktree_cleanup_max: int | None = None,
         task_shard_count: int = 1,
         task_shard_index: int = 0,
@@ -661,6 +664,11 @@ class PortalImplementationDaemon:
             _env_int(DAEMON_MERGE_RECONCILIATION_MAX_ENV, DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX)
             if merge_reconciliation_max_merges is None
             else int(merge_reconciliation_max_merges)
+        )
+        self.merge_reconciliation_max_age_seconds = (
+            _env_int(MERGE_RECONCILIATION_MAX_AGE_ENV, DEFAULT_MERGE_RECONCILIATION_MAX_AGE_SECONDS)
+            if merge_reconciliation_max_age_seconds is None
+            else int(merge_reconciliation_max_age_seconds)
         )
         self.merged_worktree_cleanup_max = (
             _env_int(DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV, DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX)
@@ -4613,6 +4621,25 @@ class PortalImplementationDaemon:
         target_branch = self._main_branch_name()
         deprioritized_task_ids = {str(task_id) for task_id in (deprioritized_task_ids or set()) if str(task_id)}
         candidates = self._failed_merge_candidates(skip_task_ids=skip_task_ids)
+        fresh_candidates, stale_candidates = self._partition_stale_failed_merge_candidates(candidates)
+        for event in stale_candidates:
+            result = self._stale_failed_merge_candidate_result(event)
+            self._record_event("merge_reconciled", result)
+            results.append(result)
+        candidates = fresh_candidates
+        if candidates:
+            main_checkout_dirty_paths = sorted(self._dirty_worktree_paths(self.repo_root))
+            if main_checkout_dirty_paths:
+                result = {
+                    "resolved": False,
+                    "reason": "main_checkout_dirty",
+                    "candidate_count": len(candidates),
+                    "processed_count": 0,
+                    "dirty_paths": main_checkout_dirty_paths,
+                }
+                self._record_event("merge_reconciliation_deferred", result)
+                results.append(result)
+                return results
         max_merges = int(self.merge_reconciliation_max_merges)
         selected_candidates = self._select_failed_merge_candidates_for_reconciliation(
             candidates,
@@ -4774,6 +4801,48 @@ class PortalImplementationDaemon:
             )
         return results
 
+    def _partition_stale_failed_merge_candidates(
+        self,
+        candidates: Sequence[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        max_age_seconds = int(self.merge_reconciliation_max_age_seconds)
+        if max_age_seconds <= 0:
+            return list(candidates), []
+        fresh: list[dict[str, Any]] = []
+        stale: list[dict[str, Any]] = []
+        for event in candidates:
+            if not str(event.get("timestamp") or ""):
+                fresh.append(event)
+            elif self._event_age_seconds(event) > max_age_seconds:
+                stale.append(event)
+            else:
+                fresh.append(event)
+        return fresh, stale
+
+    def _stale_failed_merge_candidate_result(self, event: dict[str, Any]) -> dict[str, Any]:
+        task_id = str(event.get("task_id") or "")
+        attempt = int(event.get("attempt") or 0)
+        branch = str(event.get("branch") or "")
+        implementation_commit = str(event.get("implementation_commit") or "")
+        return {
+            "task_id": task_id,
+            "attempt": attempt,
+            "branch": branch,
+            "implementation_commit": implementation_commit,
+            "merge_ref": branch if branch else implementation_commit,
+            "merge_ref_source": "branch" if branch else "implementation_commit",
+            "resolved": False,
+            "reason": "stale_failed_merge_candidate",
+            "max_age_seconds": int(self.merge_reconciliation_max_age_seconds),
+            "candidate_timestamp": str(event.get("timestamp") or ""),
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "reason": "stale_failed_merge_candidate",
+            },
+            "cleanup_result": {},
+        }
+
     @classmethod
     def _select_failed_merge_candidates_for_reconciliation(
         cls,
@@ -4831,9 +4900,12 @@ class PortalImplementationDaemon:
                 implementation_commit = str(event.get("implementation_commit") or "")
                 merge_result = event.get("merge_result") or {}
                 merge_reason = merge_result.get("reason") if isinstance(merge_result, dict) else ""
+                reconcile_reason = str(event.get("reason") or "")
                 if implementation_commit and event.get("resolved"):
                     reconciled_commits.add(implementation_commit)
                 elif implementation_commit and merge_reason == "baseline_not_ancestor_of_target":
+                    abandoned_commits.add(implementation_commit)
+                elif implementation_commit and reconcile_reason == "stale_failed_merge_candidate":
                     abandoned_commits.add(implementation_commit)
                 elif (
                     implementation_commit

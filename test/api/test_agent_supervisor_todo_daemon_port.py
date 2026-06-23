@@ -5979,6 +5979,93 @@ def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
     assert events[-1]["type"] == "merge_reconcile_exception"
 
 
+def test_implementation_daemon_defers_merge_reconciliation_when_main_checkout_dirty(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "agent@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Agent"], cwd=repo, check=True)
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], cwd=repo, text=True, capture_output=True, check=True)
+    (repo / "dirty.txt").write_text("dirty checkout\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "type": "implementation_finished",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "task_id": "ACCEL-002",
+        "attempt": 1,
+        "branch": "implementation/accel-002",
+        "implementation_commit": "abc123",
+        "title": "Recover failed merge",
+    }
+    merge_attempts: list[str] = []
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": merge_attempts.append(branch)  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert merge_attempts == []
+    assert result == [
+        {
+            "resolved": False,
+            "reason": "main_checkout_dirty",
+            "candidate_count": 1,
+            "processed_count": 0,
+            "dirty_paths": ["dirty.txt"],
+        }
+    ]
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "merge_reconciliation_deferred"
+    assert events[-1]["reason"] == "main_checkout_dirty"
+
+
+def test_implementation_daemon_abandons_stale_failed_merge_candidates(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        merge_reconciliation_max_age_seconds=60,
+    )
+    event = {
+        "type": "implementation_finished",
+        "timestamp": "2000-01-01T00:00:00+00:00",
+        "task_id": "ACCEL-002",
+        "attempt": 1,
+        "branch": "implementation/accel-002",
+        "implementation_commit": "abc123",
+        "title": "Recover stale merge",
+    }
+    merge_attempts: list[str] = []
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": merge_attempts.append(branch)  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert merge_attempts == []
+    assert result[0]["reason"] == "stale_failed_merge_candidate"
+    assert result[0]["task_id"] == "ACCEL-002"
+    assert result[0]["implementation_commit"] == "abc123"
+    assert result[0]["merge_result"]["attempted"] is False
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "merge_reconciled"
+    assert events[-1]["reason"] == "stale_failed_merge_candidate"
+
+
 def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6113,7 +6200,7 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
     )
     daemon._find_live_inflight_implementation = lambda: None  # type: ignore[method-assign]
 
-    def assert_state_recovered_before_reconcile(*, skip_task_ids=None):
+    def assert_state_recovered_before_reconcile(*, skip_task_ids=None, deprioritized_task_ids=None):
         recovered = TodoTaskState.load(state_path)
         assert recovered.implementation_in_progress is False
         assert recovered.active_phase == ""
