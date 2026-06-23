@@ -32,6 +32,7 @@ logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.impl
 
 TASK_HEADER_PREFIX = "## PORTAL-"
 DEFAULT_TRACKS = [
+    "launch",
     "platform",
     "agent",
     "graphrag",
@@ -50,13 +51,37 @@ PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
+DAEMON_MERGE_RECONCILIATION_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGE_RECONCILIATION_MAX"
+DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX = 3
+DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX"
+DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX = 25
+DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
+DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
+TRANSIENT_MERGE_LOCK_REASONS = frozenset(
+    {
+        "lock_exists",
+        "lock_unavailable",
+        "lock_cleanup_failed",
+    }
+)
+TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 SHARED_WORKTREE_PATHS = ("wallet_interface/ui/node_modules",)
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "260")
 )
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 
 
 def normalize_relative_path_list(values: Any) -> tuple[str, ...]:
@@ -80,6 +105,23 @@ def normalize_relative_path_list(values: Any) -> tuple[str, ...]:
             if path not in paths:
                 paths.append(path)
     return tuple(paths)
+
+
+def normalize_focus_tracks(values: Any) -> list[str]:
+    """Normalize scheduler focus tracks while keeping launch-readiness first."""
+
+    if values is None:
+        raw_values: list[Any] = list(DEFAULT_TRACKS)
+    elif isinstance(values, str):
+        raw_values = values.split(",")
+    else:
+        try:
+            raw_values = list(values)
+        except TypeError:
+            raw_values = [values]
+
+    configured = [str(item).strip().lower() for item in raw_values if str(item).strip()]
+    return list(dict.fromkeys(["launch", *configured, *DEFAULT_TRACKS]))
 
 
 DEFAULT_WORKTREE_SUBMODULE_PATHS = normalize_relative_path_list(
@@ -127,11 +169,23 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _copilot_has_auth() -> bool:
+    """Return whether the local Copilot CLI has non-interactive auth available."""
+
+    if any(os.environ.get(name) for name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")):
+        return True
+    gh = shutil.which("gh")
+    if not gh:
+        return False
+    completed = subprocess.run([gh, "auth", "status"], text=True, capture_output=True, check=False)
+    return completed.returncode == 0
+
+
 def _copilot_fallback_command(*, codex: str | None, copilot: str, workspace_path: Path) -> list[str]:
-        return [
-                "bash",
-                "-lc",
-                """
+    return [
+        "bash",
+        "-lc",
+        """
 prompt_file=$(mktemp)
 trap 'rm -f "$prompt_file"' EXIT
 cat > "$prompt_file"
@@ -148,11 +202,11 @@ if [[ -n "$codex_bin" ]]; then
 fi
 exec "$copilot_bin" --silent --allow-all-tools --allow-all-paths --no-ask-user --autopilot --prompt "$(cat "$prompt_file")"
 """,
-                "bash",
-                codex or "",
-                copilot,
-                str(workspace_path),
-        ]
+        "bash",
+        codex or "",
+        copilot,
+        str(workspace_path),
+    ]
 
 
 def split_csv(value: str) -> list[str]:
@@ -178,6 +232,36 @@ def normalize_task_header_prefix(value: str) -> str:
     if stripped.startswith("## "):
         return stripped
     return f"## {stripped}"
+
+
+RETRY_BUDGET_REPAIR_TITLE_RE = re.compile(
+    r"^Resolve\s+(?P<kind>validation|implementation|merge)\s+retry-budget\s+failure\s+for\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\b",
+    re.IGNORECASE,
+)
+RETRY_BUDGET_REPAIR_ACCEPTANCE_RE = re.compile(
+    r"\b(?:release|remove)\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\s+from\s+(?:the\s+)?strategy\s+blocked_tasks\b",
+    re.IGNORECASE,
+)
+
+
+def retry_budget_repair_source(task: Any) -> tuple[str, str]:
+    """Return ``(source_task_id, failure_kind)`` for generated retry repairs."""
+
+    title_match = RETRY_BUDGET_REPAIR_TITLE_RE.search(str(getattr(task, "title", "") or ""))
+    acceptance_match = RETRY_BUDGET_REPAIR_ACCEPTANCE_RE.search(str(getattr(task, "acceptance", "") or ""))
+    if not title_match or not acceptance_match:
+        return "", ""
+    source_task_id = str(title_match.group("source") or "").strip()
+    acceptance_source = str(acceptance_match.group("source") or "").strip()
+    if source_task_id != acceptance_source:
+        return "", ""
+    return source_task_id, str(title_match.group("kind") or "retry").strip().lower()
+
+
+def is_retry_budget_repair_task(task: Any) -> bool:
+    """Return whether a task is itself a generated retry-budget repair."""
+
+    return bool(retry_budget_repair_source(task)[0])
 
 
 def write_text_atomic(path: Path, content: str, *, encoding: str = "utf-8") -> None:
@@ -476,11 +560,14 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
                 continue
             key, value = stripped[2:].split(":", 1)
             metadata[key.strip().lower()] = value.strip()
+        if not metadata:
+            metadata["blocked reason"] = "empty task metadata"
+        default_status = "blocked" if metadata.get("blocked reason") == "empty task metadata" else "todo"
         tasks.append(
             PortalTask(
                 task_id=current_id,
                 title=current_title,
-                status=normalize_status(metadata.get("status", "todo")),
+                status=normalize_status(metadata.get("status", default_status)),
                 completion=str(metadata.get("completion", "manual")).strip().lower(),
                 priority=str(metadata.get("priority", "P2")).strip().upper(),
                 track=str(metadata.get("track", "ops")).strip().lower(),
@@ -541,6 +628,10 @@ class PortalImplementationDaemon:
         objective_bundle_dir: Path | None = None,
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
+        merge_reconciliation_max_merges: int | None = None,
+        merged_worktree_cleanup_max: int | None = None,
+        task_shard_count: int = 1,
+        task_shard_index: int = 0,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -562,12 +653,36 @@ class PortalImplementationDaemon:
             else os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "")
         ).strip()
         self.llm_merge_resolver_timeout_seconds = llm_merge_resolver_timeout_seconds
+        self.merge_reconciliation_max_merges = (
+            _env_int(DAEMON_MERGE_RECONCILIATION_MAX_ENV, DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX)
+            if merge_reconciliation_max_merges is None
+            else int(merge_reconciliation_max_merges)
+        )
+        self.merged_worktree_cleanup_max = (
+            _env_int(DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV, DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX)
+            if merged_worktree_cleanup_max is None
+            else int(merged_worktree_cleanup_max)
+        )
+        self.task_shard_count = max(1, int(task_shard_count))
+        self.task_shard_index = int(task_shard_index)
+        if self.task_shard_index < 0 or self.task_shard_index >= self.task_shard_count:
+            raise ValueError("task_shard_index must be in range [0, task_shard_count)")
         configured_submodules = (
             DEFAULT_WORKTREE_SUBMODULE_PATHS
             if worktree_submodule_paths is None
             else normalize_relative_path_list(worktree_submodule_paths)
         )
         self.worktree_submodule_paths = configured_submodules
+
+    def _task_belongs_to_shard(self, task_id: str) -> bool:
+        """Return whether this daemon lane should implement ``task_id``."""
+
+        if self.task_shard_count <= 1:
+            return True
+        match = re.search(r"(\d+)$", task_id)
+        if match is None:
+            return self.task_shard_index == 0
+        return int(match.group(1)) % self.task_shard_count == self.task_shard_index
 
     def load_strategy(self) -> dict[str, Any]:
         defaults = {
@@ -599,7 +714,7 @@ class PortalImplementationDaemon:
             )
             return repaired
         merged = {**defaults, **payload}
-        merged["focus_tracks"] = [str(item).lower() for item in merged.get("focus_tracks", DEFAULT_TRACKS)]
+        merged["focus_tracks"] = normalize_focus_tracks(merged.get("focus_tracks", DEFAULT_TRACKS))
         merged["blocked_tasks"] = [str(item) for item in merged.get("blocked_tasks", [])]
         merged["deprioritized_tasks"] = [str(item) for item in merged.get("deprioritized_tasks", [])]
         return merged
@@ -713,12 +828,35 @@ class PortalImplementationDaemon:
         now = utc_now()
         status_completed_task_ids = {task.task_id for task in tasks if task.status == "completed"}
         strategy_blocked_task_ids = {str(task_id) for task_id in strategy.get("blocked_tasks", [])}
+        strategy_deprioritized_task_ids = {str(task_id) for task_id in strategy.get("deprioritized_tasks", [])}
         merge_skip_task_ids = status_completed_task_ids | strategy_blocked_task_ids
-        merge_reconciliation = self._reconcile_failed_merges(skip_task_ids=merge_skip_task_ids)
+        live_inflight_implementation = self._find_live_inflight_implementation()
+        if previous.implementation_in_progress and live_inflight_implementation is None:
+            recovered_state = PortalTaskState.load(self.state_path)
+            self._clear_active_execution_state(recovered_state)
+            recovered_state.save(self.state_path)
+            self._record_event(
+                "implementation_state_recovered",
+                {
+                    "task_id": previous.active_task_id or previous.last_implementation_task_id,
+                    "attempt": previous.active_attempt,
+                    "reason": "inflight_process_missing",
+                    "worktree_path": previous.active_worktree_path,
+                    "branch": previous.active_branch,
+                },
+            )
+            previous = recovered_state
+        merge_reconciliation = self._reconcile_failed_merges(
+            skip_task_ids=merge_skip_task_ids,
+            deprioritized_task_ids=strategy_deprioritized_task_ids,
+        )
+        merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
+        unresolved_merge_failure_task_ids = set(unresolved_merge_failures)
+        transient_merge_deferrals = self._transient_merge_deferrals_by_task(skip_task_ids=merge_skip_task_ids)
+        transient_merge_deferral_task_ids = set(transient_merge_deferrals)
         recent_outcomes = self._latest_implementation_finished_by_task()
         successfully_merged_task_ids = self._successfully_merged_task_ids()
-        live_inflight_implementation = self._find_live_inflight_implementation()
 
         previous_completed = set(previous.completed_task_ids)
         completed_set: set[str] = set()
@@ -729,17 +867,22 @@ class PortalImplementationDaemon:
         for task in tasks:
             existing_outputs = [item for item in task.outputs if (self.repo_root / item).exists()]
             task_artifacts[task.task_id] = existing_outputs
-            unresolved_merge_failure = (
-                task.task_id in unresolved_merge_failures
-                or self._has_unresolved_merge_failure(task, previous)
-            )
+            if self._has_unresolved_merge_failure(task, previous):
+                unresolved_merge_failure_task_ids.add(task.task_id)
+            unresolved_merge_failure = task.task_id in unresolved_merge_failure_task_ids
+            transient_merge_deferral = task.task_id in transient_merge_deferral_task_ids
             artifact_complete = (
                 task.completion == "artifact"
                 and bool(task.outputs)
                 and len(existing_outputs) == len(task.outputs)
                 and not unresolved_merge_failure
+                and not transient_merge_deferral
             )
-            merged_complete = task.task_id in successfully_merged_task_ids and not unresolved_merge_failure
+            merged_complete = (
+                task.task_id in successfully_merged_task_ids
+                and not unresolved_merge_failure
+                and not transient_merge_deferral
+            )
             if task.status == "completed" or artifact_complete or merged_complete:
                 completed_set.add(task.task_id)
 
@@ -752,13 +895,26 @@ class PortalImplementationDaemon:
             if task.task_id in strategy.get("blocked_tasks", []) or task.status == "blocked":
                 resolved_statuses[task.task_id] = "blocked"
                 continue
+            if task.task_id in transient_merge_deferral_task_ids:
+                resolved_statuses[task.task_id] = "waiting"
+                continue
+            if task.task_id in unresolved_merge_failure_task_ids:
+                resolved_statuses[task.task_id] = "blocked"
+                continue
             unresolved_deps = [dep for dep in task.depends_on if dep not in completed_set]
             if unresolved_deps:
                 resolved_statuses[task.task_id] = "waiting"
                 continue
             resolved_statuses[task.task_id] = "ready"
 
-        selected = self._select_next_task(tasks, resolved_statuses, strategy, unresolved_merge_failures, recent_outcomes)
+        selectable_tasks = [task for task in tasks if self._task_belongs_to_shard(task.task_id)]
+        selected = self._select_next_task(
+            selectable_tasks,
+            resolved_statuses,
+            strategy,
+            unresolved_merge_failures,
+            recent_outcomes,
+        )
         state = PortalTaskState.load(self.state_path)
         state.heartbeat_at = now
         if newly_completed or not state.last_progress_at:
@@ -799,19 +955,6 @@ class PortalImplementationDaemon:
         state.last_merge_commit = previous.last_merge_commit
         state.last_merge_returncode = previous.last_merge_returncode
         state.last_merge_error = previous.last_merge_error
-        if previous.implementation_in_progress and live_inflight_implementation is None:
-            self._clear_active_execution_state(state)
-            self._record_event(
-                "implementation_state_recovered",
-                {
-                    "task_id": previous.active_task_id or previous.last_implementation_task_id,
-                    "attempt": previous.active_attempt,
-                    "reason": "inflight_process_missing",
-                    "worktree_path": previous.active_worktree_path,
-                    "branch": previous.active_branch,
-                },
-            )
-
         if selected is not None:
             if state.active_task_id != selected.task_id:
                 state.active_task_started_at = now
@@ -886,6 +1029,7 @@ class PortalImplementationDaemon:
             "events_path": str(self.events_path),
             "implementation_result": implementation_result,
             "merge_reconciliation": merge_reconciliation,
+            "merged_worktree_cleanup": merged_worktree_cleanup,
             "event_log_repair": event_log_repair,
             "state_file_repair": state_file_repair,
         }
@@ -2522,10 +2666,10 @@ class PortalImplementationDaemon:
         safe = "".join(character if character.isalnum() or character in "-._" else "-" for character in ref)
         return safe.strip("-") or "main"
 
-    def _git_worktree_entries(self) -> list[dict[str, str]]:
+    def _git_worktree_entries_for_repo(self, cwd: Path) -> list[dict[str, str]]:
         result = subprocess.run(
             ["git", "worktree", "list", "--porcelain"],
-            cwd=self.repo_root,
+            cwd=cwd,
             text=True,
             capture_output=True,
             check=False,
@@ -2545,6 +2689,26 @@ class PortalImplementationDaemon:
         if current:
             entries.append(current)
         return entries
+
+    def _git_worktree_entries(self) -> list[dict[str, str]]:
+        return self._git_worktree_entries_for_repo(self.repo_root)
+
+    @staticmethod
+    def _path_compare_key(path: Path) -> Path:
+        try:
+            return path.resolve(strict=False)
+        except OSError:
+            return path.absolute()
+
+    def _worktree_path_registered_in_repo(self, cwd: Path, worktree_path: Path) -> bool:
+        expected = self._path_compare_key(worktree_path)
+        for entry in self._git_worktree_entries_for_repo(cwd):
+            registered = entry.get("worktree")
+            if not registered:
+                continue
+            if self._path_compare_key(Path(registered)) == expected:
+                return True
+        return False
 
     def _branch_checked_out_worktree_paths(self, branch_name: str) -> list[Path]:
         paths: list[Path] = []
@@ -3016,6 +3180,27 @@ class PortalImplementationDaemon:
             "stdout": abort.stdout[-4000:],
             "stderr": abort.stderr[-4000:],
         }
+        if abort.returncode != 0 and (
+            self._git_merge_head_in_repo(cwd) or self._unmerged_worktree_paths(cwd)
+        ):
+            reset = subprocess.run(
+                ["git", "reset", "--merge"],
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            fallback = {
+                "attempted": True,
+                "reset": reset.returncode == 0,
+                "returncode": reset.returncode,
+                "stdout": reset.stdout[-4000:],
+                "stderr": reset.stderr[-4000:],
+            }
+            result["reset_merge_fallback"] = fallback
+            if reset.returncode == 0:
+                result["aborted"] = True
+                result["reason"] = "reset_merge_fallback"
         self._record_event("failed_merge_aborted", {"worktree_path": str(cwd), **result})
         return result
 
@@ -3570,6 +3755,140 @@ class PortalImplementationDaemon:
         )
         return result.returncode == 0
 
+    @staticmethod
+    def _submodule_cleanup_failures(cleanup: list[dict[str, Any]]) -> list[str]:
+        failures: list[str] = []
+        for item in cleanup:
+            before = len(failures)
+            path = str(item.get("path") or "")
+            prefix = f"{path}: " if path else ""
+            for error in item.get("errors") or []:
+                error_text = str(error).strip()
+                if error_text:
+                    failures.append(f"{prefix}{error_text}")
+            nested_cleanup = item.get("nested_submodule_cleanup") or []
+            if isinstance(nested_cleanup, list):
+                failures.extend(PortalImplementationDaemon._submodule_cleanup_failures(nested_cleanup))
+            if item.get("cleaned") is False and len(failures) == before:
+                failures.append(f"{prefix}cleanup incomplete")
+        return failures
+
+    @staticmethod
+    def _managed_cleanup_branch(branch_name: str) -> bool:
+        return branch_name.startswith("implementation/") or branch_name.startswith("rescue/worktree/")
+
+    def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
+        """Continuously drain inactive worktrees whose branches are already merged."""
+
+        max_cleanups = max(0, int(self.merged_worktree_cleanup_max))
+        if max_cleanups <= 0:
+            return {"attempted": False, "reason": "merged_worktree_cleanup_disabled"}
+
+        prune = subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        try:
+            root_resolved = self.worktree_root.resolve()
+        except OSError:
+            root_resolved = self.worktree_root
+        try:
+            active_worktree = PortalTaskState.load(self.state_path).active_worktree_path
+        except Exception:
+            active_worktree = ""
+        active_resolved: Path | None = None
+        if active_worktree:
+            try:
+                active_resolved = Path(active_worktree).resolve()
+            except OSError:
+                active_resolved = Path(active_worktree)
+
+        process_lines = self._list_process_commands()
+        target_branch = self._main_branch_name()
+        removed: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        for entry in self._git_worktree_entries():
+            if len(removed) >= max_cleanups:
+                break
+            path_text = str(entry.get("worktree") or "")
+            if not path_text:
+                continue
+            worktree_path = Path(path_text)
+            try:
+                worktree_resolved = worktree_path.resolve()
+                worktree_resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+
+            branch_name = str(entry.get("branch") or "").removeprefix("refs/heads/")
+            detail = {"worktree_path": str(worktree_path), "branch": branch_name}
+            if active_resolved is not None and worktree_resolved == active_resolved:
+                skipped.append({**detail, "reason": "active_state_worktree"})
+                continue
+            if any(str(worktree_resolved) in line for line in process_lines):
+                skipped.append({**detail, "reason": "active_process"})
+                continue
+            if not self._managed_cleanup_branch(branch_name):
+                skipped.append({**detail, "reason": "unmanaged_branch"})
+                continue
+            if not self._git_ref_exists(branch_name):
+                skipped.append({**detail, "reason": "branch_missing"})
+                continue
+            if not self._git_ref_is_ancestor(branch_name, target_branch):
+                skipped.append({**detail, "reason": "branch_not_merged"})
+                continue
+
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if status.returncode != 0:
+                skipped.append(
+                    {
+                        **detail,
+                        "reason": "status_failed",
+                        "returncode": status.returncode,
+                        "stderr": status.stderr[-4000:],
+                    }
+                )
+                continue
+            if status.stdout.strip():
+                skipped.append(
+                    {
+                        **detail,
+                        "reason": "dirty_worktree",
+                        "status_short": status.stdout.splitlines()[:20],
+                    }
+                )
+                continue
+
+            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+            removed.append({**detail, "cleanup_result": cleanup_result})
+
+        result = {
+            "attempted": True,
+            "worktree_root": str(self.worktree_root),
+            "target_branch": target_branch,
+            "max_cleanups": max_cleanups,
+            "prune_returncode": prune.returncode,
+            "prune_stdout": prune.stdout[-4000:],
+            "prune_stderr": prune.stderr[-4000:],
+            "removed_count": sum(1 for item in removed if item["cleanup_result"].get("cleaned", False)),
+            "skipped_count": len(skipped),
+            "removed": removed,
+            "skipped": skipped[:50],
+        }
+        if removed:
+            self._record_event("merged_worktree_cleanup", result)
+        return result
+
     def _cleanup_merged_worktree(self, worktree_path: Path | None, branch_name: str) -> dict[str, Any]:
         started_at = utc_now()
         removed_worktree = False
@@ -3579,7 +3898,9 @@ class PortalImplementationDaemon:
         try:
             if worktree_path is not None:
                 submodule_cleanup = self._cleanup_worktree_submodules(worktree_path, branch_name)
-            if worktree_path is not None and worktree_path.exists():
+            if worktree_path is not None and (
+                worktree_path.exists() or self._worktree_path_registered_in_repo(self.repo_root, worktree_path)
+            ):
                 self._run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=self.repo_root)
                 removed_worktree = True
             if self._git_ref_exists(branch_name):
@@ -3587,6 +3908,7 @@ class PortalImplementationDaemon:
                 deleted_branch = True
         except RuntimeError as exc:
             errors.append(str(exc))
+        errors.extend(self._submodule_cleanup_failures(submodule_cleanup))
 
         if errors:
             result = {
@@ -3636,12 +3958,14 @@ class PortalImplementationDaemon:
             deleted_branch = False
             nested_cleanup: list[dict[str, Any]] = []
             errors: list[str] = []
-            if self._is_git_worktree(target):
-                nested_cleanup = self._cleanup_worktree_submodules(
-                    target,
-                    branch_name,
-                    parent_relative=full_relative,
-                )
+            target_is_registered_worktree = self._worktree_path_registered_in_repo(source, target)
+            if self._is_git_worktree(target) or target_is_registered_worktree:
+                if target.exists():
+                    nested_cleanup = self._cleanup_worktree_submodules(
+                        target,
+                        branch_name,
+                        parent_relative=full_relative,
+                    )
                 remove = subprocess.run(
                     ["git", "worktree", "remove", "--force", str(target)],
                     cwd=source,
@@ -3668,13 +3992,14 @@ class PortalImplementationDaemon:
                     deleted_branch = True
                 else:
                     errors.append((delete.stderr or delete.stdout).strip())
+            nested_failures = self._submodule_cleanup_failures(nested_cleanup)
             results.append(
                 {
                     "path": full_relative,
                     "branch": submodule_branch,
                     "removed_worktree": removed_worktree,
                     "deleted_branch": deleted_branch,
-                    "cleaned": not errors,
+                    "cleaned": not errors and not nested_failures,
                     "errors": errors,
                     "nested_submodule_cleanup": nested_cleanup,
                 }
@@ -4215,10 +4540,40 @@ class PortalImplementationDaemon:
             return result.stdout.strip()
         return target_branch
 
-    def _reconcile_failed_merges(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
+    def _reconcile_failed_merges(
+        self,
+        *,
+        skip_task_ids: set[str] | None = None,
+        deprioritized_task_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         target_branch = self._main_branch_name()
-        for event in self._failed_merge_candidates(skip_task_ids=skip_task_ids):
+        deprioritized_task_ids = {str(task_id) for task_id in (deprioritized_task_ids or set()) if str(task_id)}
+        candidates = self._failed_merge_candidates(skip_task_ids=skip_task_ids)
+        max_merges = int(self.merge_reconciliation_max_merges)
+        selected_candidates = self._select_failed_merge_candidates_for_reconciliation(
+            candidates,
+            max_merges,
+            deprioritized_task_ids=deprioritized_task_ids,
+        )
+        deferred_by_strategy = [
+            str(event.get("task_id") or "")
+            for event in candidates
+            if str(event.get("task_id") or "") in deprioritized_task_ids
+        ]
+        if deferred_by_strategy:
+            self._record_event(
+                "merge_reconciliation_deferred",
+                {
+                    "candidate_count": len(candidates),
+                    "processed_count": len(selected_candidates),
+                    "deferred_count": len(deferred_by_strategy),
+                    "deferred_task_ids": sorted(set(deferred_by_strategy)),
+                    "max_merges": max_merges,
+                    "reason": "strategy_deprioritized_task",
+                },
+            )
+        for event in selected_candidates:
             task_id = str(event.get("task_id") or "")
             attempt = int(event.get("attempt") or 0)
             branch = str(event.get("branch") or "")
@@ -4230,6 +4585,7 @@ class PortalImplementationDaemon:
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
                 cleanup_result = self._cleanup_merged_worktree(worktree_path, branch) if branch else {}
                 cleanup_cleaned = bool(cleanup_result.get("cleaned", False)) if cleanup_result else True
+                todo_update_result = self._mark_task_completed_in_todo(task_id) if cleanup_cleaned else {}
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
@@ -4239,17 +4595,43 @@ class PortalImplementationDaemon:
                     "reason": "implementation_commit_already_merged" if cleanup_cleaned else "cleanup_retry_failed",
                     "cleanup_result": cleanup_result,
                 }
+                if todo_update_result:
+                    result["todo_update_result"] = todo_update_result
                 self._record_event("merge_reconciled", result)
                 results.append(result)
                 continue
-            if not branch or not self._git_ref_exists(branch):
+            branch_exists = bool(branch and self._git_ref_exists(branch))
+            merge_ref = branch if branch_exists else ""
+            merge_ref_source = "branch" if branch_exists else ""
+            if not merge_ref and self._git_ref_exists(implementation_commit):
+                merge_ref = implementation_commit
+                merge_ref_source = "implementation_commit"
+                self._record_event(
+                    "merge_reconcile_ref_recovered",
+                    {
+                        "task_id": task_id,
+                        "attempt": attempt,
+                        "branch": branch,
+                        "implementation_commit": implementation_commit,
+                        "merge_ref": merge_ref,
+                        "merge_ref_source": merge_ref_source,
+                        "reason": "implementation_branch_missing",
+                    },
+                )
+            if not merge_ref:
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
+                    "merge_ref": "",
+                    "merge_ref_source": "",
                     "resolved": False,
-                    "reason": "implementation_branch_missing",
+                    "reason": (
+                        "implementation_branch_missing"
+                        if branch or not implementation_commit
+                        else "implementation_ref_missing"
+                    ),
                 }
                 self._record_event("merge_reconcile_skipped", result)
                 results.append(result)
@@ -4266,11 +4648,11 @@ class PortalImplementationDaemon:
             self._mark_long_running_phase(
                 task_id=task_id,
                 phase="merge_reconciliation",
-                detail=branch,
+                detail=merge_ref,
             )
             try:
                 merge_result = self._merge_branch_to_main(
-                    branch,
+                    merge_ref,
                     task,
                     attempt,
                     baseline_ref=str(event.get("baseline_ref") or ""),
@@ -4281,6 +4663,8 @@ class PortalImplementationDaemon:
                     "attempt": attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
+                    "merge_ref": merge_ref,
+                    "merge_ref_source": merge_ref_source,
                     "resolved": False,
                     "reason": "merge_reconcile_exception",
                     "exception_type": type(exc).__name__,
@@ -4290,21 +4674,81 @@ class PortalImplementationDaemon:
                 results.append(result)
                 continue
             cleanup_result = {}
+            cleanup_cleaned = True
             if merge_result.get("merged"):
                 cleanup_result = self._cleanup_merged_worktree(worktree_path, branch)
+                cleanup_cleaned = bool(cleanup_result.get("cleaned", False))
+            resolved = bool(merge_result.get("merged")) and cleanup_cleaned
+            reason = "merge_retried" if resolved else "merge_retry_failed"
+            if merge_result.get("merged") and not cleanup_cleaned:
+                reason = "cleanup_retry_failed"
+            todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
             result = {
                 "task_id": task_id,
                 "attempt": attempt,
                 "branch": branch,
                 "implementation_commit": implementation_commit,
-                "resolved": bool(merge_result.get("merged")),
-                "reason": "merge_retried",
+                "merge_ref": merge_ref,
+                "merge_ref_source": merge_ref_source,
+                "resolved": resolved,
+                "reason": reason,
                 "merge_result": merge_result,
                 "cleanup_result": cleanup_result,
             }
+            if todo_update_result:
+                result["todo_update_result"] = todo_update_result
             self._record_event("merge_reconciled", result)
             results.append(result)
+        if max_merges > 0 and len(candidates) > len(selected_candidates):
+            self._record_event(
+                "merge_reconciliation_deferred",
+                {
+                    "candidate_count": len(candidates),
+                    "processed_count": len(selected_candidates),
+                    "deferred_count": len(candidates) - len(selected_candidates),
+                    "max_merges": max_merges,
+                },
+            )
         return results
+
+    @classmethod
+    def _select_failed_merge_candidates_for_reconciliation(
+        cls,
+        candidates: Sequence[dict[str, Any]],
+        max_merges: int,
+        *,
+        blocked_task_ids: set[str] | None = None,
+        deprioritized_task_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        blocked_task_ids = {str(task_id) for task_id in (blocked_task_ids or set()) if str(task_id)}
+        deprioritized_task_ids = {
+            str(task_id) for task_id in (deprioritized_task_ids or set()) if str(task_id)
+        }
+        filtered_candidates = [
+            event
+            for event in candidates
+            if str(event.get("task_id") or "") not in blocked_task_ids
+            and str(event.get("task_id") or "") not in deprioritized_task_ids
+        ]
+        transient = [
+            event
+            for event in filtered_candidates
+            if cls._event_has_transient_merge_lock_deferral(event)
+        ]
+        if max_merges <= 0:
+            return transient[:TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED]
+
+        selected: list[dict[str, Any]] = []
+        seen: set[int] = set()
+        for event in (*transient, *filtered_candidates):
+            identity = id(event)
+            if identity in seen:
+                continue
+            selected.append(event)
+            seen.add(identity)
+            if len(selected) >= max_merges:
+                break
+        return selected
 
     def _failed_merge_candidates(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
@@ -4340,7 +4784,9 @@ class PortalImplementationDaemon:
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict):
                 continue
-            if not self._merge_result_needs_reconciliation(merge_result):
+            cleanup = event.get("cleanup_result") or {}
+            cleanup_failed = isinstance(cleanup, dict) and bool(cleanup) and not cleanup.get("cleaned", False)
+            if not cleanup_failed and not self._merge_result_needs_reconciliation(merge_result):
                 continue
             key = (task_id, implementation_commit)
             candidates[key] = event
@@ -4364,17 +4810,43 @@ class PortalImplementationDaemon:
             return False
         if merge_result.get("attempted"):
             return True
-        return str(merge_result.get("reason") or "") in {
-            "lock_exists",
-            "lock_unavailable",
-            "lock_cleanup_failed",
-        }
+        return str(merge_result.get("reason") or "") in TRANSIENT_MERGE_LOCK_REASONS
+
+    @staticmethod
+    def _merge_result_is_transient_lock_deferral(merge_result: dict[str, Any]) -> bool:
+        if not isinstance(merge_result, dict) or merge_result.get("merged"):
+            return False
+        if merge_result.get("attempted"):
+            return False
+        return str(merge_result.get("reason") or "") in TRANSIENT_MERGE_LOCK_REASONS
+
+    @classmethod
+    def _event_has_transient_merge_lock_deferral(cls, event: dict[str, Any]) -> bool:
+        merge_result = event.get("merge_result") or {}
+        return cls._merge_result_is_transient_lock_deferral(merge_result)
+
+    def _transient_merge_deferrals_by_task(self, *, skip_task_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:
+        skip_task_ids = skip_task_ids or set()
+        failures: dict[str, dict[str, Any]] = {}
+        target_branch = self._main_branch_name()
+        for event in self._failed_merge_candidates(skip_task_ids=skip_task_ids):
+            if not self._event_has_transient_merge_lock_deferral(event):
+                continue
+            task_id = str(event.get("task_id") or "")
+            if task_id in skip_task_ids:
+                continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if task_id and implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
+                failures[task_id] = event
+        return failures
 
     def _unresolved_merge_failures_by_task(self, *, skip_task_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
         failures: dict[str, dict[str, Any]] = {}
         target_branch = self._main_branch_name()
         for event in self._failed_merge_candidates(skip_task_ids=skip_task_ids):
+            if self._event_has_transient_merge_lock_deferral(event):
+                continue
             task_id = str(event.get("task_id") or "")
             if task_id in skip_task_ids:
                 continue
@@ -4700,7 +5172,7 @@ class PortalImplementationDaemon:
             return shlex.split(env_command)
         codex = shutil.which("codex")
         copilot = shutil.which("copilot")
-        if copilot:
+        if copilot and _copilot_has_auth():
             return _copilot_fallback_command(codex=codex, copilot=copilot, workspace_path=workspace_path)
         if codex:
             return [
@@ -5480,11 +5952,10 @@ Rules:
         vector_context = self._todo_vector_selection_context(tasks, ready_task_ids)
         focus_order = {
             track: index
-            for index, track in enumerate(
-                [str(item).lower() for item in strategy.get("focus_tracks", DEFAULT_TRACKS)]
-            )
+            for index, track in enumerate(normalize_focus_tracks(strategy.get("focus_tracks", DEFAULT_TRACKS)))
         }
         deprioritized = {str(item) for item in strategy.get("deprioritized_tasks", [])}
+        blocked_strategy_task_ids = {str(item) for item in strategy.get("blocked_tasks", [])}
 
         def sort_key(task: PortalTask) -> tuple[Any, ...]:
             selection_penalty = 0
@@ -5492,11 +5963,13 @@ Rules:
                 selection_penalty += UNRESOLVED_MERGE_SELECTION_PENALTY
             if self._task_has_recent_no_change_outcome(task.task_id, recent_outcomes):
                 selection_penalty += NO_CHANGE_SELECTION_PENALTY
+            retry_repair_source_id, _failure_kind = retry_budget_repair_source(task)
             vector_rank = self._todo_vector_selection_rank(task, vector_context)
             work_surface_rank = self._task_work_surface_rank(task)
             return (
                 selection_penalty,
                 PRIORITY_ORDER.get(task.priority, 99),
+                0 if retry_repair_source_id in blocked_strategy_task_ids else 1,
                 1 if task.task_id in deprioritized else 0,
                 focus_order.get(task.track, len(focus_order)),
                 *vector_rank,
@@ -5559,6 +6032,96 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Timeout for the merge resolver subprocess. "
             f"Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 600 seconds; <=0 disables."
         ),
+    )
+    parser.add_argument(
+        "--merge-reconciliation-max-merges",
+        type=int,
+        default=None,
+        help=(
+            "Maximum failed-merge reconciliation candidates to process per daemon pass. "
+            f"Defaults to {DAEMON_MERGE_RECONCILIATION_MAX_ENV} or "
+            f"{DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX}; <=0 disables the cap."
+        ),
+    )
+    parser.add_argument(
+        "--merged-worktree-cleanup-max",
+        type=int,
+        default=None,
+        help=(
+            "Maximum already-merged implementation worktrees to remove per daemon pass. "
+            f"Defaults to {DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV} or "
+            f"{DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX}; <=0 disables daemon-side cleanup."
+        ),
+    )
+    parser.add_argument(
+        "--task-shard-count",
+        type=int,
+        default=1,
+        help="Number of deterministic task-ID shards for parallel daemon lanes. Defaults to 1.",
+    )
+    parser.add_argument(
+        "--task-shard-index",
+        type=int,
+        default=0,
+        help="Zero-based shard index implemented by this daemon lane. Defaults to 0.",
+    )
+    parser.add_argument(
+        "--daemon-hook-timeout-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Maximum seconds for each configured before/after daemon hook. "
+            f"Defaults to {DAEMON_HOOK_TIMEOUT_ENV} or {DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS}; "
+            "<=0 disables hook timeouts."
+        ),
+    )
+    parser.add_argument(
+        "--objective-scan-min-open-tasks",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill minimum open backlog threshold.",
+    )
+    parser.add_argument(
+        "--objective-scan-max-findings",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill maximum generated findings; <=0 disables findings.",
+    )
+    parser.add_argument(
+        "--objective-scan-cooldown-seconds",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill cooldown seconds.",
+    )
+    parser.add_argument(
+        "--objective-surplus-findings-per-goal",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill surplus findings per goal.",
+    )
+    parser.add_argument(
+        "--objective-surplus-min-terms-per-todo",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill minimum evidence terms per generated todo.",
+    )
+    parser.add_argument(
+        "--codebase-scan-min-open-tasks",
+        type=int,
+        default=None,
+        help="Override daemon codebase-scan minimum open backlog threshold.",
+    )
+    parser.add_argument(
+        "--codebase-scan-max-findings",
+        type=int,
+        default=None,
+        help="Override daemon codebase-scan maximum generated findings; <=0 disables findings.",
+    )
+    parser.add_argument(
+        "--codebase-scan-cooldown-seconds",
+        type=int,
+        default=None,
+        help="Override daemon codebase-scan cooldown seconds.",
     )
     parser.add_argument("--implementation-timeout", type=float, default=DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS)
     parser.add_argument(
@@ -5634,6 +6197,10 @@ def main(argv: list[str] | None = None) -> None:
         objective_bundle_dir=args.objective_bundle_dir,
         llm_merge_resolver_command=args.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
+        merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
+        merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
+        task_shard_count=args.task_shard_count,
+        task_shard_index=args.task_shard_index,
     )
     while True:
         result = daemon.run_once()

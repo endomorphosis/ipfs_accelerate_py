@@ -32,6 +32,7 @@ from .implementation_daemon import (
     PortalTask,
     PortalTaskState,
     load_json_dict,
+    normalize_focus_tracks,
     normalize_relative_path_list,
     parse_timestamp,
     process_command_line,
@@ -107,6 +108,10 @@ class PortalSupervisorConfig:
     worktree_scan_cache_enabled: bool = True
     worktree_scan_cache_ttl_seconds: float = DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS
     worktree_scan_cache_path: Path | None = None
+    merge_reconciliation_max_merges: int | None = None
+    daemon_merged_worktree_cleanup_max: int | None = None
+    task_shard_count: int = 1
+    task_shard_index: int = 0
     retry_budget_guardrail_enabled: bool = True
     retry_budget_discovery_dir: Path | None = None
     retry_budget_discovery_output_path: str = ""
@@ -145,6 +150,11 @@ class PortalSupervisorConfig:
     codebase_scan_commit_outputs: bool = False
     codebase_scan_commit_subject: str = "Agent: record supervisor codebase scan findings"
     objective_refill_enabled: bool = False
+    objective_task_janitor_enabled: bool = True
+    objective_task_janitor_max_blocked_tasks: int = 50
+    objective_task_janitor_max_deprioritized_tasks: int = 50
+    objective_task_janitor_max_reopened_goals: int = 12
+    objective_task_janitor_mission_terms: tuple[str, ...] = field(default_factory=tuple)
     objective_path: Path | None = None
     objective_graph_path: Path | None = None
     objective_bundle_dir: Path | None = None
@@ -364,6 +374,12 @@ class PortalImplementationSupervisor:
     def _run_once_with_maintenance(self, update_maintenance_phase) -> dict[str, Any]:
         update_maintenance_phase("event_log_repair")
         event_log_repair = self.ensure_event_log_file()
+        update_maintenance_phase("state_file_repair")
+        state_file_repair = self.ensure_state_file()
+        update_maintenance_phase("stale_worktree_detection")
+        stale_worktree_detection = self.detect_stale_worktrees()
+        update_maintenance_phase("stale_active_state_repair")
+        stale_active_state_repair = self.repair_stale_active_execution_state()
         update_maintenance_phase("main_checkout_repair")
         main_checkout_repair = self.repair_main_checkout_merge_state()
         update_maintenance_phase("generated_dirty_repair")
@@ -374,8 +390,9 @@ class PortalImplementationSupervisor:
         worktree_cleanup = self.cleanup_backlogged_worktrees()
         update_maintenance_phase("strategy_state_repair")
         strategy_file_repair = self.ensure_strategy_file()
-        state_file_repair = self.ensure_state_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
+        update_maintenance_phase("objective_task_janitor")
+        objective_task_janitor = self.reconcile_objective_task_janitor()
         update_maintenance_phase("reconciliation_guardrails")
         reconciliation_findings = self.record_reconciliation_guardrails(
             worktree_reconciliation,
@@ -406,7 +423,10 @@ class PortalImplementationSupervisor:
                 "event_log_repair": event_log_repair,
                 "strategy_file_repair": strategy_file_repair,
                 "state_file_repair": state_file_repair,
+                "stale_active_state_repair": stale_active_state_repair,
+                "stale_worktree_detection": stale_worktree_detection,
                 "todo_board_repair": todo_board_repair,
+                "objective_task_janitor": objective_task_janitor,
                 "main_checkout_repair": main_checkout_repair,
                 "generated_dirty_repair": generated_dirty_repair,
                 "post_stuck_generated_dirty_repair": post_stuck_generated_dirty_repair,
@@ -454,6 +474,8 @@ class PortalImplementationSupervisor:
                 "worktree_reconciliation_preflight_blocked_count": int(
                     worktree_reconciliation.get("preflight_blocked_count") or 0
                 ),
+                "stale_worktree_detected_count": int(stale_worktree_detection.get("stale_count") or 0),
+                "stale_worktree_remedy_count": int(stale_worktree_detection.get("remedy_count") or 0),
                 "worktree_cleanup_removed_count": int(worktree_cleanup.get("removed_count") or 0),
                 "worktree_cleanup_dirty_group_count": len(
                     worktree_cleanup.get("dirty_worktree_groups") or {}
@@ -465,6 +487,15 @@ class PortalImplementationSupervisor:
                 "objective_refill_count": objective_generated_count,
                 "objective_refined_goal_count": objective_refined_goal_count,
                 "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
+                "objective_task_janitor_blocked_count": len(
+                    objective_task_janitor.get("blocked_task_ids") or []
+                ),
+                "objective_task_janitor_deprioritized_count": len(
+                    objective_task_janitor.get("deprioritized_task_ids") or []
+                ),
+                "objective_task_janitor_reopened_goal_count": len(
+                    objective_task_janitor.get("reopened_goal_ids") or []
+                ),
                 "codebase_refill_count": len(codebase_findings),
                 "codebase_deferred_reason": codebase_deferred_reason,
                 "generated_dirty_repair_committed_count": int(
@@ -486,11 +517,14 @@ class PortalImplementationSupervisor:
             "objective_refill_count": objective_generated_count,
             "objective_refined_goal_count": objective_refined_goal_count,
             "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
+            "objective_task_janitor": objective_task_janitor,
             "codebase_refill_count": len(codebase_findings),
             "codebase_deferred_reason": codebase_deferred_reason,
             "event_log_repair": event_log_repair,
             "strategy_file_repair": strategy_file_repair,
             "state_file_repair": state_file_repair,
+            "stale_active_state_repair": stale_active_state_repair,
+            "stale_worktree_detection": stale_worktree_detection,
             "todo_board_repair": todo_board_repair,
             "main_checkout_repair": main_checkout_repair,
             "generated_dirty_repair": generated_dirty_repair,
@@ -503,6 +537,19 @@ class PortalImplementationSupervisor:
         self.ensure_event_log_file()
         self.repair_main_checkout_merge_state()
         self.ensure_managed_daemon_pid_file()
+        try:
+            preflight = self.run_once()
+        except Exception as exc:
+            self._record_event(
+                "supervisor_preflight_maintenance_failed",
+                {
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
+            raise
+        self._record_event("supervisor_preflight_maintenance_pass", preflight)
+        self._last_supervisor_maintenance_at = time.monotonic()
         while True:
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
@@ -819,6 +866,82 @@ class PortalImplementationSupervisor:
         self._record_event("main_checkout_merge_state_repair", result)
         return result
 
+    def repair_stale_active_execution_state(self, *, now_ts: float | None = None) -> dict[str, Any]:
+        """Clear dead active execution markers before worktree repair passes."""
+
+        state = PortalTaskState.load(self.config.state_path)
+        active_fields = {
+            "active_task_id": state.active_task_id,
+            "active_task_title": state.active_task_title,
+            "active_task_track": state.active_task_track,
+            "active_task_started_at": state.active_task_started_at,
+            "active_attempt": state.active_attempt,
+            "active_phase": state.active_phase,
+            "active_phase_started_at": state.active_phase_started_at,
+            "active_phase_detail": state.active_phase_detail,
+            "active_log_path": state.active_log_path,
+            "active_worktree_path": state.active_worktree_path,
+            "active_branch": state.active_branch,
+            "implementation_in_progress": state.implementation_in_progress,
+        }
+        if not state.implementation_in_progress or not state.active_worktree_path:
+            return {
+                "repaired": False,
+                "reason": "no_active_worktree_execution_state",
+                "active_task_id": state.active_task_id,
+            }
+
+        daemon_pid = self._read_managed_daemon_pid()
+        if daemon_pid and process_is_running(daemon_pid):
+            command_line = process_command_line(daemon_pid)
+            if self._managed_daemon_matches_command_line(command_line):
+                return {
+                    "repaired": False,
+                    "reason": "managed_daemon_running",
+                    "daemon_pid": daemon_pid,
+                    "active_task_id": state.active_task_id,
+                }
+
+        process_lines = self._list_process_commands()
+        active_worktree = state.active_worktree_path.strip()
+        if active_worktree and any(active_worktree in line for line in process_lines):
+            return {
+                "repaired": False,
+                "reason": "active_worktree_process_running",
+                "active_worktree_path": active_worktree,
+                "active_task_id": state.active_task_id,
+            }
+        active_branch = state.active_branch.strip()
+        if active_branch and any(active_branch in line for line in process_lines):
+            return {
+                "repaired": False,
+                "reason": "active_branch_process_running",
+                "active_branch": active_branch,
+                "active_task_id": state.active_task_id,
+            }
+
+        repaired_at = utc_now()
+        state.active_attempt = 0
+        state.active_phase = ""
+        state.active_phase_started_at = ""
+        state.active_phase_detail = ""
+        state.active_log_path = ""
+        state.active_worktree_path = ""
+        state.active_branch = ""
+        state.implementation_in_progress = False
+        state.heartbeat_at = repaired_at
+        state.last_progress_at = repaired_at
+        state.save(self.config.state_path)
+        result = {
+            "repaired": True,
+            "reason": "managed_daemon_process_missing",
+            "daemon_pid": daemon_pid or 0,
+            "repaired_at": repaired_at,
+            **active_fields,
+        }
+        self._record_event("stale_active_execution_state_repaired", result)
+        return result
+
     def _active_task_id_for_lock(self) -> str:
         try:
             return PortalTaskState.load(self.config.state_path).active_task_id
@@ -1078,13 +1201,33 @@ class PortalImplementationSupervisor:
             capture_output=True,
             check=False,
         )
-        return {
+        result = {
             "attempted": True,
             "aborted": abort.returncode == 0,
             "returncode": abort.returncode,
             "stdout": abort.stdout[-4000:],
             "stderr": abort.stderr[-4000:],
         }
+        if abort.returncode != 0 and (self._git_merge_head(repo_root) or self._git_unmerged_paths(repo_root)):
+            reset = subprocess.run(
+                ["git", "reset", "--merge"],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            fallback = {
+                "attempted": True,
+                "reset": reset.returncode == 0,
+                "returncode": reset.returncode,
+                "stdout": reset.stdout[-4000:],
+                "stderr": reset.stderr[-4000:],
+            }
+            result["reset_merge_fallback"] = fallback
+            if reset.returncode == 0:
+                result["aborted"] = True
+                result["reason"] = "reset_merge_fallback"
+        return result
 
     @staticmethod
     def _git_merge_head(repo_root: Path) -> str:
@@ -1293,6 +1436,243 @@ class PortalImplementationSupervisor:
         }
         cache["_changed"] = True
 
+    @staticmethod
+    def _path_age_seconds(path: Path, *, now_ts: float) -> float | None:
+        try:
+            return max(0.0, now_ts - path.stat().st_mtime)
+        except OSError:
+            return None
+
+    @staticmethod
+    def _timestamp_age_seconds(value: str, *, now_ts: float) -> float | None:
+        parsed = parse_timestamp(value)
+        if parsed is None:
+            return None
+        return max(0.0, now_ts - parsed.timestamp())
+
+    @staticmethod
+    def _git_ahead_behind(repo_root: Path, left_ref: str, right_ref: str) -> dict[str, Any]:
+        if not left_ref or not right_ref:
+            return {"available": False, "ahead": 0, "behind": 0, "reason": "missing_ref"}
+        result = subprocess.run(
+            ["git", "rev-list", "--left-right", "--count", f"{left_ref}...{right_ref}"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return {
+                "available": False,
+                "ahead": 0,
+                "behind": 0,
+                "returncode": result.returncode,
+                "stderr": result.stderr[-4000:],
+            }
+        parts = result.stdout.strip().split()
+        if len(parts) < 2:
+            return {"available": False, "ahead": 0, "behind": 0, "reason": "unexpected_output"}
+        try:
+            left_only = int(parts[0])
+            right_only = int(parts[1])
+        except ValueError:
+            return {"available": False, "ahead": 0, "behind": 0, "reason": "non_integer_output"}
+        return {"available": True, "ahead": right_only, "behind": left_only}
+
+    def _active_worktree_stale_signal(
+        self,
+        state: PortalTaskState,
+        *,
+        target_ref: str,
+        now_ts: float,
+        process_lines: list[str],
+    ) -> dict[str, Any] | None:
+        active_worktree = state.active_worktree_path.strip()
+        if not state.implementation_in_progress or not active_worktree:
+            return None
+        active_branch = state.active_branch.strip()
+        log_path = Path(state.active_log_path) if state.active_log_path else None
+        log_age_seconds = self._path_age_seconds(log_path, now_ts=now_ts) if log_path is not None else None
+        phase_age_seconds = self._timestamp_age_seconds(state.active_phase_started_at, now_ts=now_ts)
+        heartbeat_age_seconds = self._timestamp_age_seconds(state.heartbeat_at, now_ts=now_ts)
+        path_owned_by_process = any(active_worktree in line for line in process_lines)
+        branch_owned_by_process = bool(active_branch) and any(active_branch in line for line in process_lines)
+        daemon_pid = self._read_managed_daemon_pid()
+        daemon_running = bool(daemon_pid and process_is_running(daemon_pid))
+        daemon_matches = False
+        if daemon_running and daemon_pid:
+            daemon_matches = self._managed_daemon_matches_command_line(process_command_line(daemon_pid))
+        owner_running = daemon_matches or path_owned_by_process or branch_owned_by_process
+        stalled_log = (
+            log_age_seconds is None
+            or log_age_seconds > max(float(self.config.implementation_log_stall_seconds), 0.0)
+        )
+        state_old_enough = (
+            (phase_age_seconds is not None and phase_age_seconds > max(float(self.config.stale_seconds), 0.0))
+            or (heartbeat_age_seconds is not None and heartbeat_age_seconds > max(float(self.config.stale_seconds), 0.0))
+        )
+        reasons: list[str] = []
+        if not owner_running:
+            reasons.append("active_worktree_owner_missing")
+        if stalled_log and state_old_enough:
+            reasons.append("active_log_stalled")
+        ahead_behind = (
+            self._git_ahead_behind(self.config.repo_root, target_ref, active_branch)
+            if active_branch
+            else {"available": False, "ahead": 0, "behind": 0, "reason": "missing_active_branch"}
+        )
+        git_stale_context = not owner_running or (stalled_log and state_old_enough)
+        if git_stale_context and int(ahead_behind.get("behind") or 0) > 0:
+            reasons.append("active_branch_behind_target")
+        if git_stale_context and int(ahead_behind.get("ahead") or 0) > 0:
+            reasons.append("active_branch_has_unmerged_commits")
+        if not reasons:
+            return None
+        return {
+            "path": active_worktree,
+            "branch": active_branch,
+            "head": state.active_task_id,
+            "kind": "active_state",
+            "reasons": reasons,
+            "remedy": "repair_stale_active_execution_state_then_reconcile",
+            "owner_running": owner_running,
+            "daemon_pid": daemon_pid or 0,
+            "daemon_running": daemon_running,
+            "daemon_matches": daemon_matches,
+            "active_log_path": state.active_log_path,
+            "active_log_age_seconds": log_age_seconds,
+            "active_phase_age_seconds": phase_age_seconds,
+            "heartbeat_age_seconds": heartbeat_age_seconds,
+            "ahead_behind": ahead_behind,
+        }
+
+    def detect_stale_worktrees(self, *, now_ts: float | None = None) -> dict[str, Any]:
+        """Detect remedyable worktrees using git, process, and log movement signals."""
+
+        worktree_root = self.config.worktree_root
+        if worktree_root is None:
+            return {"attempted": False, "reason": "worktree_root_not_configured"}
+        now = time.time() if now_ts is None else float(now_ts)
+        repo_root = self.config.repo_root
+        records = self._git_worktree_records(repo_root)
+        try:
+            root_resolved = worktree_root.resolve()
+        except OSError:
+            root_resolved = worktree_root
+        process_lines = self._list_process_commands()
+        state = PortalTaskState.load(self.config.state_path)
+        active_worktree = state.active_worktree_path.strip()
+        target_ref = self._git_current_branch(repo_root) or "HEAD"
+        target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
+        stale_items: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        active_signal = self._active_worktree_stale_signal(
+            state,
+            target_ref=target_ref,
+            now_ts=now,
+            process_lines=process_lines,
+        )
+        if active_signal:
+            stale_items.append(active_signal)
+
+        for record in records:
+            path_text = str(record.get("worktree") or "")
+            if not path_text:
+                continue
+            path = Path(path_text)
+            try:
+                path_resolved = path.resolve()
+                path_resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+            branch = str(record.get("branch") or "").removeprefix("refs/heads/")
+            head = str(record.get("HEAD") or "")
+            detail: dict[str, Any] = {
+                "path": str(path),
+                "branch": branch,
+                "head": head,
+                "kind": "worktree",
+            }
+            if active_worktree and path_resolved == Path(active_worktree).resolve():
+                skipped.append({**detail, "reason": "active_state_worktree"})
+                continue
+            if any(str(path_resolved) in line for line in process_lines):
+                skipped.append({**detail, "reason": "active_process"})
+                continue
+            if not self._worktree_branch_is_reconcilable(branch):
+                skipped.append({**detail, "reason": "non_reconcilable_branch"})
+                continue
+
+            reasons: list[str] = []
+            branch_exists = self._git_ref_exists(repo_root, branch)
+            branch_merged = branch_exists and self._git_ref_is_ancestor(repo_root, branch, target_ref)
+            head_merged = bool(head) and self._git_ref_is_ancestor(repo_root, head, target_ref)
+            if branch_merged:
+                reasons.append("branch_already_merged")
+            elif head_merged:
+                reasons.append("head_already_merged")
+            ahead_behind = (
+                self._git_ahead_behind(repo_root, target_ref, branch)
+                if branch_exists
+                else {"available": False, "ahead": 0, "behind": 0, "reason": "branch_missing"}
+            )
+            ahead = int(ahead_behind.get("ahead") or 0)
+            behind = int(ahead_behind.get("behind") or 0)
+            if ahead > 0:
+                reasons.append("branch_has_unmerged_commits")
+            if behind > 0:
+                reasons.append("branch_behind_target")
+            dirty = self._git_status_short(path) if path.exists() else []
+            if dirty:
+                reasons.append("dirty_inactive_worktree")
+            worktree_age_seconds = self._path_age_seconds(path, now_ts=now)
+            if worktree_age_seconds is not None and worktree_age_seconds > max(float(self.config.stale_seconds), 0.0):
+                if ahead > 0 or behind > 0 or dirty or branch_merged or head_merged:
+                    reasons.append("calendar_age_supports_git_staleness")
+            if not reasons:
+                skipped.append({**detail, "reason": "no_stale_signal"})
+                continue
+            remedy = "reconcile_backlogged_worktrees"
+            if branch_merged or head_merged:
+                remedy = "cleanup_backlogged_worktrees"
+            if dirty:
+                remedy = "rescue_dirty_worktree_then_reconcile"
+            stale_items.append(
+                {
+                    **detail,
+                    "reasons": sorted(set(reasons)),
+                    "remedy": remedy,
+                    "branch_exists": branch_exists,
+                    "branch_merged": branch_merged,
+                    "head_merged": head_merged,
+                    "ahead_behind": ahead_behind,
+                    "dirty": bool(dirty),
+                    "status_short": dirty[:20],
+                    "worktree_age_seconds": worktree_age_seconds,
+                }
+            )
+
+        reason_counts: dict[str, int] = {}
+        for item in stale_items:
+            for reason in item.get("reasons") or []:
+                reason_counts[str(reason)] = reason_counts.get(str(reason), 0) + 1
+        result = {
+            "attempted": True,
+            "worktree_root": str(worktree_root),
+            "target_ref": target_ref,
+            "target_signature": target_signature,
+            "stale_count": len(stale_items),
+            "remedy_count": sum(1 for item in stale_items if item.get("remedy")),
+            "reason_counts": reason_counts,
+            "stale": stale_items[:50],
+            "skipped_count": len(skipped),
+            "skipped": skipped[:50],
+        }
+        if stale_items:
+            self._record_event("stale_worktree_detection", result)
+        return result
+
     def reconcile_backlogged_worktrees(self) -> dict[str, Any]:
         """Retry clean inactive implementation worktrees before cleanup."""
 
@@ -1367,17 +1747,24 @@ class PortalImplementationSupervisor:
                 classification = str(cached_entry.get("classification") or "")
                 payload = dict(cached_entry.get("payload") or {})
                 if classification == "skip":
-                    skipped.append({**payload, "cached": True})
-                    scan_cache_hit_count += 1
-                    continue
-                if classification == "candidate" and (dry_run or main_status):
+                    if payload.get("reason") == "dirty_worktree":
+                        pass
+                    else:
+                        skipped.append({**payload, "cached": True})
+                        scan_cache_hit_count += 1
+                        continue
+                elif classification == "candidate" and (dry_run or main_status):
                     candidate = {**payload, "cached": True}
                     candidates.append(candidate)
                     scan_cache_hit_count += 1
                     if not dry_run:
                         skipped.append({**candidate, "reason": "main_checkout_dirty", "status_short": main_status[:20]})
                     continue
-            if not branch.startswith("implementation/"):
+                else:
+                    skipped.append({**payload, "cached": True})
+                    scan_cache_hit_count += 1
+                    continue
+            if not self._worktree_branch_is_reconcilable(branch):
                 skip = {**detail, "reason": "non_implementation_branch"}
                 skipped.append(skip)
                 self._store_worktree_scan_cache_entry(
@@ -1424,19 +1811,44 @@ class PortalImplementationSupervisor:
                 continue
             dirty = self._git_status_short(path) if path.exists() else []
             if dirty:
-                skip = {**detail, "reason": "dirty_worktree", "status_short": dirty[:20]}
-                skipped.append(skip)
-                self._store_worktree_scan_cache_entry(
-                    scan_cache,
-                    phase="reconciliation",
-                    path=path_resolved,
+                rescue_result = self._rescue_dirty_worktree(
+                    path,
                     branch=branch,
                     head=head,
-                    target_signature=target_signature,
-                    classification="skip",
-                    payload=skip,
+                    target_ref=target_ref,
+                    status_lines=dirty,
+                    reason="reconciliation_dirty_worktree",
                 )
-                continue
+                if rescue_result.get("preserved"):
+                    branch = str(rescue_result.get("rescue_branch") or branch)
+                    head = str(rescue_result.get("rescue_commit") or head)
+                    detail = {
+                        **detail,
+                        "branch": branch,
+                        "head": head,
+                        "rescued_from_branch": record.get("branch", ""),
+                        "rescue_result": rescue_result,
+                    }
+                    path_resolved = path.resolve()
+                else:
+                    skip = {
+                        **detail,
+                        "reason": "dirty_worktree",
+                        "status_short": dirty[:20],
+                        "rescue_result": rescue_result,
+                    }
+                    skipped.append(skip)
+                    self._store_worktree_scan_cache_entry(
+                        scan_cache,
+                        phase="reconciliation",
+                        path=path_resolved,
+                        branch=branch,
+                        head=head,
+                        target_signature=target_signature,
+                        classification="skip",
+                        payload=skip,
+                    )
+                    continue
 
             candidate = {**detail, "target_ref": target_ref}
             candidates.append(candidate)
@@ -1888,7 +2300,10 @@ class PortalImplementationSupervisor:
 
     @staticmethod
     def _worktree_reconciliation_task(branch: str) -> PortalTask:
-        task_fragment = branch.removeprefix("implementation/").split("-attempt-", 1)[0].strip()
+        if branch.startswith("rescue/worktree/"):
+            task_fragment = branch.removeprefix("rescue/worktree/").split("-", 1)[0].strip()
+        else:
+            task_fragment = branch.removeprefix("implementation/").split("-attempt-", 1)[0].strip()
         task_id = task_fragment.upper() if task_fragment else "WORKTREE-RECONCILE"
         return PortalTask(
             task_id=task_id,
@@ -1898,6 +2313,217 @@ class PortalImplementationSupervisor:
             priority="P2",
             track="ops",
         )
+
+    @staticmethod
+    def _worktree_branch_is_reconcilable(branch: str) -> bool:
+        return branch.startswith("implementation/") or branch.startswith("rescue/worktree/")
+
+    @staticmethod
+    def _worktree_branch_can_delete_after_merge(branch: str) -> bool:
+        return PortalImplementationSupervisor._worktree_branch_is_reconcilable(branch)
+
+    @staticmethod
+    def _safe_rescue_branch_fragment(value: str) -> str:
+        normalized = []
+        for char in value.strip().strip("/").replace("\\", "/"):
+            if char.isalnum() or char in {".", "_", "-"}:
+                normalized.append(char)
+            elif char == "/":
+                normalized.append("-")
+            else:
+                normalized.append("-")
+        fragment = "".join(normalized).strip(".-")
+        while "--" in fragment:
+            fragment = fragment.replace("--", "-")
+        return fragment[:96] or "worktree"
+
+    def _rescue_dirty_worktree(
+        self,
+        worktree_path: Path,
+        *,
+        branch: str,
+        head: str,
+        target_ref: str,
+        status_lines: list[str],
+        reason: str,
+    ) -> dict[str, Any]:
+        """Commit dirty inactive worktree content to a rescue branch for later merge."""
+
+        started_at = utc_now()
+        if not worktree_path.exists():
+            return {
+                "attempted": True,
+                "preserved": False,
+                "reason": "worktree_path_missing",
+                "path": str(worktree_path),
+                "branch": branch,
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+        if not branch and not head:
+            return {
+                "attempted": True,
+                "preserved": False,
+                "reason": "missing_branch_and_head",
+                "path": str(worktree_path),
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+
+        fingerprint = sha1(
+            json.dumps(
+                {
+                    "branch": branch,
+                    "head": head,
+                    "path": str(worktree_path),
+                    "status": status_lines,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()[:12]
+        rescue_branch = (
+            f"rescue/worktree/{self._safe_rescue_branch_fragment(branch or worktree_path.name)}-{fingerprint}"
+        )
+
+        checkout = subprocess.run(
+            ["git", "checkout", "-B", rescue_branch],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if checkout.returncode != 0:
+            result = {
+                "attempted": True,
+                "preserved": False,
+                "reason": "checkout_rescue_branch_failed",
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": rescue_branch,
+                "returncode": checkout.returncode,
+                "stdout": checkout.stdout[-4000:],
+                "stderr": checkout.stderr[-4000:],
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescue_failed", result)
+            return result
+
+        add = subprocess.run(
+            ["git", "add", "-A"],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if add.returncode != 0:
+            result = {
+                "attempted": True,
+                "preserved": False,
+                "reason": "stage_rescue_changes_failed",
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": rescue_branch,
+                "returncode": add.returncode,
+                "stdout": add.stdout[-4000:],
+                "stderr": add.stderr[-4000:],
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescue_failed", result)
+            return result
+
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if staged.returncode == 0:
+            rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
+            result = {
+                "attempted": True,
+                "preserved": True,
+                "reason": "no_staged_rescue_delta",
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": rescue_branch,
+                "rescue_commit": rescue_commit,
+                "status_short": status_lines[:20],
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescued", result)
+            return result
+
+        commit = subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Implementation Supervisor",
+                "-c",
+                "user.email=implementation-supervisor@example.invalid",
+                "commit",
+                "-m",
+                f"Rescue dirty worktree {branch or worktree_path.name}",
+                "-m",
+                f"Original branch: {branch or '(detached)'}",
+                "-m",
+                f"Original HEAD: {head or '(unknown)'}",
+                "-m",
+                f"Cleanup reason: {reason}",
+            ],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if commit.returncode != 0:
+            result = {
+                "attempted": True,
+                "preserved": False,
+                "reason": "commit_rescue_changes_failed",
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": rescue_branch,
+                "returncode": commit.returncode,
+                "stdout": commit.stdout[-4000:],
+                "stderr": commit.stderr[-4000:],
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescue_failed", result)
+            return result
+
+        rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
+        result = {
+            "attempted": True,
+            "preserved": bool(rescue_commit),
+            "reason": "dirty_worktree_committed_to_rescue_branch",
+            "path": str(worktree_path),
+            "branch": branch,
+            "head": head,
+            "target_ref": target_ref,
+            "rescue_branch": rescue_branch,
+            "rescue_commit": rescue_commit,
+            "status_short": status_lines[:20],
+            "returncode": commit.returncode,
+            "stdout": commit.stdout[-4000:],
+            "stderr": commit.stderr[-4000:],
+            "started_at": started_at,
+            "finished_at": utc_now(),
+        }
+        self._record_event("dirty_worktree_rescued", result)
+        return result
 
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
@@ -1963,6 +2589,13 @@ class PortalImplementationSupervisor:
                 classification = str(cached_entry.get("classification") or "")
                 payload = dict(cached_entry.get("payload") or {})
                 if classification == "skip":
+                    if payload.get("reason") == "dirty_worktree":
+                        pass
+                    else:
+                        skipped.append({**payload, "cached": True})
+                        scan_cache_hit_count += 1
+                        continue
+                else:
                     skipped.append({**payload, "cached": True})
                     scan_cache_hit_count += 1
                     continue
@@ -1997,6 +2630,27 @@ class PortalImplementationSupervisor:
                         dirty_evidence_sample_counts[dirty_reason] = (
                             dirty_evidence_sample_counts.get(dirty_reason, 0) + 1
                         )
+                    rescue_result = self._rescue_dirty_worktree(
+                        path,
+                        branch=branch,
+                        head=head,
+                        target_ref=target_ref,
+                        status_lines=dirty,
+                        reason=f"cleanup_dirty_worktree:{dirty_reason}",
+                    )
+                    if rescue_result.get("preserved"):
+                        skipped.append(
+                            {
+                                "path": str(path),
+                                "branch": branch,
+                                "reason": "dirty_worktree_rescued",
+                                "status_short": dirty[:20],
+                                "dirty_redundancy": redundant_dirty,
+                                "dirty_evidence": evidence,
+                                "rescue_result": rescue_result,
+                            }
+                        )
+                        continue
                     skip = {
                         "path": str(path),
                         "branch": branch,
@@ -2026,7 +2680,11 @@ class PortalImplementationSupervisor:
                 check=False,
             )
             branch_delete: dict[str, Any] = {}
-            if remove.returncode == 0 and branch.startswith("implementation/") and branch_merged:
+            if (
+                remove.returncode == 0
+                and self._worktree_branch_can_delete_after_merge(branch)
+                and branch_merged
+            ):
                 delete = subprocess.run(
                     ["git", "branch", "-D", branch],
                     cwd=repo_root,
@@ -2292,15 +2950,32 @@ class PortalImplementationSupervisor:
 
     @staticmethod
     def _list_process_commands() -> list[str]:
+        return [command for _pid, command in PortalImplementationSupervisor._list_process_details()]
+
+    @staticmethod
+    def _list_process_details() -> list[tuple[int, str]]:
         result = subprocess.run(
-            ["ps", "-eo", "args="],
+            ["ps", "-eo", "pid=,args="],
             text=True,
             capture_output=True,
             check=False,
         )
         if result.returncode != 0:
             return []
-        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        details: list[tuple[int, str]] = []
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            pid_text, _separator, command = stripped.partition(" ")
+            try:
+                pid = int(pid_text)
+            except ValueError:
+                continue
+            command = command.strip()
+            if command:
+                details.append((pid, command))
+        return details
 
     def ensure_todo_board_for_refill(self) -> dict[str, Any]:
         """Create an empty todo board when refill machinery is expected to populate it."""
@@ -2418,11 +3093,7 @@ class PortalImplementationSupervisor:
                     if isinstance(strategy.get("deprioritized_tasks"), list)
                     else []
                 )
-                normalized_focus = (
-                    [str(item).strip().lower() for item in strategy.get("focus_tracks", []) if str(item).strip()]
-                    if isinstance(strategy.get("focus_tracks"), list)
-                    else DEFAULT_TRACKS
-                )
+                normalized_focus = normalize_focus_tracks(strategy.get("focus_tracks", DEFAULT_TRACKS))
                 if (
                     normalized_blocked != strategy.get("blocked_tasks")
                     or normalized_deprioritized != strategy.get("deprioritized_tasks")
@@ -2661,6 +3332,67 @@ class PortalImplementationSupervisor:
             callback=callback,
         )
 
+    def reconcile_objective_task_janitor(self) -> dict[str, Any]:
+        """Keep strategy blocks and objective refills aligned with the goal heap."""
+
+        if not self.config.objective_task_janitor_enabled:
+            return {}
+
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            load_strategy,
+            task_id_prefix,
+            write_json,
+        )
+        from ipfs_accelerate_py.agent_supervisor.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
+        from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
+            DEFAULT_MISSION_TERMS,
+            reconcile_objective_task_strategy,
+        )
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_task_file
+
+        objective_path = self.config.objective_path or default_objective_path(self.config.repo_root)
+        if not objective_path.exists() or not self.config.todo_path.exists():
+            return {}
+
+        try:
+            goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+            tasks = parse_task_file(self.config.todo_path, task_id_prefix(self.config.task_prefix))
+        except (OSError, UnicodeDecodeError) as exc:
+            result = {"changed": False, "reason": "read_failed", "error": str(exc)}
+            self._record_event("objective_task_janitor_failed", result)
+            return result
+
+        strategy = load_strategy(self.config.strategy_path)
+        mission_terms = tuple(
+            dict.fromkeys([*DEFAULT_MISSION_TERMS, *self.config.objective_task_janitor_mission_terms])
+        )
+        result = reconcile_objective_task_strategy(
+            goals=goals,
+            tasks=tasks,
+            strategy=strategy,
+            now=utc_now(),
+            mission_terms=mission_terms,
+            max_blocked_tasks=self.config.objective_task_janitor_max_blocked_tasks,
+            max_deprioritized_tasks=self.config.objective_task_janitor_max_deprioritized_tasks,
+            max_reopened_goals=self.config.objective_task_janitor_max_reopened_goals,
+        )
+        if result.get("changed"):
+            write_json(self.config.strategy_path, result["strategy"])
+        event_payload = {
+            "changed": bool(result.get("changed")),
+            "blocked_task_ids": list(result.get("blocked_task_ids") or []),
+            "deprioritized_task_ids": list(result.get("deprioritized_task_ids") or []),
+            "reopened_goal_ids": list(result.get("reopened_goal_ids") or []),
+            "mission_terms": list(mission_terms),
+            "critical_goal_count": len(result.get("critical_goal_ids") or []),
+            "active_goal_count": len(result.get("active_goal_ids") or []),
+            "scheduled_goal_count": len(result.get("scheduled_goal_ids") or []),
+        }
+        self._record_event("objective_task_janitor", event_payload)
+        result.pop("strategy", None)
+        return result
+
     def refill_objective_backlog(self) -> dict[str, Any]:
         """Refine the objective heap and feed todos when the backlog is low or drained."""
 
@@ -2699,6 +3431,11 @@ class PortalImplementationSupervisor:
         todo_text = self.config.todo_path.read_text(encoding="utf-8")
         strategy = load_strategy(self.config.strategy_path)
         task_prefix = task_id_prefix(self.config.task_prefix)
+        force_goal_ids = [
+            str(item)
+            for item in strategy.get("objective_task_janitor_force_goal_ids", [])
+            if str(item).strip()
+        ] if isinstance(strategy.get("objective_task_janitor_force_goal_ids"), list) else []
         should_scan, mode, current_open, task_count = should_refill_backlog(
             todo_text=todo_text,
             state_path=self.config.state_path,
@@ -2708,6 +3445,7 @@ class PortalImplementationSupervisor:
             task_prefix=task_prefix,
             min_open_tasks=self.config.objective_scan_min_open_tasks,
             cooldown_seconds=self.config.objective_scan_cooldown_seconds,
+            force=bool(force_goal_ids),
         )
         if not should_scan:
             return {}
@@ -2745,6 +3483,7 @@ class PortalImplementationSupervisor:
             discovery_output_path=discovery_output_path,
             depends_on=list(self.config.objective_scan_depends_on),
             seen_fingerprint=sorted(seen_fingerprints),
+            force_goal_id=sorted(set(force_goal_ids)),
             repeat_existing=False,
             max_findings=self.config.objective_scan_max_findings,
             ensure_tracking_document=self.config.objective_ensure_tracking_document,
@@ -2838,6 +3577,7 @@ class PortalImplementationSupervisor:
         strategy["last_objective_active_goal_count"] = int(payload.get("objective_active_goal_count") or 0)
         strategy["last_objective_completed_goal_count"] = int(payload.get("objective_completed_goal_count") or 0)
         strategy["last_objective_heap_schedule_count"] = int(payload.get("objective_heap_schedule_count") or 0)
+        strategy["last_objective_task_janitor_force_goal_ids"] = sorted(set(force_goal_ids))
         write_json(self.config.strategy_path, strategy)
 
         if (
@@ -3086,14 +3826,29 @@ class PortalImplementationSupervisor:
 
     def rewrite_strategy(self, state: PortalTaskState, reason: str) -> dict[str, Any]:
         strategy = self._load_strategy()
+        active_task_id = state.active_task_id.strip()
         active_track = state.active_task_track.strip().lower()
-        focus_tracks = [str(item).lower() for item in strategy.get("focus_tracks", DEFAULT_TRACKS)]
+        focus_tracks = normalize_focus_tracks(strategy.get("focus_tracks", DEFAULT_TRACKS))
         generation = int(strategy.get("generation", 0)) + 1
-        deprioritized_tasks = list(dict.fromkeys([*strategy.get("deprioritized_tasks", []), state.active_task_id]))
+        deprioritized_tasks = list(dict.fromkeys([*strategy.get("deprioritized_tasks", []), active_task_id]))
         blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
+        reason_lower = reason.lower()
+        should_block_active_task = bool(active_task_id) and (
+            state.active_phase in {"merge_reconciliation", "merge_resolver"}
+            or "merge_reconciliation" in reason_lower
+            or "merge_resolver" in reason_lower
+            or "merge conflict" in reason_lower
+            or "merge_retry" in reason_lower
+            or "unresolved merge failure" in reason_lower
+        )
+        blocked_active_task = False
+        if should_block_active_task and active_task_id not in blocked_tasks:
+            blocked_tasks.append(active_task_id)
+            blocked_active_task = True
 
         if active_track and active_track in focus_tracks:
             focus_tracks = [track for track in focus_tracks if track != active_track] + [active_track]
+            focus_tracks = normalize_focus_tracks(focus_tracks)
 
         strategy.update(
             {
@@ -3111,8 +3866,9 @@ class PortalImplementationSupervisor:
             {
                 "reason": reason,
                 "generation": generation,
-                "active_task_id": state.active_task_id,
+                "active_task_id": active_task_id,
                 "active_track": active_track,
+                "blocked_active_task": blocked_active_task,
             },
         )
         return strategy
@@ -3290,6 +4046,54 @@ class PortalImplementationSupervisor:
                 command.extend(["--objective-path", str(self.config.objective_path)])
             if self.config.objective_bundle_dir is not None:
                 command.extend(["--objective-bundle-dir", str(self.config.objective_bundle_dir)])
+        if self.config.objective_refill_enabled:
+            command.extend(
+                [
+                    "--objective-scan-min-open-tasks",
+                    str(self.config.objective_scan_min_open_tasks),
+                    "--objective-scan-max-findings",
+                    str(self.config.objective_scan_max_findings),
+                    "--objective-scan-cooldown-seconds",
+                    str(self.config.objective_scan_cooldown_seconds),
+                    "--objective-surplus-findings-per-goal",
+                    str(self.config.objective_surplus_findings_per_goal),
+                    "--objective-surplus-min-terms-per-todo",
+                    str(self.config.objective_surplus_min_terms_per_todo),
+                ]
+            )
+        if self.config.codebase_refill_enabled:
+            command.extend(
+                [
+                    "--codebase-scan-min-open-tasks",
+                    str(self.config.codebase_scan_min_open_tasks),
+                    "--codebase-scan-max-findings",
+                    str(self.config.codebase_scan_max_findings),
+                    "--codebase-scan-cooldown-seconds",
+                    str(self.config.codebase_scan_cooldown_seconds),
+                ]
+            )
+        if self.config.merge_reconciliation_max_merges is not None:
+            command.extend(
+                [
+                    "--merge-reconciliation-max-merges",
+                    str(self.config.merge_reconciliation_max_merges),
+                ]
+            )
+        if self.config.daemon_merged_worktree_cleanup_max is not None:
+            command.extend(
+                [
+                    "--merged-worktree-cleanup-max",
+                    str(self.config.daemon_merged_worktree_cleanup_max),
+                ]
+            )
+        command.extend(
+            [
+                "--task-shard-count",
+                str(max(1, int(self.config.task_shard_count))),
+                "--task-shard-index",
+                str(int(self.config.task_shard_index)),
+            ]
+        )
         return command
 
     def _managed_daemon_pid_path(self) -> Path:
@@ -3301,6 +4105,18 @@ class PortalImplementationSupervisor:
             return int(raw_pid)
         except (OSError, ValueError):
             return None
+
+    def _find_matching_managed_daemon_pid(self, *, exclude_pids: set[int] | None = None) -> int | None:
+        excluded = set(exclude_pids or set())
+        excluded.add(os.getpid())
+        for pid, command_line in self._list_process_details():
+            if pid in excluded:
+                continue
+            if not process_is_running(pid):
+                continue
+            if self._managed_daemon_matches_command_line(command_line):
+                return int(pid)
+        return None
 
     def ensure_managed_daemon_pid_file(self) -> dict[str, Any]:
         """Remove stale or malformed managed-daemon PID state before adoption."""
@@ -3365,6 +4181,18 @@ class PortalImplementationSupervisor:
                 self._record_event("managed_daemon_pid_file_repaired", result)
             return result
         if not process_is_running(pid):
+            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
+            if replacement_pid:
+                write_text_atomic(pid_path, f"{replacement_pid}\n")
+                result = {
+                    "repaired": True,
+                    "reason": "stale_managed_pid_replaced_with_matching_daemon",
+                    "path": str(pid_path),
+                    "stale_pid": pid,
+                    "replacement_pid": replacement_pid,
+                }
+                self._record_event("managed_daemon_pid_file_repaired", result)
+                return result
             try:
                 pid_path.unlink()
                 result = {
@@ -3386,6 +4214,18 @@ class PortalImplementationSupervisor:
             return result
         command_line = process_command_line(pid)
         if not self._managed_daemon_matches_command_line(command_line):
+            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
+            if replacement_pid:
+                write_text_atomic(pid_path, f"{replacement_pid}\n")
+                result = {
+                    "repaired": True,
+                    "reason": "managed_pid_command_mismatch_replaced_with_matching_daemon",
+                    "path": str(pid_path),
+                    "pid": pid,
+                    "replacement_pid": replacement_pid,
+                }
+                self._record_event("managed_daemon_pid_file_repaired", result)
+                return result
             try:
                 pid_path.unlink()
                 result = {
@@ -3643,6 +4483,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="JSON cache path for non-mutating worktree scan classifications. Defaults to the supervisor state dir.",
     )
     parser.add_argument(
+        "--merge-reconciliation-max-merges",
+        type=int,
+        default=None,
+        help=(
+            "Maximum failed merge-reconciliation repairs for the managed implementation daemon "
+            "per pass. Defaults to the daemon setting."
+        ),
+    )
+    parser.add_argument(
+        "--daemon-merged-worktree-cleanup-max",
+        type=int,
+        default=None,
+        help=(
+            "Maximum already-merged implementation worktrees for the managed implementation daemon "
+            "to remove per pass. Defaults to the daemon setting."
+        ),
+    )
+    parser.add_argument(
+        "--task-shard-count",
+        type=int,
+        default=1,
+        help="Total deterministic task-selection shards for this supervisor lane.",
+    )
+    parser.add_argument(
+        "--task-shard-index",
+        type=int,
+        default=0,
+        help="Zero-based deterministic task-selection shard index for this supervisor lane.",
+    )
+    parser.add_argument(
         "--no-retry-budget-guardrail",
         dest="retry_budget_guardrail_enabled",
         action="store_false",
@@ -3807,6 +4677,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--objective-refill-scan",
         action="store_true",
         help="Refine the objective heap and append objective-gap todos when the supervised backlog is low or drained.",
+    )
+    parser.add_argument(
+        "--no-objective-task-janitor",
+        dest="objective_task_janitor_enabled",
+        action="store_false",
+        help="Disable strategy reconciliation that blocks orphaned objective tasks and reopens launch-critical goals.",
+    )
+    parser.set_defaults(objective_task_janitor_enabled=True)
+    parser.add_argument("--objective-task-janitor-max-blocked-tasks", type=int, default=50)
+    parser.add_argument("--objective-task-janitor-max-deprioritized-tasks", type=int, default=50)
+    parser.add_argument("--objective-task-janitor-max-reopened-goals", type=int, default=12)
+    parser.add_argument(
+        "--objective-mission-term",
+        action="append",
+        default=[],
+        help=(
+            "Mission term that marks active goals/tasks as launch-critical for supervisor steering. "
+            "May be repeated or comma-separated."
+        ),
     )
     parser.add_argument(
         "--objective-path",
@@ -3983,6 +4872,10 @@ def supervisor_config_from_args(
         worktree_scan_cache_enabled=args.worktree_scan_cache_enabled,
         worktree_scan_cache_ttl_seconds=args.worktree_scan_cache_ttl_seconds,
         worktree_scan_cache_path=args.worktree_scan_cache_path,
+        merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
+        daemon_merged_worktree_cleanup_max=args.daemon_merged_worktree_cleanup_max,
+        task_shard_count=args.task_shard_count,
+        task_shard_index=args.task_shard_index,
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
         retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,
@@ -4023,6 +4916,11 @@ def supervisor_config_from_args(
         codebase_scan_commit_outputs=args.codebase_scan_commit_outputs,
         codebase_scan_commit_subject=args.codebase_scan_commit_subject,
         objective_refill_enabled=args.objective_refill_scan and not reconciliation_only,
+        objective_task_janitor_enabled=args.objective_task_janitor_enabled and not reconciliation_only,
+        objective_task_janitor_max_blocked_tasks=args.objective_task_janitor_max_blocked_tasks,
+        objective_task_janitor_max_deprioritized_tasks=args.objective_task_janitor_max_deprioritized_tasks,
+        objective_task_janitor_max_reopened_goals=args.objective_task_janitor_max_reopened_goals,
+        objective_task_janitor_mission_terms=split_csv_values(args.objective_mission_term),
         objective_path=args.objective_path,
         objective_graph_path=args.objective_graph_path,
         objective_bundle_dir=args.objective_bundle_dir,

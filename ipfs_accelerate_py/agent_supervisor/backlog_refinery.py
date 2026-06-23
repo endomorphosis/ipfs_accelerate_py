@@ -37,7 +37,11 @@ from .objective_graph import (
     repo_relative_path,
     safe_bundle_key,
 )
-from .todo_daemon.implementation_daemon import parse_task_file
+from .todo_daemon.implementation_daemon import (
+    is_retry_budget_repair_task,
+    parse_task_file,
+    retry_budget_repair_source,
+)
 from .validation_commands import split_validation_commands
 from .wrapper_utils import AgentSupervisorNamespacePaths
 
@@ -101,11 +105,20 @@ CODEBASE_SCAN_SKIP_PARTS = {
     "test-results",
 }
 CODEBASE_SCAN_SKIP_PREFIXES = (
+    "archive/",
+    "backup/",
+    "cleanup-archive/",
     "data/agent_supervisor/discovery/",
     "data/agent_supervisor/objective_bundles/",
     "data/agent_supervisor/objective_datasets/",
     "data/agent_supervisor/state/",
     "data/agent_supervisor/worktrees/",
+    "external/ipfs_accelerate/test/duckdb_api/",
+    "external/ipfs_accelerate/test/generators/",
+    "external/ipfs_accelerate/test/huggingface_transformers/",
+    "external/ipfs_accelerate/test/skills/",
+    "external/ipfs_kit/archive/",
+    "external/ipfs_kit/backup/",
 )
 
 
@@ -240,6 +253,47 @@ def task_statuses_from_todo_text(todo_text: str, *, task_prefix: str = DEFAULT_T
             statuses[current_task_id] = line.split(":", 1)[1].strip().lower()
             current_task_id = ""
     return statuses
+
+
+def mark_task_statuses_in_todo_text(
+    todo_text: str,
+    task_ids: Sequence[str],
+    *,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+    status: str = "completed",
+) -> tuple[str, list[str]]:
+    """Return todo text with selected task status lines rewritten."""
+
+    prefix = task_id_prefix(task_prefix)
+    target_task_ids = {
+        str(task_id).strip()
+        for task_id in task_ids
+        if str(task_id).strip()
+    }
+    if not target_task_ids:
+        return todo_text, []
+
+    lines = todo_text.splitlines(keepends=True)
+    current_task_id = ""
+    updated_task_ids: list[str] = []
+    for index, line in enumerate(lines):
+        if line.startswith(f"## {prefix}"):
+            parts = line[3:].strip().split(" ", 1)
+            current_task_id = parts[0] if parts else ""
+            continue
+        if current_task_id not in target_task_ids or not line.startswith("- Status:"):
+            continue
+        current_status = line.split(":", 1)[1].strip().lower()
+        if current_status == status.lower():
+            current_task_id = ""
+            continue
+        newline = "\n" if line.endswith("\n") else ""
+        lines[index] = f"- Status: {status}{newline}"
+        updated_task_ids.append(current_task_id)
+        current_task_id = ""
+    if not updated_task_ids:
+        return todo_text, []
+    return "".join(lines), updated_task_ids
 
 
 def open_task_count(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> int:
@@ -2874,6 +2928,11 @@ def record_retry_budget_findings(
     todo_text = todo_path.read_text(encoding="utf-8")
     task_ids = set(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
     completed_task_ids = {task.task_id for task in tasks if task.status == "completed"}
+    retry_budget_repair_task_ids = {
+        task.task_id
+        for task in tasks
+        if is_retry_budget_repair_task(task)
+    }
     events = iter_jsonl(events_path)
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
@@ -2883,6 +2942,8 @@ def record_retry_budget_findings(
     if implementation_retry_budget > 0:
         for task in tasks:
             if task.task_id in completed_task_ids:
+                continue
+            if task.task_id in retry_budget_repair_task_ids:
                 continue
             marker = f"implementation retry-budget failure for {task.task_id}"
             if marker in todo_text:
@@ -2928,6 +2989,8 @@ def record_retry_budget_findings(
     if validation_retry_budget > 0:
         for task in tasks:
             if task.task_id in completed_task_ids:
+                continue
+            if task.task_id in retry_budget_repair_task_ids:
                 continue
             marker = f"retry-budget failure for {task.task_id}"
             if marker in todo_text:
@@ -2981,6 +3044,8 @@ def record_retry_budget_findings(
     if merge_retry_budget > 0:
         for task in tasks:
             if task.task_id in completed_task_ids:
+                continue
+            if task.task_id in retry_budget_repair_task_ids:
                 continue
             marker = f"merge retry-budget failure for {task.task_id}"
             if marker in todo_text:
@@ -3275,6 +3340,23 @@ def record_reconciliation_guardrail_findings(
     return [*refreshes, *findings]
 
 
+def completed_retry_budget_repairs_by_source(tasks: Sequence[Any]) -> dict[str, dict[str, str]]:
+    """Map source task ids to completed retry-budget repair task metadata."""
+
+    repairs: dict[str, dict[str, str]] = {}
+    for task in tasks:
+        if str(getattr(task, "status", "") or "").lower() != "completed":
+            continue
+        source_task_id, failure_kind = retry_budget_repair_source(task)
+        if not source_task_id:
+            continue
+        repairs[source_task_id] = {
+            "follow_up_task_id": str(getattr(task, "task_id", "") or ""),
+            "failure_kind": failure_kind,
+        }
+    return repairs
+
+
 def release_completed_guardrail_blocks(
     *,
     todo_path: Path,
@@ -3289,6 +3371,24 @@ def release_completed_guardrail_blocks(
     statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
     if not statuses:
         return []
+    tasks = parse_task_file(todo_path, task_header_prefix(task_prefix))
+    completed_retry_repairs = completed_retry_budget_repairs_by_source(tasks)
+    retry_budget_repair_sources_by_task_id = {
+        str(getattr(task, "task_id", "") or ""): retry_budget_repair_source(task)
+        for task in tasks
+    }
+    retry_budget_repair_task_ids = {
+        task_id
+        for task_id, (source_task_id, _failure_kind) in retry_budget_repair_sources_by_task_id.items()
+        if source_task_id
+    }
+    pending_retry_repair_sources = {
+        source_task_id
+        for task in tasks
+        if str(getattr(task, "status", "") or "").lower() != "completed"
+        for source_task_id, _failure_kind in (retry_budget_repair_source(task),)
+        if source_task_id
+    }
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
 
@@ -3362,6 +3462,7 @@ def release_completed_guardrail_blocks(
         ("retry_budget", strategy.get("retry_budget_findings")),
         ("dependency_guardrail", strategy.get("dependency_guardrail_findings")),
     )
+    active_guardrail_sources: set[str] = set()
     for guardrail_kind, raw_records in guardrail_groups:
         if not isinstance(raw_records, list):
             continue
@@ -3372,6 +3473,7 @@ def release_completed_guardrail_blocks(
             follow_up_task_id = str(raw_record.get("follow_up_task_id") or "")
             if not source_task_id or not follow_up_task_id:
                 continue
+            active_guardrail_sources.add(source_task_id)
             if source_task_id not in blocked_tasks:
                 continue
             if statuses.get(follow_up_task_id) != "completed":
@@ -3384,6 +3486,65 @@ def release_completed_guardrail_blocks(
                     "guardrail_kind": guardrail_kind,
                 }
             )
+
+    for source_task_id in list(blocked_tasks):
+        repair = completed_retry_repairs.get(source_task_id)
+        if not repair:
+            continue
+        follow_up_task_id = str(repair.get("follow_up_task_id") or "")
+        if not follow_up_task_id:
+            continue
+        blocked_tasks = [task_id for task_id in blocked_tasks if task_id != source_task_id]
+        releases.append(
+            {
+                "source_task_id": source_task_id,
+                "follow_up_task_id": follow_up_task_id,
+                "guardrail_kind": "retry_budget",
+                "failure_kind": str(repair.get("failure_kind") or ""),
+                "reason": "historical_retry_repair_completed",
+            }
+        )
+
+    for source_task_id in list(blocked_tasks):
+        original_source_task_id, failure_kind = retry_budget_repair_sources_by_task_id.get(
+            source_task_id,
+            ("", ""),
+        )
+        if not original_source_task_id:
+            continue
+        if source_task_id not in pending_retry_repair_sources:
+            continue
+        blocked_tasks = [task_id for task_id in blocked_tasks if task_id != source_task_id]
+        releases.append(
+            {
+                "source_task_id": source_task_id,
+                "follow_up_task_id": "",
+                "guardrail_kind": "stale_strategy_block",
+                "failure_kind": failure_kind,
+                "reason": "recursive_retry_repair_block",
+                "original_source_task_id": original_source_task_id,
+            }
+        )
+
+    for source_task_id in list(blocked_tasks):
+        status = statuses.get(source_task_id)
+        if status is None or status == "completed":
+            continue
+        if source_task_id not in retry_budget_repair_task_ids:
+            continue
+        if source_task_id in active_guardrail_sources or source_task_id in active_dependency_sources:
+            continue
+        if source_task_id in pending_retry_repair_sources:
+            continue
+        blocked_tasks = [task_id for task_id in blocked_tasks if task_id != source_task_id]
+        releases.append(
+            {
+                "source_task_id": source_task_id,
+                "follow_up_task_id": "",
+                "guardrail_kind": "stale_strategy_block",
+                "reason": "no_guardrail_repair_path",
+            }
+        )
 
     for source_task_id in list(blocked_tasks):
         status = statuses.get(source_task_id)
@@ -3408,6 +3569,45 @@ def release_completed_guardrail_blocks(
                     "reason": "source_completed",
                 }
             )
+
+    recursive_retry_repair_task_ids: list[str] = []
+    for task_id, (source_task_id, failure_kind) in retry_budget_repair_sources_by_task_id.items():
+        if not task_id or not source_task_id:
+            continue
+        if task_id not in statuses:
+            continue
+        if statuses.get(task_id) == "completed":
+            continue
+        if source_task_id not in retry_budget_repair_task_ids:
+            continue
+        original_source_task_id, _original_failure_kind = retry_budget_repair_sources_by_task_id.get(
+            source_task_id,
+            ("", ""),
+        )
+        recursive_retry_repair_task_ids.append(task_id)
+        releases.append(
+            {
+                "source_task_id": task_id,
+                "follow_up_task_id": "",
+                "guardrail_kind": "retry_budget",
+                "failure_kind": failure_kind,
+                "reason": "recursive_retry_repair_task_retired",
+                "parent_repair_task_id": source_task_id,
+                "original_source_task_id": original_source_task_id,
+            }
+        )
+
+    if recursive_retry_repair_task_ids:
+        todo_text, retired_task_ids = mark_task_statuses_in_todo_text(
+            todo_text,
+            recursive_retry_repair_task_ids,
+            task_prefix=task_prefix,
+            status="completed",
+        )
+        if retired_task_ids:
+            todo_path.write_text(todo_text, encoding="utf-8")
+            statuses.update({task_id: "completed" for task_id in retired_task_ids})
+            strategy["last_recursive_retry_repair_retired_task_ids"] = retired_task_ids
 
     if not releases:
         return []

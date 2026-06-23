@@ -825,6 +825,313 @@ def test_backlog_refinery_releases_completed_and_duplicate_stale_strategy_blocks
     assert strategy["blocked_tasks"] == ["AUTO-002"]
 
 
+def test_backlog_refinery_releases_historical_completed_retry_repairs(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Original blocked task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Original blocked task.
+
+## AUTO-002 Resolve implementation retry-budget failure for AUTO-001
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-001. Use evidence in data/discovery/auto-002.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release AUTO-001 from strategy blocked_tasks.
+
+## AUTO-003 Resolve implementation retry-budget failure for AUTO-999
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-999. Use evidence in data/discovery/auto-003.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release AUTO-999 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001", "AUTO-999"],
+                "retry_budget_findings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "retry_budget",
+            "failure_kind": "implementation",
+            "reason": "historical_retry_repair_completed",
+        },
+        {
+            "source_task_id": "AUTO-999",
+            "follow_up_task_id": "",
+            "guardrail_kind": "stale_strategy_block",
+            "reason": "missing_task",
+        },
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+
+
+def test_backlog_refinery_releases_orphaned_block_without_repair_path(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Resolve merge retry-budget failure for AUTO-099
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in AUTO-099. Use evidence in data/discovery/auto-001.md to fix the merge blocker, verify the intended implementation changes are committed in their owning repository or submodule, run `ipfs-accelerate-agent-merge-resolver --events-path ... --apply` when the conflict is semantic, then remove AUTO-099 from the strategy blocked_tasks list so the original backlog item can continue without an indefinite retry loop.
+
+## AUTO-002 Source with pending repair
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: This task must remain blocked until AUTO-003 completes.
+
+## AUTO-003 Resolve implementation retry-budget failure for AUTO-002
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-002. Use evidence in data/discovery/auto-003.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release AUTO-002 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps({"blocked_tasks": ["AUTO-001", "AUTO-002"], "retry_budget_findings": []}),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "",
+            "guardrail_kind": "stale_strategy_block",
+            "reason": "no_guardrail_repair_path",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-002"]
+
+
+def test_backlog_refinery_releases_recursive_retry_repair_block(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Original source task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Original task stays blocked until its first repair task completes.
+
+## AUTO-002 Resolve implementation retry-budget failure for AUTO-001
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-001. Use evidence in data/discovery/auto-002.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release AUTO-001 from strategy blocked_tasks.
+
+## AUTO-003 Resolve implementation retry-budget failure for AUTO-002
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-002. Use evidence in data/discovery/auto-003.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release AUTO-002 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001", "AUTO-002"],
+                "retry_budget_findings": [
+                    {
+                        "source_task_id": "AUTO-002",
+                        "follow_up_task_id": "AUTO-003",
+                        "failure_kind": "implementation",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-002",
+            "follow_up_task_id": "",
+            "guardrail_kind": "stale_strategy_block",
+            "failure_kind": "implementation",
+            "reason": "recursive_retry_repair_block",
+            "original_source_task_id": "AUTO-001",
+        },
+        {
+            "source_task_id": "AUTO-003",
+            "follow_up_task_id": "",
+            "guardrail_kind": "retry_budget",
+            "failure_kind": "implementation",
+            "reason": "recursive_retry_repair_task_retired",
+            "parent_repair_task_id": "AUTO-002",
+            "original_source_task_id": "AUTO-001",
+        }
+    ]
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8").split("## AUTO-003", 1)[1]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    assert strategy["last_recursive_retry_repair_retired_task_ids"] == ["AUTO-003"]
+
+
+def test_backlog_refinery_retires_ready_recursive_retry_repair_task(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Original source task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Original task stays blocked until its first repair task completes.
+
+## AUTO-002 Resolve implementation retry-budget failure for AUTO-001
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-001. Use evidence in data/discovery/auto-002.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release AUTO-001 from strategy blocked_tasks.
+
+## AUTO-003 Resolve implementation retry-budget failure for AUTO-002
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-002. Use evidence in data/discovery/auto-003.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release AUTO-002 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps({"blocked_tasks": ["AUTO-001"], "retry_budget_findings": []}),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-003",
+            "follow_up_task_id": "",
+            "guardrail_kind": "retry_budget",
+            "failure_kind": "implementation",
+            "reason": "recursive_retry_repair_task_retired",
+            "parent_repair_task_id": "AUTO-002",
+            "original_source_task_id": "AUTO-001",
+        }
+    ]
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Status: todo" in todo_text.split("## AUTO-002", 1)[1].split("## AUTO-003", 1)[0]
+    assert "- Status: completed" in todo_text.split("## AUTO-003", 1)[1]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    assert strategy["last_recursive_retry_repair_retired_task_ids"] == ["AUTO-003"]
+
+
 def test_backlog_refinery_releases_stale_dependency_guardrail_after_metadata_repaired(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
@@ -1256,6 +1563,75 @@ def test_backlog_refinery_retry_budget_blocks_implementation_loop(tmp_path):
     assert strategy["blocked_tasks"] == ["AUTO-001"]
     discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
     assert "Exception type: `RuntimeError`" in discovery_text
+
+
+def test_backlog_refinery_retry_budget_skips_recursive_repair_tasks(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    events_path = repo / "state" / "events.jsonl"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Fix setup
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f src/runtime.py
+- Acceptance: Fix the original implementation setup failure.
+
+## AUTO-002 Resolve implementation retry-budget failure for AUTO-001
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f data/discovery/auto-002.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-001. Use evidence in data/discovery/auto-002.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release AUTO-001 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    events_path.parent.mkdir(parents=True)
+    failure = {
+        "type": "implementation_finished",
+        "task_id": "AUTO-002",
+        "attempt": 1,
+        "returncode": 1,
+        "validation_result": {"attempted": False, "passed": True},
+        "merge_result": {"attempted": False, "merged": False, "reason": "not_attempted"},
+        "exception_result": {
+            "exception_type": "RuntimeError",
+            "phase": "worktree_setup",
+            "message": "not a git repository",
+        },
+        "log_path": "state/implementation_logs/auto-002-attempt-1.log",
+    }
+    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+
+    findings = record_retry_budget_findings(
+        todo_path=todo_path,
+        events_path=events_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_header_prefix_value="## AUTO-",
+        task_prefix="AUTO-",
+        implementation_retry_budget=2,
+        validation_retry_budget=2,
+        merge_retry_budget=2,
+    )
+
+    assert findings == []
+    assert "AUTO-003" not in todo_path.read_text(encoding="utf-8")
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert "retry_budget_findings" not in strategy
 
 
 def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):

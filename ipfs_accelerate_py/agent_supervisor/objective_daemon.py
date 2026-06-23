@@ -32,6 +32,7 @@ from .objective_tracker import (
     DEFAULT_ULTIMATE_GOAL,
     append_interoperability_goals,
     append_refinement_goals,
+    deduplicate_interoperability_goals,
     ensure_objective_tracking_document,
     parse_root_evidence,
     reconcile_objective_goal_completion,
@@ -99,6 +100,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--discovery-output-path", default=DEFAULT_DISCOVERY_OUTPUT_PATH)
     parser.add_argument("--depends-on", action="append", default=[])
     parser.add_argument("--seen-fingerprint", action="append", default=[])
+    parser.add_argument(
+        "--force-goal-id",
+        action="append",
+        default=[],
+        help="Objective goal id to rescan even when an existing discovery fingerprint would suppress it.",
+    )
     parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
     parser.add_argument("--max-findings", type=int, default=10)
     parser.add_argument(
@@ -202,6 +209,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         tracking_created = tracking.created
         ensured_goal_ids = tracking.appended_goal_ids
 
+    deduplicated_interoperability_goal_ids: list[str] = []
+    if objective_path.exists():
+        deduplicated_interoperability_goal_ids = deduplicate_interoperability_goals(objective_path)
+
     seeded_interoperability_goal_ids: list[str] = []
     if getattr(args, "seed_interoperability_goals", False) and objective_path.exists():
         interoperability = append_interoperability_goals(
@@ -260,6 +271,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             *ensured_goal_ids,
             *seeded_interoperability_goal_ids,
             *refined_goal_ids,
+            *split_csv(getattr(args, "force_goal_id", []) or []),
         ],
         persist_ast_dataset=not args.no_persist_ast_dataset,
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
@@ -296,6 +308,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "graph_path": repo_relative_path(repo_root, graph_path),
         "tracking_document_created": tracking_created,
         "ensured_goal_ids": ensured_goal_ids,
+        "deduplicated_interoperability_goal_ids": deduplicated_interoperability_goal_ids,
         "seeded_interoperability_goal_ids": seeded_interoperability_goal_ids,
         "completed_goal_ids": completed_goal_ids,
         "objective_completion_validation_results": objective_completion_validation_results,

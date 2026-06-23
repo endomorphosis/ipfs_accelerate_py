@@ -1051,6 +1051,40 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
     )
 
 
+def supervised_child_command_matches(command_line: str, command: Sequence[str]) -> bool:
+    """Return whether a live process command line matches a supervisor child command."""
+
+    if not command_line:
+        return False
+    required_fragments = [str(part) for part in command[1:] if str(part)]
+    if not required_fragments:
+        required_fragments = [str(part) for part in command if str(part)]
+    return all(fragment in command_line for fragment in required_fragments)
+
+
+def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
+    """Return a live matching child from the PID marker instead of launching a duplicate."""
+
+    child_pid_path = spec.resolve(spec.child_pid_path)
+    pid = read_pid_file(child_pid_path)
+    if not pid or not pid_alive(pid):
+        return None
+    command_line = process_args(pid)
+    if not supervised_child_command_matches(command_line, spec.command):
+        return None
+    log_path = spec.resolve(spec.log_path)
+    latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    return SupervisedChild(
+        pid=int(pid),
+        command=tuple(spec.command),
+        log_path=log_path,
+        child_pid_path=child_pid_path,
+        latest_log_path=latest_log_path,
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
 def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: Optional[int] = None) -> bool:
     """Remove a child pid file if it still refers to the expected child."""
 

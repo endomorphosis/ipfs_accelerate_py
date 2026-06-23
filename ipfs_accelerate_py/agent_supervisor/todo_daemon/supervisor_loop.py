@@ -10,13 +10,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
-from .core import ManagedDaemonSpec, read_json
+from .core import ManagedDaemonSpec, pid_alive, read_json
 from .specs import env_float, env_int, env_value
 from .supervisor import SupervisorStatusContext, heartbeat_snapshot, worktree_phase_worker_status
 from .supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
+    adopt_supervised_child,
     clear_child_pid_file,
     launch_supervised_child,
     supervised_log_path,
@@ -92,7 +93,7 @@ def _poll_child_exit(child: SupervisedChild) -> Optional[int]:
     try:
         waited_pid, status = os.waitpid(child.pid, os.WNOHANG)
     except ChildProcessError:
-        return 0
+        return None if pid_alive(child.pid) else 0
     if waited_pid != child.pid:
         return None
     if os.WIFEXITED(status):
@@ -249,7 +250,7 @@ class SupervisorLoop:
             self.last_run_id = run_id
             self.last_log_path = log_path
             try:
-                child = launch_supervised_child(child_spec)
+                child = adopt_supervised_child(child_spec) or launch_supervised_child(child_spec)
             except Exception as exc:
                 self.last_exit_code = 127
                 self.last_recycle_reason = "launch_failed"

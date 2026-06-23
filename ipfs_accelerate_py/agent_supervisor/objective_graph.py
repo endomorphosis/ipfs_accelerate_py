@@ -670,6 +670,40 @@ def objective_goal_work_surface(goal: ObjectiveGoal) -> int:
     return evidence_count * 4 + output_count * 2 + ast_count + interface_count * 3 + submodule_count * 3
 
 
+def canonical_interoperability_component(value: str) -> str:
+    """Return a stable component key for interoperability dedupe."""
+
+    normalized = " ".join(str(value or "").strip().replace("\\", "/").split()).lower()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    leaf = normalized.rsplit("/", 1)[-1]
+    key = re.sub(r"[^a-z0-9]+", "_", leaf).strip("_")
+    aliases = {
+        "ipfs_accelerate_py": "ipfs_accelerate",
+        "ipfs_datasets_py": "ipfs_datasets",
+        "ipfs_kit_py": "ipfs_kit",
+        "mcpplusplus": "mcp_plus_plus",
+    }
+    return aliases.get(key, key)
+
+
+def interoperability_pair_schedule_key(goal: ObjectiveGoal) -> str:
+    """Return a stable key for duplicate interoperability pair goals."""
+
+    pair_value = str(goal.fields.get("interoperability_pair") or "").strip()
+    if not pair_value:
+        return ""
+    pair_terms = sorted(
+        key
+        for term in split_terms(pair_value)
+        for key in [canonical_interoperability_component(term)]
+        if key
+    )
+    if not pair_terms:
+        return ""
+    return "\0".join(pair_terms)
+
+
 def objective_heap_schedule(goals: Sequence[ObjectiveGoal]) -> list[ObjectiveHeapRecord]:
     """Return active goals in Fibonacci-priority heap order.
 
@@ -681,9 +715,15 @@ def objective_heap_schedule(goals: Sequence[ObjectiveGoal]) -> list[ObjectiveHea
 
     graph = goal_graph(goals)
     heap: list[tuple[tuple[Any, ...], ObjectiveGoal]] = []
+    seen_interoperability_pairs: set[str] = set()
     for goal in goals:
         if goal.status not in {"active", "todo", "open"}:
             continue
+        interoperability_key = interoperability_pair_schedule_key(goal)
+        if interoperability_key:
+            if interoperability_key in seen_interoperability_pairs:
+                continue
+            seen_interoperability_pairs.add(interoperability_key)
         fib_priority = goal.priority[0]
         rank = priority_rank(str(goal.fields.get("priority") or "P2"))
         work_surface = objective_goal_work_surface(goal)

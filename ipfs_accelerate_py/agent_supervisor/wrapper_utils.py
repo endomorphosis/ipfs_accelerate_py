@@ -758,7 +758,14 @@ def default_llm_merge_resolver_command(
     *,
     primary_env_var: str = "",
     fallback_env_var: str = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
-    codex_args: Sequence[str] = ("exec", "--dangerously-bypass-approvals-and-sandbox", "-C", ".", "-"),
+    codex_args: Sequence[str] = (
+        "exec",
+        "--ignore-user-config",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        ".",
+        "-",
+    ),
 ) -> str:
     """Return the configured merge-resolver command, falling back to Codex when available."""
 
@@ -780,7 +787,14 @@ def build_default_llm_merge_resolver_command_callback(
     *,
     primary_env_var: str = "",
     fallback_env_var: str = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
-    codex_args: Sequence[str] = ("exec", "--dangerously-bypass-approvals-and-sandbox", "-C", ".", "-"),
+    codex_args: Sequence[str] = (
+        "exec",
+        "--ignore-user-config",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        ".",
+        "-",
+    ),
 ) -> Callable[[], str]:
     """Build a no-argument callback for resolving the default LLM merge command."""
 
@@ -799,7 +813,14 @@ def build_prefixed_default_llm_merge_resolver_command_callback(
     setting: str = "LLM_MERGE_RESOLVER_COMMAND",
     *,
     fallback_env_var: str = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
-    codex_args: Sequence[str] = ("exec", "--dangerously-bypass-approvals-and-sandbox", "-C", ".", "-"),
+    codex_args: Sequence[str] = (
+        "exec",
+        "--ignore-user-config",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        ".",
+        "-",
+    ),
 ) -> Callable[[], str]:
     """Build a merge-resolver command callback from a prefixed environment setting."""
 
@@ -1023,15 +1044,14 @@ def android_validation_environment_contract(
     missing: list[str] = []
 
     java_binary = local_jdk / jdk_java_path
-    if java_binary.exists():
-        env["JAVA_HOME"] = str(local_jdk)
-        path_entries.append(str(local_jdk / jdk_bin_path))
-    else:
+    env["JAVA_HOME"] = str(local_jdk)
+    path_entries.append(str(local_jdk / jdk_bin_path))
+    if not java_binary.exists():
         missing.append(str(java_binary))
 
+    env["ANDROID_HOME"] = str(local_android_sdk)
+    env["ANDROID_SDK_ROOT"] = str(local_android_sdk)
     if local_android_sdk.exists():
-        env["ANDROID_HOME"] = str(local_android_sdk)
-        env["ANDROID_SDK_ROOT"] = str(local_android_sdk)
         for candidate in android_sdk_tool_dirs:
             candidate_path = local_android_sdk / candidate
             if candidate_path.exists():
