@@ -144,9 +144,6 @@ def _run_copilot(prompt: str, workspace: Path) -> int:
     if not copilot_bin:
         print("no copilot fallback binary available for merge resolution", file=sys.stderr)
         return 127
-    if not _copilot_has_auth():
-        print("copilot fallback is not authenticated for merge resolution", file=sys.stderr)
-        return 127
     try:
         completed = _run_tool(
             [
