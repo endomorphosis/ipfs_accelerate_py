@@ -739,6 +739,7 @@ class ObjectiveRefillDefaults:
     objective_surplus_findings_per_goal: int | None = None
     objective_surplus_min_terms_per_todo: int | None = None
     objective_interoperability_focus: Sequence[str] = ()
+    objective_max_interoperability_goals: int | None = None
     refill_scan: bool = True
     seed_interoperability_goals: bool = False
 
@@ -780,6 +781,7 @@ def build_objective_refill_defaults_from_paths(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_interoperability_focus: Sequence[str] = (),
+    objective_max_interoperability_goals: int | None = None,
     refill_scan: bool = True,
     seed_interoperability_goals: bool = False,
 ) -> ObjectiveRefillDefaults:
@@ -820,6 +822,7 @@ def build_objective_refill_defaults_from_paths(
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
         objective_interoperability_focus=objective_interoperability_focus,
+        objective_max_interoperability_goals=objective_max_interoperability_goals,
         refill_scan=refill_scan,
         seed_interoperability_goals=seed_interoperability_goals,
     )
@@ -902,6 +905,7 @@ def build_objective_refill_defaults_factory(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_interoperability_focus: Sequence[str] = (),
+    objective_max_interoperability_goals: int | None = None,
     refill_scan: bool = True,
     seed_interoperability_goals: bool = False,
 ) -> SupervisorBootstrapFactory:
@@ -934,6 +938,7 @@ def build_objective_refill_defaults_factory(
             objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
             objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
             objective_interoperability_focus=objective_interoperability_focus,
+            objective_max_interoperability_goals=objective_max_interoperability_goals,
             refill_scan=refill_scan,
             seed_interoperability_goals=seed_interoperability_goals,
         )
@@ -992,6 +997,7 @@ def build_namespace_objective_refill_defaults_factory(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_interoperability_focus: Sequence[str] = (),
+    objective_max_interoperability_goals: int | None = None,
     refill_scan: bool = True,
     seed_interoperability_goals: bool = False,
 ) -> SupervisorBootstrapFactory:
@@ -1026,6 +1032,7 @@ def build_namespace_objective_refill_defaults_factory(
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
         objective_interoperability_focus=objective_interoperability_focus,
+        objective_max_interoperability_goals=objective_max_interoperability_goals,
         refill_scan=refill_scan,
         seed_interoperability_goals=seed_interoperability_goals,
         **path_kwargs,
@@ -1121,6 +1128,11 @@ def apply_portal_implementation_supervisor_defaults(
                 "--objective-interoperability-focus",
                 objective.objective_interoperability_focus,
             )
+        args = _with_optional_default(
+            args,
+            "--objective-max-interoperability-goals",
+            objective.objective_max_interoperability_goals,
+        )
         args = _with_optional_default(args, "--objective-path", objective.objective_path)
         args = _with_optional_default(args, "--objective-graph-path", objective.objective_graph_path)
         args = _with_optional_default(args, "--objective-bundle-dir", objective.objective_bundle_dir)
