@@ -68,6 +68,7 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
     }
 )
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
+TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
 SHARED_WORKTREE_PATHS = ("wallet_interface/ui/node_modules",)
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "260")
@@ -4719,6 +4720,7 @@ class PortalImplementationDaemon:
         *,
         blocked_task_ids: set[str] | None = None,
         deprioritized_task_ids: set[str] | None = None,
+        now_ts: float | None = None,
     ) -> list[dict[str, Any]]:
         blocked_task_ids = {str(task_id) for task_id in (blocked_task_ids or set()) if str(task_id)}
         deprioritized_task_ids = {
@@ -4736,7 +4738,13 @@ class PortalImplementationDaemon:
             if cls._event_has_transient_merge_lock_deferral(event)
         ]
         if max_merges <= 0:
-            return transient[:TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED]
+            recent_transient = [
+                event
+                for event in transient
+                if cls._event_age_seconds(event, now_ts=now_ts)
+                <= TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS
+            ]
+            return recent_transient[:TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED]
 
         selected: list[dict[str, Any]] = []
         seen: set[int] = set()
@@ -4764,6 +4772,13 @@ class PortalImplementationDaemon:
                 if implementation_commit and event.get("resolved"):
                     reconciled_commits.add(implementation_commit)
                 elif implementation_commit and merge_reason == "baseline_not_ancestor_of_target":
+                    abandoned_commits.add(implementation_commit)
+                elif (
+                    implementation_commit
+                    and isinstance(merge_result, dict)
+                    and merge_result.get("attempted")
+                    and not merge_result.get("merged")
+                ):
                     abandoned_commits.add(implementation_commit)
                 continue
             if str(event.get("type") or "") != "implementation_finished":
@@ -4824,6 +4839,13 @@ class PortalImplementationDaemon:
     def _event_has_transient_merge_lock_deferral(cls, event: dict[str, Any]) -> bool:
         merge_result = event.get("merge_result") or {}
         return cls._merge_result_is_transient_lock_deferral(merge_result)
+
+    @staticmethod
+    def _event_age_seconds(event: dict[str, Any], *, now_ts: float | None = None) -> float:
+        event_timestamp = parse_timestamp(str(event.get("timestamp") or ""))
+        if event_timestamp is None:
+            return float("inf")
+        return max(0.0, (now_ts or time.time()) - event_timestamp.timestamp())
 
     def _transient_merge_deferrals_by_task(self, *, skip_task_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
