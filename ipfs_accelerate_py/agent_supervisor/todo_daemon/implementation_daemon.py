@@ -6153,6 +6153,15 @@ Rules:
         recent_outcomes: dict[str, dict[str, Any]],
     ) -> PortalTask | None:
         ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        strict_deprioritized = {
+            str(receipt.get("task_id") or "")
+            for receipt in strategy.get("objective_task_janitor_receipts", [])
+            if isinstance(receipt, dict)
+            and str(receipt.get("action") or "") == "deprioritize"
+            and str(receipt.get("retired_task_reason") or "").startswith("off_mission_")
+        }
+        if strict_deprioritized:
+            ready = [task for task in ready if task.task_id not in strict_deprioritized]
         if not ready:
             return None
         ready_task_ids = {task.task_id for task in ready}

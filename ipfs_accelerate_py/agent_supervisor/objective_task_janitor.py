@@ -43,6 +43,14 @@ CODEBASE_SCAN_BACKLOG_MARKERS = (
     "codebase scan filed this finding",
     "codebase refill scan",
 )
+WORKTREE_CLEANUP_BACKLOG_MARKERS = (
+    "backlogged worktree",
+    "backlogged worktree merge",
+    "dirty backlogged worktrees",
+    "preflight-conflicting backlogged worktree",
+    "unsupported_status",
+    "worktree reconciliation",
+)
 GUARDRAIL_REPAIR_MARKERS = (
     "dependency guardrail",
     "generated dirty",
@@ -129,6 +137,11 @@ def _is_codebase_scan_backlog_task(task: PortalTask) -> bool:
     return title.startswith(CODEBASE_SCAN_BACKLOG_TITLE_PREFIXES) or any(
         marker in haystack for marker in CODEBASE_SCAN_BACKLOG_MARKERS
     )
+
+
+def _is_worktree_cleanup_backlog_task(task: PortalTask) -> bool:
+    haystack = _task_haystack(task)
+    return any(marker in haystack for marker in WORKTREE_CLEANUP_BACKLOG_MARKERS)
 
 
 def _critical_goal_ids(goals: Sequence[ObjectiveGoal], mission_terms: Sequence[str]) -> set[str]:
@@ -239,6 +252,20 @@ def reconcile_objective_task_strategy(
                     task_id=task.task_id,
                     action="deprioritize",
                     retired_task_reason="off_mission_codebase_scan_task",
+                    goal_ids=goal_ids,
+                    title=task.title,
+                    priority=task.priority,
+                    track=task.track,
+                )
+            )
+            continue
+
+        if _is_worktree_cleanup_backlog_task(task) and not mission_aligned:
+            deprioritize_receipts.append(
+                ObjectiveTaskJanitorReceipt(
+                    task_id=task.task_id,
+                    action="deprioritize",
+                    retired_task_reason="off_mission_worktree_cleanup_task",
                     goal_ids=goal_ids,
                     title=task.title,
                     priority=task.priority,
