@@ -10884,6 +10884,192 @@ def test_implementation_daemon_deterministically_repairs_objective_heap_merge(tm
     assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-objective", "HEAD") == ""
 
 
+def test_implementation_daemon_deterministically_repairs_launch_readiness_merge(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    doc_path = repo / "docs" / "launch" / "phone_desktop_glasses_readiness.md"
+    test_path = repo / "tests" / "test_virtual_ai_os_launch_readiness_gate.py"
+    doc_path.parent.mkdir(parents=True)
+    test_path.parent.mkdir(parents=True)
+    doc_path.write_text(
+        """# Phone, Desktop, and Meta Glasses Launch Readiness
+
+## Gate Contract
+
+- Receipt packet: `data/virtual_ai_os/discovery/2026-06-23-vai-340-launch-readiness-gate.md`
+- Backlog bridge: `VAI-340` for `VAIOS-G697`
+- Python guard: `tests/test_virtual_ai_os_launch_readiness_gate.py`
+""",
+        encoding="utf-8",
+    )
+    test_path.write_text(
+        """from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+VAI_340_RECEIPT_PATH = (
+    REPO_ROOT / "data" / "virtual_ai_os" / "discovery" / "2026-06-23-vai-340-launch-readiness-gate.md"
+)
+SWISSKNIFE_PACKAGE_PATH = REPO_ROOT / "swissknife" / "package.json"
+
+
+def test_readiness_doc_and_heap_name_the_same_launch_validation_gate():
+    doc_source = "docs/launch/phone_desktop_glasses_readiness.md"
+    heap_source = "implementation_plan/docs/23-virtual-ai-os-objective-goal-heap.md"
+    vai_source = VAI_340_RECEIPT_PATH.read_text(encoding="utf-8")
+
+    for term in ["LaunchReadinessGate"]:
+        assert term in doc_source
+        assert term in heap_source
+        assert term in vai_source
+
+    assert "2026-06-23-vai-340-launch-readiness-gate.md" in doc_source
+    assert "VAI-340" in doc_source
+    assert "VAI-340" in vai_source
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "docs/launch/phone_desktop_glasses_readiness.md", "tests/test_virtual_ai_os_launch_readiness_gate.py")
+    _git(repo, "commit", "-m", "seed launch readiness gate")
+
+    _git(repo, "checkout", "-b", "implementation/mgw-launch")
+    doc_path.write_text(
+        doc_path.read_text(encoding="utf-8").replace(
+            "- Backlog bridge: `VAI-340` for `VAIOS-G697`",
+            "- MGW supervisor packet: `data/meta_glasses_display_widgets/discovery/2026-06-23-mgw-274-launch-readiness-gate.md`\n"
+            "- Backlog bridge: `MGW-274` / `VAI-340` for `VAIOS-G697`",
+        ),
+        encoding="utf-8",
+    )
+    test_path.write_text(
+        test_path.read_text(encoding="utf-8")
+        .replace(
+            "SWISSKNIFE_PACKAGE_PATH = REPO_ROOT / \"swissknife\" / \"package.json\"",
+            "MGW_274_RECEIPT_PATH = (\n"
+            "    REPO_ROOT\n"
+            "    / \"data\"\n"
+            "    / \"meta_glasses_display_widgets\"\n"
+            "    / \"discovery\"\n"
+            "    / \"2026-06-23-mgw-274-launch-readiness-gate.md\"\n"
+            ")\n"
+            "SWISSKNIFE_PACKAGE_PATH = REPO_ROOT / \"swissknife\" / \"package.json\"",
+        )
+        .replace(
+            "    vai_source = VAI_340_RECEIPT_PATH.read_text(encoding=\"utf-8\")",
+            "    mgw_source = MGW_274_RECEIPT_PATH.read_text(encoding=\"utf-8\")\n"
+            "    vai_source = VAI_340_RECEIPT_PATH.read_text(encoding=\"utf-8\")",
+        )
+        .replace(
+            "        assert term in vai_source",
+            "        assert term in mgw_source\n        assert term in vai_source",
+        )
+        .replace(
+            '    assert "2026-06-23-vai-340-launch-readiness-gate.md" in doc_source',
+            '    assert "2026-06-23-mgw-274-launch-readiness-gate.md" in doc_source\n'
+            '    assert "2026-06-23-vai-340-launch-readiness-gate.md" in doc_source',
+        )
+        .replace(
+            '    assert "VAI-340" in doc_source',
+            '    assert "MGW-274" in doc_source\n    assert "VAI-340" in doc_source',
+        )
+        .replace(
+            '    assert "VAI-340" in vai_source',
+            '    assert "MGW-274" in mgw_source\n    assert "VAI-340" in vai_source',
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-am", "add mgw launch gate")
+
+    _git(repo, "checkout", "main")
+    doc_path.write_text(
+        doc_path.read_text(encoding="utf-8").replace(
+            "- Backlog bridge: `VAI-340` for `VAIOS-G697`",
+            "- HAO backlog packet: `data/hallucinate_multimodal_control/discovery/2026-06-23-hao-436-launch-readiness-gate.md`\n"
+            "- Backlog bridge: `HAO-436` / `VAI-340` for `VAIOS-G697`",
+        ),
+        encoding="utf-8",
+    )
+    test_path.write_text(
+        test_path.read_text(encoding="utf-8")
+        .replace(
+            "SWISSKNIFE_PACKAGE_PATH = REPO_ROOT / \"swissknife\" / \"package.json\"",
+            "HAO_436_RECEIPT_PATH = (\n"
+            "    REPO_ROOT\n"
+            "    / \"data\"\n"
+            "    / \"hallucinate_multimodal_control\"\n"
+            "    / \"discovery\"\n"
+            "    / \"2026-06-23-hao-436-launch-readiness-gate.md\"\n"
+            ")\n"
+            "SWISSKNIFE_PACKAGE_PATH = REPO_ROOT / \"swissknife\" / \"package.json\"",
+        )
+        .replace(
+            "    vai_source = VAI_340_RECEIPT_PATH.read_text(encoding=\"utf-8\")",
+            "    hao_source = HAO_436_RECEIPT_PATH.read_text(encoding=\"utf-8\")\n"
+            "    vai_source = VAI_340_RECEIPT_PATH.read_text(encoding=\"utf-8\")",
+        )
+        .replace(
+            "        assert term in vai_source",
+            "        assert term in hao_source\n        assert term in vai_source",
+        )
+        .replace(
+            '    assert "2026-06-23-vai-340-launch-readiness-gate.md" in doc_source',
+            '    assert "2026-06-23-hao-436-launch-readiness-gate.md" in doc_source\n'
+            '    assert "2026-06-23-vai-340-launch-readiness-gate.md" in doc_source',
+        )
+        .replace(
+            '    assert "VAI-340" in doc_source',
+            '    assert "HAO-436" in doc_source\n    assert "VAI-340" in doc_source',
+        )
+        .replace(
+            '    assert "VAI-340" in vai_source',
+            '    assert "HAO-436" in hao_source\n    assert "VAI-340" in vai_source',
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-am", "add hao launch gate")
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    result = daemon._merge_branch_to_main(
+        "implementation/mgw-launch",
+        PortalTask(
+            task_id="MGW-274",
+            title="Merge launch readiness gate",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="launch",
+        ),
+        1,
+    )
+
+    assert result["merged"] is True
+    repaired_paths = {item["path"] for item in result["deterministic_conflict_repair"]}
+    assert repaired_paths == {
+        "docs/launch/phone_desktop_glasses_readiness.md",
+        "tests/test_virtual_ai_os_launch_readiness_gate.py",
+    }
+    assert daemon._unmerged_worktree_paths(repo) == set()
+    doc_text = doc_path.read_text(encoding="utf-8")
+    test_text = test_path.read_text(encoding="utf-8")
+    assert "`HAO-436` / `MGW-274` / `VAI-340`" in doc_text
+    assert "2026-06-23-hao-436-launch-readiness-gate.md" in doc_text
+    assert "2026-06-23-mgw-274-launch-readiness-gate.md" in doc_text
+    assert "HAO_436_RECEIPT_PATH" in test_text
+    assert "MGW_274_RECEIPT_PATH" in test_text
+    assert "assert term in hao_source" in test_text
+    assert "assert term in mgw_source" in test_text
+    assert _git(repo, "merge-base", "--is-ancestor", "implementation/mgw-launch", "HEAD") == ""
+
+
 def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

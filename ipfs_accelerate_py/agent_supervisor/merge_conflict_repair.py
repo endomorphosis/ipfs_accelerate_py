@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -13,6 +14,11 @@ class MarkdownMergeResult:
     text: str
     section_count: int
     duplicate_variant_count: int
+
+
+LAUNCH_READINESS_DOC_PATH = "docs/launch/phone_desktop_glasses_readiness.md"
+LAUNCH_READINESS_TEST_PATH = "tests/test_virtual_ai_os_launch_readiness_gate.py"
+LAUNCH_READINESS_PATHS = {LAUNCH_READINESS_DOC_PATH, LAUNCH_READINESS_TEST_PATH}
 
 
 def _run_git(repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -226,6 +232,216 @@ def resolve_append_only_markdown_conflicts(
                 "stderr": add.stderr[-4000:],
                 "section_count": merged.section_count,
                 "duplicate_variant_count": merged.duplicate_variant_count,
+            }
+        )
+    return results
+
+
+def _unique_lines(lines: Iterable[str]) -> list[str]:
+    return [line for line in dict.fromkeys(line.rstrip("\n") for line in lines) if line.strip()]
+
+
+def _launch_task_sort_key(task_id: str) -> tuple[int, str]:
+    prefix = task_id.split("-", 1)[0]
+    order = {"HAO": 0, "MGW": 1, "VAI": 2}
+    return order.get(prefix, 9), task_id
+
+
+def _replace_or_insert_line(
+    text: str,
+    *,
+    match: str,
+    line: str,
+    insert_after_contains: str,
+) -> str:
+    lines = text.splitlines()
+    replaced = False
+    for index, existing in enumerate(lines):
+        if match in existing:
+            lines[index] = line
+            replaced = True
+            break
+    if not replaced:
+        insert_at = 0
+        for index, existing in enumerate(lines):
+            if insert_after_contains in existing:
+                insert_at = index + 1
+        lines.insert(insert_at, line)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _insert_missing_lines(
+    text: str,
+    *,
+    additions: Iterable[str],
+    insert_after_contains: str,
+) -> str:
+    lines = text.splitlines()
+    existing = {line.strip() for line in lines}
+    missing = [line for line in _unique_lines(additions) if line.strip() not in existing]
+    if not missing:
+        return text if text.endswith("\n") else text + "\n"
+    insert_at = len(lines)
+    for index, line in enumerate(lines):
+        if insert_after_contains in line:
+            insert_at = index + 1
+    for offset, line in enumerate(missing):
+        lines.insert(insert_at + offset, line)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def merge_launch_readiness_markdown(
+    *,
+    base_text: str,
+    ours_text: str,
+    theirs_text: str,
+) -> str:
+    """Merge additive launch-readiness receipt lines in the shared markdown gate."""
+
+    texts = [base_text, ours_text, theirs_text]
+    merged = max(texts, key=lambda item: (len(set(item.splitlines())), len(item)))
+    packet_lines = [
+        line
+        for text in texts
+        for line in text.splitlines()
+        if line.startswith("- ") and "launch-readiness-gate.md`" in line and "packet:" in line
+    ]
+    merged = _insert_missing_lines(
+        merged,
+        additions=packet_lines,
+        insert_after_contains="Receipt packet:",
+    )
+
+    task_ids = _unique_lines(
+        task_id
+        for text in texts
+        for line in text.splitlines()
+        if "Backlog bridge:" in line
+        for task_id in re.findall(r"\b[A-Z]{2,4}-\d+\b", line)
+    )
+    goal_ids = _unique_lines(
+        goal_id
+        for text in texts
+        for line in text.splitlines()
+        if "Backlog bridge:" in line
+        for goal_id in re.findall(r"\bVAIOS-G\d+\b", line)
+    )
+    if task_ids:
+        bridge = " / ".join(f"`{task_id}`" for task_id in sorted(task_ids, key=_launch_task_sort_key))
+        goal = f" for `{goal_ids[0]}`" if goal_ids else ""
+        merged = _replace_or_insert_line(
+            merged,
+            match="Backlog bridge:",
+            line=f"- Backlog bridge: {bridge}{goal}",
+            insert_after_contains="launch-readiness-gate.md`",
+        )
+    return merged if merged.endswith("\n") else merged + "\n"
+
+
+def _constant_blocks(text: str) -> dict[str, str]:
+    pattern = re.compile(r"^([A-Z]+_\d+_RECEIPT_PATH) = \(\n(?:.*\n)*?^\)\n", re.MULTILINE)
+    return {match.group(1): match.group(0).rstrip("\n") for match in pattern.finditer(text)}
+
+
+def _source_read_lines(text: str) -> list[str]:
+    pattern = re.compile(r"^    [a-z]+_source = [A-Z]+_\d+_RECEIPT_PATH\.read_text\(encoding=\"utf-8\"\)$", re.MULTILINE)
+    return [match.group(0) for match in pattern.finditer(text)]
+
+
+def _assertion_lines(text: str, *, indent: str) -> list[str]:
+    return [
+        line
+        for line in text.splitlines()
+        if line.startswith(indent + "assert ")
+        and (
+            "launch-readiness-gate.md" in line
+            or re.search(r"\b(?:HAO|MGW|VAI)-\d+\b", line)
+            or re.search(r"\b[a-z]+_source\b", line)
+        )
+    ]
+
+
+def merge_launch_readiness_python(
+    *,
+    base_text: str,
+    ours_text: str,
+    theirs_text: str,
+) -> str:
+    """Merge additive receipt constants/assertions in the launch readiness Python gate."""
+
+    texts = [base_text, ours_text, theirs_text]
+    merged = max(texts, key=lambda item: (len(set(item.splitlines())), len(item)))
+
+    for name, block in sorted(
+        {
+            name: block
+            for text in texts
+            for name, block in _constant_blocks(text).items()
+        }.items()
+    ):
+        if name not in merged:
+            merged = _insert_missing_lines(
+                merged,
+                additions=[block],
+                insert_after_contains="VAI_340_RECEIPT_PATH",
+            )
+
+    merged = _insert_missing_lines(
+        merged,
+        additions=_unique_lines(line for text in texts for line in _source_read_lines(text)),
+        insert_after_contains="heap_source =",
+    )
+    merged = _insert_missing_lines(
+        merged,
+        additions=_unique_lines(line for text in texts for line in _assertion_lines(text, indent="        ")),
+        insert_after_contains="assert term in heap_source",
+    )
+    merged = _insert_missing_lines(
+        merged,
+        additions=_unique_lines(line for text in texts for line in _assertion_lines(text, indent="    ")),
+        insert_after_contains='assert receipt["readiness_doc"]',
+    )
+    return merged if merged.endswith("\n") else merged + "\n"
+
+
+def resolve_launch_readiness_conflicts(*, repo_root: Path) -> list[dict[str, object]]:
+    """Resolve known additive launch-readiness conflicts shared by VAI/MGW/HAO lanes."""
+
+    repo_root = repo_root.resolve()
+    results: list[dict[str, object]] = []
+    for relative in unmerged_paths(repo_root):
+        if relative not in LAUNCH_READINESS_PATHS:
+            continue
+        base = _decode_blob(conflict_stage_blob(repo_root, relative, stage=1))
+        ours = _decode_blob(conflict_stage_blob(repo_root, relative, stage=2))
+        theirs = _decode_blob(conflict_stage_blob(repo_root, relative, stage=3))
+        if relative == LAUNCH_READINESS_DOC_PATH:
+            merged = merge_launch_readiness_markdown(
+                base_text=base,
+                ours_text=ours,
+                theirs_text=theirs,
+            )
+            reason = "launch_readiness_markdown_union"
+        else:
+            merged = merge_launch_readiness_python(
+                base_text=base,
+                ours_text=ours,
+                theirs_text=theirs,
+            )
+            reason = "launch_readiness_python_union"
+
+        target = repo_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(merged, encoding="utf-8", errors="surrogateescape")
+        add = _run_git(repo_root, ["add", "--", relative])
+        results.append(
+            {
+                "path": relative,
+                "resolved": add.returncode == 0,
+                "reason": reason if add.returncode == 0 else "git_add_failed",
+                "returncode": add.returncode,
+                "stdout": add.stdout[-4000:],
+                "stderr": add.stderr[-4000:],
             }
         )
     return results
