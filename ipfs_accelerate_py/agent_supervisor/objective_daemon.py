@@ -32,6 +32,7 @@ from .objective_tracker import (
     DEFAULT_ULTIMATE_GOAL,
     append_interoperability_goals,
     append_refinement_goals,
+    deduplicate_interoperability_goals,
     ensure_objective_tracking_document,
     parse_root_evidence,
     reconcile_objective_goal_completion,
@@ -202,6 +203,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         tracking_created = tracking.created
         ensured_goal_ids = tracking.appended_goal_ids
 
+    deduplicated_interoperability_goal_ids: list[str] = []
+    if objective_path.exists():
+        deduplicated_interoperability_goal_ids = deduplicate_interoperability_goals(objective_path)
+
     seeded_interoperability_goal_ids: list[str] = []
     if getattr(args, "seed_interoperability_goals", False) and objective_path.exists():
         interoperability = append_interoperability_goals(
@@ -296,6 +301,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "graph_path": repo_relative_path(repo_root, graph_path),
         "tracking_document_created": tracking_created,
         "ensured_goal_ids": ensured_goal_ids,
+        "deduplicated_interoperability_goal_ids": deduplicated_interoperability_goal_ids,
         "seeded_interoperability_goal_ids": seeded_interoperability_goal_ids,
         "completed_goal_ids": completed_goal_ids,
         "objective_completion_validation_results": objective_completion_validation_results,

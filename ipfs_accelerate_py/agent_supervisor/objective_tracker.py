@@ -15,6 +15,7 @@ from .objective_graph import (
     DEFAULT_EMBEDDING_MIN_SCORE,
     ObjectiveFinding,
     ObjectiveGoal,
+    canonical_interoperability_component,
     evidence_index,
     goal_graph,
     normalize_field_key,
@@ -635,7 +636,56 @@ def interoperability_pair_key(value: str | Sequence[str]) -> str:
         terms = split_terms(value)
     else:
         terms = [str(item).strip() for item in value if str(item).strip()]
-    return "\0".join(sorted(" ".join(term.split()).lower() for term in terms if term))
+    canonical_terms = [
+        key
+        for term in terms
+        for key in [canonical_interoperability_component(term)]
+        if key
+    ]
+    return "\0".join(sorted(canonical_terms))
+
+
+def deduplicate_interoperability_goals(objective_path: Path) -> list[str]:
+    """Remove duplicate interoperability goal blocks from an objective heap."""
+
+    if not objective_path.exists():
+        return []
+
+    text = objective_path.read_text(encoding="utf-8")
+    goals = parse_goal_heap(text)
+    goal_by_id = {goal.goal_id: goal for goal in goals}
+    header_matches = list(re.finditer(r"^##\s+(\S+)\s+.+$", text, flags=re.MULTILINE))
+    if not header_matches:
+        return []
+
+    preamble = text[: header_matches[0].start()].rstrip()
+    blocks: list[tuple[str, str]] = []
+    for index, match in enumerate(header_matches):
+        start = match.start()
+        end = header_matches[index + 1].start() if index + 1 < len(header_matches) else len(text)
+        blocks.append((match.group(1), text[start:end].strip()))
+
+    winner_by_pair: dict[str, str] = {}
+    duplicate_goal_ids: set[str] = set()
+    for goal_id, _block in blocks:
+        goal = goal_by_id.get(goal_id)
+        if goal is None:
+            continue
+        pair_key = interoperability_pair_key(str(goal.fields.get("interoperability_pair") or ""))
+        if not pair_key:
+            continue
+        if pair_key in winner_by_pair:
+            duplicate_goal_ids.add(goal_id)
+            continue
+        winner_by_pair[pair_key] = goal_id
+
+    if not duplicate_goal_ids:
+        return []
+
+    retained_blocks = [block for goal_id, block in blocks if goal_id not in duplicate_goal_ids]
+    rewritten = "\n\n".join(part for part in [preamble, *retained_blocks] if part).rstrip() + "\n"
+    objective_path.write_text(rewritten, encoding="utf-8")
+    return sorted(duplicate_goal_ids)
 
 
 def _component_pair_metadata(

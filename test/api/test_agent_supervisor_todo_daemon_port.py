@@ -24,7 +24,12 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import ObjectiveGoal, parse_goal_heap, scan_objective_gaps
+from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    ObjectiveGoal,
+    objective_heap_schedule,
+    parse_goal_heap,
+    scan_objective_gaps,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority, run_goal_validation
 from ipfs_accelerate_py.agent_supervisor.validation_commands import split_validation_commands
@@ -8574,6 +8579,115 @@ def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path)
     assert second["seeded_interoperability_goal_ids"] == []
     assert objective_text.count("Interoperate hallucinate_app with swissknife") == 1
     assert objective_text.count("Interoperate hallucinate_app with mcp_plus_plus") == 1
+
+
+def test_objective_daemon_compacts_duplicate_interoperability_goals(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G000 Virtual AI OS root
+
+- Status: completed
+- Parent:
+- Fib priority: 1
+- Track: ops
+- Priority: P0
+- Goal: Make the virtual AI OS interoperable.
+- Evidence: root_virtual_ai_os_proof
+- Outputs: docs
+- Validation: test -f objective-heap.md
+
+## VAIOS-G001 Interoperate hallucinate_app with external/ipfs_datasets
+
+- Status: active
+- Parent: VAIOS-G000
+- Fib priority: 3000
+- Track: interoperability
+- Priority: P1
+- Goal kind: interoperability
+- Interoperability pair: hallucinate_app, external/ipfs_datasets
+- Evidence: datasets_interop
+- Outputs: tests
+- Validation: test -f objective-heap.md
+
+## VAIOS-G002 Interoperate hallucinate_app with ipfs_datasets_py
+
+- Status: active
+- Parent: VAIOS-G000
+- Fib priority: 3001
+- Track: interoperability
+- Priority: P1
+- Goal kind: interoperability
+- Interoperability pair: hallucinate_app, ipfs_datasets_py
+- Evidence: datasets_py_interop
+- Outputs: tests
+- Validation: test -f objective-heap.md
+
+## VAIOS-G003 Interoperate hallucinate_app with external/ipfs_datasets
+
+- Status: active
+- Parent: VAIOS-G000
+- Fib priority: 3002
+- Track: interoperability
+- Priority: P1
+- Goal kind: interoperability
+- Interoperability pair: hallucinate_app, external/ipfs_datasets
+- Evidence: duplicate_datasets_interop
+- Outputs: tests
+- Validation: test -f objective-heap.md
+
+## VAIOS-G004 Interoperate hallucinate_app with swissknife
+
+- Status: active
+- Parent: VAIOS-G000
+- Fib priority: 3003
+- Track: interoperability
+- Priority: P1
+- Goal kind: interoperability
+- Interoperability pair: hallucinate_app, swissknife
+- Evidence: swissknife_interop
+- Outputs: tests
+- Validation: test -f objective-heap.md
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed duplicate interop objective")
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "0",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["deduplicated_interoperability_goal_ids"] == ["VAIOS-G002", "VAIOS-G003"]
+    objective_text = objective_path.read_text(encoding="utf-8")
+    assert "## VAIOS-G001 Interoperate hallucinate_app with external/ipfs_datasets" in objective_text
+    assert "## VAIOS-G002 Interoperate hallucinate_app with ipfs_datasets_py" not in objective_text
+    assert "## VAIOS-G003 Interoperate hallucinate_app with external/ipfs_datasets" not in objective_text
+    assert "## VAIOS-G004 Interoperate hallucinate_app with swissknife" in objective_text
+    schedule = objective_heap_schedule(parse_goal_heap(objective_text))
+    assert [record.goal_id for record in schedule] == ["VAIOS-G001", "VAIOS-G004"]
 
 
 def test_objective_daemon_seeds_all_interoperability_pairs_without_focus(tmp_path):

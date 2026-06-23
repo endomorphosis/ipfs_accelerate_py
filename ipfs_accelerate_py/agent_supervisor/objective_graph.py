@@ -670,13 +670,35 @@ def objective_goal_work_surface(goal: ObjectiveGoal) -> int:
     return evidence_count * 4 + output_count * 2 + ast_count + interface_count * 3 + submodule_count * 3
 
 
+def canonical_interoperability_component(value: str) -> str:
+    """Return a stable component key for interoperability dedupe."""
+
+    normalized = " ".join(str(value or "").strip().replace("\\", "/").split()).lower()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    leaf = normalized.rsplit("/", 1)[-1]
+    key = re.sub(r"[^a-z0-9]+", "_", leaf).strip("_")
+    aliases = {
+        "ipfs_accelerate_py": "ipfs_accelerate",
+        "ipfs_datasets_py": "ipfs_datasets",
+        "ipfs_kit_py": "ipfs_kit",
+        "mcpplusplus": "mcp_plus_plus",
+    }
+    return aliases.get(key, key)
+
+
 def interoperability_pair_schedule_key(goal: ObjectiveGoal) -> str:
     """Return a stable key for duplicate interoperability pair goals."""
 
     pair_value = str(goal.fields.get("interoperability_pair") or "").strip()
     if not pair_value:
         return ""
-    pair_terms = sorted(" ".join(term.lower().split()) for term in split_terms(pair_value) if term.strip())
+    pair_terms = sorted(
+        key
+        for term in split_terms(pair_value)
+        for key in [canonical_interoperability_component(term)]
+        if key
+    )
     if not pair_terms:
         return ""
     return "\0".join(pair_terms)
