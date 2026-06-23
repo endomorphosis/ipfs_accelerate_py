@@ -3826,11 +3826,25 @@ class PortalImplementationSupervisor:
 
     def rewrite_strategy(self, state: PortalTaskState, reason: str) -> dict[str, Any]:
         strategy = self._load_strategy()
+        active_task_id = state.active_task_id.strip()
         active_track = state.active_task_track.strip().lower()
         focus_tracks = normalize_focus_tracks(strategy.get("focus_tracks", DEFAULT_TRACKS))
         generation = int(strategy.get("generation", 0)) + 1
-        deprioritized_tasks = list(dict.fromkeys([*strategy.get("deprioritized_tasks", []), state.active_task_id]))
+        deprioritized_tasks = list(dict.fromkeys([*strategy.get("deprioritized_tasks", []), active_task_id]))
         blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
+        reason_lower = reason.lower()
+        should_block_active_task = bool(active_task_id) and (
+            state.active_phase in {"merge_reconciliation", "merge_resolver"}
+            or "merge_reconciliation" in reason_lower
+            or "merge_resolver" in reason_lower
+            or "merge conflict" in reason_lower
+            or "merge_retry" in reason_lower
+            or "unresolved merge failure" in reason_lower
+        )
+        blocked_active_task = False
+        if should_block_active_task and active_task_id not in blocked_tasks:
+            blocked_tasks.append(active_task_id)
+            blocked_active_task = True
 
         if active_track and active_track in focus_tracks:
             focus_tracks = [track for track in focus_tracks if track != active_track] + [active_track]
@@ -3852,8 +3866,9 @@ class PortalImplementationSupervisor:
             {
                 "reason": reason,
                 "generation": generation,
-                "active_task_id": state.active_task_id,
+                "active_task_id": active_task_id,
                 "active_track": active_track,
+                "blocked_active_task": blocked_active_task,
             },
         )
         return strategy

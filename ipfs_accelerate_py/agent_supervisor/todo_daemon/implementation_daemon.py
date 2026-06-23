@@ -828,6 +828,7 @@ class PortalImplementationDaemon:
         now = utc_now()
         status_completed_task_ids = {task.task_id for task in tasks if task.status == "completed"}
         strategy_blocked_task_ids = {str(task_id) for task_id in strategy.get("blocked_tasks", [])}
+        strategy_deprioritized_task_ids = {str(task_id) for task_id in strategy.get("deprioritized_tasks", [])}
         merge_skip_task_ids = status_completed_task_ids | strategy_blocked_task_ids
         live_inflight_implementation = self._find_live_inflight_implementation()
         if previous.implementation_in_progress and live_inflight_implementation is None:
@@ -845,7 +846,10 @@ class PortalImplementationDaemon:
                 },
             )
             previous = recovered_state
-        merge_reconciliation = self._reconcile_failed_merges(skip_task_ids=merge_skip_task_ids)
+        merge_reconciliation = self._reconcile_failed_merges(
+            skip_task_ids=merge_skip_task_ids,
+            deprioritized_task_ids=strategy_deprioritized_task_ids,
+        )
         merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
         unresolved_merge_failure_task_ids = set(unresolved_merge_failures)
@@ -4536,12 +4540,39 @@ class PortalImplementationDaemon:
             return result.stdout.strip()
         return target_branch
 
-    def _reconcile_failed_merges(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
+    def _reconcile_failed_merges(
+        self,
+        *,
+        skip_task_ids: set[str] | None = None,
+        deprioritized_task_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         target_branch = self._main_branch_name()
+        deprioritized_task_ids = {str(task_id) for task_id in (deprioritized_task_ids or set()) if str(task_id)}
         candidates = self._failed_merge_candidates(skip_task_ids=skip_task_ids)
         max_merges = int(self.merge_reconciliation_max_merges)
-        selected_candidates = self._select_failed_merge_candidates_for_reconciliation(candidates, max_merges)
+        selected_candidates = self._select_failed_merge_candidates_for_reconciliation(
+            candidates,
+            max_merges,
+            deprioritized_task_ids=deprioritized_task_ids,
+        )
+        deferred_by_strategy = [
+            str(event.get("task_id") or "")
+            for event in candidates
+            if str(event.get("task_id") or "") in deprioritized_task_ids
+        ]
+        if deferred_by_strategy:
+            self._record_event(
+                "merge_reconciliation_deferred",
+                {
+                    "candidate_count": len(candidates),
+                    "processed_count": len(selected_candidates),
+                    "deferred_count": len(deferred_by_strategy),
+                    "deferred_task_ids": sorted(set(deferred_by_strategy)),
+                    "max_merges": max_merges,
+                    "reason": "strategy_deprioritized_task",
+                },
+            )
         for event in selected_candidates:
             task_id = str(event.get("task_id") or "")
             attempt = int(event.get("attempt") or 0)
@@ -4685,10 +4716,23 @@ class PortalImplementationDaemon:
         cls,
         candidates: Sequence[dict[str, Any]],
         max_merges: int,
+        *,
+        blocked_task_ids: set[str] | None = None,
+        deprioritized_task_ids: set[str] | None = None,
     ) -> list[dict[str, Any]]:
-        transient = [
+        blocked_task_ids = {str(task_id) for task_id in (blocked_task_ids or set()) if str(task_id)}
+        deprioritized_task_ids = {
+            str(task_id) for task_id in (deprioritized_task_ids or set()) if str(task_id)
+        }
+        filtered_candidates = [
             event
             for event in candidates
+            if str(event.get("task_id") or "") not in blocked_task_ids
+            and str(event.get("task_id") or "") not in deprioritized_task_ids
+        ]
+        transient = [
+            event
+            for event in filtered_candidates
             if cls._event_has_transient_merge_lock_deferral(event)
         ]
         if max_merges <= 0:
@@ -4696,7 +4740,7 @@ class PortalImplementationDaemon:
 
         selected: list[dict[str, Any]] = []
         seen: set[int] = set()
-        for event in (*transient, *candidates):
+        for event in (*transient, *filtered_candidates):
             identity = id(event)
             if identity in seen:
                 continue
