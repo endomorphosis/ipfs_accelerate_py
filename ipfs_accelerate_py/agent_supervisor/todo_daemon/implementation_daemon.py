@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -68,6 +69,8 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
     }
 )
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
+IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
+IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
 SHARED_WORKTREE_PATHS = ("wallet_interface/ui/node_modules",)
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
@@ -908,7 +911,12 @@ class PortalImplementationDaemon:
                 continue
             resolved_statuses[task.task_id] = "ready"
 
-        selectable_tasks = [task for task in tasks if self._task_belongs_to_shard(task.task_id)]
+        active_task_claims = self._active_implementation_task_claims(task.task_id for task in tasks)
+        selectable_tasks = [
+            task
+            for task in tasks
+            if self._task_belongs_to_shard(task.task_id) and task.task_id not in active_task_claims
+        ]
         selected = self._select_next_task(
             selectable_tasks,
             resolved_statuses,
@@ -1033,6 +1041,7 @@ class PortalImplementationDaemon:
             "merged_worktree_cleanup": merged_worktree_cleanup,
             "event_log_repair": event_log_repair,
             "state_file_repair": state_file_repair,
+            "active_task_claims": sorted(active_task_claims),
         }
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
@@ -1050,27 +1059,32 @@ class PortalImplementationDaemon:
 
         started_at = utc_now()
         attempt = state.implementation_attempts.get(task.task_id, 0) + 1
+        task_claim_path = self._implementation_task_claim_path(task.task_id)
+        task_claim_metadata = self._build_implementation_task_claim_metadata(task, attempt, started_at)
         lock_path = self._implementation_lock_path()
         lock_metadata = self._build_implementation_lock_metadata(task, attempt, started_at)
-        lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
-            lock_path,
-            lock_kind="implementation",
-            owner_active=self._implementation_lock_owner_is_active,
+        task_claim_fd, task_claim_reason, existing_task_claim = self._try_acquire_lock(
+            task_claim_path,
+            lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+            owner_active=self._implementation_task_claim_owner_is_active,
         )
-        if lock_fd is None:
+        if task_claim_fd is None:
             result = {
                 "skipped": True,
-                "reason": lock_reason,
+                "reason": f"task_claim_{task_claim_reason}",
                 "task_id": task.task_id,
                 "attempt": attempt,
             }
-            if existing_lock:
-                result["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
-                result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
+            if existing_task_claim:
+                result["lock_owner_pid"] = int(existing_task_claim.get("pid") or 0)
+                result["lock_owner_task_id"] = str(existing_task_claim.get("task_id") or "")
+                result["lock_owner_state_dir"] = str(existing_task_claim.get("state_dir") or "")
             self._record_event("implementation_skipped", result)
             return result
 
-        acquired_lock = True
+        acquired_task_claim = True
+        lock_fd: int | None = None
+        acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         prompt = self._build_implementation_prompt(task, attempt)
         workspace_path = self.repo_root
@@ -1086,7 +1100,28 @@ class PortalImplementationDaemon:
         todo_update_result: dict[str, Any] = {}
 
         try:
+            self._write_lock_metadata(task_claim_fd, task_claim_metadata)
+            task_claim_fd = None
+            lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
+                lock_path,
+                lock_kind="implementation",
+                owner_active=self._implementation_lock_owner_is_active,
+            )
+            if lock_fd is None:
+                result = {
+                    "skipped": True,
+                    "reason": lock_reason,
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                }
+                if existing_lock:
+                    result["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
+                    result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
+                self._record_event("implementation_skipped", result)
+                return result
+            acquired_lock = True
             self._write_lock_metadata(lock_fd, lock_metadata)
+            lock_fd = None
             if self.use_ephemeral_worktree:
                 return self._run_implementation_in_ephemeral_worktree(
                     task=task,
@@ -1218,11 +1253,26 @@ class PortalImplementationDaemon:
             self._record_event("implementation_finished", result)
             return result
         finally:
+            if lock_fd is not None:
+                try:
+                    os.close(lock_fd)
+                except OSError:
+                    pass
+            if task_claim_fd is not None:
+                try:
+                    os.close(task_claim_fd)
+                except OSError:
+                    pass
             try:
                 if acquired_lock and lock_path.exists():
                     lock_path.unlink()
             except OSError:
                 logger.warning("Failed to remove implementation lock %s", lock_path)
+            try:
+                if acquired_task_claim and task_claim_path.exists():
+                    task_claim_path.unlink()
+            except OSError:
+                logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
 
     def _mark_task_completed_in_todo(self, task_id: str) -> dict[str, Any]:
         return self._mark_tasks_completed_in_todo(
@@ -4925,6 +4975,15 @@ class PortalImplementationDaemon:
     def _implementation_lock_path(self) -> Path:
         return self.state_path.parent / "implementation.lock"
 
+    def _implementation_task_claim_path(self, task_id: str) -> Path:
+        safe_task_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", task_id).strip("._-") or "task"
+        digest = hashlib.sha1(task_id.encode("utf-8")).hexdigest()[:12]
+        lock_filename = f"{safe_task_id[:96]}-{digest}.lock"
+        return (
+            checkout_mutation_lock_path(self.repo_root, lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME)
+            / lock_filename
+        )
+
     def _build_implementation_lock_metadata(self, task: PortalTask, attempt: int, started_at: str) -> dict[str, Any]:
         return {
             "kind": "implementation",
@@ -4936,6 +4995,27 @@ class PortalImplementationDaemon:
             "attempt": attempt,
             "started_at": started_at,
         }
+
+    def _build_implementation_task_claim_metadata(
+        self,
+        task: PortalTask,
+        attempt: int,
+        started_at: str,
+    ) -> dict[str, Any]:
+        return checkout_lock_metadata(
+            kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+            repo_root=self.repo_root,
+            task_id=task.task_id,
+            attempt=attempt,
+            owner_script=Path(sys.argv[0]).name,
+            extra={
+                "state_dir": str(self.state_path.parent.resolve()),
+                "state_path": str(self.state_path.resolve()),
+                "started_at": started_at,
+                "task_shard_count": self.task_shard_count,
+                "task_shard_index": self.task_shard_index,
+            },
+        )
 
     def _build_merge_lock_metadata(
         self,
@@ -4962,6 +5042,27 @@ class PortalImplementationDaemon:
         if state_dir and Path(state_dir).resolve() != self.state_path.parent.resolve():
             return False
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
+
+    def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
+        repo_root = str(metadata.get("repo_root") or "")
+        if repo_root:
+            try:
+                if Path(repo_root).resolve() != self.repo_root.resolve():
+                    return False
+            except OSError:
+                return False
+        return self._lock_owner_is_active(metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
+
+    def _active_implementation_task_claims(self, task_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+        active_claims: dict[str, dict[str, Any]] = {}
+        for task_id in task_ids:
+            claim_path = self._implementation_task_claim_path(task_id)
+            if not claim_path.exists():
+                continue
+            metadata = load_json_dict(claim_path)
+            if metadata is not None and self._implementation_task_claim_owner_is_active(metadata):
+                active_claims[task_id] = metadata
+        return active_claims
 
     def _merge_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         repo_root = str(metadata.get("repo_root") or "")

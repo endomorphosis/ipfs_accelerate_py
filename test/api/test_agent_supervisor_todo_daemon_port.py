@@ -4158,6 +4158,104 @@ def test_implementation_daemon_selects_only_configured_task_shard(tmp_path):
     assert state.ready_count == 3
 
 
+def test_implementation_daemon_filters_repo_wide_task_claims(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Claimed task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-003 Unclaimed task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    claim_path = daemon._implementation_task_claim_path("ACCEL-001")
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation_task_claim",
+                "pid": os.getpid(),
+                "repo_root": str(repo.resolve()),
+                "task_id": "ACCEL-001",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(repo / "state.json")
+
+    assert result["active_task_id"] == "ACCEL-003"
+    assert result["active_task_claims"] == ["ACCEL-001"]
+    assert state.recommended_task_id == "ACCEL-003"
+    assert state.ready_count == 2
+
+
+def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Claimed task",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    claim_path = daemon._implementation_task_claim_path(task.task_id)
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation_task_claim",
+                "pid": os.getpid(),
+                "repo_root": str(repo.resolve()),
+                "state_dir": str((repo / "other-lane").resolve()),
+                "task_id": task.task_id,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["skipped"] is True
+    assert result["reason"] == "task_claim_lock_exists"
+    assert result["lock_owner_pid"] == os.getpid()
+    assert result["lock_owner_task_id"] == task.task_id
+    assert result["lock_owner_state_dir"] == str((repo / "other-lane").resolve())
+
+
 def test_validation_command_splitter_preserves_quoted_semicolons():
     inline_python = (
         "python3 -c 'import pathlib, sys; "
