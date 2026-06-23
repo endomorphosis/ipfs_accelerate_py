@@ -100,6 +100,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--discovery-output-path", default=DEFAULT_DISCOVERY_OUTPUT_PATH)
     parser.add_argument("--depends-on", action="append", default=[])
     parser.add_argument("--seen-fingerprint", action="append", default=[])
+    parser.add_argument(
+        "--force-goal-id",
+        action="append",
+        default=[],
+        help="Objective goal id to rescan even when an existing discovery fingerprint would suppress it.",
+    )
     parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
     parser.add_argument("--max-findings", type=int, default=10)
     parser.add_argument(
@@ -265,6 +271,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             *ensured_goal_ids,
             *seeded_interoperability_goal_ids,
             *refined_goal_ids,
+            *split_csv(getattr(args, "force_goal_id", []) or []),
         ],
         persist_ast_dataset=not args.no_persist_ast_dataset,
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),

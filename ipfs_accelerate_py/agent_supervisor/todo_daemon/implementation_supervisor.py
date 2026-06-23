@@ -149,6 +149,10 @@ class PortalSupervisorConfig:
     codebase_scan_commit_outputs: bool = False
     codebase_scan_commit_subject: str = "Agent: record supervisor codebase scan findings"
     objective_refill_enabled: bool = False
+    objective_task_janitor_enabled: bool = True
+    objective_task_janitor_max_blocked_tasks: int = 50
+    objective_task_janitor_max_deprioritized_tasks: int = 50
+    objective_task_janitor_max_reopened_goals: int = 12
     objective_path: Path | None = None
     objective_graph_path: Path | None = None
     objective_bundle_dir: Path | None = None
@@ -385,6 +389,8 @@ class PortalImplementationSupervisor:
         update_maintenance_phase("strategy_state_repair")
         strategy_file_repair = self.ensure_strategy_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
+        update_maintenance_phase("objective_task_janitor")
+        objective_task_janitor = self.reconcile_objective_task_janitor()
         update_maintenance_phase("reconciliation_guardrails")
         reconciliation_findings = self.record_reconciliation_guardrails(
             worktree_reconciliation,
@@ -418,6 +424,7 @@ class PortalImplementationSupervisor:
                 "stale_active_state_repair": stale_active_state_repair,
                 "stale_worktree_detection": stale_worktree_detection,
                 "todo_board_repair": todo_board_repair,
+                "objective_task_janitor": objective_task_janitor,
                 "main_checkout_repair": main_checkout_repair,
                 "generated_dirty_repair": generated_dirty_repair,
                 "post_stuck_generated_dirty_repair": post_stuck_generated_dirty_repair,
@@ -478,6 +485,15 @@ class PortalImplementationSupervisor:
                 "objective_refill_count": objective_generated_count,
                 "objective_refined_goal_count": objective_refined_goal_count,
                 "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
+                "objective_task_janitor_blocked_count": len(
+                    objective_task_janitor.get("blocked_task_ids") or []
+                ),
+                "objective_task_janitor_deprioritized_count": len(
+                    objective_task_janitor.get("deprioritized_task_ids") or []
+                ),
+                "objective_task_janitor_reopened_goal_count": len(
+                    objective_task_janitor.get("reopened_goal_ids") or []
+                ),
                 "codebase_refill_count": len(codebase_findings),
                 "codebase_deferred_reason": codebase_deferred_reason,
                 "generated_dirty_repair_committed_count": int(
@@ -499,6 +515,7 @@ class PortalImplementationSupervisor:
             "objective_refill_count": objective_generated_count,
             "objective_refined_goal_count": objective_refined_goal_count,
             "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
+            "objective_task_janitor": objective_task_janitor,
             "codebase_refill_count": len(codebase_findings),
             "codebase_deferred_reason": codebase_deferred_reason,
             "event_log_repair": event_log_repair,
@@ -3304,6 +3321,61 @@ class PortalImplementationSupervisor:
             callback=callback,
         )
 
+    def reconcile_objective_task_janitor(self) -> dict[str, Any]:
+        """Keep strategy blocks and objective refills aligned with the goal heap."""
+
+        if not self.config.objective_task_janitor_enabled:
+            return {}
+
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            load_strategy,
+            task_id_prefix,
+            write_json,
+        )
+        from ipfs_accelerate_py.agent_supervisor.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
+        from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
+            reconcile_objective_task_strategy,
+        )
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_task_file
+
+        objective_path = self.config.objective_path or default_objective_path(self.config.repo_root)
+        if not objective_path.exists() or not self.config.todo_path.exists():
+            return {}
+
+        try:
+            goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+            tasks = parse_task_file(self.config.todo_path, task_id_prefix(self.config.task_prefix))
+        except (OSError, UnicodeDecodeError) as exc:
+            result = {"changed": False, "reason": "read_failed", "error": str(exc)}
+            self._record_event("objective_task_janitor_failed", result)
+            return result
+
+        strategy = load_strategy(self.config.strategy_path)
+        result = reconcile_objective_task_strategy(
+            goals=goals,
+            tasks=tasks,
+            strategy=strategy,
+            now=utc_now(),
+            max_blocked_tasks=self.config.objective_task_janitor_max_blocked_tasks,
+            max_deprioritized_tasks=self.config.objective_task_janitor_max_deprioritized_tasks,
+            max_reopened_goals=self.config.objective_task_janitor_max_reopened_goals,
+        )
+        if result.get("changed"):
+            write_json(self.config.strategy_path, result["strategy"])
+        event_payload = {
+            "changed": bool(result.get("changed")),
+            "blocked_task_ids": list(result.get("blocked_task_ids") or []),
+            "deprioritized_task_ids": list(result.get("deprioritized_task_ids") or []),
+            "reopened_goal_ids": list(result.get("reopened_goal_ids") or []),
+            "critical_goal_count": len(result.get("critical_goal_ids") or []),
+            "active_goal_count": len(result.get("active_goal_ids") or []),
+            "scheduled_goal_count": len(result.get("scheduled_goal_ids") or []),
+        }
+        self._record_event("objective_task_janitor", event_payload)
+        result.pop("strategy", None)
+        return result
+
     def refill_objective_backlog(self) -> dict[str, Any]:
         """Refine the objective heap and feed todos when the backlog is low or drained."""
 
@@ -3373,6 +3445,11 @@ class PortalImplementationSupervisor:
             if str(item).strip()
         }
         seen_fingerprints.update(discovery_fingerprints(discovery_dir))
+        force_goal_ids = [
+            str(item)
+            for item in strategy.get("objective_task_janitor_force_goal_ids", [])
+            if str(item).strip()
+        ] if isinstance(strategy.get("objective_task_janitor_force_goal_ids"), list) else []
         objective_args = Namespace(
             repo_root=self.config.repo_root,
             objective_path=objective_path,
@@ -3388,6 +3465,7 @@ class PortalImplementationSupervisor:
             discovery_output_path=discovery_output_path,
             depends_on=list(self.config.objective_scan_depends_on),
             seen_fingerprint=sorted(seen_fingerprints),
+            force_goal_id=sorted(set(force_goal_ids)),
             repeat_existing=False,
             max_findings=self.config.objective_scan_max_findings,
             ensure_tracking_document=self.config.objective_ensure_tracking_document,
@@ -3481,6 +3559,7 @@ class PortalImplementationSupervisor:
         strategy["last_objective_active_goal_count"] = int(payload.get("objective_active_goal_count") or 0)
         strategy["last_objective_completed_goal_count"] = int(payload.get("objective_completed_goal_count") or 0)
         strategy["last_objective_heap_schedule_count"] = int(payload.get("objective_heap_schedule_count") or 0)
+        strategy["last_objective_task_janitor_force_goal_ids"] = sorted(set(force_goal_ids))
         write_json(self.config.strategy_path, strategy)
 
         if (
@@ -4566,6 +4645,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Refine the objective heap and append objective-gap todos when the supervised backlog is low or drained.",
     )
     parser.add_argument(
+        "--no-objective-task-janitor",
+        dest="objective_task_janitor_enabled",
+        action="store_false",
+        help="Disable strategy reconciliation that blocks orphaned objective tasks and reopens launch-critical goals.",
+    )
+    parser.set_defaults(objective_task_janitor_enabled=True)
+    parser.add_argument("--objective-task-janitor-max-blocked-tasks", type=int, default=50)
+    parser.add_argument("--objective-task-janitor-max-deprioritized-tasks", type=int, default=50)
+    parser.add_argument("--objective-task-janitor-max-reopened-goals", type=int, default=12)
+    parser.add_argument(
         "--objective-path",
         type=Path,
         default=None,
@@ -4784,6 +4873,10 @@ def supervisor_config_from_args(
         codebase_scan_commit_outputs=args.codebase_scan_commit_outputs,
         codebase_scan_commit_subject=args.codebase_scan_commit_subject,
         objective_refill_enabled=args.objective_refill_scan and not reconciliation_only,
+        objective_task_janitor_enabled=args.objective_task_janitor_enabled and not reconciliation_only,
+        objective_task_janitor_max_blocked_tasks=args.objective_task_janitor_max_blocked_tasks,
+        objective_task_janitor_max_deprioritized_tasks=args.objective_task_janitor_max_deprioritized_tasks,
+        objective_task_janitor_max_reopened_goals=args.objective_task_janitor_max_reopened_goals,
         objective_path=args.objective_path,
         objective_graph_path=args.objective_graph_path,
         objective_bundle_dir=args.objective_bundle_dir,

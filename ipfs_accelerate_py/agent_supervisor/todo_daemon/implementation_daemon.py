@@ -59,6 +59,14 @@ DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
+TRANSIENT_MERGE_LOCK_REASONS = frozenset(
+    {
+        "lock_exists",
+        "lock_unavailable",
+        "lock_cleanup_failed",
+    }
+)
+TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 SHARED_WORKTREE_PATHS = ("wallet_interface/ui/node_modules",)
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "260")
@@ -823,6 +831,8 @@ class PortalImplementationDaemon:
         merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
         unresolved_merge_failure_task_ids = set(unresolved_merge_failures)
+        transient_merge_deferrals = self._transient_merge_deferrals_by_task(skip_task_ids=merge_skip_task_ids)
+        transient_merge_deferral_task_ids = set(transient_merge_deferrals)
         recent_outcomes = self._latest_implementation_finished_by_task()
         successfully_merged_task_ids = self._successfully_merged_task_ids()
 
@@ -838,13 +848,19 @@ class PortalImplementationDaemon:
             if self._has_unresolved_merge_failure(task, previous):
                 unresolved_merge_failure_task_ids.add(task.task_id)
             unresolved_merge_failure = task.task_id in unresolved_merge_failure_task_ids
+            transient_merge_deferral = task.task_id in transient_merge_deferral_task_ids
             artifact_complete = (
                 task.completion == "artifact"
                 and bool(task.outputs)
                 and len(existing_outputs) == len(task.outputs)
                 and not unresolved_merge_failure
+                and not transient_merge_deferral
             )
-            merged_complete = task.task_id in successfully_merged_task_ids and not unresolved_merge_failure
+            merged_complete = (
+                task.task_id in successfully_merged_task_ids
+                and not unresolved_merge_failure
+                and not transient_merge_deferral
+            )
             if task.status == "completed" or artifact_complete or merged_complete:
                 completed_set.add(task.task_id)
 
@@ -856,6 +872,9 @@ class PortalImplementationDaemon:
                 continue
             if task.task_id in strategy.get("blocked_tasks", []) or task.status == "blocked":
                 resolved_statuses[task.task_id] = "blocked"
+                continue
+            if task.task_id in transient_merge_deferral_task_ids:
+                resolved_statuses[task.task_id] = "waiting"
                 continue
             if task.task_id in unresolved_merge_failure_task_ids:
                 resolved_statuses[task.task_id] = "blocked"
@@ -4504,10 +4523,7 @@ class PortalImplementationDaemon:
         target_branch = self._main_branch_name()
         candidates = self._failed_merge_candidates(skip_task_ids=skip_task_ids)
         max_merges = int(self.merge_reconciliation_max_merges)
-        if max_merges > 0:
-            selected_candidates = candidates[:max_merges]
-        else:
-            selected_candidates = []
+        selected_candidates = self._select_failed_merge_candidates_for_reconciliation(candidates, max_merges)
         for event in selected_candidates:
             task_id = str(event.get("task_id") or "")
             attempt = int(event.get("attempt") or 0)
@@ -4520,6 +4536,7 @@ class PortalImplementationDaemon:
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
                 cleanup_result = self._cleanup_merged_worktree(worktree_path, branch) if branch else {}
                 cleanup_cleaned = bool(cleanup_result.get("cleaned", False)) if cleanup_result else True
+                todo_update_result = self._mark_task_completed_in_todo(task_id) if cleanup_cleaned else {}
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
@@ -4529,6 +4546,8 @@ class PortalImplementationDaemon:
                     "reason": "implementation_commit_already_merged" if cleanup_cleaned else "cleanup_retry_failed",
                     "cleanup_result": cleanup_result,
                 }
+                if todo_update_result:
+                    result["todo_update_result"] = todo_update_result
                 self._record_event("merge_reconciled", result)
                 results.append(result)
                 continue
@@ -4614,6 +4633,7 @@ class PortalImplementationDaemon:
             reason = "merge_retried" if resolved else "merge_retry_failed"
             if merge_result.get("merged") and not cleanup_cleaned:
                 reason = "cleanup_retry_failed"
+            todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
             result = {
                 "task_id": task_id,
                 "attempt": attempt,
@@ -4626,6 +4646,8 @@ class PortalImplementationDaemon:
                 "merge_result": merge_result,
                 "cleanup_result": cleanup_result,
             }
+            if todo_update_result:
+                result["todo_update_result"] = todo_update_result
             self._record_event("merge_reconciled", result)
             results.append(result)
         if max_merges > 0 and len(candidates) > len(selected_candidates):
@@ -4639,6 +4661,32 @@ class PortalImplementationDaemon:
                 },
             )
         return results
+
+    @classmethod
+    def _select_failed_merge_candidates_for_reconciliation(
+        cls,
+        candidates: Sequence[dict[str, Any]],
+        max_merges: int,
+    ) -> list[dict[str, Any]]:
+        transient = [
+            event
+            for event in candidates
+            if cls._event_has_transient_merge_lock_deferral(event)
+        ]
+        if max_merges <= 0:
+            return transient[:TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED]
+
+        selected: list[dict[str, Any]] = []
+        seen: set[int] = set()
+        for event in (*transient, *candidates):
+            identity = id(event)
+            if identity in seen:
+                continue
+            selected.append(event)
+            seen.add(identity)
+            if len(selected) >= max_merges:
+                break
+        return selected
 
     def _failed_merge_candidates(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
@@ -4700,17 +4748,43 @@ class PortalImplementationDaemon:
             return False
         if merge_result.get("attempted"):
             return True
-        return str(merge_result.get("reason") or "") in {
-            "lock_exists",
-            "lock_unavailable",
-            "lock_cleanup_failed",
-        }
+        return str(merge_result.get("reason") or "") in TRANSIENT_MERGE_LOCK_REASONS
+
+    @staticmethod
+    def _merge_result_is_transient_lock_deferral(merge_result: dict[str, Any]) -> bool:
+        if not isinstance(merge_result, dict) or merge_result.get("merged"):
+            return False
+        if merge_result.get("attempted"):
+            return False
+        return str(merge_result.get("reason") or "") in TRANSIENT_MERGE_LOCK_REASONS
+
+    @classmethod
+    def _event_has_transient_merge_lock_deferral(cls, event: dict[str, Any]) -> bool:
+        merge_result = event.get("merge_result") or {}
+        return cls._merge_result_is_transient_lock_deferral(merge_result)
+
+    def _transient_merge_deferrals_by_task(self, *, skip_task_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:
+        skip_task_ids = skip_task_ids or set()
+        failures: dict[str, dict[str, Any]] = {}
+        target_branch = self._main_branch_name()
+        for event in self._failed_merge_candidates(skip_task_ids=skip_task_ids):
+            if not self._event_has_transient_merge_lock_deferral(event):
+                continue
+            task_id = str(event.get("task_id") or "")
+            if task_id in skip_task_ids:
+                continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if task_id and implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
+                failures[task_id] = event
+        return failures
 
     def _unresolved_merge_failures_by_task(self, *, skip_task_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
         failures: dict[str, dict[str, Any]] = {}
         target_branch = self._main_branch_name()
         for event in self._failed_merge_candidates(skip_task_ids=skip_task_ids):
+            if self._event_has_transient_merge_lock_deferral(event):
+                continue
             task_id = str(event.get("task_id") or "")
             if task_id in skip_task_ids:
                 continue
