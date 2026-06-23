@@ -537,6 +537,19 @@ class PortalImplementationSupervisor:
         self.ensure_event_log_file()
         self.repair_main_checkout_merge_state()
         self.ensure_managed_daemon_pid_file()
+        try:
+            preflight = self.run_once()
+        except Exception as exc:
+            self._record_event(
+                "supervisor_preflight_maintenance_failed",
+                {
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
+            raise
+        self._record_event("supervisor_preflight_maintenance_pass", preflight)
+        self._last_supervisor_maintenance_at = time.monotonic()
         while True:
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
