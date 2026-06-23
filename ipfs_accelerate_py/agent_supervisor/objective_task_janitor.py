@@ -237,6 +237,7 @@ def reconcile_objective_task_strategy(
     updated_strategy["objective_task_janitor_reopen_goal_ids"] = reopened_goal_ids
     updated_strategy["objective_task_janitor_force_goal_ids"] = reopened_goal_ids
     updated_strategy["objective_task_janitor_critical_goal_ids"] = sorted(critical_goal_ids)
+    updated_strategy["objective_task_janitor_mission_terms"] = list(mission_terms)
     updated_strategy["objective_task_janitor_active_goal_ids"] = sorted(active_goal_ids)
     updated_strategy["objective_task_janitor_heap_schedule_goal_ids"] = scheduled_goal_ids
     updated_strategy["objective_task_janitor_last_run_at"] = now
@@ -255,6 +256,7 @@ def reconcile_objective_task_strategy(
         "heap_goal_retirement_receipt",
         "objective_task_janitor_reopen_goal_ids",
         "objective_task_janitor_force_goal_ids",
+        "objective_task_janitor_mission_terms",
     )
     changed = any(strategy.get(key) != updated_strategy.get(key) for key in comparable_keys)
     return {

@@ -32,6 +32,7 @@ from .implementation_daemon import (
     PortalTask,
     PortalTaskState,
     load_json_dict,
+    normalize_focus_tracks,
     normalize_relative_path_list,
     parse_timestamp,
     process_command_line,
@@ -153,6 +154,7 @@ class PortalSupervisorConfig:
     objective_task_janitor_max_blocked_tasks: int = 50
     objective_task_janitor_max_deprioritized_tasks: int = 50
     objective_task_janitor_max_reopened_goals: int = 12
+    objective_task_janitor_mission_terms: tuple[str, ...] = field(default_factory=tuple)
     objective_path: Path | None = None
     objective_graph_path: Path | None = None
     objective_bundle_dir: Path | None = None
@@ -3078,11 +3080,7 @@ class PortalImplementationSupervisor:
                     if isinstance(strategy.get("deprioritized_tasks"), list)
                     else []
                 )
-                normalized_focus = (
-                    [str(item).strip().lower() for item in strategy.get("focus_tracks", []) if str(item).strip()]
-                    if isinstance(strategy.get("focus_tracks"), list)
-                    else DEFAULT_TRACKS
-                )
+                normalized_focus = normalize_focus_tracks(strategy.get("focus_tracks", DEFAULT_TRACKS))
                 if (
                     normalized_blocked != strategy.get("blocked_tasks")
                     or normalized_deprioritized != strategy.get("deprioritized_tasks")
@@ -3335,6 +3333,7 @@ class PortalImplementationSupervisor:
         from ipfs_accelerate_py.agent_supervisor.objective_daemon import default_objective_path
         from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
         from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
+            DEFAULT_MISSION_TERMS,
             reconcile_objective_task_strategy,
         )
         from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_task_file
@@ -3352,11 +3351,15 @@ class PortalImplementationSupervisor:
             return result
 
         strategy = load_strategy(self.config.strategy_path)
+        mission_terms = tuple(
+            dict.fromkeys([*DEFAULT_MISSION_TERMS, *self.config.objective_task_janitor_mission_terms])
+        )
         result = reconcile_objective_task_strategy(
             goals=goals,
             tasks=tasks,
             strategy=strategy,
             now=utc_now(),
+            mission_terms=mission_terms,
             max_blocked_tasks=self.config.objective_task_janitor_max_blocked_tasks,
             max_deprioritized_tasks=self.config.objective_task_janitor_max_deprioritized_tasks,
             max_reopened_goals=self.config.objective_task_janitor_max_reopened_goals,
@@ -3368,6 +3371,7 @@ class PortalImplementationSupervisor:
             "blocked_task_ids": list(result.get("blocked_task_ids") or []),
             "deprioritized_task_ids": list(result.get("deprioritized_task_ids") or []),
             "reopened_goal_ids": list(result.get("reopened_goal_ids") or []),
+            "mission_terms": list(mission_terms),
             "critical_goal_count": len(result.get("critical_goal_ids") or []),
             "active_goal_count": len(result.get("active_goal_ids") or []),
             "scheduled_goal_count": len(result.get("scheduled_goal_ids") or []),
@@ -3414,6 +3418,11 @@ class PortalImplementationSupervisor:
         todo_text = self.config.todo_path.read_text(encoding="utf-8")
         strategy = load_strategy(self.config.strategy_path)
         task_prefix = task_id_prefix(self.config.task_prefix)
+        force_goal_ids = [
+            str(item)
+            for item in strategy.get("objective_task_janitor_force_goal_ids", [])
+            if str(item).strip()
+        ] if isinstance(strategy.get("objective_task_janitor_force_goal_ids"), list) else []
         should_scan, mode, current_open, task_count = should_refill_backlog(
             todo_text=todo_text,
             state_path=self.config.state_path,
@@ -3423,6 +3432,7 @@ class PortalImplementationSupervisor:
             task_prefix=task_prefix,
             min_open_tasks=self.config.objective_scan_min_open_tasks,
             cooldown_seconds=self.config.objective_scan_cooldown_seconds,
+            force=bool(force_goal_ids),
         )
         if not should_scan:
             return {}
@@ -3445,11 +3455,6 @@ class PortalImplementationSupervisor:
             if str(item).strip()
         }
         seen_fingerprints.update(discovery_fingerprints(discovery_dir))
-        force_goal_ids = [
-            str(item)
-            for item in strategy.get("objective_task_janitor_force_goal_ids", [])
-            if str(item).strip()
-        ] if isinstance(strategy.get("objective_task_janitor_force_goal_ids"), list) else []
         objective_args = Namespace(
             repo_root=self.config.repo_root,
             objective_path=objective_path,
@@ -3809,13 +3814,14 @@ class PortalImplementationSupervisor:
     def rewrite_strategy(self, state: PortalTaskState, reason: str) -> dict[str, Any]:
         strategy = self._load_strategy()
         active_track = state.active_task_track.strip().lower()
-        focus_tracks = [str(item).lower() for item in strategy.get("focus_tracks", DEFAULT_TRACKS)]
+        focus_tracks = normalize_focus_tracks(strategy.get("focus_tracks", DEFAULT_TRACKS))
         generation = int(strategy.get("generation", 0)) + 1
         deprioritized_tasks = list(dict.fromkeys([*strategy.get("deprioritized_tasks", []), state.active_task_id]))
         blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
 
         if active_track and active_track in focus_tracks:
             focus_tracks = [track for track in focus_tracks if track != active_track] + [active_track]
+            focus_tracks = normalize_focus_tracks(focus_tracks)
 
         strategy.update(
             {
@@ -4655,6 +4661,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--objective-task-janitor-max-deprioritized-tasks", type=int, default=50)
     parser.add_argument("--objective-task-janitor-max-reopened-goals", type=int, default=12)
     parser.add_argument(
+        "--objective-mission-term",
+        action="append",
+        default=[],
+        help=(
+            "Mission term that marks active goals/tasks as launch-critical for supervisor steering. "
+            "May be repeated or comma-separated."
+        ),
+    )
+    parser.add_argument(
         "--objective-path",
         type=Path,
         default=None,
@@ -4877,6 +4892,7 @@ def supervisor_config_from_args(
         objective_task_janitor_max_blocked_tasks=args.objective_task_janitor_max_blocked_tasks,
         objective_task_janitor_max_deprioritized_tasks=args.objective_task_janitor_max_deprioritized_tasks,
         objective_task_janitor_max_reopened_goals=args.objective_task_janitor_max_reopened_goals,
+        objective_task_janitor_mission_terms=split_csv_values(args.objective_mission_term),
         objective_path=args.objective_path,
         objective_graph_path=args.objective_graph_path,
         objective_bundle_dir=args.objective_bundle_dir,
