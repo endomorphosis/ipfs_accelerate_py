@@ -739,6 +739,7 @@ class ObjectiveRefillDefaults:
     objective_surplus_findings_per_goal: int | None = None
     objective_surplus_min_terms_per_todo: int | None = None
     objective_interoperability_focus: Sequence[str] = ()
+    objective_interoperability_component_paths: Sequence[str] = ()
     objective_max_interoperability_goals: int | None = None
     refill_scan: bool = True
     seed_interoperability_goals: bool = False
@@ -781,6 +782,7 @@ def build_objective_refill_defaults_from_paths(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_interoperability_focus: Sequence[str] = (),
+    objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
     refill_scan: bool = True,
     seed_interoperability_goals: bool = False,
@@ -822,6 +824,7 @@ def build_objective_refill_defaults_from_paths(
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
         objective_interoperability_focus=objective_interoperability_focus,
+        objective_interoperability_component_paths=objective_interoperability_component_paths,
         objective_max_interoperability_goals=objective_max_interoperability_goals,
         refill_scan=refill_scan,
         seed_interoperability_goals=seed_interoperability_goals,
@@ -905,6 +908,7 @@ def build_objective_refill_defaults_factory(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_interoperability_focus: Sequence[str] = (),
+    objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
     refill_scan: bool = True,
     seed_interoperability_goals: bool = False,
@@ -938,6 +942,7 @@ def build_objective_refill_defaults_factory(
             objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
             objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
             objective_interoperability_focus=objective_interoperability_focus,
+            objective_interoperability_component_paths=objective_interoperability_component_paths,
             objective_max_interoperability_goals=objective_max_interoperability_goals,
             refill_scan=refill_scan,
             seed_interoperability_goals=seed_interoperability_goals,
@@ -997,6 +1002,7 @@ def build_namespace_objective_refill_defaults_factory(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_interoperability_focus: Sequence[str] = (),
+    objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
     refill_scan: bool = True,
     seed_interoperability_goals: bool = False,
@@ -1032,6 +1038,7 @@ def build_namespace_objective_refill_defaults_factory(
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
         objective_interoperability_focus=objective_interoperability_focus,
+        objective_interoperability_component_paths=objective_interoperability_component_paths,
         objective_max_interoperability_goals=objective_max_interoperability_goals,
         refill_scan=refill_scan,
         seed_interoperability_goals=seed_interoperability_goals,
@@ -1127,6 +1134,12 @@ def apply_portal_implementation_supervisor_defaults(
                 args,
                 "--objective-interoperability-focus",
                 objective.objective_interoperability_focus,
+            )
+        if objective.objective_interoperability_component_paths:
+            args = with_repeated_default(
+                args,
+                "--objective-interoperability-component-path",
+                objective.objective_interoperability_component_paths,
             )
         args = _with_optional_default(
             args,

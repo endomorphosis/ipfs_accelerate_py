@@ -2159,6 +2159,7 @@ def test_build_refill_defaults_from_paths(tmp_path):
         objective_surplus_findings_per_goal=7,
         objective_surplus_min_terms_per_todo=5,
         objective_interoperability_focus=("hallucinate_app",),
+        objective_interoperability_component_paths=("hallucinate_app", "swissknife"),
         seed_interoperability_goals=True,
     )
     codebase = build_codebase_refill_defaults_from_paths(
@@ -2186,6 +2187,7 @@ def test_build_refill_defaults_from_paths(tmp_path):
         objective_surplus_findings_per_goal=7,
         objective_surplus_min_terms_per_todo=5,
         objective_interoperability_focus=("hallucinate_app",),
+        objective_interoperability_component_paths=("hallucinate_app", "swissknife"),
         seed_interoperability_goals=True,
     )
     assert codebase == CodebaseRefillDefaults(
@@ -2212,6 +2214,7 @@ def test_build_namespace_refill_defaults_factories(tmp_path):
         objective_surplus_findings_per_goal=6,
         objective_surplus_min_terms_per_todo=4,
         objective_interoperability_focus=("hallucinate_app",),
+        objective_interoperability_component_paths=("hallucinate_app", "swissknife"),
         seed_interoperability_goals=True,
     )
     codebase_factory = build_namespace_codebase_refill_defaults_factory(
@@ -2238,6 +2241,7 @@ def test_build_namespace_refill_defaults_factories(tmp_path):
         objective_surplus_findings_per_goal=6,
         objective_surplus_min_terms_per_todo=4,
         objective_interoperability_focus=("hallucinate_app",),
+        objective_interoperability_component_paths=("hallucinate_app", "swissknife"),
         seed_interoperability_goals=True,
     )
     assert codebase_factory({}) == CodebaseRefillDefaults(
