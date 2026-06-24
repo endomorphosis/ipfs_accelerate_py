@@ -265,6 +265,33 @@ def task_statuses_from_todo_text(todo_text: str, *, task_prefix: str = DEFAULT_T
     return statuses
 
 
+def state_statuses_match_todo_statuses(
+    todo_statuses: Mapping[str, str],
+    state_statuses: Mapping[str, str],
+) -> bool:
+    """Return whether daemon state still matches the markdown board statuses."""
+
+    if set(todo_statuses) != set(state_statuses):
+        return False
+    compatible_state_statuses = {
+        "blocked": {"blocked"},
+        "completed": {"completed"},
+        "in_progress": {"in_progress"},
+        "ready": {"ready", "todo"},
+        "todo": {"ready", "todo"},
+        "waiting": {"waiting"},
+    }
+    for task_id, todo_status in todo_statuses.items():
+        normalized_todo = str(todo_status or "").lower()
+        normalized_state = str(state_statuses.get(task_id) or "").lower()
+        if normalized_todo not in {"blocked", "completed"} and normalized_state in {"blocked", "completed"}:
+            continue
+        allowed = compatible_state_statuses.get(normalized_todo, {normalized_todo})
+        if normalized_state not in allowed:
+            return False
+    return True
+
+
 def mark_task_statuses_in_todo_text(
     todo_text: str,
     task_ids: Sequence[str],
@@ -374,9 +401,10 @@ def effective_open_task_count(
     statuses = payload.get("task_statuses")
     if not isinstance(statuses, dict):
         return open_task_count(todo_text, task_prefix=task_prefix)
-    task_ids = set(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
+    todo_statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
+    task_ids = set(todo_statuses)
     normalized = {str(task_id): str(status).lower() for task_id, status in statuses.items()}
-    if set(normalized) != task_ids:
+    if set(normalized) != task_ids or not state_statuses_match_todo_statuses(todo_statuses, normalized):
         return open_task_count(todo_text, task_prefix=task_prefix)
     try:
         state_task_count = int(payload.get("task_count") or 0)
@@ -399,9 +427,10 @@ def refill_state_counts(
     statuses = payload.get("task_statuses")
     if not isinstance(statuses, dict):
         return {}
-    task_ids = set(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
+    todo_statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
+    task_ids = set(todo_statuses)
     normalized = {str(task_id): str(status).lower() for task_id, status in statuses.items()}
-    if set(normalized) != task_ids:
+    if set(normalized) != task_ids or not state_statuses_match_todo_statuses(todo_statuses, normalized):
         return {}
     try:
         state_task_count = int(payload.get("task_count") or 0)

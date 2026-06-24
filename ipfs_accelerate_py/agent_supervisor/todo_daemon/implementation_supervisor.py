@@ -3357,6 +3357,7 @@ class PortalImplementationSupervisor:
 
         from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
             load_strategy,
+            mark_task_statuses_in_todo_text,
             task_id_prefix,
             write_json,
         )
@@ -3396,10 +3397,17 @@ class PortalImplementationSupervisor:
         )
         if result.get("changed"):
             write_json(self.config.strategy_path, result["strategy"])
+        materialized = self._materialize_objective_task_janitor_retirements(
+            result,
+            mark_task_statuses_in_todo_text=mark_task_statuses_in_todo_text,
+            task_id_prefix=task_id_prefix,
+        )
         event_payload = {
             "changed": bool(result.get("changed")),
             "blocked_task_ids": list(result.get("blocked_task_ids") or []),
             "deprioritized_task_ids": list(result.get("deprioritized_task_ids") or []),
+            "materialized_blocked_task_ids": list(materialized.get("blocked_task_ids") or []),
+            "materialized_reason_task_ids": list(materialized.get("reason_task_ids") or []),
             "reopened_goal_ids": list(result.get("reopened_goal_ids") or []),
             "mission_terms": list(mission_terms),
             "critical_goal_count": len(result.get("critical_goal_ids") or []),
@@ -3408,7 +3416,123 @@ class PortalImplementationSupervisor:
         }
         self._record_event("objective_task_janitor", event_payload)
         result.pop("strategy", None)
+        result["materialized"] = materialized
         return result
+
+    def _materialize_objective_task_janitor_retirements(
+        self,
+        result: Mapping[str, Any],
+        *,
+        mark_task_statuses_in_todo_text,
+        task_id_prefix,
+    ) -> dict[str, Any]:
+        """Persist janitor retirements into the markdown board so stale work stays out."""
+
+        receipts = result.get("receipts") or []
+        if not isinstance(receipts, list) or not receipts:
+            return {"changed": False, "reason": "no_receipts"}
+
+        reasons_by_task_id: dict[str, str] = {}
+        for receipt in receipts:
+            if not isinstance(receipt, Mapping):
+                continue
+            task_id = str(receipt.get("task_id") or "").strip()
+            action = str(receipt.get("action") or "").strip()
+            retired_reason = str(receipt.get("retired_task_reason") or "").strip()
+            if not task_id:
+                continue
+            if action == "block":
+                reasons_by_task_id[task_id] = (
+                    "Retired by objective-task janitor during launch steering"
+                    f" because {retired_reason or 'the referenced goal is no longer active'}."
+                )
+                continue
+            if action == "deprioritize" and retired_reason.startswith("off_mission_"):
+                reasons_by_task_id[task_id] = (
+                    "Deferred by objective-task janitor during launch steering"
+                    f" because {retired_reason}; this keeps lanes focused on Swissknife,"
+                    " Hallucinate App, MCP++, Meta glasses, and Playwright launch readiness."
+                )
+
+        if not reasons_by_task_id:
+            return {"changed": False, "reason": "no_materializable_receipts"}
+        try:
+            todo_text = self.config.todo_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return {"changed": False, "reason": "todo_read_failed", "error": str(exc)}
+
+        task_prefix = task_id_prefix(self.config.task_prefix)
+        updated_text, blocked_task_ids = mark_task_statuses_in_todo_text(
+            todo_text,
+            list(reasons_by_task_id),
+            task_prefix=task_prefix,
+            status="blocked",
+        )
+        updated_text, reason_task_ids = self._ensure_blocked_reason_lines(
+            updated_text,
+            reasons_by_task_id,
+            task_prefix=task_prefix,
+        )
+        if not blocked_task_ids and not reason_task_ids:
+            return {"changed": False, "reason": "todo_already_materialized"}
+        write_text_atomic(self.config.todo_path, updated_text)
+        return {
+            "changed": True,
+            "blocked_task_ids": blocked_task_ids,
+            "reason_task_ids": reason_task_ids,
+        }
+
+    @staticmethod
+    def _ensure_blocked_reason_lines(
+        todo_text: str,
+        reasons_by_task_id: Mapping[str, str],
+        *,
+        task_prefix: str,
+    ) -> tuple[str, list[str]]:
+        """Add a blocked reason line to each retired task block when missing."""
+
+        target_reasons = {
+            str(task_id).strip(): str(reason).strip()
+            for task_id, reason in reasons_by_task_id.items()
+            if str(task_id).strip() and str(reason).strip()
+        }
+        if not target_reasons:
+            return todo_text, []
+
+        lines = todo_text.splitlines(keepends=True)
+        output: list[str] = []
+        current_task_id = ""
+        status_seen = False
+        reason_seen = False
+        inserted: list[str] = []
+
+        def flush_reason() -> None:
+            nonlocal status_seen, reason_seen
+            if current_task_id in target_reasons and status_seen and not reason_seen:
+                output.append(f"- Blocked reason: {target_reasons[current_task_id]}\n")
+                inserted.append(current_task_id)
+                reason_seen = True
+
+        for line in lines:
+            if line.startswith(f"## {task_prefix}"):
+                flush_reason()
+                parts = line[3:].strip().split(" ", 1)
+                current_task_id = parts[0] if parts else ""
+                status_seen = False
+                reason_seen = False
+                output.append(line)
+                continue
+            if current_task_id in target_reasons:
+                if line.startswith("- Status:"):
+                    status_seen = True
+                elif line.startswith("- Blocked reason:"):
+                    reason_seen = True
+            output.append(line)
+        flush_reason()
+
+        if not inserted:
+            return todo_text, []
+        return "".join(output), inserted
 
     def refill_objective_backlog(self) -> dict[str, Any]:
         """Refine the objective heap and feed todos when the backlog is low or drained."""
