@@ -463,6 +463,30 @@ def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):
     assert Path(findings[0]["discovery_path"]).exists()
 
 
+def test_backlog_refinery_annotation_scan_ignores_literal_status_strings(tmp_path):
+    repo = _seed_repo(tmp_path)
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        """def status_values():
+    literal = "todo"
+    fixture = _task_status_line("todo")
+    path = "docs/example.todo.md"
+    # TODO: real source follow-up
+    return literal, fixture, path
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed scan target")
+
+    findings = scan_codebase_findings(repo, max_findings=5)
+
+    assert [(finding.root_relative_path, finding.line_number) for finding in findings] == [
+        ("src/runtime.py", 5)
+    ]
+
+
 def test_backlog_refinery_codebase_scan_skips_vanished_git_roots(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor import backlog_refinery
 

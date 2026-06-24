@@ -120,6 +120,16 @@ CODEBASE_SCAN_SKIP_PREFIXES = (
     "external/ipfs_kit/archive/",
     "external/ipfs_kit/backup/",
 )
+ANNOTATION_FOLLOWUP_RE = re.compile(
+    r"""
+    (?:
+        ^\s*(?:[-*]\s*)?(?P<line_marker>todo|fixme|hack|xxx)\b(?:\s*[:(-]|\s|$)
+        |
+        (?P<comment_prefix>\#|//|/\*|<!--|--)\s*(?P<comment_marker>todo|fixme|hack|xxx)\b
+    )
+    """,
+    flags=re.IGNORECASE | re.VERBOSE,
+)
 
 
 @dataclass(frozen=True)
@@ -1341,6 +1351,38 @@ def annotation_scan_text(line: str) -> str:
     return re.sub(r"(?i)[A-Za-z0-9_./-]*\.todo\.md\b", "", line)
 
 
+def _position_in_simple_quoted_string(text: str, index: int) -> bool:
+    quote = ""
+    escaped = False
+    for char in text[:index]:
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            continue
+        if char in {"'", '"'}:
+            quote = char
+    return bool(quote)
+
+
+def annotation_followup_marker(line: str) -> str:
+    """Return the TODO-like marker when the line looks like a real annotation."""
+
+    text = annotation_scan_text(line)
+    for match in ANNOTATION_FOLLOWUP_RE.finditer(text):
+        marker = str(match.group("line_marker") or match.group("comment_marker") or "").lower()
+        start = match.start("line_marker") if match.group("line_marker") else match.start("comment_prefix")
+        if _position_in_simple_quoted_string(text, start):
+            continue
+        return marker
+    return ""
+
+
 def scan_findings_in_file(path: Path, *, repo_root: Path) -> list[CodebaseFinding]:
     root_relative = root_relative_path(repo_root, path)
     try:
@@ -1361,10 +1403,10 @@ def scan_findings_in_file(path: Path, *, repo_root: Path) -> list[CodebaseFindin
         kind = ""
         priority = "P2"
         summary = ""
-        annotation_text = annotation_scan_text(stripped)
-        if re.search(r"\b(todo|fixme|hack|xxx)\b", annotation_text, flags=re.IGNORECASE):
+        annotation_marker = annotation_followup_marker(stripped)
+        if annotation_marker:
             kind = "annotated_followup"
-            priority = "P2" if re.search(r"\b(fixme|hack|xxx)\b", annotation_text, flags=re.IGNORECASE) else "P3"
+            priority = "P2" if annotation_marker in {"fixme", "hack", "xxx"} else "P3"
             summary = f"Resolve code annotation in {root_relative}:{index}"
         elif re.search(r"\bexcept\s*:\s*$", stripped) or re.search(r"\bexcept\s+Exception\b", stripped):
             window = "\n".join(lines[index : min(len(lines), index + 3)]).lower()
