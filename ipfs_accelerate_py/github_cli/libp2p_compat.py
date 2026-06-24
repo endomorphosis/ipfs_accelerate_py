@@ -15,6 +15,18 @@ import importlib
 
 logger = logging.getLogger(__name__)
 
+_OPTIONAL_LIBP2P_ERROR_MARKERS = (
+    "runtime version cannot be older than the linked gencode version",
+    "detected incompatible protobuf gencode/runtime versions",
+    "no module named",
+    "cannot import name",
+)
+
+
+def _is_optional_libp2p_runtime_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(marker in message for marker in _OPTIONAL_LIBP2P_ERROR_MARKERS)
+
 
 def patch_libp2p_compatibility():
     """
@@ -287,7 +299,7 @@ def ensure_libp2p_compatible():
         # Apply compatibility patches
         if not patch_libp2p_compatibility():
             logger.warning("Could not apply libp2p compatibility patches")
-            logger.info("To enable P2P features, install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main' pymultihash>=0.8.2")
+            logger.info("To enable P2P features, install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main' pymultihash>=0.8.2")
             return False
         
         # Try to import libp2p to verify it works
@@ -297,10 +309,13 @@ def ensure_libp2p_compatible():
             return True
         except ImportError as e:
             logger.warning(f"libp2p package not installed: {e}")
-            logger.info("To enable P2P features, install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main' pymultihash>=0.8.2")
+            logger.info("To enable P2P features, install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main' pymultihash>=0.8.2")
             return False
         
     except Exception as e:
-        logger.error(f"Error ensuring libp2p compatibility: {e}")
-        logger.info("To enable P2P features, install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main' pymultihash>=0.8.2")
+        if _is_optional_libp2p_runtime_error(e):
+            logger.warning(f"libp2p runtime unavailable, disabling P2P features: {e}")
+        else:
+            logger.error(f"Error ensuring libp2p compatibility: {e}")
+        logger.info("To enable P2P features, install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main' pymultihash>=0.8.2")
         return False

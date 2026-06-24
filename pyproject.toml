@@ -147,12 +147,12 @@ mcp = [
   "PyGithub>=2.3.0",
 ]
 mcp-p2p = [
-  "libp2p @ git+https://github.com/libp2p/py-libp2p@main",
+  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
 ]
 libp2p = [
-  "libp2p @ git+https://github.com/libp2p/py-libp2p@main",
+  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
 ]
