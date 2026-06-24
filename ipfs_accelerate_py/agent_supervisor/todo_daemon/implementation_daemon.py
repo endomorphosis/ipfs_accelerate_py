@@ -3611,12 +3611,94 @@ class PortalImplementationDaemon:
         if self._run_git(["status", "--porcelain"], cwd=source).stdout.strip():
             return ""
         head = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
+        ours = stages.get("2", "")
         theirs = stages.get("3", "")
         if theirs and self._git_ref_is_ancestor_in_repo(source, theirs, head):
             return head
         if task.task_id and self._submodule_head_has_task_commit(source, task.task_id):
             return head
+        if theirs:
+            merged_head = self._merge_submodule_gitlink_sibling_head(
+                source=source,
+                relative=relative,
+                current_head=head,
+                ours=ours,
+                theirs=theirs,
+                task=task,
+            )
+            if merged_head:
+                return merged_head
         return ""
+
+    def _merge_submodule_gitlink_sibling_head(
+        self,
+        *,
+        source: Path,
+        relative: str,
+        current_head: str,
+        ours: str,
+        theirs: str,
+        task: PortalTask,
+    ) -> str:
+        if not ours or not current_head:
+            return ""
+        if current_head != ours and not self._git_ref_is_ancestor_in_repo(source, ours, current_head):
+            return ""
+        if self._git_merge_head_in_repo(source):
+            return ""
+        if self._run_git(["status", "--porcelain"], cwd=source).stdout.strip():
+            return ""
+        if self._git_ref_is_ancestor_in_repo(source, current_head, theirs):
+            merge_command = ["git", "merge", "--ff-only", theirs]
+        else:
+            merge_command = ["git", "merge", "--no-ff", "--no-edit", theirs]
+        merge = subprocess.run(
+            merge_command,
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        event: dict[str, Any] = {
+            "path": relative,
+            "task_id": task.task_id,
+            "command": merge_command,
+            "returncode": merge.returncode,
+            "stdout": merge.stdout[-4000:],
+            "stderr": merge.stderr[-4000:],
+            "ours": ours,
+            "theirs": theirs,
+            "current_head": current_head,
+        }
+        if merge.returncode != 0:
+            abort = subprocess.run(
+                ["git", "merge", "--abort"],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            event.update(
+                {
+                    "merged": False,
+                    "reason": "submodule_sibling_merge_failed",
+                    "abort_returncode": abort.returncode,
+                    "abort_stdout": abort.stdout[-4000:],
+                    "abort_stderr": abort.stderr[-4000:],
+                }
+            )
+            self._record_event("submodule_gitlink_sibling_merge", event)
+            return ""
+        merged_head = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
+        event.update(
+            {
+                "merged": True,
+                "reason": "merged_sibling_gitlink_head",
+                "merged_head": merged_head,
+            }
+        )
+        self._record_event("submodule_gitlink_sibling_merge", event)
+        return merged_head
 
     def _submodule_head_has_task_commit(self, source: Path, task_id: str) -> bool:
         result = subprocess.run(
