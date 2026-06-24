@@ -123,9 +123,9 @@ CODEBASE_SCAN_SKIP_PREFIXES = (
 ANNOTATION_FOLLOWUP_RE = re.compile(
     r"""
     (?:
-        ^\s*(?:[-*]\s*)?(?P<line_marker>todo|fixme|hack|xxx)\b(?:\s*[:(-]|\s|$)
+        ^\s*(?:[-*]\s*)?(?P<line_marker>todo|fixme|hack|xxx)\b\s*(?::|\(|-)
         |
-        (?P<comment_prefix>\#|//|/\*|<!--|--)\s*(?P<comment_marker>todo|fixme|hack|xxx)\b
+        (?P<comment_prefix>\#|//|/\*|<!--|--)\s*(?P<comment_marker>todo|fixme|hack|xxx)\b\s*(?::|\(|-)
     )
     """,
     flags=re.IGNORECASE | re.VERBOSE,

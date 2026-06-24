@@ -472,6 +472,7 @@ def test_backlog_refinery_annotation_scan_ignores_literal_status_strings(tmp_pat
     literal = "todo"
     fixture = _task_status_line("todo")
     path = "docs/example.todo.md"
+    markdown_status = "- todo ✅"
     # TODO: real source follow-up
     return literal, fixture, path
 """,
@@ -483,7 +484,7 @@ def test_backlog_refinery_annotation_scan_ignores_literal_status_strings(tmp_pat
     findings = scan_codebase_findings(repo, max_findings=5)
 
     assert [(finding.root_relative_path, finding.line_number) for finding in findings] == [
-        ("src/runtime.py", 5)
+        ("src/runtime.py", 6)
     ]
 
 
