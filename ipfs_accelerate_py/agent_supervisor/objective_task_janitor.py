@@ -14,20 +14,35 @@ OPEN_TASK_STATUSES = {"todo", "ready", "in_progress"}
 JANITOR_RECEIPT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.v1"
 DEFAULT_MISSION_TERMS = (
     "ai virtual desktop",
+    "bluetooth",
+    "camera",
+    "captouch",
+    "control plane",
     "desktop peer",
     "desktop offload",
     "end-to-end validation",
     "hallucinate app",
+    "headphones",
+    "ipfs",
     "launch readiness",
     "launch replay",
+    "libp2p",
+    "mcp server",
+    "mcp++",
     "meta glasses",
+    "meta wearables dat",
+    "microphone",
     "mobile phone",
+    "neural band",
     "offload",
+    "peer offload",
     "phone",
     "playwright",
     "production",
+    "swissknife applications",
     "swissknife",
     "virtual desktop",
+    "wifi",
 )
 GOAL_METADATA_KEYS = (
     "goal id",
@@ -139,6 +154,17 @@ def _is_codebase_scan_backlog_task(task: PortalTask) -> bool:
     )
 
 
+def _is_mission_critical_codebase_scan_task(
+    task: PortalTask,
+    task_text: str,
+    mission_terms: Sequence[str],
+) -> bool:
+    priority = str(task.priority or "").strip().upper()
+    if priority == "P0":
+        return True
+    return priority == "P1" and _matches_any_term(task_text, mission_terms)
+
+
 def _is_worktree_cleanup_backlog_task(task: PortalTask) -> bool:
     haystack = _task_haystack(task)
     return any(marker in haystack for marker in WORKTREE_CLEANUP_BACKLOG_MARKERS)
@@ -209,6 +235,7 @@ def reconcile_objective_task_strategy(
         goal_missing = [goal_id for goal_id in goal_ids if goal_id not in goals_by_id]
         task_text = _task_haystack(task)
         mission_aligned = task.priority == "P0" or _matches_any_term(task_text, mission_terms)
+        codebase_scan_task = _is_codebase_scan_backlog_task(task)
         if goal_known or goal_missing:
             reason = "goal_not_active"
             if goal_known and all(goals_by_id[goal_id].status == "completed" for goal_id in goal_known):
@@ -243,8 +270,8 @@ def reconcile_objective_task_strategy(
             continue
 
         if (
-            _is_codebase_scan_backlog_task(task)
-            and not mission_aligned
+            codebase_scan_task
+            and not _is_mission_critical_codebase_scan_task(task, task_text, mission_terms)
             and not _is_guardrail_repair_task(task)
         ):
             deprioritize_receipts.append(
