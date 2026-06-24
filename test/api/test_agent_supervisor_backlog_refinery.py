@@ -203,6 +203,30 @@ def test_commit_generated_dirty_outputs_repairs_stale_nested_index_lock(tmp_path
     assert "hallucinate_app" not in _git(repo, "status", "--short")
 
 
+def test_commit_generated_dirty_outputs_defers_during_merge(tmp_path):
+    repo = _seed_repo(tmp_path)
+    generated = repo / "data" / "discovery" / "generated.md"
+    generated.parent.mkdir(parents=True)
+    generated.write_text("# Generated\n", encoding="utf-8")
+    _git(repo, "add", "data/discovery/generated.md")
+    _git(repo, "commit", "-m", "seed generated")
+
+    generated.write_text("# Generated\n\nupdated\n", encoding="utf-8")
+    (_git_dir(repo) / "MERGE_HEAD").write_text(f"{_git(repo, 'rev-parse', 'HEAD')}\n", encoding="utf-8")
+
+    result = commit_generated_dirty_outputs(
+        repo_root=repo,
+        generated_prefixes=("data/discovery",),
+        subject="Agent: commit generated outputs",
+    )
+
+    assert result["committed_count"] == 0
+    assert result["selected_path_count"] == 0
+    assert any(item.get("reason") == "repo_merge_in_progress" for item in result["skipped"])
+    assert "data/discovery/generated.md" in _git(repo, "status", "--short")
+    assert _git(repo, "log", "-1", "--pretty=%s") == "seed generated"
+
+
 def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
     namespace_paths = agent_supervisor_namespace_paths(tmp_path, "agent_supervisor")
     prepared: list[str] = []

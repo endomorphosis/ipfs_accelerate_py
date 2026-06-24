@@ -676,6 +676,41 @@ def git_index_lock_path(repo: Path) -> Path | None:
     return git_dir / "index.lock"
 
 
+def git_merge_head_path(repo: Path) -> Path | None:
+    git_dir = git_dir_for_repo(repo)
+    if git_dir is None:
+        return None
+    return git_dir / "MERGE_HEAD"
+
+
+def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
+    """Return a checkout state that should defer generated-output commits."""
+
+    merge_head = git_merge_head_path(repo)
+    if merge_head is not None and merge_head.exists():
+        return {
+            "repo": str(repo),
+            "reason": "repo_merge_in_progress",
+            "merge_head_path": str(merge_head),
+        }
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+            checkout_mutation_lock_path,
+        )
+    except ImportError:
+        return None
+
+    lock_path = checkout_mutation_lock_path(repo)
+    if lock_path.exists():
+        return {
+            "repo": str(repo),
+            "reason": "checkout_mutation_lock_exists",
+            "lock_path": str(lock_path),
+        }
+    return None
+
+
 def _path_inside(child: Path, parent: Path) -> bool:
     try:
         child.resolve().relative_to(parent.resolve())
@@ -1090,6 +1125,10 @@ def commit_generated_dirty_outputs(
                     "lock_repair": lock_repair,
                 }
             )
+            continue
+        commit_blocker = generated_dirty_commit_blocker(git_root)
+        if commit_blocker is not None:
+            skipped.append(commit_blocker)
             continue
         status = git_status_porcelain(git_root)
         if not status:
