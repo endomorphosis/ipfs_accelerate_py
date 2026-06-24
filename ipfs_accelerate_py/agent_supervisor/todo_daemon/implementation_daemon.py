@@ -5060,7 +5060,11 @@ class PortalImplementationDaemon:
             tasks = parse_task_file(self.todo_path, self.task_header_prefix)
         except (OSError, UnicodeDecodeError):
             return None
-        return {task.task_id for task in tasks}
+        return {
+            task.task_id
+            for task in tasks
+            if normalize_status(task.status) not in {"blocked", "completed"}
+        }
 
     @staticmethod
     def _merge_result_needs_reconciliation(merge_result: dict[str, Any]) -> bool:
