@@ -1885,6 +1885,15 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "phase": state.active_phase or "worktree_setup",
             }
+            if not command:
+                cleanup_result = self._cleanup_failed_setup_worktree(
+                    worktree_path,
+                    branch_name,
+                    task=task,
+                    attempt=attempt,
+                    exception_result=exception_result,
+                )
+                exception_result["cleanup_result"] = cleanup_result
             self._record_event(
                 "implementation_exception",
                 {
@@ -1940,6 +1949,31 @@ class PortalImplementationDaemon:
             result["todo_update_result"] = todo_update_result
         self._record_event("implementation_finished", result)
         return result
+
+    def _cleanup_failed_setup_worktree(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        *,
+        task: PortalTask,
+        attempt: int,
+        exception_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Remove partial worktrees when setup fails before the implementation command starts."""
+
+        cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+        self._record_event(
+            "failed_setup_worktree_cleanup",
+            {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "cleanup_result": cleanup_result,
+                "exception_result": exception_result,
+            },
+        )
+        return cleanup_result
 
     @staticmethod
     def _implementation_returncode_detail(returncode: int | None) -> dict[str, Any]:
