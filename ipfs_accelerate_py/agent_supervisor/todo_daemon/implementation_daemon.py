@@ -64,6 +64,7 @@ DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
 MERGE_RECONCILIATION_MAX_AGE_ENV = "IPFS_ACCELERATE_AGENT_MERGE_RECONCILIATION_MAX_AGE_SECONDS"
 DEFAULT_MERGE_RECONCILIATION_MAX_AGE_SECONDS = 86400
+UNSUPPORTED_TYPESCRIPT_VALIDATION_FLAGS = ("--ignoreConfig",)
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
@@ -2849,7 +2850,10 @@ class PortalImplementationDaemon:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as log_fh:
             log_fh.write("\nValidation:\n")
-            for command in task.validation:
+            for raw_command in task.validation:
+                command, normalization_notes = self._normalize_validation_command(raw_command)
+                for note in normalization_notes:
+                    log_fh.write(f"[validation normalized] {note}\n")
                 started_at = utc_now()
                 log_fh.write(f"$ {command}\n")
                 log_fh.flush()
@@ -2886,6 +2890,7 @@ class PortalImplementationDaemon:
                     }
                 result = {
                     "command": command,
+                    "raw_command": raw_command,
                     "started_at": started_at,
                     "finished_at": utc_now(),
                     "returncode": completed.returncode,
@@ -2909,6 +2914,20 @@ class PortalImplementationDaemon:
             "returncode": 0,
             "results": results,
         }
+
+    @staticmethod
+    def _normalize_validation_command(command: str) -> tuple[str, list[str]]:
+        """Return a shell validation command with known stale tool flags removed."""
+
+        normalized = command
+        notes: list[str] = []
+        if re.search(r"\b(?:tsc|typescript)\b", normalized):
+            for flag in UNSUPPORTED_TYPESCRIPT_VALIDATION_FLAGS:
+                updated = re.sub(rf"(^|[\s;&|]){re.escape(flag)}(?=$|[\s;&|])", r"\1", normalized)
+                if updated != normalized:
+                    normalized = updated
+                    notes.append(f"removed unsupported TypeScript flag {flag}")
+        return normalized, notes
 
     def _main_branch_name(self) -> str:
         for candidate in ("main", "master"):
