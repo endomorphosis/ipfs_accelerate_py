@@ -3305,6 +3305,7 @@ class PortalImplementationDaemon:
             llm_merge_resolver: dict[str, Any] = {}
             llm_merge_commit_result: dict[str, Any] = {}
             deterministic_conflict_repair: list[dict[str, object]] = []
+            shared_worktree_path_scrub: dict[str, Any] = {}
             merge_returncode = merge.returncode
             if merge_returncode != 0:
                 deterministic_conflict_repair = [
@@ -3357,6 +3358,14 @@ class PortalImplementationDaemon:
                         merge_abort_result = self._abort_failed_merge(merge_workspace)
             if merge_returncode == 0:
                 merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=merge_workspace).stdout.strip()
+                shared_worktree_path_scrub = self._scrub_tracked_shared_worktree_paths(
+                    merge_workspace,
+                    task=task,
+                )
+                if shared_worktree_path_scrub.get("committed", False):
+                    merge_commit = str(shared_worktree_path_scrub.get("commit") or merge_commit)
+                if not shared_worktree_path_scrub.get("ok", True):
+                    merge_returncode = 2
                 submodule_merge_results = self._merge_submodule_branches_to_main(
                     branch_name,
                     task=task,
@@ -3386,6 +3395,7 @@ class PortalImplementationDaemon:
                     "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
                     "generated_submodule_reconciliation": generated_submodule_reconciliation,
                     "deterministic_conflict_repair": deterministic_conflict_repair,
+                    "shared_worktree_path_scrub": shared_worktree_path_scrub,
                     "submodule_merge_results": submodule_merge_results,
                 }
             if stale_submodule_worktree_config_repair.get("repairs"):
@@ -3418,6 +3428,78 @@ class PortalImplementationDaemon:
                     merge_lock.unlink()
             except OSError:
                 logger.warning("Failed to remove merge lock %s", merge_lock)
+
+    def _scrub_tracked_shared_worktree_paths(self, cwd: Path, *, task: PortalTask) -> dict[str, Any]:
+        removed: list[dict[str, Any]] = []
+        for relative in SHARED_WORKTREE_PATHS:
+            tracked = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", "--", relative],
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if tracked.returncode != 0:
+                continue
+            remove = subprocess.run(
+                ["git", "rm", "-r", "--ignore-unmatch", "--", relative],
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            removed.append(
+                {
+                    "path": relative,
+                    "removed": remove.returncode == 0,
+                    "returncode": remove.returncode,
+                    "stdout": remove.stdout[-1000:],
+                    "stderr": remove.stderr[-1000:],
+                }
+            )
+        if not removed:
+            return {"ok": True, "scrubbed": False, "paths": []}
+        failed = [item for item in removed if not item.get("removed", False)]
+        if failed:
+            return {"ok": False, "scrubbed": True, "paths": removed, "reason": "git_rm_failed"}
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0:
+            return {
+                "ok": False,
+                "scrubbed": True,
+                "paths": removed,
+                "reason": "status_failed",
+                "stderr": status.stderr[-1000:],
+            }
+        if not status.stdout.strip():
+            return {"ok": True, "scrubbed": True, "committed": False, "paths": removed, "reason": "no_changes"}
+        commit = subprocess.run(
+            ["git", "commit", "-m", f"{task.task_id}: scrub shared dependency paths"],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        result: dict[str, Any] = {
+            "ok": commit.returncode == 0,
+            "scrubbed": True,
+            "committed": commit.returncode == 0,
+            "paths": removed,
+            "returncode": commit.returncode,
+            "stdout": commit.stdout[-1000:],
+            "stderr": commit.stderr[-1000:],
+        }
+        if commit.returncode == 0:
+            result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=cwd).stdout.strip()
+        else:
+            result["reason"] = "commit_failed"
+        return result
 
     def _abort_failed_merge(self, cwd: Path) -> dict[str, Any]:
         merge_head = subprocess.run(
