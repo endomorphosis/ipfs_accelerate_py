@@ -2198,7 +2198,16 @@ class PortalImplementationDaemon:
             if self._git_ref_exists_in_repo(source, submodule_branch):
                 self._run_git(["worktree", "add", str(target), submodule_branch], cwd=source)
                 return True
-            self._run_git(["worktree", "add", "-b", submodule_branch, str(target), base_ref], cwd=source)
+            try:
+                self._run_git(["worktree", "add", "-b", submodule_branch, str(target), base_ref], cwd=source)
+            except RuntimeError:
+                fallback_ref = self._fallback_submodule_worktree_ref(
+                    source,
+                    bad_ref=base_ref,
+                    source_key=source_key,
+                    worktree_path=worktree_path,
+                )
+                self._run_git(["worktree", "add", "-b", submodule_branch, str(target), fallback_ref], cwd=source)
             return True
         self._run_git(["worktree", "add", "--detach", str(target), base_ref], cwd=source)
         return True
@@ -2243,6 +2252,36 @@ class PortalImplementationDaemon:
                 "fetch_attempted": True,
                 "fetch_returncode": fetch_result.returncode,
                 "fetch_error": fetch_result.stderr.strip()[:1000],
+            },
+        )
+        return fallback_ref or "HEAD"
+
+    def _fallback_submodule_worktree_ref(
+        self,
+        source: Path,
+        *,
+        bad_ref: str,
+        source_key: str,
+        worktree_path: Path,
+    ) -> str:
+        fallback_result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        fallback_ref = fallback_result.stdout.strip() if fallback_result.returncode == 0 else "HEAD"
+        self._record_event(
+            "submodule_worktree_base_ref_retried",
+            {
+                "source": str(source),
+                "source_key": source_key,
+                "worktree_path": str(worktree_path),
+                "bad_ref": bad_ref,
+                "fallback_ref": fallback_ref,
+                "fallback_returncode": fallback_result.returncode,
+                "fallback_error": fallback_result.stderr.strip()[:1000],
             },
         )
         return fallback_ref or "HEAD"
