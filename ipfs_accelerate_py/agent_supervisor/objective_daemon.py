@@ -232,6 +232,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         completion = reconcile_objective_goal_completion(
             repo_root=repo_root,
             objective_path=objective_path,
+            todo_path=todo_path,
+            task_header_prefix=args.task_prefix,
         )
         completed_goal_ids = completion.completed_goal_ids
         objective_completed_goal_count = completion.completed_goal_count
