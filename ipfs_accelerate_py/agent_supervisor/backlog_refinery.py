@@ -2581,17 +2581,16 @@ def reconciliation_guardrail_refresh_is_noise(block: str, record: Mapping[str, A
 
     kind = str(record.get("kind") or "")
     dedupe_key = str(record.get("dedupe_key") or "")
-    if kind != "main_checkout_dirty":
+    stable_dedupe_kinds = {
+        "dirty_backlogged_worktree",
+        "main_checkout_dirty",
+        "preflight_merge_conflict",
+    }
+    if kind not in stable_dedupe_kinds:
         return False
     if not dedupe_key or dedupe_key not in block:
         return False
-    return bool(
-        re.search(
-            r"^##\s+\S+\s+Resolve dirty main checkout blocking \d+ worktree merges",
-            block,
-            flags=re.MULTILINE,
-        )
-    )
+    return True
 
 
 def task_blocks_with_spans(todo_text: str) -> list[tuple[int, int, str]]:
