@@ -19,6 +19,7 @@ class MarkdownMergeResult:
 LAUNCH_READINESS_DOC_PATH = "docs/launch/phone_desktop_glasses_readiness.md"
 LAUNCH_READINESS_TEST_PATH = "tests/test_virtual_ai_os_launch_readiness_gate.py"
 LAUNCH_READINESS_PATHS = {LAUNCH_READINESS_DOC_PATH, LAUNCH_READINESS_TEST_PATH}
+RECONCILIATION_GUARDRAIL_DEDUPE_PREFIX = "reconciliation_guardrail:"
 
 
 def _run_git(repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -190,6 +191,76 @@ def merge_append_only_markdown_sections(
     )
 
 
+def _task_section_id(heading: str) -> str:
+    match = re.match(r"^##\s+([A-Z]{2,5}-\d+)\b", heading)
+    return match.group(1) if match else heading
+
+
+def _reconciliation_guardrail_dedupe_key(block: str) -> str:
+    match = re.search(r"^- Dedupe key:\s*(reconciliation_guardrail:[^\s]+)\s*$", block, flags=re.MULTILINE)
+    return match.group(1) if match else ""
+
+
+def _todo_section_merge_key(heading: str, block: str) -> str:
+    guardrail_key = _reconciliation_guardrail_dedupe_key(block)
+    if guardrail_key:
+        return f"guardrail:{guardrail_key}:{_task_section_id(heading)}"
+    return heading
+
+
+def merge_reconciliation_guardrail_todo_sections(
+    *,
+    base_text: str,
+    ours_text: str,
+    theirs_text: str,
+) -> MarkdownMergeResult | None:
+    """Resolve todo-board reconciliation guardrail churn by keeping the main variant."""
+
+    base_prefix, base_sections = _split_markdown_sections(base_text)
+    ours_prefix, ours_sections = _split_markdown_sections(ours_text)
+    theirs_prefix, theirs_sections = _split_markdown_sections(theirs_text)
+    if not (base_sections or ours_sections or theirs_sections):
+        return None
+
+    has_reconciliation_guardrail = any(
+        _reconciliation_guardrail_dedupe_key(block)
+        for sections in (base_sections, ours_sections, theirs_sections)
+        for _heading, block in sections
+    )
+    if not has_reconciliation_guardrail:
+        return None
+
+    prefix = ours_prefix or theirs_prefix or base_prefix
+    ordered: dict[str, tuple[str, str]] = {}
+    duplicate_variant_count = 0
+    for _source, sections in (
+        ("ours", ours_sections),
+        ("base", base_sections),
+        ("theirs", theirs_sections),
+    ):
+        for heading, block in sections:
+            key = _todo_section_merge_key(heading, block)
+            if key not in ordered:
+                ordered[key] = (heading, block)
+                continue
+            existing_heading, existing_block = ordered[key]
+            if key.startswith("guardrail:"):
+                duplicate_variant_count += int(existing_block != block or existing_heading != heading)
+                continue
+            selected, changed = _select_section_variant(existing_block, block)
+            selected_heading = heading if selected == block else existing_heading
+            ordered[key] = (selected_heading, selected)
+            duplicate_variant_count += int(changed)
+
+    body = "\n\n".join(block.strip("\n") for _heading, block in ordered.values()).rstrip()
+    text = (prefix.rstrip() + "\n\n" + body if prefix.strip() else body).rstrip() + "\n"
+    return MarkdownMergeResult(
+        text=text,
+        section_count=len(ordered),
+        duplicate_variant_count=duplicate_variant_count,
+    )
+
+
 def resolve_append_only_markdown_conflicts(
     *,
     repo_root: Path,
@@ -225,6 +296,46 @@ def resolve_append_only_markdown_conflicts(
                 "path": relative,
                 "resolved": add.returncode == 0,
                 "reason": "append_only_markdown_sections_merged"
+                if add.returncode == 0
+                else "git_add_failed",
+                "returncode": add.returncode,
+                "stdout": add.stdout[-4000:],
+                "stderr": add.stderr[-4000:],
+                "section_count": merged.section_count,
+                "duplicate_variant_count": merged.duplicate_variant_count,
+            }
+        )
+    return results
+
+
+def resolve_reconciliation_guardrail_todo_conflicts(*, repo_root: Path) -> list[dict[str, object]]:
+    """Resolve todo-board conflicts that only churn reconciliation guardrail metadata."""
+
+    repo_root = repo_root.resolve()
+    results: list[dict[str, object]] = []
+    for relative in unmerged_paths(repo_root):
+        if not _safe_relative_path(relative) or not relative.endswith(".todo.md"):
+            continue
+        base = _decode_blob(conflict_stage_blob(repo_root, relative, stage=1))
+        ours = _decode_blob(conflict_stage_blob(repo_root, relative, stage=2))
+        theirs = _decode_blob(conflict_stage_blob(repo_root, relative, stage=3))
+        merged = merge_reconciliation_guardrail_todo_sections(
+            base_text=base,
+            ours_text=ours,
+            theirs_text=theirs,
+        )
+        if merged is None:
+            results.append({"path": relative, "resolved": False, "reason": "no_reconciliation_guardrail"})
+            continue
+        target = repo_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(merged.text, encoding="utf-8", errors="surrogateescape")
+        add = _run_git(repo_root, ["add", "--", relative])
+        results.append(
+            {
+                "path": relative,
+                "resolved": add.returncode == 0,
+                "reason": "reconciliation_guardrail_todo_main_variant"
                 if add.returncode == 0
                 else "git_add_failed",
                 "returncode": add.returncode,

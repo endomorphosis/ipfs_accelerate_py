@@ -563,8 +563,72 @@ def discover_submodule_paths(repo_root: Path) -> list[str]:
 def _component_relative_path(repo_root: Path, path: Path) -> str:
     try:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
-    except ValueError:
-        return path.as_posix()
+    except (OSError, RuntimeError, ValueError):
+        try:
+            return path.relative_to(repo_root).as_posix()
+        except ValueError:
+            return path.as_posix()
+
+
+def _component_scan_filename_allowed(filename: str) -> bool:
+    if filename in COMPONENT_SCAN_SKIP_DIRS:
+        return False
+    return True
+
+
+def _component_scan_dirname_allowed(dirname: str) -> bool:
+    if dirname in COMPONENT_SCAN_SKIP_DIRS:
+        return False
+    return True
+
+
+def _component_scan_path_usable(path: Path) -> bool:
+    try:
+        path.resolve()
+    except (OSError, RuntimeError):
+        return False
+    return True
+
+
+def _component_walk_error(_error: OSError) -> None:
+    return None
+
+
+def _component_path_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _component_path_is_dir(path: Path) -> bool:
+    try:
+        return path.is_dir()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _component_path_is_symlink(path: Path) -> bool:
+    try:
+        return path.is_symlink()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _component_path_safe_for_file_scan(path: Path) -> bool:
+    if _component_path_is_symlink(path) and not _component_scan_path_usable(path):
+        return False
+    return True
+
+
+def _component_path_safe_for_component(path: Path) -> bool:
+    if not _component_path_exists(path):
+        return False
+    if not _component_path_is_dir(path):
+        return False
+    if _component_path_is_symlink(path) and not _component_scan_path_usable(path):
+        return False
+    return True
 
 
 def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files: int = 256) -> dict[str, list[str]]:
@@ -575,13 +639,17 @@ def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files:
         "mcp_descriptors": [],
         "python_import_roots": [],
     }
-    if not root.exists() or not root.is_dir():
+    if not _component_path_safe_for_component(root):
         return metadata
 
     import_roots: set[str] = set()
     scanned = 0
-    for current_root, dirnames, filenames in os.walk(root):
-        dirnames[:] = [name for name in dirnames if name not in COMPONENT_SCAN_SKIP_DIRS]
+    for current_root, dirnames, filenames in os.walk(root, onerror=_component_walk_error):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if _component_scan_dirname_allowed(name) and _component_scan_path_usable(Path(current_root) / name)
+        ]
         current = Path(current_root)
         try:
             depth = len(current.relative_to(root).parts)
@@ -591,7 +659,11 @@ def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files:
             dirnames[:] = []
             continue
         for filename in sorted(filenames):
+            if not _component_scan_filename_allowed(filename):
+                continue
             path = current / filename
+            if not _component_path_safe_for_file_scan(path):
+                continue
             relative = _component_relative_path(repo_root, path)
             lowered = filename.lower()
             suffix = path.suffix.lower()
@@ -651,7 +723,7 @@ def discover_repository_components(
             RepositoryComponent(
                 path=path,
                 sources=sources,
-                exists=(repo_root / path).exists(),
+                exists=_component_path_exists(repo_root / path),
                 is_gitlink=path in gitlink_paths,
                 is_gitmodule=path in gitmodule_paths,
                 manifests=metadata["manifests"],

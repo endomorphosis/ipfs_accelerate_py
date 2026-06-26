@@ -23,7 +23,11 @@ from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
 from ..checkout_lock import checkout_lock_metadata, checkout_mutation_lock_path
 from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
-from ..merge_conflict_repair import resolve_append_only_markdown_conflicts, resolve_launch_readiness_conflicts
+from ..merge_conflict_repair import (
+    resolve_append_only_markdown_conflicts,
+    resolve_launch_readiness_conflicts,
+    resolve_reconciliation_guardrail_todo_conflicts,
+)
 from ..validation_commands import split_validation_commands
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
@@ -3221,6 +3225,7 @@ class PortalImplementationDaemon:
             if merge_returncode != 0:
                 deterministic_conflict_repair = [
                     *self._resolve_generated_markdown_conflicts(merge_workspace),
+                    *self._resolve_reconciliation_guardrail_todo_conflicts(merge_workspace),
                     *self._resolve_launch_readiness_conflicts(merge_workspace),
                 ]
                 if deterministic_conflict_repair and not self._unmerged_worktree_paths(merge_workspace):
@@ -4635,6 +4640,15 @@ class PortalImplementationDaemon:
         if results:
             self._record_event(
                 "launch_readiness_conflict_repair",
+                {"main_worktree_path": str(cwd), "results": results},
+            )
+        return results
+
+    def _resolve_reconciliation_guardrail_todo_conflicts(self, cwd: Path) -> list[dict[str, object]]:
+        results = resolve_reconciliation_guardrail_todo_conflicts(repo_root=cwd)
+        if results:
+            self._record_event(
+                "reconciliation_guardrail_todo_conflict_repair",
                 {"main_worktree_path": str(cwd), "results": results},
             )
         return results
