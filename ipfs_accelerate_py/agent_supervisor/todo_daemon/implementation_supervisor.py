@@ -164,6 +164,7 @@ class PortalSupervisorConfig:
     objective_summary_prefix: str = ""
     objective_refine_goals: bool = True
     objective_reconcile_goal_completion: bool = True
+    objective_goal_completion_todo_boards: tuple[str, ...] = field(default_factory=tuple)
     objective_seed_interoperability_goals: bool = False
     objective_interoperability_focus: tuple[str, ...] = field(default_factory=tuple)
     objective_interoperability_component_paths: tuple[str, ...] = field(default_factory=tuple)
@@ -3638,6 +3639,9 @@ class PortalImplementationSupervisor:
             ),
             refine_objective_heap=self.config.objective_refine_goals,
             no_reconcile_goal_completion=not self.config.objective_reconcile_goal_completion,
+            objective_goal_completion_todo_board=list(
+                self.config.objective_goal_completion_todo_boards
+            ),
             seed_interoperability_goals=self.config.objective_seed_interoperability_goals,
             interoperability_focus=list(self.config.objective_interoperability_focus),
             interoperability_component_path=list(
@@ -4865,6 +4869,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.set_defaults(objective_reconcile_goal_completion=True)
     parser.add_argument(
+        "--objective-goal-completion-todo-board",
+        action="append",
+        default=[],
+        help=(
+            "Extra todo board that can keep shared objective goals open while referenced tasks remain pending. "
+            "Use 'path::TASK-' or 'path::## TASK-' and repeat for cross-track boards."
+        ),
+    )
+    parser.add_argument(
         "--objective-seed-interoperability-goals",
         action="store_true",
         help="Seed objective goals for cross-submodule interoperability and integration tests.",
@@ -5071,6 +5084,7 @@ def supervisor_config_from_args(
         objective_summary_prefix=args.objective_summary_prefix,
         objective_refine_goals=args.objective_refine_goals,
         objective_reconcile_goal_completion=args.objective_reconcile_goal_completion,
+        objective_goal_completion_todo_boards=tuple(args.objective_goal_completion_todo_board),
         objective_seed_interoperability_goals=args.objective_seed_interoperability_goals,
         objective_interoperability_focus=split_csv_values(args.objective_interoperability_focus),
         objective_interoperability_component_paths=split_csv_values(

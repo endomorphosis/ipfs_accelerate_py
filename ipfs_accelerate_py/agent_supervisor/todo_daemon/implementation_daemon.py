@@ -74,7 +74,15 @@ TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
-SHARED_WORKTREE_PATHS = ("wallet_interface/ui/node_modules",)
+SHARED_WORKTREE_PATHS = (
+    "wallet_interface/ui/node_modules",
+    "mobile/node_modules",
+    "swissknife/node_modules",
+    "swissknife/web/node_modules",
+    "swissknife/ipfs_accelerate_js/node_modules",
+    "hallucinate_app/node_modules",
+    "hallucinate_app/swissknife/node_modules",
+)
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "260")
 )

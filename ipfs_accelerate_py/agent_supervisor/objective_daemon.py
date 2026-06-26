@@ -68,6 +68,32 @@ def split_csv(values: Iterable[str]) -> list[str]:
     return items
 
 
+def parse_goal_completion_todo_boards(
+    specs: Iterable[str],
+    *,
+    repo_root: Path,
+    default_task_prefix: str,
+) -> list[tuple[Path, str]]:
+    """Parse extra objective-completion board specs as ``path::task-prefix``."""
+
+    boards: list[tuple[Path, str]] = []
+    for raw_spec in specs:
+        spec = str(raw_spec or "").strip()
+        if not spec:
+            continue
+        if "::" in spec:
+            raw_path, raw_prefix = spec.split("::", 1)
+            prefix = raw_prefix.strip() or default_task_prefix
+        else:
+            raw_path = spec
+            prefix = default_task_prefix
+        path = Path(raw_path.strip())
+        if not path.is_absolute():
+            path = repo_root / path
+        boards.append((path.resolve(), prefix))
+    return boards
+
+
 def discovery_fingerprints(discovery_dir: Path) -> set[str]:
     """Return previously filed objective-gap fingerprints from discovery files."""
 
@@ -138,6 +164,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--no-reconcile-goal-completion",
         action="store_true",
         help="Skip marking active goals completed when all required evidence is already present.",
+    )
+    parser.add_argument(
+        "--objective-goal-completion-todo-board",
+        action="append",
+        default=[],
+        help=(
+            "Extra todo board that can keep objective goals open while referenced work is pending. "
+            "Use 'path::TASK-' or 'path::## TASK-' and repeat for shared cross-track boards."
+        ),
     )
     parser.add_argument(
         "--seed-interoperability-goals",
@@ -228,10 +263,18 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     completed_goal_ids: list[str] = []
     objective_completed_goal_count = 0
     objective_completion_validation_results: dict[str, Any] = {}
+    goal_completion_todo_boards = parse_goal_completion_todo_boards(
+        getattr(args, "objective_goal_completion_todo_board", []) or [],
+        repo_root=repo_root,
+        default_task_prefix=args.task_prefix,
+    )
     if not getattr(args, "no_reconcile_goal_completion", False) and objective_path.exists():
         completion = reconcile_objective_goal_completion(
             repo_root=repo_root,
             objective_path=objective_path,
+            todo_path=todo_path,
+            task_header_prefix=args.task_prefix,
+            todo_boards=goal_completion_todo_boards,
         )
         completed_goal_ids = completion.completed_goal_ids
         objective_completed_goal_count = completion.completed_goal_count
@@ -311,6 +354,13 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "deduplicated_interoperability_goal_ids": deduplicated_interoperability_goal_ids,
         "seeded_interoperability_goal_ids": seeded_interoperability_goal_ids,
         "completed_goal_ids": completed_goal_ids,
+        "goal_completion_todo_boards": [
+            {
+                "todo_path": repo_relative_path(repo_root, path),
+                "task_prefix": prefix,
+            }
+            for path, prefix in goal_completion_todo_boards
+        ],
         "objective_completion_validation_results": objective_completion_validation_results,
         "refined_goal_ids": refined_goal_ids,
         "objective_goal_count": graph_payload["goal_count"],

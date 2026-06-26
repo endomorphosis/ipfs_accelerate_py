@@ -41,6 +41,13 @@ DEFAULT_ROOT_EVIDENCE = (
 DEFAULT_GOAL_PREFIX = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_GOAL_PREFIX", "OBJ-G")
 DEFAULT_TRACKING_DOCUMENT_TITLE = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_DOCUMENT_TITLE", "Objective Heap")
 DEFAULT_ROOT_GOAL_TITLE = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_ROOT_TITLE", "Objective outcome")
+OPEN_TASK_STATUSES_FOR_GOAL_COMPLETION = {"todo", "ready", "in_progress"}
+TASK_GOAL_METADATA_KEYS = (
+    "goal id",
+    "goal ids",
+    "goal packet goals",
+    "graph parents",
+)
 
 
 @dataclass(frozen=True)
@@ -219,6 +226,40 @@ def completion_evidence_summary(evidence: Mapping[str, Sequence[str]]) -> str:
     return "; ".join(parts)
 
 
+def open_goal_ids_from_todo_board(todo_path: Path, task_header_prefix: str = "") -> set[str]:
+    """Return objective goal ids with open tasks in the current task board."""
+
+    if not todo_path.exists():
+        return set()
+
+    from .todo_daemon.implementation_daemon import TASK_HEADER_PREFIX, parse_task_file
+
+    open_goal_ids: set[str] = set()
+    for task in parse_task_file(todo_path, task_header_prefix or TASK_HEADER_PREFIX):
+        if task.status not in OPEN_TASK_STATUSES_FOR_GOAL_COMPLETION:
+            continue
+        for key in TASK_GOAL_METADATA_KEYS:
+            open_goal_ids.update(split_terms(task.metadata.get(key, "")))
+    return {goal_id for goal_id in open_goal_ids if goal_id}
+
+
+def open_goal_ids_from_todo_boards(
+    todo_boards: Sequence[tuple[Path, str]],
+) -> dict[str, list[str]]:
+    """Return open objective goal ids mapped to the board paths that still reference them."""
+
+    open_goal_ids: dict[str, list[str]] = {}
+    seen_boards: set[tuple[str, str]] = set()
+    for todo_path, task_header_prefix in todo_boards:
+        board_key = (str(todo_path), str(task_header_prefix))
+        if board_key in seen_boards:
+            continue
+        seen_boards.add(board_key)
+        for goal_id in open_goal_ids_from_todo_board(todo_path, task_header_prefix):
+            open_goal_ids.setdefault(goal_id, []).append(str(todo_path))
+    return open_goal_ids
+
+
 def run_goal_validation(
     *,
     repo_root: Path,
@@ -297,6 +338,9 @@ def reconcile_objective_goal_completion(
     *,
     repo_root: Path,
     objective_path: Path,
+    todo_path: Path | None = None,
+    task_header_prefix: str = "",
+    todo_boards: Sequence[tuple[Path, str]] | None = None,
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
 ) -> ObjectiveCompletionResult:
     """Mark active goals complete once all required evidence is present."""
@@ -329,7 +373,21 @@ def reconcile_objective_goal_completion(
     completion_evidence: dict[str, dict[str, list[str]]] = {}
     validation_results: dict[str, dict[str, Any]] = {}
     completed_at = utc_now()
+    completion_boards: list[tuple[Path, str]] = []
+    if todo_path is not None:
+        completion_boards.append((todo_path, task_header_prefix))
+    completion_boards.extend(todo_boards or ())
+    open_goal_ids = open_goal_ids_from_todo_boards(completion_boards)
     for goal in active_goals:
+        if goal.goal_id in open_goal_ids:
+            validation_results[goal.goal_id] = {
+                "attempted": False,
+                "passed": False,
+                "returncode": 1,
+                "reason": "open_todo_tasks",
+                "todo_boards": open_goal_ids[goal.goal_id],
+            }
+            continue
         required = goal.required_evidence
         if not required or any(not evidence.get(term) for term in required):
             continue
