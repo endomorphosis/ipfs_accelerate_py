@@ -32,6 +32,9 @@ from .objective_graph import (
     DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
     DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
+    LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND,
+    LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE,
+    LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS,
     bundle_path,
     generate_objective_todos,
     repo_relative_path,
@@ -2945,11 +2948,17 @@ def validation_retry_task_block(
     discovery_path: Path,
     depends_on: Sequence[str] = (),
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    launch_playwright_validation_gate: bool = False,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
     validation_command = safe_retry_validation_command(failed_command, discovery_path=discovery_path)
+    launch_gate_acceptance = (
+        f" For launch tasks, this repair validation preserves the {LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE}."
+        if launch_playwright_validation_gate
+        else ""
+    )
     return f"""## {task_id} Resolve validation retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -2959,7 +2968,7 @@ def validation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
-- Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{launch_gate_acceptance}
 """
 
 
@@ -2977,6 +2986,45 @@ def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
         if commands:
             return stripped
     return f"test -f {shlex.quote(str(discovery_path))}"
+
+
+def task_requires_launch_playwright_validation(task: Any) -> bool:
+    """Return whether a retry repair must keep the launch Playwright gate attached."""
+
+    values = [
+        getattr(task, "task_id", ""),
+        getattr(task, "title", ""),
+        getattr(task, "track", ""),
+        getattr(task, "priority", ""),
+        getattr(task, "completion", ""),
+        getattr(task, "acceptance", ""),
+        *(getattr(task, "outputs", []) or []),
+        *(getattr(task, "validation", []) or []),
+        *(getattr(task, "depends_on", []) or []),
+    ]
+    metadata = getattr(task, "metadata", {}) or {}
+    if isinstance(metadata, Mapping):
+        values.extend(str(value) for value in metadata.values())
+    haystack = " ".join(str(value) for value in values).lower()
+    if str(getattr(task, "track", "") or "").strip().lower() == "launch":
+        return True
+    return LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE.lower() in haystack or (
+        "playwright" in haystack and "launch" in haystack
+    )
+
+
+def launch_playwright_validation_repair_command(command: str, *, source_task: Any) -> str:
+    """Append the launch Playwright validation gate to launch retry repairs."""
+
+    stripped = str(command or "").strip()
+    if not task_requires_launch_playwright_validation(source_task):
+        return stripped
+    lowered = stripped.lower()
+    if any(marker.lower() in lowered for marker in LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS):
+        return stripped
+    if not stripped:
+        return LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND
+    return f"{stripped} && {LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND}"
 
 
 def implementation_retry_task_block(
@@ -3159,6 +3207,11 @@ def record_retry_budget_findings(
                 if validation_task_command_transform is not None
                 else failed_command
             )
+            validation_command = launch_playwright_validation_repair_command(
+                validation_command,
+                source_task=task,
+            )
+            launch_playwright_validation_gate = task_requires_launch_playwright_validation(task)
             task_block = validation_retry_task_block(
                 task_id=follow_up_task_id,
                 source_task=task,
@@ -3166,6 +3219,7 @@ def record_retry_budget_findings(
                 discovery_path=discovery_path,
                 depends_on=depends_on,
                 discovery_output_path=discovery_output_path,
+                launch_playwright_validation_gate=launch_playwright_validation_gate,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             task_ids.add(follow_up_task_id)
@@ -3179,6 +3233,7 @@ def record_retry_budget_findings(
                     "failed_command": failed_command,
                     "discovery_path": str(discovery_path),
                     "failure_kind": "validation",
+                    "launch_playwright_validation_gate": launch_playwright_validation_gate,
                 }
             )
 

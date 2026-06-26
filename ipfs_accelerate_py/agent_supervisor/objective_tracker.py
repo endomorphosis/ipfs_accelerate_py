@@ -1164,7 +1164,7 @@ LAUNCH_READINESS_GOAL_TEMPLATES: tuple[dict[str, Any], ...] = (
         "evidence": (
             "objective heap, fibonacci priority, supervisor active management, failed validation "
             "repair, Playwright launch replay, HAO task board, MGW task board, VAI task board, "
-            "production readiness"
+            "production readiness, launch Playwright validation gate"
         ),
         "outputs": (
             "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor, "

@@ -24,6 +24,7 @@ DEFAULT_MISSION_TERMS = (
     "hallucinate app",
     "headphones",
     "ipfs",
+    "launch playwright validation gate",
     "launch readiness",
     "launch replay",
     "libp2p",
