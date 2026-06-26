@@ -330,8 +330,10 @@ def reconcile_objective_task_strategy(
     ][: max(0, int(max_reopened_goals))]
     validation_gate_goal_ids = [
         goal_id
-        for goal_id in reopened_goal_ids
-        if goal_id in goals_by_id and _goal_requires_launch_playwright_gate(goals_by_id[goal_id])
+        for goal_id in scheduled_goal_ids
+        if goal_id in critical_goal_ids
+        and goal_id in goals_by_id
+        and _goal_requires_launch_playwright_gate(goals_by_id[goal_id])
     ]
 
     previous_receipts = [
