@@ -12,6 +12,19 @@ from .todo_daemon.implementation_daemon import PortalTask
 ACTIVE_GOAL_STATUSES = {"active", "todo", "open"}
 OPEN_TASK_STATUSES = {"todo", "ready", "in_progress"}
 JANITOR_RECEIPT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.v1"
+LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE = "launch Playwright validation gate"
+LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
+    "(test ! -f swissknife/package.json || npm --prefix swissknife run test:e2e:meta-glasses) && "
+    "(test ! -f hallucinate_app/package.json || "
+    "npm --prefix hallucinate_app run test:e2e -- multimodal-control-surface.spec.ts)"
+)
+LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS = (
+    LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE.lower(),
+    "playwright launch replay",
+    "test:e2e:meta-glasses",
+    "meta-glasses-virtual-os.spec.ts",
+    "multimodal-control-surface.spec.ts",
+)
 DEFAULT_MISSION_TERMS = (
     "ai virtual desktop",
     "bluetooth",
@@ -129,6 +142,11 @@ def _task_haystack(task: PortalTask) -> str:
 
 def _goal_haystack(goal: ObjectiveGoal) -> str:
     return " ".join([goal.goal_id, goal.title, *goal.fields.values()]).lower()
+
+
+def _goal_requires_launch_playwright_gate(goal: ObjectiveGoal) -> bool:
+    haystack = _goal_haystack(goal)
+    return any(marker in haystack for marker in LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS)
 
 
 def _matches_any_term(text: str, terms: Sequence[str]) -> bool:
@@ -310,6 +328,11 @@ def reconcile_objective_task_strategy(
         for goal_id in scheduled_goal_ids
         if goal_id in critical_goal_ids and goal_id not in open_goal_ids
     ][: max(0, int(max_reopened_goals))]
+    validation_gate_goal_ids = [
+        goal_id
+        for goal_id in reopened_goal_ids
+        if goal_id in goals_by_id and _goal_requires_launch_playwright_gate(goals_by_id[goal_id])
+    ]
 
     previous_receipts = [
         receipt
@@ -353,6 +376,13 @@ def reconcile_objective_task_strategy(
     ]
     updated_strategy["objective_task_janitor_reopen_goal_ids"] = reopened_goal_ids
     updated_strategy["objective_task_janitor_force_goal_ids"] = reopened_goal_ids
+    updated_strategy["objective_task_janitor_validation_gate_goal_ids"] = validation_gate_goal_ids
+    updated_strategy["objective_task_janitor_launch_playwright_validation_gate"] = {
+        "evidence_term": LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE,
+        "goal_ids": validation_gate_goal_ids,
+        "validation_command": LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND,
+        "active": bool(validation_gate_goal_ids),
+    }
     updated_strategy["objective_task_janitor_critical_goal_ids"] = sorted(critical_goal_ids)
     updated_strategy["objective_task_janitor_mission_terms"] = list(mission_terms)
     updated_strategy["objective_task_janitor_active_goal_ids"] = sorted(active_goal_ids)
@@ -373,6 +403,8 @@ def reconcile_objective_task_strategy(
         "heap_goal_retirement_receipt",
         "objective_task_janitor_reopen_goal_ids",
         "objective_task_janitor_force_goal_ids",
+        "objective_task_janitor_validation_gate_goal_ids",
+        "objective_task_janitor_launch_playwright_validation_gate",
         "objective_task_janitor_mission_terms",
     )
     changed = any(strategy.get(key) != updated_strategy.get(key) for key in comparable_keys)
@@ -387,4 +419,5 @@ def reconcile_objective_task_strategy(
         "scheduled_goal_ids": scheduled_goal_ids,
         "critical_goal_ids": sorted(critical_goal_ids),
         "open_goal_ids": sorted(open_goal_ids),
+        "validation_gate_goal_ids": validation_gate_goal_ids,
     }
