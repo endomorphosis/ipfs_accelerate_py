@@ -738,6 +738,7 @@ class ObjectiveRefillDefaults:
     objective_todo_vector_index_path: Path | None = None
     objective_surplus_findings_per_goal: int | None = None
     objective_surplus_min_terms_per_todo: int | None = None
+    objective_goal_completion_todo_boards: Sequence[str] = ()
     objective_interoperability_focus: Sequence[str] = ()
     objective_interoperability_component_paths: Sequence[str] = ()
     objective_max_interoperability_goals: int | None = None
@@ -781,6 +782,7 @@ def build_objective_refill_defaults_from_paths(
     objective_todo_vector_index_path: Path | str | None = None,
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
+    objective_goal_completion_todo_boards: Sequence[str] = (),
     objective_interoperability_focus: Sequence[str] = (),
     objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
@@ -823,6 +825,7 @@ def build_objective_refill_defaults_from_paths(
         ),
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
+        objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
         objective_interoperability_focus=objective_interoperability_focus,
         objective_interoperability_component_paths=objective_interoperability_component_paths,
         objective_max_interoperability_goals=objective_max_interoperability_goals,
@@ -907,6 +910,7 @@ def build_objective_refill_defaults_factory(
     objective_todo_vector_index_path: Path | str | None = None,
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
+    objective_goal_completion_todo_boards: Sequence[str] = (),
     objective_interoperability_focus: Sequence[str] = (),
     objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
@@ -941,6 +945,7 @@ def build_objective_refill_defaults_factory(
             objective_todo_vector_index_path=objective_todo_vector_index_path,
             objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
             objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
+            objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
             objective_interoperability_focus=objective_interoperability_focus,
             objective_interoperability_component_paths=objective_interoperability_component_paths,
             objective_max_interoperability_goals=objective_max_interoperability_goals,
@@ -1001,6 +1006,7 @@ def build_namespace_objective_refill_defaults_factory(
     objective_refill_timeout_seconds: int | None = None,
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
+    objective_goal_completion_todo_boards: Sequence[str] = (),
     objective_interoperability_focus: Sequence[str] = (),
     objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
@@ -1037,6 +1043,7 @@ def build_namespace_objective_refill_defaults_factory(
         objective_refill_timeout_seconds=objective_refill_timeout_seconds,
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
+        objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
         objective_interoperability_focus=objective_interoperability_focus,
         objective_interoperability_component_paths=objective_interoperability_component_paths,
         objective_max_interoperability_goals=objective_max_interoperability_goals,
@@ -1191,6 +1198,12 @@ def apply_portal_implementation_supervisor_defaults(
             "--objective-surplus-min-terms-per-todo",
             objective.objective_surplus_min_terms_per_todo,
         )
+        if objective.objective_goal_completion_todo_boards:
+            args = with_repeated_default(
+                args,
+                "--objective-goal-completion-todo-board",
+                objective.objective_goal_completion_todo_boards,
+            )
 
     if codebase is not None:
         if codebase.refill_scan:

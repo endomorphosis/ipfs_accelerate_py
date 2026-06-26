@@ -243,6 +243,23 @@ def open_goal_ids_from_todo_board(todo_path: Path, task_header_prefix: str = "")
     return {goal_id for goal_id in open_goal_ids if goal_id}
 
 
+def open_goal_ids_from_todo_boards(
+    todo_boards: Sequence[tuple[Path, str]],
+) -> dict[str, list[str]]:
+    """Return open objective goal ids mapped to the board paths that still reference them."""
+
+    open_goal_ids: dict[str, list[str]] = {}
+    seen_boards: set[tuple[str, str]] = set()
+    for todo_path, task_header_prefix in todo_boards:
+        board_key = (str(todo_path), str(task_header_prefix))
+        if board_key in seen_boards:
+            continue
+        seen_boards.add(board_key)
+        for goal_id in open_goal_ids_from_todo_board(todo_path, task_header_prefix):
+            open_goal_ids.setdefault(goal_id, []).append(str(todo_path))
+    return open_goal_ids
+
+
 def run_goal_validation(
     *,
     repo_root: Path,
@@ -323,6 +340,7 @@ def reconcile_objective_goal_completion(
     objective_path: Path,
     todo_path: Path | None = None,
     task_header_prefix: str = "",
+    todo_boards: Sequence[tuple[Path, str]] | None = None,
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
 ) -> ObjectiveCompletionResult:
     """Mark active goals complete once all required evidence is present."""
@@ -355,7 +373,11 @@ def reconcile_objective_goal_completion(
     completion_evidence: dict[str, dict[str, list[str]]] = {}
     validation_results: dict[str, dict[str, Any]] = {}
     completed_at = utc_now()
-    open_goal_ids = open_goal_ids_from_todo_board(todo_path, task_header_prefix) if todo_path else set()
+    completion_boards: list[tuple[Path, str]] = []
+    if todo_path is not None:
+        completion_boards.append((todo_path, task_header_prefix))
+    completion_boards.extend(todo_boards or ())
+    open_goal_ids = open_goal_ids_from_todo_boards(completion_boards)
     for goal in active_goals:
         if goal.goal_id in open_goal_ids:
             validation_results[goal.goal_id] = {
@@ -363,6 +385,7 @@ def reconcile_objective_goal_completion(
                 "passed": False,
                 "returncode": 1,
                 "reason": "open_todo_tasks",
+                "todo_boards": open_goal_ids[goal.goal_id],
             }
             continue
         required = goal.required_evidence
