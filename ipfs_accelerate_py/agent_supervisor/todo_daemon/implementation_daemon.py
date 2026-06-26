@@ -2331,13 +2331,18 @@ class PortalImplementationDaemon:
 
     def _link_shared_worktree_paths(self, worktree_path: Path) -> None:
         for relative in SHARED_WORKTREE_PATHS:
-            source = (self.repo_root / relative).resolve()
-            if not source.exists():
+            source_path = self.repo_root / relative
+            try:
+                source = source_path.resolve(strict=True)
+            except (OSError, RuntimeError):
                 continue
             target = worktree_path / relative
             if target.is_symlink():
-                if target.resolve() == source:
-                    continue
+                try:
+                    if target.resolve(strict=True) == source:
+                        continue
+                except (OSError, RuntimeError):
+                    pass
                 target.unlink()
             elif target.exists():
                 if target.is_dir():
