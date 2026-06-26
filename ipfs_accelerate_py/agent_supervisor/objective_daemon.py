@@ -31,6 +31,7 @@ from .objective_tracker import (
     DEFAULT_TRACKING_DOCUMENT_TITLE,
     DEFAULT_ULTIMATE_GOAL,
     append_interoperability_goals,
+    append_launch_readiness_goals,
     append_refinement_goals,
     deduplicate_interoperability_goals,
     ensure_objective_tracking_document,
@@ -195,6 +196,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Repo-relative component path to include when seeding interoperability goals.",
     )
     parser.add_argument("--max-interoperability-goals", type=int, default=12)
+    parser.add_argument(
+        "--seed-launch-readiness-goals",
+        action="store_true",
+        help="Seed high-value launch-readiness goals for Swissknife, Hallucinate App, MCP servers, and Meta glasses.",
+    )
+    parser.add_argument("--max-launch-readiness-goals", type=int, default=8)
     parser.add_argument("--no-persist-ast-dataset", action="store_true")
     parser.add_argument(
         "--no-todo-vector-index",
@@ -260,6 +267,16 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         )
         seeded_interoperability_goal_ids = interoperability.appended_goal_ids
 
+    seeded_launch_readiness_goal_ids: list[str] = []
+    if getattr(args, "seed_launch_readiness_goals", False) and objective_path.exists():
+        launch_readiness = append_launch_readiness_goals(
+            objective_path,
+            repo_root=repo_root,
+            max_goals=getattr(args, "max_launch_readiness_goals", 8),
+            goal_prefix=getattr(args, "goal_prefix", None),
+        )
+        seeded_launch_readiness_goal_ids = launch_readiness.appended_goal_ids
+
     completed_goal_ids: list[str] = []
     objective_completed_goal_count = 0
     objective_completion_validation_results: dict[str, Any] = {}
@@ -313,6 +330,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         force_goal_ids=[
             *ensured_goal_ids,
             *seeded_interoperability_goal_ids,
+            *seeded_launch_readiness_goal_ids,
             *refined_goal_ids,
             *split_csv(getattr(args, "force_goal_id", []) or []),
         ],
@@ -353,6 +371,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "ensured_goal_ids": ensured_goal_ids,
         "deduplicated_interoperability_goal_ids": deduplicated_interoperability_goal_ids,
         "seeded_interoperability_goal_ids": seeded_interoperability_goal_ids,
+        "seeded_launch_readiness_goal_ids": seeded_launch_readiness_goal_ids,
         "completed_goal_ids": completed_goal_ids,
         "goal_completion_todo_boards": [
             {

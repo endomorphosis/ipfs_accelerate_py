@@ -166,9 +166,11 @@ class PortalSupervisorConfig:
     objective_reconcile_goal_completion: bool = True
     objective_goal_completion_todo_boards: tuple[str, ...] = field(default_factory=tuple)
     objective_seed_interoperability_goals: bool = False
+    objective_seed_launch_readiness_goals: bool = False
     objective_interoperability_focus: tuple[str, ...] = field(default_factory=tuple)
     objective_interoperability_component_paths: tuple[str, ...] = field(default_factory=tuple)
     objective_max_interoperability_goals: int = 12
+    objective_max_launch_readiness_goals: int = 8
     objective_ensure_tracking_document: bool = False
     objective_ultimate_goal: str = ""
     objective_root_evidence: tuple[str, ...] = field(default_factory=tuple)
@@ -452,6 +454,9 @@ class PortalImplementationSupervisor:
             objective_generated_count = int(objective_payload.get("generated_count") or 0)
             objective_refined_goal_count = len(objective_payload.get("refined_goal_ids") or [])
             objective_seeded_goal_count = len(objective_payload.get("seeded_interoperability_goal_ids") or [])
+            objective_seeded_launch_goal_count = len(
+                objective_payload.get("seeded_launch_readiness_goal_ids") or []
+            )
             codebase_deferred_reason = ""
             if (
                 self.config.codebase_defer_when_objective_refills
@@ -469,6 +474,7 @@ class PortalImplementationSupervisor:
             objective_generated_count = 0
             objective_refined_goal_count = 0
             objective_seeded_goal_count = 0
+            objective_seeded_launch_goal_count = 0
             codebase_findings = []
             codebase_deferred_reason = "preflight_refill_deferred_until_daemon_loop"
         update_maintenance_phase("post_refill_generated_dirty_repair")
@@ -505,6 +511,7 @@ class PortalImplementationSupervisor:
                 "objective_refill_count": objective_generated_count,
                 "objective_refined_goal_count": objective_refined_goal_count,
                 "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
+                "objective_seeded_launch_readiness_goal_count": objective_seeded_launch_goal_count,
                 "objective_task_janitor_blocked_count": len(
                     objective_task_janitor.get("blocked_task_ids") or []
                 ),
@@ -535,6 +542,7 @@ class PortalImplementationSupervisor:
             "objective_refill_count": objective_generated_count,
             "objective_refined_goal_count": objective_refined_goal_count,
             "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
+            "objective_seeded_launch_readiness_goal_count": objective_seeded_launch_goal_count,
             "objective_task_janitor": objective_task_janitor,
             "codebase_refill_count": len(codebase_findings),
             "codebase_deferred_reason": codebase_deferred_reason,
@@ -3643,12 +3651,14 @@ class PortalImplementationSupervisor:
                 self.config.objective_goal_completion_todo_boards
             ),
             seed_interoperability_goals=self.config.objective_seed_interoperability_goals,
+            seed_launch_readiness_goals=self.config.objective_seed_launch_readiness_goals,
             interoperability_focus=list(self.config.objective_interoperability_focus),
             interoperability_component_path=list(
                 self.config.objective_interoperability_component_paths
                 or self.config.worktree_submodule_paths
             ),
             max_interoperability_goals=self.config.objective_max_interoperability_goals,
+            max_launch_readiness_goals=self.config.objective_max_launch_readiness_goals,
             max_refinement_children=self.config.objective_max_refinement_children,
             max_refinement_depth=self.config.objective_max_refinement_depth,
             no_persist_ast_dataset=not self.config.objective_persist_ast_dataset,
@@ -3680,6 +3690,7 @@ class PortalImplementationSupervisor:
                 "refined_goal_ids": [],
                 "completed_goal_ids": [],
                 "seeded_interoperability_goal_ids": [],
+                "seeded_launch_readiness_goal_ids": [],
                 "objective_refill_timed_out": True,
                 "objective_refill_timeout_seconds": float(
                     self.config.objective_refill_timeout_seconds or 0.0
@@ -3710,6 +3721,9 @@ class PortalImplementationSupervisor:
         strategy["last_objective_seeded_interoperability_goal_ids"] = list(
             payload.get("seeded_interoperability_goal_ids") or []
         )
+        strategy["last_objective_seeded_launch_readiness_goal_ids"] = list(
+            payload.get("seeded_launch_readiness_goal_ids") or []
+        )
         strategy["last_objective_generated_task_ids"] = list(payload.get("task_ids") or [])
         strategy["last_objective_todo_vector_index_path"] = str(payload.get("todo_vector_index_path") or "")
         strategy["last_objective_surplus_findings_per_goal"] = int(
@@ -3728,6 +3742,7 @@ class PortalImplementationSupervisor:
         if (
             payload.get("completed_goal_ids")
             or payload.get("seeded_interoperability_goal_ids")
+            or payload.get("seeded_launch_readiness_goal_ids")
             or payload.get("refined_goal_ids")
             or payload.get("task_ids")
         ):
@@ -3738,6 +3753,7 @@ class PortalImplementationSupervisor:
                     "objective_path": str(objective_path),
                     "completed_goal_ids": payload.get("completed_goal_ids") or [],
                     "seeded_interoperability_goal_ids": payload.get("seeded_interoperability_goal_ids") or [],
+                    "seeded_launch_readiness_goal_ids": payload.get("seeded_launch_readiness_goal_ids") or [],
                     "refined_goal_ids": payload.get("refined_goal_ids") or [],
                     "task_ids": payload.get("task_ids") or [],
                     "objective_active_goal_count": payload.get("objective_active_goal_count") or 0,
@@ -4883,6 +4899,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Seed objective goals for cross-submodule interoperability and integration tests.",
     )
     parser.add_argument(
+        "--objective-seed-launch-readiness-goals",
+        action="store_true",
+        help=(
+            "Seed launch-readiness goals for Swissknife virtual desktop, Hallucinate App MCP "
+            "dashboards, backend MCP servers, and Meta glasses control-plane integration."
+        ),
+    )
+    parser.add_argument(
         "--objective-interoperability-focus",
         action="append",
         default=[],
@@ -4901,6 +4925,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--objective-max-interoperability-goals", type=int, default=12)
+    parser.add_argument("--objective-max-launch-readiness-goals", type=int, default=8)
     parser.add_argument(
         "--objective-ensure-tracking-document",
         action="store_true",
@@ -5086,11 +5111,13 @@ def supervisor_config_from_args(
         objective_reconcile_goal_completion=args.objective_reconcile_goal_completion,
         objective_goal_completion_todo_boards=tuple(args.objective_goal_completion_todo_board),
         objective_seed_interoperability_goals=args.objective_seed_interoperability_goals,
+        objective_seed_launch_readiness_goals=args.objective_seed_launch_readiness_goals,
         objective_interoperability_focus=split_csv_values(args.objective_interoperability_focus),
         objective_interoperability_component_paths=split_csv_values(
             args.objective_interoperability_component_path
         ),
         objective_max_interoperability_goals=args.objective_max_interoperability_goals,
+        objective_max_launch_readiness_goals=args.objective_max_launch_readiness_goals,
         objective_ensure_tracking_document=args.objective_ensure_tracking_document,
         objective_ultimate_goal=args.objective_ultimate_goal,
         objective_root_evidence=split_csv_values(args.objective_root_evidence),

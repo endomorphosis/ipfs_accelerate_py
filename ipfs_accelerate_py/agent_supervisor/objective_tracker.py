@@ -966,6 +966,319 @@ def append_interoperability_goals(
     return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
 
 
+LAUNCH_READINESS_GOAL_TEMPLATES: tuple[dict[str, Any], ...] = (
+    {
+        "key": "hallucinate-mcp-dashboard-capability-catalog",
+        "title": "Hallucinate App MCP dashboard capability catalog",
+        "track": "launch",
+        "priority": "P0",
+        "submodules": "hallucinate_app, swissknife, external/ipfs_accelerate, external/ipfs_datasets, external/ipfs_kit",
+        "goal": (
+            "Hallucinate App menus and dashboards expose ipfs_accelerate_py, ipfs_datasets_py, "
+            "and ipfs_kit_py MCP server dashboards, daemon health, tools/list, and tools/call "
+            "so Swissknife can test backend interoperability from the UI."
+        ),
+        "evidence": (
+            "hallucinate_app menus, Hallucinate App MCP dashboard, dashboard capability catalog, "
+            "daemon health, tools/list, tools/call, ipfs_accelerate_py MCP server, "
+            "ipfs_datasets_py MCP server, ipfs_kit_py MCP server, Swissknife applications, "
+            "Playwright MCP dashboard interoperability"
+        ),
+        "outputs": (
+            "hallucinate_app, swissknife, external/ipfs_accelerate, external/ipfs_datasets, "
+            "external/ipfs_kit, hallucinate_app/test/e2e/mcp-feature-exposure.spec.ts, "
+            "hallucinate_app/test/e2e/mcp-dashboard-interoperability.spec.ts"
+        ),
+        "validation": (
+            "npm --prefix hallucinate_app run test:e2e -- "
+            "mcp-feature-exposure.spec.ts mcp-dashboard-interoperability.spec.ts"
+        ),
+        "embedding_query": (
+            "Hallucinate App MCP dashboard dashboard capability catalog tools/list tools/call "
+            "ipfs_accelerate_py ipfs_datasets_py ipfs_kit_py Swissknife Playwright"
+        ),
+        "ast_query": (
+            "hallucinate_app, swissknife, ipfs_accelerate_py, ipfs_datasets_py, ipfs_kit_py, "
+            "tools/list, tools/call, daemon health, MCP dashboard"
+        ),
+        "gap_task": (
+            "Create or repair the Hallucinate App dashboard/menu integration so it lists and "
+            "calls each backend MCP server tool, then cover it with Playwright."
+        ),
+    },
+    {
+        "key": "swissknife-mcp-plus-plus-server-dashboard-interop",
+        "title": "Swissknife MCP++ server dashboard interoperability",
+        "track": "launch",
+        "priority": "P0",
+        "submodules": "swissknife, hallucinate_app, Mcp-Plus-Plus, external/ipfs_accelerate, external/ipfs_datasets, external/ipfs_kit",
+        "goal": (
+            "Swissknife applications consume MCP++ compatible control-plane contracts from "
+            "Hallucinate App and the ipfs_accelerate_py, ipfs_datasets_py, and ipfs_kit_py MCP servers."
+        ),
+        "evidence": (
+            "Swissknife applications, Mcp-Plus-Plus, MCP++ compatibility, MCP server dashboard, "
+            "dashboard capability catalog, ipfs_accelerate_py, ipfs_datasets_py, ipfs_kit_py, "
+            "tools/list, tools/call, control plane"
+        ),
+        "outputs": (
+            "swissknife, Mcp-Plus-Plus, hallucinate_app, external/ipfs_accelerate, "
+            "external/ipfs_datasets, external/ipfs_kit, swissknife/test/e2e/mcp-dashboard.spec.ts"
+        ),
+        "validation": "npm --prefix swissknife run test:e2e:mcp",
+        "embedding_query": (
+            "Swissknife MCP++ MCP server dashboard control plane tools/list tools/call "
+            "ipfs_accelerate_py ipfs_datasets_py ipfs_kit_py"
+        ),
+        "ast_query": (
+            "swissknife, Mcp-Plus-Plus, MCP++, MCP server, tools/list, tools/call, control plane"
+        ),
+        "gap_task": (
+            "Implement the Swissknife-facing MCP++ dashboard contract and tests that prove "
+            "Swissknife can enumerate and invoke backend services through the control plane."
+        ),
+    },
+    {
+        "key": "cross-device-virtual-desktop-offload-replay",
+        "title": "Cross-device virtual desktop offload launch replay",
+        "track": "launch",
+        "priority": "P0",
+        "submodules": "mobile, swissknife, hallucinate_app, external/ipfs_accelerate, external/ipfs_datasets, external/ipfs_kit",
+        "goal": (
+            "A phone-hosted Swissknife virtual desktop can discover a desktop peer, offload "
+            "compute, route Hallucinate App mediation through IPFS/libp2p/MCP++, and produce "
+            "a launch readiness receipt."
+        ),
+        "evidence": (
+            "phone-hosted Swissknife virtual desktop, desktop peer offload, mobile phone, "
+            "Hallucinate App mediation, IPFS, libp2p, MCP++, launch readiness receipt, "
+            "cross-device e2e validation, Playwright launch replay"
+        ),
+        "outputs": (
+            "mobile, swissknife, hallucinate_app, external/ipfs_accelerate, external/ipfs_datasets, "
+            "external/ipfs_kit, tests/test_virtual_ai_os_launch_readiness_gate.py"
+        ),
+        "validation": (
+            "PYTHONPATH=external/ipfs_accelerate:external/ipfs_datasets "
+            "pytest tests/test_virtual_ai_os_launch_readiness_gate.py -q"
+        ),
+        "embedding_query": (
+            "phone hosted Swissknife virtual desktop desktop peer offload mobile IPFS libp2p "
+            "MCP++ launch readiness receipt Playwright"
+        ),
+        "ast_query": (
+            "mobile, swissknife, hallucinate_app, desktop peer offload, launch readiness, Playwright"
+        ),
+        "gap_task": (
+            "Build the deterministic cross-device launch replay and receipt path that proves "
+            "phone-to-desktop offload works through the planned control plane."
+        ),
+    },
+    {
+        "key": "meta-glasses-control-plane-input-routing",
+        "title": "Meta glasses control-plane input routing",
+        "track": "launch",
+        "priority": "P0",
+        "submodules": "external/meta-wearables-dat-android, external/meta-wearables-dat-ios, mobile, swissknife, hallucinate_app",
+        "goal": (
+            "Meta glasses camera, microphone, headphones, Neural Band, and captouch inputs "
+            "route through the mobile phone into Swissknife applications and the control plane "
+            "using Bluetooth, Wi-Fi, IPFS/libp2p, and MCP++ compatible envelopes where possible."
+        ),
+        "evidence": (
+            "Meta glasses interface, Meta Wearables DAT, camera, microphone, headphones, "
+            "Neural Band, captouch, Bluetooth transport, Wi-Fi transport, mobile phone, "
+            "Swissknife applications, IPFS, libp2p, MCP++, control plane"
+        ),
+        "outputs": (
+            "external/meta-wearables-dat-android, external/meta-wearables-dat-ios, mobile, "
+            "swissknife, hallucinate_app, tests/test_hallucinate_multimodal_control_todo_queue.py, "
+            "tests/test_virtual_ai_os_launch_readiness_gate.py"
+        ),
+        "validation": (
+            "PYTHONPATH=external/ipfs_accelerate:external/ipfs_datasets "
+            "pytest tests/test_hallucinate_multimodal_control_todo_queue.py "
+            "tests/test_virtual_ai_os_launch_readiness_gate.py -q"
+        ),
+        "embedding_query": (
+            "Meta glasses camera microphone headphones Neural Band captouch Bluetooth Wi-Fi "
+            "Swissknife control plane IPFS libp2p MCP++"
+        ),
+        "ast_query": (
+            "Meta Wearables DAT, camera, microphone, headphones, Neural Band, captouch, "
+            "Bluetooth, Wi-Fi, Swissknife, control plane"
+        ),
+        "gap_task": (
+            "Research and codify the Meta glasses input contracts, mocks, and transport tests "
+            "that let Swissknife applications consume those interaction methods."
+        ),
+    },
+    {
+        "key": "hallucinate-daemon-launch-orchestration",
+        "title": "Hallucinate App daemon launch orchestration",
+        "track": "launch",
+        "priority": "P0",
+        "submodules": "hallucinate_app, swissknife, external/ipfs_accelerate, external/ipfs_datasets, external/ipfs_kit",
+        "goal": (
+            "Hallucinate App launches and monitors the ipfs_accelerate_py, ipfs_datasets_py, "
+            "and ipfs_kit_py MCP daemons, exposes their health in dashboards, and hands "
+            "capability records to Swissknife."
+        ),
+        "evidence": (
+            "Hallucinate App daemon health, daemon launcher, MCP server, MCP dashboard, "
+            "ipfs_accelerate_py, ipfs_datasets_py, ipfs_kit_py, dashboard capability catalog, "
+            "Swissknife applications"
+        ),
+        "outputs": (
+            "hallucinate_app, swissknife, external/ipfs_accelerate, external/ipfs_datasets, "
+            "external/ipfs_kit, hallucinate_app/test/e2e/daemon-launch-health.spec.ts"
+        ),
+        "validation": (
+            "PYTHONPATH=external/ipfs_accelerate:external/ipfs_datasets "
+            "pytest tests/test_hallucinate_multimodal_control_todo_queue.py -q"
+        ),
+        "embedding_query": (
+            "Hallucinate App daemon launch health MCP server dashboard ipfs_accelerate_py "
+            "ipfs_datasets_py ipfs_kit_py Swissknife"
+        ),
+        "ast_query": (
+            "hallucinate_app, daemon health, MCP server, MCP dashboard, ipfs_accelerate_py, "
+            "ipfs_datasets_py, ipfs_kit_py"
+        ),
+        "gap_task": (
+            "Make Hallucinate App own daemon launch and health reporting for the backend MCP "
+            "servers, with UI and integration tests that Swissknife can exercise."
+        ),
+    },
+    {
+        "key": "objective-heap-autosteer-validation-repair",
+        "title": "Objective heap active steering and validation repair",
+        "track": "launch",
+        "priority": "P0",
+        "submodules": "external/ipfs_accelerate, hallucinate_app, swissknife, mobile",
+        "goal": (
+            "The supervisor actively manages the objective heap and todo boards by adding, "
+            "deprioritizing, and repairing goals, subgoals, tasks, and subtasks from validation "
+            "results including Playwright launch replays."
+        ),
+        "evidence": (
+            "objective heap, fibonacci priority, supervisor active management, failed validation "
+            "repair, Playwright launch replay, HAO task board, MGW task board, VAI task board, "
+            "production readiness"
+        ),
+        "outputs": (
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor, "
+            "tests/test_supervisor_objective_task_janitor.py, "
+            "tests/test_reconciliation_guardrail_refresh.py"
+        ),
+        "validation": (
+            "PYTHONPATH=external/ipfs_accelerate "
+            "pytest tests/test_supervisor_objective_task_janitor.py "
+            "tests/test_reconciliation_guardrail_refresh.py -q"
+        ),
+        "embedding_query": (
+            "objective heap fibonacci priority supervisor active management failed validation "
+            "repair Playwright VAI MGW HAO production readiness"
+        ),
+        "ast_query": (
+            "objective heap, supervisor, validation repair, Playwright, VAI, MGW, HAO"
+        ),
+        "gap_task": (
+            "Extend the supervisor loop so failed validation and stale idle lanes generate "
+            "mission-aligned follow-up tasks and subgoals instead of generic reconciliation churn."
+        ),
+    },
+)
+
+
+def normalize_launch_key(value: str) -> str:
+    return safe_bundle_key(value).strip("-")
+
+
+def append_launch_readiness_goals(
+    objective_path: Path,
+    *,
+    repo_root: Path,
+    max_goals: int = 8,
+    goal_prefix: str | None = None,
+) -> ObjectiveTrackingResult:
+    """Seed high-value launch-readiness goals for the Swissknife virtual desktop plan."""
+
+    _ = repo_root
+    if not objective_path.exists() or max_goals <= 0:
+        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+
+    text = objective_path.read_text(encoding="utf-8")
+    goals = parse_goal_heap(text)
+    existing_keys = {
+        normalize_launch_key(str(goal.fields.get("launch_key") or ""))
+        for goal in goals
+        if str(goal.fields.get("launch_key") or "").strip()
+    }
+    existing_bundles = {
+        normalize_launch_key(str(goal.fields.get("bundle") or "").removeprefix("objective/launch/"))
+        for goal in goals
+        if str(goal.fields.get("bundle") or "").startswith("objective/launch/")
+    }
+    existing_keys.update(existing_bundles)
+    graph = goal_graph(goals)
+    root_goal_id = sorted(graph.get("roots") or [goals[0].goal_id if goals else ""])[0]
+    goal_prefix = goal_prefix or infer_goal_prefix(goals)
+    next_id = next_goal_id(goals, prefix=goal_prefix)
+    appended_blocks: list[str] = []
+    appended_goal_ids: list[str] = []
+
+    def allocate_goal_id() -> str:
+        nonlocal next_id
+        current = next_id
+        number = int(current[len(goal_prefix) :]) + 1
+        next_id = f"{goal_prefix}{number:03d}"
+        return current
+
+    for template in LAUNCH_READINESS_GOAL_TEMPLATES:
+        launch_key = normalize_launch_key(str(template["key"]))
+        if launch_key in existing_keys:
+            continue
+        goal_id = allocate_goal_id()
+        fields = {
+            "Status": "active",
+            "Parent": root_goal_id,
+            "Fib priority": str(fibonacci_priority(1, len(appended_goal_ids))),
+            "Track": str(template["track"]),
+            "Priority": str(template["priority"]),
+            "Bundle": f"objective/launch/{launch_key}",
+            "Goal kind": "launch_readiness",
+            "Launch key": launch_key,
+            "Submodules": str(template["submodules"]),
+            "Mission terms": str(template["evidence"]),
+            "Goal": str(template["goal"]),
+            "Evidence": str(template["evidence"]),
+            "Outputs": str(template["outputs"]),
+            "Validation": str(template["validation"]),
+            "Refinement depth": "1",
+            "Embedding query": str(template["embedding_query"]),
+            "AST query": str(template["ast_query"]),
+            "Parallel lane": f"objective/launch/{launch_key}",
+            "Conflict policy": (
+                "prefer launch-critical integration evidence; use the LLM merge resolver "
+                "when dashboard, daemon, or mobile control-plane edits conflict"
+            ),
+            "Gap task": str(template["gap_task"]),
+        }
+        appended_blocks.append(render_goal_block(goal_id=goal_id, title=str(template["title"]), fields=fields))
+        appended_goal_ids.append(goal_id)
+        existing_keys.add(launch_key)
+        if len(appended_goal_ids) >= max_goals:
+            break
+
+    if appended_blocks:
+        objective_path.write_text(
+            text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n",
+            encoding="utf-8",
+        )
+    return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
+
+
 def existing_refinement_keys(goals: Sequence[ObjectiveGoal]) -> set[tuple[str, str]]:
     keys: set[tuple[str, str]] = set()
     for goal in goals:

@@ -742,8 +742,10 @@ class ObjectiveRefillDefaults:
     objective_interoperability_focus: Sequence[str] = ()
     objective_interoperability_component_paths: Sequence[str] = ()
     objective_max_interoperability_goals: int | None = None
+    objective_max_launch_readiness_goals: int | None = None
     refill_scan: bool = True
     seed_interoperability_goals: bool = False
+    seed_launch_readiness_goals: bool = False
 
 
 @dataclass(frozen=True)
@@ -786,8 +788,10 @@ def build_objective_refill_defaults_from_paths(
     objective_interoperability_focus: Sequence[str] = (),
     objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
+    objective_max_launch_readiness_goals: int | None = None,
     refill_scan: bool = True,
     seed_interoperability_goals: bool = False,
+    seed_launch_readiness_goals: bool = False,
 ) -> ObjectiveRefillDefaults:
     """Build reusable objective-refill defaults from resolved wrapper paths."""
 
@@ -829,8 +833,10 @@ def build_objective_refill_defaults_from_paths(
         objective_interoperability_focus=objective_interoperability_focus,
         objective_interoperability_component_paths=objective_interoperability_component_paths,
         objective_max_interoperability_goals=objective_max_interoperability_goals,
+        objective_max_launch_readiness_goals=objective_max_launch_readiness_goals,
         refill_scan=refill_scan,
         seed_interoperability_goals=seed_interoperability_goals,
+        seed_launch_readiness_goals=seed_launch_readiness_goals,
     )
 
 
@@ -914,8 +920,10 @@ def build_objective_refill_defaults_factory(
     objective_interoperability_focus: Sequence[str] = (),
     objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
+    objective_max_launch_readiness_goals: int | None = None,
     refill_scan: bool = True,
     seed_interoperability_goals: bool = False,
+    seed_launch_readiness_goals: bool = False,
 ) -> SupervisorBootstrapFactory:
     """Build a reusable bootstrap factory for objective-refill defaults."""
 
@@ -949,8 +957,10 @@ def build_objective_refill_defaults_factory(
             objective_interoperability_focus=objective_interoperability_focus,
             objective_interoperability_component_paths=objective_interoperability_component_paths,
             objective_max_interoperability_goals=objective_max_interoperability_goals,
+            objective_max_launch_readiness_goals=objective_max_launch_readiness_goals,
             refill_scan=refill_scan,
             seed_interoperability_goals=seed_interoperability_goals,
+            seed_launch_readiness_goals=seed_launch_readiness_goals,
         )
 
     return factory
@@ -1010,8 +1020,10 @@ def build_namespace_objective_refill_defaults_factory(
     objective_interoperability_focus: Sequence[str] = (),
     objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
+    objective_max_launch_readiness_goals: int | None = None,
     refill_scan: bool = True,
     seed_interoperability_goals: bool = False,
+    seed_launch_readiness_goals: bool = False,
 ) -> SupervisorBootstrapFactory:
     """Build objective-refill defaults from a standard namespace path bundle."""
 
@@ -1047,8 +1059,10 @@ def build_namespace_objective_refill_defaults_factory(
         objective_interoperability_focus=objective_interoperability_focus,
         objective_interoperability_component_paths=objective_interoperability_component_paths,
         objective_max_interoperability_goals=objective_max_interoperability_goals,
+        objective_max_launch_readiness_goals=objective_max_launch_readiness_goals,
         refill_scan=refill_scan,
         seed_interoperability_goals=seed_interoperability_goals,
+        seed_launch_readiness_goals=seed_launch_readiness_goals,
         **path_kwargs,
     )
 
@@ -1136,6 +1150,8 @@ def apply_portal_implementation_supervisor_defaults(
             args = with_flag_default(args, "--objective-refill-scan")
         if objective.seed_interoperability_goals:
             args = with_flag_default(args, "--objective-seed-interoperability-goals")
+        if objective.seed_launch_readiness_goals:
+            args = with_flag_default(args, "--objective-seed-launch-readiness-goals")
         if objective.objective_interoperability_focus:
             args = with_repeated_default(
                 args,
@@ -1152,6 +1168,11 @@ def apply_portal_implementation_supervisor_defaults(
             args,
             "--objective-max-interoperability-goals",
             objective.objective_max_interoperability_goals,
+        )
+        args = _with_optional_default(
+            args,
+            "--objective-max-launch-readiness-goals",
+            objective.objective_max_launch_readiness_goals,
         )
         args = _with_optional_default(args, "--objective-path", objective.objective_path)
         args = _with_optional_default(args, "--objective-graph-path", objective.objective_graph_path)

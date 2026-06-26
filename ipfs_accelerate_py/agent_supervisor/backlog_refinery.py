@@ -488,7 +488,8 @@ def should_refill_backlog(
     current_open = effective_open_task_count(todo_text, state_path=state_path, task_prefix=task_prefix)
     task_count = len(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
     state_counts = refill_state_counts(todo_text, state_path=state_path, task_prefix=task_prefix)
-    ready_for_refill = int(state_counts.get("eligible_ready_count", state_counts.get("ready_count") or 0) or 0)
+    eligible_ready_for_refill = int(state_counts.get("eligible_ready_count", state_counts.get("ready_count") or 0) or 0)
+    ready_for_refill = int(state_counts.get("selectable_ready_count", eligible_ready_for_refill) or 0)
     no_ready_existing_work = (
         bool(state_counts)
         and ready_for_refill == 0
