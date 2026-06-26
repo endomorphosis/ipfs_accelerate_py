@@ -2135,7 +2135,13 @@ class PortalImplementationDaemon:
         source = (self.repo_root / source_key).resolve()
         if not source.exists() or not self._is_git_worktree(source):
             return False
-        base_ref = self._submodule_gitlink_ref(worktree_path, relative) or "HEAD"
+        gitlink_ref = self._submodule_gitlink_ref(worktree_path, relative)
+        base_ref = self._resolve_submodule_worktree_base_ref(
+            source,
+            gitlink_ref or "HEAD",
+            source_key=source_key,
+            worktree_path=worktree_path,
+        )
         target = worktree_path / relative
         if self._is_git_worktree(target) and not target.is_symlink():
             if branch_name:
@@ -2161,6 +2167,50 @@ class PortalImplementationDaemon:
             return True
         self._run_git(["worktree", "add", "--detach", str(target), base_ref], cwd=source)
         return True
+
+    def _resolve_submodule_worktree_base_ref(
+        self,
+        source: Path,
+        base_ref: str,
+        *,
+        source_key: str,
+        worktree_path: Path,
+    ) -> str:
+        if not base_ref or base_ref == "HEAD" or self._git_ref_exists_in_repo(source, base_ref):
+            return base_ref or "HEAD"
+
+        fetch_result = subprocess.run(
+            ["git", "fetch", "--quiet", "origin"],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if fetch_result.returncode == 0 and self._git_ref_exists_in_repo(source, base_ref):
+            return base_ref
+
+        fallback_result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        fallback_ref = fallback_result.stdout.strip() if fallback_result.returncode == 0 else "HEAD"
+        self._record_event(
+            "submodule_gitlink_ref_missing",
+            {
+                "source": str(source),
+                "source_key": source_key,
+                "worktree_path": str(worktree_path),
+                "missing_ref": base_ref,
+                "fallback_ref": fallback_ref,
+                "fetch_attempted": True,
+                "fetch_returncode": fetch_result.returncode,
+                "fetch_error": fetch_result.stderr.strip()[:1000],
+            },
+        )
+        return fallback_ref or "HEAD"
 
     def _submodule_gitlink_ref(self, worktree_path: Path, relative: str) -> str:
         if not self._repo_relative_path_safe(relative):
@@ -2302,7 +2352,7 @@ class PortalImplementationDaemon:
         if not ref:
             return False
         result = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", ref],
+            ["git", "cat-file", "-e", f"{ref}^{{commit}}"],
             cwd=cwd,
             text=True,
             capture_output=True,
