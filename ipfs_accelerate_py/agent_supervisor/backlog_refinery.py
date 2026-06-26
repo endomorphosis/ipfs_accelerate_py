@@ -2576,6 +2576,23 @@ def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -
     return False
 
 
+def reconciliation_guardrail_refresh_is_noise(block: str, record: Mapping[str, Any]) -> bool:
+    """Return whether refreshing an existing guardrail would only churn metadata."""
+
+    kind = str(record.get("kind") or "")
+    dedupe_key = str(record.get("dedupe_key") or "")
+    stable_dedupe_kinds = {
+        "dirty_backlogged_worktree",
+        "main_checkout_dirty",
+        "preflight_merge_conflict",
+    }
+    if kind not in stable_dedupe_kinds:
+        return False
+    if not dedupe_key or dedupe_key not in block:
+        return False
+    return True
+
+
 def task_blocks_with_spans(todo_text: str) -> list[tuple[int, int, str]]:
     starts = [match.start() for match in re.finditer(r"^##\s+\S+", todo_text, flags=re.MULTILINE)]
     blocks: list[tuple[int, int, str]] = []
@@ -2673,6 +2690,8 @@ def refresh_existing_reconciliation_guardrails(
                 block = replacements[(start, end)]
             if not reconciliation_record_matches_block(block, record):
                 continue
+            if reconciliation_guardrail_refresh_is_noise(block, record):
+                break
             refreshed_block, task_id, validation_path, changed = refresh_reconciliation_guardrail_block(block, record)
             discovery_changed = False
             if validation_path is not None and task_id:
