@@ -358,20 +358,376 @@ but cannot merge because another daemon owns the repository merge lock, the
 result remains eligible for the next reconciliation pass until the branch is
 merged or explicitly abandoned.
 
-## Relationship To `ipfs_datasets_py`
+## Detailed Architecture Analysis
 
-`ipfs_datasets_py` remains the upstream source of the existing todo daemon
-framework. This module does not edit that package. The accelerator port now
-contains its own runnable copy of the todo daemon/supervisor runtime plus the
-objective graph, bundle planning, task-queue payloads, and merge-resolution
-bridge that are specific to accelerating autonomous agent systems.
+The subsystem is an objective-driven backlog generator and multi-lane execution
+supervisor:
 
-When `ipfs_datasets_py` is available, `ObjectiveDatasetStore` uses its
-`DatasetManager` to register the AST dataset.  When it is not available, the same
-scan still succeeds with JSONL and manifest artifacts, so accelerator workers can
-run in minimal environments.
+- **Objective layer**: parse and maintain an objective heap, scan repository
+  evidence gaps, generate todos, write bundle shards, write an objective graph
+  artifact, and optionally submit queue payloads.
+  (`/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/objective_graph.py:1-8,1672-1813`,
+  `/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/objective_daemon.py:1-6,225-398`)
+- **Execution layer**: implementation daemon selects and executes tasks; the
+  implementation supervisor repairs state, enforces retry/dependency/reconcile
+  guardrails, and refills the backlog.
+  (`/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:874-1131`,
+  `/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:362-560`)
+- **Parallelization layer**: bundle supervisor plans and starts isolated
+  per-bundle lanes.
+  (`/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/bundle_supervisor.py:104-170,238-297`)
+- **Queue layer**: DuckDB queue plus P2P service for distributed claiming and
+  completion.
+  (`/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/p2p_tasks/task_queue.py:44-50,112-201`,
+  `/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/p2p_tasks/service.py:1-5,1415-1634`)
 
-Some dataset-specific daemon families, such as the legal parser and logic port,
-still bridge to `ipfs_datasets_py` logic modules when those specialized runtimes
-are invoked. Core objective scanning and the generic todo daemon import without
-that optional package.
+## Main Components
+
+- `objective_graph.py`: objective parse/schedule/scan, evidence indexing,
+  finding generation, shard/index writing, and queue payload submission.
+  (`.../objective_graph.py:274-305,567-625,763-817,1293-1425,1573-1669,1760-1813`)
+- `objective_daemon.py`: CLI orchestration over tracking, reconciliation,
+  refinement, todo generation, graph writing, and queue submission.
+  (`.../objective_daemon.py:116-223,225-398`)
+- `objective_tracker.py`: tracking document creation, goal completion
+  reconciliation, refinement goal insertion, thought graph, and objective graph
+  artifact writing.
+  (`.../objective_tracker.py:337-420,422-470,1324-1385,1395-1555`)
+- `todo_vector_index.py`: vector/AST todo index, clusters, merge candidates,
+  bundle contexts, execution packets, and bundle-index enrichment.
+  (`.../todo_vector_index.py:40-83,354-432,519-585,682-741,880-917,919-987,1003-1146`)
+- `bundle_supervisor.py`: per-bundle lane spec, planning, launch, and manifest
+  writing.
+  (`.../bundle_supervisor.py:20-35,104-170,173-231,238-297`)
+- `todo_daemon/implementation_daemon.py`: task parsing/status
+  resolution/selection, implementation execution, validation, completion
+  marking, and merge reconciliation integration.
+  (`.../implementation_daemon.py:583-644,874-1131,1133-1328,6628-6673`)
+- `todo_daemon/implementation_supervisor.py`: maintenance/repair, stuck
+  detection/recovery, guardrails, refill policy, loop/watchdog, and restart
+  behavior.
+  (`.../implementation_supervisor.py:362-743,3006-3360,3546-3877,3918-4092,4478-5160`)
+- `backlog_refinery.py`: low-backlog refill policy and guardrail task
+  generation for retry, dependency, and reconciliation cases.
+  (`.../backlog_refinery.py:479-521,3091-3309,3311-3403,3405-3537,3556-3715`)
+- `p2p_tasks/task_queue.py` and `p2p_tasks/service.py`: queue storage and P2P
+  RPC API/lifecycle.
+  (`.../task_queue.py:112-201,404-520,790-863,864-929,994-1063,1064-1156`,
+  `.../service.py:1415-1737,2197-2218`)
+
+## Objective Heap Format and Lifecycle
+
+- Format: markdown `## GOAL-ID Title` plus `- Field: value`; the parser is
+  package-neutral. (`.../objective_graph.py:274-305`)
+- Scheduling: active/open/todo goals are heap-ordered by Fibonacci priority,
+  then priority rank, then work-surface tie-breakers.
+  (`.../objective_graph.py:763-817`)
+- Daemon lifecycle: ensure tracking document when requested, dedupe/seed,
+  refine, reconcile completion, generate todos, write the objective graph
+  artifact, and optionally submit queue payloads.
+  (`.../objective_daemon.py:241-356`)
+- The graph artifact includes `heap_schedule`, `thought_graph`, goal metadata,
+  and counts. (`.../objective_tracker.py:1519-1555`)
+
+## Repository Evidence Scanning
+
+Implemented evidence modes include:
+
+- **Path evidence** for repository-relative term paths.
+- **Exact text evidence** for terms in file content or paths.
+- **AST/symbol evidence** via `symbol_terms` over Python, JavaScript,
+  TypeScript, Markdown, and JSON.
+- **Deterministic embedding evidence** via hash-based token vectors and cosine
+  thresholding.
+  (`.../objective_graph.py:567-625`, `.../objective_graph.py:326-404`,
+  `.../objective_graph.py:253-267`)
+
+Candidate files are git-tracked across the repository plus submodules/worktrees
+with suffix and directory filters. (`.../objective_graph.py:485-553,526-540`)
+
+## Finding-to-Todo Conversion
+
+1. `scan_objective_gaps()` computes missing terms per goal and builds
+   `ObjectiveFinding` candidates, including aggregate findings, surplus
+   clusters, and optional validation-gate findings.
+   (`.../objective_graph.py:1293-1425`, `.../objective_graph.py:1133-1189`)
+2. `generate_objective_todos()` assigns task IDs, writes discovery markdown,
+   renders todo blocks, and appends them to the board.
+   (`.../objective_graph.py:1672-1732`, `.../objective_graph.py:1453-1510`,
+   `.../objective_graph.py:1520-1570`)
+3. The generation pass writes bundle shards/index plus optional vector index and
+   AST dataset artifacts. (`.../objective_graph.py:1573-1669,1733-1756`)
+
+## Bundles, Shards, Conflict Domains, and Vector Indexes
+
+- **Explicit bundle**: uses the goal `Bundle:` field directly.
+  (`.../objective_graph.py:131-145,1348-1390`)
+- **Implicit bundle**: uses semantic/AST clustering by track, conflict-domain
+  root (`finding_conflict_root`), and embedding similarity threshold
+  (`IPFS_ACCELERATE_AGENT_BUNDLE_CLUSTER_MIN_SCORE`).
+  (`.../objective_graph.py:1201-1213,1239-1290`)
+- **Shard/index generation**: writes per-bundle markdown shards plus
+  `index.json` with task metadata such as `merge_key`, `merge_family`, packet
+  fields, and vector key. (`.../objective_graph.py:1573-1669`)
+- **Vector index** (`todo_vector_index.json`): stores `records`, `clusters`,
+  `merge_candidates`, `bundle_contexts`, `execution_packets`, and token
+  estimates. (`.../todo_vector_index.py:919-966`)
+- **Bundle index enrichment**: adds per-bundle `todo_vector_summary` and
+  per-task context/packet keys. (`.../todo_vector_index.py:1003-1146`)
+- Tests validate these fields and population behavior.
+  (`.../test/api/test_agent_supervisor_todo_daemon_port.py:7514-7547,7642-7653`)
+
+## Bundle Supervisor Behavior
+
+- Default behavior is planning plus manifest writing; no process is launched
+  unless `--start` is passed. (`.../bundle_supervisor.py:247,263-297`)
+- Each lane receives isolated `state_dir`, `worktree_root`, `state_prefix`, log
+  path, and command. (`.../bundle_supervisor.py:131-169`)
+- `--start` launches detached subprocesses and writes a per-lane PID file.
+  (`.../bundle_supervisor.py:173-208`)
+- Tests confirm isolated lane paths and dry-run behavior.
+  (`.../test/api/test_agent_supervisor_todo_daemon_port.py:9161-9250`)
+
+## Implementation Daemon and Supervisor Behavior
+
+Implementation daemon behavior:
+
+- Parses markdown tasks and normalizes metadata, status, and dependencies.
+  (`.../implementation_daemon.py:583-644`)
+- Resolves runtime status as completed, blocked, waiting, or ready with
+  dependency waiting and merge-failure blocking.
+  (`.../implementation_daemon.py:961-980`)
+- Ranks selection by penalty, priority, blocked-source preference, track focus,
+  vector context/packet/merge relations, and work-surface.
+  (`.../implementation_daemon.py:6628-6673`,
+  `.../implementation_daemon.py:6324-6563`)
+- Runs the implementation command and validation commands, then marks todo
+  completion only on success. (`.../implementation_daemon.py:1133-1328`)
+
+Implementation supervisor behavior:
+
+- Runs a maintenance cycle that repairs event/state/strategy/todo
+  path/worktrees, runs guardrails, and refills objectives/codebase.
+  (`.../implementation_supervisor.py:386-560`)
+- Detects stuck work from stale heartbeat/progress, log stalls, missing worker
+  phase, and unresolved merge failures.
+  (`.../implementation_supervisor.py:3918-3987`)
+- On stuck work, rewrites strategy, blocks or deprioritizes the source, and
+  repairs active state. (`.../implementation_supervisor.py:3988-4092`)
+- Runs retry-budget, dependency, and reconciliation guardrails and auto-releases
+  completed guardrail blocks. (`.../implementation_supervisor.py:3141-3314`)
+- Calls objective daemon/backlog refinery refill pipelines with timeout wrappers.
+  (`.../implementation_supervisor.py:3345-3360,3546-3877`)
+
+## P2P TaskQueue Integration
+
+- Objective flow can submit bundle payloads to `TaskQueue` with default
+  `task_type="codex.todo_bundle"`.
+  (`.../objective_graph.py:1785-1812`,
+  `.../objective_daemon.py:217-220,349-355`)
+- Payload schema includes `bundle_key`, `todo_path`, `parallel_lane`,
+  `conflict_policy`, `tasks`, `source_todo`, and `objective_bundle_index`.
+  (`.../objective_graph.py:1760-1781`)
+- Queue lifecycle states in schema are `queued`, `running`, `completed`,
+  `failed`, and `cancelled`. (`.../task_queue.py:131-142`,
+  `.../task_queue.py:801-803`)
+- Queue transitions:
+  - submit → queued (`.../task_queue.py:171-201`)
+  - claim/claim_many → running (`.../task_queue.py:404-520`)
+  - complete(status) → terminal (`.../task_queue.py:790-863`)
+  - cancel queued task (`.../task_queue.py:864-929`)
+  - release running task back to queued (`.../task_queue.py:994-1063`)
+  - update heartbeat/log/progress (`.../task_queue.py:1064-1156`)
+- P2P RPC exposes submit, claim, claim_many, complete, release, list, cancel,
+  get, and wait. (`.../service.py:1415-1737,2197-2218`)
+
+## Concurrency and Safe Parallel Execution
+
+- Queue claims are transactional and atomic with conflict retry handling.
+  (`.../task_queue.py:44-50,404-500`)
+- Bundle lanes isolate state and worktree roots to reduce cross-lane collisions.
+  (`.../bundle_supervisor.py:131-169`)
+- The daemon supports deterministic sharding via `task_shard_count/index` for
+  multi-lane partitioning. (`.../implementation_daemon.py:723-732`,
+  `.../implementation_supervisor.py:4665-4675`)
+- Supervisor and daemon use lock files and claim locks around implementation and
+  merge paths. (`.../implementation_daemon.py:79-81,1148-1197`)
+- The supervisor watchdog performs periodic maintenance/recovery without killing
+  the loop on transient hook errors. (`.../implementation_supervisor.py:687-743`)
+
+## Entry Points and Flags
+
+Entry points:
+
+- `ipfs-accelerate-agent-objective-daemon`
+- `ipfs-accelerate-agent-backlog-refinery`
+- `ipfs-accelerate-agent-bundle-supervisor`
+- `ipfs-accelerate-agent-implementation-daemon`
+- `ipfs-accelerate-agent-implementation-supervisor`
+- `ipfs-accelerate-agent-merge-resolver`
+  (`.../pyproject.toml:35-41`, `.../setup.py:220-226`)
+
+Important flags:
+
+- Objective daemon: `--ensure-tracking-document`, `--refine-objective-heap`,
+  `--surplus-findings-per-goal`, `--submit-bundles`, `--queue-task-type`, and
+  `--todo-vector-index-path`. (`.../objective_daemon.py:154-220`)
+- Bundle supervisor: `--start`, `--max-lanes`, `--implement/--no-implement`,
+  and lane timing knobs. (`.../bundle_supervisor.py:247-259`)
+- Implementation supervisor: reconciliation, guardrail, refill, worktree,
+  sharding, and timeout flags. (`.../implementation_supervisor.py:4478-5001`)
+- Implementation daemon: `--implement`, `--implementation-command`,
+  merge-reconcile flags, and shard flags. (`.../implementation_daemon.py:6678-6857`)
+- Merge resolver: `--events-path`, `--apply`, `--command`, and
+  `--timeout-seconds`. (`.../merge_resolver.py:498-506,545-557`)
+
+## Environment Variables and Tunables
+
+- Objective scanning/bundling:
+  `IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS`,
+  `..._OBJECTIVE_EMBEDDING_MIN_SCORE`,
+  `IPFS_ACCELERATE_AGENT_BUNDLE_CLUSTER_MIN_SCORE`,
+  `..._OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL`, and
+  `..._OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO`.
+  (`.../objective_graph.py:29-57`)
+- Tracking defaults:
+  `IPFS_ACCELERATE_AGENT_OBJECTIVE_GOAL_PREFIX`,
+  `..._OBJECTIVE_DOCUMENT_TITLE`, and `..._OBJECTIVE_ROOT_TITLE`.
+  (`.../objective_tracker.py:41-43`)
+- Supervisor/daemon refill and guardrails: multiple `IPFS_ACCELERATE_AGENT_*`
+  defaults for budgets, cooldowns, scan caps, and cache TTLs.
+  (`.../implementation_supervisor.py:52-60`, `.../backlog_refinery.py:54-77`)
+- Queue DB path precedence: `IPFS_ACCELERATE_PY_TASK_QUEUE_PATH` over
+  `IPFS_DATASETS_PY_TASK_QUEUE_PATH`. (`.../task_queue.py:34-41`)
+- P2P service/session/discovery auth and transport controls under
+  `IPFS_ACCELERATE_PY_TASK_P2P_*`, with compatibility aliases.
+  (`.../service.py:7-34,533-535`)
+
+## Artifact Schema Appendix
+
+- **Discovery markdown**: one file per finding with goal, task, evidence,
+  query, and policy metadata. (`.../objective_graph.py:1453-1510`)
+- **Main todo board blocks**: structured metadata fields consumed by the daemon
+  parser. (`.../objective_graph.py:1536-1570`,
+  `.../implementation_daemon.py:597-620`)
+- **Bundle shards**: `*.todo.md` files plus bundle index `index.json` with
+  `bundles`, per-task metadata, parallel lane, and conflict policy.
+  (`.../objective_graph.py:1573-1669`)
+- **Todo vector index**: `todo_vector_index.json` with records, clusters, merge
+  candidates, contexts, packets, and token estimates.
+  (`.../todo_vector_index.py:944-966`)
+- **Objective graph artifact**: `objective_graph.json` with `heap_schedule`,
+  `thought_graph`, goal graph, and counts.
+  (`.../objective_tracker.py:1529-1555`)
+- **State/strategy/events artifacts**: daemon and supervisor runtime artifacts.
+  (`.../implementation_daemon.py:385-438`,
+  `.../implementation_supervisor.py:3089-3139,5027-5030`)
+
+## Known Limitations and Risks
+
+1. **Queue task type mismatch risk**: objective submission defaults to
+   `codex.todo_bundle`, but generic P2P worker advertised types do not include
+   this type by default, and unsupported task types fail.
+   (`.../objective_graph.py:1790`, `.../objective_daemon.py:219`,
+   `.../p2p_tasks/worker.py:2204-2278,4382-4387`)
+2. **Deterministic embeddings are lightweight hash-token vectors**, not model
+   embeddings, so semantic quality is heuristic.
+   (`.../objective_graph.py:253-261`, `.../todo_vector_index.py:304-313`)
+3. **Deterministic P2P `claim_many` currently degenerates to one claimed task
+   path** under the deterministic scheduler branch. (`.../service.py:1558-1574`)
+4. **Complexity and operational load**: locks, strategy, guardrails,
+   reconciliation, refill, and vector indexing can defer work rather than fail
+   fast when misconfigured.
+   (`.../implementation_supervisor.py:386-560,3546-3877`)
+5. **Dry-run defaults and optional pathways require operator discipline**:
+   production robustness depends on consistent environment and flag usage.
+   (`.../docs/agent_supervisor_objective_graph.md:112-120,138-165,189-207`)
+
+## Operator Runbook
+
+### Recommended Documentation Flow
+
+1. Architecture overview
+2. Objective heap format/lifecycle
+3. Evidence scanner internals
+4. Finding-to-todo conversion
+5. Bundling and conflict domains
+6. Vector index and merge candidates
+7. Bundle supervisor lanes
+8. Implementation daemon selection/execution
+9. Supervisor maintenance/guardrails/refill
+10. TaskQueue/P2P protocol lifecycle
+11. Concurrency and safety model
+12. CLI and environment tunables
+13. Artifact schemas
+14. Known limitations/risks
+15. Operator runbooks and LM prompt templates
+
+### Invocation Examples
+
+Objective generation:
+
+```bash
+ipfs-accelerate-agent-objective-daemon \
+  --repo-root <repo> \
+  --objective-path <objective-heap.md> \
+  --todo-path <todo.md> \
+  --bundle-dir <.../objective_bundles> \
+  --discovery-dir <.../discovery> \
+  --refine-objective-heap \
+  --surplus-findings-per-goal 3
+```
+
+Plan lanes as a dry run:
+
+```bash
+ipfs-accelerate-agent-bundle-supervisor \
+  --repo-root <repo> \
+  --bundle-index-path <.../objective_bundles/index.json> \
+  --no-implement
+```
+
+Start implementation lanes:
+
+```bash
+ipfs-accelerate-agent-bundle-supervisor \
+  --repo-root <repo> \
+  --bundle-index-path <.../objective_bundles/index.json> \
+  --implement --start
+```
+
+Run the implementation supervisor once:
+
+```bash
+ipfs-accelerate-agent-implementation-supervisor --once --todo-path <bundle.todo.md> --state-dir <state-dir>
+```
+
+### Prompt Template: Controller LM (Objective/Supervisor)
+
+Inputs: objective heap path, todo path, bundle index path, state dir, mission
+terms, and constraints.
+
+```text
+You are supervising objective-driven backlog generation.
+
+1. Keep objective heap consistent and refinable.
+2. Prefer generating cohesive bundle-local work packets.
+3. Prioritize launch-critical and blocked-unblock tasks.
+4. When guardrail findings exist, schedule unblock/repair tasks before new
+   feature work.
+5. Never mark tasks complete without evidence and validation results.
+
+Output: next action set (refine goals, generate todos, launch lanes, reconcile
+blockers) with exact CLI commands.
+```
+
+### Prompt Template: Worker LM (Implementation Lane)
+
+Use the daemon's own prompt shape as the baseline:
+
+- task id/title/priority/track/depends/outputs/validation/acceptance
+- compact todo-vector context, including execution packets, merge candidates,
+  and related tasks
+- scoped edit rules, required validations, and instructions not to manually
+  mutate todo status unless required
+  (`.../implementation_daemon.py:6252-6296`)
