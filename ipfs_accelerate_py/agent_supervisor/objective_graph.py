@@ -1354,7 +1354,7 @@ def scan_objective_gaps(
             if validation_gap:
                 candidate_kind = "validation_gate"
             fingerprint = objective_fingerprint(goal, candidate_missing_terms)
-            if fingerprint in seen and (validation_gap or not forced_goal):
+            if fingerprint in seen and not forced_goal:
                 continue
             bundle_key = goal.bundle_key(candidate_missing_terms)
             finding = ObjectiveFinding(
