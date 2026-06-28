@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -292,7 +293,9 @@ class DelegationEvaluator:
             return True  # No signature present — unsigned delegation (open access)
 
         if not delegation.issuer.startswith("did:key:"):
-            return True  # Non-DID issuer, signature format unknown — skip
+            # Non-DID issuer with a signature — we can't verify it, so deny
+            logger.warning("Cannot verify signature for non-DID issuer: %s", delegation.issuer)
+            return False
 
         try:
             from nacl.signing import VerifyKey
@@ -340,49 +343,55 @@ class EventDAG:
     def __init__(self):
         self._events: Dict[str, DAGEvent] = {}
         self._children: Dict[str, List[str]] = {}  # parent -> children
+        self._lock = threading.Lock()
 
     def append(self, event: DAGEvent) -> str:
         """Add an event to the DAG. Returns its CID."""
-        self._events[event.cid] = event
-        for parent in event.parent_cids:
-            self._children.setdefault(parent, []).append(event.cid)
+        with self._lock:
+            self._events[event.cid] = event
+            for parent in event.parent_cids:
+                self._children.setdefault(parent, []).append(event.cid)
         return event.cid
 
     def frontier(self) -> List[DAGEvent]:
         """Return leaf events (events with no children)."""
-        all_parents = set()
-        for event in self._events.values():
-            all_parents.update(event.parent_cids)
-        return [e for e in self._events.values() if e.cid not in self._children]
+        with self._lock:
+            all_parents = set()
+            for event in self._events.values():
+                all_parents.update(event.parent_cids)
+            return [e for e in self._events.values() if e.cid not in self._children]
 
     def history(self, limit: int = 50) -> List[DAGEvent]:
         """Return recent events, newest first."""
-        events = sorted(self._events.values(), key=lambda e: e.timestamp, reverse=True)
-        return events[:limit]
+        with self._lock:
+            events = sorted(self._events.values(), key=lambda e: e.timestamp, reverse=True)
+            return events[:limit]
 
     def provenance(self, cid: str) -> List[DAGEvent]:
         """Trace provenance chain from a CID back to roots."""
-        chain = []
-        visited = set()
-        queue = [cid]
-        while queue:
-            current = queue.pop(0)
-            if current in visited:
-                continue
-            visited.add(current)
-            event = self._events.get(current)
-            if event:
-                chain.append(event)
-                queue.extend(event.parent_cids)
-        return chain
+        with self._lock:
+            chain = []
+            visited = set()
+            queue = [cid]
+            while queue:
+                current = queue.pop(0)
+                if current in visited:
+                    continue
+                visited.add(current)
+                event = self._events.get(current)
+                if event:
+                    chain.append(event)
+                    queue.extend(event.parent_cids)
+            return chain
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "total_events": len(self._events),
-            "frontier_size": len(self.frontier()),
-            "events": {cid: {"type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp}
-                       for cid, e in self._events.items()},
-        }
+        with self._lock:
+            return {
+                "total_events": len(self._events),
+                "frontier_size": len([e for e in self._events.values() if e.cid not in self._children]),
+                "events": {cid: {"type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp}
+                           for cid, e in self._events.items()},
+            }
 
 
 # ---------------------------------------------------------------------------

@@ -60,11 +60,16 @@ class InterfaceDescriptor:
 
     def __post_init__(self):
         if not self.cid:
+            # Include full method schemas to avoid CID collisions between
+            # interfaces with same method names but different signatures
             self.cid = compute_cid({
                 "type": "interface_descriptor",
                 "name": self.name,
                 "version": self.version,
-                "methods": [m.name for m in self.methods],
+                "methods": [
+                    {"name": m.name, "input_schema": m.input_schema, "output_schema": m.output_schema}
+                    for m in self.methods
+                ],
             })
 
     def to_dict(self) -> Dict[str, Any]:
