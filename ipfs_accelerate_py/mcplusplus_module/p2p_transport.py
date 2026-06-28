@@ -297,8 +297,11 @@ class MCPp2pNode:
             msg = P2PMessage.decode(length_bytes + payload)
 
             if msg.msg_type == "request" and self._tool_handler:
+                # Inject sender identity so handlers can verify peer
+                params = dict(msg.params) if msg.params else {}
+                params["_sender_peer_id"] = msg.sender_peer_id
                 try:
-                    result = await self._tool_handler(msg.method, msg.params)
+                    result = await self._tool_handler(msg.method, params)
                     response = P2PMessage(
                         msg_type="response",
                         method=msg.method,

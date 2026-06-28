@@ -843,7 +843,8 @@ class TrioMCPServer:
                         if method == "_mcppp_service_announce":
                             from ..service_registry import get_service_registry
                             registry = get_service_registry()
-                            return registry.handle_announce(params)
+                            sender = params.get("_sender_peer_id", "")
+                            return registry.handle_announce(params, sender_peer_id=sender)
                         if method in self.mcp.tools:
                             return await self.mcp.tools[method](**params)
                         raise ValueError(f"Tool not found: {method}")
