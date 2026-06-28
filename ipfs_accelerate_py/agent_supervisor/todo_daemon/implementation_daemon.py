@@ -3230,6 +3230,139 @@ class PortalImplementationDaemon:
             "stderr": remove.stderr[-4000:],
         }
 
+    def _rebase_stale_submodule_pointers(
+        self,
+        branch_name: str,
+        target_branch: str,
+    ) -> dict[str, Any]:
+        """Rebase a branch's submodule pointers when they've drifted from target.
+
+        If a branch was created days ago and the target branch has since updated
+        submodule pointers, this rebases the branch onto the current target to
+        pick up the new submodule state. This prevents merge conflicts caused
+        solely by outdated submodule pointer commits.
+        """
+        results: list[dict[str, Any]] = []
+
+        # Check if branch is behind target on submodule paths
+        diff_result = subprocess.run(
+            ["git", "diff", "--name-only", f"{branch_name}...{target_branch}"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if diff_result.returncode != 0:
+            return {"attempted": False, "reason": "diff_failed"}
+
+        changed_paths = set(diff_result.stdout.strip().splitlines())
+        submodule_paths = set(self.worktree_submodule_paths)
+        stale_submodules = changed_paths & submodule_paths
+
+        if not stale_submodules:
+            return {"attempted": False, "reason": "no_stale_submodules"}
+
+        # Check if the branch can be cleanly rebased
+        # First try a dry-run merge to see if submodule-only conflicts exist
+        merge_base = subprocess.run(
+            ["git", "merge-base", branch_name, target_branch],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if merge_base.returncode != 0:
+            return {"attempted": False, "reason": "no_merge_base"}
+
+        base_commit = merge_base.stdout.strip()
+
+        # Check which stale submodules only have pointer changes (not content conflicts)
+        for sm_path in stale_submodules:
+            # Get the submodule commit on branch vs target
+            branch_sm = subprocess.run(
+                ["git", "rev-parse", f"{branch_name}:{sm_path}"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            target_sm = subprocess.run(
+                ["git", "rev-parse", f"{target_branch}:{sm_path}"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            if branch_sm.returncode != 0 or target_sm.returncode != 0:
+                results.append({"path": sm_path, "action": "skip", "reason": "rev_parse_failed"})
+                continue
+
+            branch_commit = branch_sm.stdout.strip()
+            target_commit = target_sm.stdout.strip()
+
+            if branch_commit == target_commit:
+                results.append({"path": sm_path, "action": "skip", "reason": "already_current"})
+                continue
+
+            # Check if target commit is descendant of branch commit (fast-forward possible)
+            is_ancestor = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", branch_commit, target_commit],
+                cwd=self.repo_root / sm_path if (self.repo_root / sm_path).exists() else self.repo_root,
+                capture_output=True,
+                check=False,
+            )
+
+            results.append({
+                "path": sm_path,
+                "branch_commit": branch_commit[:12],
+                "target_commit": target_commit[:12],
+                "fast_forward_possible": is_ancestor.returncode == 0,
+                "action": "rebase_candidate",
+            })
+
+        # If all stale submodules can fast-forward, attempt rebase
+        rebase_candidates = [r for r in results if r.get("fast_forward_possible")]
+        if rebase_candidates and len(rebase_candidates) == len([r for r in results if r.get("action") == "rebase_candidate"]):
+            # Safe to rebase - all submodule changes are fast-forwardable
+            rebase = subprocess.run(
+                ["git", "rebase", "--onto", target_branch, base_commit, branch_name],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if rebase.returncode == 0:
+                return {
+                    "attempted": True,
+                    "rebased": True,
+                    "stale_submodules": list(stale_submodules),
+                    "results": results,
+                }
+            else:
+                # Abort failed rebase
+                subprocess.run(
+                    ["git", "rebase", "--abort"],
+                    cwd=self.repo_root,
+                    capture_output=True,
+                    check=False,
+                )
+                return {
+                    "attempted": True,
+                    "rebased": False,
+                    "reason": "rebase_failed",
+                    "stderr": rebase.stderr[:2000],
+                    "results": results,
+                }
+
+        return {
+            "attempted": True,
+            "rebased": False,
+            "reason": "not_all_fast_forwardable",
+            "stale_submodules": list(stale_submodules),
+            "results": results,
+        }
+
     def _merge_branch_to_main(
         self,
         branch_name: str,
@@ -3241,6 +3374,10 @@ class PortalImplementationDaemon:
         started_at = utc_now()
         stale_submodule_worktree_config_repair = self._repair_stale_submodule_worktree_configs(self.repo_root)
         target_branch = self._main_branch_name()
+        # Attempt to rebase stale submodule pointers before merge
+        submodule_rebase = self._rebase_stale_submodule_pointers(branch_name, target_branch)
+        if submodule_rebase.get("rebased"):
+            self._record_event("submodule_pointer_rebase", submodule_rebase)
         if baseline_ref and not self._git_ref_is_ancestor(baseline_ref, target_branch):
             result = {
                 "attempted": False,
@@ -3837,9 +3974,12 @@ class PortalImplementationDaemon:
         if not conflicts:
             return {"repaired": False, "reason": "no_gitlink_conflicts"}
         repairs: list[dict[str, Any]] = []
+        unresolvable_count = 0
+        max_unresolvable = int(os.environ.get("IPFS_ACCELERATE_AGENT_MAX_UNRESOLVABLE_GITLINKS", "3"))
         for relative, stages in conflicts.items():
             selected_commit = self._select_submodule_gitlink_resolution(relative, stages, task=task)
             if not selected_commit:
+                unresolvable_count += 1
                 repairs.append(
                     {
                         "path": relative,
@@ -3848,6 +3988,19 @@ class PortalImplementationDaemon:
                         "stages": stages,
                     }
                 )
+                # If too many conflicts are unresolvable, abort early rather than
+                # looping forever. Mark merge as terminal failure for this branch.
+                if unresolvable_count >= max_unresolvable:
+                    result = {
+                        "repaired": False,
+                        "reason": "too_many_unresolvable_gitlinks",
+                        "repairs": repairs,
+                        "unresolvable_count": unresolvable_count,
+                        "max_unresolvable": max_unresolvable,
+                        "total_conflicts": len(conflicts),
+                    }
+                    self._record_event("submodule_gitlink_conflict_repair", result)
+                    return result
                 continue
             update = subprocess.run(
                 ["git", "update-index", "--add", "--cacheinfo", f"160000,{selected_commit},{relative}"],
@@ -4535,7 +4688,12 @@ class PortalImplementationDaemon:
         branch_name: str,
         *,
         parent_relative: str = "",
+        _depth: int = 0,
     ) -> list[dict[str, Any]]:
+        # Guard against infinite recursion in deeply nested submodules
+        max_depth = int(os.environ.get("IPFS_ACCELERATE_AGENT_SUBMODULE_MAX_DEPTH", "10"))
+        if _depth >= max_depth:
+            return [{"error": f"max_recursion_depth_{max_depth}", "path": parent_relative}]
         results: list[dict[str, Any]] = []
         relatives = self.worktree_submodule_paths if not parent_relative else tuple(self._declared_submodule_paths(worktree_path))
         for relative in relatives:
@@ -4556,6 +4714,7 @@ class PortalImplementationDaemon:
                         target,
                         branch_name,
                         parent_relative=full_relative,
+                        _depth=_depth + 1,
                     )
                 remove = subprocess.run(
                     ["git", "worktree", "remove", "--force", str(target)],
