@@ -251,9 +251,9 @@ class MCPp2pNode:
                 self.peer_id, self.multiaddrs
             )
 
-            # Bootstrap: connect to known peers
+            # Bootstrap: connect to known peers (with timeout)
             for peer_addr in self._bootstrap_peers:
-                nursery.start_soon(self._connect_bootstrap, peer_addr)
+                nursery.start_soon(self._connect_bootstrap_with_timeout, peer_addr)
 
         except ImportError as e:
             logger.warning(
@@ -270,6 +270,14 @@ class MCPp2pNode:
         self._started = False
         self._peers.clear()
         logger.info("MCPp2pNode stopped")
+
+    async def _connect_bootstrap_with_timeout(self, peer_addr: str) -> None:
+        """Connect to a bootstrap peer with a 10-second timeout."""
+        import trio
+        with trio.move_on_after(10.0) as cancel_scope:
+            await self._connect_bootstrap(peer_addr)
+        if cancel_scope.cancelled_caught:
+            logger.debug(f"Bootstrap peer connection timed out: {peer_addr}")
 
     async def _connect_bootstrap(self, peer_addr: str) -> None:
         """Connect to a bootstrap peer."""

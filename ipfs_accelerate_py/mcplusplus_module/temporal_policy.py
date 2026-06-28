@@ -21,7 +21,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import logging
+
 from .cid_ucan import compute_cid
+
+logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.temporal_policy")
 
 
 # ---------------------------------------------------------------------------
