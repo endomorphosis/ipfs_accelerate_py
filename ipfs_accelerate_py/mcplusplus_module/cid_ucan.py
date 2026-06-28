@@ -42,6 +42,26 @@ def compute_cid(data: Any) -> str:
     return f"bafy{digest[:52]}"
 
 
+def cid_digest(cid: str) -> str:
+    """Extract the comparable sha256 hex digest from a CID, ignoring prefix.
+
+    Both ipfs_accelerate_py (``bafy``+hex[:52]) and ipfs_datasets_py
+    (``sha256:``+hex[:64]) compute the same canonical sha256, so stripping the
+    prefix and truncating to a common length yields a cross-repo comparable key.
+    """
+    s = str(cid)
+    for prefix in ("bafy-mock-", "bafy", "sha256:"):
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+            break
+    return s[:52]
+
+
+def cids_equivalent(a: str, b: str) -> bool:
+    """Return True if two CIDs reference the same content across repo formats."""
+    return cid_digest(a) == cid_digest(b)
+
+
 # ---------------------------------------------------------------------------
 # Profile B: CID-Native Execution
 # ---------------------------------------------------------------------------
