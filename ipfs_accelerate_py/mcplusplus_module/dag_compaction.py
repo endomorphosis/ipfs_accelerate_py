@@ -314,6 +314,9 @@ class DAGCompactor:
         self._total_compacted_events = 0
         self._max_storage_bytes = int(os.environ.get(
             "MCPPP_MAX_COLD_STORAGE_GB", "10")) * 1024 ** 3
+        # Unique server identifier to prevent multi-server epoch collisions
+        import socket
+        self._server_id = f"{socket.gethostname()}_{os.getpid()}"
 
         os.makedirs(storage_dir, exist_ok=True)
         self._load_compaction_index()
@@ -472,7 +475,18 @@ class DAGCompactor:
             # Generate ZK proof
             proof_hex = generate_compaction_proof(epoch_data, merkle_root, self._current_epoch_id)
 
-            # Persist cold epoch to disk (atomic write)
+            # Persist cold epoch to disk (atomic write with flock to prevent multi-server collision)
+            import fcntl
+            index_path = os.path.join(self.storage_dir, "compaction_index.json")
+            try:
+                with open(index_path, "r+") as idx_f:
+                    fcntl.flock(idx_f.fileno(), fcntl.LOCK_EX)
+                    # Re-read epoch ID under lock (another server may have incremented)
+                    idx_data = json.load(idx_f)
+                    self._current_epoch_id = idx_data.get("current_epoch_id", self._current_epoch_id)
+            except (OSError, json.JSONDecodeError):
+                pass  # First epoch, no index yet
+
             cold_path = os.path.join(
                 self.storage_dir, f"epoch_{self._current_epoch_id:06d}.json"
             )

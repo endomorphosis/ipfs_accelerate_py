@@ -83,6 +83,13 @@ class TokenBucketRateLimiter:
         now = time.time()
         bucket = self._buckets[client_ip]
         elapsed = now - bucket["last"]
+        # Guard against clock skew (NTP corrections, manual changes)
+        if elapsed < 0:
+            elapsed = 0
+        elif elapsed > 3600:
+            # Absurd jump — reset bucket
+            bucket["tokens"] = self.burst
+            elapsed = 0
         bucket["last"] = now
         # Refill tokens
         bucket["tokens"] = min(self.burst, bucket["tokens"] + elapsed * self.rps)
@@ -783,10 +790,22 @@ class TrioMCPServer:
 
         @app.get("/mcp/p2p/peers")
         async def p2p_peers():
-            """Profile E: List connected P2P peers."""
+            """Profile E: List connected P2P peers (filtered for security)."""
             from ..p2p_transport import get_p2p_node
             node = get_p2p_node()
-            return node.to_dict()
+            full = node.to_dict()
+            # Filter sensitive data: redact internal multiaddrs from public response
+            safe_peers = []
+            for peer in full.get("peers", []):
+                safe_peers.append({
+                    "peer_id": peer.get("peer_id", ""),
+                    "protocols": peer.get("protocols", []),
+                    "last_seen": peer.get("last_seen", 0),
+                    "latency_ms": peer.get("latency_ms", 0),
+                    # Omit multiaddrs (contain internal IPs)
+                })
+            full["peers"] = safe_peers
+            return full
 
         @app.post("/mcp/p2p/call")
         async def p2p_call_tool(request: Request):
@@ -843,6 +862,14 @@ class TrioMCPServer:
                     content={"error": "P2P service not available",
                              "code": "SERVICE_DEGRADED",
                              "fallback": "Use /mcp/execute for local tool invocation"},
+                )
+            # Validate peer_id is a known/connected peer (prevent SSRF relay to arbitrary hosts)
+            if peer_id not in node._peers:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"Unknown peer: {peer_id[:16]}...",
+                             "code": "UNKNOWN_PEER",
+                             "hint": "Use /mcp/p2p/peers to discover available peers"},
                 )
             try:
                 result = await node.call_tool(
