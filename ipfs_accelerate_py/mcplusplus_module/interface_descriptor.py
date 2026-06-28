@@ -254,3 +254,69 @@ def get_interface_repository() -> InterfaceRepository:
                 _REPOSITORY.register(P2P_WORKFLOW_INTERFACE)
                 _REPOSITORY.register(HARDWARE_ACCELERATE_INTERFACE)
     return _REPOSITORY
+
+
+# ---------------------------------------------------------------------------
+# Schema validation (lightweight, no jsonschema dependency)
+# ---------------------------------------------------------------------------
+
+def validate_params(method_name: str, params: Dict[str, Any],
+                    repository: Optional[InterfaceRepository] = None) -> Optional[str]:
+    """Validate params against the method's declared input_schema.
+
+    Returns None if valid (or no schema available), or an error string if invalid.
+    This is a lightweight type-only validator — it checks 'required' fields and
+    top-level property types without a full JSON Schema library.
+    """
+    repo = repository or get_interface_repository()
+
+    # Find the method descriptor across all interfaces
+    method_desc = None
+    for iface in repo.list_all():
+        for m in iface.methods:
+            if m.name == method_name:
+                method_desc = m
+                break
+        if method_desc:
+            break
+
+    if not method_desc or not method_desc.input_schema:
+        return None  # No schema = no validation
+
+    schema = method_desc.input_schema
+    if schema.get("type") != "object":
+        return None  # Only validate object schemas
+
+    properties = schema.get("properties", {})
+    required = schema.get("required", [])
+
+    # Check required fields
+    for field_name in required:
+        if field_name not in params:
+            return f"Missing required parameter: '{field_name}'"
+
+    # Check type compatibility for provided params
+    _TYPE_MAP = {
+        "string": str,
+        "integer": int,
+        "number": (int, float),
+        "boolean": bool,
+        "array": list,
+        "object": dict,
+    }
+
+    for param_name, param_value in params.items():
+        if param_name.startswith("_"):
+            continue  # Skip internal params
+        if param_name not in properties:
+            continue  # Extra params are allowed (additionalProperties: true by default)
+        expected_type = properties[param_name].get("type")
+        if expected_type and expected_type in _TYPE_MAP:
+            py_type = _TYPE_MAP[expected_type]
+            if param_value is not None and not isinstance(param_value, py_type):
+                return (
+                    f"Parameter '{param_name}' has type {type(param_value).__name__}, "
+                    f"expected {expected_type}"
+                )
+
+    return None  # Valid

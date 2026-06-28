@@ -1191,6 +1191,15 @@ class TrioMCPServer:
             delegation_cid = params.get("_delegation_cid")  # MCP++ extension
 
             if hasattr(self.mcp, 'tools') and tool_name in self.mcp.tools:
+                # Profile A: Validate params against declared schema
+                try:
+                    from ..interface_descriptor import validate_params
+                    validation_error = validate_params(tool_name, arguments)
+                    if validation_error:
+                        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": f"Schema validation: {validation_error}"}}
+                except ImportError:
+                    pass
+
                 # Enforce UCAN delegation if provided
                 if delegation_cid:
                     from ..cid_ucan import get_evaluator
