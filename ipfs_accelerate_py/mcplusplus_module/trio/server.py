@@ -344,11 +344,11 @@ class TrioMCPServer:
         self._started = False
 
     async def run(self, *, task_status=trio.TASK_STATUS_IGNORED) -> None:
-        """Run the Trio MCP server.
+        """Run the Trio MCP server with HTTP serving.
 
         This method runs the server using Trio's structured concurrency.
-        It can be used standalone with trio.run() or as part of a larger
-        Trio application using nursery.start().
+        It serves HTTP using Hypercorn (if available) or a built-in Trio TCP
+        server for JSON-RPC over HTTP.
 
         Args:
             task_status: For use with nursery.start() to signal readiness
@@ -369,25 +369,32 @@ class TrioMCPServer:
             # Run startup hook
             await self._startup()
 
-            # Signal that we're ready (for nursery.start)
-            task_status.started()
-
             try:
-                # In a real implementation, this would start Hypercorn
-                # For now, we'll use a placeholder that can be replaced
-                logger.info(
-                    "TrioMCPServer running at http://%s:%s%s",
-                    self.config.host,
-                    self.config.port,
-                    self.config.mount_path,
-                )
-                logger.info("Note: Full Hypercorn integration requires hypercorn[trio] package")
-                logger.info(
-                    "Use: hypercorn --worker-class trio ipfs_accelerate_py.mcplusplus_module.trio.server:create_app"
-                )
+                # Try Hypercorn (preferred for production)
+                try:
+                    from hypercorn.trio import serve as hypercorn_serve
+                    from hypercorn.config import Config as HypercornConfig
 
-                # Keep the server alive until cancelled
-                await trio.sleep_forever()
+                    asgi_app = self.create_asgi_app()
+                    hconfig = HypercornConfig()
+                    hconfig.bind = [f"{self.config.host}:{self.config.port}"]
+                    hconfig.worker_class = "trio"
+
+                    logger.info(
+                        "TrioMCPServer serving via Hypercorn at http://%s:%s%s",
+                        self.config.host, self.config.port, self.config.mount_path,
+                    )
+                    task_status.started()
+                    await hypercorn_serve(asgi_app, hconfig)
+
+                except ImportError:
+                    # Fallback: built-in Trio TCP server with JSON-RPC handler
+                    logger.info(
+                        "Hypercorn not available. Starting built-in Trio JSON-RPC server at http://%s:%s%s",
+                        self.config.host, self.config.port, self.config.mount_path,
+                    )
+                    task_status.started()
+                    await self._serve_jsonrpc_trio(nursery)
 
             except trio.Cancelled:
                 logger.info("TrioMCPServer cancelled")
@@ -396,6 +403,121 @@ class TrioMCPServer:
                 # Run shutdown hook
                 await self._shutdown()
                 self._nursery = None
+
+    async def _serve_jsonrpc_trio(self, nursery: trio.Nursery) -> None:
+        """Built-in Trio TCP server for MCP JSON-RPC over HTTP.
+        
+        Handles basic HTTP/1.1 POST requests with JSON-RPC payloads.
+        This is a minimal implementation for when Hypercorn is not available.
+        """
+        import json as _json
+
+        async def handle_connection(stream: trio.SocketStream) -> None:
+            try:
+                data = b""
+                while not data.endswith(b"\r\n\r\n"):
+                    chunk = await stream.receive_some(4096)
+                    if not chunk:
+                        return
+                    data += chunk
+
+                # Parse HTTP request
+                header_end = data.find(b"\r\n\r\n")
+                headers_raw = data[:header_end].decode("utf-8", errors="replace")
+                body_start = data[header_end + 4:]
+
+                # Get content-length
+                content_length = 0
+                for line in headers_raw.split("\r\n"):
+                    if line.lower().startswith("content-length:"):
+                        content_length = int(line.split(":")[1].strip())
+
+                # Read remaining body
+                body = body_start
+                while len(body) < content_length:
+                    chunk = await stream.receive_some(4096)
+                    if not chunk:
+                        break
+                    body += chunk
+
+                # Route request
+                first_line = headers_raw.split("\r\n")[0]
+                method, path, _ = first_line.split(" ", 2)
+
+                if method == "GET" and path == "/api/mcp/status":
+                    response_body = _json.dumps({"status": "ok", "server": self.config.name, "protocol": "/mcp+p2p/1.0.0"})
+                elif method == "GET" and path == "/api/mcp/tools":
+                    tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+                    response_body = _json.dumps({"tools": tools})
+                elif method == "POST" and path == self.config.mount_path:
+                    # JSON-RPC handler
+                    request = _json.loads(body.decode("utf-8"))
+                    response_body = _json.dumps(await self._handle_jsonrpc(request))
+                elif method == "GET" and path == "/mcp/interfaces":
+                    response_body = _json.dumps({"interfaces": [], "count": 0})
+                elif method == "GET" and path.startswith("/mcp/dag"):
+                    response_body = _json.dumps({"events": [], "frontier": []})
+                else:
+                    response_body = _json.dumps({"error": "Not found"})
+
+                # Send HTTP response
+                http_response = (
+                    f"HTTP/1.1 200 OK\r\n"
+                    f"Content-Type: application/json\r\n"
+                    f"Content-Length: {len(response_body)}\r\n"
+                    f"Access-Control-Allow-Origin: *\r\n"
+                    f"\r\n"
+                    f"{response_body}"
+                )
+                await stream.send_all(http_response.encode("utf-8"))
+            except Exception as e:
+                logger.debug(f"Connection handler error: {e}")
+            finally:
+                await stream.aclose()
+
+        listeners = await nursery.start(
+            trio.serve_tcp, handle_connection, self.config.port, host=self.config.host
+        )
+        logger.info(f"Trio TCP server listening on {self.config.host}:{self.config.port}")
+        self._started = True
+        await trio.sleep_forever()
+
+    async def _handle_jsonrpc(self, request: dict) -> dict:
+        """Handle a single JSON-RPC request."""
+        method = request.get("method", "")
+        params = request.get("params", {})
+        req_id = request.get("id", 1)
+
+        if method == "initialize":
+            client_caps = params.get("capabilities", {}).get("experimental", {})
+            server_caps = {k: True for k in client_caps if k.startswith("mcp++")}
+            return {
+                "jsonrpc": "2.0", "id": req_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {"listChanged": True}, "experimental": server_caps},
+                    "serverInfo": {"name": self.config.name, "version": "1.0.0"},
+                },
+            }
+        elif method == "tools/call":
+            tool_name = params.get("name", "")
+            arguments = params.get("arguments", {})
+            if hasattr(self.mcp, 'tools') and tool_name in self.mcp.tools:
+                try:
+                    result = await self.mcp.tools[tool_name](**arguments)
+                    return {"jsonrpc": "2.0", "id": req_id, "result": result}
+                except Exception as e:
+                    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
+            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Tool not found: {tool_name}"}}
+        elif method == "tools/list":
+            tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+            return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}}
+        elif method == "mcp++/p2p/peers":
+            return {"jsonrpc": "2.0", "id": req_id, "result": {"peers": [], "protocol": "/mcp+p2p/1.0.0"}}
+        elif method == "shutdown":
+            return {"jsonrpc": "2.0", "id": req_id, "result": None}
+        else:
+            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Method not found: {method}"}}
 
     def create_asgi_app(self) -> Any:
         """Create the ASGI application for Hypercorn.
