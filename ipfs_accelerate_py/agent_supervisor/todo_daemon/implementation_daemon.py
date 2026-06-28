@@ -3857,6 +3857,8 @@ class PortalImplementationDaemon:
         theirs = stages.get("3", "")
         if theirs and self._git_ref_is_ancestor_in_repo(source, theirs, head):
             return head
+        if ours and head == ours and theirs and not self._git_ref_exists_in_repo(source, theirs):
+            return head
         if task.task_id and self._submodule_head_has_task_commit(source, task.task_id):
             return head
         if theirs:
