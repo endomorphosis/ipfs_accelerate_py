@@ -981,6 +981,7 @@ class PortalImplementationDaemon:
             deprioritized_task_ids=strategy_deprioritized_task_ids,
         )
         merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
+        periodic_maintenance = self._periodic_maintenance()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
         unresolved_merge_failure_task_ids = set(unresolved_merge_failures)
         transient_merge_deferrals = self._transient_merge_deferrals_by_task(skip_task_ids=merge_skip_task_ids)
@@ -4581,6 +4582,256 @@ class PortalImplementationDaemon:
                 }
             )
         return results
+
+    def _cleanup_stale_worktrees(self, *, max_age_seconds: float = 0) -> dict[str, Any]:
+        """Remove worktrees whose branches are unmerged but have been inactive too long.
+
+        This prevents orphaned worktrees from accumulating after failed or
+        abandoned implementations. Only removes worktrees under our managed root
+        that have no active process and whose branch hasn't been updated within
+        ``max_age_seconds`` (default from env: 6 hours).
+        """
+        if max_age_seconds <= 0:
+            max_age_seconds = float(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STALE_WORKTREE_SECONDS", "21600")
+            )
+        if max_age_seconds <= 0:
+            return {"attempted": False, "reason": "stale_cleanup_disabled"}
+
+        try:
+            root_resolved = self.worktree_root.resolve()
+        except OSError:
+            return {"attempted": False, "reason": "worktree_root_unresolvable"}
+
+        try:
+            active_worktree = PortalTaskState.load(self.state_path).active_worktree_path
+        except Exception:
+            active_worktree = ""
+        active_resolved: Path | None = None
+        if active_worktree:
+            try:
+                active_resolved = Path(active_worktree).resolve()
+            except OSError:
+                active_resolved = Path(active_worktree)
+
+        process_lines = self._list_process_commands()
+        now_mono = time.time()
+        removed: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        for entry in self._git_worktree_entries():
+            path_text = str(entry.get("worktree") or "")
+            if not path_text:
+                continue
+            worktree_path = Path(path_text)
+            try:
+                worktree_resolved = worktree_path.resolve()
+                worktree_resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+
+            branch_name = str(entry.get("branch") or "").removeprefix("refs/heads/")
+            detail = {"worktree_path": str(worktree_path), "branch": branch_name}
+
+            if active_resolved is not None and worktree_resolved == active_resolved:
+                skipped.append({**detail, "reason": "active_state_worktree"})
+                continue
+            if any(str(worktree_resolved) in line for line in process_lines):
+                skipped.append({**detail, "reason": "active_process"})
+                continue
+            if not self._managed_cleanup_branch(branch_name):
+                skipped.append({**detail, "reason": "unmanaged_branch"})
+                continue
+
+            # Check age by looking at the most recent commit timestamp on the branch
+            try:
+                age_result = subprocess.run(
+                    ["git", "log", "-1", "--format=%ct", branch_name],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if age_result.returncode != 0 or not age_result.stdout.strip():
+                    skipped.append({**detail, "reason": "cannot_determine_age"})
+                    continue
+                last_commit_time = float(age_result.stdout.strip())
+                age_seconds = now_mono - last_commit_time
+            except (ValueError, OSError):
+                skipped.append({**detail, "reason": "age_parse_error"})
+                continue
+
+            if age_seconds < max_age_seconds:
+                skipped.append({**detail, "reason": "not_stale_yet", "age_seconds": age_seconds})
+                continue
+
+            # Stale: remove it
+            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+            removed.append({**detail, "age_seconds": age_seconds, "cleanup_result": cleanup_result})
+
+        result = {
+            "attempted": True,
+            "max_age_seconds": max_age_seconds,
+            "removed_count": len(removed),
+            "skipped_count": len(skipped),
+            "removed": removed,
+            "skipped": skipped[:30],
+        }
+        if removed:
+            self._record_event("stale_worktree_cleanup", result)
+        return result
+
+    def _cleanup_stale_locks(self, *, max_age_seconds: float = 0) -> dict[str, Any]:
+        """Remove stale .lock files that persist after crashes/SIGKILL.
+
+        Lock files older than ``max_age_seconds`` (default 30 minutes) are
+        force-removed to prevent deadlocks in long-running supervisors.
+        """
+        if max_age_seconds <= 0:
+            max_age_seconds = float(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STALE_LOCK_SECONDS", "1800")
+            )
+        if max_age_seconds <= 0:
+            return {"attempted": False, "reason": "lock_cleanup_disabled"}
+
+        lock_patterns = [
+            self.repo_root / ".git" / "*.lock",
+            self.repo_root / ".git" / "refs" / "**" / "*.lock",
+        ]
+        # Also check state directory for merge resolver locks
+        state_dir = self.state_path.parent if self.state_path else None
+
+        now_mono = time.time()
+        removed: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        import glob as glob_mod
+        lock_files: list[Path] = []
+        for pattern in lock_patterns:
+            lock_files.extend(Path(p) for p in glob_mod.glob(str(pattern), recursive=True))
+        if state_dir and state_dir.exists():
+            lock_files.extend(state_dir.glob("*.lock"))
+
+        for lock_path in lock_files:
+            try:
+                stat = lock_path.stat()
+                age_seconds = now_mono - stat.st_mtime
+            except OSError:
+                continue
+
+            detail = {"lock_path": str(lock_path), "age_seconds": age_seconds}
+            if age_seconds < max_age_seconds:
+                skipped.append({**detail, "reason": "not_stale"})
+                continue
+
+            try:
+                lock_path.unlink()
+                removed.append(detail)
+            except OSError as exc:
+                skipped.append({**detail, "reason": "unlink_failed", "error": str(exc)})
+
+        result = {
+            "attempted": True,
+            "max_age_seconds": max_age_seconds,
+            "removed_count": len(removed),
+            "skipped_count": len(skipped),
+            "removed": removed,
+            "skipped": skipped[:20],
+        }
+        if removed:
+            self._record_event("stale_lock_cleanup", result)
+        return result
+
+    def _periodic_maintenance(self) -> dict[str, Any]:
+        """Run periodic maintenance tasks to keep the supervisor healthy for 24/7 operation.
+
+        This includes:
+        - Cleaning up stale worktrees (abandoned after failures)
+        - Removing stale lock files (orphaned after crashes)
+        - Resetting dirty submodule state that blocks merges
+        """
+        results: dict[str, Any] = {}
+        try:
+            results["stale_worktrees"] = self._cleanup_stale_worktrees()
+        except Exception as exc:
+            results["stale_worktrees"] = {"error": str(exc)}
+        try:
+            results["stale_locks"] = self._cleanup_stale_locks()
+        except Exception as exc:
+            results["stale_locks"] = {"error": str(exc)}
+        try:
+            results["dirty_submodule_reset"] = self._reset_persistently_dirty_submodules()
+        except Exception as exc:
+            results["dirty_submodule_reset"] = {"error": str(exc)}
+        return results
+
+    def _reset_persistently_dirty_submodules(self) -> dict[str, Any]:
+        """Reset submodules that have been dirty for multiple consecutive iterations.
+
+        If a submodule stays dirty across 3+ merge attempts (tracked via event log),
+        force-reset it to avoid blocking all further work.
+        """
+        max_dirty_attempts = int(os.environ.get("IPFS_ACCELERATE_AGENT_MAX_DIRTY_ATTEMPTS", "3"))
+        if max_dirty_attempts <= 0:
+            return {"attempted": False, "reason": "disabled"}
+
+        # Check if any submodules are currently dirty
+        status_result = subprocess.run(
+            ["git", "submodule", "status"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status_result.returncode != 0:
+            return {"attempted": False, "reason": "submodule_status_failed"}
+
+        dirty_submodules: list[str] = []
+        for line in status_result.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("+") or line.startswith("U"):
+                # Dirty or merge conflict
+                parts = line.split()
+                if len(parts) >= 2:
+                    dirty_submodules.append(parts[1])
+
+        if not dirty_submodules:
+            return {"attempted": True, "dirty_count": 0, "reset": []}
+
+        reset_results: list[dict[str, Any]] = []
+        for submodule_path in dirty_submodules:
+            full_path = self.repo_root / submodule_path
+            if not full_path.exists():
+                continue
+            # Force-reset the submodule
+            reset = subprocess.run(
+                ["git", "checkout", "--force", "."],
+                cwd=full_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            update = subprocess.run(
+                ["git", "submodule", "update", "--init", "--force", "--", submodule_path],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            reset_results.append({
+                "path": submodule_path,
+                "reset_ok": reset.returncode == 0,
+                "update_ok": update.returncode == 0,
+            })
+
+        result = {
+            "attempted": True,
+            "dirty_count": len(dirty_submodules),
+            "reset": reset_results,
+        }
+        if reset_results:
+            self._record_event("dirty_submodule_reset", result)
+        return result
 
     def _dirty_merge_conflict_paths(
         self,

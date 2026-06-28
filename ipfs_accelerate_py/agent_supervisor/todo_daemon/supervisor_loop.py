@@ -274,7 +274,7 @@ class SupervisorLoop:
                     log_path=log_path,
                     last_exit_code=self.last_exit_code,
                 )
-                self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason))
+                self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason, run_duration=0.0))
                 continue
             child_started_at = self.monotonic()
             self._safe_write_status("starting", child=child, run_id=run_id, log_path=log_path)
@@ -314,6 +314,7 @@ class SupervisorLoop:
             clear_child_pid_file(child)
             if stop_requested:
                 break
+            run_duration = self.monotonic() - child_started_at
             self.restart_count += 1
             if self.config.max_restarts > 0 and self.restart_count >= self.config.max_restarts:
                 final_status = "max_restarts_reached" if recycled else "child_exited"
@@ -325,7 +326,7 @@ class SupervisorLoop:
                 log_path=log_path,
                 last_exit_code=self.last_exit_code,
             )
-            self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason))
+            self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason, run_duration=run_duration))
 
         self._safe_write_status(
             final_status,

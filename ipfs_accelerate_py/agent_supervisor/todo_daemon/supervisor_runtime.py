@@ -21,10 +21,18 @@ from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, 
 
 @dataclass(frozen=True)
 class RestartPolicy:
-    """Restart delays for a supervised daemon child."""
+    """Restart delays for a supervised daemon child.
+
+    Supports exponential backoff: each consecutive restart multiplies the delay
+    by ``backoff_factor`` up to ``max_backoff_seconds``. The counter resets
+    after a successful run longer than ``healthy_run_seconds``.
+    """
 
     restart_backoff_seconds: float = 30.0
     fast_restart_backoff_seconds: float = 2.0
+    backoff_factor: float = 1.5
+    max_backoff_seconds: float = 600.0  # cap at 10 minutes
+    healthy_run_seconds: float = 120.0  # reset backoff after this runtime
     fast_restart_statuses: frozenset[str] = frozenset(
         {
             "dirty_recovery_skipped_clean",
@@ -32,11 +40,24 @@ class RestartPolicy:
             "no_change",
         }
     )
+    _consecutive_failures: int = 0
 
-    def delay_for_status(self, status: str) -> float:
+    def delay_for_status(self, status: str, *, run_duration: float = 0.0) -> float:
+        if run_duration >= self.healthy_run_seconds:
+            self._consecutive_failures = 0
+        else:
+            self._consecutive_failures += 1
+
         if status in self.fast_restart_statuses:
             return max(0.0, float(self.fast_restart_backoff_seconds))
-        return max(0.0, float(self.restart_backoff_seconds))
+
+        base = max(0.0, float(self.restart_backoff_seconds))
+        multiplier = self.backoff_factor ** min(self._consecutive_failures - 1, 10)
+        return min(base * multiplier, self.max_backoff_seconds)
+
+    def reset(self) -> None:
+        """Reset backoff state (e.g. after a healthy run)."""
+        self._consecutive_failures = 0
 
 
 @dataclass(frozen=True)
