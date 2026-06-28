@@ -208,6 +208,66 @@ def launch_bundle_lanes(
     return results
 
 
+def check_lane_health(
+    lanes: Sequence[BundleLaneSpec],
+    *,
+    repo_root: Path,
+) -> list[dict[str, Any]]:
+    """Check health of all launched lanes and restart any dead ones.
+
+    Returns a list of health reports, one per lane. Dead lanes are
+    automatically relaunched so the bundle supervisor can run indefinitely.
+    """
+    import os
+    import signal
+
+    reports: list[dict[str, Any]] = []
+    for lane in lanes:
+        pid_path = lane.state_dir / f"{lane.state_prefix}_bundle_supervisor.pid"
+        report: dict[str, Any] = {"bundle_key": lane.bundle_key, "alive": False, "restarted": False}
+
+        if not pid_path.exists():
+            report["reason"] = "no_pid_file"
+        else:
+            try:
+                pid = int(pid_path.read_text().strip())
+                # Check if process is alive
+                os.kill(pid, 0)
+                report["alive"] = True
+                report["pid"] = pid
+            except (ValueError, ProcessLookupError, PermissionError):
+                report["reason"] = "process_dead"
+            except OSError:
+                report["reason"] = "check_failed"
+
+        if not report["alive"]:
+            # Restart the dead lane
+            try:
+                lane.log_path.parent.mkdir(parents=True, exist_ok=True)
+                handle = lane.log_path.open("ab")
+                try:
+                    process = subprocess.Popen(
+                        lane.command,
+                        cwd=repo_root,
+                        stdin=subprocess.DEVNULL,
+                        stdout=handle,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,
+                    )
+                finally:
+                    handle.close()
+                pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
+                report["restarted"] = True
+                report["new_pid"] = process.pid
+                logger.info("Restarted dead lane %s with PID %d", lane.bundle_key, process.pid)
+            except OSError as exc:
+                report["restart_error"] = str(exc)
+                logger.error("Failed to restart lane %s: %s", lane.bundle_key, exc)
+
+        reports.append(report)
+    return reports
+
+
 def write_bundle_lane_manifest(
     *,
     manifest_path: Path,
@@ -253,7 +313,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--daemon-interval", type=float, default=300.0)
     parser.add_argument("--stale-seconds", type=float, default=1800.0)
     parser.add_argument("--check-interval", type=float, default=60.0)
-    parser.add_argument("--max-restarts", type=int, default=10)
+    parser.add_argument("--max-restarts", type=int, default=0)
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])

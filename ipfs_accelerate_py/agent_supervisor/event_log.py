@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
+
+
+# Event log rotation: archive when file exceeds this size (default 50MB)
+_EVENT_LOG_MAX_BYTES_ENV = "IPFS_ACCELERATE_AGENT_EVENT_LOG_MAX_BYTES"
+_DEFAULT_EVENT_LOG_MAX_BYTES = 50 * 1024 * 1024  # 50MB
+
+# Keep only the most recent N events after rotation
+_EVENT_LOG_RETAIN_RECENT_ENV = "IPFS_ACCELERATE_AGENT_EVENT_LOG_RETAIN_RECENT"
+_DEFAULT_EVENT_LOG_RETAIN_RECENT = 500
 
 
 def utc_now() -> str:
@@ -121,3 +131,60 @@ def append_jsonl_event(path: Path, event_type: str, payload: Mapping[str, Any]) 
     event = {"type": event_type, "timestamp": utc_now(), **dict(payload)}
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+    # Auto-rotate if the log exceeds the size threshold
+    rotate_event_log_if_needed(path)
+
+
+def rotate_event_log_if_needed(path: Path) -> dict[str, Any]:
+    """Rotate the event log when it exceeds the configured size threshold.
+
+    Archives old events and retains only the most recent N events in the
+    active log file. This prevents unbounded growth that degrades performance
+    over days of continuous operation.
+    """
+    max_bytes = int(os.environ.get(_EVENT_LOG_MAX_BYTES_ENV, str(_DEFAULT_EVENT_LOG_MAX_BYTES)))
+    retain_recent = int(os.environ.get(_EVENT_LOG_RETAIN_RECENT_ENV, str(_DEFAULT_EVENT_LOG_RETAIN_RECENT)))
+
+    if max_bytes <= 0:
+        return {"rotated": False, "reason": "rotation_disabled"}
+    if not path.exists():
+        return {"rotated": False, "reason": "missing"}
+
+    try:
+        file_size = path.stat().st_size
+    except OSError:
+        return {"rotated": False, "reason": "stat_failed"}
+
+    if file_size < max_bytes:
+        return {"rotated": False, "reason": "under_threshold", "size": file_size}
+
+    # Read all events
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        return {"rotated": False, "reason": "read_failed", "error": str(exc)}
+
+    events: list[str] = [line for line in lines if line.strip()]
+    total_count = len(events)
+
+    if total_count <= retain_recent:
+        return {"rotated": False, "reason": "too_few_events", "count": total_count}
+
+    # Archive older events
+    archive_events = events[:-retain_recent]
+    retained_events = events[-retain_recent:]
+
+    archive_path = unique_backup_path(path, "rotated")
+    try:
+        archive_path.write_text("\n".join(archive_events) + "\n", encoding="utf-8")
+        path.write_text("\n".join(retained_events) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return {"rotated": False, "reason": "write_failed", "error": str(exc)}
+
+    return {
+        "rotated": True,
+        "archived_count": len(archive_events),
+        "retained_count": len(retained_events),
+        "archive_path": str(archive_path),
+        "previous_size": file_size,
+    }
