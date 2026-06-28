@@ -1527,8 +1527,8 @@ def render_task_block(
     parents = ", ".join(finding.parent_goal_ids) or "none"
     packet_goals = ", ".join(finding.goal_packet_goal_ids)
     packet_acceptance = (
-        f"This task is part of {finding.goal_packet_key}; when practical, make one cohesive change that advances "
-        f"the packet goals ({packet_goals}) and covers the shared packet evidence without expanding the prompt."
+        f"This task is part of {finding.goal_packet_key}; implement a complete, cohesive change that fully advances "
+        f"the packet goals ({packet_goals}) and covers all the shared packet evidence in one comprehensive pass."
         if finding.goal_packet_key and packet_goals
         else ""
     )

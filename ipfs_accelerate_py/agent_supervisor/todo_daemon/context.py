@@ -87,7 +87,7 @@ def select_relevant_context_paths(
     *,
     allowed_prefixes: Sequence[str] = (),
     suffixes: Sequence[str] = DEFAULT_CONTEXT_SUFFIXES,
-    max_files: int = 6,
+    max_files: int = 16,
     preferred_path_fragments: Sequence[str] = (),
 ) -> list[str]:
     """Select tracked files most relevant to a task token set."""
@@ -131,8 +131,8 @@ def render_relevant_file_context(
     task_or_title: Any,
     allowed_prefixes: Sequence[str] = (),
     suffixes: Sequence[str] = DEFAULT_CONTEXT_SUFFIXES,
-    max_files: int = 6,
-    max_file_chars: int = 12000,
+    max_files: int = 16,
+    max_file_chars: int = 24000,
     preferred_path_fragments: Sequence[str] = (),
     no_tokens_message: str = "[No selected task tokens available.]",
     no_files_message: str = "[No relevant current file contents selected.]",

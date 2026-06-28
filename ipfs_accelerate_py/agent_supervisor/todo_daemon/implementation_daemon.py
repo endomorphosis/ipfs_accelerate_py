@@ -89,7 +89,7 @@ SHARED_WORKTREE_PATHS = (
     "hallucinate_app/swissknife/node_modules",
 )
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
-    os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "260")
+    os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "600")
 )
 
 
@@ -6263,7 +6263,9 @@ Compact todo vector context:
         )
         return f"""You are an autonomous implementation agent working in this repository.
 
-Implement exactly this backlog task and keep changes scoped.
+Implement this backlog task completely and thoroughly. Produce a full, production-ready implementation
+that covers all expected outputs. Do not artificially limit scope or break the work into smaller pieces —
+deliver the entire task in one pass, touching as many files as needed.
 
 Task:
 - ID: {task.task_id}
@@ -6286,9 +6288,10 @@ Primary plan document:
 Rules:
 - Read the relevant plan and nearby code before editing.
 - Do not revert unrelated local changes.
-- Prefer existing repo patterns and small, reviewable changes.
-- Implement the expected outputs for this task.
-- If a compact execution packet or goal packet is shown, prefer one cohesive implementation that advances the shared packet evidence without making unrelated edits.
+- Prefer existing repo patterns. Implement comprehensively — create all necessary files, classes, functions, tests, and integrations that the task requires.
+- Implement ALL expected outputs for this task in full. Do not leave stubs, placeholders, or TODOs.
+- If a compact execution packet or goal packet is shown, implement a single cohesive change that advances all the shared packet evidence together without making unrelated edits.
+- You may create new files and modify multiple existing files. Larger, complete implementations are preferred over minimal patches.
 - Run the listed validation commands when practical.
 - The daemon will run the listed validation commands and will only commit and merge the worktree if they pass.
 - Leave generated artifacts and shared dependency paths alone; the daemon restores dist, screenshot artifacts, and linked node_modules before commit.
