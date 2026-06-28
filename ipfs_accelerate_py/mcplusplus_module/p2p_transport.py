@@ -29,7 +29,7 @@ logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.p2p_transport")
 
 
 def ensure_libp2p_installed() -> bool:
-    """Auto-install libp2p from git if not already available.
+    """Auto-install libp2p from git if not already available (sync, for startup).
 
     Returns True if libp2p is importable after this call.
     """
@@ -52,6 +52,34 @@ def ensure_libp2p_installed() -> bool:
         logger.info("libp2p installed successfully")
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ImportError) as e:
+        logger.error("Failed to auto-install libp2p: %s", e)
+        return False
+
+
+async def ensure_libp2p_installed_async() -> bool:
+    """Trio-native async version of ensure_libp2p_installed (for use within Trio context)."""
+    try:
+        import libp2p  # noqa: F401
+        return True
+    except ImportError:
+        pass
+
+    import trio
+    logger.info("libp2p not found — auto-installing from git (py-libp2p@main)...")
+    try:
+        result = await trio.run_process(
+            [sys.executable, "-m", "pip", "install", "--quiet",
+             "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
+             "multiaddr", "protobuf>=3.20.0"],
+            capture_stdout=True, capture_stderr=True,
+        )
+        if result.returncode != 0:
+            logger.error("pip install failed: %s", result.stderr.decode())
+            return False
+        import libp2p  # noqa: F401
+        logger.info("libp2p installed successfully (async)")
+        return True
+    except (OSError, ImportError) as e:
         logger.error("Failed to auto-install libp2p: %s", e)
         return False
 

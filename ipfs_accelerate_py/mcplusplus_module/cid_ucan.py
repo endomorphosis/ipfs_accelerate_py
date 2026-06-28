@@ -742,15 +742,11 @@ async def execute_with_envelope(
                 if cancel_scope.cancelled_caught:
                     error = f"Execution timeout after {timeout_ms}ms"
             except (RuntimeError, AttributeError):
-                # Not in a trio context — use asyncio timeout as fallback
+                # Not in a trio context — execute without timeout as fallback
                 try:
-                    import asyncio
-                    result = await asyncio.wait_for(
-                        executor_fn(method, params),
-                        timeout=timeout_ms / 1000.0,
-                    )
-                except asyncio.TimeoutError:
-                    error = f"Execution timeout after {timeout_ms}ms"
+                    result = await executor_fn(method, params)
+                except Exception as e:
+                    error = f"{type(e).__name__}: {e}"
         except Exception as e:
             error = f"{type(e).__name__}: {e}"
     elif not authorized:
