@@ -211,6 +211,8 @@ class Delegation:
 class DelegationEvaluator:
     """Evaluates UCAN delegation chains with signature verification."""
 
+    MAX_CHAIN_DEPTH = 10  # Prevent DDoS via deep delegation chains
+
     def __init__(self):
         self._store: Dict[str, Delegation] = {}
         self._revoked: set = set()
@@ -222,12 +224,19 @@ class DelegationEvaluator:
         self._revoked.add(cid)
 
     def build_chain(self, leaf_cid: str) -> List[Delegation]:
-        """Build the delegation chain from leaf to root."""
+        """Build the delegation chain from leaf to root.
+        
+        Raises ValueError if chain exceeds MAX_CHAIN_DEPTH.
+        """
         chain = []
         visited = set()
         current_cid = leaf_cid
 
         while current_cid and current_cid not in visited:
+            if len(chain) >= self.MAX_CHAIN_DEPTH:
+                raise ValueError(
+                    f"Delegation chain exceeds maximum depth ({self.MAX_CHAIN_DEPTH})"
+                )
             visited.add(current_cid)
             delegation = self._store.get(current_cid)
             if not delegation:
@@ -395,24 +404,29 @@ class EventDAG:
 
 
 # ---------------------------------------------------------------------------
-# Global singletons
+# Global singletons (thread-safe)
 # ---------------------------------------------------------------------------
 
 _EVALUATOR: Optional[DelegationEvaluator] = None
 _EVENT_DAG: Optional[EventDAG] = None
+_SINGLETON_LOCK = threading.Lock()
 
 
 def get_evaluator() -> DelegationEvaluator:
     global _EVALUATOR
     if _EVALUATOR is None:
-        _EVALUATOR = DelegationEvaluator()
+        with _SINGLETON_LOCK:
+            if _EVALUATOR is None:
+                _EVALUATOR = DelegationEvaluator()
     return _EVALUATOR
 
 
 def get_event_dag() -> EventDAG:
     global _EVENT_DAG
     if _EVENT_DAG is None:
-        _EVENT_DAG = EventDAG()
+        with _SINGLETON_LOCK:
+            if _EVENT_DAG is None:
+                _EVENT_DAG = EventDAG()
     return _EVENT_DAG
 
 

@@ -15,6 +15,7 @@ Module: ipfs_accelerate_py.mcplusplus_module.temporal_policy
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -315,14 +316,17 @@ def make_prohibition_policy(
 
 
 # ---------------------------------------------------------------------------
-# Global singleton
+# Global singleton (thread-safe)
 # ---------------------------------------------------------------------------
 
 _EVALUATOR: Optional[PolicyEvaluator] = None
+_POLICY_LOCK = threading.Lock()
 
 
 def get_policy_evaluator() -> PolicyEvaluator:
     global _EVALUATOR
     if _EVALUATOR is None:
-        _EVALUATOR = PolicyEvaluator()
+        with _POLICY_LOCK:
+            if _EVALUATOR is None:
+                _EVALUATOR = PolicyEvaluator()
     return _EVALUATOR

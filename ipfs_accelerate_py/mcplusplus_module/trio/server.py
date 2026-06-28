@@ -769,7 +769,20 @@ class TrioMCPServer:
         elif method == "tools/call":
             tool_name = params.get("name", "")
             arguments = params.get("arguments", {})
+            delegation_cid = params.get("_delegation_cid")  # MCP++ extension
+
             if hasattr(self.mcp, 'tools') and tool_name in self.mcp.tools:
+                # Enforce UCAN delegation if provided
+                if delegation_cid:
+                    from ..cid_ucan import get_evaluator
+                    evaluator = get_evaluator()
+                    actor = params.get("_actor", "")
+                    authorized, reason = evaluator.can_invoke(
+                        delegation_cid, f"mcp://tool/{tool_name}", "invoke", actor=actor or None
+                    )
+                    if not authorized:
+                        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32003, "message": f"Unauthorized: {reason}"}}
+
                 try:
                     result = await self.mcp.tools[tool_name](**arguments)
                     return {"jsonrpc": "2.0", "id": req_id, "result": result}

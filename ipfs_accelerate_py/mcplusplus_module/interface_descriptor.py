@@ -11,6 +11,7 @@ Module: ipfs_accelerate_py.mcplusplus_module.interface_descriptor
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -235,18 +236,21 @@ HARDWARE_ACCELERATE_INTERFACE = InterfaceDescriptor(
 
 
 # ---------------------------------------------------------------------------
-# Global singleton
+# Global singleton (thread-safe)
 # ---------------------------------------------------------------------------
 
 _REPOSITORY: Optional[InterfaceRepository] = None
+_REPO_LOCK = threading.Lock()
 
 
 def get_interface_repository() -> InterfaceRepository:
     """Get the global interface repository, pre-loaded with built-in descriptors."""
     global _REPOSITORY
     if _REPOSITORY is None:
-        _REPOSITORY = InterfaceRepository()
-        _REPOSITORY.register(P2P_TASKQUEUE_INTERFACE)
-        _REPOSITORY.register(P2P_WORKFLOW_INTERFACE)
-        _REPOSITORY.register(HARDWARE_ACCELERATE_INTERFACE)
+        with _REPO_LOCK:
+            if _REPOSITORY is None:
+                _REPOSITORY = InterfaceRepository()
+                _REPOSITORY.register(P2P_TASKQUEUE_INTERFACE)
+                _REPOSITORY.register(P2P_WORKFLOW_INTERFACE)
+                _REPOSITORY.register(HARDWARE_ACCELERATE_INTERFACE)
     return _REPOSITORY
