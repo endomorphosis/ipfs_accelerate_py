@@ -982,7 +982,7 @@ LAUNCH_READINESS_GOAL_TEMPLATES: tuple[dict[str, Any], ...] = (
             "hallucinate_app menus, Hallucinate App MCP dashboard, dashboard capability catalog, "
             "daemon health, tools/list, tools/call, ipfs_accelerate_py MCP server, "
             "ipfs_datasets_py MCP server, ipfs_kit_py MCP server, Swissknife applications, "
-            "Playwright MCP dashboard interoperability"
+            "Playwright MCP dashboard interoperability, launch Playwright validation gate"
         ),
         "outputs": (
             "hallucinate_app, swissknife, external/ipfs_accelerate, external/ipfs_datasets, "
