@@ -136,14 +136,20 @@ def _run_codex(prompt: str, workspace: Path) -> int | None:
     codex_bin = os.environ.get("CODEX_BIN", "").strip() or shutil.which("codex")
     if not codex_bin or os.environ.get("PREFER_COPILOT_MERGE_RESOLVER", "0") == "1":
         return None
+    codex_model = os.environ.get("IPFS_ACCELERATE_AGENT_CODEX_MODEL", "").strip()
+    codex_reasoning = os.environ.get("IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", "high").strip()
     command = [
         codex_bin,
         "exec",
         "--dangerously-bypass-approvals-and-sandbox",
         "-C",
         str(workspace),
-        "-",
     ]
+    if codex_model:
+        command.extend(["-m", codex_model])
+    if codex_reasoning:
+        command.extend(["-c", f'model_reasoning_effort="{codex_reasoning}"'])
+    command.append("-")
     try:
         completed = _run_tool(
             command,
@@ -176,20 +182,26 @@ def _run_copilot(prompt: str, workspace: Path) -> int:
     if not copilot_bin:
         print("no copilot fallback binary available for merge resolution", file=sys.stderr)
         return 127
+    copilot_model = os.environ.get("IPFS_ACCELERATE_AGENT_COPILOT_MODEL", "").strip()
+    copilot_effort = os.environ.get("IPFS_ACCELERATE_AGENT_COPILOT_EFFORT", "high").strip()
+    command = [
+        copilot_bin,
+        "-C",
+        str(workspace),
+        "--silent",
+        "--allow-all-tools",
+        "--allow-all-paths",
+        "--no-ask-user",
+        "--autopilot",
+    ]
+    if copilot_model:
+        command.append(f"--model={copilot_model}")
+    if copilot_effort:
+        command.append(f"--effort={copilot_effort}")
+    command.extend(["--prompt", prompt])
     try:
         completed = _run_tool(
-            [
-                copilot_bin,
-                "-C",
-                str(workspace),
-                "--silent",
-                "--allow-all-tools",
-                "--allow-all-paths",
-                "--no-ask-user",
-                "--autopilot",
-                "--prompt",
-                prompt,
-            ],
+            command,
             prompt=prompt,
             timeout=_timeout_seconds("COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS"),
         )
