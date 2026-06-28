@@ -58,8 +58,14 @@ def ensure_libp2p_installed() -> bool:
 # Protocol ID per MCP++ spec
 MCP_P2P_PROTOCOL = "/mcp+p2p/1.0.0"
 
+# Supported protocol versions (newest first for negotiation priority)
+MCP_P2P_SUPPORTED_VERSIONS = ["/mcp+p2p/1.0.0"]
+
 # Maximum P2P message size (16 MiB) — prevents allocation attacks via 4-byte length prefix
 MAX_P2P_MESSAGE_SIZE = 16 * 1024 * 1024
+
+# Maximum number of tracked peers (prevents unbounded memory growth)
+MAX_PEERS = 500
 
 # Default bootstrap peers for the MCP++ network
 DEFAULT_BOOTSTRAP_PEERS = [
@@ -124,6 +130,8 @@ class P2PMessage:
         length = int.from_bytes(data[:4], "big")
         if length > MAX_P2P_MESSAGE_SIZE:
             raise ValueError(f"Message size {length} exceeds limit {MAX_P2P_MESSAGE_SIZE}")
+        if len(data) < 4 + length:
+            raise ValueError(f"Incomplete message: expected {length} bytes, got {len(data) - 4}")
         payload = json.loads(data[4:4 + length].decode("utf-8"))
         return cls(
             msg_type=payload.get("type", "request"),
@@ -164,6 +172,7 @@ class MCPp2pNode:
         self._peers: Dict[str, PeerInfo] = {}
         self._tool_handler: Optional[Callable] = None
         self._started = False
+        self._operational = False  # True only when libp2p is actually running
         self._nursery = None
 
     @property
@@ -200,13 +209,16 @@ class MCPp2pNode:
         """
         self._nursery = nursery
 
-        # Auto-install libp2p if missing
-        if not ensure_libp2p_installed():
+        # Auto-install libp2p if missing (run in thread to avoid blocking event loop)
+        import trio
+        installed = await trio.to_thread.run_sync(ensure_libp2p_installed)
+        if not installed:
             logger.error(
                 "libp2p could not be installed. P2P transport in stub mode. "
                 "Manual install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'"
             )
             self._started = True
+            self._operational = False
             return
 
         try:
@@ -222,14 +234,16 @@ class MCPp2pNode:
             # Create libp2p host
             self._host = new_host(key_pair=key_pair)
 
-            # Register /mcp+p2p/1.0.0 protocol handler
-            self._host.set_stream_handler(MCP_P2P_PROTOCOL, self._handle_stream)
+            # Register protocol handler for all supported versions
+            for proto_version in MCP_P2P_SUPPORTED_VERSIONS:
+                self._host.set_stream_handler(proto_version, self._handle_stream)
 
             # Start listening
             for addr in self._listen_addrs:
                 await self._host.get_network().listen(Multiaddr(addr))
 
             self._started = True
+            self._operational = True
             logger.info(
                 "MCPp2pNode started: peer_id=%s, addrs=%s",
                 self.peer_id, self.multiaddrs
@@ -245,6 +259,7 @@ class MCPp2pNode:
                 "Install with: pip install libp2p", e
             )
             self._started = True  # Mark as started in stub mode
+            self._operational = False
 
     async def stop(self) -> None:
         """Stop the libp2p node."""
@@ -263,6 +278,12 @@ class MCPp2pNode:
 
             peer_info = info_from_p2p_addr(Multiaddr(peer_addr))
             await self._host.connect(peer_info)
+
+            # Enforce max peers limit
+            if len(self._peers) >= MAX_PEERS:
+                # Evict oldest peer
+                oldest = min(self._peers.values(), key=lambda p: p.last_seen)
+                self._peers.pop(oldest.peer_id, None)
 
             self._peers[str(peer_info.peer_id)] = PeerInfo(
                 peer_id=str(peer_info.peer_id),
@@ -291,8 +312,11 @@ class MCPp2pNode:
             msg = P2PMessage.decode(length_bytes + payload)
 
             if msg.msg_type == "request" and self._tool_handler:
+                # Inject sender identity so handlers can verify peer
+                params = dict(msg.params) if msg.params else {}
+                params["_sender_peer_id"] = msg.sender_peer_id
                 try:
-                    result = await self._tool_handler(msg.method, msg.params)
+                    result = await self._tool_handler(msg.method, params)
                     response = P2PMessage(
                         msg_type="response",
                         method=msg.method,
@@ -313,7 +337,11 @@ class MCPp2pNode:
 
             await stream.close()
         except Exception as e:
-            logger.debug(f"Stream handler error: {e}")
+            logger.warning(f"Stream handler error: {e}", exc_info=True)
+            try:
+                await stream.close()
+            except Exception:
+                pass
 
     async def call_tool(self, peer_id: str, method: str,
                         params: Dict[str, Any], timeout: float = 30.0) -> Any:
@@ -342,8 +370,8 @@ class MCPp2pNode:
 
             target = PeerID.from_base58(peer_id)
 
-            # Open stream
-            stream = await self._host.new_stream(target, [MCP_P2P_PROTOCOL])
+            # Open stream (try supported versions in order for negotiation)
+            stream = await self._host.new_stream(target, MCP_P2P_SUPPORTED_VERSIONS)
 
             # Send request
             request = P2PMessage(

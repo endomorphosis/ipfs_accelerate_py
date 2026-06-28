@@ -69,6 +69,9 @@ class TokenBucketRateLimiter:
         bucket["last"] = now
         # Refill tokens
         bucket["tokens"] = min(self.burst, bucket["tokens"] + elapsed * self.rps)
+        # Periodic auto-cleanup to prevent memory leak from many unique IPs
+        if len(self._buckets) > 10000:
+            self.cleanup()
         if bucket["tokens"] >= 1.0:
             bucket["tokens"] -= 1.0
             return True
@@ -112,18 +115,36 @@ class ServerConfig:
         Environment variables:
             MCP_SERVER_NAME: Server name
             MCP_HOST: Host to bind to
-            MCP_PORT: Port to bind to
+            MCP_PORT: Port to bind to (default: 8000)
             MCP_MOUNT_PATH: API mount path
             MCP_DEBUG: Enable debug logging (1/true/yes)
             MCP_DISABLE_P2P: Disable P2P tools (1/true/yes)
+            MCPPP_RATE_LIMIT_RPS: Rate limit requests/sec per IP (default: 50)
+            MCPPP_RATE_LIMIT_BURST: Rate limit burst size (default: 100)
+            MCPPP_EPOCH_SIZE: ZK compaction epoch size (default: 1000)
+            MCPPP_HOT_TIER_MAX: Hot tier max events (default: 2000)
+            MCPPP_STORAGE_DIR: Storage directory for cold tier + revocations
+            MCPPP_EXEC_TIMEOUT_S: Tool execution timeout seconds (default: 30)
+            MCPPP_ALLOW_UNSIGNED_DELEGATIONS: Allow unsigned UCAN (0/1, default: 0)
+            MCPPP_REQUIRE_SERVICE_SIGNATURES: Require signed service announces (0/1)
+            MCP_CORS_ORIGINS: Comma-separated allowed CORS origins
+            MCP_LOG_FORMAT: Log format - "text" (default) or "json"
 
         Returns:
             ServerConfig instance with values from environment
         """
+        def _safe_int(env_key: str, default: int) -> int:
+            val = os.getenv(env_key, "")
+            try:
+                return int(val) if val else default
+            except ValueError:
+                logger.warning(f"Invalid integer for {env_key}={val!r}, using default {default}")
+                return default
+
         return cls(
             name=os.getenv("MCP_SERVER_NAME", cls.name),
             host=os.getenv("MCP_HOST", cls.host),
-            port=int(os.getenv("MCP_PORT", str(cls.port))),
+            port=_safe_int("MCP_PORT", cls.port),
             mount_path=os.getenv("MCP_MOUNT_PATH", cls.mount_path),
             debug=os.getenv("MCP_DEBUG", "").lower() in ("1", "true", "yes"),
             enable_p2p_tools=os.getenv("MCP_DISABLE_P2P", "").lower() not in ("1", "true", "yes"),
@@ -165,6 +186,25 @@ class TrioMCPServer:
             self.config.name = name
 
         # Configure logging
+        log_format = os.environ.get("MCP_LOG_FORMAT", "text")
+        if log_format == "json":
+            import json as _json
+
+            class JSONFormatter(logging.Formatter):
+                def format(self, record):
+                    return _json.dumps({
+                        "ts": self.formatTime(record),
+                        "level": record.levelname,
+                        "logger": record.name,
+                        "msg": record.getMessage(),
+                        "module": record.module,
+                    })
+
+            handler = logging.StreamHandler()
+            handler.setFormatter(JSONFormatter())
+            logging.getLogger("ipfs_accelerate_mcp").addHandler(handler)
+            logging.getLogger("ipfs_accelerate_mcp").propagate = False
+
         if self.config.debug:
             logging.getLogger("ipfs_accelerate_mcp.mcplusplus").setLevel(logging.DEBUG)
 
@@ -804,7 +844,7 @@ class TrioMCPServer:
                 if loaded > 0:
                     logger.info(f"EventDAG recovered: {loaded} events from disk")
         except Exception as e:
-            logger.debug(f"EventDAG recovery: {e}")
+            logger.warning(f"EventDAG recovery failed (non-fatal): {e}")
 
         # Recover persisted revocation list
         try:
@@ -840,7 +880,8 @@ class TrioMCPServer:
                         if method == "_mcppp_service_announce":
                             from ..service_registry import get_service_registry
                             registry = get_service_registry()
-                            return registry.handle_announce(params)
+                            sender = params.get("_sender_peer_id", "")
+                            return registry.handle_announce(params, sender_peer_id=sender)
                         if method in self.mcp.tools:
                             return await self.mcp.tools[method](**params)
                         raise ValueError(f"Tool not found: {method}")
@@ -889,7 +930,8 @@ class TrioMCPServer:
 
                 # Health-check existing peers (remove stale ones)
                 stale_peers = []
-                for peer_id, info in list(node._peers.items()):
+                peers_snapshot = list(node._peers.items())
+                for peer_id, info in peers_snapshot:
                     if time.time() - info.last_seen > 300:  # 5 min stale threshold
                         stale_peers.append(peer_id)
                 for peer_id in stale_peers:
@@ -943,10 +985,11 @@ class TrioMCPServer:
                     with open(os.path.join(state_dir, "event_dag.json"), "w") as f:
                         _json.dump(dag_state, f)
 
-                await trio.to_thread.run_sync(_persist_dag)
-                logger.info(f"EventDAG persisted: {dag_state['total_events']} events")
+                with trio.move_on_after(10):  # 10s timeout for persistence
+                    await trio.to_thread.run_sync(_persist_dag)
+                    logger.info(f"EventDAG persisted: {dag_state['total_events']} events")
         except Exception as e:
-            logger.debug(f"EventDAG persistence: {e}")
+            logger.warning(f"EventDAG persistence failed: {e}")
 
         # Persist revocation list
         try:
@@ -959,10 +1002,11 @@ class TrioMCPServer:
                 evaluator = get_evaluator()
                 evaluator.save_revocations(os.path.join(state_dir, "revocations.json"))
 
-            await trio.to_thread.run_sync(_persist_revocations)
-            logger.info("Revocations persisted to disk")
+            with trio.move_on_after(10):  # 10s timeout for persistence
+                await trio.to_thread.run_sync(_persist_revocations)
+                logger.info("Revocations persisted to disk")
         except Exception as e:
-            logger.debug(f"Revocation persistence: {e}")
+            logger.warning(f"Revocation persistence failed: {e}")
 
         self._started = False
 
@@ -988,6 +1032,20 @@ class TrioMCPServer:
 
         async with trio.open_nursery() as nursery:
             self._nursery = nursery
+
+            # Set up signal handling for graceful shutdown
+            async def _wait_for_signal():
+                import signal
+                try:
+                    with trio.open_signal_receiver(signal.SIGTERM, signal.SIGINT) as signal_aiter:
+                        async for sig_num in signal_aiter:
+                            logger.info(f"Received signal {sig_num}, initiating graceful shutdown...")
+                            nursery.cancel_scope.cancel()
+                            break
+                except (OSError, NotImplementedError, AttributeError):
+                    await trio.sleep_forever()  # Signals not available
+
+            nursery.start_soon(_wait_for_signal)
 
             # Run startup hook
             await self._startup()
@@ -1187,6 +1245,15 @@ class TrioMCPServer:
             delegation_cid = params.get("_delegation_cid")  # MCP++ extension
 
             if hasattr(self.mcp, 'tools') and tool_name in self.mcp.tools:
+                # Profile A: Validate params against declared schema
+                try:
+                    from ..interface_descriptor import validate_params
+                    validation_error = validate_params(tool_name, arguments)
+                    if validation_error:
+                        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": f"Schema validation: {validation_error}"}}
+                except ImportError:
+                    pass
+
                 # Enforce UCAN delegation if provided
                 if delegation_cid:
                     from ..cid_ucan import get_evaluator

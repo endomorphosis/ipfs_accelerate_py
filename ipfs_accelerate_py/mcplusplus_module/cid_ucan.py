@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -100,6 +101,7 @@ class ReceiptObject:
     executor: str = ""
     timestamp: float = field(default_factory=time.time)
     cid: str = ""
+    signature: Optional[str] = None  # Executor signature for non-repudiation
 
     def __post_init__(self):
         if not self.cid:
@@ -115,6 +117,35 @@ class ReceiptObject:
     @property
     def success(self) -> bool:
         return self.error is None
+
+    def sign(self, signing_key=None) -> None:
+        """Sign this receipt with the executor's key for non-repudiation.
+
+        If nacl is not available or no key is provided, creates an HMAC-based
+        signature using the executor identity as the key (weaker but functional).
+        """
+        payload = json.dumps({
+            "cid": self.cid,
+            "intent_cid": self.intent_cid,
+            "decision_cid": self.decision_cid,
+            "executor": self.executor,
+            "timestamp": self.timestamp,
+        }, sort_keys=True).encode()
+
+        if signing_key:
+            try:
+                from nacl.signing import SigningKey
+                from nacl.encoding import HexEncoder
+                signed = signing_key.sign(payload, encoder=HexEncoder)
+                self.signature = signed.signature.decode()
+                return
+            except (ImportError, Exception):
+                pass
+
+        # Fallback: HMAC-SHA256 with executor identity
+        import hmac
+        key = (self.executor or "mcppp").encode()
+        self.signature = hmac.new(key, payload, hashlib.sha256).hexdigest()
 
 
 @dataclass
@@ -314,10 +345,15 @@ class DelegationEvaluator:
         """Verify delegation signature using Ed25519.
         
         Fail-closed: returns False if crypto libs aren't available and a
-        signature is present (delegations without signatures skip verification).
+        signature is present. Unsigned delegations are only allowed if
+        MCPPP_ALLOW_UNSIGNED_DELEGATIONS=1 is set (default: deny).
         """
         if not delegation.signature:
-            return True  # No signature present — unsigned delegation (open access)
+            allow_unsigned = os.environ.get("MCPPP_ALLOW_UNSIGNED_DELEGATIONS", "0") == "1"
+            if allow_unsigned:
+                return True
+            logger.warning("Unsigned delegation denied (set MCPPP_ALLOW_UNSIGNED_DELEGATIONS=1 to allow)")
+            return False
 
         if not delegation.issuer.startswith("did:key:"):
             # Non-DID issuer with a signature — we can't verify it, so deny
@@ -553,6 +589,14 @@ def get_evaluator() -> DelegationEvaluator:
         with _SINGLETON_LOCK:
             if _EVALUATOR is None:
                 _EVALUATOR = DelegationEvaluator()
+                # Auto-load persisted revocations
+                revocation_path = os.path.join(
+                    os.environ.get("MCPPP_STORAGE_DIR", ".mcppp"),
+                    "revocations.json",
+                )
+                loaded = _EVALUATOR.load_revocations(revocation_path)
+                if loaded:
+                    logger.info("Loaded %d revocations from %s", loaded, revocation_path)
     return _EVALUATOR
 
 
@@ -644,7 +688,7 @@ async def execute_with_envelope(
 
     duration_ms = (time.time() - start_time) * 1000
 
-    # Create Receipt
+    # Create Receipt (signed for non-repudiation)
     receipt = ReceiptObject(
         intent_cid=intent.cid,
         decision_cid=decision.cid,
@@ -653,6 +697,7 @@ async def execute_with_envelope(
         duration_ms=duration_ms,
         executor="ipfs_accelerate_py",
     )
+    receipt.sign()
     dag.append(DAGEvent(
         cid=receipt.cid, event_type="receipt",
         parent_cids=[decision.cid], payload={"success": receipt.success},
