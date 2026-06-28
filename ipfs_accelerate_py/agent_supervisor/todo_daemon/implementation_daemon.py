@@ -1877,6 +1877,18 @@ class PortalImplementationDaemon:
                 "implementation_timeout",
                 {"task_id": task.task_id, "attempt": attempt, "worktree_path": str(worktree_path)},
             )
+            # Clean up timed-out worktree to prevent resource leaks
+            if worktree_path.exists():
+                try:
+                    cleanup_result = self._cleanup_failed_setup_worktree(
+                        worktree_path,
+                        branch_name,
+                        task=task,
+                        attempt=attempt,
+                        exception_result={"reason": "implementation_timeout"},
+                    )
+                except Exception:
+                    cleanup_result = {"cleaned": False, "reason": "cleanup_after_timeout_failed"}
         except Exception as exc:
             returncode = 1
             exception_result = {
@@ -1886,15 +1898,19 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "phase": state.active_phase or "worktree_setup",
             }
-            if not command:
-                cleanup_result = self._cleanup_failed_setup_worktree(
-                    worktree_path,
-                    branch_name,
-                    task=task,
-                    attempt=attempt,
-                    exception_result=exception_result,
-                )
-                exception_result["cleanup_result"] = cleanup_result
+            # Clean up worktree on any exception, not just setup failures
+            if worktree_path.exists():
+                try:
+                    cleanup_result = self._cleanup_failed_setup_worktree(
+                        worktree_path,
+                        branch_name,
+                        task=task,
+                        attempt=attempt,
+                        exception_result=exception_result,
+                    )
+                    exception_result["cleanup_result"] = cleanup_result
+                except Exception as cleanup_exc:
+                    exception_result["cleanup_error"] = str(cleanup_exc)[-1000:]
             self._record_event(
                 "implementation_exception",
                 {

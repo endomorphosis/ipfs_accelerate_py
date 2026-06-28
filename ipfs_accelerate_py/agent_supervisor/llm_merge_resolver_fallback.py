@@ -8,8 +8,19 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Sequence
+
+
+# Recursion depth guard: prevents infinite loops when Codex/Copilot
+# invokes this resolver which in turn re-invokes Codex/Copilot.
+_INVOCATION_DEPTH_ENV = "_AGENT_RESOLVER_INVOCATION_DEPTH"
+_MAX_INVOCATION_DEPTH = int(os.environ.get("AGENT_RESOLVER_MAX_DEPTH", "3"))
+
+# Lock acquisition timeout to prevent indefinite blocking
+_LOCK_TIMEOUT_ENV = "AGENT_RESOLVER_LOCK_TIMEOUT_SECONDS"
+_DEFAULT_LOCK_TIMEOUT_SECONDS = 120.0
 
 
 def llm_merge_resolver_fallback_command(
@@ -44,6 +55,7 @@ def _git_common_dir(workspace: Path) -> Path | None:
 
 
 def _acquire_git_lock(workspace: Path):
+    """Acquire an exclusive git lock with a timeout to prevent deadlocks."""
     if os.environ.get("AGENT_RESOLVER_LOCK_BYPASS", "0") == "1":
         return None
     common_dir = _git_common_dir(workspace)
@@ -53,10 +65,30 @@ def _acquire_git_lock(workspace: Path):
         import fcntl
     except ImportError:
         return None
-    common_dir.mkdir(parents=True, exist_ok=True)
-    lock_handle = (common_dir / "agent-llm-resolver.lock").open("w", encoding="utf-8")
-    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
-    return lock_handle
+    try:
+        common_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = common_dir / "agent-llm-resolver.lock"
+        lock_handle = lock_path.open("w", encoding="utf-8")
+    except OSError as exc:
+        print(f"warning: could not open lock file: {exc}", file=sys.stderr)
+        return None
+
+    # Use non-blocking flock with a polling timeout
+    timeout = float(os.environ.get(_LOCK_TIMEOUT_ENV, str(_DEFAULT_LOCK_TIMEOUT_SECONDS)))
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return lock_handle
+        except (IOError, OSError):
+            if time.monotonic() >= deadline:
+                print(
+                    f"warning: lock acquisition timed out after {timeout}s; proceeding without lock",
+                    file=sys.stderr,
+                )
+                lock_handle.close()
+                return None
+            time.sleep(0.5)
 
 
 def _timeout_seconds(env_var: str, default: str = "60") -> float | None:
@@ -169,6 +201,17 @@ def _run_copilot(prompt: str, workspace: Path) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Read a merge prompt from stdin and run Codex with Copilot fallback."""
+
+    # Recursion guard: prevent infinite loops when submodules invoke each other
+    current_depth = int(os.environ.get(_INVOCATION_DEPTH_ENV, "0"))
+    if current_depth >= _MAX_INVOCATION_DEPTH:
+        print(
+            f"error: resolver invocation depth {current_depth} exceeds maximum {_MAX_INVOCATION_DEPTH}; "
+            f"aborting to prevent infinite recursion",
+            file=sys.stderr,
+        )
+        return 2
+    os.environ[_INVOCATION_DEPTH_ENV] = str(current_depth + 1)
 
     args = list(sys.argv[1:] if argv is None else argv)
     workspace = Path(
