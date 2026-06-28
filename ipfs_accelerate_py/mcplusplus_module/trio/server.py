@@ -307,9 +307,13 @@ class TrioMCPServer:
                     redoc_url="/redoc",
                 )
 
-            # Enable CORS
-            allowed_origins = os.getenv("MCP_CORS_ORIGINS", "*")
-            origins = [o.strip() for o in allowed_origins.split(",") if o.strip()] or ["*"]
+            # Enable CORS — default to localhost origins for security;
+            # set MCP_CORS_ORIGINS=* in production if needed
+            allowed_origins = os.getenv(
+                "MCP_CORS_ORIGINS",
+                "http://localhost:8765,http://localhost:3000,http://127.0.0.1:8765"
+            )
+            origins = [o.strip() for o in allowed_origins.split(",") if o.strip()]
 
             app.add_middleware(
                 CORSMiddleware,
@@ -497,6 +501,7 @@ class TrioMCPServer:
                         "TrioMCPServer serving via Hypercorn at http://%s:%s%s",
                         self.config.host, self.config.port, self.config.mount_path,
                     )
+                    # Signal ready just before serving (Hypercorn binds synchronously)
                     task_status.started()
                     await hypercorn_serve(asgi_app, hconfig)
 
@@ -506,8 +511,8 @@ class TrioMCPServer:
                         "Hypercorn not available. Starting built-in Trio JSON-RPC server at http://%s:%s%s",
                         self.config.host, self.config.port, self.config.mount_path,
                     )
-                    task_status.started()
-                    await self._serve_jsonrpc_trio(nursery)
+                    # _serve_jsonrpc_trio signals started after socket binds
+                    await self._serve_jsonrpc_trio(nursery, task_status)
 
             except trio.Cancelled:
                 logger.info("TrioMCPServer cancelled")
@@ -517,11 +522,12 @@ class TrioMCPServer:
                 await self._shutdown()
                 self._nursery = None
 
-    async def _serve_jsonrpc_trio(self, nursery: trio.Nursery) -> None:
+    async def _serve_jsonrpc_trio(self, nursery: trio.Nursery, task_status=None) -> None:
         """Built-in Trio TCP server for MCP JSON-RPC over HTTP.
         
         Handles basic HTTP/1.1 POST requests with JSON-RPC payloads.
         This is a minimal implementation for when Hypercorn is not available.
+        Signals task_status.started() only after the socket is bound.
         """
         import json as _json
 
@@ -567,9 +573,40 @@ class TrioMCPServer:
                     request = _json.loads(body.decode("utf-8"))
                     response_body = _json.dumps(await self._handle_jsonrpc(request))
                 elif method == "GET" and path == "/mcp/interfaces":
-                    response_body = _json.dumps({"interfaces": [], "count": 0})
-                elif method == "GET" and path.startswith("/mcp/dag"):
-                    response_body = _json.dumps({"events": [], "frontier": []})
+                    tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+                    interfaces = [{"cid": compute_cid({"name": t}), "name": t, "version": "1.0.0"} for t in tools]
+                    response_body = _json.dumps({"interfaces": interfaces, "count": len(interfaces)})
+                elif method == "GET" and path == "/mcp/dag/frontier":
+                    from ..cid_ucan import get_event_dag
+                    dag = get_event_dag()
+                    frontier = dag.frontier()
+                    response_body = _json.dumps({"frontier": [{"cid": e.cid, "type": e.event_type, "timestamp": e.timestamp} for e in frontier]})
+                elif method == "GET" and path == "/mcp/dag/history":
+                    from ..cid_ucan import get_event_dag
+                    dag = get_event_dag()
+                    events = dag.history(limit=50)
+                    response_body = _json.dumps({"events": [{"cid": e.cid, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp} for e in events]})
+                elif method == "GET" and path.startswith("/mcp/dag/provenance/"):
+                    from ..cid_ucan import get_event_dag
+                    target_cid = path.split("/mcp/dag/provenance/")[1]
+                    dag = get_event_dag()
+                    chain = dag.provenance(target_cid)
+                    response_body = _json.dumps({"provenance": [{"cid": e.cid, "type": e.event_type, "parents": e.parent_cids} for e in chain]})
+                elif method == "POST" and path == "/mcp/execute":
+                    from ..cid_ucan import execute_with_envelope
+                    req = _json.loads(body.decode("utf-8"))
+                    async def _exec(m, p):
+                        if hasattr(self.mcp, 'tools') and m in self.mcp.tools:
+                            return await self.mcp.tools[m](**p)
+                        raise ValueError(f"Tool not found: {m}")
+                    envelope = await execute_with_envelope(
+                        method=req.get("method", ""), params=req.get("params", {}),
+                        requester=req.get("requester", ""), delegation_cid=req.get("delegation_cid"),
+                        executor_fn=_exec,
+                    )
+                    response_body = _json.dumps(envelope.to_dict())
+                elif method == "GET" and path == "/mcp/p2p/peers":
+                    response_body = _json.dumps({"peers": [], "protocol": "/mcp+p2p/1.0.0"})
                 else:
                     response_body = _json.dumps({"error": "Not found"})
 
@@ -593,6 +630,9 @@ class TrioMCPServer:
         )
         logger.info(f"Trio TCP server listening on {self.config.host}:{self.config.port}")
         self._started = True
+        # Signal readiness AFTER socket is bound
+        if task_status is not None:
+            task_status.started()
         await trio.sleep_forever()
 
     async def _handle_jsonrpc(self, request: dict) -> dict:

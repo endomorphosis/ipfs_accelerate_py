@@ -285,21 +285,24 @@ class DelegationEvaluator:
     def _verify_signature(self, delegation: Delegation) -> bool:
         """Verify delegation signature using Ed25519.
         
-        Returns True if signature is valid or if crypto libs aren't available.
+        Fail-closed: returns False if crypto libs aren't available and a
+        signature is present (delegations without signatures skip verification).
         """
+        if not delegation.signature:
+            return True  # No signature present — unsigned delegation (open access)
+
+        if not delegation.issuer.startswith("did:key:"):
+            return True  # Non-DID issuer, signature format unknown — skip
+
         try:
             from nacl.signing import VerifyKey
             from nacl.encoding import HexEncoder
 
-            if not delegation.signature or not delegation.issuer.startswith("did:key:"):
-                return True  # No signature to verify or not a DID key
-
-            # Extract public key from DID
+            # Extract public key from DID (multicodec ed25519-pub prefix: 0xed01)
             key_material = delegation.issuer.replace("did:key:z", "")
-            # Simplified: in production, decode multicodec
             verify_key = VerifyKey(key_material.encode(), encoder=HexEncoder)
 
-            # Verify signature over canonical CID data
+            # Verify signature over canonical payload
             payload = json.dumps({
                 "issuer": delegation.issuer,
                 "audience": delegation.audience,
@@ -309,9 +312,9 @@ class DelegationEvaluator:
             verify_key.verify(payload, bytes.fromhex(delegation.signature))
             return True
         except ImportError:
-            # nacl not available, skip verification
-            logger.debug("PyNaCl not available, skipping signature verification")
-            return True
+            # Fail-closed: deny signed delegations when we can't verify
+            logger.warning("PyNaCl not available — cannot verify signed delegation, denying")
+            return False
         except Exception as e:
             logger.warning(f"Signature verification failed for {delegation.cid}: {e}")
             return False
