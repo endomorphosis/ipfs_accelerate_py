@@ -552,18 +552,22 @@ class TrioMCPServer:
         except Exception as e:
             logger.debug(f"P2P node shutdown: {e}")
 
-        # Persist EventDAG to disk
+        # Persist EventDAG to disk (non-blocking)
         try:
             from ..cid_ucan import get_event_dag
             dag = get_event_dag()
             dag_state = dag.to_dict()
             if dag_state["total_events"] > 0:
                 import os
-                state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
-                os.makedirs(state_dir, exist_ok=True)
                 import json as _json
-                with open(os.path.join(state_dir, "event_dag.json"), "w") as f:
-                    _json.dump(dag_state, f)
+                state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
+
+                def _persist_dag():
+                    os.makedirs(state_dir, exist_ok=True)
+                    with open(os.path.join(state_dir, "event_dag.json"), "w") as f:
+                        _json.dump(dag_state, f)
+
+                await trio.to_thread.run_sync(_persist_dag)
                 logger.info(f"EventDAG persisted: {dag_state['total_events']} events")
         except Exception as e:
             logger.debug(f"EventDAG persistence: {e}")
