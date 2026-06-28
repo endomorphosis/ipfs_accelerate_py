@@ -200,7 +200,39 @@ def _copilot_has_auth() -> bool:
     return completed.returncode == 0
 
 
+# Environment variable configuration for CLI tool capabilities.
+# These allow tuning without code changes.
+_CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
+_CODEX_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW"
+_CODEX_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
+_CODEX_MAX_THREADS_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS"
+_CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
+_COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
+_COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
+_COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
+_COPILOT_MAX_CONTINUES_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES"
+
+
 def _copilot_fallback_command(*, codex: str | None, copilot: str, workspace_path: Path) -> list[str]:
+    """Build a bash command that tries Codex first, falls back to Copilot CLI.
+
+    Both tools are invoked with full capability flags:
+    - Codex: model selection, reasoning effort, context window, sub-agent threading
+    - Copilot: model selection, reasoning effort, long context, autopilot with continuation limit
+    """
+    # Codex configuration
+    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_context = os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
+    codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
+    codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
+
+    # Copilot configuration
+    copilot_model = os.environ.get(_COPILOT_MODEL_ENV, "").strip()
+    copilot_effort = os.environ.get(_COPILOT_EFFORT_ENV, "high").strip()
+    copilot_context = os.environ.get(_COPILOT_CONTEXT_TIER_ENV, "long_context").strip()
+    copilot_max_continues = os.environ.get(_COPILOT_MAX_CONTINUES_ENV, "30").strip()
+
     return [
         "bash",
         "-lc",
@@ -211,20 +243,61 @@ cat > "$prompt_file"
 codex_bin="$1"
 copilot_bin="$2"
 workspace="$3"
+codex_model="$4"
+codex_context="$5"
+codex_reasoning="$6"
+codex_max_threads="$7"
+codex_max_depth="$8"
+copilot_model="$9"
+copilot_effort="${10}"
+copilot_context="${11}"
+copilot_max_continues="${12}"
+
 if [[ -n "$codex_bin" ]]; then
-    if "$codex_bin" exec --dangerously-bypass-approvals-and-sandbox -C "$workspace" - < "$prompt_file"; then
+    codex_args=(exec --dangerously-bypass-approvals-and-sandbox -C "$workspace")
+    # Model selection
+    [[ -n "$codex_model" ]] && codex_args+=(-m "$codex_model")
+    # Context window, reasoning, and sub-agent configuration via -c overrides
+    [[ -n "$codex_context" ]] && codex_args+=(-c "model_context_window=$codex_context")
+    [[ -n "$codex_reasoning" ]] && codex_args+=(-c "model_reasoning_effort=\"$codex_reasoning\"")
+    [[ -n "$codex_max_threads" ]] && codex_args+=(-c "agents.max_threads=$codex_max_threads")
+    [[ -n "$codex_max_depth" ]] && codex_args+=(-c "agents.max_depth=$codex_max_depth")
+    codex_args+=(-)
+
+    if "${codex_bin}" "${codex_args[@]}" < "$prompt_file"; then
         exit 0
     else
         rc=$?
-        printf 'codex exec failed with exit %s; falling back to copilot\n' "$rc" >&2
+        printf 'codex exec failed with exit %s; falling back to copilot\\n' "$rc" >&2
     fi
 fi
-exec "$copilot_bin" --silent --allow-all-tools --allow-all-paths --no-ask-user --autopilot --prompt "$(cat "$prompt_file")"
+
+copilot_args=(--silent --allow-all-tools --allow-all-paths --no-ask-user --autopilot)
+# Model selection
+[[ -n "$copilot_model" ]] && copilot_args+=(--model="$copilot_model")
+# Reasoning effort
+[[ -n "$copilot_effort" ]] && copilot_args+=(--effort="$copilot_effort")
+# Long context tier (1M tokens)
+[[ -n "$copilot_context" ]] && copilot_args+=(--context "$copilot_context")
+# Autopilot continuation limit (safety cap)
+[[ -n "$copilot_max_continues" ]] && copilot_args+=(--max-autopilot-continues "$copilot_max_continues")
+copilot_args+=(--prompt "$(cat "$prompt_file")")
+
+exec "$copilot_bin" "${copilot_args[@]}"
 """,
         "bash",
         codex or "",
         copilot,
         str(workspace_path),
+        codex_model,
+        codex_context,
+        codex_reasoning,
+        codex_max_threads,
+        codex_max_depth,
+        copilot_model,
+        copilot_effort,
+        copilot_context,
+        copilot_max_continues,
     ]
 
 
@@ -5846,14 +5919,32 @@ class PortalImplementationDaemon:
         if copilot and _copilot_has_auth():
             return _copilot_fallback_command(codex=codex, copilot=copilot, workspace_path=workspace_path)
         if codex:
-            return [
+            # Build codex command with full capability flags
+            codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+            codex_context = os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+            codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
+            codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
+            codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
+
+            cmd = [
                 codex,
                 "exec",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "-C",
                 str(workspace_path),
-                "-",
             ]
+            if codex_model:
+                cmd.extend(["-m", codex_model])
+            if codex_context:
+                cmd.extend(["-c", f"model_context_window={codex_context}"])
+            if codex_reasoning:
+                cmd.extend(["-c", f'model_reasoning_effort="{codex_reasoning}"'])
+            if codex_max_threads:
+                cmd.extend(["-c", f"agents.max_threads={codex_max_threads}"])
+            if codex_max_depth:
+                cmd.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+            cmd.append("-")
+            return cmd
         raise RuntimeError(
             "No implementation command configured. Install codex or copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
         )
@@ -6277,6 +6368,13 @@ Compact todo vector context:
             if todo_vector_context
             else ""
         )
+        # Build sub-agent guidance when multiple outputs suggest parallelizable work
+        subagent_guidance = ""
+        if len(task.outputs) > 3:
+            subagent_guidance = """
+- This task has many expected outputs. Use sub-agents or parallel execution when possible:
+  decompose into independent file/module implementations and work on them concurrently.
+"""
         return f"""You are an autonomous implementation agent working in this repository.
 
 Implement this backlog task completely and thoroughly. Produce a full, production-ready implementation
@@ -6308,7 +6406,7 @@ Rules:
 - Implement ALL expected outputs for this task in full. Do not leave stubs, placeholders, or TODOs.
 - If a compact execution packet or goal packet is shown, implement a single cohesive change that advances all the shared packet evidence together without making unrelated edits.
 - You may create new files and modify multiple existing files. Larger, complete implementations are preferred over minimal patches.
-- Run the listed validation commands when practical.
+{subagent_guidance}- Run the listed validation commands when practical.
 - The daemon will run the listed validation commands and will only commit and merge the worktree if they pass.
 - Leave generated artifacts and shared dependency paths alone; the daemon restores dist, screenshot artifacts, and linked node_modules before commit.
 - If validation cannot be run, record why in your final response.
