@@ -35,30 +35,56 @@ logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.cid_ucan")
 # CID utilities
 # ---------------------------------------------------------------------------
 
+_CID_B32 = "abcdefghijklmnopqrstuvwxyz234567"
+
+
+def _multibase_base32(data: bytes) -> str:
+    """RFC4648 base32 lowercase, no padding (multibase 'b' body)."""
+    bits = 0
+    val = 0
+    out = []
+    for byte in data:
+        val = (val << 8) | byte
+        bits += 8
+        while bits >= 5:
+            bits -= 5
+            out.append(_CID_B32[(val >> bits) & 31])
+    if bits:
+        out.append(_CID_B32[(val << (5 - bits)) & 31])
+    return "".join(out)
+
+
 def compute_cid(data: Any) -> str:
-    """Compute a CID-like hash for any JSON-serializable data."""
+    """Compute a real IPFS CIDv1 (raw codec, sha2-256) for JSON content.
+
+    Produces a genuine, Kubo-resolvable CID (``bafkrei...``) so third parties
+    interoperate with standard IPFS tooling. Equivalent to
+    ``ipfs add --cid-version=1`` on the canonical JSON bytes. Identical content
+    across repos yields the identical CID.
+    """
     serialized = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    digest = hashlib.sha256(serialized).hexdigest()
-    return f"bafy{digest[:52]}"
+    digest = hashlib.sha256(serialized).digest()
+    multihash = b"\x12\x20" + digest          # sha2-256 (0x12), length 32 (0x20)
+    return "b" + _multibase_base32(b"\x01\x55" + multihash)  # CIDv1 + raw codec
+
 
 
 def cid_digest(cid: str) -> str:
-    """Extract the comparable sha256 hex digest from a CID, ignoring prefix.
+    """Return the comparable digest body of a CID, tolerating legacy formats.
 
-    Both ipfs_accelerate_py (``bafy``+hex[:52]) and ipfs_datasets_py
-    (``sha256:``+hex[:64]) compute the same canonical sha256, so stripping the
-    prefix and truncating to a common length yields a cross-repo comparable key.
+    Real CIDv1s (``bafkrei...``) are byte-identical across repos for the same
+    content, so equality is exact. Legacy pseudo-CID prefixes are stripped for
+    backward-compatible comparison during migration.
     """
     s = str(cid)
-    for prefix in ("bafy-mock-", "bafy", "sha256:"):
+    for prefix in ("bafy-mock-", "sha256:"):
         if s.startswith(prefix):
-            s = s[len(prefix):]
-            break
-    return s[:52]
+            return s[len(prefix):][:52]
+    return s
 
 
 def cids_equivalent(a: str, b: str) -> bool:
-    """Return True if two CIDs reference the same content across repo formats."""
+    """Return True if two CIDs reference the same content (exact for real CIDv1)."""
     return cid_digest(a) == cid_digest(b)
 
 
@@ -761,8 +787,8 @@ async def execute_with_envelope(
                     result = await executor_fn(method, params)
                 if cancel_scope.cancelled_caught:
                     error = f"Execution timeout after {timeout_ms}ms"
-            except (RuntimeError, AttributeError):
-                # Not in a trio context — execute without timeout as fallback
+            except (RuntimeError, AttributeError, ImportError):
+                # Not in a trio context (or trio unavailable) — execute without timeout
                 try:
                     result = await executor_fn(method, params)
                 except Exception as e:
