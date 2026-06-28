@@ -1033,6 +1033,20 @@ class TrioMCPServer:
         async with trio.open_nursery() as nursery:
             self._nursery = nursery
 
+            # Set up signal handling for graceful shutdown
+            async def _wait_for_signal():
+                import signal
+                try:
+                    with trio.open_signal_receiver(signal.SIGTERM, signal.SIGINT) as signal_aiter:
+                        async for sig_num in signal_aiter:
+                            logger.info(f"Received signal {sig_num}, initiating graceful shutdown...")
+                            nursery.cancel_scope.cancel()
+                            break
+                except (OSError, NotImplementedError, AttributeError):
+                    await trio.sleep_forever()  # Signals not available
+
+            nursery.start_soon(_wait_for_signal)
+
             # Run startup hook
             await self._startup()
 
