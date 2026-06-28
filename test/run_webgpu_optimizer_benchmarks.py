@@ -23,6 +23,9 @@ try:
     from selenium.webdriver.firefox.options import Options as FirefoxOptions
     from selenium.webdriver.edge.options import Options as EdgeOptions
     from selenium.webdriver.common.by import By
+    from selenium.common.exceptions import JavascriptException
+    from selenium.common.exceptions import TimeoutException
+    from selenium.common.exceptions import WebDriverException
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     SELENIUM_AVAILABLE = True
@@ -229,8 +232,14 @@ class BenchmarkRunner:
             # Extract the results from the window object
             results = driver.execute_script("return window.benchmarkResults;")
             return results
-        except Exception as e:
-            print(f"Error extracting results: {e}")
+        except TimeoutException as e:
+            print(f"Timed out waiting for benchmark completion after {self.args.timeout}s: {e}")
+            return None
+        except JavascriptException as e:
+            print(f"Browser JavaScript error while extracting benchmark results: {e}")
+            return None
+        except WebDriverException as e:
+            print(f"WebDriver error while extracting benchmark results: {e}")
             return None
     
     def run_benchmarks(self):
