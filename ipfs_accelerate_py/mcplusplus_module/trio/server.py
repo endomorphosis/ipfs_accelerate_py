@@ -32,14 +32,54 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from collections import defaultdict
 from typing import Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import trio
 
 from ..cid_ucan import compute_cid
 
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.trio.server")
+
+
+# ---------------------------------------------------------------------------
+# Rate Limiter (Token Bucket)
+# ---------------------------------------------------------------------------
+
+class TokenBucketRateLimiter:
+    """Per-IP token bucket rate limiter for HTTP endpoints.
+
+    Configurable via environment variables:
+        MCPPP_RATE_LIMIT_RPS: Requests per second per IP (default: 50)
+        MCPPP_RATE_LIMIT_BURST: Max burst size (default: 100)
+    """
+
+    def __init__(self):
+        self.rps = int(os.environ.get("MCPPP_RATE_LIMIT_RPS", "50"))
+        self.burst = int(os.environ.get("MCPPP_RATE_LIMIT_BURST", "100"))
+        self._buckets: dict = defaultdict(lambda: {"tokens": self.burst, "last": time.time()})
+
+    def allow(self, client_ip: str) -> bool:
+        """Check if a request from client_ip is allowed."""
+        now = time.time()
+        bucket = self._buckets[client_ip]
+        elapsed = now - bucket["last"]
+        bucket["last"] = now
+        # Refill tokens
+        bucket["tokens"] = min(self.burst, bucket["tokens"] + elapsed * self.rps)
+        if bucket["tokens"] >= 1.0:
+            bucket["tokens"] -= 1.0
+            return True
+        return False
+
+    def cleanup(self) -> None:
+        """Remove stale entries (older than 60s) to prevent memory leak."""
+        now = time.time()
+        stale = [ip for ip, b in self._buckets.items() if now - b["last"] > 60]
+        for ip in stale:
+            del self._buckets[ip]
 
 
 @dataclass
@@ -325,6 +365,101 @@ class TrioMCPServer:
 
             logger.info(f"CORS enabled for origins: {origins}")
 
+            # Rate limiting middleware
+            rate_limiter = TokenBucketRateLimiter()
+
+            from starlette.middleware.base import BaseHTTPMiddleware
+            from starlette.responses import JSONResponse as StarletteJSONResponse
+
+            class RateLimitMiddleware(BaseHTTPMiddleware):
+                async def dispatch(self, request, call_next):
+                    # Skip rate limiting for health endpoints
+                    if request.url.path in ("/health", "/ready", "/live", "/metrics"):
+                        return await call_next(request)
+                    client_ip = request.client.host if request.client else "unknown"
+                    if not rate_limiter.allow(client_ip):
+                        try:
+                            from ..metrics import get_metrics
+                            get_metrics().rate_limit_rejected.inc()
+                        except Exception:
+                            pass
+                        return StarletteJSONResponse(
+                            status_code=429,
+                            content={"error": "Too Many Requests", "retry_after_ms": 1000},
+                        )
+                    return await call_next(request)
+
+            app.add_middleware(RateLimitMiddleware)
+
+            # Health/readiness/liveness endpoints
+            @app.get("/health")
+            async def health_check():
+                """Liveness probe — server is running."""
+                return {"status": "ok", "server": self.config.name}
+
+            @app.get("/ready")
+            async def readiness_check():
+                """Readiness probe — server is ready to accept traffic."""
+                from ..cid_ucan import get_event_dag
+                dag = get_event_dag()
+                dag_state = dag.to_dict()
+
+                p2p_ready = False
+                try:
+                    from ..p2p_transport import get_p2p_node
+                    node = get_p2p_node()
+                    p2p_ready = node._started
+                except Exception:
+                    pass
+
+                return {
+                    "status": "ready" if self._started else "starting",
+                    "dag_hot_events": dag_state.get("hot_events", dag_state.get("total_events", 0)),
+                    "dag_total_events": dag_state.get("total_events", 0),
+                    "p2p_ready": p2p_ready,
+                    "server": self.config.name,
+                }
+
+            @app.get("/live")
+            async def liveness_check():
+                """Kubernetes liveness — process is alive."""
+                return {"status": "alive"}
+
+            @app.get("/metrics")
+            async def prometheus_metrics():
+                """Prometheus metrics endpoint."""
+                from starlette.responses import Response
+                from ..metrics import get_metrics
+                metrics = get_metrics()
+
+                # Update dynamic gauges
+                try:
+                    from ..cid_ucan import get_event_dag, get_evaluator
+                    dag = get_event_dag()
+                    dag_state = dag.to_dict()
+                    metrics.dag_events_total.set(dag_state.get("total_events", 0))
+                    metrics.dag_hot_events.set(dag_state.get("hot_events", dag_state.get("total_events", 0)))
+                    compaction = dag_state.get("compaction", {})
+                    metrics.dag_compaction_epochs.set(compaction.get("epochs_compacted", 0))
+
+                    evaluator = get_evaluator()
+                    metrics.ucan_delegations_total.set(len(evaluator._store))
+                    metrics.ucan_revocations_total.set(len(evaluator._revoked))
+                except Exception:
+                    pass
+
+                try:
+                    from ..p2p_transport import get_p2p_node
+                    node = get_p2p_node()
+                    metrics.p2p_peers_connected.set(len(node._peers))
+                except Exception:
+                    pass
+
+                return Response(
+                    content=metrics.collect_all(),
+                    media_type="text/plain; version=0.0.4; charset=utf-8",
+                )
+
             # Register MCP++ profile endpoints
             self._register_mcppp_routes(app)
 
@@ -546,6 +681,24 @@ class TrioMCPServer:
         except Exception as e:
             logger.debug(f"EventDAG recovery: {e}")
 
+        # Recover persisted revocation list
+        try:
+            import os
+            state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
+            revoc_path = os.path.join(state_dir, "revocations.json")
+            if os.path.isfile(revoc_path):
+                from ..cid_ucan import get_evaluator
+
+                def _load_revocations():
+                    evaluator = get_evaluator()
+                    return evaluator.load_revocations(revoc_path)
+
+                count = await trio.to_thread.run_sync(_load_revocations)
+                if count > 0:
+                    logger.info(f"Revocations recovered: {count} entries from disk")
+        except Exception as e:
+            logger.debug(f"Revocation recovery: {e}")
+
         # Start P2P node if enabled
         if self.config.enable_p2p_tools and self._nursery:
             try:
@@ -555,15 +708,83 @@ class TrioMCPServer:
 
                 # Register our MCP tools as the P2P tool handler
                 if hasattr(self.mcp, 'tools'):
+                    tools_list = list(self.mcp.tools.keys())
+
                     async def _handle_p2p_tool(method, params):
+                        # Handle service announcements
+                        if method == "_mcppp_service_announce":
+                            from ..service_registry import get_service_registry
+                            registry = get_service_registry()
+                            return registry.handle_announce(params)
                         if method in self.mcp.tools:
                             return await self.mcp.tools[method](**params)
                         raise ValueError(f"Tool not found: {method}")
                     node.set_tool_handler(_handle_p2p_tool)
 
+                    # Register in service registry for cross-server discovery
+                    try:
+                        from ..service_registry import get_service_registry, ServiceRecord
+                        registry = get_service_registry()
+                        registry.register_local(ServiceRecord(
+                            service_name="ipfs-accelerate-mcp",
+                            peer_id=node.peer_id or "",
+                            multiaddrs=node.multiaddrs or [],
+                            tools=tools_list,
+                            metadata={"port": self.config.port, "server": self.config.name},
+                        ))
+                        # Start service advertise loop
+                        self._nursery.start_soon(registry.advertise_loop, node, self._nursery)
+                    except Exception as e:
+                        logger.debug(f"Service registry setup: {e}")
+
                 logger.info(f"P2P node started: {node.peer_id}")
+
+                # Start periodic peer discovery and health checks
+                self._nursery.start_soon(self._p2p_maintenance_loop, node)
             except Exception as e:
                 logger.warning(f"P2P node startup failed (non-fatal): {e}")
+
+    async def _p2p_maintenance_loop(self, node) -> None:
+        """Background loop for peer discovery, health checks, and reconnection."""
+        backoff = 5.0  # Start with 5s between cycles
+        max_backoff = 120.0
+
+        while self._started:
+            try:
+                await trio.sleep(backoff)
+
+                # Attempt peer discovery
+                try:
+                    discovered = await node.discover_peers()
+                    if discovered:
+                        logger.info(f"Discovered {len(discovered)} peers via mDNS")
+                        backoff = 5.0  # Reset backoff on success
+                except Exception as e:
+                    logger.debug(f"Peer discovery cycle: {e}")
+
+                # Health-check existing peers (remove stale ones)
+                stale_peers = []
+                for peer_id, info in list(node._peers.items()):
+                    if time.time() - info.last_seen > 300:  # 5 min stale threshold
+                        stale_peers.append(peer_id)
+                for peer_id in stale_peers:
+                    node._peers.pop(peer_id, None)
+                    logger.debug(f"Removed stale peer: {peer_id}")
+
+                # Reconnect to bootstrap peers if we have no active peers
+                if not node._peers:
+                    for peer_addr in node._bootstrap_peers:
+                        try:
+                            await node._connect_bootstrap(peer_addr)
+                        except Exception:
+                            pass
+                    backoff = min(backoff * 1.5, max_backoff)
+
+            except trio.Cancelled:
+                break
+            except Exception as e:
+                logger.debug(f"P2P maintenance error: {e}")
+                backoff = min(backoff * 2, max_backoff)
 
     async def _shutdown(self) -> None:
         """Server shutdown hook.
@@ -601,6 +822,22 @@ class TrioMCPServer:
                 logger.info(f"EventDAG persisted: {dag_state['total_events']} events")
         except Exception as e:
             logger.debug(f"EventDAG persistence: {e}")
+
+        # Persist revocation list
+        try:
+            from ..cid_ucan import get_evaluator
+            import os
+            state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
+
+            def _persist_revocations():
+                os.makedirs(state_dir, exist_ok=True)
+                evaluator = get_evaluator()
+                evaluator.save_revocations(os.path.join(state_dir, "revocations.json"))
+
+            await trio.to_thread.run_sync(_persist_revocations)
+            logger.info("Revocations persisted to disk")
+        except Exception as e:
+            logger.debug(f"Revocation persistence: {e}")
 
         self._started = False
 
@@ -780,10 +1017,33 @@ class TrioMCPServer:
         await trio.sleep_forever()
 
     async def _handle_jsonrpc(self, request: dict) -> dict:
-        """Handle a single JSON-RPC request."""
+        """Handle a single JSON-RPC request with metrics instrumentation."""
         method = request.get("method", "")
         params = request.get("params", {})
         req_id = request.get("id", 1)
+
+        # Metrics instrumentation
+        start_time = time.time()
+        try:
+            result = await self._dispatch_jsonrpc(method, params, req_id)
+            status = "error" if "error" in result else "ok"
+        except Exception as e:
+            status = "error"
+            result = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
+
+        duration = time.time() - start_time
+        try:
+            from ..metrics import get_metrics
+            metrics = get_metrics()
+            metrics.requests_total.inc(method=method, status=status)
+            metrics.request_duration.observe(duration, method=method)
+        except Exception:
+            pass
+
+        return result
+
+    async def _dispatch_jsonrpc(self, method: str, params: dict, req_id: Any) -> dict:
+        """Dispatch a JSON-RPC method call."""
 
         if method == "initialize":
             client_caps = params.get("capabilities", {}).get("experimental", {})
