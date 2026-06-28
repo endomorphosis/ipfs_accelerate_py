@@ -1923,8 +1923,17 @@ class PortalImplementationDaemon:
                     worktree_path=worktree_path,
                     branch_name=branch_name,
                 )
-                self._prepare_worktree_for_validation(worktree_path, task=task, branch_name=branch_name)
-                validation_result = self._run_validation_commands(worktree_path, task, log_path)
+                if not worktree_path.exists():
+                    returncode = 1
+                    validation_result = self._missing_validation_workspace_result(
+                        worktree_path,
+                        task=task,
+                        log_path=log_path,
+                    )
+                    cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+                else:
+                    self._prepare_worktree_for_validation(worktree_path, task=task, branch_name=branch_name)
+                    validation_result = self._run_validation_commands(worktree_path, task, log_path)
                 if validation_result.get("passed", False):
                     commit_result = self._commit_worktree_changes(worktree_path, task, attempt)
                     implementation_commit = str(commit_result.get("commit", ""))
@@ -1950,16 +1959,17 @@ class PortalImplementationDaemon:
                         cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
                     returncode = int(validation_result.get("returncode") or 1)
-                    failed_preservation_result = self._preserve_failed_validation_worktree(
-                        worktree_path,
-                        branch_name,
-                        task,
-                        attempt,
-                        validation_result,
-                    )
-                    commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
-                    implementation_commit = str(commit_result.get("commit", ""))
-                    cleanup_result = dict(failed_preservation_result.get("cleanup_result") or cleanup_result)
+                    if worktree_path.exists():
+                        failed_preservation_result = self._preserve_failed_validation_worktree(
+                            worktree_path,
+                            branch_name,
+                            task,
+                            attempt,
+                            validation_result,
+                        )
+                        commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
+                        implementation_commit = str(commit_result.get("commit", ""))
+                        cleanup_result = dict(failed_preservation_result.get("cleanup_result") or cleanup_result)
         except subprocess.TimeoutExpired:
             returncode = 124
             self._record_event(
@@ -2054,6 +2064,32 @@ class PortalImplementationDaemon:
         if todo_update_result:
             result["todo_update_result"] = todo_update_result
         self._record_event("implementation_finished", result)
+        return result
+
+    def _missing_validation_workspace_result(
+        self,
+        worktree_path: Path,
+        *,
+        task: PortalTask,
+        log_path: Path,
+    ) -> dict[str, Any]:
+        result = {
+            "attempted": False,
+            "passed": False,
+            "returncode": 1,
+            "results": [],
+            "reason": "validation_workspace_missing",
+            "error": f"validation workspace missing: {worktree_path}",
+            "worktree_path": str(worktree_path),
+        }
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as log_fh:
+            log_fh.write("\nValidation:\n")
+            log_fh.write(f"[validation workspace missing] {worktree_path}\n")
+        self._record_event(
+            "validation_workspace_missing",
+            {"task_id": task.task_id, "worktree_path": str(worktree_path)},
+        )
         return result
 
     def _cleanup_failed_setup_worktree(
@@ -3029,6 +3065,9 @@ class PortalImplementationDaemon:
         return any(line == relative or line.startswith(f"{relative.rstrip('/')}/") for line in result.stdout.splitlines())
 
     def _run_validation_commands(self, workspace_path: Path, task: PortalTask, log_path: Path) -> dict[str, Any]:
+        if not workspace_path.exists():
+            return self._missing_validation_workspace_result(workspace_path, task=task, log_path=log_path)
+
         if not task.validation:
             return {
                 "attempted": False,

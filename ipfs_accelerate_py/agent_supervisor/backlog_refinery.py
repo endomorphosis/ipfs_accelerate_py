@@ -433,7 +433,7 @@ def refill_state_counts(
     todo_statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
     task_ids = set(todo_statuses)
     normalized = {str(task_id): str(status).lower() for task_id, status in statuses.items()}
-    if set(normalized) != task_ids or not state_statuses_match_todo_statuses(todo_statuses, normalized):
+    if set(normalized) != task_ids:
         return {}
     try:
         state_task_count = int(payload.get("task_count") or 0)

@@ -1138,14 +1138,19 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
 
     command = daemon._build_implementation_command(repo)
 
-    assert command == [
+    assert command[:5] == [
         "/usr/local/bin/codex",
         "exec",
         "--dangerously-bypass-approvals-and-sandbox",
         "-C",
         str(repo),
-        "-",
     ]
+    assert command[-1] == "-"
+    assert ["-c", "model_context_window=200000"] == command[5:7]
+    assert "-c" in command
+    assert 'model_reasoning_effort="high"' in command
+    assert "agents.max_threads=10" in command
+    assert "agents.max_depth=2" in command
 
 
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
@@ -1172,7 +1177,8 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
 
     assert command[:2] == ["bash", "-lc"]
     assert "falling back to copilot" in command[2]
-    assert command[3:] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
+    assert command[3:7] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
+    assert command[7:] == ["", "200000", "high", "10", "2", "", "high", "long_context", "30"]
 
 
 def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, monkeypatch):
