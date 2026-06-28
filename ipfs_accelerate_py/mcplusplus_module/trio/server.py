@@ -37,6 +37,8 @@ from dataclasses import dataclass
 
 import trio
 
+from ..cid_ucan import compute_cid
+
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.trio.server")
 
 
@@ -319,11 +321,122 @@ class TrioMCPServer:
 
             logger.info(f"CORS enabled for origins: {origins}")
 
+            # Register MCP++ profile endpoints
+            self._register_mcppp_routes(app)
+
             return app
 
         except Exception as e:
             logger.error(f"Error creating FastAPI app: {e}")
             raise
+
+    def _register_mcppp_routes(self, app: Any) -> None:
+        """Register MCP++ Profile B/C/D HTTP endpoints on the FastAPI app."""
+        from fastapi import Request
+        from fastapi.responses import JSONResponse
+
+        @app.get("/mcp/interfaces")
+        async def list_interfaces():
+            """Profile A: List all registered interface descriptors."""
+            tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+            interfaces = [{
+                "cid": compute_cid({"name": t, "server": "ipfs_accelerate"}),
+                "name": t,
+                "version": "1.0.0",
+                "methods": [t],
+            } for t in tools]
+            return {"interfaces": interfaces, "count": len(interfaces)}
+
+        @app.post("/mcp/execute")
+        async def execute_envelope(request: Request):
+            """Profile B: Execute with CID-native envelope."""
+            from ..cid_ucan import execute_with_envelope
+
+            body = await request.json()
+            method = body.get("method", "")
+            params = body.get("params", {})
+            requester = body.get("requester", "")
+            delegation_cid = body.get("delegation_cid")
+
+            async def _execute(m, p):
+                if hasattr(self.mcp, 'tools') and m in self.mcp.tools:
+                    return await self.mcp.tools[m](**p)
+                raise ValueError(f"Tool not found: {m}")
+
+            envelope = await execute_with_envelope(
+                method=method, params=params, requester=requester,
+                delegation_cid=delegation_cid, executor_fn=_execute,
+            )
+            return envelope.to_dict()
+
+        @app.get("/mcp/dag/frontier")
+        async def dag_frontier():
+            """Profile B: Get Event DAG frontier (leaf nodes)."""
+            from ..cid_ucan import get_event_dag
+            dag = get_event_dag()
+            frontier = dag.frontier()
+            return {"frontier": [{"cid": e.cid, "type": e.event_type, "timestamp": e.timestamp} for e in frontier]}
+
+        @app.get("/mcp/dag/history")
+        async def dag_history(limit: int = 50):
+            """Profile B: Get recent Event DAG history."""
+            from ..cid_ucan import get_event_dag
+            dag = get_event_dag()
+            events = dag.history(limit=limit)
+            return {"events": [{"cid": e.cid, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp} for e in events]}
+
+        @app.get("/mcp/dag/provenance/{cid}")
+        async def dag_provenance(cid: str):
+            """Profile B: Trace provenance for a CID."""
+            from ..cid_ucan import get_event_dag
+            dag = get_event_dag()
+            chain = dag.provenance(cid)
+            return {"provenance": [{"cid": e.cid, "type": e.event_type, "parents": e.parent_cids} for e in chain]}
+
+        @app.post("/mcp/ucan/delegate")
+        async def ucan_delegate(request: Request):
+            """Profile C: Create a new UCAN delegation."""
+            from ..cid_ucan import Delegation, Capability, get_evaluator
+
+            body = await request.json()
+            caps = [Capability(resource=c["resource"], ability=c["ability"]) for c in body.get("capabilities", [])]
+            delegation = Delegation(
+                issuer=body.get("issuer", ""),
+                audience=body.get("audience", ""),
+                capabilities=caps,
+                expiry=body.get("expiry", 0.0),
+                not_before=body.get("not_before", 0.0),
+                proof_cids=body.get("proof_cids", []),
+            )
+            get_evaluator().add(delegation)
+            return {"cid": delegation.cid, "delegation": delegation.to_dict()}
+
+        @app.post("/mcp/ucan/validate")
+        async def ucan_validate(request: Request):
+            """Profile C: Validate a UCAN delegation chain."""
+            from ..cid_ucan import get_evaluator
+
+            body = await request.json()
+            evaluator = get_evaluator()
+            authorized, reason = evaluator.can_invoke(
+                leaf_cid=body.get("delegation_cid", ""),
+                resource=body.get("resource", ""),
+                ability=body.get("ability", "invoke"),
+                actor=body.get("actor"),
+            )
+            return {"authorized": authorized, "reason": reason}
+
+        @app.get("/mcp/p2p/peers")
+        async def p2p_peers():
+            """Profile E: List connected P2P peers."""
+            return {"peers": [], "protocol": "/mcp+p2p/1.0.0", "server": self.config.name}
+
+        @app.post("/mcp")
+        async def jsonrpc_handler(request: Request):
+            """JSON-RPC 2.0 endpoint with MCP++ negotiation."""
+            body = await request.json()
+            result = await self._handle_jsonrpc(body)
+            return JSONResponse(content=result)
 
     async def _startup(self) -> None:
         """Server startup hook.
