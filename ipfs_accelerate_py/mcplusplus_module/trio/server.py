@@ -69,6 +69,9 @@ class TokenBucketRateLimiter:
         bucket["last"] = now
         # Refill tokens
         bucket["tokens"] = min(self.burst, bucket["tokens"] + elapsed * self.rps)
+        # Periodic auto-cleanup to prevent memory leak from many unique IPs
+        if len(self._buckets) > 10000:
+            self.cleanup()
         if bucket["tokens"] >= 1.0:
             bucket["tokens"] -= 1.0
             return True

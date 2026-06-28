@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -314,10 +315,15 @@ class DelegationEvaluator:
         """Verify delegation signature using Ed25519.
         
         Fail-closed: returns False if crypto libs aren't available and a
-        signature is present (delegations without signatures skip verification).
+        signature is present. Unsigned delegations are only allowed if
+        MCPPP_ALLOW_UNSIGNED_DELEGATIONS=1 is set (default: deny).
         """
         if not delegation.signature:
-            return True  # No signature present — unsigned delegation (open access)
+            allow_unsigned = os.environ.get("MCPPP_ALLOW_UNSIGNED_DELEGATIONS", "0") == "1"
+            if allow_unsigned:
+                return True
+            logger.warning("Unsigned delegation denied (set MCPPP_ALLOW_UNSIGNED_DELEGATIONS=1 to allow)")
+            return False
 
         if not delegation.issuer.startswith("did:key:"):
             # Non-DID issuer with a signature — we can't verify it, so deny
@@ -553,6 +559,14 @@ def get_evaluator() -> DelegationEvaluator:
         with _SINGLETON_LOCK:
             if _EVALUATOR is None:
                 _EVALUATOR = DelegationEvaluator()
+                # Auto-load persisted revocations
+                revocation_path = os.path.join(
+                    os.environ.get("MCPPP_STORAGE_DIR", ".mcppp"),
+                    "revocations.json",
+                )
+                loaded = _EVALUATOR.load_revocations(revocation_path)
+                if loaded:
+                    logger.info("Loaded %d revocations from %s", loaded, revocation_path)
     return _EVALUATOR
 
 

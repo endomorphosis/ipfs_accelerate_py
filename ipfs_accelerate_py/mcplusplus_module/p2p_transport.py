@@ -164,6 +164,7 @@ class MCPp2pNode:
         self._peers: Dict[str, PeerInfo] = {}
         self._tool_handler: Optional[Callable] = None
         self._started = False
+        self._operational = False  # True only when libp2p is actually running
         self._nursery = None
 
     @property
@@ -200,13 +201,16 @@ class MCPp2pNode:
         """
         self._nursery = nursery
 
-        # Auto-install libp2p if missing
-        if not ensure_libp2p_installed():
+        # Auto-install libp2p if missing (run in thread to avoid blocking event loop)
+        import trio
+        installed = await trio.to_thread.run_sync(ensure_libp2p_installed)
+        if not installed:
             logger.error(
                 "libp2p could not be installed. P2P transport in stub mode. "
                 "Manual install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'"
             )
             self._started = True
+            self._operational = False
             return
 
         try:
@@ -230,6 +234,7 @@ class MCPp2pNode:
                 await self._host.get_network().listen(Multiaddr(addr))
 
             self._started = True
+            self._operational = True
             logger.info(
                 "MCPp2pNode started: peer_id=%s, addrs=%s",
                 self.peer_id, self.multiaddrs
@@ -245,6 +250,7 @@ class MCPp2pNode:
                 "Install with: pip install libp2p", e
             )
             self._started = True  # Mark as started in stub mode
+            self._operational = False
 
     async def stop(self) -> None:
         """Stop the libp2p node."""
@@ -313,7 +319,11 @@ class MCPp2pNode:
 
             await stream.close()
         except Exception as e:
-            logger.debug(f"Stream handler error: {e}")
+            logger.warning(f"Stream handler error: {e}", exc_info=True)
+            try:
+                await stream.close()
+            except Exception:
+                pass
 
     async def call_tool(self, peer_id: str, method: str,
                         params: Dict[str, Any], timeout: float = 30.0) -> Any:
