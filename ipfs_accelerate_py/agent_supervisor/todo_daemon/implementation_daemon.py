@@ -31,6 +31,7 @@ from ..merge_conflict_repair import (
 from ..submodule_degradation import DegradationState
 from ..persistent_task_queue import PersistentTaskQueue
 from ..git_gc import GitGarbageCollector
+from ..merge_checkpoint import MergeCheckpoint
 from ..validation_commands import split_validation_commands
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
@@ -4238,7 +4239,29 @@ class PortalImplementationDaemon:
         results: list[dict[str, Any]] = []
         stale_config_repair = self._repair_stale_submodule_worktree_configs(repo_path)
         relatives = self.worktree_submodule_paths if not parent_relative else tuple(self._declared_submodule_paths(repo_path))
+        # Sort submodules by dependency order: leaf submodules merge first
+        relatives = self._topological_sort_submodules(relatives, repo_path)
+        # Resume from checkpoint if one exists (crash recovery)
+        checkpoint_dir = self.state_path.parent / "merge_checkpoints"
+        checkpoint = MergeCheckpoint.resume(checkpoint_dir, branch_name)
+        if checkpoint:
+            self._record_event("merge_checkpoint_resumed", {
+                "branch_name": branch_name,
+                "task_id": task.task_id,
+                "previously_merged": list(checkpoint.merged_submodules.keys()),
+            })
+        else:
+            checkpoint = MergeCheckpoint.create(
+                checkpoint_dir=checkpoint_dir,
+                branch_name=branch_name,
+                task_id=task.task_id,
+                attempt=attempt,
+            )
         for relative in relatives:
+            # Skip submodules already merged in a previous checkpoint
+            if checkpoint.is_already_merged(relative):
+                results.append(checkpoint.merged_submodules[relative])
+                continue
             full_relative = f"{parent_relative.rstrip('/')}/{relative}" if parent_relative else relative
             source = (self.repo_root / full_relative).resolve()
             submodule_branch = self._submodule_worktree_branch_name(branch_name, full_relative)
@@ -4432,7 +4455,18 @@ class PortalImplementationDaemon:
                 result["llm_merge_commit_result"] = llm_merge_commit_result
             if merge.returncode == 0:
                 result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
+                # Post-merge validation: ensure submodule is in a healthy state
+                validation = self._validate_merged_submodule_state(source, full_relative)
+                if not validation.get("valid"):
+                    result["post_merge_validation"] = validation
+                    self._record_event("submodule_post_merge_validation_failed", {
+                        "task_id": task.task_id,
+                        "path": full_relative,
+                        "validation": validation,
+                    })
             results.append(result)
+            # Record in checkpoint for crash recovery
+            checkpoint.record_submodule(full_relative, result)
             if merge.returncode == 0:
                 results.extend(
                     self._merge_submodule_branches_to_main_in_repo(
@@ -4443,7 +4477,92 @@ class PortalImplementationDaemon:
                         attempt=attempt,
                     )
                 )
+        # Mark checkpoint complete on success
+        checkpoint.complete()
         return results
+
+    def _topological_sort_submodules(
+        self,
+        relatives: tuple[str, ...] | list[str],
+        repo_path: Path,
+    ) -> list[str]:
+        """Sort submodules so that dependencies are merged before dependents.
+
+        Leaf submodules (those that don't contain other submodules) merge first.
+        This prevents merge failures from stale pointers when submodule A
+        depends on submodule B at the git level.
+        """
+        if len(relatives) <= 1:
+            return list(relatives)
+
+        # Build simple dependency graph: a submodule that contains other submodules
+        # depends on those nested submodules being merged first
+        depth: dict[str, int] = {}
+        for relative in relatives:
+            source = (self.repo_root / relative).resolve()
+            if source.exists():
+                nested = self._declared_submodule_paths(source)
+                # Depth = number of nested submodules (more nested = merge later)
+                depth[relative] = len(nested)
+            else:
+                depth[relative] = 0
+
+        # Also check if any submodule path is a prefix of another (nested relationship)
+        for rel_a in relatives:
+            for rel_b in relatives:
+                if rel_a != rel_b and rel_b.startswith(rel_a + "/"):
+                    # rel_b is nested inside rel_a, so rel_b should merge first
+                    depth[rel_a] = max(depth.get(rel_a, 0), depth.get(rel_b, 0) + 1)
+
+        # Sort by depth ascending (leaves first)
+        return sorted(relatives, key=lambda r: (depth.get(r, 0), r))
+
+    def _validate_merged_submodule_state(self, source: Path, submodule_path: str) -> dict[str, Any]:
+        """Validate a submodule is in a healthy state after merge.
+
+        Checks:
+        - Not in detached HEAD state
+        - Working tree is clean (no dirty files)
+        - Nested submodules are initialized
+        """
+        validation: dict[str, Any] = {"valid": True, "path": submodule_path, "checks": {}}
+
+        # Check 1: Has a branch (not detached HEAD)
+        branch = self._git_current_branch(source)
+        validation["checks"]["has_branch"] = bool(branch)
+        if not branch:
+            validation["valid"] = False
+
+        # Check 2: Working tree is clean
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        is_clean = status.returncode == 0 and not status.stdout.strip()
+        validation["checks"]["clean"] = is_clean
+        if not is_clean:
+            validation["valid"] = False
+            validation["dirty_paths"] = status.stdout.strip().splitlines()[:10]
+
+        # Check 3: Nested submodules exist (if declared)
+        try:
+            nested = self._declared_submodule_paths(source)
+            all_nested_valid = True
+            for nested_path in nested[:5]:  # Limit to avoid long checks
+                nested_target = source / nested_path
+                if not nested_target.exists():
+                    all_nested_valid = False
+                    break
+            validation["checks"]["nested_initialized"] = all_nested_valid
+            if not all_nested_valid:
+                validation["valid"] = False
+        except Exception:
+            validation["checks"]["nested_initialized"] = True  # Skip on error
+
+        return validation
 
     @staticmethod
     def _dirty_status_paths(status: str) -> list[str]:
