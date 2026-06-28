@@ -684,6 +684,15 @@ class TrioMCPServer:
                     )
 
             evaluator.add(delegation)
+            # Write-through: persist immediately to survive crashes
+            try:
+                storage_dir = os.environ.get("MCPPP_STORAGE_DIR",
+                                             os.path.expanduser("~/.ipfs_accelerate/state"))
+                await trio.to_thread.run_sync(
+                    lambda: evaluator.save_delegations(os.path.join(storage_dir, "delegations.json"))
+                )
+            except Exception:
+                pass  # Best-effort; will be saved on shutdown
             return {"cid": delegation.cid, "delegation": delegation.to_dict()}
 
         @app.post("/mcp/ucan/revoke")
@@ -844,6 +853,15 @@ class TrioMCPServer:
             )
             evaluator = get_policy_evaluator()
             cid = evaluator.register(policy)
+            # Write-through: persist immediately to survive crashes
+            try:
+                storage_dir = os.environ.get("MCPPP_STORAGE_DIR",
+                                             os.path.expanduser("~/.ipfs_accelerate/state"))
+                await trio.to_thread.run_sync(
+                    lambda: evaluator.save_policies(os.path.join(storage_dir, "policies.json"))
+                )
+            except Exception:
+                pass  # Best-effort; will be saved on shutdown
             return {"cid": cid, "policy": policy.to_dict()}
 
         @app.get("/mcp/discover")
@@ -910,7 +928,6 @@ class TrioMCPServer:
             """
             from starlette.responses import StreamingResponse
             from ..cid_ucan import get_event_dag
-            import anyio
 
             async def _generate_events():
                 """Async generator yielding SSE events with disconnect detection."""
@@ -923,7 +940,7 @@ class TrioMCPServer:
                 # Poll for new events (every 1s) — SSE keepalive
                 try:
                     while True:
-                        await anyio.sleep(1.0)
+                        await trio.sleep(1.0)
                         # Check if client disconnected
                         if await request.is_disconnected():
                             break
@@ -943,7 +960,7 @@ class TrioMCPServer:
                         else:
                             # Keepalive
                             yield f": keepalive\n\n"
-                except (anyio.get_cancelled_exc_class(), GeneratorExit):
+                except (trio.Cancelled, GeneratorExit):
                     pass
 
             return StreamingResponse(
@@ -1170,7 +1187,7 @@ class TrioMCPServer:
         try:
             from ..cid_ucan import get_event_dag
             dag = get_event_dag()
-            dag_state = dag.to_dict()
+            dag_state = dag.to_dict(include_events=True)
             if dag_state["total_events"] > 0:
                 import os
                 import json as _json
