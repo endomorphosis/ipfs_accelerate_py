@@ -433,7 +433,72 @@ class TrioMCPServer:
         @app.get("/mcp/p2p/peers")
         async def p2p_peers():
             """Profile E: List connected P2P peers."""
-            return {"peers": [], "protocol": "/mcp+p2p/1.0.0", "server": self.config.name}
+            from ..p2p_transport import get_p2p_node
+            node = get_p2p_node()
+            return node.to_dict()
+
+        @app.post("/mcp/p2p/call")
+        async def p2p_call_tool(request: Request):
+            """Profile E: Call a tool on a remote peer via libp2p."""
+            from ..p2p_transport import get_p2p_node
+            body = await request.json()
+            node = get_p2p_node()
+            if not node._started:
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": "P2P node not started. Start server with P2P enabled."}
+                )
+            try:
+                result = await node.call_tool(
+                    peer_id=body.get("peer_id", ""),
+                    method=body.get("method", ""),
+                    params=body.get("params", {}),
+                    timeout=body.get("timeout", 30.0),
+                )
+                return {"result": result}
+            except Exception as e:
+                return JSONResponse(status_code=502, content={"error": str(e)})
+
+        @app.post("/mcp/policy/evaluate")
+        async def policy_evaluate(request: Request):
+            """Profile D: Evaluate a temporal deontic policy."""
+            from ..temporal_policy import get_policy_evaluator
+            body = await request.json()
+            evaluator = get_policy_evaluator()
+            decision = evaluator.evaluate(
+                method=body.get("method", ""),
+                actor=body.get("actor", "*"),
+                resource=body.get("resource"),
+                policy_cid=body.get("policy_cid"),
+            )
+            return decision.to_dict()
+
+        @app.post("/mcp/policy/register")
+        async def policy_register(request: Request):
+            """Profile D: Register a new temporal deontic policy."""
+            from ..temporal_policy import get_policy_evaluator, PolicyObject, PolicyClause
+            body = await request.json()
+            clauses = [
+                PolicyClause(
+                    clause_type=c.get("clause_type", "permission"),
+                    actor=c.get("actor", "*"),
+                    action=c.get("action", "*"),
+                    resource=c.get("resource"),
+                    valid_from=c.get("valid_from"),
+                    valid_until=c.get("valid_until"),
+                    obligation_deadline=c.get("obligation_deadline"),
+                    metadata=c.get("metadata", {}),
+                )
+                for c in body.get("clauses", [])
+            ]
+            policy = PolicyObject(
+                name=body.get("name", "unnamed"),
+                clauses=clauses,
+                description=body.get("description", ""),
+            )
+            evaluator = get_policy_evaluator()
+            cid = evaluator.register(policy)
+            return {"cid": cid, "policy": policy.to_dict()}
 
         @app.post("/mcp")
         async def jsonrpc_handler(request: Request):
@@ -451,6 +516,25 @@ class TrioMCPServer:
         logger.info(f"Starting TrioMCPServer on {self.config.host}:{self.config.port}")
         self._started = True
 
+        # Start P2P node if enabled
+        if self.config.enable_p2p_tools and self._nursery:
+            try:
+                from ..p2p_transport import get_p2p_node
+                node = get_p2p_node()
+                await node.start(self._nursery)
+
+                # Register our MCP tools as the P2P tool handler
+                if hasattr(self.mcp, 'tools'):
+                    async def _handle_p2p_tool(method, params):
+                        if method in self.mcp.tools:
+                            return await self.mcp.tools[method](**params)
+                        raise ValueError(f"Tool not found: {method}")
+                    node.set_tool_handler(_handle_p2p_tool)
+
+                logger.info(f"P2P node started: {node.peer_id}")
+            except Exception as e:
+                logger.warning(f"P2P node startup failed (non-fatal): {e}")
+
     async def _shutdown(self) -> None:
         """Server shutdown hook.
 
@@ -458,6 +542,32 @@ class TrioMCPServer:
         (e.g., closing resources, stopping background tasks).
         """
         logger.info("Shutting down TrioMCPServer")
+
+        # Stop P2P node
+        try:
+            from ..p2p_transport import get_p2p_node
+            node = get_p2p_node()
+            if node._started:
+                await node.stop()
+        except Exception as e:
+            logger.debug(f"P2P node shutdown: {e}")
+
+        # Persist EventDAG to disk
+        try:
+            from ..cid_ucan import get_event_dag
+            dag = get_event_dag()
+            dag_state = dag.to_dict()
+            if dag_state["total_events"] > 0:
+                import os
+                state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
+                os.makedirs(state_dir, exist_ok=True)
+                import json as _json
+                with open(os.path.join(state_dir, "event_dag.json"), "w") as f:
+                    _json.dump(dag_state, f)
+                logger.info(f"EventDAG persisted: {dag_state['total_events']} events")
+        except Exception as e:
+            logger.debug(f"EventDAG persistence: {e}")
+
         self._started = False
 
     async def run(self, *, task_status=trio.TASK_STATUS_IGNORED) -> None:
