@@ -53,14 +53,30 @@ class TokenBucketRateLimiter:
     """Per-IP token bucket rate limiter for HTTP endpoints.
 
     Configurable via environment variables:
-        MCPPP_RATE_LIMIT_RPS: Requests per second per IP (default: 50)
-        MCPPP_RATE_LIMIT_BURST: Max burst size (default: 100)
+        MCPPP_RATE_LIMIT_RPS: Requests per second per IP (default: 50, max: 10000)
+        MCPPP_RATE_LIMIT_BURST: Max burst size (default: 100, max: 100000)
     """
 
     def __init__(self):
-        self.rps = int(os.environ.get("MCPPP_RATE_LIMIT_RPS", "50"))
-        self.burst = int(os.environ.get("MCPPP_RATE_LIMIT_BURST", "100"))
+        self.rps = self._safe_int("MCPPP_RATE_LIMIT_RPS", 50, 1, 10000)
+        self.burst = self._safe_int("MCPPP_RATE_LIMIT_BURST", 100, 1, 100000)
         self._buckets: dict = defaultdict(lambda: {"tokens": self.burst, "last": time.time()})
+
+    @staticmethod
+    def _safe_int(key: str, default: int, min_val: int, max_val: int) -> int:
+        """Parse env var as int with bounds validation."""
+        raw = os.environ.get(key, "")
+        if not raw:
+            return default
+        try:
+            val = int(raw)
+            if val < min_val or val > max_val:
+                logger.warning("%s=%d out of range [%d, %d], using %d", key, val, min_val, max_val, default)
+                return default
+            return val
+        except (ValueError, OverflowError):
+            logger.warning("%s=%r not a valid integer, using %d", key, raw, default)
+            return default
 
     def allow(self, client_ip: str) -> bool:
         """Check if a request from client_ip is allowed."""
@@ -436,7 +452,12 @@ class TrioMCPServer:
             @app.get("/health")
             async def health_check():
                 """Liveness probe — server is running."""
-                return {"status": "ok", "server": self.config.name}
+                return {
+                    "status": "healthy",
+                    "timestamp": time.time(),
+                    "version": "1.0.0",
+                    "service": self.config.name,
+                }
 
             @app.get("/ready")
             async def readiness_check():
@@ -449,16 +470,21 @@ class TrioMCPServer:
                 try:
                     from ..p2p_transport import get_p2p_node
                     node = get_p2p_node()
-                    p2p_ready = node._started
+                    p2p_ready = getattr(node, '_operational', node._started)
                 except Exception:
                     pass
 
                 return {
                     "status": "ready" if self._started else "starting",
-                    "dag_hot_events": dag_state.get("hot_events", dag_state.get("total_events", 0)),
-                    "dag_total_events": dag_state.get("total_events", 0),
-                    "p2p_ready": p2p_ready,
-                    "server": self.config.name,
+                    "service": self.config.name,
+                    "dag_events": {
+                        "hot": dag_state.get("hot_events", dag_state.get("total_events", 0)),
+                        "total": dag_state.get("total_events", 0),
+                    },
+                    "services": {
+                        "http": "available",
+                        "p2p": "available" if p2p_ready else "degraded",
+                    },
                 }
 
             @app.get("/live")
@@ -723,9 +749,17 @@ class TrioMCPServer:
             # Enforce UCAN delegation if provided
             if delegation_cid:
                 evaluator = get_evaluator()
-                authorized, reason = evaluator.can_invoke(
-                    delegation_cid, f"mcp://tool/{method}", "invoke", actor=actor or None
-                )
+                try:
+                    authorized, reason = evaluator.can_invoke(
+                        delegation_cid, f"mcp://tool/{method}", "invoke", actor=actor or None
+                    )
+                except ValueError as e:
+                    logger.warning("UCAN chain validation failed (possible DoS): %s", e)
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "Invalid delegation chain", "code": "CHAIN_INVALID",
+                                 "detail": str(e)},
+                    )
                 if not authorized:
                     return JSONResponse(
                         status_code=403,
@@ -747,10 +781,12 @@ class TrioMCPServer:
                     )
 
             node = get_p2p_node()
-            if not node._started:
+            if not node._started or not getattr(node, '_operational', False):
                 return JSONResponse(
                     status_code=503,
-                    content={"error": "P2P node not started. Start server with P2P enabled."}
+                    content={"error": "P2P service not available",
+                             "code": "SERVICE_DEGRADED",
+                             "fallback": "Use /mcp/execute for local tool invocation"},
                 )
             try:
                 result = await node.call_tool(
