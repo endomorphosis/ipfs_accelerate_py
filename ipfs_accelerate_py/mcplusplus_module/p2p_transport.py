@@ -58,6 +58,9 @@ def ensure_libp2p_installed() -> bool:
 # Protocol ID per MCP++ spec
 MCP_P2P_PROTOCOL = "/mcp+p2p/1.0.0"
 
+# Supported protocol versions (newest first for negotiation priority)
+MCP_P2P_SUPPORTED_VERSIONS = ["/mcp+p2p/1.0.0"]
+
 # Maximum P2P message size (16 MiB) — prevents allocation attacks via 4-byte length prefix
 MAX_P2P_MESSAGE_SIZE = 16 * 1024 * 1024
 
@@ -231,8 +234,9 @@ class MCPp2pNode:
             # Create libp2p host
             self._host = new_host(key_pair=key_pair)
 
-            # Register /mcp+p2p/1.0.0 protocol handler
-            self._host.set_stream_handler(MCP_P2P_PROTOCOL, self._handle_stream)
+            # Register protocol handler for all supported versions
+            for proto_version in MCP_P2P_SUPPORTED_VERSIONS:
+                self._host.set_stream_handler(proto_version, self._handle_stream)
 
             # Start listening
             for addr in self._listen_addrs:
@@ -366,8 +370,8 @@ class MCPp2pNode:
 
             target = PeerID.from_base58(peer_id)
 
-            # Open stream
-            stream = await self._host.new_stream(target, [MCP_P2P_PROTOCOL])
+            # Open stream (try supported versions in order for negotiation)
+            stream = await self._host.new_stream(target, MCP_P2P_SUPPORTED_VERSIONS)
 
             # Send request
             request = P2PMessage(

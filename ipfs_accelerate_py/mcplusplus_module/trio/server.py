@@ -115,18 +115,36 @@ class ServerConfig:
         Environment variables:
             MCP_SERVER_NAME: Server name
             MCP_HOST: Host to bind to
-            MCP_PORT: Port to bind to
+            MCP_PORT: Port to bind to (default: 8000)
             MCP_MOUNT_PATH: API mount path
             MCP_DEBUG: Enable debug logging (1/true/yes)
             MCP_DISABLE_P2P: Disable P2P tools (1/true/yes)
+            MCPPP_RATE_LIMIT_RPS: Rate limit requests/sec per IP (default: 50)
+            MCPPP_RATE_LIMIT_BURST: Rate limit burst size (default: 100)
+            MCPPP_EPOCH_SIZE: ZK compaction epoch size (default: 1000)
+            MCPPP_HOT_TIER_MAX: Hot tier max events (default: 2000)
+            MCPPP_STORAGE_DIR: Storage directory for cold tier + revocations
+            MCPPP_EXEC_TIMEOUT_S: Tool execution timeout seconds (default: 30)
+            MCPPP_ALLOW_UNSIGNED_DELEGATIONS: Allow unsigned UCAN (0/1, default: 0)
+            MCPPP_REQUIRE_SERVICE_SIGNATURES: Require signed service announces (0/1)
+            MCP_CORS_ORIGINS: Comma-separated allowed CORS origins
+            MCP_LOG_FORMAT: Log format - "text" (default) or "json"
 
         Returns:
             ServerConfig instance with values from environment
         """
+        def _safe_int(env_key: str, default: int) -> int:
+            val = os.getenv(env_key, "")
+            try:
+                return int(val) if val else default
+            except ValueError:
+                logger.warning(f"Invalid integer for {env_key}={val!r}, using default {default}")
+                return default
+
         return cls(
             name=os.getenv("MCP_SERVER_NAME", cls.name),
             host=os.getenv("MCP_HOST", cls.host),
-            port=int(os.getenv("MCP_PORT", str(cls.port))),
+            port=_safe_int("MCP_PORT", cls.port),
             mount_path=os.getenv("MCP_MOUNT_PATH", cls.mount_path),
             debug=os.getenv("MCP_DEBUG", "").lower() in ("1", "true", "yes"),
             enable_p2p_tools=os.getenv("MCP_DISABLE_P2P", "").lower() not in ("1", "true", "yes"),
@@ -168,6 +186,25 @@ class TrioMCPServer:
             self.config.name = name
 
         # Configure logging
+        log_format = os.environ.get("MCP_LOG_FORMAT", "text")
+        if log_format == "json":
+            import json as _json
+
+            class JSONFormatter(logging.Formatter):
+                def format(self, record):
+                    return _json.dumps({
+                        "ts": self.formatTime(record),
+                        "level": record.levelname,
+                        "logger": record.name,
+                        "msg": record.getMessage(),
+                        "module": record.module,
+                    })
+
+            handler = logging.StreamHandler()
+            handler.setFormatter(JSONFormatter())
+            logging.getLogger("ipfs_accelerate_mcp").addHandler(handler)
+            logging.getLogger("ipfs_accelerate_mcp").propagate = False
+
         if self.config.debug:
             logging.getLogger("ipfs_accelerate_mcp.mcplusplus").setLevel(logging.DEBUG)
 
@@ -893,7 +930,8 @@ class TrioMCPServer:
 
                 # Health-check existing peers (remove stale ones)
                 stale_peers = []
-                for peer_id, info in list(node._peers.items()):
+                peers_snapshot = list(node._peers.items())
+                for peer_id, info in peers_snapshot:
                     if time.time() - info.last_seen > 300:  # 5 min stale threshold
                         stale_peers.append(peer_id)
                 for peer_id in stale_peers:
