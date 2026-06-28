@@ -516,6 +516,36 @@ class TrioMCPServer:
         logger.info(f"Starting TrioMCPServer on {self.config.host}:{self.config.port}")
         self._started = True
 
+        # Recover persisted EventDAG state
+        try:
+            import os
+            import json as _json
+            state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
+            dag_path = os.path.join(state_dir, "event_dag.json")
+            if os.path.isfile(dag_path):
+                def _load_dag():
+                    with open(dag_path, "r") as f:
+                        return _json.load(f)
+
+                from ..cid_ucan import get_event_dag, DAGEvent
+                data = await trio.to_thread.run_sync(_load_dag)
+                dag = get_event_dag()
+                events = data.get("events", {})
+                loaded = 0
+                for cid, info in events.items():
+                    if cid not in dag._events:
+                        dag.append(DAGEvent(
+                            cid=cid,
+                            event_type=info.get("type", "unknown"),
+                            parent_cids=info.get("parents", []),
+                            timestamp=info.get("timestamp", 0),
+                        ))
+                        loaded += 1
+                if loaded > 0:
+                    logger.info(f"EventDAG recovered: {loaded} events from disk")
+        except Exception as e:
+            logger.debug(f"EventDAG recovery: {e}")
+
         # Start P2P node if enabled
         if self.config.enable_p2p_tools and self._nursery:
             try:

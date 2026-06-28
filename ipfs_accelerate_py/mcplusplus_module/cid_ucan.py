@@ -223,6 +223,24 @@ class DelegationEvaluator:
     def revoke(self, cid: str) -> None:
         self._revoked.add(cid)
 
+    def save_revocations(self, path: str) -> None:
+        """Persist revocation list to disk."""
+        import os
+        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({"revoked": list(self._revoked)}, f)
+
+    def load_revocations(self, path: str) -> int:
+        """Load revocation list from disk. Returns count loaded."""
+        import os
+        if not os.path.isfile(path):
+            return 0
+        with open(path, "r") as f:
+            data = json.load(f)
+        cids = data.get("revoked", [])
+        self._revoked.update(cids)
+        return len(cids)
+
     def build_chain(self, leaf_cid: str) -> List[Delegation]:
         """Build the delegation chain from leaf to root.
         
@@ -349,6 +367,8 @@ class DAGEvent:
 class EventDAG:
     """Append-only provenance graph for MCP++ execution tracking."""
 
+    MAX_EVENTS = 10000  # Prevent unbounded memory growth
+
     def __init__(self):
         self._events: Dict[str, DAGEvent] = {}
         self._children: Dict[str, List[str]] = {}  # parent -> children
@@ -357,6 +377,12 @@ class EventDAG:
     def append(self, event: DAGEvent) -> str:
         """Add an event to the DAG. Returns its CID."""
         with self._lock:
+            # Evict oldest events if at capacity
+            if len(self._events) >= self.MAX_EVENTS:
+                oldest = sorted(self._events.values(), key=lambda e: e.timestamp)[:100]
+                for old in oldest:
+                    del self._events[old.cid]
+                    self._children.pop(old.cid, None)
             self._events[event.cid] = event
             for parent in event.parent_cids:
                 self._children.setdefault(parent, []).append(event.cid)

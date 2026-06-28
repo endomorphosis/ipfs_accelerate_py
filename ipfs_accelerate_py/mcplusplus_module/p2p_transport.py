@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -405,11 +406,14 @@ class MCPp2pNode:
 # ---------------------------------------------------------------------------
 
 _NODE: Optional[MCPp2pNode] = None
+_P2P_LOCK = threading.Lock()
 
 
 def get_p2p_node() -> MCPp2pNode:
-    """Get or create the global P2P node singleton."""
+    """Get or create the global P2P node singleton (thread-safe)."""
     global _NODE
     if _NODE is None:
-        _NODE = MCPp2pNode()
+        with _P2P_LOCK:
+            if _NODE is None:
+                _NODE = MCPp2pNode()
     return _NODE

@@ -63,6 +63,85 @@ from ipfs_accelerate_py.mcp_server.compatibility import (
     _resolve_storage_wrapper_factory,
 )
 
+# Import Profile modules (A through E)
+try:
+    from .interface_descriptor import (
+        InterfaceDescriptor,
+        MethodDescriptor,
+        InterfaceRepository,
+        get_interface_repository,
+    )
+except ImportError:
+    InterfaceDescriptor = _missing_dependency_stub("InterfaceDescriptor")
+    MethodDescriptor = _missing_dependency_stub("MethodDescriptor")
+    InterfaceRepository = _missing_dependency_stub("InterfaceRepository")
+    get_interface_repository = _missing_dependency_stub("get_interface_repository")
+
+try:
+    from .cid_ucan import (
+        IntentObject,
+        DecisionObject,
+        ReceiptObject,
+        ExecutionEnvelope,
+        Delegation,
+        Capability,
+        DelegationEvaluator,
+        EventDAG,
+        DAGEvent,
+        execute_with_envelope,
+        get_evaluator,
+        get_event_dag,
+        compute_cid,
+    )
+except ImportError:
+    IntentObject = _missing_dependency_stub("IntentObject")
+    DecisionObject = _missing_dependency_stub("DecisionObject")
+    ReceiptObject = _missing_dependency_stub("ReceiptObject")
+    ExecutionEnvelope = _missing_dependency_stub("ExecutionEnvelope")
+    Delegation = _missing_dependency_stub("Delegation")
+    Capability = _missing_dependency_stub("Capability")
+    DelegationEvaluator = _missing_dependency_stub("DelegationEvaluator")
+    EventDAG = _missing_dependency_stub("EventDAG")
+    DAGEvent = _missing_dependency_stub("DAGEvent")
+    execute_with_envelope = _missing_dependency_stub("execute_with_envelope")
+    get_evaluator = _missing_dependency_stub("get_evaluator")
+    get_event_dag = _missing_dependency_stub("get_event_dag")
+    compute_cid = _missing_dependency_stub("compute_cid")
+
+try:
+    from .temporal_policy import (
+        PolicyClause,
+        PolicyObject,
+        PolicyDecision,
+        PolicyEvaluator,
+        get_policy_evaluator,
+        make_permission_policy,
+        make_prohibition_policy,
+    )
+except ImportError:
+    PolicyClause = _missing_dependency_stub("PolicyClause")
+    PolicyObject = _missing_dependency_stub("PolicyObject")
+    PolicyDecision = _missing_dependency_stub("PolicyDecision")
+    PolicyEvaluator = _missing_dependency_stub("PolicyEvaluator")
+    get_policy_evaluator = _missing_dependency_stub("get_policy_evaluator")
+    make_permission_policy = _missing_dependency_stub("make_permission_policy")
+    make_prohibition_policy = _missing_dependency_stub("make_prohibition_policy")
+
+try:
+    from .p2p_transport import (
+        P2PMessage,
+        MCPp2pNode,
+        PeerInfo,
+        MCP_P2P_PROTOCOL,
+        get_p2p_node,
+    )
+except ImportError:
+    P2PMessage = _missing_dependency_stub("P2PMessage")
+    MCPp2pNode = _missing_dependency_stub("MCPp2pNode")
+    PeerInfo = _missing_dependency_stub("PeerInfo")
+    MCP_P2P_PROTOCOL = "/mcp+p2p/1.0.0"
+    get_p2p_node = _missing_dependency_stub("get_p2p_node")
+
 # Import key components
 try:
     from .trio import (
