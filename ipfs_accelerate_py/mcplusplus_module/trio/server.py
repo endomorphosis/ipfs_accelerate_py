@@ -872,11 +872,14 @@ class TrioMCPServer:
                              "hint": "Use /mcp/p2p/peers to discover available peers"},
                 )
             try:
+                # Cap user-supplied timeout to prevent connection holding attacks
+                raw_timeout = body.get("timeout", 30.0)
+                timeout = min(max(float(raw_timeout), 1.0), 120.0)
                 result = await node.call_tool(
                     peer_id=peer_id,
                     method=method,
                     params=params,
-                    timeout=body.get("timeout", 30.0),
+                    timeout=timeout,
                 )
                 return {"result": result, "peer_id": peer_id, "method": method}
             except TimeoutError as e:
@@ -1587,11 +1590,17 @@ class TrioMCPServer:
 
                 try:
                     import inspect
+                    exec_timeout = float(os.environ.get("MCPPP_EXEC_TIMEOUT_S", "30"))
                     tool_fn = self.mcp.tools[tool_name]
-                    if inspect.iscoroutinefunction(tool_fn):
-                        result = await tool_fn(**arguments)
-                    else:
-                        result = tool_fn(**arguments)
+                    with trio.move_on_after(exec_timeout) as cancel_scope:
+                        if inspect.iscoroutinefunction(tool_fn):
+                            result = await tool_fn(**arguments)
+                        else:
+                            result = await trio.to_thread.run_sync(
+                                lambda: tool_fn(**arguments), cancellable=True
+                            )
+                    if cancel_scope.cancelled_caught:
+                        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": f"Execution timeout after {exec_timeout}s"}}
                     return {"jsonrpc": "2.0", "id": req_id, "result": result}
                 except Exception as e:
                     return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
