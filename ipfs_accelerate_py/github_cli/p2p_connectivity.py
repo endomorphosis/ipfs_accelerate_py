@@ -496,7 +496,7 @@ class UniversalConnectivity:
         # can crash with missing `_manager`.
         try:
             import trio
-            from libp2p.tools.async_service.trio_service import background_trio_service
+            from libp2p.tools.anyio_service.context import background_trio_service
 
             async with background_trio_service(self._dht):
                 await trio.sleep_forever()

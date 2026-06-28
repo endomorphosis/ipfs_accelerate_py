@@ -217,6 +217,13 @@ setup(
         "console_scripts": [
             "ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main",
             "ipfs-accelerate=ipfs_accelerate_py.cli_entry:main",
+            "ipfs-accelerate-agent-objective-daemon=ipfs_accelerate_py.agent_supervisor.objective_daemon:main",
+            "ipfs-accelerate-agent-backlog-refinery=ipfs_accelerate_py.agent_supervisor.backlog_refinery:main",
+            "ipfs-accelerate-agent-bundle-supervisor=ipfs_accelerate_py.agent_supervisor.bundle_supervisor:main",
+            "ipfs-accelerate-agent-implementation-daemon=ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main",
+            "ipfs-accelerate-agent-implementation-supervisor=ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main",
+            "ipfs-accelerate-agent-merge-resolver=ipfs_accelerate_py.agent_supervisor.merge_resolver:main",
+            "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback:main",
         ]
     },
 )

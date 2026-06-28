@@ -535,7 +535,10 @@ class GitHubCLI:
         max_pages = max(1, (max(1, int(target_limit)) + per_page - 1) // per_page)
 
         while len(repos) < target_limit and page <= max_pages:
-            args = ["api", endpoint, "-F", f"per_page={per_page}", "-F", f"page={page}"]
+            # `gh api` switches to POST when fields are present unless the method is
+            # pinned explicitly. Repo listing must stay GET-based or GitHub treats
+            # the request like a repository creation attempt and returns HTTP 422.
+            args = ["api", "--method", "GET", endpoint, "-F", f"per_page={per_page}", "-F", f"page={page}"]
             if not owner and visibility and visibility != "all":
                 args += ["-F", f"visibility={visibility}"]
 
@@ -556,7 +559,7 @@ class GitHubCLI:
                 alt = endpoints[1] if endpoint == endpoints[0] else endpoints[0]
                 logger.info(f"Repo list endpoint {endpoint} returned 404; retrying with {alt}")
                 endpoint = alt
-                args = ["api", endpoint, "-F", f"per_page={per_page}", "-F", f"page={page}"]
+                args = ["api", "--method", "GET", endpoint, "-F", f"per_page={per_page}", "-F", f"page={page}"]
                 if not owner and visibility and visibility != "all":
                     args += ["-F", f"visibility={visibility}"]
                 result = self._run_command(args, max_retries=0)
@@ -840,6 +843,8 @@ class WorkflowQueue:
         for run in all_runs:
             if run.get("conclusion") in ["failure", "timed_out", "cancelled"]:
                 created_at = datetime.fromisoformat(run["createdAt"].replace("Z", "+00:00"))
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
                 if created_at >= cutoff_date:
                     failed_runs.append(run)
         

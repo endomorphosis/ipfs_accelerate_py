@@ -12,6 +12,7 @@ using GitHub token as shared secret (only runners with same GitHub access can de
 import json
 import logging
 import os
+import socket
 import time
 import hashlib
 import anyio
@@ -309,6 +310,8 @@ class GitHubAPICache:
         self._p2p_trio_token = None
         self._p2p_cancel_scope = None
         self._p2p_ready = threading.Event()
+        self._p2p_failed = threading.Event()
+        self._p2p_last_error: Optional[str] = None
 
         # Background work queue (e.g., broadcast cache entries) executed on the
         # libp2p Trio thread.
@@ -370,14 +373,20 @@ class GitHubAPICache:
         # Load persistent cache if enabled
         if self.enable_persistence:
             self._load_from_disk()
+
+        if self.enable_p2p:
+            self._p2p_listen_port = self._select_p2p_listen_port(self._p2p_listen_port)
         
         # Initialize P2P if enabled
-        logger.info(f"P2P Configuration: enable_p2p={self.enable_p2p}, HAVE_LIBP2P={HAVE_LIBP2P}, port={p2p_listen_port}")
+        logger.info(f"P2P Configuration: enable_p2p={self.enable_p2p}, HAVE_LIBP2P={HAVE_LIBP2P}, port={self._p2p_listen_port}")
         if self.enable_p2p:
             try:
-                logger.info(f"Starting P2P initialization on port {p2p_listen_port}...")
-                self._init_p2p()
-                logger.info(f"✓ P2P cache sharing enabled on port {p2p_listen_port}")
+                logger.info(f"Starting P2P initialization on port {self._p2p_listen_port}...")
+                started = self._init_p2p()
+                if started:
+                    logger.info(f"✓ P2P cache sharing enabled on port {self._p2p_listen_port}")
+                else:
+                    logger.info(f"↻ P2P cache sharing is still starting on port {self._p2p_listen_port}")
             except Exception as e:
                 logger.warning(f"⚠ Failed to initialize P2P: {e}")
                 self.enable_p2p = False
@@ -1604,21 +1613,52 @@ class GitHubAPICache:
         except Exception as e:
             logger.warning(f"Failed to decrypt message (wrong key or corrupted): {e}")
             return None
+
+    def _is_port_available(self, port: int) -> bool:
+        """Return True when the requested TCP port can be bound locally."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("0.0.0.0", port))
+            except OSError:
+                return False
+        return True
+
+    def _select_p2p_listen_port(self, requested_port: int) -> int:
+        """Choose an available P2P listen port, preferring the requested value."""
+        if self._is_port_available(requested_port):
+            return requested_port
+
+        search_limit = int(os.environ.get("IPFS_ACCELERATE_P2P_PORT_SEARCH_LIMIT", "20"))
+        for candidate in range(requested_port + 1, requested_port + 1 + search_limit):
+            if self._is_port_available(candidate):
+                logger.warning(
+                    "⚠ P2P listen port %s is busy, falling back to %s",
+                    requested_port,
+                    candidate,
+                )
+                return candidate
+
+        raise RuntimeError(
+            f"No available P2P listen ports found in range {requested_port}-{requested_port + search_limit}"
+        )
     
     def _init_p2p(self) -> None:
         """Initialize P2P networking for cache sharing in a Trio background thread (thread-safe)."""
         if not HAVE_LIBP2P:
             raise RuntimeError(
                 "libp2p not available, install with: "
-                "pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main'"
+                "pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'"
             )
 
         with self._p2p_init_lock:
             if self._p2p_initialized or self._p2p_thread_running:
                 logger.debug("P2P already initialized, skipping")
-                return
+                return self._p2p_ready.is_set()
 
             self._p2p_ready.clear()
+            self._p2p_failed.clear()
+            self._p2p_last_error = None
 
             def _runner() -> None:
                 try:
@@ -1632,20 +1672,27 @@ class GitHubAPICache:
 
                     trio.run(_main)
                 except Exception as e:
+                    self._p2p_last_error = str(e)
+                    self._p2p_failed.set()
                     logger.exception("P2P runtime error")
                 finally:
                     self._p2p_thread_running = False
 
             self._p2p_thread = threading.Thread(target=_runner, daemon=True, name="p2p-trio")
+            self._p2p_thread_running = True
             self._p2p_thread.start()
 
             # Wait briefly so startup errors surface quickly, but don't block forever.
-            if not self._p2p_ready.wait(timeout=3.0):
-                logger.warning("⚠ P2P is still starting in background")
+            if self._p2p_ready.wait(timeout=3.0):
+                logger.info("✓ P2P initialized (Trio)")
+                return True
 
-            self._p2p_thread_running = True
-            self._p2p_initialized = True
-            logger.info("✓ P2P initialized (Trio)")
+            if self._p2p_failed.is_set() or not self._p2p_thread.is_alive():
+                self._p2p_thread = None
+                raise RuntimeError(self._p2p_last_error or "P2P listener exited before ready")
+
+            logger.warning("⚠ P2P is still starting in background")
+            return False
 
     async def _enqueue_broadcast(self, cache_key: str, entry: CacheEntry) -> None:
         """Enqueue a broadcast job onto the P2P Trio thread."""
@@ -1697,6 +1744,7 @@ class GitHubAPICache:
                 pass
 
             # Mark ready once we're actually listening.
+            self._p2p_initialized = True
             self._p2p_ready.set()
 
             async with trio.open_nursery() as nursery:

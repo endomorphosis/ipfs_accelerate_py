@@ -14,7 +14,7 @@ protobuf>=4.25.0
 websockets==10.4
 semver>=2.13.0
 # libp2p Python package (enables p2p features) - track upstream main
-libp2p @ git+https://github.com/libp2p/py-libp2p@main
+libp2p @ git+https://github.com/libp2p/py-libp2p.git@main
 
 # Optional dependencies
 # For WebSocket transport
