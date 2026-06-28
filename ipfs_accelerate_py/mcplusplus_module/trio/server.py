@@ -374,10 +374,15 @@ class TrioMCPServer:
             class RateLimitMiddleware(BaseHTTPMiddleware):
                 async def dispatch(self, request, call_next):
                     # Skip rate limiting for health endpoints
-                    if request.url.path in ("/health", "/ready", "/live"):
+                    if request.url.path in ("/health", "/ready", "/live", "/metrics"):
                         return await call_next(request)
                     client_ip = request.client.host if request.client else "unknown"
                     if not rate_limiter.allow(client_ip):
+                        try:
+                            from ..metrics import get_metrics
+                            get_metrics().rate_limit_rejected.inc()
+                        except Exception:
+                            pass
                         return StarletteJSONResponse(
                             status_code=429,
                             content={"error": "Too Many Requests", "retry_after_ms": 1000},
@@ -419,6 +424,41 @@ class TrioMCPServer:
             async def liveness_check():
                 """Kubernetes liveness — process is alive."""
                 return {"status": "alive"}
+
+            @app.get("/metrics")
+            async def prometheus_metrics():
+                """Prometheus metrics endpoint."""
+                from starlette.responses import Response
+                from ..metrics import get_metrics
+                metrics = get_metrics()
+
+                # Update dynamic gauges
+                try:
+                    from ..cid_ucan import get_event_dag, get_evaluator
+                    dag = get_event_dag()
+                    dag_state = dag.to_dict()
+                    metrics.dag_events_total.set(dag_state.get("total_events", 0))
+                    metrics.dag_hot_events.set(dag_state.get("hot_events", dag_state.get("total_events", 0)))
+                    compaction = dag_state.get("compaction", {})
+                    metrics.dag_compaction_epochs.set(compaction.get("epochs_compacted", 0))
+
+                    evaluator = get_evaluator()
+                    metrics.ucan_delegations_total.set(len(evaluator._store))
+                    metrics.ucan_revocations_total.set(len(evaluator._revoked))
+                except Exception:
+                    pass
+
+                try:
+                    from ..p2p_transport import get_p2p_node
+                    node = get_p2p_node()
+                    metrics.p2p_peers_connected.set(len(node._peers))
+                except Exception:
+                    pass
+
+                return Response(
+                    content=metrics.collect_all(),
+                    media_type="text/plain; version=0.0.4; charset=utf-8",
+                )
 
             # Register MCP++ profile endpoints
             self._register_mcppp_routes(app)
@@ -668,11 +708,34 @@ class TrioMCPServer:
 
                 # Register our MCP tools as the P2P tool handler
                 if hasattr(self.mcp, 'tools'):
+                    tools_list = list(self.mcp.tools.keys())
+
                     async def _handle_p2p_tool(method, params):
+                        # Handle service announcements
+                        if method == "_mcppp_service_announce":
+                            from ..service_registry import get_service_registry
+                            registry = get_service_registry()
+                            return registry.handle_announce(params)
                         if method in self.mcp.tools:
                             return await self.mcp.tools[method](**params)
                         raise ValueError(f"Tool not found: {method}")
                     node.set_tool_handler(_handle_p2p_tool)
+
+                    # Register in service registry for cross-server discovery
+                    try:
+                        from ..service_registry import get_service_registry, ServiceRecord
+                        registry = get_service_registry()
+                        registry.register_local(ServiceRecord(
+                            service_name="ipfs-accelerate-mcp",
+                            peer_id=node.peer_id or "",
+                            multiaddrs=node.multiaddrs or [],
+                            tools=tools_list,
+                            metadata={"port": self.config.port, "server": self.config.name},
+                        ))
+                        # Start service advertise loop
+                        self._nursery.start_soon(registry.advertise_loop, node, self._nursery)
+                    except Exception as e:
+                        logger.debug(f"Service registry setup: {e}")
 
                 logger.info(f"P2P node started: {node.peer_id}")
 
@@ -954,10 +1017,33 @@ class TrioMCPServer:
         await trio.sleep_forever()
 
     async def _handle_jsonrpc(self, request: dict) -> dict:
-        """Handle a single JSON-RPC request."""
+        """Handle a single JSON-RPC request with metrics instrumentation."""
         method = request.get("method", "")
         params = request.get("params", {})
         req_id = request.get("id", 1)
+
+        # Metrics instrumentation
+        start_time = time.time()
+        try:
+            result = await self._dispatch_jsonrpc(method, params, req_id)
+            status = "error" if "error" in result else "ok"
+        except Exception as e:
+            status = "error"
+            result = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
+
+        duration = time.time() - start_time
+        try:
+            from ..metrics import get_metrics
+            metrics = get_metrics()
+            metrics.requests_total.inc(method=method, status=status)
+            metrics.request_duration.observe(duration, method=method)
+        except Exception:
+            pass
+
+        return result
+
+    async def _dispatch_jsonrpc(self, method: str, params: dict, req_id: Any) -> dict:
+        """Dispatch a JSON-RPC method call."""
 
         if method == "initialize":
             client_caps = params.get("capabilities", {}).get("experimental", {})
