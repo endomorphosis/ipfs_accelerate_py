@@ -30,6 +30,7 @@ For Hypercorn deployment:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -565,16 +566,25 @@ class TrioMCPServer:
 
             # Profile D: Evaluate temporal policy BEFORE execution
             if policy_cid:
-                policy_eval = get_policy_evaluator()
-                decision = policy_eval.evaluate(
-                    method=method, actor=requester or "*",
-                    resource=f"mcp://tool/{method}", policy_cid=policy_cid,
-                )
-                if decision.decision not in ("allow", "allow_with_obligations"):
+                try:
+                    policy_eval = get_policy_evaluator()
+                    decision = policy_eval.evaluate(
+                        method=method, actor=requester or "*",
+                        resource=f"mcp://tool/{method}", policy_cid=policy_cid,
+                    )
+                    if decision.decision not in ("allow", "allow_with_obligations"):
+                        return JSONResponse(
+                            status_code=403,
+                            content={"error": f"Policy denied: {decision.justification}",
+                                     "decision": decision.to_dict()},
+                        )
+                except Exception as e:
+                    # Fail-closed: if policy evaluation crashes, deny the request
+                    logger.error("Policy evaluation error (fail-closed): %s", e)
                     return JSONResponse(
                         status_code=403,
-                        content={"error": f"Policy denied: {decision.justification}",
-                                 "decision": decision.to_dict()},
+                        content={"error": "Policy evaluation failed (fail-closed)",
+                                 "detail": str(e)},
                     )
 
             async def _execute(m, p):
@@ -799,6 +809,109 @@ class TrioMCPServer:
             evaluator = get_policy_evaluator()
             cid = evaluator.register(policy)
             return {"cid": cid, "policy": policy.to_dict()}
+
+        @app.get("/mcp/discover")
+        async def mcp_discover():
+            """Discovery endpoint: returns server capabilities, version, available tools."""
+            from ..interface_descriptor import get_interface_repository
+
+            tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+            repo = get_interface_repository()
+
+            profiles = {
+                "A": "MCP-IDL (Interface Descriptors)",
+                "B": "CID-Native Execution (Intent/Decision/Receipt)",
+                "C": "UCAN Authorization (Delegation Chains)",
+                "D": "Temporal Deontic Policy (Permission/Prohibition/Obligation)",
+                "E": "mcp+p2p (libp2p Transport)",
+            }
+
+            p2p_status = "disabled"
+            peer_id = None
+            try:
+                from ..p2p_transport import get_p2p_node
+                node = get_p2p_node()
+                if node._started:
+                    p2p_status = "active"
+                    peer_id = node.peer_id
+            except Exception:
+                pass
+
+            return {
+                "server": self.config.name,
+                "version": "0.1.0",
+                "protocol": "mcp++",
+                "profiles": profiles,
+                "tools": tools,
+                "interfaces": len(repo._descriptors),
+                "p2p": {"status": p2p_status, "peer_id": peer_id},
+                "endpoints": {
+                    "jsonrpc": "/mcp",
+                    "execute": "/mcp/execute",
+                    "interfaces": "/mcp/interfaces",
+                    "ucan_delegate": "/mcp/ucan/delegate",
+                    "ucan_revoke": "/mcp/ucan/revoke",
+                    "policy_evaluate": "/mcp/policy/evaluate",
+                    "policy_register": "/mcp/policy/register",
+                    "p2p_peers": "/mcp/p2p/peers",
+                    "p2p_call": "/mcp/p2p/call",
+                    "services": "/mcp/services",
+                    "events": "/mcp/events/stream",
+                    "health": "/health",
+                    "metrics": "/metrics",
+                },
+                "auth": {
+                    "ucan_required": not bool(os.environ.get("MCPPP_ALLOW_UNSIGNED_DELEGATIONS")),
+                },
+            }
+
+        @app.get("/mcp/events/stream")
+        async def event_stream(request: Request):
+            """SSE endpoint: streams EventDAG changes and server events in real-time.
+
+            Frontend connects here for live updates (tool executions, peer events, etc).
+            Uses Server-Sent Events (SSE) for broad compatibility with Electron/browsers.
+            """
+            from starlette.responses import StreamingResponse
+            from ..cid_ucan import get_event_dag
+
+            async def _generate_events():
+                """Async generator yielding SSE events."""
+                dag = get_event_dag()
+                last_count = len(dag._events)
+
+                # Send initial connection event
+                yield f"event: connected\ndata: {{\"server\": \"{self.config.name}\", \"events\": {last_count}}}\n\n"
+
+                # Poll for new events (every 1s) — SSE keepalive
+                while True:
+                    await trio.sleep(1.0)
+                    current_count = len(dag._events)
+                    if current_count > last_count:
+                        # New events appended
+                        new_events = list(dag._events.values())[last_count:current_count]
+                        for event in new_events:
+                            event_data = json.dumps({
+                                "cid": event.cid,
+                                "type": event.event_type,
+                                "timestamp": event.timestamp,
+                                "parents": event.parent_cids,
+                            })
+                            yield f"event: dag_event\ndata: {event_data}\n\n"
+                        last_count = current_count
+                    else:
+                        # Keepalive
+                        yield f": keepalive\n\n"
+
+            return StreamingResponse(
+                _generate_events(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
 
         @app.post("/mcp")
         async def jsonrpc_handler(request: Request):
