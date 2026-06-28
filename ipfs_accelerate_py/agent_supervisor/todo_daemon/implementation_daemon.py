@@ -2219,6 +2219,7 @@ class PortalImplementationDaemon:
         return baseline_ref
 
     def _initialize_worktree_submodules(self, worktree_path: Path, *, branch_name: str = "") -> None:
+        init_failures: list[dict[str, Any]] = []
         for relative in self.worktree_submodule_paths:
             if self._create_local_submodule_worktree(worktree_path, relative, branch_name=branch_name):
                 target = worktree_path / relative
@@ -2228,9 +2229,13 @@ class PortalImplementationDaemon:
                         branch_name=branch_name,
                         parent_relative=relative,
                     )
+                    # Validate submodule initialization
+                    validation = self._validate_submodule_init(target, relative)
+                    if not validation.get("valid"):
+                        init_failures.append(validation)
                 continue
             if self._worktree_declares_submodule(worktree_path, relative):
-                self._run_git(["submodule", "update", "--init", "--recursive", "--", relative], cwd=worktree_path)
+                result = self._run_git(["submodule", "update", "--init", "--recursive", "--", relative], cwd=worktree_path)
                 target = worktree_path / relative
                 if self._is_git_worktree(target):
                     self._initialize_nested_worktree_submodules(
@@ -2238,6 +2243,49 @@ class PortalImplementationDaemon:
                         branch_name=branch_name,
                         parent_relative=relative,
                     )
+                    # Validate submodule initialization
+                    validation = self._validate_submodule_init(target, relative)
+                    if not validation.get("valid"):
+                        init_failures.append(validation)
+                elif result.returncode != 0:
+                    init_failures.append({
+                        "valid": False,
+                        "path": relative,
+                        "reason": "submodule_update_failed",
+                        "stderr": result.stderr[-1000:] if hasattr(result, "stderr") else "",
+                    })
+        if init_failures:
+            self._record_event("worktree_submodule_init_failures", {
+                "worktree_path": str(worktree_path),
+                "branch_name": branch_name,
+                "failures": init_failures,
+                "failure_count": len(init_failures),
+            })
+
+    def _validate_submodule_init(self, target: Path, relative: str) -> dict[str, Any]:
+        """Validate that a submodule was properly initialized in a worktree."""
+        if not target.exists():
+            return {"valid": False, "path": relative, "reason": "target_missing"}
+        if not self._is_git_worktree(target):
+            return {"valid": False, "path": relative, "reason": "not_git_repo"}
+        # Check that HEAD resolves (objects exist)
+        head_check = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=target,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if head_check.returncode != 0:
+            return {"valid": False, "path": relative, "reason": "head_unresolvable"}
+        # Check for detached HEAD with no commits
+        branch = self._git_current_branch(target)
+        return {
+            "valid": True,
+            "path": relative,
+            "head": head_check.stdout.strip()[:12],
+            "branch": branch or "(detached)",
+        }
 
     def _initialize_nested_worktree_submodules(
         self,
@@ -4105,6 +4153,16 @@ class PortalImplementationDaemon:
         *,
         task: PortalTask,
     ) -> str:
+        """Select the best commit to resolve a submodule gitlink conflict.
+
+        Improved strategy:
+        1. If one commit is ancestor of the other, pick the descendant (fast-forward)
+        2. If HEAD already contains theirs, keep HEAD
+        3. If our task introduced HEAD, prefer HEAD
+        4. Compare commit timestamps - prefer newer commit
+        5. Attempt merge of ours+theirs in the submodule
+        6. Fall back to empty (unresolvable)
+        """
         source = (self.repo_root / relative).resolve()
         if not self._is_git_worktree(source):
             return ""
@@ -4113,12 +4171,40 @@ class PortalImplementationDaemon:
         head = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
         ours = stages.get("2", "")
         theirs = stages.get("3", "")
+
+        # Strategy 1: Check ancestry - if one is ancestor of other, pick descendant
+        if ours and theirs and ours != theirs:
+            ours_is_ancestor = self._git_ref_is_ancestor_in_repo(source, ours, theirs)
+            theirs_is_ancestor = self._git_ref_is_ancestor_in_repo(source, theirs, ours)
+            if ours_is_ancestor and not theirs_is_ancestor:
+                # Theirs is strictly ahead - fast-forward to theirs
+                return theirs
+            elif theirs_is_ancestor and not ours_is_ancestor:
+                # Ours is strictly ahead - keep ours
+                return ours
+
+        # Strategy 2: If HEAD already contains theirs
         if theirs and self._git_ref_is_ancestor_in_repo(source, theirs, head):
             return head
+
+        # Strategy 3: Our task introduced HEAD
         if ours and head == ours and theirs and not self._git_ref_exists_in_repo(source, theirs):
             return head
         if task.task_id and self._submodule_head_has_task_commit(source, task.task_id):
             return head
+
+        # Strategy 4: Compare commit timestamps - prefer newer
+        if ours and theirs and ours != theirs:
+            ours_ts = self._git_commit_timestamp_in_repo(source, ours)
+            theirs_ts = self._git_commit_timestamp_in_repo(source, theirs)
+            if ours_ts > 0 and theirs_ts > 0:
+                if theirs_ts > ours_ts:
+                    # Theirs is newer - check if it's reachable from HEAD
+                    if self._git_ref_is_ancestor_in_repo(source, head, theirs):
+                        return theirs
+                # If ours is newer or same, try sibling merge below
+
+        # Strategy 5: Attempt sibling merge
         if theirs:
             merged_head = self._merge_submodule_gitlink_sibling_head(
                 source=source,
@@ -4131,6 +4217,22 @@ class PortalImplementationDaemon:
             if merged_head:
                 return merged_head
         return ""
+
+    def _git_commit_timestamp_in_repo(self, repo: Path, ref: str) -> float:
+        """Get the committer timestamp for a ref in a repo."""
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%ct", ref],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return 0.0
+        try:
+            return float(result.stdout.strip())
+        except ValueError:
+            return 0.0
 
     def _merge_submodule_gitlink_sibling_head(
         self,
@@ -6360,6 +6462,58 @@ class PortalImplementationDaemon:
 
         return list(inflight.values())
 
+    def _inflight_submodule_paths(self) -> set[str]:
+        """Return submodule paths currently being modified by in-flight implementations.
+
+        Used to prevent two lanes from simultaneously modifying the same
+        submodule pointer, which would cause silent data loss on merge.
+        """
+        inflight_paths: set[str] = set()
+        for event in self._inflight_implementation_events():
+            # Check task outputs for submodule paths
+            outputs = event.get("outputs") or []
+            for output in outputs:
+                for sm_path in self.worktree_submodule_paths:
+                    if output.startswith(sm_path + "/") or output == sm_path:
+                        inflight_paths.add(sm_path)
+            # Also check recently merged submodules (within last 5 minutes)
+            # to avoid race conditions during merge
+        recent_merge_events = [
+            e for e in self._iter_events()
+            if str(e.get("type") or "") == "merge_finished"
+            and e.get("submodule_merge_results")
+        ]
+        now = time.time()
+        for event in recent_merge_events[-5:]:  # Check last 5 merges
+            try:
+                from datetime import datetime
+                ts = datetime.fromisoformat(str(event.get("started_at", "")))
+                age = now - ts.timestamp()
+                if age < 300:  # Within 5 minutes
+                    for sm_result in event.get("submodule_merge_results", []):
+                        if sm_result.get("merged") and sm_result.get("path"):
+                            inflight_paths.add(str(sm_result["path"]))
+            except (ValueError, TypeError):
+                pass
+        return inflight_paths
+
+    def _task_conflicts_with_inflight_submodules(
+        self,
+        task: PortalTask,
+        inflight_submodules: set[str],
+    ) -> str | None:
+        """Check if a task's outputs overlap with in-flight submodule work.
+
+        Returns the conflicting submodule path, or None if no conflict.
+        """
+        if not inflight_submodules:
+            return None
+        for output in task.outputs:
+            for sm_path in inflight_submodules:
+                if output.startswith(sm_path + "/") or output == sm_path:
+                    return sm_path
+        return None
+
     def _latest_implementation_finished_by_task(self) -> dict[str, dict[str, Any]]:
         latest: dict[str, dict[str, Any]] = {}
         for event in self._iter_events():
@@ -7352,6 +7506,27 @@ Rules:
                     "degraded_submodules": self.degradation_state.degraded_submodules(),
                 })
             ready = filtered_ready
+        if not ready:
+            return None
+        # Concurrent submodule protection: skip tasks that modify submodules
+        # already being worked on by in-flight implementations
+        inflight_submodules = self._inflight_submodule_paths()
+        if inflight_submodules:
+            conflict_skipped: list[str] = []
+            safe_ready = []
+            for task in ready:
+                conflicting = self._task_conflicts_with_inflight_submodules(task, inflight_submodules)
+                if conflicting:
+                    conflict_skipped.append(task.task_id)
+                else:
+                    safe_ready.append(task)
+            if conflict_skipped and safe_ready:
+                self._record_event("tasks_skipped_submodule_conflict", {
+                    "skipped_task_ids": conflict_skipped[:20],
+                    "inflight_submodules": sorted(inflight_submodules),
+                })
+                ready = safe_ready
+            # If ALL tasks conflict, proceed anyway (don't deadlock)
         if not ready:
             return None
         # Filter out tasks in cooldown from persistent queue
