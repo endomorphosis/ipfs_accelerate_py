@@ -807,7 +807,7 @@ class TrioMCPServer:
                 if loaded > 0:
                     logger.info(f"EventDAG recovered: {loaded} events from disk")
         except Exception as e:
-            logger.debug(f"EventDAG recovery: {e}")
+            logger.warning(f"EventDAG recovery failed (non-fatal): {e}")
 
         # Recover persisted revocation list
         try:
@@ -947,10 +947,11 @@ class TrioMCPServer:
                     with open(os.path.join(state_dir, "event_dag.json"), "w") as f:
                         _json.dump(dag_state, f)
 
-                await trio.to_thread.run_sync(_persist_dag)
-                logger.info(f"EventDAG persisted: {dag_state['total_events']} events")
+                with trio.move_on_after(10):  # 10s timeout for persistence
+                    await trio.to_thread.run_sync(_persist_dag)
+                    logger.info(f"EventDAG persisted: {dag_state['total_events']} events")
         except Exception as e:
-            logger.debug(f"EventDAG persistence: {e}")
+            logger.warning(f"EventDAG persistence failed: {e}")
 
         # Persist revocation list
         try:
@@ -963,10 +964,11 @@ class TrioMCPServer:
                 evaluator = get_evaluator()
                 evaluator.save_revocations(os.path.join(state_dir, "revocations.json"))
 
-            await trio.to_thread.run_sync(_persist_revocations)
-            logger.info("Revocations persisted to disk")
+            with trio.move_on_after(10):  # 10s timeout for persistence
+                await trio.to_thread.run_sync(_persist_revocations)
+                logger.info("Revocations persisted to disk")
         except Exception as e:
-            logger.debug(f"Revocation persistence: {e}")
+            logger.warning(f"Revocation persistence failed: {e}")
 
         self._started = False
 

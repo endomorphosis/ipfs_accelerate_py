@@ -61,6 +61,9 @@ MCP_P2P_PROTOCOL = "/mcp+p2p/1.0.0"
 # Maximum P2P message size (16 MiB) — prevents allocation attacks via 4-byte length prefix
 MAX_P2P_MESSAGE_SIZE = 16 * 1024 * 1024
 
+# Maximum number of tracked peers (prevents unbounded memory growth)
+MAX_PEERS = 500
+
 # Default bootstrap peers for the MCP++ network
 DEFAULT_BOOTSTRAP_PEERS = [
     "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
@@ -124,6 +127,8 @@ class P2PMessage:
         length = int.from_bytes(data[:4], "big")
         if length > MAX_P2P_MESSAGE_SIZE:
             raise ValueError(f"Message size {length} exceeds limit {MAX_P2P_MESSAGE_SIZE}")
+        if len(data) < 4 + length:
+            raise ValueError(f"Incomplete message: expected {length} bytes, got {len(data) - 4}")
         payload = json.loads(data[4:4 + length].decode("utf-8"))
         return cls(
             msg_type=payload.get("type", "request"),
@@ -269,6 +274,12 @@ class MCPp2pNode:
 
             peer_info = info_from_p2p_addr(Multiaddr(peer_addr))
             await self._host.connect(peer_info)
+
+            # Enforce max peers limit
+            if len(self._peers) >= MAX_PEERS:
+                # Evict oldest peer
+                oldest = min(self._peers.values(), key=lambda p: p.last_seen)
+                self._peers.pop(oldest.peer_id, None)
 
             self._peers[str(peer_info.peer_id)] = PeerInfo(
                 peer_id=str(peer_info.peer_id),
