@@ -29,6 +29,17 @@ TRANSIENT_PATCH_STATUSES = frozenset(
         "submodule_conflict",
         "submodule_checkout_failed",
         "merge_conflict_submodule",
+        # Network/API transient failures - should retry after backoff
+        "rate_limited",
+        "rate_limit_exceeded",
+        "api_rate_limit",
+        "auth_token_expired",
+        "auth_refresh_needed",
+        "network_timeout",
+        "connection_refused",
+        "api_unavailable",
+        "service_unavailable",
+        "github_api_error",
     }
 )
 
