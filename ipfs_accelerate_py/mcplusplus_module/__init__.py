@@ -134,6 +134,7 @@ try:
         PeerInfo,
         MCP_P2P_PROTOCOL,
         get_p2p_node,
+        ensure_libp2p_installed,
     )
 except ImportError:
     P2PMessage = _missing_dependency_stub("P2PMessage")
@@ -141,6 +142,24 @@ except ImportError:
     PeerInfo = _missing_dependency_stub("PeerInfo")
     MCP_P2P_PROTOCOL = "/mcp+p2p/1.0.0"
     get_p2p_node = _missing_dependency_stub("get_p2p_node")
+    ensure_libp2p_installed = _missing_dependency_stub("ensure_libp2p_installed")
+
+try:
+    from .dag_compaction import (
+        DAGCompactor,
+        CompactionProof,
+        CompactionResult,
+        build_merkle_tree,
+        verify_merkle_proof,
+        verify_compaction_proof,
+    )
+except ImportError:
+    DAGCompactor = _missing_dependency_stub("DAGCompactor")
+    CompactionProof = _missing_dependency_stub("CompactionProof")
+    CompactionResult = _missing_dependency_stub("CompactionResult")
+    build_merkle_tree = _missing_dependency_stub("build_merkle_tree")
+    verify_merkle_proof = _missing_dependency_stub("verify_merkle_proof")
+    verify_compaction_proof = _missing_dependency_stub("verify_compaction_proof")
 
 # Import key components
 try:

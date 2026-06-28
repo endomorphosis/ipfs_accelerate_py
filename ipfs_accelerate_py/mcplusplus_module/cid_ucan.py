@@ -365,19 +365,46 @@ class DAGEvent:
 
 
 class EventDAG:
-    """Append-only provenance graph for MCP++ execution tracking."""
+    """Append-only provenance graph for MCP++ execution tracking.
 
-    MAX_EVENTS = 10000  # Prevent unbounded memory growth
+    Supports tiered storage with ZK proof compaction:
+    - Hot tier: Recent events in memory (up to HOT_TIER_MAX)
+    - Cold tier: Older epochs persisted to disk
+    - Compacted tier: ZK proofs summarizing cold epochs
 
-    def __init__(self):
+    When hot tier exceeds threshold, oldest epoch is compacted via
+    Merkle tree + simulated Groth16 proof, moved to cold storage,
+    and removed from memory. Provenance queries transparently load
+    cold events when traversal crosses epoch boundaries.
+    """
+
+    MAX_EVENTS = 10000  # Hard cap (prevents unbounded growth even without compaction)
+
+    def __init__(self, storage_dir: str = ""):
         self._events: Dict[str, DAGEvent] = {}
         self._children: Dict[str, List[str]] = {}  # parent -> children
         self._lock = threading.Lock()
+        self._compactor: Optional[Any] = None
+        self._storage_dir = storage_dir
+
+    def _get_compactor(self):
+        """Lazy-init the DAG compactor."""
+        if self._compactor is None:
+            try:
+                from .dag_compaction import DAGCompactor, COLD_TIER_DIR
+                storage = self._storage_dir or COLD_TIER_DIR
+                self._compactor = DAGCompactor(storage_dir=storage)
+            except ImportError:
+                logger.warning("dag_compaction module not available; compaction disabled")
+        return self._compactor
 
     def append(self, event: DAGEvent) -> str:
-        """Add an event to the DAG. Returns its CID."""
+        """Add an event to the DAG. Returns its CID.
+
+        Triggers ZK compaction when hot tier exceeds threshold.
+        """
         with self._lock:
-            # Evict oldest events if at capacity
+            # Hard cap eviction (fallback if compaction is disabled)
             if len(self._events) >= self.MAX_EVENTS:
                 oldest = sorted(self._events.values(), key=lambda e: e.timestamp)[:100]
                 for old in oldest:
@@ -386,7 +413,49 @@ class EventDAG:
             self._events[event.cid] = event
             for parent in event.parent_cids:
                 self._children.setdefault(parent, []).append(event.cid)
+
+        # Check if ZK compaction should run (outside lock to avoid blocking)
+        self._maybe_compact()
         return event.cid
+
+    def _maybe_compact(self) -> None:
+        """Trigger epoch compaction if hot tier is too large."""
+        compactor = self._get_compactor()
+        if compactor is None:
+            return
+        if not compactor.should_compact(len(self._events)):
+            return
+
+        with self._lock:
+            # Serialize events for compactor
+            events_dict = {
+                cid: {
+                    "cid": cid,
+                    "event_type": e.event_type,
+                    "parent_cids": e.parent_cids,
+                    "payload": e.payload,
+                    "timestamp": e.timestamp,
+                }
+                for cid, e in self._events.items()
+            }
+            children_dict = dict(self._children)
+
+        # Compact outside the lock (disk I/O)
+        result = compactor.compact_epoch(events_dict, children_dict)
+        if result:
+            # Remove compacted events from hot tier
+            with self._lock:
+                for cid in result.compacted_cids:
+                    self._events.pop(cid, None)
+                    self._children.pop(cid, None)
+                # Also clean up children references to removed parents
+                for parent_cid in list(self._children.keys()):
+                    self._children[parent_cid] = [
+                        c for c in self._children[parent_cid]
+                        if c not in set(result.compacted_cids)
+                    ]
+                    if not self._children[parent_cid]:
+                        del self._children[parent_cid]
 
     def frontier(self) -> List[DAGEvent]:
         """Return leaf events (events with no children)."""
@@ -403,7 +472,11 @@ class EventDAG:
             return events[:limit]
 
     def provenance(self, cid: str) -> List[DAGEvent]:
-        """Trace provenance chain from a CID back to roots."""
+        """Trace provenance chain from a CID back to roots.
+
+        Transparently loads cold-tier events when traversal crosses
+        epoch boundaries (parent CID not in hot tier).
+        """
         with self._lock:
             chain = []
             visited = set()
@@ -417,16 +490,52 @@ class EventDAG:
                 if event:
                     chain.append(event)
                     queue.extend(event.parent_cids)
+                else:
+                    # Try loading from cold tier
+                    cold_event = self._load_cold_event(current)
+                    if cold_event:
+                        chain.append(cold_event)
+                        queue.extend(cold_event.parent_cids)
             return chain
 
+    def _load_cold_event(self, cid: str) -> Optional[DAGEvent]:
+        """Load a single event from cold storage by CID."""
+        compactor = self._get_compactor()
+        if compactor is None:
+            return None
+
+        epoch_id = compactor.find_epoch_for_cid(cid)
+        if epoch_id is None:
+            return None
+
+        events = compactor.load_cold_epoch(epoch_id)
+        for e in events:
+            if e.get("cid") == cid:
+                return DAGEvent(
+                    cid=cid,
+                    event_type=e.get("event_type", "unknown"),
+                    parent_cids=e.get("parent_cids", []),
+                    payload=e.get("payload", {}),
+                    timestamp=e.get("timestamp", 0),
+                )
+        return None
+
     def to_dict(self) -> Dict[str, Any]:
+        """Serialize DAG state including compaction summary."""
+        compactor = self._get_compactor()
         with self._lock:
-            return {
-                "total_events": len(self._events),
+            result = {
+                "hot_events": len(self._events),
                 "frontier_size": len([e for e in self._events.values() if e.cid not in self._children]),
                 "events": {cid: {"type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp}
                            for cid, e in self._events.items()},
             }
+        if compactor:
+            result["compaction"] = compactor.summary()
+            result["total_events"] = len(self._events) + compactor.total_compacted_events
+        else:
+            result["total_events"] = len(self._events)
+        return result
 
 
 # ---------------------------------------------------------------------------
