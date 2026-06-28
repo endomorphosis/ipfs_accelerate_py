@@ -316,6 +316,127 @@ def make_prohibition_policy(
 
 
 # ---------------------------------------------------------------------------
+# Obligation Tracker
+# ---------------------------------------------------------------------------
+
+import logging
+
+_obligation_logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.obligations")
+
+
+@dataclass
+class TrackedObligation:
+    """An obligation that must be fulfilled, with tracking metadata."""
+    obligation_id: str
+    action: str
+    deadline: float  # Unix timestamp
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    fulfilled: bool = False
+    fulfilled_at: Optional[float] = None
+    execution_cid: str = ""  # CID of the execution that created this obligation
+    created_at: float = field(default_factory=time.time)
+
+    @property
+    def is_overdue(self) -> bool:
+        """Check if this obligation has passed its deadline without fulfillment."""
+        return not self.fulfilled and self.deadline > 0 and time.time() > self.deadline
+
+
+class ObligationTracker:
+    """Tracks and enforces obligations from temporal deontic policies.
+
+    Obligations are actions that MUST be performed (with optional deadlines).
+    This tracker records pending obligations, allows marking them as fulfilled,
+    and can report overdue obligations for alerting/enforcement.
+    """
+
+    def __init__(self):
+        self._obligations: Dict[str, TrackedObligation] = {}
+        self._lock = threading.Lock()
+
+    def record(self, obligations: List[Dict[str, Any]], execution_cid: str = "") -> List[str]:
+        """Record obligations from a policy decision.
+
+        Args:
+            obligations: List of obligation dicts from PolicyDecision
+            execution_cid: CID of the execution envelope that triggered these
+
+        Returns:
+            List of obligation IDs created.
+        """
+        ids = []
+        with self._lock:
+            for ob in obligations:
+                ob_id = compute_cid({
+                    "type": "obligation",
+                    "action": ob.get("action", ""),
+                    "deadline": ob.get("deadline", 0),
+                    "execution_cid": execution_cid,
+                    "created_at": time.time(),
+                })
+                tracked = TrackedObligation(
+                    obligation_id=ob_id,
+                    action=ob.get("action", ""),
+                    deadline=ob.get("deadline", 0),
+                    metadata=ob.get("metadata", {}),
+                    execution_cid=execution_cid,
+                )
+                self._obligations[ob_id] = tracked
+                ids.append(ob_id)
+                _obligation_logger.info(
+                    "Obligation recorded: id=%s action=%s deadline=%s",
+                    ob_id[:16], tracked.action, tracked.deadline or "none",
+                )
+        return ids
+
+    def fulfill(self, obligation_id: str) -> bool:
+        """Mark an obligation as fulfilled.
+
+        Returns True if the obligation was found and marked, False otherwise.
+        """
+        with self._lock:
+            ob = self._obligations.get(obligation_id)
+            if ob and not ob.fulfilled:
+                ob.fulfilled = True
+                ob.fulfilled_at = time.time()
+                _obligation_logger.info("Obligation fulfilled: id=%s action=%s", obligation_id[:16], ob.action)
+                return True
+        return False
+
+    def get_overdue(self) -> List[TrackedObligation]:
+        """Get all obligations that have passed their deadline without fulfillment."""
+        with self._lock:
+            return [ob for ob in self._obligations.values() if ob.is_overdue]
+
+    def get_pending(self) -> List[TrackedObligation]:
+        """Get all unfulfilled obligations."""
+        with self._lock:
+            return [ob for ob in self._obligations.values() if not ob.fulfilled]
+
+    def summary(self) -> Dict[str, int]:
+        """Get a summary count of obligations by status."""
+        with self._lock:
+            total = len(self._obligations)
+            fulfilled = sum(1 for ob in self._obligations.values() if ob.fulfilled)
+            overdue = sum(1 for ob in self._obligations.values() if ob.is_overdue)
+            pending = total - fulfilled
+            return {"total": total, "fulfilled": fulfilled, "pending": pending, "overdue": overdue}
+
+
+# Global obligation tracker singleton
+_OBLIGATION_TRACKER: Optional[ObligationTracker] = None
+
+
+def get_obligation_tracker() -> ObligationTracker:
+    global _OBLIGATION_TRACKER
+    if _OBLIGATION_TRACKER is None:
+        with _POLICY_LOCK:
+            if _OBLIGATION_TRACKER is None:
+                _OBLIGATION_TRACKER = ObligationTracker()
+    return _OBLIGATION_TRACKER
+
+
+# ---------------------------------------------------------------------------
 # Global singleton (thread-safe)
 # ---------------------------------------------------------------------------
 

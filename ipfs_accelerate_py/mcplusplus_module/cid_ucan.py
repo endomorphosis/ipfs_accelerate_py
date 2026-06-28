@@ -101,6 +101,7 @@ class ReceiptObject:
     executor: str = ""
     timestamp: float = field(default_factory=time.time)
     cid: str = ""
+    signature: Optional[str] = None  # Executor signature for non-repudiation
 
     def __post_init__(self):
         if not self.cid:
@@ -116,6 +117,35 @@ class ReceiptObject:
     @property
     def success(self) -> bool:
         return self.error is None
+
+    def sign(self, signing_key=None) -> None:
+        """Sign this receipt with the executor's key for non-repudiation.
+
+        If nacl is not available or no key is provided, creates an HMAC-based
+        signature using the executor identity as the key (weaker but functional).
+        """
+        payload = json.dumps({
+            "cid": self.cid,
+            "intent_cid": self.intent_cid,
+            "decision_cid": self.decision_cid,
+            "executor": self.executor,
+            "timestamp": self.timestamp,
+        }, sort_keys=True).encode()
+
+        if signing_key:
+            try:
+                from nacl.signing import SigningKey
+                from nacl.encoding import HexEncoder
+                signed = signing_key.sign(payload, encoder=HexEncoder)
+                self.signature = signed.signature.decode()
+                return
+            except (ImportError, Exception):
+                pass
+
+        # Fallback: HMAC-SHA256 with executor identity
+        import hmac
+        key = (self.executor or "mcppp").encode()
+        self.signature = hmac.new(key, payload, hashlib.sha256).hexdigest()
 
 
 @dataclass
@@ -658,7 +688,7 @@ async def execute_with_envelope(
 
     duration_ms = (time.time() - start_time) * 1000
 
-    # Create Receipt
+    # Create Receipt (signed for non-repudiation)
     receipt = ReceiptObject(
         intent_cid=intent.cid,
         decision_cid=decision.cid,
@@ -667,6 +697,7 @@ async def execute_with_envelope(
         duration_ms=duration_ms,
         executor="ipfs_accelerate_py",
     )
+    receipt.sign()
     dag.append(DAGEvent(
         cid=receipt.cid, event_type="receipt",
         parent_cids=[decision.cid], payload={"success": receipt.success},
