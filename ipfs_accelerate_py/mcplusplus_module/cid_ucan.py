@@ -575,6 +575,7 @@ async def execute_with_envelope(
     requester: str = "",
     delegation_cid: Optional[str] = None,
     executor_fn=None,
+    timeout_ms: int = 30000,
 ) -> ExecutionEnvelope:
     """Execute a method call with full CID-native envelope tracking.
     
@@ -587,6 +588,7 @@ async def execute_with_envelope(
         requester: DID or identifier of the requester
         delegation_cid: Optional UCAN delegation CID for authorization
         executor_fn: Async callable that performs the actual execution
+        timeout_ms: Maximum execution time in milliseconds (default: 30s)
         
     Returns:
         ExecutionEnvelope with full provenance chain
@@ -618,16 +620,25 @@ async def execute_with_envelope(
         parent_cids=[intent.cid], payload={"authorized": authorized},
     ))
 
-    # Execute (if authorized)
+    # Execute (if authorized) with timeout
     start_time = time.time()
     result = None
     error = None
 
     if authorized and executor_fn:
         try:
-            result = await executor_fn(method, params)
+            # Use trio timeout if available in current context
+            try:
+                import trio
+                with trio.move_on_after(timeout_ms / 1000.0) as cancel_scope:
+                    result = await executor_fn(method, params)
+                if cancel_scope.cancelled_caught:
+                    error = f"Execution timeout after {timeout_ms}ms"
+            except (RuntimeError, AttributeError):
+                # Not in a trio context — execute without timeout
+                result = await executor_fn(method, params)
         except Exception as e:
-            error = str(e)
+            error = f"{type(e).__name__}: {e}"
     elif not authorized:
         error = f"Unauthorized: {reason}"
 

@@ -476,26 +476,66 @@ class TrioMCPServer:
 
         @app.get("/mcp/interfaces")
         async def list_interfaces():
-            """Profile A: List all registered interface descriptors."""
+            """Profile A: List all registered interface descriptors with full schemas."""
+            from ..interface_descriptor import InterfaceDescriptor, MethodDescriptor, get_interface_repository
+
+            repo = get_interface_repository()
             tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
-            interfaces = [{
-                "cid": compute_cid({"name": t, "server": "ipfs_accelerate"}),
-                "name": t,
-                "version": "1.0.0",
-                "methods": [t],
-            } for t in tools]
-            return {"interfaces": interfaces, "count": len(interfaces)}
+
+            # Auto-populate repository if empty
+            if len(repo._descriptors) == 0 and tools:
+                for tool_name in tools:
+                    tool_fn = self.mcp.tools[tool_name] if hasattr(self.mcp, 'tools') else None
+                    # Extract schema from tool function if available
+                    input_schema = {}
+                    if tool_fn and hasattr(tool_fn, '__annotations__'):
+                        input_schema = {
+                            k: str(v) for k, v in tool_fn.__annotations__.items()
+                            if k != 'return'
+                        }
+                    method = MethodDescriptor(
+                        name=tool_name,
+                        description=getattr(tool_fn, '__doc__', '') or '',
+                        input_schema=input_schema,
+                    )
+                    descriptor = InterfaceDescriptor(
+                        name=tool_name,
+                        methods=[method],
+                        author="ipfs_accelerate_py",
+                    )
+                    repo.register(descriptor)
+
+            return {
+                "interfaces": [d.to_dict() for d in repo._descriptors.values()],
+                "count": len(repo._descriptors),
+            }
 
         @app.post("/mcp/execute")
         async def execute_envelope(request: Request):
-            """Profile B: Execute with CID-native envelope."""
-            from ..cid_ucan import execute_with_envelope
+            """Profile B: Execute with CID-native envelope + UCAN + Policy enforcement."""
+            from ..cid_ucan import execute_with_envelope, get_evaluator
+            from ..temporal_policy import get_policy_evaluator
 
             body = await request.json()
             method = body.get("method", "")
             params = body.get("params", {})
             requester = body.get("requester", "")
             delegation_cid = body.get("delegation_cid")
+            policy_cid = body.get("policy_cid")
+
+            # Profile D: Evaluate temporal policy BEFORE execution
+            if policy_cid:
+                policy_eval = get_policy_evaluator()
+                decision = policy_eval.evaluate(
+                    method=method, actor=requester or "*",
+                    resource=f"mcp://tool/{method}", policy_cid=policy_cid,
+                )
+                if decision.decision not in ("allow", "allow_with_obligations"):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": f"Policy denied: {decision.justification}",
+                                 "decision": decision.to_dict()},
+                    )
 
             async def _execute(m, p):
                 if hasattr(self.mcp, 'tools') and m in self.mcp.tools:
@@ -534,7 +574,7 @@ class TrioMCPServer:
 
         @app.post("/mcp/ucan/delegate")
         async def ucan_delegate(request: Request):
-            """Profile C: Create a new UCAN delegation."""
+            """Profile C: Create a new UCAN delegation with signature verification."""
             from ..cid_ucan import Delegation, Capability, get_evaluator
 
             body = await request.json()
@@ -546,9 +586,43 @@ class TrioMCPServer:
                 expiry=body.get("expiry", 0.0),
                 not_before=body.get("not_before", 0.0),
                 proof_cids=body.get("proof_cids", []),
+                signature=body.get("signature"),
             )
-            get_evaluator().add(delegation)
+
+            evaluator = get_evaluator()
+
+            # Verify signature if present (fail-closed: signed delegations must verify)
+            if delegation.signature:
+                if not evaluator._verify_signature(delegation):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"error": "Invalid signature on delegation", "issuer": delegation.issuer},
+                    )
+
+            # Verify proof chain (parent delegations must exist)
+            for proof_cid in delegation.proof_cids:
+                if proof_cid not in evaluator._store:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"Proof CID not found: {proof_cid}"},
+                    )
+
+            evaluator.add(delegation)
             return {"cid": delegation.cid, "delegation": delegation.to_dict()}
+
+        @app.post("/mcp/ucan/revoke")
+        async def ucan_revoke(request: Request):
+            """Profile C: Revoke a UCAN delegation."""
+            from ..cid_ucan import get_evaluator
+
+            body = await request.json()
+            delegation_cid = body.get("delegation_cid", "")
+            if not delegation_cid:
+                return JSONResponse(status_code=400, content={"error": "Missing delegation_cid"})
+
+            evaluator = get_evaluator()
+            evaluator.revoke(delegation_cid)
+            return {"revoked": delegation_cid, "status": "ok"}
 
         @app.post("/mcp/ucan/validate")
         async def ucan_validate(request: Request):
@@ -565,6 +639,16 @@ class TrioMCPServer:
             )
             return {"authorized": authorized, "reason": reason}
 
+        @app.get("/mcp/services")
+        async def list_services():
+            """Service registry: List all known local and remote services."""
+            try:
+                from ..service_registry import get_service_registry
+                registry = get_service_registry()
+                return registry.to_dict()
+            except Exception as e:
+                return {"local_services": {}, "remote_services": {}, "error": str(e)}
+
         @app.get("/mcp/p2p/peers")
         async def p2p_peers():
             """Profile E: List connected P2P peers."""
@@ -574,9 +658,44 @@ class TrioMCPServer:
 
         @app.post("/mcp/p2p/call")
         async def p2p_call_tool(request: Request):
-            """Profile E: Call a tool on a remote peer via libp2p."""
+            """Profile E: Call a tool on a remote peer with UCAN+Policy enforcement."""
             from ..p2p_transport import get_p2p_node
+            from ..cid_ucan import get_evaluator
+
             body = await request.json()
+            peer_id = body.get("peer_id", "")
+            method = body.get("method", "")
+            params = body.get("params", {})
+            delegation_cid = body.get("delegation_cid")
+            policy_cid = body.get("policy_cid")
+            actor = body.get("actor", "")
+
+            # Enforce UCAN delegation if provided
+            if delegation_cid:
+                evaluator = get_evaluator()
+                authorized, reason = evaluator.can_invoke(
+                    delegation_cid, f"mcp://tool/{method}", "invoke", actor=actor or None
+                )
+                if not authorized:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": f"UCAN unauthorized: {reason}"},
+                    )
+
+            # Enforce policy if provided
+            if policy_cid:
+                from ..temporal_policy import get_policy_evaluator
+                policy_eval = get_policy_evaluator()
+                decision = policy_eval.evaluate(
+                    method=method, actor=actor or "*",
+                    resource=f"mcp://tool/{method}", policy_cid=policy_cid,
+                )
+                if decision.decision not in ("allow", "allow_with_obligations"):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": f"Policy denied: {decision.justification}"},
+                    )
+
             node = get_p2p_node()
             if not node._started:
                 return JSONResponse(
@@ -585,14 +704,20 @@ class TrioMCPServer:
                 )
             try:
                 result = await node.call_tool(
-                    peer_id=body.get("peer_id", ""),
-                    method=body.get("method", ""),
-                    params=body.get("params", {}),
+                    peer_id=peer_id,
+                    method=method,
+                    params=params,
                     timeout=body.get("timeout", 30.0),
                 )
-                return {"result": result}
+                return {"result": result, "peer_id": peer_id, "method": method}
+            except TimeoutError as e:
+                return JSONResponse(status_code=504, content={"error": str(e), "code": "TIMEOUT"})
+            except ConnectionError as e:
+                return JSONResponse(status_code=502, content={"error": str(e), "code": "CONNECTION_ERROR"})
+            except RuntimeError as e:
+                return JSONResponse(status_code=502, content={"error": str(e), "code": "REMOTE_ERROR"})
             except Exception as e:
-                return JSONResponse(status_code=502, content={"error": str(e)})
+                return JSONResponse(status_code=500, content={"error": str(e), "code": "INTERNAL_ERROR"})
 
         @app.post("/mcp/policy/evaluate")
         async def policy_evaluate(request: Request):
