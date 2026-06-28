@@ -598,7 +598,7 @@ class TrioMCPServer:
                         method=method, actor=requester or "*",
                         resource=f"mcp://tool/{method}", policy_cid=policy_cid,
                     )
-                    if decision.decision not in ("allow", "allow_with_obligations"):
+                    if decision.verdict not in ("allow", "allow_with_obligations"):
                         return JSONResponse(
                             status_code=403,
                             content={"error": f"Policy denied: {decision.justification}",
@@ -774,7 +774,7 @@ class TrioMCPServer:
                     method=method, actor=actor or "*",
                     resource=f"mcp://tool/{method}", policy_cid=policy_cid,
                 )
-                if decision.decision not in ("allow", "allow_with_obligations"):
+                if decision.verdict not in ("allow", "allow_with_obligations"):
                     return JSONResponse(
                         status_code=403,
                         content={"error": f"Policy denied: {decision.justification}"},
@@ -910,9 +910,10 @@ class TrioMCPServer:
             """
             from starlette.responses import StreamingResponse
             from ..cid_ucan import get_event_dag
+            import anyio
 
             async def _generate_events():
-                """Async generator yielding SSE events."""
+                """Async generator yielding SSE events with disconnect detection."""
                 dag = get_event_dag()
                 last_count = len(dag._events)
 
@@ -920,24 +921,30 @@ class TrioMCPServer:
                 yield f"event: connected\ndata: {{\"server\": \"{self.config.name}\", \"events\": {last_count}}}\n\n"
 
                 # Poll for new events (every 1s) — SSE keepalive
-                while True:
-                    await trio.sleep(1.0)
-                    current_count = len(dag._events)
-                    if current_count > last_count:
-                        # New events appended
-                        new_events = list(dag._events.values())[last_count:current_count]
-                        for event in new_events:
-                            event_data = json.dumps({
-                                "cid": event.cid,
-                                "type": event.event_type,
-                                "timestamp": event.timestamp,
-                                "parents": event.parent_cids,
-                            })
-                            yield f"event: dag_event\ndata: {event_data}\n\n"
-                        last_count = current_count
-                    else:
-                        # Keepalive
-                        yield f": keepalive\n\n"
+                try:
+                    while True:
+                        await anyio.sleep(1.0)
+                        # Check if client disconnected
+                        if await request.is_disconnected():
+                            break
+                        current_count = len(dag._events)
+                        if current_count > last_count:
+                            # New events appended
+                            new_events = list(dag._events.values())[last_count:current_count]
+                            for event in new_events:
+                                event_data = json.dumps({
+                                    "cid": event.cid,
+                                    "type": event.event_type,
+                                    "timestamp": event.timestamp,
+                                    "parents": event.parent_cids,
+                                })
+                                yield f"event: dag_event\ndata: {event_data}\n\n"
+                            last_count = current_count
+                        else:
+                            # Keepalive
+                            yield f": keepalive\n\n"
+                except (anyio.get_cancelled_exc_class(), GeneratorExit):
+                    pass
 
             return StreamingResponse(
                 _generate_events(),
@@ -1067,6 +1074,10 @@ class TrioMCPServer:
             except Exception as e:
                 logger.warning(f"P2P node startup failed (non-fatal): {e}")
 
+        # Start obligation enforcement loop (Profile D)
+        if self._nursery:
+            self._nursery.start_soon(self._obligation_enforcement_loop)
+
     async def _p2p_maintenance_loop(self, node) -> None:
         """Background loop for peer discovery, health checks, and reconnection."""
         backoff = 5.0  # Start with 5s between cycles
@@ -1109,6 +1120,34 @@ class TrioMCPServer:
             except Exception as e:
                 logger.debug(f"P2P maintenance error: {e}")
                 backoff = min(backoff * 2, max_backoff)
+
+    async def _obligation_enforcement_loop(self) -> None:
+        """Background loop that checks for overdue obligations (Profile D enforcement)."""
+        from ..temporal_policy import get_obligation_tracker
+        tracker = get_obligation_tracker()
+
+        while self._started:
+            try:
+                await trio.sleep(30.0)
+                overdue = tracker.get_overdue()
+                if overdue:
+                    for ob in overdue:
+                        logger.warning(
+                            "OBLIGATION VIOLATION: id=%s action=%s deadline=%s actor=%s",
+                            ob.obligation_id[:16], ob.action, ob.deadline, ob.actor,
+                        )
+                    # Emit metrics
+                    try:
+                        from ..metrics import get_metrics_registry
+                        metrics = get_metrics_registry()
+                        if hasattr(metrics, 'obligations_overdue'):
+                            metrics.obligations_overdue.set(len(overdue))
+                    except Exception:
+                        pass
+            except trio.Cancelled:
+                break
+            except Exception as e:
+                logger.debug(f"Obligation enforcement error: {e}")
 
     async def _shutdown(self) -> None:
         """Server shutdown hook.

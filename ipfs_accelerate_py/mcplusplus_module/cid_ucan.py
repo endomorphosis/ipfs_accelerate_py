@@ -556,21 +556,27 @@ class EventDAG:
                 )
         return None
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize DAG state including compaction summary."""
+    def to_dict(self, include_events: bool = False) -> Dict[str, Any]:
+        """Serialize DAG state including compaction summary.
+        
+        Args:
+            include_events: If True, include full event details (expensive for large DAGs).
+                           Default False for use in health/ready probes.
+        """
         compactor = self._get_compactor()
         with self._lock:
             result = {
                 "hot_events": len(self._events),
                 "frontier_size": len([e for e in self._events.values() if e.cid not in self._children]),
-                "events": {cid: {"type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp}
-                           for cid, e in self._events.items()},
             }
+            if include_events:
+                result["events"] = {cid: {"type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp}
+                                    for cid, e in self._events.items()}
         if compactor:
             result["compaction"] = compactor.summary()
-            result["total_events"] = len(self._events) + compactor.total_compacted_events
+            result["total_events"] = result["hot_events"] + compactor.total_compacted_events
         else:
-            result["total_events"] = len(self._events)
+            result["total_events"] = result["hot_events"]
         return result
 
 
