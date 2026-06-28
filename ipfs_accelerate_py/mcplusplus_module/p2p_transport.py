@@ -344,25 +344,89 @@ class MCPp2pNode:
                 pass
 
     async def call_tool(self, peer_id: str, method: str,
-                        params: Dict[str, Any], timeout: float = 30.0) -> Any:
-        """Call a tool on a remote peer via /mcp+p2p/1.0.0.
+                        params: Dict[str, Any], timeout: float = 30.0,
+                        max_retries: int = 3) -> Any:
+        """Call a tool on a remote peer via /mcp+p2p/1.0.0 with retry and circuit breaker.
 
         Args:
             peer_id: Target peer's ID
             method: Tool/method name
             params: Tool parameters
             timeout: Request timeout in seconds
+            max_retries: Maximum retry attempts (with exponential backoff)
 
         Returns:
             The tool result from the remote peer
 
         Raises:
-            TimeoutError: If the peer doesn't respond in time
-            ConnectionError: If we can't reach the peer
-            RuntimeError: If the remote returns an error
+            TimeoutError: If the peer doesn't respond after all retries
+            ConnectionError: If we can't reach the peer after all retries
+            RuntimeError: If the remote returns an error (not retried)
         """
         if not self._host:
             raise ConnectionError("P2P node not started")
+
+        # Circuit breaker check
+        cb = self._get_circuit_breaker(peer_id)
+        if cb["state"] == "open":
+            elapsed = time.time() - cb["opened_at"]
+            if elapsed < cb["reset_timeout"]:
+                raise ConnectionError(
+                    f"Circuit breaker open for peer {peer_id} "
+                    f"(failures: {cb['failures']}, resets in {cb['reset_timeout'] - elapsed:.0f}s)"
+                )
+            # Half-open: allow one attempt
+            cb["state"] = "half-open"
+
+        last_error: Optional[Exception] = None
+        for attempt in range(max_retries):
+            try:
+                result = await self._call_tool_once(peer_id, method, params, timeout)
+                # Success: reset circuit breaker
+                cb["failures"] = 0
+                cb["state"] = "closed"
+                return result
+            except RuntimeError:
+                # Remote application error — don't retry
+                raise
+            except (TimeoutError, ConnectionError, OSError) as e:
+                last_error = e
+                cb["failures"] += 1
+                if cb["failures"] >= cb["threshold"]:
+                    cb["state"] = "open"
+                    cb["opened_at"] = time.time()
+                    logger.warning(
+                        "Circuit breaker OPEN for peer %s after %d failures",
+                        peer_id, cb["failures"],
+                    )
+                if attempt < max_retries - 1:
+                    backoff = min(2 ** attempt * 0.5, 10.0)
+                    logger.info(
+                        "P2P call to %s/%s failed (attempt %d/%d), retrying in %.1fs: %s",
+                        peer_id, method, attempt + 1, max_retries, backoff, e,
+                    )
+                    import trio
+                    await trio.sleep(backoff)
+
+        raise last_error  # type: ignore[misc]
+
+    def _get_circuit_breaker(self, peer_id: str) -> Dict[str, Any]:
+        """Get or create circuit breaker state for a peer."""
+        if not hasattr(self, '_circuit_breakers'):
+            self._circuit_breakers: Dict[str, Dict[str, Any]] = {}
+        if peer_id not in self._circuit_breakers:
+            self._circuit_breakers[peer_id] = {
+                "state": "closed",  # closed | open | half-open
+                "failures": 0,
+                "threshold": 5,
+                "opened_at": 0.0,
+                "reset_timeout": 60.0,  # seconds before half-open
+            }
+        return self._circuit_breakers[peer_id]
+
+    async def _call_tool_once(self, peer_id: str, method: str,
+                              params: Dict[str, Any], timeout: float) -> Any:
+        """Single attempt to call a tool on a remote peer."""
 
         try:
             import trio
