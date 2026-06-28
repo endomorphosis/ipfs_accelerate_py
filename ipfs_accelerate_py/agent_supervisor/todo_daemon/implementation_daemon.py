@@ -28,6 +28,7 @@ from ..merge_conflict_repair import (
     resolve_launch_readiness_conflicts,
     resolve_reconciliation_guardrail_todo_conflicts,
 )
+from ..submodule_degradation import DegradationState
 from ..validation_commands import split_validation_commands
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
@@ -792,6 +793,9 @@ class PortalImplementationDaemon:
             else normalize_relative_path_list(worktree_submodule_paths)
         )
         self.worktree_submodule_paths = configured_submodules
+        self.degradation_state = DegradationState.load(
+            self.state_path.parent / "submodule_degradation.json"
+        )
 
     def _task_belongs_to_shard(self, task_id: str) -> bool:
         """Return whether this daemon lane should implement ``task_id``."""
@@ -6112,7 +6116,29 @@ class PortalImplementationDaemon:
         return max(0.0, age) < RECENT_NO_CHANGE_COOLDOWN_SECONDS
 
     def _iter_events(self) -> list[dict[str, Any]]:
-        return read_jsonl_events(self.events_path, repair=True)
+        """Read all events, with per-iteration file-stat caching.
+
+        Avoids re-reading the entire file multiple times within the same
+        run_once() call if the file hasn't changed (same size + mtime).
+        """
+        try:
+            stat = self.events_path.stat()
+            cache_key = (stat.st_size, stat.st_mtime_ns)
+        except OSError:
+            cache_key = None
+
+        if cache_key is not None and hasattr(self, "_events_cache_key") and self._events_cache_key == cache_key:
+            return self._events_cache_data
+
+        data = read_jsonl_events(self.events_path, repair=True)
+        self._events_cache_key = cache_key
+        self._events_cache_data = data
+        return data
+
+    def _invalidate_event_cache(self) -> None:
+        """Invalidate the event read cache (call after appending events)."""
+        self._events_cache_key = None
+        self._events_cache_data = []
 
     def _implementation_process_active(self, event: dict[str, Any]) -> bool:
         worktree_path = str(event.get("worktree_path") or "")
@@ -7007,6 +7033,24 @@ Rules:
         strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
         if strict_deprioritized:
             ready = [task for task in ready if task.task_id not in strict_deprioritized]
+        # Graceful degradation: skip tasks that depend on degraded submodules
+        degraded_skipped: list[str] = []
+        if self.degradation_state.degraded_submodules():
+            filtered_ready = []
+            for task in ready:
+                degraded_sub = self.degradation_state.should_skip_task(
+                    task.outputs, getattr(task, "inputs", None)
+                )
+                if degraded_sub:
+                    degraded_skipped.append(task.task_id)
+                else:
+                    filtered_ready.append(task)
+            if degraded_skipped:
+                self._record_event("tasks_skipped_degraded_submodule", {
+                    "skipped_task_ids": degraded_skipped[:20],
+                    "degraded_submodules": self.degradation_state.degraded_submodules(),
+                })
+            ready = filtered_ready
         if not ready:
             return None
         ready_task_ids = {task.task_id for task in ready}
@@ -7043,6 +7087,7 @@ Rules:
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
         append_jsonl_event(self.events_path, event_type, payload)
+        self._invalidate_event_cache()
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
