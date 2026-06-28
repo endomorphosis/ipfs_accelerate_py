@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -73,6 +75,123 @@ def _path_allowed(relative: str, *, allowed_paths: set[str], allowed_dirs: tuple
     if not relative.endswith((".md", ".markdown")):
         return False
     return relative in allowed_paths or any(relative.startswith(prefix) for prefix in allowed_dirs)
+
+
+def _atomic_write_text(target: Path, content: str, *, encoding: str = "utf-8") -> None:
+    """Write content to a file atomically using a temp file + rename."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd = None
+    tmp_path = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(target.parent),
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+        )
+        os.write(fd, content.encode(encoding, errors="surrogateescape"))
+        os.close(fd)
+        fd = None
+        os.rename(tmp_path, str(target))
+        tmp_path = None
+    except BaseException:
+        if fd is not None:
+            os.close(fd)
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        raise
+
+
+def is_gitlink_conflict(repo_root: Path, relative: str) -> bool:
+    """Detect if a conflicted path is a submodule gitlink (mode 160000)."""
+    result = subprocess.run(
+        ["git", "ls-tree", "-z", "HEAD", "--", relative],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode == 0 and result.stdout.startswith("160000 "):
+        return True
+    # Check if .gitmodules references this path
+    gitmodules = repo_root / ".gitmodules"
+    if gitmodules.exists():
+        try:
+            content = gitmodules.read_text(encoding="utf-8", errors="replace")
+            if f"path = {relative}" in content:
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def resolve_submodule_gitlink_conflicts(
+    *,
+    repo_root: Path,
+    strategy: str = "theirs",
+) -> list[dict[str, object]]:
+    """Resolve submodule gitlink merge conflicts by choosing ours or theirs.
+
+    Submodule gitlinks are binary commit references (mode 160000) that cannot
+    be merged as text. This resolves them by checking out the chosen side
+    and running `git submodule update` to sync.
+
+    Args:
+        repo_root: Repository root path.
+        strategy: Which side to prefer - "ours" or "theirs" (default: "theirs"
+                  since theirs typically has the newer submodule commit).
+    """
+    repo_root = repo_root.resolve()
+    results: list[dict[str, object]] = []
+
+    for relative in unmerged_paths(repo_root):
+        if not _safe_relative_path(relative):
+            continue
+        if not is_gitlink_conflict(repo_root, relative):
+            continue
+
+        # Resolve gitlink by checking out one side
+        checkout_flag = "--theirs" if strategy == "theirs" else "--ours"
+        checkout = _run_git(repo_root, ["checkout", checkout_flag, "--", relative])
+        if checkout.returncode != 0:
+            results.append({
+                "path": relative,
+                "resolved": False,
+                "reason": "gitlink_checkout_failed",
+                "strategy": strategy,
+                "returncode": checkout.returncode,
+                "stderr": checkout.stderr[-2000:],
+            })
+            continue
+
+        add = _run_git(repo_root, ["add", "--", relative])
+        if add.returncode != 0:
+            results.append({
+                "path": relative,
+                "resolved": False,
+                "reason": "gitlink_add_failed",
+                "strategy": strategy,
+                "returncode": add.returncode,
+                "stderr": add.stderr[-2000:],
+            })
+            continue
+
+        # Attempt to sync the submodule to its resolved commit
+        update = _run_git(repo_root, [
+            "submodule", "update", "--init", "--recursive", "--", relative,
+        ])
+        results.append({
+            "path": relative,
+            "resolved": True,
+            "reason": "gitlink_resolved",
+            "strategy": strategy,
+            "submodule_update_ok": update.returncode == 0,
+            "submodule_update_stderr": update.stderr[-2000:] if update.returncode != 0 else "",
+        })
+
+    return results
 
 
 def unmerged_paths(repo_root: Path) -> list[str]:
@@ -288,8 +407,7 @@ def resolve_append_only_markdown_conflicts(
             results.append({"path": relative, "resolved": False, "reason": "no_markdown_sections"})
             continue
         target = repo_root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(merged.text, encoding="utf-8", errors="surrogateescape")
+        _atomic_write_text(target, merged.text)
         add = _run_git(repo_root, ["add", "--", relative])
         results.append(
             {
@@ -328,8 +446,7 @@ def resolve_reconciliation_guardrail_todo_conflicts(*, repo_root: Path) -> list[
             results.append({"path": relative, "resolved": False, "reason": "no_reconciliation_guardrail"})
             continue
         target = repo_root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(merged.text, encoding="utf-8", errors="surrogateescape")
+        _atomic_write_text(target, merged.text)
         add = _run_git(repo_root, ["add", "--", relative])
         results.append(
             {
@@ -542,8 +659,7 @@ def resolve_launch_readiness_conflicts(*, repo_root: Path) -> list[dict[str, obj
             reason = "launch_readiness_python_union"
 
         target = repo_root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(merged, encoding="utf-8", errors="surrogateescape")
+        _atomic_write_text(target, merged)
         add = _run_git(repo_root, ["add", "--", relative])
         results.append(
             {

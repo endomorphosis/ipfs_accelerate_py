@@ -25,6 +25,10 @@ TRANSIENT_PATCH_STATUSES = frozenset(
         "main_apply_lock_timeout",
         "patch_generation_failed",
         "worktree_unavailable",
+        "submodule_update_failed",
+        "submodule_conflict",
+        "submodule_checkout_failed",
+        "merge_conflict_submodule",
     }
 )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -22,6 +23,76 @@ DEFAULT_COMPLETION_RULE = "Do not unblock the source task until validation passe
 MergePromptCallback = Callable[..., str]
 MergeResolverPayloadCallback = Callable[..., dict[str, Any]]
 MergeResolverInvoker = Callable[..., dict[str, Any]]
+
+# Maximum number of times the resolver will attempt the same merge event
+# before marking it as permanently failed. Prevents infinite retry loops.
+_MAX_RESOLVE_ATTEMPTS_PER_EVENT = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_MERGE_MAX_ATTEMPTS", "3")
+)
+_RESOLVED_EVENTS_FILENAME = ".agent-merge-resolved-events.json"
+
+
+def _event_fingerprint(event: dict[str, Any]) -> str:
+    """Compute a stable fingerprint for a merge event to detect re-processing."""
+    keys = ("task_id", "attempt", "branch", "target_branch", "reason", "timestamp")
+    merge_result = event.get("merge_result") if isinstance(event.get("merge_result"), dict) else event
+    parts = [str(merge_result.get(key) or event.get(key) or "") for key in keys]
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
+def _load_resolved_events(state_dir: Path) -> dict[str, int]:
+    """Load the set of already-resolved event fingerprints with attempt counts."""
+    path = state_dir / _RESOLVED_EVENTS_FILENAME
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {k: int(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _save_resolved_events(state_dir: Path, resolved: dict[str, int]) -> None:
+    """Persist the resolved event fingerprint set."""
+    state_dir.mkdir(parents=True, exist_ok=True)
+    path = state_dir / _RESOLVED_EVENTS_FILENAME
+    try:
+        path.write_text(json.dumps(resolved, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def check_event_idempotency(
+    event: dict[str, Any],
+    *,
+    state_dir: Path,
+) -> tuple[bool, str]:
+    """Check if a merge event has already been attempted too many times.
+
+    Returns (should_skip, reason).
+    """
+    fingerprint = _event_fingerprint(event)
+    resolved = _load_resolved_events(state_dir)
+    attempts = resolved.get(fingerprint, 0)
+    if attempts >= _MAX_RESOLVE_ATTEMPTS_PER_EVENT:
+        return True, f"event already attempted {attempts} times (max={_MAX_RESOLVE_ATTEMPTS_PER_EVENT})"
+    return False, ""
+
+
+def record_resolve_attempt(
+    event: dict[str, Any],
+    *,
+    state_dir: Path,
+) -> None:
+    """Record that we attempted to resolve this event."""
+    fingerprint = _event_fingerprint(event)
+    resolved = _load_resolved_events(state_dir)
+    resolved[fingerprint] = resolved.get(fingerprint, 0) + 1
+    # Prune old entries (keep last 200)
+    if len(resolved) > 200:
+        sorted_items = sorted(resolved.items(), key=lambda x: x[1], reverse=True)
+        resolved = dict(sorted_items[:200])
+    _save_resolved_events(state_dir, resolved)
 
 
 @dataclass(frozen=True)
@@ -282,6 +353,10 @@ def build_merge_prompt(
         "Keep changes scoped to the task and conflict resolution.",
         "Run the task validation after resolving the conflict.",
         "Commit the merge resolution in the owning repository or submodule.",
+        "For submodule gitlink conflicts (mode 160000), prefer the newer commit reference; "
+        "after resolving, run 'git submodule update --init --recursive' for affected paths.",
+        "If a conflict involves recursive submodule references, resolve the innermost submodule first, "
+        "then work outward to avoid circular dependency issues.",
         completion_rule,
     ]
     if extra_rules:
