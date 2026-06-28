@@ -1020,6 +1020,14 @@ class TrioMCPServer:
                 node = get_p2p_node()
                 await node.start(self._nursery)
 
+                # Wait briefly for P2P to become operational
+                deadline = time.time() + 5.0
+                while not getattr(node, '_operational', False) and time.time() < deadline:
+                    await trio.sleep(0.1)
+
+                if not getattr(node, '_operational', False):
+                    logger.warning("P2P node started but not yet operational (will continue in background)")
+
                 # Register our MCP tools as the P2P tool handler
                 if hasattr(self.mcp, 'tools'):
                     tools_list = list(self.mcp.tools.keys())
