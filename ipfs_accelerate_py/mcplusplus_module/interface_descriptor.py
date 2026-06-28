@@ -313,7 +313,12 @@ def validate_params(method_name: str, params: Dict[str, Any],
         expected_type = properties[param_name].get("type")
         if expected_type and expected_type in _TYPE_MAP:
             py_type = _TYPE_MAP[expected_type]
-            if param_value is not None and not isinstance(param_value, py_type):
+            # Required params cannot be null
+            if param_value is None:
+                if param_name in required:
+                    return f"Required parameter '{param_name}' cannot be null"
+                continue  # Optional params may be null
+            if not isinstance(param_value, py_type):
                 return (
                     f"Parameter '{param_name}' has type {type(param_value).__name__}, "
                     f"expected {expected_type}"

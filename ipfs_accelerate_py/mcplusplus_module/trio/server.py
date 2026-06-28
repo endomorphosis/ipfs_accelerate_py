@@ -1559,7 +1559,12 @@ class TrioMCPServer:
                         return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32003, "message": f"Unauthorized: {reason}"}}
 
                 try:
-                    result = await self.mcp.tools[tool_name](**arguments)
+                    import inspect
+                    tool_fn = self.mcp.tools[tool_name]
+                    if inspect.iscoroutinefunction(tool_fn):
+                        result = await tool_fn(**arguments)
+                    else:
+                        result = tool_fn(**arguments)
                     return {"jsonrpc": "2.0", "id": req_id, "result": result}
                 except Exception as e:
                     return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}

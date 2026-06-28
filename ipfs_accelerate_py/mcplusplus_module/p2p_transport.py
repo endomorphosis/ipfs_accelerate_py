@@ -564,8 +564,11 @@ class MCPp2pNode:
             await trio.sleep(2.0)
             zc.close()
 
-            # Register discovered peers
+            # Register discovered peers (enforce MAX_PEERS limit)
             for peer in discovered:
+                if len(self._peers) >= MAX_PEERS:
+                    oldest = min(self._peers.values(), key=lambda p: p.last_seen)
+                    self._peers.pop(oldest.peer_id, None)
                 self._peers[peer.peer_id] = peer
 
             return discovered
