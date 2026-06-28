@@ -492,6 +492,53 @@ class TrioMCPServer:
                 """Kubernetes liveness — process is alive."""
                 return {"status": "alive"}
 
+            @app.get("/api/mcp/status")
+            async def api_mcp_status():
+                """Frontend-compatible status endpoint (Hallucinate App / SwissKnife).
+
+                Returns combined health + readiness for Electron dashboard.
+                """
+                from ..cid_ucan import get_event_dag
+                dag = get_event_dag()
+                dag_state = dag.to_dict()
+
+                p2p_status = "disabled"
+                try:
+                    from ..p2p_transport import get_p2p_node
+                    node = get_p2p_node()
+                    p2p_status = "active" if getattr(node, '_operational', False) else "degraded"
+                except Exception:
+                    pass
+
+                return {
+                    "status": "ready" if self._started else "starting",
+                    "service": self.config.name,
+                    "version": "0.1.0",
+                    "uptime": time.time() - self._start_time if hasattr(self, '_start_time') else 0,
+                    "dag_events": dag_state.get("total_events", 0),
+                    "p2p": p2p_status,
+                    "tools": len(self.mcp.tools) if hasattr(self.mcp, 'tools') else 0,
+                }
+
+            @app.get("/tools/list")
+            async def tools_list():
+                """List all registered tools (frontend-compatible endpoint).
+
+                Returns tool names with descriptions for UI rendering.
+                """
+                tools = []
+                if hasattr(self.mcp, 'tools'):
+                    for name, tool in self.mcp.tools.items():
+                        tool_info = {"name": name}
+                        if hasattr(tool, 'description'):
+                            tool_info["description"] = tool.description
+                        if hasattr(tool, 'inputSchema'):
+                            tool_info["inputSchema"] = tool.inputSchema
+                        elif hasattr(tool, 'input_schema'):
+                            tool_info["inputSchema"] = tool.input_schema
+                        tools.append(tool_info)
+                return {"tools": tools}
+
             @app.get("/metrics")
             async def prometheus_metrics():
                 """Prometheus metrics endpoint."""
