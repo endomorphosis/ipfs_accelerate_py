@@ -155,6 +155,52 @@ class PolicyEvaluator:
     def get(self, policy_cid: str) -> Optional[PolicyObject]:
         return self._policies.get(policy_cid)
 
+    def save_policies(self, path: str) -> int:
+        """Persist all registered policies to disk (atomic write)."""
+        import os
+        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+        data = {"policies": {cid: p.to_dict() for cid, p in self._policies.items()}}
+        tmp_path = path + ".tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+        return len(self._policies)
+
+    def load_policies(self, path: str) -> int:
+        """Load policies from disk. Returns count loaded."""
+        import os
+        if not os.path.isfile(path):
+            return 0
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            for cid, p_dict in data.get("policies", {}).items():
+                clauses = [
+                    PolicyClause(
+                        clause_type=c.get("clause_type", "permission"),
+                        actor=c.get("actor", "*"),
+                        action=c.get("action", "*"),
+                        resource=c.get("resource"),
+                        valid_from=c.get("valid_from"),
+                        valid_until=c.get("valid_until"),
+                        obligation_deadline=c.get("obligation_deadline"),
+                        metadata=c.get("metadata", {}),
+                    )
+                    for c in p_dict.get("clauses", [])
+                ]
+                policy = PolicyObject(
+                    name=p_dict.get("name", ""),
+                    clauses=clauses,
+                    description=p_dict.get("description", ""),
+                )
+                self._policies[policy.cid] = policy
+            return len(data.get("policies", {}))
+        except (json.JSONDecodeError, KeyError, OSError) as e:
+            logger.warning("Failed to load policies from %s: %s", path, e)
+            return 0
+
     def evaluate(self, method: str, actor: str = "*",
                  resource: Optional[str] = None,
                  policy_cid: Optional[str] = None,
@@ -450,4 +496,14 @@ def get_policy_evaluator() -> PolicyEvaluator:
         with _POLICY_LOCK:
             if _EVALUATOR is None:
                 _EVALUATOR = PolicyEvaluator()
+                # Auto-load persisted policies
+                import os
+                policy_path = os.path.join(
+                    os.environ.get("MCPPP_STORAGE_DIR",
+                                   os.path.expanduser("~/.ipfs_accelerate/state")),
+                    "policies.json",
+                )
+                loaded = _EVALUATOR.load_policies(policy_path)
+                if loaded:
+                    logger.info("Loaded %d policies from %s", loaded, policy_path)
     return _EVALUATOR

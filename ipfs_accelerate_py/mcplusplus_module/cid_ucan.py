@@ -272,6 +272,60 @@ class DelegationEvaluator:
         self._revoked.update(cids)
         return len(cids)
 
+    def save_delegations(self, path: str) -> None:
+        """Persist all delegations to disk (atomic write)."""
+        import os
+        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+        data = {
+            "delegations": {
+                cid: {
+                    "issuer": d.issuer,
+                    "audience": d.audience,
+                    "capabilities": [{"resource": c.resource, "ability": c.ability}
+                                     for c in d.capabilities],
+                    "expiry": d.expiry,
+                    "not_before": d.not_before,
+                    "proof_cids": d.proof_cids,
+                    "cid": d.cid,
+                    "signature": d.signature,
+                }
+                for cid, d in self._store.items()
+            }
+        }
+        tmp_path = path + ".tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+
+    def load_delegations(self, path: str) -> int:
+        """Load delegations from disk. Returns count loaded."""
+        import os
+        if not os.path.isfile(path):
+            return 0
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            for cid, d_dict in data.get("delegations", {}).items():
+                caps = [Capability(resource=c["resource"], ability=c["ability"])
+                        for c in d_dict.get("capabilities", [])]
+                d = Delegation(
+                    issuer=d_dict["issuer"],
+                    audience=d_dict["audience"],
+                    capabilities=caps,
+                    expiry=d_dict.get("expiry", 0),
+                    not_before=d_dict.get("not_before", 0),
+                    proof_cids=d_dict.get("proof_cids", []),
+                    cid=d_dict.get("cid", cid),
+                    signature=d_dict.get("signature"),
+                )
+                self._store[cid] = d
+            return len(data.get("delegations", {}))
+        except (json.JSONDecodeError, KeyError, OSError) as e:
+            logger.warning("Failed to load delegations from %s: %s", path, e)
+            return 0
+
     def build_chain(self, leaf_cid: str) -> List[Delegation]:
         """Build the delegation chain from leaf to root.
         
@@ -595,14 +649,17 @@ def get_evaluator() -> DelegationEvaluator:
         with _SINGLETON_LOCK:
             if _EVALUATOR is None:
                 _EVALUATOR = DelegationEvaluator()
+                storage_dir = os.environ.get("MCPPP_STORAGE_DIR", ".mcppp")
                 # Auto-load persisted revocations
-                revocation_path = os.path.join(
-                    os.environ.get("MCPPP_STORAGE_DIR", ".mcppp"),
-                    "revocations.json",
-                )
+                revocation_path = os.path.join(storage_dir, "revocations.json")
                 loaded = _EVALUATOR.load_revocations(revocation_path)
                 if loaded:
                     logger.info("Loaded %d revocations from %s", loaded, revocation_path)
+                # Auto-load persisted delegations
+                delegation_path = os.path.join(storage_dir, "delegations.json")
+                loaded_d = _EVALUATOR.load_delegations(delegation_path)
+                if loaded_d:
+                    logger.info("Loaded %d delegations from %s", loaded_d, delegation_path)
     return _EVALUATOR
 
 
@@ -685,8 +742,15 @@ async def execute_with_envelope(
                 if cancel_scope.cancelled_caught:
                     error = f"Execution timeout after {timeout_ms}ms"
             except (RuntimeError, AttributeError):
-                # Not in a trio context — execute without timeout
-                result = await executor_fn(method, params)
+                # Not in a trio context — use asyncio timeout as fallback
+                try:
+                    import asyncio
+                    result = await asyncio.wait_for(
+                        executor_fn(method, params),
+                        timeout=timeout_ms / 1000.0,
+                    )
+                except asyncio.TimeoutError:
+                    error = f"Execution timeout after {timeout_ms}ms"
         except Exception as e:
             error = f"{type(e).__name__}: {e}"
     elif not authorized:

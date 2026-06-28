@@ -173,6 +173,8 @@ class MCPp2pNode:
         self._tool_handler: Optional[Callable] = None
         self._started = False
         self._operational = False  # True only when libp2p is actually running
+        self._concurrent_streams = 0
+        self._max_concurrent_streams = 50  # Backpressure limit
         self._nursery = None
 
     @property
@@ -295,13 +297,28 @@ class MCPp2pNode:
             logger.debug(f"Failed to connect to bootstrap {peer_addr}: {e}")
 
     async def _handle_stream(self, stream) -> None:
-        """Handle an incoming /mcp+p2p/1.0.0 stream."""
+        """Handle an incoming /mcp+p2p/1.0.0 stream with backpressure."""
+        # Backpressure: reject if too many concurrent handlers
+        if self._concurrent_streams >= self._max_concurrent_streams:
+            try:
+                error_msg = P2PMessage(
+                    msg_type="response", error="Server overloaded (backpressure)",
+                    sender_peer_id=self.peer_id or "",
+                )
+                await stream.write(error_msg.encode())
+                await stream.close()
+            except Exception:
+                pass
+            return
+
+        self._concurrent_streams += 1
         try:
             import trio
 
-            # Read length-prefixed message
-            length_bytes = await stream.read(4)
-            if len(length_bytes) < 4:
+            # Read length-prefixed message with read timeout
+            with trio.move_on_after(10.0) as read_scope:
+                length_bytes = await stream.read(4)
+            if read_scope.cancelled_caught or len(length_bytes) < 4:
                 return
             length = int.from_bytes(length_bytes, "big")
             if length > MAX_P2P_MESSAGE_SIZE:
@@ -316,21 +333,23 @@ class MCPp2pNode:
                 params = dict(msg.params) if msg.params else {}
                 params["_sender_peer_id"] = msg.sender_peer_id
                 try:
-                    result = await self._tool_handler(msg.method, params)
-                    response = P2PMessage(
-                        msg_type="response",
-                        method=msg.method,
-                        msg_id=msg.msg_id,
-                        result=result,
-                        sender_peer_id=self.peer_id,
-                    )
+                    # Tool execution timeout (30s)
+                    with trio.move_on_after(30.0) as exec_scope:
+                        result = await self._tool_handler(msg.method, params)
+                    if exec_scope.cancelled_caught:
+                        response = P2PMessage(
+                            msg_type="response", method=msg.method, msg_id=msg.msg_id,
+                            error="Tool execution timeout (30s)", sender_peer_id=self.peer_id,
+                        )
+                    else:
+                        response = P2PMessage(
+                            msg_type="response", method=msg.method, msg_id=msg.msg_id,
+                            result=result, sender_peer_id=self.peer_id,
+                        )
                 except Exception as e:
                     response = P2PMessage(
-                        msg_type="response",
-                        method=msg.method,
-                        msg_id=msg.msg_id,
-                        error=str(e),
-                        sender_peer_id=self.peer_id,
+                        msg_type="response", method=msg.method, msg_id=msg.msg_id,
+                        error=str(e), sender_peer_id=self.peer_id,
                     )
 
                 await stream.write(response.encode())
@@ -342,6 +361,8 @@ class MCPp2pNode:
                 await stream.close()
             except Exception:
                 pass
+        finally:
+            self._concurrent_streams -= 1
 
     async def call_tool(self, peer_id: str, method: str,
                         params: Dict[str, Any], timeout: float = 30.0,

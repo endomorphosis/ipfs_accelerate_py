@@ -1197,12 +1197,30 @@ class TrioMCPServer:
                 os.makedirs(state_dir, exist_ok=True)
                 evaluator = get_evaluator()
                 evaluator.save_revocations(os.path.join(state_dir, "revocations.json"))
+                evaluator.save_delegations(os.path.join(state_dir, "delegations.json"))
 
             with trio.move_on_after(10):  # 10s timeout for persistence
                 await trio.to_thread.run_sync(_persist_revocations)
-                logger.info("Revocations persisted to disk")
+                logger.info("Revocations and delegations persisted to disk")
         except Exception as e:
-            logger.warning(f"Revocation persistence failed: {e}")
+            logger.warning(f"UCAN state persistence failed: {e}")
+
+        # Persist policies
+        try:
+            from ..temporal_policy import get_policy_evaluator
+            import os
+            state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
+
+            def _persist_policies():
+                os.makedirs(state_dir, exist_ok=True)
+                evaluator = get_policy_evaluator()
+                evaluator.save_policies(os.path.join(state_dir, "policies.json"))
+
+            with trio.move_on_after(10):
+                await trio.to_thread.run_sync(_persist_policies)
+                logger.info("Policies persisted to disk")
+        except Exception as e:
+            logger.warning(f"Policy persistence failed: {e}")
 
         self._started = False
 
@@ -1396,10 +1414,25 @@ class TrioMCPServer:
         await trio.sleep_forever()
 
     async def _handle_jsonrpc(self, request: dict) -> dict:
-        """Handle a single JSON-RPC request with metrics instrumentation."""
-        method = request.get("method", "")
-        params = request.get("params", {})
+        """Handle a single JSON-RPC request with input validation and metrics."""
+        # Validate request structure
+        if not isinstance(request, dict):
+            return {"jsonrpc": "2.0", "id": None,
+                    "error": {"code": -32700, "message": "Parse error: request must be a JSON object"}}
+
+        method = request.get("method")
+        if not method or not isinstance(method, str):
+            return {"jsonrpc": "2.0", "id": request.get("id"),
+                    "error": {"code": -32600, "message": "Invalid Request: missing or non-string 'method'"}}
+
         req_id = request.get("id", 1)
+        if req_id is not None and not isinstance(req_id, (str, int, float)):
+            return {"jsonrpc": "2.0", "id": None,
+                    "error": {"code": -32600, "message": "Invalid Request: 'id' must be string, number, or null"}}
+
+        params = request.get("params", {})
+        if not isinstance(params, (dict, list)):
+            params = {}
 
         # Metrics instrumentation
         start_time = time.time()
