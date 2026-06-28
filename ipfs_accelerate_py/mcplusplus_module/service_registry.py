@@ -125,6 +125,8 @@ class ServiceRegistry:
     re-advertises our own service record.
     """
 
+    MAX_REMOTE_RECORDS_PER_SERVICE = 200  # Prevent unbounded memory growth
+
     def __init__(self):
         self._lock = threading.Lock()
         self._local_records: Dict[str, ServiceRecord] = {}  # Our advertised services
@@ -142,7 +144,13 @@ class ServiceRegistry:
         if record.is_expired:
             return
         with self._lock:
-            self._remote_records.setdefault(record.service_name, {})[record.peer_id] = record
+            bucket = self._remote_records.setdefault(record.service_name, {})
+            # Cap per-service entries to prevent memory DoS from malicious peers
+            if record.peer_id not in bucket and len(bucket) >= self.MAX_REMOTE_RECORDS_PER_SERVICE:
+                # Evict oldest entry
+                oldest_pid = min(bucket, key=lambda pid: bucket[pid].timestamp)
+                del bucket[oldest_pid]
+            bucket[record.peer_id] = record
         logger.debug(f"Added remote service: {record.service_name} from {record.peer_id}")
         self._notify_change("add", record)
 
