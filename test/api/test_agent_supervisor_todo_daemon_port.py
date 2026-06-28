@@ -4205,6 +4205,58 @@ def test_implementation_daemon_selects_only_configured_task_shard(tmp_path):
     assert state.ready_count == 3
 
 
+def test_implementation_daemon_borrows_ready_work_when_shard_drained(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-000 Blocked even task
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-001 Cross-shard ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Another blocked even task
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        task_shard_count=2,
+        task_shard_index=0,
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(repo / "state.json")
+
+    assert result["active_task_id"] == "ACCEL-001"
+    assert state.recommended_task_id == "ACCEL-001"
+    assert state.ready_task_ids == ["ACCEL-001"]
+    assert state.selectable_ready_task_ids == ["ACCEL-001"]
+    events = (repo / "events.jsonl").read_text(encoding="utf-8")
+    assert "task_shard_ready_fallback" in events
+
+
 def test_implementation_daemon_filters_repo_wide_task_claims(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

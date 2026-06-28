@@ -1074,6 +1074,24 @@ class PortalImplementationDaemon:
             for task in tasks
             if self._task_belongs_to_shard(task.task_id) and task.task_id not in active_task_claims
         ]
+        if self.task_shard_count > 1 and not any(
+            resolved_statuses.get(task.task_id) == "ready" for task in selectable_tasks
+        ):
+            fallback_tasks = [
+                task
+                for task in tasks
+                if task.task_id not in active_task_claims and resolved_statuses.get(task.task_id) == "ready"
+            ]
+            if fallback_tasks:
+                self._record_event(
+                    "task_shard_ready_fallback",
+                    {
+                        "task_shard_count": self.task_shard_count,
+                        "task_shard_index": self.task_shard_index,
+                        "fallback_task_ids": [task.task_id for task in fallback_tasks[:20]],
+                    },
+                )
+                selectable_tasks = fallback_tasks
         selected = self._select_next_task(
             selectable_tasks,
             resolved_statuses,
