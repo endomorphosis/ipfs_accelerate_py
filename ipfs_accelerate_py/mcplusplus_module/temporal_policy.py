@@ -400,6 +400,8 @@ class ObligationTracker:
     and can report overdue obligations for alerting/enforcement.
     """
 
+    MAX_OBLIGATIONS = 10000  # Prevent unbounded memory growth
+
     def __init__(self):
         self._obligations: Dict[str, TrackedObligation] = {}
         self._lock = threading.Lock()
@@ -416,6 +418,10 @@ class ObligationTracker:
         """
         ids = []
         with self._lock:
+            # Evict stale fulfilled obligations if approaching capacity
+            if len(self._obligations) >= self.MAX_OBLIGATIONS:
+                self._evict_fulfilled()
+
             for ob in obligations:
                 ob_id = compute_cid({
                     "type": "obligation",
@@ -438,6 +444,24 @@ class ObligationTracker:
                     ob_id[:16], tracked.action, tracked.deadline or "none",
                 )
         return ids
+
+    def _evict_fulfilled(self) -> int:
+        """Remove fulfilled obligations older than 1 hour. Must hold self._lock."""
+        now = time.time()
+        to_delete = [
+            ob_id for ob_id, ob in self._obligations.items()
+            if ob.fulfilled and (now - (ob.fulfilled_at or 0) > 3600)
+        ]
+        if not to_delete:
+            # If still at capacity, evict oldest fulfilled regardless of age
+            fulfilled = [(ob_id, ob.fulfilled_at or 0) for ob_id, ob in self._obligations.items() if ob.fulfilled]
+            fulfilled.sort(key=lambda x: x[1])
+            to_delete = [ob_id for ob_id, _ in fulfilled[:len(fulfilled) // 2]]
+        for ob_id in to_delete:
+            del self._obligations[ob_id]
+        if to_delete:
+            _obligation_logger.info("Evicted %d fulfilled obligations (capacity management)", len(to_delete))
+        return len(to_delete)
 
     def fulfill(self, obligation_id: str) -> bool:
         """Mark an obligation as fulfilled.
