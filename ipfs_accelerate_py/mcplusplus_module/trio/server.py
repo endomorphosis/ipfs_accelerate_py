@@ -543,9 +543,11 @@ class TrioMCPServer:
                 }
 
             @app.get("/tools/list")
+            @app.get("/api/mcp/tools")
             async def tools_list():
                 """List all registered tools (frontend-compatible endpoint).
 
+                Aliased at /api/mcp/tools for the SwissKnife MCP++ connector.
                 Returns tool names with descriptions for UI rendering.
                 """
                 tools = []
@@ -1642,6 +1644,48 @@ class TrioMCPServer:
         elif method == "tools/list":
             tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
             return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}}
+        elif method == "mcp++/execute":
+            # Profile B: CID-native envelope execution via JSON-RPC
+            tool_name = params.get("tool") or params.get("name", "")
+            arguments = params.get("arguments", {})
+            if not (hasattr(self.mcp, 'tools') and tool_name in self.mcp.tools):
+                return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Tool not found: {tool_name}"}}
+            try:
+                import inspect
+                from ..cid_ucan import execute_with_envelope
+                tool_fn = self.mcp.tools[tool_name]
+
+                async def _exec(method_name, p):
+                    if inspect.iscoroutinefunction(tool_fn):
+                        return await tool_fn(**p)
+                    return await trio.to_thread.run_sync(lambda: tool_fn(**p), cancellable=True)
+
+                envelope = await execute_with_envelope(
+                    method=tool_name, params=arguments, executor_fn=_exec,
+                )
+                return {"jsonrpc": "2.0", "id": req_id, "result": {
+                    "output": envelope.receipt.result,
+                    "envelope_cid": envelope.cid,
+                    "event_cid": envelope.cid,
+                    "receipt": {
+                        "cid": envelope.receipt.cid,
+                        "result": envelope.receipt.result,
+                        "error": envelope.receipt.error,
+                        "duration_ms": envelope.receipt.duration_ms,
+                        "signature": envelope.receipt.signature,
+                    },
+                }}
+            except Exception as e:
+                return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
+        elif method == "mcp++/ucan/validate":
+            from ..cid_ucan import get_evaluator
+            proof_cid = params.get("proof_cid", "")
+            try:
+                ev = get_evaluator()
+                chain = ev.build_chain(proof_cid) if hasattr(ev, "build_chain") else []
+                return {"jsonrpc": "2.0", "id": req_id, "result": {"valid": bool(chain), "chain": [getattr(d, "cid", str(d)) for d in chain]}}
+            except Exception as e:
+                return {"jsonrpc": "2.0", "id": req_id, "result": {"valid": False, "chain": [], "reason": str(e)}}
         elif method == "mcp++/p2p/peers":
             return {"jsonrpc": "2.0", "id": req_id, "result": {"peers": [], "protocol": "/mcp+p2p/1.0.0"}}
         elif method == "shutdown":
