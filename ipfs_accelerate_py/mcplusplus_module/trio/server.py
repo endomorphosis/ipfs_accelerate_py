@@ -435,6 +435,21 @@ class TrioMCPServer:
             from starlette.middleware.base import BaseHTTPMiddleware
             from starlette.responses import JSONResponse as StarletteJSONResponse
 
+            # Max request body size (10MB default, configurable)
+            MAX_BODY_BYTES = int(os.environ.get("MCPPP_MAX_BODY_BYTES", str(10 * 1024 * 1024)))
+
+            class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+                async def dispatch(self, request, call_next):
+                    content_length = request.headers.get("content-length")
+                    if content_length and int(content_length) > MAX_BODY_BYTES:
+                        return StarletteJSONResponse(
+                            status_code=413,
+                            content={"error": "Request body too large", "max_bytes": MAX_BODY_BYTES},
+                        )
+                    return await call_next(request)
+
+            app.add_middleware(BodySizeLimitMiddleware)
+
             class RateLimitMiddleware(BaseHTTPMiddleware):
                 async def dispatch(self, request, call_next):
                     # Skip rate limiting for health endpoints
@@ -996,6 +1011,11 @@ class TrioMCPServer:
                 },
             }
 
+        # SSE connection limiter
+        _sse_connections = 0
+        _sse_lock = __import__("threading").Lock()
+        MAX_SSE_CONNECTIONS = int(os.environ.get("MCPPP_MAX_SSE_CONNECTIONS", "50"))
+
         @app.get("/mcp/events/stream")
         async def event_stream(request: Request):
             """SSE endpoint: streams EventDAG changes and server events in real-time.
@@ -1003,19 +1023,30 @@ class TrioMCPServer:
             Frontend connects here for live updates (tool executions, peer events, etc).
             Uses Server-Sent Events (SSE) for broad compatibility with Electron/browsers.
             """
+            nonlocal _sse_connections
             from starlette.responses import StreamingResponse
             from ..cid_ucan import get_event_dag
 
+            # Enforce connection limit
+            with _sse_lock:
+                if _sse_connections >= MAX_SSE_CONNECTIONS:
+                    return JSONResponse(
+                        status_code=503,
+                        content={"error": "Too many SSE connections", "max": MAX_SSE_CONNECTIONS},
+                    )
+                _sse_connections += 1
+
             async def _generate_events():
                 """Async generator yielding SSE events with disconnect detection."""
-                dag = get_event_dag()
-                last_count = len(dag._events)
-
-                # Send initial connection event
-                yield f"event: connected\ndata: {{\"server\": \"{self.config.name}\", \"events\": {last_count}}}\n\n"
-
-                # Poll for new events (every 1s) — SSE keepalive
+                nonlocal _sse_connections
                 try:
+                    dag = get_event_dag()
+                    last_count = len(dag._events)
+
+                    # Send initial connection event
+                    yield f"event: connected\ndata: {{\"server\": \"{self.config.name}\", \"events\": {last_count}}}\n\n"
+
+                    # Poll for new events (every 1s) — SSE keepalive
                     while True:
                         await trio.sleep(1.0)
                         # Check if client disconnected
@@ -1039,6 +1070,9 @@ class TrioMCPServer:
                             yield f": keepalive\n\n"
                 except (trio.Cancelled, GeneratorExit):
                     pass
+                finally:
+                    with _sse_lock:
+                        _sse_connections -= 1
 
             return StreamingResponse(
                 _generate_events(),
