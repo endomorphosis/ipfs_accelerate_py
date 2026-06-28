@@ -29,6 +29,8 @@ from ..merge_conflict_repair import (
     resolve_reconciliation_guardrail_todo_conflicts,
 )
 from ..submodule_degradation import DegradationState
+from ..persistent_task_queue import PersistentTaskQueue
+from ..git_gc import GitGarbageCollector
 from ..validation_commands import split_validation_commands
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
@@ -795,6 +797,14 @@ class PortalImplementationDaemon:
         self.worktree_submodule_paths = configured_submodules
         self.degradation_state = DegradationState.load(
             self.state_path.parent / "submodule_degradation.json"
+        )
+        self.task_queue = PersistentTaskQueue.load(
+            self.state_path.parent / "task_queue.json"
+        )
+        self.git_gc = GitGarbageCollector(
+            repo_root=self.repo_root,
+            state_path=self.state_path.parent / "gc_state.json",
+            worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
         )
 
     def _task_belongs_to_shard(self, task_id: str) -> bool:
@@ -4753,6 +4763,8 @@ class PortalImplementationDaemon:
         - Cleaning up stale worktrees (abandoned after failures)
         - Removing stale lock files (orphaned after crashes)
         - Resetting dirty submodule state that blocks merges
+        - Git garbage collection (loose objects, reflogs, repacking)
+        - Task queue compaction (removing stale entries)
         """
         results: dict[str, Any] = {}
         try:
@@ -4767,6 +4779,17 @@ class PortalImplementationDaemon:
             results["dirty_submodule_reset"] = self._reset_persistently_dirty_submodules()
         except Exception as exc:
             results["dirty_submodule_reset"] = {"error": str(exc)}
+        try:
+            results["git_gc"] = self.git_gc.run_if_needed()
+        except Exception as exc:
+            results["git_gc"] = {"error": str(exc)}
+        try:
+            # Compact queue: remove entries for tasks no longer in the backlog
+            active_ids = {entry.task_id for entry in self.task_queue.entries.values()}
+            removed = self.task_queue.compact(active_ids)
+            results["queue_compact"] = {"removed": removed}
+        except Exception as exc:
+            results["queue_compact"] = {"error": str(exc)}
         return results
 
     def _reset_persistently_dirty_submodules(self) -> dict[str, Any]:
@@ -7053,6 +7076,12 @@ Rules:
             ready = filtered_ready
         if not ready:
             return None
+        # Filter out tasks in cooldown from persistent queue
+        cooled_ready = [t for t in ready if not self.task_queue.is_cooled_down(t.task_id)]
+        if not cooled_ready:
+            # All ready tasks are in cooldown - use the one with shortest remaining cooldown
+            cooled_ready = ready
+        ready = cooled_ready
         ready_task_ids = {task.task_id for task in ready}
         vector_context = self._todo_vector_selection_context(tasks, ready_task_ids)
         focus_order = {
@@ -7063,7 +7092,7 @@ Rules:
         blocked_strategy_task_ids = {str(item) for item in strategy.get("blocked_tasks", [])}
 
         def sort_key(task: PortalTask) -> tuple[Any, ...]:
-            selection_penalty = 0
+            selection_penalty = self.task_queue.get_penalty(task.task_id)
             if task.task_id in unresolved_merge_failures:
                 selection_penalty += UNRESOLVED_MERGE_SELECTION_PENALTY
             if self._task_has_recent_no_change_outcome(task.task_id, recent_outcomes):
@@ -7083,7 +7112,10 @@ Rules:
                 task.task_id,
             )
 
-        return sorted(ready, key=sort_key)[0]
+        selected = sorted(ready, key=sort_key)[0]
+        # Record selection in persistent queue
+        self.task_queue.record_selection(selected.task_id)
+        return selected
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
         append_jsonl_event(self.events_path, event_type, payload)
