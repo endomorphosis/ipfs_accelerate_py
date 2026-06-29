@@ -92,7 +92,7 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                     ],
                     "errors": [{"name": "ValidationError"}],
                     "requires": ["mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"],
-                    "compatibility": {"compatible_with": ["bafkreidemo"], "supersedes": []},
+                    "compatibility": {"compatible_with": ["cidv1-sha256-demo"], "supersedes": []},
                 },
                 {
                     "requires": ["mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"],
@@ -104,7 +104,7 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                     ],
                     "version": "2.1.0",
                     "errors": [{"name": "ValidationError"}],
-                    "compatibility": {"supersedes": [], "compatible_with": ["bafkreidemo"]},
+                    "compatibility": {"supersedes": [], "compatible_with": ["cidv1-sha256-demo"]},
                 },
             ),
             (
@@ -115,14 +115,14 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                     "methods": [{"name": "gamma/exec", "input_schema": {"type": "object", "properties": {}, "required": []}, "output_schema": {"type": "object"}}],
                     "errors": [],
                     "requires": [],
-                    "compatibility": {"compatible_with": [], "supersedes": ["bafkreiprev"]},
+                    "compatibility": {"compatible_with": [], "supersedes": ["cidv1-sha256-prev"]},
                 },
                 {
                     "methods": [{"name": "gamma/exec", "output_schema": {"type": "object"}, "input_schema": {"required": [], "properties": {}, "type": "object"}}],
                     "namespace": "test.other",
                     "version": "0.9.3",
                     "name": "gamma",
-                    "compatibility": {"supersedes": ["bafkreiprev"], "compatible_with": []},
+                    "compatibility": {"supersedes": ["cidv1-sha256-prev"], "compatible_with": []},
                     "errors": [],
                     "requires": [],
                 },
@@ -160,7 +160,7 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
             ],
             "errors": [{"name": "ValidationError"}],
             "requires": ["mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"],
-            "compatibility": {"compatible_with": ["bafkreiprev"], "supersedes": []},
+            "compatibility": {"compatible_with": ["cidv1-sha256-prev"], "supersedes": []},
         }
 
         expected = {
@@ -258,7 +258,7 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
     def test_registry_compatibility_returns_not_found_for_unknown_interface(self) -> None:
         registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl"])
 
-        verdict = registry.compat("bafkreidoes-not-exist")
+        verdict = registry.compat("cidv1-sha256-does-not-exist")
 
         self.assertFalse(verdict.compatible)
         self.assertEqual(verdict.reasons, ["interface_not_found"])

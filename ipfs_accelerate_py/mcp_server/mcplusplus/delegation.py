@@ -177,8 +177,8 @@ def _canonical_delegation_payload(delegation: UcanDelegation) -> bytes:
 
 def compute_delegation_proof_cid(delegation: UcanDelegation) -> str:
     """Compute deterministic proof CID for a delegation payload."""
-    from .kubo_cid import cid_for_bytes
-    return cid_for_bytes(_canonical_delegation_payload(delegation))
+    digest = hashlib.sha256(_canonical_delegation_payload(delegation)).hexdigest()
+    return f"cidv1-sha256-{digest}"
 
 
 def compute_delegation_signature(
