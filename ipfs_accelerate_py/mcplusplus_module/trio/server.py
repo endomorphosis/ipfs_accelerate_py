@@ -709,7 +709,7 @@ class TrioMCPServer:
             from ..cid_ucan import get_event_dag
             dag = get_event_dag()
             events = dag.history(limit=limit)
-            return {"events": [{"cid": e.cid, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp} for e in events]}
+            return {"events": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp, "payload": getattr(e, "payload", {})} for e in events]}
 
         @app.get("/mcp/dag/provenance/{cid}")
         async def dag_provenance(cid: str):
@@ -717,7 +717,7 @@ class TrioMCPServer:
             from ..cid_ucan import get_event_dag
             dag = get_event_dag()
             chain = dag.provenance(cid)
-            return {"provenance": [{"cid": e.cid, "type": e.event_type, "parents": e.parent_cids} for e in chain]}
+            return {"provenance": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "payload": getattr(e, "payload", {})} for e in chain]}
 
         @app.post("/mcp/ucan/delegate")
         async def ucan_delegate(request: Request):
@@ -1488,12 +1488,12 @@ class TrioMCPServer:
                     from ..cid_ucan import get_event_dag
                     dag = get_event_dag()
                     frontier = dag.frontier()
-                    response_body = _json.dumps({"frontier": [{"cid": e.cid, "type": e.event_type, "timestamp": e.timestamp} for e in frontier]})
+                    response_body = _json.dumps({"frontier": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "timestamp": e.timestamp} for e in frontier]})
                 elif method == "GET" and path == "/mcp/dag/history":
                     from ..cid_ucan import get_event_dag
                     dag = get_event_dag()
                     events = dag.history(limit=50)
-                    response_body = _json.dumps({"events": [{"cid": e.cid, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp} for e in events]})
+                    response_body = _json.dumps({"events": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp, "payload": getattr(e, "payload", {})} for e in events]})
                 elif method == "GET" and path.startswith("/mcp/dag/provenance/"):
                     from ..cid_ucan import get_event_dag
                     target_cid = path.split("/mcp/dag/provenance/")[1]
