@@ -164,6 +164,11 @@ class ReceiptObject:
     def success(self) -> bool:
         return self.error is None
 
+    @property
+    def output_cid(self) -> str:
+        """CID of the output payload (Profile B: CID-native receipts)."""
+        return compute_cid({"type": "output", "result": self.result})
+
     def sign(self, signing_key=None) -> None:
         """Sign this receipt with the executor's key for non-repudiation.
 
@@ -216,7 +221,7 @@ class ExecutionEnvelope:
             "cid": self.cid,
             "intent": {"cid": self.intent.cid, "method": self.intent.method, "params": self.intent.params},
             "decision": {"cid": self.decision.cid, "authorized": self.decision.authorized, "reason": self.decision.reason},
-            "receipt": {"cid": self.receipt.cid, "result": self.receipt.result, "error": self.receipt.error, "duration_ms": self.receipt.duration_ms},
+            "receipt": {"cid": self.receipt.cid, "receipt_cid": self.receipt.cid, "output_cid": self.receipt.output_cid, "result": self.receipt.result, "error": self.receipt.error, "duration_ms": self.receipt.duration_ms},
         }
 
 

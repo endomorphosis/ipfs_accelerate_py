@@ -1670,6 +1670,7 @@ class TrioMCPServer:
                     "receipt": {
                         "cid": envelope.receipt.cid,
                         "receipt_cid": envelope.receipt.cid,
+                        "output_cid": envelope.receipt.output_cid,
                         "result": envelope.receipt.result,
                         "success": envelope.receipt.success,
                         "error": envelope.receipt.error,
