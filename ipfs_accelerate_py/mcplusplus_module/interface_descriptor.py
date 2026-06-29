@@ -51,15 +51,23 @@ class InterfaceDescriptor:
     """
     name: str
     version: str = "1.0.0"
+    namespace: str = "default"
     description: str = ""
     methods: List[MethodDescriptor] = field(default_factory=list)
     author: str = ""
     license: str = "MIT"
     tags: List[str] = field(default_factory=list)
+    semantic_tags: List[str] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    requires: List[str] = field(default_factory=list)
+    compatibility: Dict[str, Any] = field(default_factory=lambda: {"compatible_with": [], "supersedes": []})
     created_at: float = field(default_factory=time.time)
     cid: str = ""
 
     def __post_init__(self):
+        # semantic_tags is the spec field; fall back to legacy `tags`.
+        if not self.semantic_tags and self.tags:
+            self.semantic_tags = list(self.tags)
         if not self.cid:
             # Include full method schemas to avoid CID collisions between
             # interfaces with same method names but different signatures
@@ -77,9 +85,14 @@ class InterfaceDescriptor:
         return {
             "cid": self.cid,
             "name": self.name,
+            "namespace": self.namespace,
             "version": self.version,
             "description": self.description,
             "methods": [m.to_dict() for m in self.methods],
+            "errors": self.errors,
+            "requires": self.requires,
+            "compatibility": self.compatibility,
+            "semantic_tags": self.semantic_tags,
             "author": self.author,
             "license": self.license,
             "tags": self.tags,
