@@ -103,7 +103,7 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
         self.assertEqual(result.chain_length, 2)
         self.assertEqual(result.failure_hop, None)
         self.assertEqual(len(result.proof_lineage), 2)
-        self.assertTrue(all(str(x).startswith("cidv1-sha256-") for x in result.proof_lineage))
+        self.assertTrue(all(str(x).startswith("bafkrei") for x in result.proof_lineage))
 
     def test_allows_compact_token_envelope_with_att_claim(self) -> None:
         payload = {
@@ -325,7 +325,7 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             self.assertEqual(authorization.get("reason"), "allowed")
             self.assertEqual(authorization.get("failure_hop"), None)
             self.assertEqual(len(authorization.get("proof_lineage") or []), 2)
-            self.assertTrue(all(str(x).startswith("cidv1-sha256-") for x in (authorization.get("proof_lineage") or [])))
+            self.assertTrue(all(str(x).startswith("bafkrei") for x in (authorization.get("proof_lineage") or [])))
 
         anyio.run(_run_flow)
 
@@ -921,7 +921,7 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             self.assertNotIn("authorization", response)
 
             decision_cid = str(((response.get("policy_decision") or {}).get("decision_cid")) or "")
-            self.assertTrue(decision_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(decision_cid.startswith("bafkrei"))
             stored = server._unified_artifact_store.get(decision_cid) or {}
             self.assertEqual(stored.get("decision"), "deny")
 

@@ -267,7 +267,7 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
 
             artifacts = response.get("artifacts") or {}
             for key in ["input_cid", "intent_cid", "decision_cid", "output_cid", "receipt_cid", "event_cid"]:
-                self.assertTrue(str(artifacts.get(key) or "").startswith("cidv1-sha256-"))
+                self.assertTrue(str(artifacts.get(key) or "").startswith("bafkrei"))
 
             payloads = response.get("artifact_payloads") or {}
             self.assertEqual(((payloads.get("intent") or {}).get("correlation_id")), "corr-203")
@@ -319,7 +319,7 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
 
             cid_no_emit = str((response_no_emit.get("policy_decision") or {}).get("decision_cid") or "")
             cid_emit = str((response_emit.get("policy_decision") or {}).get("decision_cid") or "")
-            self.assertTrue(cid_no_emit.startswith("cidv1-sha256-"))
+            self.assertTrue(cid_no_emit.startswith("bafkrei"))
             self.assertEqual(cid_no_emit, cid_emit)
 
             stored_v1 = server._unified_artifact_store.get(cid_no_emit) or {}
@@ -332,7 +332,7 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
                 dict(base_payload, **{"__policy_version": "v2", "__emit_artifacts": False}),
             )
             cid_v2 = str((response_v2.get("policy_decision") or {}).get("decision_cid") or "")
-            self.assertTrue(cid_v2.startswith("cidv1-sha256-"))
+            self.assertTrue(cid_v2.startswith("bafkrei"))
             self.assertNotEqual(cid_no_emit, cid_v2)
 
             stored_v2 = server._unified_artifact_store.get(cid_v2) or {}
@@ -393,7 +393,7 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
             self.assertNotIn("frontier", response)
 
             decision_cid = str(((response.get("policy_decision") or {}).get("decision_cid")) or "")
-            self.assertTrue(decision_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(decision_cid.startswith("bafkrei"))
             self.assertIsNotNone(server._unified_artifact_store.get(decision_cid))
 
         anyio.run(_run_flow)
@@ -488,7 +488,7 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
                 self.assertGreaterEqual(int(artifact_store.get("saved") or 0), 6)
 
                 event_cid = str(((response.get("artifacts") or {}).get("event_cid")) or "")
-                self.assertTrue(event_cid.startswith("cidv1-sha256-"))
+                self.assertTrue(event_cid.startswith("bafkrei"))
 
                 reloaded = ArtifactStore.load_json(artifact_path)
                 stored_event = reloaded.get(event_cid) or {}

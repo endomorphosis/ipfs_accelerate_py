@@ -21,8 +21,8 @@ def canonicalize_artifact(payload: Dict[str, Any]) -> bytes:
 
 def compute_artifact_cid(payload: Dict[str, Any]) -> str:
     """Compute deterministic SHA-256 content address for an artifact."""
-    digest = hashlib.sha256(canonicalize_artifact(payload)).hexdigest()
-    return f"cidv1-sha256-{digest}"
+    from .kubo_cid import cid_for_bytes
+    return cid_for_bytes(canonicalize_artifact(payload))
 
 
 def build_intent(

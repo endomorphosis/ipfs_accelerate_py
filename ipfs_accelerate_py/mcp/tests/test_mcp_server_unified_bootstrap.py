@@ -4053,7 +4053,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             artifacts = response["artifacts"]
             for key in ["input_cid", "intent_cid", "decision_cid", "output_cid", "receipt_cid", "event_cid"]:
-                self.assertTrue(artifacts[key].startswith("cidv1-sha256-"))
+                self.assertTrue(artifacts[key].startswith("bafkrei"))
 
             payloads = response["artifact_payloads"]
             self.assertEqual(payloads["intent"]["correlation_id"], "corr-123")
@@ -4800,7 +4800,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(response["error"], "policy_denied")
             self.assertEqual(response["policy"]["decision"], "deny")
             policy_decision = response.get("policy_decision") or {}
-            self.assertTrue(str(policy_decision.get("decision_cid") or "").startswith("cidv1-sha256-"))
+            self.assertTrue(str(policy_decision.get("decision_cid") or "").startswith("bafkrei"))
             self.assertTrue(policy_decision.get("persisted"))
 
             stored = server._unified_artifact_store.get(policy_decision.get("decision_cid"))
@@ -4987,14 +4987,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             policy_decision = response.get("policy_decision") or {}
             decision_cid = str(policy_decision.get("decision_cid") or "")
-            self.assertTrue(decision_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(decision_cid.startswith("bafkrei"))
             self.assertTrue(policy_decision.get("persisted"))
 
             artifacts = response.get("artifacts") or {}
             event_cid = str(artifacts.get("event_cid") or "")
-            self.assertTrue(event_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(event_cid.startswith("bafkrei"))
             artifact_decision_cid = str(artifacts.get("decision_cid") or "")
-            self.assertTrue(artifact_decision_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(artifact_decision_cid.startswith("bafkrei"))
             self.assertNotEqual(artifact_decision_cid, decision_cid)
 
             assessment = response.get("risk_assessment") or {}
@@ -5092,7 +5092,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(response["policy"]["decision"], "allow_with_obligations")
             self.assertEqual(len(response["policy"]["obligations"]), 1)
             policy_decision = response.get("policy_decision") or {}
-            self.assertTrue(str(policy_decision.get("decision_cid") or "").startswith("cidv1-sha256-"))
+            self.assertTrue(str(policy_decision.get("decision_cid") or "").startswith("bafkrei"))
             self.assertTrue(policy_decision.get("persisted"))
 
             stored = server._unified_artifact_store.get(policy_decision.get("decision_cid"))
@@ -5207,8 +5207,8 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             outstanding_cid = str((outstanding.get("policy_decision") or {}).get("decision_cid") or "")
             fulfilled_cid = str((fulfilled.get("policy_decision") or {}).get("decision_cid") or "")
-            self.assertTrue(outstanding_cid.startswith("cidv1-sha256-"))
-            self.assertTrue(fulfilled_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(outstanding_cid.startswith("bafkrei"))
+            self.assertTrue(fulfilled_cid.startswith("bafkrei"))
             self.assertNotEqual(outstanding_cid, fulfilled_cid)
 
             stored_fulfilled = server._unified_artifact_store.get(fulfilled_cid) or {}
@@ -5280,7 +5280,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             cid_no_emit = str((response_no_emit.get("policy_decision") or {}).get("decision_cid") or "")
             cid_emit = str((response_emit.get("policy_decision") or {}).get("decision_cid") or "")
-            self.assertTrue(cid_no_emit.startswith("cidv1-sha256-"))
+            self.assertTrue(cid_no_emit.startswith("bafkrei"))
             self.assertEqual(cid_no_emit, cid_emit)
 
             stored_v1 = server._unified_artifact_store.get(cid_no_emit) or {}
@@ -5294,7 +5294,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 dict(base_payload, **{"__policy_version": "v2", "__emit_artifacts": False}),
             )
             cid_v2 = str((response_v2.get("policy_decision") or {}).get("decision_cid") or "")
-            self.assertTrue(cid_v2.startswith("cidv1-sha256-"))
+            self.assertTrue(cid_v2.startswith("bafkrei"))
             self.assertNotEqual(cid_no_emit, cid_v2)
 
             stored_v2 = server._unified_artifact_store.get(cid_v2) or {}
@@ -5306,7 +5306,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 dict(base_payload, **{"__policy_cid": "cid-policy-v3", "__emit_artifacts": False}),
             )
             cid_policy_cid = str((response_policy_cid.get("policy_decision") or {}).get("decision_cid") or "")
-            self.assertTrue(cid_policy_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(cid_policy_cid.startswith("bafkrei"))
             self.assertNotEqual(cid_no_emit, cid_policy_cid)
 
             stored_policy_cid = server._unified_artifact_store.get(cid_policy_cid) or {}
@@ -5384,7 +5384,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("policy_decision", response)
 
             decision_cid = str((response.get("policy_decision") or {}).get("decision_cid") or "")
-            self.assertTrue(decision_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(decision_cid.startswith("bafkrei"))
             self.assertEqual(decision_cid, (response.get("artifacts") or {}).get("decision_cid"))
             self.assertTrue((response.get("policy_decision") or {}).get("persisted"))
 

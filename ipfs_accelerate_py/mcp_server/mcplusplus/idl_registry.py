@@ -54,8 +54,8 @@ def compute_interface_cid(descriptor: Dict[str, Any]) -> str:
     The implementation uses a deterministic SHA-256 digest representation as a
     lightweight CID placeholder for current migration phases.
     """
-    digest = hashlib.sha256(canonicalize_descriptor(descriptor)).hexdigest()
-    return f"cidv1-sha256-{digest}"
+    from .kubo_cid import cid_for_bytes
+    return cid_for_bytes(canonicalize_descriptor(descriptor))
 
 
 def build_descriptor(

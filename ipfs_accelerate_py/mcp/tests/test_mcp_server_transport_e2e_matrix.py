@@ -310,7 +310,7 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
             http_cid = str(http_policy_decision.get("decision_cid") or "")
             p2p_cid = str(p2p_policy_decision.get("decision_cid") or "")
 
-            self.assertTrue(http_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(http_cid.startswith("bafkrei"))
             self.assertEqual(http_cid, p2p_cid)
             self.assertEqual((http_result.get("policy") or {}).get("obligations"), (p2p_content.get("policy") or {}).get("obligations"))
 

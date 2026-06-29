@@ -19,7 +19,7 @@ class TestMCPServerUNI012LegacyAdapters(unittest.TestCase):
         cid1 = artifact_cid(payload)
         cid2 = artifact_cid({"a": 1, "b": 2})
         self.assertEqual(cid1, cid2)
-        self.assertTrue(cid1.startswith("cidv1-sha256-"))
+        self.assertTrue(cid1.startswith("bafkrei"))
 
     def test_interface_repository_register_and_compat(self) -> None:
         repo = InterfaceRepository(supported_capabilities={"cap.read"})
