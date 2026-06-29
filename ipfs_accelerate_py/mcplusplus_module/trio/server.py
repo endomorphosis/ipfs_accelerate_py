@@ -1669,7 +1669,9 @@ class TrioMCPServer:
                     "event_cid": envelope.cid,
                     "receipt": {
                         "cid": envelope.receipt.cid,
+                        "receipt_cid": envelope.receipt.cid,
                         "result": envelope.receipt.result,
+                        "success": envelope.receipt.success,
                         "error": envelope.receipt.error,
                         "duration_ms": envelope.receipt.duration_ms,
                         "signature": envelope.receipt.signature,
@@ -1686,6 +1688,27 @@ class TrioMCPServer:
                 return {"jsonrpc": "2.0", "id": req_id, "result": {"valid": bool(chain), "chain": [getattr(d, "cid", str(d)) for d in chain]}}
             except Exception as e:
                 return {"jsonrpc": "2.0", "id": req_id, "result": {"valid": False, "chain": [], "reason": str(e)}}
+        elif method == "mcp++/policy/evaluate":
+            # Profile D: temporal deontic policy evaluation via JSON-RPC.
+            # Mirrors the REST /mcp/policy/evaluate handler; maps the internal
+            # `verdict` to the `decision` field the SwissKnife connector expects.
+            try:
+                from ..temporal_policy import get_policy_evaluator
+                evaluator = get_policy_evaluator()
+                decision = evaluator.evaluate(
+                    method=params.get("method", ""),
+                    actor=params.get("actor", "*"),
+                    resource=params.get("resource"),
+                    policy_cid=params.get("policy_cid"),
+                )
+                d = decision.to_dict()
+                return {"jsonrpc": "2.0", "id": req_id, "result": {
+                    "decision": d.get("verdict", "allow"),
+                    "obligations": d.get("obligations", []),
+                    "allowed": d.get("allowed", True),
+                }}
+            except Exception as e:
+                return {"jsonrpc": "2.0", "id": req_id, "result": {"decision": "allow", "obligations": [], "reason": str(e)}}
         elif method == "mcp++/p2p/peers":
             return {"jsonrpc": "2.0", "id": req_id, "result": {"peers": [], "protocol": "/mcp+p2p/1.0.0"}}
         elif method == "shutdown":
