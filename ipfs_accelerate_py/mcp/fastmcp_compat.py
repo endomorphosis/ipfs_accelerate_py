@@ -37,28 +37,50 @@ def ensure_register_tool_compat(mcp: Any) -> Any:
     if not hasattr(mcp, "tool"):
         return mcp
 
+    if not hasattr(mcp, "tools"):
+        try:
+            setattr(mcp, "tools", {})
+        except Exception:
+            pass
+
     def _register_tool(
         *,
         name: str,
-        function: Callable[..., Any],
+        function: Optional[Callable[..., Any]] = None,
+        func: Optional[Callable[..., Any]] = None,
         description: Optional[str] = None,
         input_schema: Optional[dict[str, Any]] = None,
+        category: Optional[str] = None,
         **_: Any,
     ) -> Any:
+        function = function or func
+        if function is None:
+            raise TypeError("register_tool requires 'function' (or 'func')")
         if input_schema is not None:
             logger.debug("Ignoring input_schema for FastMCP tool '%s'", name)
+
+        # Maintain a name->callable dict view so dict-based dispatch paths
+        # (tools/list, mcp++/execute) work uniformly across FastMCP/Standalone.
+        try:
+            if isinstance(getattr(mcp, "tools", None), dict):
+                mcp.tools[name] = function
+        except Exception:
+            pass
 
         try:
             decorator = mcp.tool(name=name, description=description)
             return decorator(function)
         except Exception as e:
             # Multiple registries may attempt to register overlapping tool names.
-            # Prefer to be resilient here; re-raise unknown failures.
+            # Prefer to be resilient here. The dict view above already records
+            # the tool, so MCP++ dispatch works even when FastMCP rejects the
+            # signature (e.g. **kwargs tools) or the name is a duplicate.
             message = str(e).lower()
             if "already" in message or "duplicate" in message or "exists" in message:
                 logger.debug("Tool registration skipped for '%s': %s", name, e)
                 return None
-            raise
+            logger.debug("FastMCP rejected tool '%s' (kept dict view): %s", name, e)
+            return None
 
     try:
         setattr(mcp, "register_tool", _register_tool)

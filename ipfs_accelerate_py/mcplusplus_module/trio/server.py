@@ -45,6 +45,18 @@ from ..cid_ucan import compute_cid
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.trio.server")
 
 
+async def _to_thread(fn):
+    """Run a sync callable in a worker thread, abandoning on cancel.
+
+    trio >=0.25 renamed ``cancellable`` to ``abandon_on_cancel``; support both
+    so tool execution works across trio versions.
+    """
+    try:
+        return await trio.to_thread.run_sync(fn, abandon_on_cancel=True)
+    except TypeError:
+        return await trio.to_thread.run_sync(fn, cancellable=True)
+
+
 # ---------------------------------------------------------------------------
 # Rate Limiter (Token Bucket)
 # ---------------------------------------------------------------------------
@@ -256,6 +268,18 @@ class TrioMCPServer:
 
                 self.mcp = FastMCP(name=self.config.name)
                 logger.info("Using FastMCP for Trio server")
+                # FastMCP lacks register_tool/.tools; attach compat shims so the
+                # dict-based MCP++ dispatch paths work uniformly.
+                try:
+                    from ipfs_accelerate_py.mcp.fastmcp_compat import (
+                        ensure_register_tool_compat,
+                        ensure_register_resource_compat,
+                    )
+
+                    ensure_register_tool_compat(self.mcp)
+                    ensure_register_resource_compat(self.mcp)
+                except Exception as e:
+                    logger.debug(f"FastMCP compat shims not applied: {e}")
             except ImportError:
                 # Fallback to standalone implementation from the main mcp module
                 logger.warning("FastMCP not available, using standalone implementation")
@@ -1632,9 +1656,7 @@ class TrioMCPServer:
                         if inspect.iscoroutinefunction(tool_fn):
                             result = await tool_fn(**arguments)
                         else:
-                            result = await trio.to_thread.run_sync(
-                                lambda: tool_fn(**arguments), cancellable=True
-                            )
+                            result = await _to_thread(lambda: tool_fn(**arguments))
                     if cancel_scope.cancelled_caught:
                         return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": f"Execution timeout after {exec_timeout}s"}}
                     return {"jsonrpc": "2.0", "id": req_id, "result": result}
@@ -1658,7 +1680,7 @@ class TrioMCPServer:
                 async def _exec(method_name, p):
                     if inspect.iscoroutinefunction(tool_fn):
                         return await tool_fn(**p)
-                    return await trio.to_thread.run_sync(lambda: tool_fn(**p), cancellable=True)
+                    return await _to_thread(lambda: tool_fn(**p))
 
                 envelope = await execute_with_envelope(
                     method=tool_name, params=arguments, executor_fn=_exec,
