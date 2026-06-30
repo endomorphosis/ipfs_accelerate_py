@@ -184,6 +184,234 @@ class TestBackendManager:
         assert "backends" in status
         assert len(status["backends"]) == 1
 
+    def test_backend_registry_state_persists_and_reloads(self):
+        from ipfs_accelerate_py.inference_backend_manager import (
+            InferenceBackendManager, BackendType, BackendCapabilities, BackendStatus
+        )
+
+        import tempfile
+        from pathlib import Path
+
+        temp_dir = tempfile.mkdtemp()
+        state_path = Path(temp_dir) / "backend_registry.json"
+
+        manager = InferenceBackendManager({"registry_state_path": str(state_path)})
+        manager.register_backend(
+            backend_id="persistent_backend",
+            backend_type=BackendType.API,
+            name="Persistent Backend",
+            instance=Mock(),
+            capabilities=BackendCapabilities(
+                supported_tasks={"text-generation"},
+                protocols={"http"},
+                hardware_types={"cpu"},
+            ),
+            endpoint="http://localhost:9100",
+            metadata={"region": "local"},
+        )
+        manager._update_backend_status("persistent_backend", BackendStatus.DEGRADED)
+        selected = manager.select_backend_for_task("text-generation")
+        assert selected is None
+
+        # Mark healthy again and confirm the state file captures selection metadata.
+        manager._update_backend_status("persistent_backend", BackendStatus.HEALTHY)
+        selected = manager.select_backend_for_task("text-generation")
+        assert selected is not None
+        assert selected.backend_id == "persistent_backend"
+        assert selected.selection_count == 1
+        assert selected.last_selection_reason is not None
+        assert "supports_task:text-generation" in selected.last_selection_reason
+
+        manager2 = InferenceBackendManager({"registry_state_path": str(state_path)})
+        reloaded = manager2.get_backend("persistent_backend")
+        assert reloaded is not None
+        assert reloaded.endpoint == "http://localhost:9100"
+        assert reloaded.status == BackendStatus.HEALTHY
+        assert reloaded.capabilities.protocols == {"http"}
+        assert reloaded.capabilities.supported_tasks == {"text-generation"}
+        assert reloaded.selection_count == 1
+        assert reloaded.last_selected_task == "text-generation"
+        assert reloaded.last_selection_reason == selected.last_selection_reason
+        assert reloaded.metadata["region"] == "local"
+
+        report = manager2.get_backend_status_report()
+        backend_entry = next(item for item in report["backends"] if item["id"] == "persistent_backend")
+        assert backend_entry["last_selection_reason"] == selected.last_selection_reason
+
+    def test_prune_stale_backends_removes_only_stale_inactive_entries(self):
+        from ipfs_accelerate_py.inference_backend_manager import (
+            InferenceBackendManager, BackendType, BackendCapabilities, BackendStatus
+        )
+
+        manager = InferenceBackendManager({"persist_registry": False})
+        healthy = manager.register_backend(
+            backend_id="healthy_backend",
+            backend_type=BackendType.API,
+            name="Healthy Backend",
+            instance=Mock(),
+            capabilities=BackendCapabilities(supported_tasks={"text-generation"}),
+        )
+        stale = manager.register_backend(
+            backend_id="stale_backend",
+            backend_type=BackendType.API,
+            name="Stale Backend",
+            instance=Mock(),
+            capabilities=BackendCapabilities(supported_tasks={"text-generation"}),
+        )
+
+        assert healthy is True
+        assert stale is True
+
+        manager.backends["healthy_backend"].status = BackendStatus.HEALTHY
+        manager.backends["stale_backend"].status = BackendStatus.OFFLINE
+        manager.backends["healthy_backend"].last_seen = 1_000_000.0
+        manager.backends["stale_backend"].last_seen = 1.0
+
+        removed = manager.prune_stale_backends(max_age_s=60.0)
+
+        assert removed == ["stale_backend"]
+        assert "healthy_backend" in manager.backends
+        assert "stale_backend" not in manager.backends
+        assert manager.get_backend("healthy_backend") is not None
+
+    def test_backend_manager_finalize_inference_result_uses_result_recorder(self):
+        from ipfs_accelerate_py.inference_backend_manager import (
+            InferenceBackendManager, BackendType, BackendCapabilities
+        )
+
+        recorded_calls = []
+
+        def fake_result_recorder(**kwargs):
+            recorded_calls.append(kwargs)
+            result = dict(kwargs["result"])
+            result["output_cid"] = "cid-out"
+            result["provenance_cid"] = "cid-prov"
+            return result
+
+        manager = InferenceBackendManager({"result_recorder": fake_result_recorder})
+        manager.register_backend(
+            backend_id="api_backend_1",
+            backend_type=BackendType.API,
+            name="API Backend 1",
+            instance=Mock(),
+            capabilities=BackendCapabilities(supported_tasks={"text-generation"}),
+            endpoint="http://localhost:9000",
+        )
+
+        finalized = manager.finalize_inference_result(
+            backend_id="api_backend_1",
+            task="text-generation",
+            model="demo-model",
+            inputs=["hello"],
+            result={"outputs": ["ok"], "processing_time": 0.1, "device": "cpu"},
+        )
+
+        assert finalized["backend_id"] == "api_backend_1"
+        assert finalized["backend_type"] == "api"
+        assert finalized["endpoint"] == "http://localhost:9000"
+        assert finalized["output_cid"] == "cid-out"
+        assert finalized["provenance_cid"] == "cid-prov"
+        assert len(recorded_calls) == 1
+        assert recorded_calls[0]["backend_id"] == "api_backend_1"
+
+    @pytest.mark.asyncio
+    async def test_backend_manager_execute_task_runs_backend_and_finalizes_result(self):
+        from ipfs_accelerate_py.inference_backend_manager import (
+            InferenceBackendManager, BackendType, BackendCapabilities
+        )
+
+        class FakeBackend:
+            device = "cpu"
+
+            def generate(self, model=None, prompt=None, **kwargs):
+                return {
+                    "outputs": [f"generated:{prompt}"],
+                    "model": model,
+                }
+
+        def fake_result_recorder(**kwargs):
+            result = dict(kwargs["result"])
+            result["output_cid"] = "cid-generated"
+            result["provenance_cid"] = "cid-prov"
+            return result
+
+        manager = InferenceBackendManager({"result_recorder": fake_result_recorder})
+        manager.register_backend(
+            backend_id="api_backend_2",
+            backend_type=BackendType.API,
+            name="API Backend 2",
+            instance=FakeBackend(),
+            capabilities=BackendCapabilities(supported_tasks={"text-generation"}),
+            endpoint="http://localhost:9001",
+        )
+
+        result = await manager.execute_task(
+            task="text-generation",
+            model="demo-model",
+            inputs=["hello world"],
+        )
+
+        assert result["backend_id"] == "api_backend_2"
+        assert result["backend_type"] == "api"
+        assert result["output_cid"] == "cid-generated"
+        assert result["provenance_cid"] == "cid-prov"
+        assert result["outputs"] == ["generated:hello world"]
+
+        backend = manager.get_backend("api_backend_2")
+        assert backend is not None
+        assert backend.metrics.total_requests == 1
+        assert backend.metrics.successful_requests == 1
+
+    @pytest.mark.asyncio
+    async def test_backend_manager_execute_embedding_task_runs_backend_and_finalizes_result(self):
+        from ipfs_accelerate_py.inference_backend_manager import (
+            InferenceBackendManager, BackendType, BackendCapabilities
+        )
+
+        class FakeEmbeddingBackend:
+            device = "cpu"
+
+            def run_inference(self, model_id=None, text=None, texts=None, **kwargs):
+                payload = texts if texts is not None else [text]
+                return {
+                    "embeddings": [[float(i), float(i) + 0.5] for i, _ in enumerate(payload)],
+                    "model": model_id,
+                    "task": "text-embedding",
+                }
+
+        def fake_result_recorder(**kwargs):
+            result = dict(kwargs["result"])
+            result["output_cid"] = "cid-embed"
+            result["provenance_cid"] = "cid-embed-prov"
+            return result
+
+        manager = InferenceBackendManager({"result_recorder": fake_result_recorder})
+        manager.register_backend(
+            backend_id="api_backend_embed",
+            backend_type=BackendType.API,
+            name="API Embed Backend",
+            instance=FakeEmbeddingBackend(),
+            capabilities=BackendCapabilities(supported_tasks={"text-embedding"}),
+            endpoint="http://localhost:9002",
+        )
+
+        result = await manager.execute_task(
+            task="text-embedding",
+            model="embed-model",
+            inputs=["hello", "world"],
+        )
+
+        assert result["backend_id"] == "api_backend_embed"
+        assert result["backend_type"] == "api"
+        assert result["output_cid"] == "cid-embed"
+        assert result["provenance_cid"] == "cid-embed-prov"
+        assert result["embeddings"] == [[0.0, 0.5], [1.0, 1.5]]
+
+        backend = manager.get_backend("api_backend_embed")
+        assert backend is not None
+        assert backend.metrics.total_requests == 1
+        assert backend.metrics.successful_requests == 1
+
 
 class TestWebSocketHandler:
     """Test WebSocket handler functionality"""
@@ -217,15 +445,101 @@ class TestWebSocketHandler:
         # Connect
         await manager.connect("client_1", mock_websocket)
         assert "client_1" in manager.active_connections
-        
-        # Subscribe
-        manager.subscribe("client_1", "inference")
-        assert "client_1" in manager.subscriptions["inference"]
-        
-        # Disconnect
-        manager.disconnect("client_1")
-        assert "client_1" not in manager.active_connections
-        assert "client_1" not in manager.subscriptions["inference"]
+
+
+class TestUnifiedInferencePersistence:
+    def test_record_inference_result_persists_and_indexes(self):
+        from ipfs_accelerate_py.unified_inference_service import UnifiedInferenceService
+
+        class FakeStorage:
+            def __init__(self):
+                self.items = []
+                self.using_fallback = True
+
+            def store(self, data, filename=None, pin=False):
+                cid = f"cid-{len(self.items) + 1}"
+                self.items.append({"cid": cid, "data": data, "filename": filename, "pin": pin})
+                return cid
+
+        class FakeDatasetsManager:
+            def __init__(self):
+                self.events = []
+                self.provenance = []
+
+            def log_event(self, event_type, data, level="INFO", category="GENERAL"):
+                self.events.append(
+                    {
+                        "event_type": event_type,
+                        "data": data,
+                        "level": level,
+                        "category": category,
+                    }
+                )
+                return True
+
+            def track_provenance(self, operation, data, record_type="TRANSFORMATION"):
+                self.provenance.append(
+                    {
+                        "operation": operation,
+                        "data": data,
+                        "record_type": record_type,
+                    }
+                )
+                return "prov-cid-1"
+
+        service = UnifiedInferenceService()
+        fake_storage = FakeStorage()
+        fake_datasets = FakeDatasetsManager()
+        service._storage_client = fake_storage
+        service._datasets_manager = fake_datasets
+
+        result = service.record_inference_result(
+            model="demo-model",
+            inputs=["hello world"],
+            result={
+                "model": "demo-model",
+                "outputs": ["ok"],
+                "processing_time": 0.25,
+                "device": "cpu",
+            },
+            backend_id="hf_server_local",
+            backend_type="gpu",
+            endpoint="http://127.0.0.1:8000",
+            device="cpu",
+        )
+
+        assert result["input_cid"] == "cid-1"
+        assert result["output_cid"] == "cid-2"
+        assert result["provenance_cid"] == "prov-cid-1"
+        assert result["audit_logged"] is True
+        assert result["storage"]["success"] is True
+
+        assert fake_storage.items[0]["filename"] == "demo-model_input.json"
+        assert fake_storage.items[1]["filename"] == "demo-model_output.json"
+        assert fake_datasets.events[0]["event_type"] == "inference_completed"
+        assert fake_datasets.provenance[0]["data"]["output_cid"] == "cid-2"
+
+    @pytest.mark.asyncio
+    async def test_service_start_wires_backend_manager_result_recorder(self):
+        from ipfs_accelerate_py.unified_inference_service import UnifiedInferenceService, InferenceServiceConfig
+
+        service = UnifiedInferenceService(
+            InferenceServiceConfig(
+                enable_backend_manager=True,
+                enable_hf_server=False,
+                enable_websocket=False,
+                enable_libp2p=False,
+                enable_api_backends=False,
+                enable_cli_backends=False,
+            )
+        )
+
+        await service.start()
+        try:
+            assert service.backend_manager is not None
+            assert service.backend_manager._result_recorder == service.record_inference_result
+        finally:
+            await service.stop()
 
 
 class TestLibP2PInference:

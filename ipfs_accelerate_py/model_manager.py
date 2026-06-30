@@ -50,6 +50,15 @@ except ImportError:
     get_storage_wrapper = None
     logger.debug("Storage wrapper not available for model manager")
 
+# Try to import the unified IPFS kit storage helper for artifact persistence
+try:
+    from .ipfs_kit_integration import IPFSKitStorage
+    HAVE_IPFS_KIT_STORAGE = True
+except ImportError:
+    HAVE_IPFS_KIT_STORAGE = False
+    IPFSKitStorage = None
+    logger.debug("IPFS Kit storage helper not available for model manager")
+
 # Try to import datasets integration for provenance tracking and IPFS storage
 try:
     from .datasets_integration import (
@@ -306,6 +315,14 @@ class ModelMetadata:
     description: str = ""
     model_card: Optional[str] = None
     repository_structure: Optional[Dict[str, Any]] = None
+    model_cid: Optional[str] = None
+    config_cid: Optional[str] = None
+    tokenizer_cid: Optional[str] = None
+    artifact_cid: Optional[str] = None
+    model_revision: Optional[str] = None
+    parent_model_cid: Optional[str] = None
+    last_used_at: Optional[datetime] = None
+    last_inference_cid: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -381,6 +398,13 @@ class ModelManager:
                 logger.info("Model manager using datasets integration for provenance tracking")
             except Exception as e:
                 logger.debug(f"Datasets integration initialization skipped: {e}")
+
+        self._artifact_storage = None
+        if HAVE_IPFS_KIT_STORAGE:
+            try:
+                self._artifact_storage = IPFSKitStorage(enable_ipfs_kit=self.enable_ipfs, deps=self._datasets_manager)
+            except Exception as e:
+                logger.debug(f"IPFS Kit storage initialization skipped: {e}")
         
         # Initialize storage wrapper for distributed filesystem (with gating)
         self._storage_wrapper = None
@@ -458,10 +482,26 @@ class ModelManager:
                     description TEXT,
                     model_card TEXT,
                     repository_structure JSON,
+                    model_cid VARCHAR,
+                    config_cid VARCHAR,
+                    tokenizer_cid VARCHAR,
+                    artifact_cid VARCHAR,
+                    model_revision VARCHAR,
+                    parent_model_cid VARCHAR,
+                    last_used_at TIMESTAMP,
+                    last_inference_cid VARCHAR,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP
                 )
             """)
+
+            for column_name in ["model_cid", "config_cid", "tokenizer_cid", "artifact_cid", "model_revision", "parent_model_cid", "last_used_at", "last_inference_cid"]:
+                try:
+                    self.con.execute(
+                        f"ALTER TABLE model_metadata ADD COLUMN IF NOT EXISTS {column_name} {'TIMESTAMP' if column_name == 'last_used_at' else 'VARCHAR'}"
+                    )
+                except Exception:
+                    pass
             
             # Create indexes for efficient querying
             self.con.execute("CREATE INDEX IF NOT EXISTS idx_model_type ON model_metadata(model_type)")
@@ -500,6 +540,10 @@ class ModelManager:
                                  'hardware_requirements', 'performance_metrics', 'tags', 'repository_structure']:
                     if row_dict[json_field]:
                         row_dict[json_field] = json.loads(row_dict[json_field])
+
+                for datetime_field in ['created_at', 'updated_at', 'last_used_at']:
+                    if row_dict.get(datetime_field) and isinstance(row_dict[datetime_field], str):
+                        row_dict[datetime_field] = datetime.fromisoformat(row_dict[datetime_field])
                 
                 # Convert to IOSpec objects
                 if row_dict['inputs']:
@@ -532,6 +576,8 @@ class ModelManager:
                     model_data['created_at'] = datetime.fromisoformat(model_data['created_at'])
                 if 'updated_at' in model_data and model_data['updated_at']:
                     model_data['updated_at'] = datetime.fromisoformat(model_data['updated_at'])
+                if 'last_used_at' in model_data and model_data['last_used_at']:
+                    model_data['last_used_at'] = datetime.fromisoformat(model_data['last_used_at'])
                 
                 # Convert to IOSpec objects
                 if 'inputs' in model_data and model_data['inputs']:
@@ -565,6 +611,36 @@ class ModelManager:
             return
             
         try:
+            columns = [
+                "model_id",
+                "model_name",
+                "model_type",
+                "architecture",
+                "inputs",
+                "outputs",
+                "huggingface_config",
+                "inference_code_location",
+                "supported_backends",
+                "hardware_requirements",
+                "performance_metrics",
+                "tags",
+                "source_url",
+                "license",
+                "description",
+                "model_card",
+                "repository_structure",
+                "model_cid",
+                "config_cid",
+                "tokenizer_cid",
+                "artifact_cid",
+                "model_revision",
+                "parent_model_cid",
+                "last_used_at",
+                "last_inference_cid",
+                "created_at",
+                "updated_at",
+            ]
+
             for model_id, metadata in self.models.items():
                 # Convert to dictionary and handle special fields
                 data = asdict(metadata)
@@ -594,8 +670,16 @@ class ModelManager:
                 
                 # Insert or update
                 self.con.execute("""
-                    INSERT OR REPLACE INTO model_metadata VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, tuple(data.values()))
+                    INSERT OR REPLACE INTO model_metadata (
+                        model_id, model_name, model_type, architecture, inputs, outputs,
+                        huggingface_config, inference_code_location, supported_backends,
+                        hardware_requirements, performance_metrics, tags, source_url,
+                        license, description, model_card, repository_structure,
+                        model_cid, config_cid, tokenizer_cid, artifact_cid,
+                        model_revision, parent_model_cid, last_used_at, last_inference_cid,
+                        created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, tuple(data.get(column) for column in columns))
             
             logger.info(f"Saved {len(self.models)} models to database")
         except Exception as e:
@@ -665,25 +749,13 @@ class ModelManager:
         """
         try:
             metadata.updated_at = datetime.now()
+            if not metadata.model_revision:
+                metadata.model_revision = metadata.updated_at.isoformat()
             self.models[metadata.model_id] = metadata
             self._save_data()
             logger.info(f"Added/updated model: {metadata.model_id}")
-            
-            # Track provenance for model registration
-            if self._provenance_logger:
-                try:
-                    self._provenance_logger.log_transformation(
-                        operation="model_registered",
-                        data={
-                            "model_id": metadata.model_id,
-                            "model_type": metadata.model_type.value if hasattr(metadata.model_type, 'value') else str(metadata.model_type),
-                            "input_types": [t.value if hasattr(t, 'value') else str(t) for t in metadata.input_types] if metadata.input_types else [],
-                            "output_types": [t.value if hasattr(t, 'value') else str(t) for t in metadata.output_types] if metadata.output_types else [],
-                            "timestamp": metadata.updated_at.isoformat()
-                        }
-                    )
-                except Exception as e:
-                    logger.debug(f"Provenance logging failed: {e}")
+
+            self._record_model_registration(metadata)
             
             return True
         except Exception as e:
@@ -703,21 +775,89 @@ class ModelManager:
         result = self.models.get(model_id)
         
         # Log model access for audit trail
-        if result and self._datasets_manager:
-            try:
-                self._datasets_manager.log_event(
-                    "model_accessed",
-                    {
-                        "model_id": model_id,
-                        "model_type": result.model_type.value if hasattr(result.model_type, 'value') else str(result.model_type)
-                    },
-                    level="INFO",
-                    category="GENERAL"
-                )
-            except Exception as e:
-                logger.debug(f"Event logging failed: {e}")
+        if result:
+            self._record_model_access(result)
         
         return result
+
+    def _record_model_registration(self, metadata: ModelMetadata) -> None:
+        """Emit registration audit/provenance events for a model."""
+        event_data = {
+            "model_id": metadata.model_id,
+            "model_type": metadata.model_type.value if hasattr(metadata.model_type, 'value') else str(metadata.model_type),
+            "model_revision": metadata.model_revision,
+            "model_cid": metadata.model_cid,
+            "config_cid": metadata.config_cid,
+            "tokenizer_cid": metadata.tokenizer_cid,
+            "artifact_cid": metadata.artifact_cid,
+            "timestamp": metadata.updated_at.isoformat() if metadata.updated_at else None,
+        }
+
+        if self._datasets_manager:
+            try:
+                self._datasets_manager.log_event("model_registered", event_data, level="INFO", category="GENERAL")
+                self._datasets_manager.track_provenance("model_registration", event_data)
+            except Exception as e:
+                logger.debug(f"Model registration audit logging failed: {e}")
+
+        if self._provenance_logger:
+            try:
+                self._provenance_logger.log_transformation(
+                    operation="model_registered",
+                    data={
+                        "model_id": metadata.model_id,
+                        "model_type": metadata.model_type.value if hasattr(metadata.model_type, 'value') else str(metadata.model_type),
+                        "input_types": [inp.data_type.value if hasattr(inp.data_type, 'value') else str(inp.data_type) for inp in metadata.inputs] if metadata.inputs else [],
+                        "output_types": [out.data_type.value if hasattr(out.data_type, 'value') else str(out.data_type) for out in metadata.outputs] if metadata.outputs else [],
+                        "model_revision": metadata.model_revision,
+                        "model_cid": metadata.model_cid,
+                        "config_cid": metadata.config_cid,
+                        "tokenizer_cid": metadata.tokenizer_cid,
+                        "artifact_cid": metadata.artifact_cid,
+                        "timestamp": metadata.updated_at.isoformat() if metadata.updated_at else None,
+                    }
+                )
+            except Exception as e:
+                logger.debug(f"Provenance logging failed: {e}")
+
+    def _record_model_access(self, metadata: ModelMetadata) -> None:
+        """Emit model access audit/provenance events without mutating state."""
+        event_data = {
+            "model_id": metadata.model_id,
+            "model_type": metadata.model_type.value if hasattr(metadata.model_type, 'value') else str(metadata.model_type),
+            "model_revision": metadata.model_revision,
+            "model_cid": metadata.model_cid,
+            "artifact_cid": metadata.artifact_cid,
+        }
+
+        if self._datasets_manager:
+            try:
+                self._datasets_manager.log_event("model_accessed", event_data, level="INFO", category="GENERAL")
+                self._datasets_manager.track_provenance("model_access", event_data)
+            except Exception as e:
+                logger.debug(f"Event logging failed: {e}")
+
+        if self._provenance_logger:
+            try:
+                self._provenance_logger.log_transformation(
+                    operation="model_accessed",
+                    data=event_data,
+                )
+            except Exception as e:
+                logger.debug(f"Model access provenance logging failed: {e}")
+
+    def mark_model_used(self, model_id: str, inference_cid: Optional[str] = None) -> bool:
+        """Update usage linkage metadata for a model after inference or evaluation."""
+        metadata = self.get_model(model_id)
+        if not metadata:
+            return False
+
+        metadata.last_used_at = datetime.now()
+        if inference_cid:
+            metadata.last_inference_cid = inference_cid
+        self._save_data()
+        self._record_model_access(metadata)
+        return True
     
     def remove_model(self, model_id: str) -> bool:
         """
@@ -763,21 +903,119 @@ class ModelManager:
         Returns:
             CID string if successful, None otherwise
         """
-        if not self._ipfs_backend:
+        if not self._ipfs_backend and not self._artifact_storage:
             logger.warning("IPFS backend not available for model storage")
             return None
         
         try:
-            cid = self._ipfs_backend.add_path(
-                model_path,
-                recursive=True,
-                pin=True
-            )
+            path = Path(model_path)
+            if self._artifact_storage and path.is_file():
+                cid = self._artifact_storage.store(path, filename=path.name, pin=True)
+            else:
+                cid = self._ipfs_backend.add_path(
+                    model_path,
+                    recursive=True,
+                    pin=True
+                )
             logger.info(f"Stored model {model_id or model_path} to IPFS: {cid}")
             return cid
         except Exception as e:
             logger.error(f"Failed to store model to IPFS: {e}")
             return None
+
+    def _store_artifact_file(self, artifact_path: Optional[str], artifact_name: str) -> Optional[str]:
+        """Store a single artifact file through IPFSKitStorage when available."""
+        if not artifact_path:
+            return None
+
+        path = Path(artifact_path)
+        if not path.exists():
+            logger.warning("Artifact path not found: %s", artifact_path)
+            return None
+
+        if self._artifact_storage and path.is_file():
+            try:
+                return self._artifact_storage.store(path, filename=artifact_name, pin=True)
+            except Exception as e:
+                logger.debug("IPFS Kit storage failed for %s: %s", artifact_name, e)
+
+        if self._ipfs_backend and path.is_dir():
+            try:
+                return self._ipfs_backend.add_path(str(path), recursive=True, pin=True)
+            except Exception as e:
+                logger.debug("IPFS backend failed for %s: %s", artifact_name, e)
+
+        if self._artifact_storage:
+            try:
+                return self._artifact_storage.store(path.read_bytes(), filename=artifact_name, pin=True)
+            except Exception as e:
+                logger.debug("Byte-storage fallback failed for %s: %s", artifact_name, e)
+
+        return None
+
+    def _store_artifact_manifest(self, metadata: ModelMetadata, artifact_map: Dict[str, Optional[str]]) -> Optional[str]:
+        """Persist a small manifest that ties the model assets together."""
+        if not self._artifact_storage:
+            return None
+
+        manifest = {
+            "model_id": metadata.model_id,
+            "model_name": metadata.model_name,
+            "model_cid": artifact_map.get("model_cid"),
+            "config_cid": artifact_map.get("config_cid"),
+            "tokenizer_cid": artifact_map.get("tokenizer_cid"),
+            "created_at": datetime.now().isoformat(),
+        }
+
+        try:
+            return self._artifact_storage.store(
+                json.dumps(manifest, sort_keys=True),
+                filename=f"{metadata.model_id.replace('/', '_')}.artifact-manifest.json",
+                pin=True,
+            )
+        except Exception as e:
+            logger.debug("Artifact manifest storage failed: %s", e)
+            return None
+
+    def restore_model_artifacts_from_cids(self, model_id: str, output_dir: str) -> Dict[str, str]:
+        """Restore stored model artifacts into a local directory."""
+        metadata = self.get_model(model_id)
+        if not metadata or not self._artifact_storage:
+            return {}
+
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        restored_paths: Dict[str, str] = {}
+        artifact_specs = [
+            ("model_cid", f"{metadata.model_id.replace('/', '_')}.model"),
+            ("config_cid", f"{metadata.model_id.replace('/', '_')}.config"),
+            ("tokenizer_cid", f"{metadata.model_id.replace('/', '_')}.tokenizer"),
+        ]
+
+        for field_name, filename in artifact_specs:
+            cid = getattr(metadata, field_name, None)
+            if not cid:
+                continue
+
+            try:
+                payload = self._artifact_storage.retrieve(cid)
+            except Exception as e:
+                logger.debug("Artifact restore failed for %s: %s", field_name, e)
+                continue
+
+            if payload is None:
+                continue
+
+            if isinstance(payload, str):
+                payload = payload.encode("utf-8")
+
+            target_path = output_path / filename
+            with open(target_path, "wb") as f:
+                f.write(payload)
+            restored_paths[field_name] = str(target_path)
+
+        return restored_paths
     
     def retrieve_model_from_ipfs(self, cid: str, output_path: str, model_id: str = None) -> bool:
         """
@@ -807,37 +1045,49 @@ class ModelManager:
         self,
         metadata: ModelMetadata,
         model_path: Optional[str] = None,
+        config_path: Optional[str] = None,
+        tokenizer_path: Optional[str] = None,
         store_to_ipfs: bool = True
     ) -> Tuple[bool, Optional[str]]:
         """
-        Add model metadata and optionally store weights to IPFS.
+        Add model metadata and optionally store model artifacts to IPFS.
         
         Args:
             metadata: ModelMetadata object
             model_path: Optional path to model weights
+            config_path: Optional path to model config
+            tokenizer_path: Optional path to tokenizer files
             store_to_ipfs: Whether to store weights to IPFS
             
         Returns:
             Tuple of (success: bool, cid: Optional[str])
         """
-        # Add metadata first
+        artifact_cids: Dict[str, Optional[str]] = {
+            "model_cid": None,
+            "config_cid": None,
+            "tokenizer_cid": None,
+        }
+
+        if store_to_ipfs:
+            safe_model_id = metadata.model_id.replace("/", "_")
+            artifact_cids["model_cid"] = self._store_artifact_file(model_path, f"{safe_model_id}.model") if model_path else None
+            artifact_cids["config_cid"] = self._store_artifact_file(config_path, f"{safe_model_id}.config") if config_path else None
+            artifact_cids["tokenizer_cid"] = self._store_artifact_file(tokenizer_path, f"{safe_model_id}.tokenizer") if tokenizer_path else None
+
+        metadata.model_cid = artifact_cids["model_cid"]
+        metadata.config_cid = artifact_cids["config_cid"]
+        metadata.tokenizer_cid = artifact_cids["tokenizer_cid"]
+        metadata.artifact_cid = self._store_artifact_manifest(metadata, artifact_cids)
+
+        if metadata.artifact_cid:
+            if metadata.repository_structure is None:
+                metadata.repository_structure = {}
+            metadata.repository_structure["artifact_cid"] = metadata.artifact_cid
+
         if not self.add_model(metadata):
             return False, None
-        
-        # Store to IPFS if requested and path provided
-        cid = None
-        if store_to_ipfs and model_path and self._ipfs_backend:
-            cid = self.store_model_to_ipfs(model_path, metadata.model_id)
-            if cid:
-                # Update metadata with IPFS CID
-                if not hasattr(metadata, 'ipfs_cid') or not metadata.__dict__.get('ipfs_cid'):
-                    # Add IPFS CID to metadata if not already present
-                    if metadata.repository_structure is None:
-                        metadata.repository_structure = {}
-                    metadata.repository_structure['ipfs_cid'] = cid
-                    self.add_model(metadata)  # Update with CID
-        
-        return True, cid
+
+        return True, metadata.artifact_cid or metadata.model_cid
     
     def list_models(self, model_type: Optional[ModelType] = None,
                    architecture: Optional[str] = None,

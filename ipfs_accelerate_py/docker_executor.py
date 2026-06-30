@@ -112,6 +112,9 @@ class DockerExecutionResult:
     container_id: Optional[str] = None
     execution_time: float = 0.0
     error_message: Optional[str] = None
+    output_cid: Optional[str] = None
+    provenance_cid: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class DockerExecutor:
@@ -122,7 +125,15 @@ class DockerExecutor:
     code in Docker containers, which is then exposed through MCP tools.
     """
     
-    def __init__(self, docker_command: str = "docker"):
+    def __init__(
+        self,
+        docker_command: str = "docker",
+        *,
+        storage: Any | None = None,
+        datasets_manager: Any | None = None,
+        provenance_logger: Any | None = None,
+        persist_results: bool = True,
+    ):
         """
         Initialize Docker executor
         
@@ -130,8 +141,77 @@ class DockerExecutor:
             docker_command: Path to docker executable (default: "docker")
         """
         self.docker_command = docker_command
+        self._artifact_storage = storage
+        self._datasets_manager = datasets_manager
+        self._provenance_logger = provenance_logger
+        self._persist_results = bool(persist_results)
         self._verify_docker_available()
         logger.info("DockerExecutor initialized")
+
+    def _record_execution_artifacts(
+        self,
+        *,
+        config: DockerExecutionConfig,
+        result: DockerExecutionResult,
+    ) -> DockerExecutionResult:
+        if not self._persist_results:
+            return result
+
+        artifact_payload = {
+            "image": config.image,
+            "command": list(config.command or []),
+            "entrypoint": list(config.entrypoint or []),
+            "container_id": result.container_id,
+            "execution_time": result.execution_time,
+            "exit_code": result.exit_code,
+            "success": result.success,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "error_message": result.error_message,
+        }
+
+        output_cid = result.output_cid
+        provenance_cid = result.provenance_cid
+
+        if self._artifact_storage is not None:
+            try:
+                output_payload = json.dumps(artifact_payload, sort_keys=True, indent=2)
+                output_cid = self._artifact_storage.store(
+                    output_payload,
+                    filename=f"docker-execution-{int(time.time() * 1000)}.json",
+                    pin=False,
+                )
+            except Exception as exc:
+                logger.debug("Failed to persist Docker execution output: %s", exc)
+
+        if self._datasets_manager is not None:
+            try:
+                self._datasets_manager.log_event(
+                    "container_execution_completed" if result.success else "container_execution_failed",
+                    {
+                        **artifact_payload,
+                        "output_cid": output_cid,
+                    },
+                    level="INFO" if result.success else "ERROR",
+                    category="PERFORMANCE",
+                )
+            except Exception as exc:
+                logger.debug("Failed to log Docker execution event: %s", exc)
+
+        if self._provenance_logger is not None:
+            try:
+                provenance_cid = self._provenance_logger.log_transformation(
+                    "docker_execution",
+                    artifact_payload,
+                    output_cid=output_cid,
+                )
+            except Exception as exc:
+                logger.debug("Failed to record Docker execution provenance: %s", exc)
+
+        result.output_cid = output_cid
+        result.provenance_cid = provenance_cid
+        result.metadata = {**artifact_payload, "output_cid": output_cid, "provenance_cid": provenance_cid}
+        return result
     
     def _verify_docker_available(self):
         """Verify Docker is available and accessible"""
@@ -179,7 +259,7 @@ class DockerExecutor:
             
             execution_time = time.time() - start_time
             
-            return DockerExecutionResult(
+            result = DockerExecutionResult(
                 success=result.returncode == 0,
                 exit_code=result.returncode,
                 stdout=result.stdout,
@@ -187,10 +267,11 @@ class DockerExecutor:
                 container_id=container_id,
                 execution_time=execution_time
             )
+            return self._record_execution_artifacts(config=config, result=result)
             
         except subprocess.TimeoutExpired:
             execution_time = time.time() - start_time
-            return DockerExecutionResult(
+            result = DockerExecutionResult(
                 success=False,
                 exit_code=-1,
                 stdout="",
@@ -198,10 +279,11 @@ class DockerExecutor:
                 execution_time=execution_time,
                 error_message=f"Container execution exceeded timeout of {config.timeout}s"
             )
+            return self._record_execution_artifacts(config=config, result=result)
         except Exception as e:
             execution_time = time.time() - start_time
             logger.error(f"Docker execution failed: {e}")
-            return DockerExecutionResult(
+            result = DockerExecutionResult(
                 success=False,
                 exit_code=-1,
                 stdout="",
@@ -209,6 +291,7 @@ class DockerExecutor:
                 execution_time=execution_time,
                 error_message=str(e)
             )
+            return self._record_execution_artifacts(config=config, result=result)
     
     def _build_docker_command(self, config: DockerExecutionConfig) -> List[str]:
         """Build docker run command from configuration"""
@@ -336,13 +419,14 @@ class DockerExecutor:
             )
             
             if clone_result.returncode != 0:
-                return DockerExecutionResult(
+                result = DockerExecutionResult(
                     success=False,
                     exit_code=clone_result.returncode,
                     stdout=clone_result.stdout,
                     stderr=clone_result.stderr,
                     error_message="Failed to clone GitHub repository"
                 )
+                return self._record_execution_artifacts(config=execution_config, result=result)
             
             # Build Docker image
             image_tag = f"ipfs-github-{int(time.time())}"
@@ -371,13 +455,14 @@ class DockerExecutor:
             )
             
             if build_result.returncode != 0:
-                return DockerExecutionResult(
+                result = DockerExecutionResult(
                     success=False,
                     exit_code=build_result.returncode,
                     stdout=build_result.stdout,
                     stderr=build_result.stderr,
                     error_message="Failed to build Docker image"
                 )
+                return self._record_execution_artifacts(config=execution_config, result=result)
             
             # Execute the built image
             execution_config.image = image_tag
@@ -387,13 +472,14 @@ class DockerExecutor:
             
         except Exception as e:
             logger.error(f"Failed to build and execute GitHub repo: {e}")
-            return DockerExecutionResult(
+            result = DockerExecutionResult(
                 success=False,
                 exit_code=-1,
                 stdout="",
                 stderr=str(e),
                 error_message=str(e)
             )
+            return self._record_execution_artifacts(config=execution_config, result=result)
         finally:
             # Cleanup
             if temp_dir and os.path.exists(temp_dir):
@@ -513,6 +599,10 @@ def execute_docker_hub_container(
     environment: Optional[Dict[str, str]] = None,
     volumes: Optional[Dict[str, str]] = None,
     timeout: int = 300,
+    storage: Any | None = None,
+    datasets_manager: Any | None = None,
+    provenance_logger: Any | None = None,
+    persist_results: bool = True,
     **kwargs
 ) -> DockerExecutionResult:
     """
@@ -543,7 +633,12 @@ def execute_docker_hub_container(
         **kwargs
     )
     
-    executor = DockerExecutor()
+    executor = DockerExecutor(
+        storage=storage,
+        datasets_manager=datasets_manager,
+        provenance_logger=provenance_logger,
+        persist_results=persist_results,
+    )
     return executor.execute_container(config)
 
 
@@ -556,6 +651,10 @@ def build_and_execute_from_github(
     environment: Optional[Dict[str, str]] = None,
     build_args: Optional[Dict[str, str]] = None,
     timeout: int = 300,
+    storage: Any | None = None,
+    datasets_manager: Any | None = None,
+    provenance_logger: Any | None = None,
+    persist_results: bool = True,
     **kwargs
 ) -> DockerExecutionResult:
     """
@@ -594,5 +693,10 @@ def build_and_execute_from_github(
         **kwargs
     )
     
-    executor = DockerExecutor()
+    executor = DockerExecutor(
+        storage=storage,
+        datasets_manager=datasets_manager,
+        provenance_logger=provenance_logger,
+        persist_results=persist_results,
+    )
     return executor.build_and_execute_github_repo(github_config, execution_config)

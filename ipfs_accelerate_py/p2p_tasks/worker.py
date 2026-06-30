@@ -3111,6 +3111,66 @@ def run_worker(
     queue = TaskQueue(queue_path)
 
     local_session = _expected_session_tag()
+    datasets_manager: object | None = None
+    datasets_manager_init_attempted = False
+
+    def _get_datasets_manager() -> object | None:
+        nonlocal datasets_manager, datasets_manager_init_attempted
+        if datasets_manager is not None:
+            return datasets_manager
+        if datasets_manager_init_attempted:
+            return None
+        datasets_manager_init_attempted = True
+        try:
+            from ipfs_accelerate_py.datasets_integration import DatasetsManager
+
+            datasets_manager = DatasetsManager(
+                {
+                    "enable_audit": True,
+                    "enable_provenance": True,
+                }
+            )
+        except Exception:
+            datasets_manager = None
+        return datasets_manager
+
+    def _emit_workflow_event(
+        *,
+        task_dict: Dict[str, Any],
+        event_type: str,
+        level: str = "INFO",
+        result: Dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> None:
+        lineage = _extract_lineage(task_dict)
+        workflow_id = str(lineage.get("workflow_id") or "").strip()
+        if not workflow_id:
+            return
+        manager = _get_datasets_manager()
+        if manager is None:
+            return
+
+        payload = {
+            "workflow_id": workflow_id,
+            "task_id": str(lineage.get("task_id") or "").strip() or str(task_dict.get("task_id") or "").strip(),
+            "model_id": str(lineage.get("model_id") or "").strip() or str(task_dict.get("model_name") or "").strip(),
+            "worker_id": str(worker_id),
+            "session_id": str(local_session or ""),
+            "status": "completed" if level == "INFO" else "failed",
+            "error": str(error or "") if error else None,
+            "result": result if isinstance(result, dict) else None,
+            "lineage": lineage,
+        }
+
+        try:
+            manager.log_event(event_type, payload, level=level, category="GENERAL")
+        except Exception:
+            pass
+
+        try:
+            manager.track_provenance(event_type, payload)
+        except Exception:
+            pass
 
     last_failover_scan = 0.0
 
@@ -3262,6 +3322,187 @@ def run_worker(
     handlers["multimodal_generation"] = _run_multimodal_generation
     handlers["vision-generation"] = _run_multimodal_generation
     handlers["vision_generation"] = _run_multimodal_generation
+
+    def _canonical_task_type(task_type: str) -> str:
+        t = str(task_type or "").strip().lower().replace("_", "-")
+        if t in {"generation"}:
+            return "text-generation"
+        if t in {"embeddings", "text-embedding"}:
+            return "embedding"
+        return t
+
+    _backend_manager_tasks = {
+        "text-generation",
+        "text2text-generation",
+        "embedding",
+        "text-classification",
+    }
+
+    def _extract_lineage(task_dict: Dict[str, Any]) -> Dict[str, Any]:
+        payload = task_dict.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+
+        lineage_raw = payload.get("_lineage")
+        lineage = dict(lineage_raw) if isinstance(lineage_raw, dict) else {}
+
+        workflow_id = str(lineage.get("workflow_id") or payload.get("workflow_id") or "").strip()
+        if workflow_id:
+            lineage["workflow_id"] = workflow_id
+
+        task_id = str(lineage.get("task_id") or task_dict.get("task_id") or "").strip()
+        if task_id:
+            lineage["task_id"] = task_id
+
+        model_id = str(lineage.get("model_id") or task_dict.get("model_name") or payload.get("model_id") or "").strip()
+        if model_id:
+            lineage["model_id"] = model_id
+
+        for key in ("backend_id", "output_cid", "provenance_cid", "persistence_policy", "provenance_policy"):
+            if key in lineage and lineage.get(key) is not None:
+                continue
+            if key in payload and payload.get(key) is not None:
+                lineage[key] = payload.get(key)
+
+        return lineage
+
+    def _backend_manager_required(task_dict: Dict[str, Any]) -> bool:
+        payload = task_dict.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+
+        explicit = payload.get("dispatch_via_backend_manager")
+        if isinstance(explicit, str) and explicit.strip().lower() in {"required", "strict"}:
+            return True
+        if payload.get("backend_manager_required") is True:
+            return True
+
+        lineage = _extract_lineage(task_dict)
+        persistence_policy = str(lineage.get("persistence_policy") or "").strip().lower()
+        provenance_policy = str(lineage.get("provenance_policy") or "").strip().lower()
+        if persistence_policy in {"required", "strict", "enforced"}:
+            return True
+        if provenance_policy in {"required", "strict", "enforced"}:
+            return True
+
+        env_required = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_REQUIRE_BACKEND_MANAGER")
+        return _truthy(env_required)
+
+    def _with_lineage_result(task_dict: Dict[str, Any], result: Dict[str, Any] | None) -> Dict[str, Any]:
+        base = dict(result) if isinstance(result, dict) else {}
+        lineage = _extract_lineage(task_dict)
+        current = base.get("lineage")
+        merged_lineage = dict(current) if isinstance(current, dict) else {}
+        for key, value in lineage.items():
+            if value is None:
+                continue
+            merged_lineage.setdefault(key, value)
+            if key in {"workflow_id", "task_id", "model_id", "backend_id", "output_cid", "provenance_cid"}:
+                base.setdefault(key, value)
+        if merged_lineage:
+            base["lineage"] = merged_lineage
+        return base
+
+    def _failure_result(task_dict: Dict[str, Any], error: str) -> Dict[str, Any]:
+        out = _with_lineage_result(task_dict, None)
+        out.setdefault("success", False)
+        out["error_message"] = str(error or "unknown error")
+        out["failure"] = {"error": str(error or "unknown error")}
+        return out
+
+    def _extract_backend_inputs(task_type: str, payload: Dict[str, Any]) -> List[Any]:
+        if isinstance(payload.get("inputs"), list):
+            return list(payload.get("inputs") or [])
+        if payload.get("inputs") is not None:
+            return [payload.get("inputs")]
+
+        if task_type in {"text-generation", "text2text-generation", "text-classification"}:
+            return [str(_extract_hf_input_text(payload) or "")]
+        if task_type == "embedding":
+            text = payload.get("text")
+            if text is None:
+                text = _extract_hf_input_text(payload)
+            return [str(text or "")]
+
+        if payload.get("input") is not None:
+            return [payload.get("input")]
+        if payload.get("text") is not None:
+            return [payload.get("text")]
+        if payload.get("prompt") is not None:
+            return [payload.get("prompt")]
+        return []
+
+    def _execute_via_backend_manager(task_dict: Dict[str, Any]) -> Dict[str, Any] | None:
+        payload = task_dict.get("payload")
+        if not isinstance(payload, dict):
+            return None
+
+        task_type = _canonical_task_type(str(task_dict.get("task_type") or ""))
+        if task_type not in _backend_manager_tasks:
+            return None
+
+        route_raw = payload.get("dispatch_via_backend_manager")
+        if route_raw is None:
+            route_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ROUTE_VIA_BACKEND_MANAGER", "1")
+        if not _truthy(str(route_raw)):
+            return None
+
+        try:
+            from ipfs_accelerate_py.inference_backend_manager import get_backend_manager
+
+            backend_manager = get_backend_manager()
+        except Exception:
+            return None
+
+        if backend_manager is None:
+            return None
+
+        model_name = str(task_dict.get("model_name") or payload.get("model") or payload.get("model_id") or "").strip()
+        inputs = _extract_backend_inputs(task_type=task_type, payload=payload)
+        parameters = dict(payload)
+        parameters.pop("_p2p_proxy", None)
+        parameters.pop("_lineage", None)
+
+        try:
+            import anyio
+
+            async def _do_execute() -> Dict[str, Any]:
+                return await backend_manager.execute_task(
+                    task=task_type,
+                    model=model_name,
+                    inputs=inputs,
+                    parameters=parameters,
+                )
+
+            out = anyio.run(_do_execute, backend="trio")
+        except Exception:
+            return None
+
+        result = dict(out) if isinstance(out, dict) else {"result": out}
+        lineage = _extract_lineage(task_dict)
+        existing_lineage = result.get("lineage")
+        merged_lineage = dict(existing_lineage) if isinstance(existing_lineage, dict) else {}
+        for key, value in lineage.items():
+            merged_lineage.setdefault(key, value)
+            if key in {"workflow_id", "task_id", "model_id", "backend_id", "output_cid", "provenance_cid"}:
+                result.setdefault(key, value)
+        if merged_lineage:
+            result["lineage"] = merged_lineage
+        return result
+
+    def _execute_task_payload(task_payload: Dict[str, Any]) -> Dict[str, Any]:
+        backend_result = _execute_via_backend_manager(task_payload)
+        if backend_result is not None:
+            return _with_lineage_result(task_payload, backend_result)
+
+        if _backend_manager_required(task_payload):
+            raise RuntimeError("backend_manager_routing_required")
+
+        ttype = str(task_payload.get("task_type") or "").strip().lower()
+        handler = handlers.get(ttype)
+        if handler is None:
+            raise RuntimeError(f"Unsupported task_type: {task_payload.get('task_type')}")
+        return _with_lineage_result(task_payload, handler(task_payload))
 
     def _shell_handler(task_dict: Dict[str, Any]) -> Dict[str, Any]:
         payload = task_dict.get("payload") or {}
@@ -3868,14 +4109,27 @@ def run_worker(
         # If this is a proxy task (claimed from a peer by the orchestrator),
         # also complete the *remote* task.
         proxy: dict[str, object] | None = None
+        task_payload: Dict[str, Any] = {}
         try:
             t = queue.get(str(task_id))
             payload = (t or {}).get("payload")
             if isinstance(payload, dict):
+                task_payload = {
+                    "task_id": str(task_id),
+                    "task_type": str((t or {}).get("task_type") or ""),
+                    "model_name": str((t or {}).get("model_name") or ""),
+                    "payload": payload,
+                    "assigned_worker": str((t or {}).get("assigned_worker") or worker_id),
+                }
                 p = payload.get("_p2p_proxy")
                 proxy = p if isinstance(p, dict) else None
         except Exception:
             proxy = None
+            task_payload = {"task_id": str(task_id), "payload": {}}
+
+        final_result = _with_lineage_result(task_payload, result if isinstance(result, dict) else None)
+        if not ok:
+            final_result = _failure_result(task_payload, str(error or "unknown error"))
 
         if proxy is not None:
             try:
@@ -3890,7 +4144,7 @@ def run_worker(
                         remote=rq,
                         task_id=remote_task_id,
                         status="completed" if ok else "failed",
-                        result=(result if ok else None),
+                        result=final_result,
                         error=(None if ok else str(error or "unknown error")),
                     )
             except Exception:
@@ -3898,9 +4152,22 @@ def run_worker(
 
         try:
             if ok:
-                queue.complete(task_id=str(task_id), status="completed", result=(result or {}))
+                queue.complete(task_id=str(task_id), status="completed", result=final_result)
+                _emit_workflow_event(task_dict=task_payload, event_type="workflow_task_completed", level="INFO", result=final_result)
             else:
-                queue.complete(task_id=str(task_id), status="failed", error=str(error or "unknown error"))
+                queue.complete(
+                    task_id=str(task_id),
+                    status="failed",
+                    result=final_result,
+                    error=str(error or "unknown error"),
+                )
+                _emit_workflow_event(
+                    task_dict=task_payload,
+                    event_type="workflow_task_failed",
+                    level="ERROR",
+                    result=final_result,
+                    error=str(error or "unknown error"),
+                )
         except Exception:
             return
 
@@ -4216,20 +4483,15 @@ def run_worker(
                         result: Dict[str, Any] | None = None
                         error: str | None = None
                         ok = False
+                        task_payload = {
+                            "task_id": tid,
+                            "task_type": t.get("task_type"),
+                            "model_name": t.get("model_name"),
+                            "payload": t.get("payload"),
+                            "assigned_worker": str(t.get("assigned_worker") or worker_id).strip(),
+                        }
                         try:
-                            ttype = str(t.get("task_type") or "").strip().lower()
-                            handler = handlers.get(ttype)
-                            if handler is None:
-                                raise RuntimeError(f"Unsupported task_type: {t.get('task_type')}")
-                            result = handler(
-                                {
-                                    "task_id": tid,
-                                    "task_type": t.get("task_type"),
-                                    "model_name": t.get("model_name"),
-                                    "payload": t.get("payload"),
-                                    "assigned_worker": str(t.get("assigned_worker") or worker_id).strip(),
-                                }
-                            )
+                            result = _execute_task_payload(task_payload)
                             if isinstance(result, dict):
                                 # Ensure mesh executions are attributable.
                                 result = dict(result)
@@ -4247,6 +4509,7 @@ def run_worker(
                         except Exception as exc:
                             ok = False
                             error = str(exc)
+                            result = _failure_result(task_payload, error)
                         _complete_mesh_task(remote=remote, task_id=tid, ok=ok, result=result, error=error)
                     if once:
                         return 0
@@ -4303,20 +4566,15 @@ def run_worker(
                     result: Dict[str, Any] | None = None
                     error: str | None = None
                     ok = False
+                    task_payload = {
+                        "task_id": tid,
+                        "task_type": t.get("task_type"),
+                        "model_name": t.get("model_name"),
+                        "payload": t.get("payload"),
+                        "assigned_worker": str(t.get("assigned_worker") or worker_id).strip(),
+                    }
                     try:
-                        ttype = str(t.get("task_type") or "").strip().lower()
-                        handler = handlers.get(ttype)
-                        if handler is None:
-                            raise RuntimeError(f"Unsupported task_type: {t.get('task_type')}")
-                        result = handler(
-                            {
-                                "task_id": tid,
-                                "task_type": t.get("task_type"),
-                                "model_name": t.get("model_name"),
-                                "payload": t.get("payload"),
-                                "assigned_worker": str(t.get("assigned_worker") or worker_id).strip(),
-                            }
-                        )
+                        result = _execute_task_payload(task_payload)
                         if isinstance(result, dict):
                             result = dict(result)
                             result = _stamp_result_meta(result=result, assigned_worker=str(t.get("assigned_worker") or worker_id).strip())
@@ -4332,6 +4590,7 @@ def run_worker(
                     except Exception as exc:
                         ok = False
                         error = str(exc)
+                        result = _failure_result(task_payload, error)
                     _complete_local_task(task_id=tid, ok=ok, result=result, error=error)
 
                 if once:
@@ -4394,27 +4653,21 @@ def run_worker(
             result: Dict[str, Any] | None = None
             error: str | None = None
             status: str = "failed"
+            task_payload = {
+                "task_id": task.task_id,
+                "task_type": task.task_type,
+                "model_name": task.model_name,
+                "payload": task.payload,
+                "assigned_worker": str(task.assigned_worker or worker_id).strip(),
+            }
             try:
-                ttype = str(task.task_type or "").strip().lower()
-                handler = handlers.get(ttype)
-                if handler is None:
-                    status = "failed"
-                    error = f"Unsupported task_type: {task.task_type}"
-                else:
-                    result = handler(
-                        {
-                            "task_id": task.task_id,
-                            "task_type": task.task_type,
-                            "model_name": task.model_name,
-                            "payload": task.payload,
-                            "assigned_worker": str(task.assigned_worker or worker_id).strip(),
-                        }
-                    )
-                    result = _stamp_result_meta(result=result, assigned_worker=str(task.assigned_worker or worker_id).strip())
-                    status = "completed"
+                result = _execute_task_payload(task_payload)
+                result = _stamp_result_meta(result=result, assigned_worker=str(task.assigned_worker or worker_id).strip())
+                status = "completed"
             except Exception as exc:
                 status = "failed"
                 error = str(exc)
+                result = _failure_result(task_payload, error)
             finally:
                 # Stop heartbeat before completing to avoid DuckDB write conflicts.
                 stop_hb.set()
@@ -4425,8 +4678,21 @@ def run_worker(
 
             if status == "completed":
                 queue.complete(task_id=task.task_id, status="completed", result=result or {})
+                _emit_workflow_event(task_dict=task_payload, event_type="workflow_task_completed", level="INFO", result=result)
             else:
-                queue.complete(task_id=task.task_id, status="failed", error=error or "unknown error")
+                queue.complete(
+                    task_id=task.task_id,
+                    status="failed",
+                    result=result or _failure_result(task_payload, error or "unknown error"),
+                    error=error or "unknown error",
+                )
+                _emit_workflow_event(
+                    task_dict=task_payload,
+                    event_type="workflow_task_failed",
+                    level="ERROR",
+                    result=result,
+                    error=error or "unknown error",
+                )
 
             if once:
                 return 0

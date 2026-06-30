@@ -140,6 +140,44 @@ class TaskOrchestrator:
         self._peers_lock = threading.RLock()
         self._peers: list[object] = []
         self._peers_thread: threading.Thread | None = None
+        self._datasets_manager: object | None = None
+        self._capability_registry: object | None = None
+
+    def _get_capability_registry(self) -> object | None:
+        if self._capability_registry is not None:
+            return self._capability_registry
+        try:
+            from ipfs_accelerate_py.p2p_tasks.capability_registry import PeerCapabilityRegistry
+
+            self._capability_registry = PeerCapabilityRegistry()
+        except Exception:
+            self._capability_registry = False  # type: ignore[assignment]
+        return None if self._capability_registry is False else self._capability_registry
+
+    def _get_datasets_manager(self) -> object | None:
+        if self._datasets_manager is not None:
+            return self._datasets_manager
+        try:
+            from ipfs_accelerate_py.datasets_integration import DatasetsManager
+
+            self._datasets_manager = DatasetsManager(
+                {
+                    "enable_audit": True,
+                    "enable_provenance": True,
+                }
+            )
+        except Exception:
+            self._datasets_manager = False  # type: ignore[assignment]
+        return None if self._datasets_manager is False else self._datasets_manager
+
+    def _log_workflow_event(self, event_type: str, data: Dict[str, Any], *, level: str = "INFO") -> None:
+        manager = self._get_datasets_manager()
+        if manager is None:
+            return
+        try:
+            manager.log_event(event_type, data, level=level, category="GENERAL")
+        except Exception:
+            return
 
     @property
     def running(self) -> bool:
@@ -210,19 +248,39 @@ class TaskOrchestrator:
                     if not pid or not ma:
                         continue
 
+                    status_resp: Dict[str, Any] | None = None
+
                     if expected_session and filter_peer_session:
                         try:
-                            resp = request_status_sync(
+                            status_resp = request_status_sync(
                                 remote=rq,
                                 timeout_s=float(self._cfg.remote_status_timeout_s),
                                 detail=False,
                             )
-                            if not (isinstance(resp, dict) and resp.get("ok")):
+                            if not (isinstance(status_resp, dict) and status_resp.get("ok")):
                                 continue
-                            if str(resp.get("session") or "").strip() != expected_session:
+                            if str(status_resp.get("session") or "").strip() != expected_session:
                                 continue
                         except Exception:
                             continue
+
+                    if status_resp is None:
+                        try:
+                            status_resp = request_status_sync(
+                                remote=rq,
+                                timeout_s=float(self._cfg.remote_status_timeout_s),
+                                detail=True,
+                            )
+                        except Exception:
+                            status_resp = None
+
+                    if isinstance(status_resp, dict) and status_resp.get("ok"):
+                        registry = self._get_capability_registry()
+                        if registry is not None:
+                            try:
+                                registry.upsert_from_status(peer_id=pid, multiaddr=ma, status=status_resp)
+                            except Exception:
+                                pass
 
                     peers.append(rq)
 
@@ -436,11 +494,28 @@ class TaskOrchestrator:
         session = _expected_session_tag() or None
         out: list[tuple[object, dict[str, Any]]] = []
 
+        prioritized_peers = list(peers)
+        registry = self._get_capability_registry()
+        if registry is not None:
+            try:
+                primary_task = str(supported[0] if supported else "")
+                prioritized_peers.sort(
+                    key=lambda rq: float(
+                        registry.score_peer_for_task(
+                            peer_id=str(getattr(rq, "peer_id", "") or ""),
+                            task_type=primary_task,
+                        )
+                    ),
+                    reverse=True,
+                )
+            except Exception:
+                prioritized_peers = list(peers)
+
         fanout = max(1, min(16, int(self._cfg.mesh_peer_fanout)))
         batch_n = max(1, min(64, int(self._cfg.mesh_claim_batch)))
 
         # Try up to fanout peers each cycle.
-        for rq in list(peers)[:fanout]:
+        for rq in list(prioritized_peers)[:fanout]:
             if len(out) >= int(max_tasks):
                 break
             try:
@@ -489,6 +564,19 @@ class TaskOrchestrator:
                     continue
 
             proxy_payload = dict(payload)
+            lineage = proxy_payload.get("_lineage")
+            if not isinstance(lineage, dict):
+                lineage = {}
+            workflow_id = str(task.get("workflow_id") or payload.get("workflow_id") or "").strip()
+            if workflow_id and not str(lineage.get("workflow_id") or "").strip():
+                lineage["workflow_id"] = workflow_id
+            lineage.setdefault("task_id", remote_task_id)
+            lineage.setdefault("model_id", model_name)
+            if "persistence_policy" in payload and "persistence_policy" not in lineage:
+                lineage["persistence_policy"] = payload.get("persistence_policy")
+            if "provenance_policy" in payload and "provenance_policy" not in lineage:
+                lineage["provenance_policy"] = payload.get("provenance_policy")
+            proxy_payload["_lineage"] = lineage
             proxy_payload.setdefault(
                 "_p2p_proxy",
                 {
@@ -509,9 +597,22 @@ class TaskOrchestrator:
                     "multiaddr": ma,
                     "remote_task_id": remote_task_id,
                     "local_task_id": local_task_id,
+                    "workflow_id": workflow_id,
+                    "model_id": model_name,
                     "ts": time.time(),
                     "orchestrator_id": str(self._cfg.orchestrator_id),
                 }
+            self._log_workflow_event(
+                "workflow_dispatch",
+                {
+                    "workflow_id": workflow_id,
+                    "task_id": remote_task_id,
+                    "model_id": model_name,
+                    "local_task_id": local_task_id,
+                    "orchestrator_id": str(self._cfg.orchestrator_id),
+                    "peer_id": pid,
+                },
+            )
             submitted += 1
 
         return submitted

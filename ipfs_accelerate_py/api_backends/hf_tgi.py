@@ -384,6 +384,44 @@ class hf_tgi:
         
         return result
 
+    def run_inference(self, model_id, inputs, parameters=None, priority=None, request_id=None, endpoint_id=None):
+        """Canonical backend-manager execution entrypoint.
+
+        Returns a normalized result envelope for text-generation tasks so higher
+        layers do not need to understand raw HF TGI response shapes.
+        """
+        _ = priority
+        response = self.generate_text(
+            model_id=model_id,
+            inputs=inputs,
+            parameters=parameters,
+            request_id=request_id,
+            endpoint_id=endpoint_id,
+        )
+
+        if isinstance(response, dict):
+            generated_text = response.get("generated_text")
+            if generated_text is None and "text" in response:
+                generated_text = response.get("text")
+        else:
+            generated_text = str(response)
+            response = {"generated_text": generated_text}
+
+        outputs = [generated_text] if generated_text is not None else []
+        result = {
+            "model": model_id,
+            "task": "text-generation",
+            "outputs": outputs,
+            "implementation_type": "(REAL)",
+            "backend": "hf_tgi",
+            "raw_response": response,
+        }
+        if request_id:
+            result["request_id"] = request_id
+        if endpoint_id:
+            result["endpoint_id"] = endpoint_id
+        return result
+
     def stream_generate(self, model_id, inputs, parameters=None, api_token=None, request_id=None, endpoint_id=None):
         """Stream text generation from HF TGI API"""
         # Format endpoint URL for the model

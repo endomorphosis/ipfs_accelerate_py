@@ -4,7 +4,6 @@ import time
 import uuid
 import threading
 import requests
-import numpy as np
 from concurrent.futures import Future
 from queue import Queue
 from dotenv import load_dotenv
@@ -14,6 +13,13 @@ import queue
 from concurrent.futures import ThreadPoolExecutor
 
 import logging
+
+try:
+    import numpy as np
+    HAVE_NUMPY = True
+except ImportError:
+    np = None
+    HAVE_NUMPY = False
 
 # Try to import storage wrapper
 try:
@@ -363,41 +369,87 @@ class hf_tei:
         # Process response - normalize if needed
         return [self.normalize_embedding(emb) for emb in response]
 
+    def run_inference(self, model_id, text=None, texts=None, request_id=None, endpoint_id=None, **kwargs):
+        """Canonical backend-manager execution entrypoint for embedding tasks."""
+        del kwargs
+        if texts is not None:
+            embeddings = self.batch_embed(
+                model_id=model_id,
+                texts=texts,
+                request_id=request_id,
+                endpoint_id=endpoint_id,
+            )
+        else:
+            embeddings = [
+                self.generate_embedding(
+                    model_id=model_id,
+                    text=text,
+                    request_id=request_id,
+                    endpoint_id=endpoint_id,
+                )
+            ]
+
+        result = {
+            "model": model_id,
+            "task": "text-embedding",
+            "embeddings": embeddings,
+            "outputs": embeddings,
+            "implementation_type": "(REAL)",
+            "backend": "hf_tei",
+        }
+        if request_id:
+            result["request_id"] = request_id
+        if endpoint_id:
+            result["endpoint_id"] = endpoint_id
+        return result
+
     def normalize_embedding(self, embedding):
         """Normalize embedding to unit length"""
-        # Convert to numpy array if not already
-        if not isinstance(embedding, np.ndarray):
-            embedding = np.array(embedding)
-        
-        # Compute L2 norm
-        norm = np.linalg.norm(embedding)
-        
-        # Normalize to unit length
+        if HAVE_NUMPY:
+            # Convert to numpy array if not already
+            if not isinstance(embedding, np.ndarray):
+                embedding = np.array(embedding)
+
+            # Compute L2 norm
+            norm = np.linalg.norm(embedding)
+
+            # Normalize to unit length
+            if norm > 0:
+                normalized = embedding / norm
+            else:
+                normalized = embedding
+
+            # Convert back to list for JSON serialization
+            return normalized.tolist()
+
+        vector = [float(x) for x in embedding]
+        norm = sum(x * x for x in vector) ** 0.5
         if norm > 0:
-            normalized = embedding / norm
-        else:
-            normalized = embedding
-        
-        # Convert back to list for JSON serialization
-        return normalized.tolist()
+            return [x / norm for x in vector]
+        return vector
 
     def calculate_similarity(self, embedding1, embedding2):
         """Calculate cosine similarity between two embeddings"""
-        # Convert to numpy arrays
-        emb1 = np.array(embedding1)
-        emb2 = np.array(embedding2)
-        
-        # Normalize if not already normalized
-        norm1 = np.linalg.norm(emb1)
-        norm2 = np.linalg.norm(emb2)
-        
-        if norm1 > 0:
-            emb1 = emb1 / norm1
-        if norm2 > 0:
-            emb2 = emb2 / norm2
-        
-        # Calculate cosine similarity
-        return np.dot(emb1, emb2)
+        if HAVE_NUMPY:
+            # Convert to numpy arrays
+            emb1 = np.array(embedding1)
+            emb2 = np.array(embedding2)
+
+            # Normalize if not already normalized
+            norm1 = np.linalg.norm(emb1)
+            norm2 = np.linalg.norm(emb2)
+
+            if norm1 > 0:
+                emb1 = emb1 / norm1
+            if norm2 > 0:
+                emb2 = emb2 / norm2
+
+            # Calculate cosine similarity
+            return np.dot(emb1, emb2)
+
+        emb1 = self.normalize_embedding(embedding1)
+        emb2 = self.normalize_embedding(embedding2)
+        return sum(a * b for a, b in zip(emb1, emb2))
         
     def create_remote_text_embedding_endpoint_handler(self, endpoint_url=None, api_key=None, endpoint_id=None):
         """Create an endpoint handler for HF TEI remote inference"""

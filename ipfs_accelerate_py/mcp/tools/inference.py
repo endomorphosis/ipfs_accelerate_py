@@ -10,6 +10,7 @@ import time
 import logging
 import random
 import traceback
+import json
 from typing import Dict, List, Any, Optional, Union
 
 # Try to import numpy
@@ -68,6 +69,18 @@ except ImportError:
         _provenance_logger = None
         _datasets_manager = None
 
+    # Try to import ipfs_kit storage integration for inference result persistence
+    try:
+        from ...ipfs_kit_integration import get_storage
+        HAVE_IPFS_KIT_STORAGE = True
+    except ImportError:
+        try:
+            from ipfs_accelerate_py.ipfs_kit_integration import get_storage
+            HAVE_IPFS_KIT_STORAGE = True
+        except ImportError:
+            HAVE_IPFS_KIT_STORAGE = False
+            get_storage = None
+
 
 def _is_pytest() -> bool:
     return os.environ.get("PYTEST_CURRENT_TEST") is not None
@@ -78,6 +91,95 @@ def _log_optional_dependency(message: str) -> None:
         logger.info(message)
     else:
         logger.warning(message)
+
+
+def _get_storage_client() -> Optional[Any]:
+    if not HAVE_IPFS_KIT_STORAGE or get_storage is None:
+        return None
+    try:
+        return get_storage(enable_ipfs_kit=True)
+    except Exception as exc:
+        logger.debug(f"IPFS storage initialization failed: {exc}")
+        return None
+
+
+def _attach_inference_persistence_metadata(
+    *,
+    model: str,
+    inputs: List[str],
+    device: str,
+    result: Dict[str, Any],
+    endpoint_id: Optional[str],
+    provider: Optional[str],
+) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {
+        "input_cid": None,
+        "output_cid": None,
+        "provenance_cid": None,
+        "audit_logged": False,
+        "storage": {
+            "attempted": False,
+            "success": False,
+        },
+    }
+
+    storage = _get_storage_client()
+    if storage is not None:
+        metadata["storage"]["attempted"] = True
+        try:
+            input_payload = json.dumps({"model": model, "inputs": inputs}, sort_keys=True)
+            output_payload = json.dumps(result, sort_keys=True)
+            metadata["input_cid"] = storage.store(input_payload, filename=f"{model}_input.json")
+            metadata["output_cid"] = storage.store(output_payload, filename=f"{model}_output.json")
+            metadata["storage"]["success"] = True
+            metadata["storage"]["using_fallback"] = bool(getattr(storage, "using_fallback", True))
+        except Exception as exc:
+            logger.debug(f"Inference result persistence failed: {exc}")
+            metadata["storage"]["error"] = str(exc)
+
+    provenance_payload = {
+        "model": model,
+        "model_type": result.get("model_type"),
+        "device": device,
+        "provider": provider,
+        "endpoint_id": endpoint_id,
+        "inputs_processed": len(inputs),
+        "duration_ms": float(result.get("processing_time", 0.0)) * 1000.0,
+        "input_cid": metadata["input_cid"],
+        "output_cid": metadata["output_cid"],
+    }
+
+    if _datasets_manager is not None:
+        try:
+            metadata["audit_logged"] = bool(
+                _datasets_manager.log_event(
+                    "inference_completed",
+                    provenance_payload,
+                    category="PERFORMANCE",
+                )
+            )
+        except Exception as exc:
+            logger.debug(f"Datasets audit logging failed: {exc}")
+        try:
+            metadata["provenance_cid"] = _datasets_manager.track_provenance(
+                "inference",
+                provenance_payload,
+            )
+        except Exception as exc:
+            logger.debug(f"Datasets provenance tracking failed: {exc}")
+
+    if metadata["provenance_cid"] is None and _provenance_logger is not None:
+        try:
+            metadata["provenance_cid"] = _provenance_logger.log_inference(
+                model_name=model,
+                data=provenance_payload,
+                metadata={"endpoint_id": endpoint_id, "provider": provider} if endpoint_id or provider else None,
+            )
+        except Exception as exc:
+            logger.debug(f"Fallback provenance logging failed: {exc}")
+
+    result.update(metadata)
+    return result
 
 # Import shared operations
 try:
@@ -149,14 +251,21 @@ def register_tools(mcp):
                     if hasattr(_ipfs_instance, "run_inference"):
                         result = _ipfs_instance.run_inference(**params)
                         elapsed_time = time.time() - start_time
-                        
-                        return {
+
+                        return _attach_inference_persistence_metadata(
+                            model=model,
+                            inputs=inputs,
+                            device=device,
+                            endpoint_id=endpoint_id,
+                            provider=provider,
+                            result={
                             "outputs": result.get("outputs", result),
                             "model": model,
-                            "elapsed_time": elapsed_time,
+                            "processing_time": elapsed_time,
                             "device": device,
-                            "backend": "ipfs_accelerate"
-                        }
+                            "backend": "ipfs_accelerate",
+                            },
+                        )
                 except Exception as e:
                     logger.warning(f"IPFS Accelerate inference failed: {e}. Falling back to MCP implementation.")
             
@@ -247,7 +356,14 @@ def register_tools(mcp):
                                 )
                             except Exception:
                                 pass
-                        return result
+                        return _attach_inference_persistence_metadata(
+                            model=model,
+                            inputs=inputs,
+                            device=result.get("device", device),
+                            endpoint_id=endpoint_id,
+                            provider=provider,
+                            result=result,
+                        )
                 except Exception as e:
                     logger.warning(f"Provider routing failed ({provider}): {e}. Falling back to local simulation.")
 
@@ -289,24 +405,6 @@ def register_tools(mcp):
                     "processing_time": time.time() - start_time
                 }
                 
-                # Log inference operation
-                if _provenance_logger:
-                    try:
-                        _provenance_logger.log_inference(
-                            model_name=model,
-                            data={
-                                "model_type": "embedding",
-                                "inputs_processed": len(inputs),
-                                "embedding_size": embedding_size,
-                                "device": device,
-                                "duration_ms": result["processing_time"] * 1000,
-                                "hardware": device
-                            },
-                            metadata={"endpoint_id": endpoint_id, "provider": provider} if endpoint_id else None
-                        )
-                    except Exception as e:
-                        logger.debug(f"Provenance logging failed: {e}")
-                
                 if endpoint_id:
                     try:
                         mcp.use_tool(
@@ -320,7 +418,14 @@ def register_tools(mcp):
                         )
                     except Exception:
                         pass
-                return result
+                return _attach_inference_persistence_metadata(
+                    model=model,
+                    inputs=inputs,
+                    device=device,
+                    endpoint_id=endpoint_id,
+                    provider=provider,
+                    result=result,
+                )
                 
             elif model_type == "generation":
                 # Simulate text generation
@@ -367,7 +472,14 @@ def register_tools(mcp):
                         )
                     except Exception:
                         pass
-                return result
+                return _attach_inference_persistence_metadata(
+                    model=model,
+                    inputs=inputs,
+                    device=device,
+                    endpoint_id=endpoint_id,
+                    provider=provider,
+                    result=result,
+                )
                 
             else:
                 return {

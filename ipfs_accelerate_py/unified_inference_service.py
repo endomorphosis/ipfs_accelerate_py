@@ -12,7 +12,9 @@ Provides a single entry point for configuring and starting all inference service
 """
 
 import asyncio
+import json
 import logging
+import time
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
@@ -61,6 +63,20 @@ except ImportError:
     HAVE_HF_SERVER = False
     HFModelServer = None
     ServerConfig = None
+
+try:
+    from .ipfs_kit_integration import get_storage
+    HAVE_IPFS_KIT_STORAGE = True
+except ImportError:
+    HAVE_IPFS_KIT_STORAGE = False
+    get_storage = None
+
+try:
+    from .datasets_integration import DatasetsManager
+    HAVE_DATASETS_MANAGER = True
+except ImportError:
+    HAVE_DATASETS_MANAGER = False
+    DatasetsManager = None
 
 
 @dataclass
@@ -126,6 +142,8 @@ class UnifiedInferenceService:
         self.hf_server: Optional[HFModelServer] = None
         self.p2p_node: Optional[LibP2PInferenceNode] = None
         self.connection_manager = None
+        self._storage_client: Optional[Any] = None
+        self._datasets_manager: Optional[Any] = None
         
         # Running state
         self.is_running = False
@@ -136,6 +154,97 @@ class UnifiedInferenceService:
             level=getattr(logging, self.config.log_level),
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
+
+    def _get_storage_client(self) -> Optional[Any]:
+        if self._storage_client is not None:
+            return self._storage_client
+        if not HAVE_IPFS_KIT_STORAGE or get_storage is None:
+            return None
+        try:
+            self._storage_client = get_storage(enable_ipfs_kit=True)
+        except Exception as exc:
+            logger.debug(f"UnifiedInferenceService storage initialization failed: {exc}")
+            self._storage_client = None
+        return self._storage_client
+
+    def _get_datasets_manager(self) -> Optional[Any]:
+        if self._datasets_manager is not None:
+            return self._datasets_manager
+        if not HAVE_DATASETS_MANAGER or DatasetsManager is None:
+            return None
+        try:
+            self._datasets_manager = DatasetsManager({
+                'enable_audit': True,
+                'enable_provenance': True,
+            })
+        except Exception as exc:
+            logger.debug(f"UnifiedInferenceService datasets initialization failed: {exc}")
+            self._datasets_manager = None
+        return self._datasets_manager
+
+    def record_inference_result(
+        self,
+        *,
+        model: str,
+        inputs: List[Any],
+        result: Dict[str, Any],
+        backend_id: Optional[str] = None,
+        backend_type: Optional[str] = None,
+        endpoint: Optional[str] = None,
+        device: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        metadata: Dict[str, Any] = {
+            "input_cid": None,
+            "output_cid": None,
+            "provenance_cid": None,
+            "audit_logged": False,
+            "storage": {
+                "attempted": False,
+                "success": False,
+            },
+        }
+
+        storage = self._get_storage_client()
+        if storage is not None:
+            metadata["storage"]["attempted"] = True
+            try:
+                input_payload = json.dumps({"model": model, "inputs": inputs}, sort_keys=True)
+                output_payload = json.dumps(result, sort_keys=True)
+                metadata["input_cid"] = storage.store(input_payload, filename=f"{model}_input.json")
+                metadata["output_cid"] = storage.store(output_payload, filename=f"{model}_output.json")
+                metadata["storage"]["success"] = True
+                metadata["storage"]["using_fallback"] = bool(getattr(storage, "using_fallback", True))
+            except Exception as exc:
+                metadata["storage"]["error"] = str(exc)
+                logger.debug(f"UnifiedInferenceService storage persistence failed: {exc}")
+
+        manager = self._get_datasets_manager()
+        if manager is not None:
+            payload = {
+                "model": model,
+                "backend_id": backend_id,
+                "backend_type": backend_type,
+                "endpoint": endpoint,
+                "device": device or result.get("device"),
+                "input_cid": metadata["input_cid"],
+                "output_cid": metadata["output_cid"],
+                "duration_ms": float(result.get("processing_time", 0.0)) * 1000.0,
+                "status": "completed",
+            }
+            try:
+                metadata["audit_logged"] = bool(
+                    manager.log_event("inference_completed", payload, category="PERFORMANCE")
+                )
+            except Exception as exc:
+                logger.debug(f"UnifiedInferenceService audit logging failed: {exc}")
+            try:
+                metadata["provenance_cid"] = manager.track_provenance("inference", payload)
+            except Exception as exc:
+                logger.debug(f"UnifiedInferenceService provenance tracking failed: {exc}")
+
+        merged = dict(result)
+        merged.update(metadata)
+        return merged
     
     async def start(self):
         """Start all inference services"""
@@ -149,6 +258,7 @@ class UnifiedInferenceService:
                 'health_check_interval': self.config.backend_health_check_interval,
                 'load_balancing': self.config.load_balancing_strategy
             })
+            self.backend_manager._result_recorder = self.record_inference_result
         
         # Start libp2p node
         if self.config.enable_libp2p and HAVE_LIBP2P:
