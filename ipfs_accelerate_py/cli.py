@@ -2110,6 +2110,224 @@ class IPFSAccelerateCLI:
             IntegratedMCPHandler._handle_mcp_tools_call = _handle_mcp_tools_call
             IntegratedMCPHandler._handle_mcp_jsonrpc = _handle_mcp_jsonrpc
 
+            # Start GitHub Actions autoscaler in background thread (transport
+            # agnostic: runs regardless of which HTTP transport serves below).
+            autoscaler_state = {"instance": None}
+
+            def _start_autoscaler():
+                if getattr(args, 'disable_autoscaler', False):
+                    return
+                try:
+                    from ipfs_accelerate_py.github_autoscaler import GitHubRunnerAutoscaler
+                    from ipfs_accelerate_py.github_cli import GitHubCLI
+                    gh = GitHubCLI()
+                    auth_status = gh.get_auth_status()
+                    if auth_status.get("authenticated"):
+                        logger.info("Starting GitHub Actions autoscaler in background...")
+                        autoscaler_instance = GitHubRunnerAutoscaler(
+                            owner=getattr(args, 'autoscaler_owner', None),
+                            poll_interval=getattr(args, 'autoscaler_interval', 60),
+                            since_days=getattr(args, 'autoscaler_since_days', 1),
+                            max_runners=getattr(args, 'autoscaler_max_runners', None),
+                            filter_by_arch=True
+                        )
+                        autoscaler_state["instance"] = autoscaler_instance
+
+                        def run_autoscaler():
+                            try:
+                                autoscaler_instance.start(setup_signals=False)
+                            except Exception as e:
+                                logger.error(f"Autoscaler error: {e}")
+
+                        threading.Thread(target=run_autoscaler, daemon=True).start()
+                        logger.info("\u2713 GitHub Actions autoscaler started")
+                    else:
+                        logger.warning("GitHub CLI not authenticated - autoscaler disabled")
+                        logger.warning("  To enable: gh auth login")
+                except ImportError as e:
+                    logger.warning(f"GitHub autoscaler not available: {e}")
+                except Exception as e:
+                    logger.warning(f"Could not start autoscaler: {e}")
+
+            # ------------------------------------------------------------------
+            # MCP++ transport selection.
+            #
+            # The MCP++ stack mandates hypercorn/anyio (the same transport used by
+            # ipfs_kit_py and ipfs_datasets_py). Historically this integrated
+            # server served the public socket from stdlib BaseHTTPServer, which
+            # drifted from that directive and presented a non-standard
+            # ``Server: BaseHTTP`` engine to external MCP clients. We now serve the
+            # public socket with Hypercorn (anyio/trio aware) by default: the
+            # battle-tested IntegratedMCPHandler keeps acting as the request
+            # engine on an internal loopback port, and a thin ASGI app reverse-
+            # proxies to it. This keeps 100% of the existing route behaviour
+            # (dashboard, /api/*, /mcp, /mcp/tools/*) while putting the
+            # client-facing transport on the hypercorn/anyio stack. Set
+            # IPFS_ACCELERATE_MCP_TRANSPORT=basehttp to force the legacy stdlib
+            # server; if hypercorn/anyio are unavailable we fall back to it too.
+            # ------------------------------------------------------------------
+            _transport = os.environ.get('IPFS_ACCELERATE_MCP_TRANSPORT', 'hypercorn').strip().lower()
+            _use_hypercorn = _transport not in ('basehttp', 'stdlib', 'http.server')
+            if _use_hypercorn:
+                try:
+                    import anyio  # noqa: F401
+                    from hypercorn.config import Config as _HypercornConfig  # noqa: F401
+                except Exception as exc:
+                    logger.warning(
+                        f"Hypercorn/anyio unavailable ({exc}); falling back to stdlib HTTP server"
+                    )
+                    _use_hypercorn = False
+
+            if _use_hypercorn:
+                from http.server import ThreadingHTTPServer
+                import http.client as _httpclient
+
+                # Internal request engine on an ephemeral loopback port.
+                internal_server = ThreadingHTTPServer(('127.0.0.1', 0), IntegratedMCPHandler)
+                internal_host, internal_port = internal_server.server_address[0], internal_server.server_address[1]
+                threading.Thread(target=internal_server.serve_forever, daemon=True).start()
+
+                _HOP_BY_HOP = {
+                    'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+                    'te', 'trailers', 'transfer-encoding', 'upgrade', 'server', 'date',
+                }
+
+                def _proxy_sync(method, target, headers, body):
+                    conn = _httpclient.HTTPConnection(internal_host, internal_port, timeout=300)
+                    try:
+                        conn.request(method, target, body=(body or None), headers=headers)
+                        resp = conn.getresponse()
+                        data = resp.read()
+                        out_headers = [
+                            (k, v) for (k, v) in resp.getheaders()
+                            if k.lower() not in _HOP_BY_HOP
+                        ]
+                        return resp.status, out_headers, data
+                    finally:
+                        conn.close()
+
+                async def _asgi_app(scope, receive, send):
+                    if scope['type'] == 'lifespan':
+                        while True:
+                            message = await receive()
+                            if message['type'] == 'lifespan.startup':
+                                await send({'type': 'lifespan.startup.complete'})
+                            elif message['type'] == 'lifespan.shutdown':
+                                await send({'type': 'lifespan.shutdown.complete'})
+                                return
+                        return
+                    if scope['type'] != 'http':
+                        return
+                    body = b''
+                    while True:
+                        message = await receive()
+                        body += message.get('body', b'')
+                        if not message.get('more_body'):
+                            break
+                    raw_path = scope.get('raw_path') or scope['path'].encode('latin-1')
+                    target = raw_path.decode('latin-1')
+                    if scope.get('query_string'):
+                        target = target + '?' + scope['query_string'].decode('latin-1')
+                    req_headers = {}
+                    for (k, v) in scope.get('headers', []):
+                        name = k.decode('latin-1')
+                        if name.lower() in ('host', 'connection', 'keep-alive',
+                                            'transfer-encoding', 'upgrade', 'te'):
+                            continue
+                        req_headers[name] = v.decode('latin-1')
+                    req_headers['Host'] = f'{internal_host}:{internal_port}'
+                    try:
+                        status, headers, data = await anyio.to_thread.run_sync(
+                            _proxy_sync, scope['method'], target, req_headers, body
+                        )
+                    except Exception as exc:  # pragma: no cover - defensive
+                        status = 502
+                        headers = [('Content-Type', 'application/json')]
+                        data = json.dumps({
+                            "error": {"code": -32099,
+                                      "message": f"integrated backend proxy error: {exc}"}
+                        }).encode()
+                    await send({
+                        'type': 'http.response.start',
+                        'status': status,
+                        'headers': [(k.encode('latin-1'), v.encode('latin-1')) for (k, v) in headers],
+                    })
+                    await send({'type': 'http.response.body', 'body': data})
+
+                async def _serve_hypercorn(app, host, port, log_level='info'):
+                    config = _HypercornConfig()
+                    config.bind = [f'{host}:{port}']
+                    config.loglevel = log_level
+                    config.accesslog = '-' if log_level == 'debug' else None
+                    try:
+                        import sniffio
+                        backend = sniffio.current_async_library()
+                    except Exception:
+                        backend = 'asyncio'
+                    if backend == 'trio':
+                        from hypercorn.trio import serve as _serve
+                    else:
+                        from hypercorn.asyncio import serve as _serve
+                    await _serve(app, config)
+
+                # Choose a public port (honour the in-use fallback like the
+                # stdlib path did) by pre-binding a probe socket.
+                import socket as _socket
+                bound_port = args.port
+                for _cand in [args.port] + list(range(args.port + 1, args.port + 11)):
+                    _probe = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+                    try:
+                        _probe.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+                        _probe.bind((args.host, _cand))
+                        bound_port = _cand
+                        _probe.close()
+                        if _cand != args.port:
+                            logger.warning(f"Port {args.port} in use. Falling back to port {_cand}.")
+                        break
+                    except OSError:
+                        _probe.close()
+                        continue
+
+                logger.info(
+                    f"Integrated MCP Server + Dashboard (Hypercorn/anyio) at "
+                    f"http://{args.host}:{bound_port} (engine -> 127.0.0.1:{internal_port})"
+                )
+                logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
+
+                _start_autoscaler()
+
+                if getattr(args, 'open_browser', False):
+                    import webbrowser
+                    webbrowser.open(f"http://{args.host}:{bound_port}")
+
+                try:
+                    anyio.run(_serve_hypercorn, _asgi_app, args.host, bound_port)
+                except KeyboardInterrupt:
+                    logger.info("Server shutdown requested")
+                    inst = autoscaler_state.get("instance")
+                    if inst:
+                        logger.info("Stopping autoscaler...")
+                        inst.stop()
+                    try:
+                        internal_server.shutdown()
+                    except Exception:
+                        pass
+                    return 0
+                except Exception as e:
+                    logger.error(f"Hypercorn server error: {e}; falling back to stdlib server")
+                    try:
+                        internal_server.shutdown()
+                    except Exception:
+                        pass
+                    _use_hypercorn = False
+                else:
+                    try:
+                        internal_server.shutdown()
+                    except Exception:
+                        pass
+                    return 0
+
+            # ---- Fallback: stdlib BaseHTTPServer public transport ----
             # Bind and start the integrated HTTP server
             try:
                 server = HTTPServer((args.host, args.port), IntegratedMCPHandler)
@@ -2134,44 +2352,7 @@ class IPFSAccelerateCLI:
             logger.info(f"Integrated MCP Server + Dashboard started at http://{args.host}:{bound_port}")
             logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
 
-            # Start GitHub Actions autoscaler in background thread
-            autoscaler_thread = None
-            autoscaler_instance = None
-            if not getattr(args, 'disable_autoscaler', False):  # Enabled by default
-                try:
-                    from ipfs_accelerate_py.github_autoscaler import GitHubRunnerAutoscaler
-                    
-                    # Check if GitHub CLI is authenticated
-                    from ipfs_accelerate_py.github_cli import GitHubCLI
-                    gh = GitHubCLI()
-                    auth_status = gh.get_auth_status()
-                    
-                    if auth_status.get("authenticated"):
-                        logger.info("Starting GitHub Actions autoscaler in background...")
-                        autoscaler_instance = GitHubRunnerAutoscaler(
-                            owner=getattr(args, 'autoscaler_owner', None),
-                            poll_interval=getattr(args, 'autoscaler_interval', 60),
-                            since_days=getattr(args, 'autoscaler_since_days', 1),
-                            max_runners=getattr(args, 'autoscaler_max_runners', None),
-                            filter_by_arch=True
-                        )
-                        
-                        def run_autoscaler():
-                            try:
-                                autoscaler_instance.start(setup_signals=False)
-                            except Exception as e:
-                                logger.error(f"Autoscaler error: {e}")
-                        
-                        autoscaler_thread = threading.Thread(target=run_autoscaler, daemon=True)
-                        autoscaler_thread.start()
-                        logger.info("✓ GitHub Actions autoscaler started")
-                    else:
-                        logger.warning("GitHub CLI not authenticated - autoscaler disabled")
-                        logger.warning("  To enable: gh auth login")
-                except ImportError as e:
-                    logger.warning(f"GitHub autoscaler not available: {e}")
-                except Exception as e:
-                    logger.warning(f"Could not start autoscaler: {e}")
+            _start_autoscaler()
 
             if getattr(args, 'open_browser', False):
                 import webbrowser
@@ -2181,9 +2362,10 @@ class IPFSAccelerateCLI:
                 server.serve_forever()
             except KeyboardInterrupt:
                 logger.info("Server shutdown requested")
-                if autoscaler_instance:
+                inst = autoscaler_state.get("instance")
+                if inst:
                     logger.info("Stopping autoscaler...")
-                    autoscaler_instance.stop()
+                    inst.stop()
                 server.shutdown()
                 return 0
             except Exception as e:
