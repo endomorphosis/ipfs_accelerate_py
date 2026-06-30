@@ -78,6 +78,8 @@ class DockerExecutionConfig:
     # Environment and volumes
     environment: Dict[str, str] = field(default_factory=dict)
     volumes: Dict[str, str] = field(default_factory=dict)  # host_path: container_path
+    model_artifact_cid: Optional[str] = None
+    model_artifact_mount_path: Optional[str] = "/workspace/model_artifact"
     
     # Network settings
     network_mode: str = "none"  # "none", "bridge", "host"
@@ -153,6 +155,7 @@ class DockerExecutor:
         *,
         config: DockerExecutionConfig,
         result: DockerExecutionResult,
+        model_artifact_metadata: Optional[Dict[str, Any]] = None,
     ) -> DockerExecutionResult:
         if not self._persist_results:
             return result
@@ -168,6 +171,7 @@ class DockerExecutor:
             "stdout": result.stdout,
             "stderr": result.stderr,
             "error_message": result.error_message,
+            "model_artifact": dict(model_artifact_metadata or {}),
         }
 
         output_cid = result.output_cid
@@ -212,6 +216,70 @@ class DockerExecutor:
         result.provenance_cid = provenance_cid
         result.metadata = {**artifact_payload, "output_cid": output_cid, "provenance_cid": provenance_cid}
         return result
+
+    def _materialize_model_artifact(self, config: DockerExecutionConfig) -> tuple[DockerExecutionConfig, Dict[str, Any]]:
+        metadata: Dict[str, Any] = {
+            "requested": bool(config.model_artifact_cid),
+            "cid": config.model_artifact_cid,
+            "retrieved": False,
+            "mount_path": config.model_artifact_mount_path,
+            "host_path": None,
+            "error": None,
+        }
+
+        artifact_cid = str(config.model_artifact_cid or "").strip()
+        if not artifact_cid:
+            return config, metadata
+
+        if self._artifact_storage is None:
+            metadata["error"] = "artifact storage unavailable"
+            return config, metadata
+
+        try:
+            artifact = self._artifact_storage.retrieve(artifact_cid)
+            if artifact is None:
+                metadata["error"] = "artifact not found"
+                return config, metadata
+
+            if isinstance(artifact, (bytes, bytearray)):
+                suffix = Path(config.model_artifact_mount_path or "/workspace/model_artifact").name or "model_artifact"
+                fd, temp_path = tempfile.mkstemp(prefix="ipfs_model_artifact_", suffix=f"_{suffix}")
+                os.close(fd)
+                with open(temp_path, "wb") as handle:
+                    handle.write(bytes(artifact))
+                host_path = temp_path
+            else:
+                host_path = str(artifact)
+
+            mount_path = str(config.model_artifact_mount_path or "/workspace/model_artifact")
+            updated_volumes = dict(config.volumes)
+            updated_volumes[host_path] = mount_path
+            updated_config = DockerExecutionConfig(
+                image=config.image,
+                command=list(config.command or []) or None,
+                entrypoint=list(config.entrypoint or []) or None,
+                working_dir=config.working_dir,
+                gpus=config.gpus,
+                memory_limit=config.memory_limit,
+                cpu_limit=config.cpu_limit,
+                timeout=config.timeout,
+                environment=dict(config.environment),
+                volumes=updated_volumes,
+                model_artifact_cid=config.model_artifact_cid,
+                model_artifact_mount_path=config.model_artifact_mount_path,
+                network_mode=config.network_mode,
+                read_only=config.read_only,
+                no_new_privileges=config.no_new_privileges,
+                user=config.user,
+                capture_output=config.capture_output,
+                stream_output=config.stream_output,
+            )
+            metadata["retrieved"] = True
+            metadata["host_path"] = host_path
+            return updated_config, metadata
+        except Exception as exc:
+            metadata["error"] = str(exc)
+            return config, metadata
     
     def _verify_docker_available(self):
         """Verify Docker is available and accessible"""
@@ -243,8 +311,10 @@ class DockerExecutor:
         """
         start_time = time.time()
         container_id = None
+        model_artifact_metadata: Dict[str, Any] = {}
         
         try:
+            config, model_artifact_metadata = self._materialize_model_artifact(config)
             # Build docker run command
             cmd = self._build_docker_command(config)
             
@@ -267,7 +337,11 @@ class DockerExecutor:
                 container_id=container_id,
                 execution_time=execution_time
             )
-            return self._record_execution_artifacts(config=config, result=result)
+            return self._record_execution_artifacts(
+                config=config,
+                result=result,
+                model_artifact_metadata=model_artifact_metadata,
+            )
             
         except subprocess.TimeoutExpired:
             execution_time = time.time() - start_time
@@ -279,7 +353,11 @@ class DockerExecutor:
                 execution_time=execution_time,
                 error_message=f"Container execution exceeded timeout of {config.timeout}s"
             )
-            return self._record_execution_artifacts(config=config, result=result)
+            return self._record_execution_artifacts(
+                config=config,
+                result=result,
+                model_artifact_metadata=model_artifact_metadata,
+            )
         except Exception as e:
             execution_time = time.time() - start_time
             logger.error(f"Docker execution failed: {e}")
@@ -291,7 +369,11 @@ class DockerExecutor:
                 execution_time=execution_time,
                 error_message=str(e)
             )
-            return self._record_execution_artifacts(config=config, result=result)
+            return self._record_execution_artifacts(
+                config=config,
+                result=result,
+                model_artifact_metadata=model_artifact_metadata,
+            )
     
     def _build_docker_command(self, config: DockerExecutionConfig) -> List[str]:
         """Build docker run command from configuration"""

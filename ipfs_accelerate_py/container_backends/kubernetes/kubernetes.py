@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -44,6 +46,8 @@ class KubernetesExecutionConfig:
 	volumes: Dict[str, str] = field(default_factory=dict)
 	labels: Dict[str, str] = field(default_factory=dict)
 	annotations: Dict[str, str] = field(default_factory=dict)
+	model_artifact_cid: Optional[str] = None
+	model_artifact_mount_path: Optional[str] = "/workspace/model_artifact"
 	timeout: int = 300
 	backoff_limit: int = 0
 	restart_policy: str = "Never"
@@ -78,11 +82,79 @@ class KubernetesBackend:
 	- Docker-like result envelopes
 	"""
 
-	def __init__(self, namespace: str = "default", *, cluster_context: Optional[str] = None):
+	def __init__(
+		self,
+		namespace: str = "default",
+		*,
+		cluster_context: Optional[str] = None,
+		storage: Any | None = None,
+	):
 		self.namespace = namespace
 		self.cluster_context = cluster_context
+		self._artifact_storage = storage
 		self._jobs: Dict[str, KubernetesJobRecord] = {}
 		self._client_available = self._try_initialize_client(cluster_context=cluster_context)
+
+	def _materialize_model_artifact(self, config: KubernetesExecutionConfig) -> tuple[KubernetesExecutionConfig, Dict[str, Any]]:
+		metadata: Dict[str, Any] = {
+			"requested": bool(config.model_artifact_cid),
+			"cid": config.model_artifact_cid,
+			"retrieved": False,
+			"mount_path": config.model_artifact_mount_path,
+			"host_path": None,
+			"error": None,
+		}
+
+		artifact_cid = str(config.model_artifact_cid or "").strip()
+		if not artifact_cid:
+			return config, metadata
+
+		if self._artifact_storage is None:
+			metadata["error"] = "artifact storage unavailable"
+			return config, metadata
+
+		try:
+			artifact = self._artifact_storage.retrieve(artifact_cid)
+			if artifact is None:
+				metadata["error"] = "artifact not found"
+				return config, metadata
+
+			if isinstance(artifact, (bytes, bytearray)):
+				suffix = Path(config.model_artifact_mount_path or "/workspace/model_artifact").name or "model_artifact"
+				fd, temp_path = tempfile.mkstemp(prefix="ipfs_k8s_model_artifact_", suffix=f"_{suffix}")
+				os.close(fd)
+				with open(temp_path, "wb") as handle:
+					handle.write(bytes(artifact))
+				host_path = temp_path
+			else:
+				host_path = str(artifact)
+
+			updated_volumes = dict(config.volumes)
+			updated_volumes[host_path] = str(config.model_artifact_mount_path or "/workspace/model_artifact")
+			updated = KubernetesExecutionConfig(
+				image=config.image,
+				command=list(config.command or []) or None,
+				args=list(config.args or []) or None,
+				namespace=config.namespace,
+				job_name=config.job_name,
+				service_account_name=config.service_account_name,
+				working_dir=config.working_dir,
+				environment=dict(config.environment),
+				volumes=updated_volumes,
+				labels=dict(config.labels),
+				annotations=dict(config.annotations),
+				model_artifact_cid=config.model_artifact_cid,
+				model_artifact_mount_path=config.model_artifact_mount_path,
+				timeout=config.timeout,
+				backoff_limit=config.backoff_limit,
+				restart_policy=config.restart_policy,
+			)
+			metadata["retrieved"] = True
+			metadata["host_path"] = host_path
+			return updated, metadata
+		except Exception as exc:
+			metadata["error"] = str(exc)
+			return config, metadata
 
 	def _try_initialize_client(self, *, cluster_context: Optional[str]) -> bool:
 		try:
@@ -167,9 +239,11 @@ class KubernetesBackend:
 		}
 
 	def submit_job(self, config: KubernetesExecutionConfig) -> str:
+		config, artifact_metadata = self._materialize_model_artifact(config)
 		job_spec = self.build_job_spec(config)
 		job_id = job_spec["metadata"]["name"]
 		record = KubernetesJobRecord(job_id=job_id, config=config, job_spec=job_spec)
+		record.metadata["model_artifact"] = artifact_metadata
 		record.status = KubernetesJobStatus.RUNNING
 		record.started_at = time.time()
 		record.pod_name = f"{job_id}-pod"

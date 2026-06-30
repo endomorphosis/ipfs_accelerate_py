@@ -9,10 +9,17 @@ from ipfs_accelerate_py.docker_executor import DockerExecutor, DockerExecutionCo
 class _FakeStorage:
     def __init__(self):
         self.records = []
+        self.retrieve_calls = []
 
     def store(self, data, filename=None, pin=False):
         self.records.append({"data": data, "filename": filename, "pin": pin})
         return f"cid-{len(self.records)}"
+
+    def retrieve(self, cid):
+        self.retrieve_calls.append(cid)
+        if cid == "cid-model":
+            return b"model-bytes"
+        return None
 
 
 class _FakeDatasetsManager:
@@ -91,3 +98,52 @@ def test_docker_executor_persists_artifacts_and_provenance(monkeypatch):
     assert datasets.events[0]["data"]["output_cid"] == "cid-1"
     assert provenance.records[0]["operation"] == "docker_execution"
     assert provenance.records[0]["output_cid"] == "cid-1"
+
+
+def test_docker_executor_materializes_model_artifact_by_cid(monkeypatch):
+    monkeypatch.setattr(DockerExecutor, "_verify_docker_available", lambda self: None)
+
+    storage = _FakeStorage()
+    datasets = _FakeDatasetsManager()
+    provenance = _FakeProvenanceLogger()
+    executor = DockerExecutor(
+        storage=storage,
+        datasets_manager=datasets,
+        provenance_logger=provenance,
+    )
+
+    seen = {}
+
+    def _capture_command(config):
+        seen["config"] = config
+        return ["docker", "run", config.image, "echo", "hello"]
+
+    monkeypatch.setattr(executor, "_build_docker_command", _capture_command)
+    monkeypatch.setattr(
+        executor,
+        "_execute_capture",
+        lambda cmd, timeout: subprocess.CompletedProcess(
+            args=cmd,
+            returncode=0,
+            stdout="ok\n",
+            stderr="",
+        ),
+    )
+
+    result = executor.execute_container(
+        DockerExecutionConfig(
+            image="python:3.12-slim",
+            command=["echo", "hello"],
+            model_artifact_cid="cid-model",
+            model_artifact_mount_path="/workspace/model.bin",
+        )
+    )
+
+    assert result.success is True
+    assert storage.retrieve_calls == ["cid-model"]
+    used_config = seen["config"]
+    assert used_config.volumes
+    assert "/workspace/model.bin" in used_config.volumes.values()
+    model_meta = (result.metadata or {}).get("model_artifact") or {}
+    assert model_meta.get("retrieved") is True
+    assert model_meta.get("cid") == "cid-model"
