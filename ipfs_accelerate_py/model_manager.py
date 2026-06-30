@@ -320,9 +320,14 @@ class ModelMetadata:
     tokenizer_cid: Optional[str] = None
     artifact_cid: Optional[str] = None
     model_revision: Optional[str] = None
+    revision_id: Optional[str] = None
+    revision_created_at: Optional[datetime] = None
+    parent_model_id: Optional[str] = None
     parent_model_cid: Optional[str] = None
     last_used_at: Optional[datetime] = None
     last_inference_cid: Optional[str] = None
+    last_run_id: Optional[str] = None
+    inference_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -336,6 +341,10 @@ class ModelMetadata:
             self.created_at = datetime.now()
         if self.updated_at is None:
             self.updated_at = datetime.now()
+        if self.revision_id is None and self.model_revision is not None:
+            self.revision_id = self.model_revision
+        if self.revision_created_at is None and self.created_at is not None:
+            self.revision_created_at = self.created_at
 
 
 class ModelManager:
@@ -487,18 +496,23 @@ class ModelManager:
                     tokenizer_cid VARCHAR,
                     artifact_cid VARCHAR,
                     model_revision VARCHAR,
+                    revision_id VARCHAR,
+                    revision_created_at TIMESTAMP,
+                    parent_model_id VARCHAR,
                     parent_model_cid VARCHAR,
                     last_used_at TIMESTAMP,
                     last_inference_cid VARCHAR,
+                    last_run_id VARCHAR,
+                    inference_count BIGINT,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP
                 )
             """)
 
-            for column_name in ["model_cid", "config_cid", "tokenizer_cid", "artifact_cid", "model_revision", "parent_model_cid", "last_used_at", "last_inference_cid"]:
+            for column_name in ["model_cid", "config_cid", "tokenizer_cid", "artifact_cid", "model_revision", "revision_id", "revision_created_at", "parent_model_id", "parent_model_cid", "last_used_at", "last_inference_cid", "last_run_id", "inference_count"]:
                 try:
                     self.con.execute(
-                        f"ALTER TABLE model_metadata ADD COLUMN IF NOT EXISTS {column_name} {'TIMESTAMP' if column_name == 'last_used_at' else 'VARCHAR'}"
+                        f"ALTER TABLE model_metadata ADD COLUMN IF NOT EXISTS {column_name} {'TIMESTAMP' if column_name in {'last_used_at', 'revision_created_at'} else ('BIGINT' if column_name == 'inference_count' else 'VARCHAR')}"
                     )
                 except Exception:
                     pass
@@ -541,7 +555,7 @@ class ModelManager:
                     if row_dict[json_field]:
                         row_dict[json_field] = json.loads(row_dict[json_field])
 
-                for datetime_field in ['created_at', 'updated_at', 'last_used_at']:
+                for datetime_field in ['created_at', 'updated_at', 'last_used_at', 'revision_created_at']:
                     if row_dict.get(datetime_field) and isinstance(row_dict[datetime_field], str):
                         row_dict[datetime_field] = datetime.fromisoformat(row_dict[datetime_field])
                 
@@ -578,6 +592,8 @@ class ModelManager:
                     model_data['updated_at'] = datetime.fromisoformat(model_data['updated_at'])
                 if 'last_used_at' in model_data and model_data['last_used_at']:
                     model_data['last_used_at'] = datetime.fromisoformat(model_data['last_used_at'])
+                if 'revision_created_at' in model_data and model_data['revision_created_at']:
+                    model_data['revision_created_at'] = datetime.fromisoformat(model_data['revision_created_at'])
                 
                 # Convert to IOSpec objects
                 if 'inputs' in model_data and model_data['inputs']:
@@ -634,9 +650,14 @@ class ModelManager:
                 "tokenizer_cid",
                 "artifact_cid",
                 "model_revision",
+                "revision_id",
+                "revision_created_at",
+                "parent_model_id",
                 "parent_model_cid",
                 "last_used_at",
                 "last_inference_cid",
+                "last_run_id",
+                "inference_count",
                 "created_at",
                 "updated_at",
             ]
@@ -676,9 +697,11 @@ class ModelManager:
                         hardware_requirements, performance_metrics, tags, source_url,
                         license, description, model_card, repository_structure,
                         model_cid, config_cid, tokenizer_cid, artifact_cid,
-                        model_revision, parent_model_cid, last_used_at, last_inference_cid,
+                        model_revision, revision_id, revision_created_at, parent_model_id,
+                        parent_model_cid, last_used_at, last_inference_cid,
+                        last_run_id, inference_count,
                         created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, tuple(data.get(column) for column in columns))
             
             logger.info(f"Saved {len(self.models)} models to database")
@@ -698,6 +721,8 @@ class ModelManager:
                     model_dict['created_at'] = model_dict['created_at'].isoformat()
                 if model_dict['updated_at']:
                     model_dict['updated_at'] = model_dict['updated_at'].isoformat()
+                if model_dict['revision_created_at']:
+                    model_dict['revision_created_at'] = model_dict['revision_created_at'].isoformat()
                 
                 # Convert enum to string
                 model_dict['model_type'] = model_dict['model_type'].value
@@ -751,6 +776,10 @@ class ModelManager:
             metadata.updated_at = datetime.now()
             if not metadata.model_revision:
                 metadata.model_revision = metadata.updated_at.isoformat()
+            if not metadata.revision_id:
+                metadata.revision_id = metadata.model_revision
+            if metadata.revision_created_at is None:
+                metadata.revision_created_at = metadata.updated_at
             self.models[metadata.model_id] = metadata
             self._save_data()
             logger.info(f"Added/updated model: {metadata.model_id}")
@@ -786,11 +815,16 @@ class ModelManager:
             "model_id": metadata.model_id,
             "model_type": metadata.model_type.value if hasattr(metadata.model_type, 'value') else str(metadata.model_type),
             "model_revision": metadata.model_revision,
+            "revision_id": metadata.revision_id,
+            "revision_created_at": metadata.revision_created_at.isoformat() if metadata.revision_created_at else None,
+            "parent_model_id": metadata.parent_model_id,
             "model_cid": metadata.model_cid,
             "config_cid": metadata.config_cid,
             "tokenizer_cid": metadata.tokenizer_cid,
             "artifact_cid": metadata.artifact_cid,
             "timestamp": metadata.updated_at.isoformat() if metadata.updated_at else None,
+            "last_run_id": metadata.last_run_id,
+            "inference_count": metadata.inference_count,
         }
 
         if self._datasets_manager:
@@ -810,6 +844,9 @@ class ModelManager:
                         "input_types": [inp.data_type.value if hasattr(inp.data_type, 'value') else str(inp.data_type) for inp in metadata.inputs] if metadata.inputs else [],
                         "output_types": [out.data_type.value if hasattr(out.data_type, 'value') else str(out.data_type) for out in metadata.outputs] if metadata.outputs else [],
                         "model_revision": metadata.model_revision,
+                        "revision_id": metadata.revision_id,
+                        "revision_created_at": metadata.revision_created_at.isoformat() if metadata.revision_created_at else None,
+                        "parent_model_id": metadata.parent_model_id,
                         "model_cid": metadata.model_cid,
                         "config_cid": metadata.config_cid,
                         "tokenizer_cid": metadata.tokenizer_cid,
@@ -826,8 +863,14 @@ class ModelManager:
             "model_id": metadata.model_id,
             "model_type": metadata.model_type.value if hasattr(metadata.model_type, 'value') else str(metadata.model_type),
             "model_revision": metadata.model_revision,
+            "revision_id": metadata.revision_id,
+            "revision_created_at": metadata.revision_created_at.isoformat() if metadata.revision_created_at else None,
+            "parent_model_id": metadata.parent_model_id,
             "model_cid": metadata.model_cid,
             "artifact_cid": metadata.artifact_cid,
+            "last_inference_cid": metadata.last_inference_cid,
+            "last_run_id": metadata.last_run_id,
+            "inference_count": metadata.inference_count,
         }
 
         if self._datasets_manager:
@@ -846,15 +889,24 @@ class ModelManager:
             except Exception as e:
                 logger.debug(f"Model access provenance logging failed: {e}")
 
-    def mark_model_used(self, model_id: str, inference_cid: Optional[str] = None) -> bool:
+    def mark_model_used(
+        self,
+        model_id: str,
+        inference_cid: Optional[str] = None,
+        run_id: Optional[str] = None,
+    ) -> bool:
         """Update usage linkage metadata for a model after inference or evaluation."""
-        metadata = self.get_model(model_id)
+        metadata = self.models.get(model_id)
         if not metadata:
             return False
 
         metadata.last_used_at = datetime.now()
         if inference_cid:
             metadata.last_inference_cid = inference_cid
+        if run_id:
+            metadata.last_run_id = run_id
+        metadata.inference_count = int(metadata.inference_count or 0) + 1
+        metadata.updated_at = datetime.now()
         self._save_data()
         self._record_model_access(metadata)
         return True

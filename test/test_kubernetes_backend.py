@@ -13,12 +13,35 @@ from ipfs_accelerate_py.container_backends.kubernetes.kubernetes import (
 class _FakeStorage:
     def __init__(self):
         self.retrieve_calls = []
+        self.store_calls = []
 
     def retrieve(self, cid):
         self.retrieve_calls.append(cid)
         if cid == "cid-model":
             return b"model-bytes"
         return None
+
+    def store(self, data, filename=None, pin=False):
+        self.store_calls.append({"data": data, "filename": filename, "pin": pin})
+        return f"cid-store-{len(self.store_calls)}"
+
+
+class _FakeDatasetsManager:
+    def __init__(self):
+        self.events = []
+
+    def log_event(self, event_type, data, level="INFO", category="GENERAL"):
+        self.events.append({"event_type": event_type, "data": data, "level": level, "category": category})
+        return True
+
+
+class _FakeProvenanceLogger:
+    def __init__(self):
+        self.calls = []
+
+    def log_transformation(self, operation, data, input_cid=None, output_cid=None):
+        self.calls.append({"operation": operation, "data": data, "input_cid": input_cid, "output_cid": output_cid})
+        return "cid-prov"
 
 
 def test_kubernetes_backend_builds_job_spec_and_collects_result(tmp_path):
@@ -70,6 +93,8 @@ def test_kubernetes_backend_builds_job_spec_and_collects_result(tmp_path):
     assert backend.list_jobs()[0]["job_id"] == "ipfs-accel-test-job"
     assert backend.list_jobs()[0]["status"] == KubernetesJobStatus.SUCCEEDED.value
     assert "ipfs-accel-test-job" in backend.to_json()
+    for key in ["image", "command", "container_id", "execution_time", "exit_code", "success", "stdout", "stderr", "error_message", "output_cid", "provenance_cid"]:
+        assert key in result.metadata
 
 
 def test_kubernetes_backend_materializes_model_artifact_by_cid(tmp_path):
@@ -96,3 +121,34 @@ def test_kubernetes_backend_materializes_model_artifact_by_cid(tmp_path):
     spec = jobs[0]["job_spec"]
     mounts = spec["spec"]["template"]["spec"]["containers"][0].get("volumeMounts") or []
     assert any(m.get("mountPath") == "/workspace/model.bin" for m in mounts)
+
+
+def test_kubernetes_backend_persists_artifacts_and_provenance_when_missing(tmp_path):
+    storage = _FakeStorage()
+    datasets = _FakeDatasetsManager()
+    provenance = _FakeProvenanceLogger()
+    backend = KubernetesBackend(
+        namespace="test-namespace",
+        storage=storage,
+        datasets_manager=datasets,
+        provenance_logger=provenance,
+    )
+    config = KubernetesExecutionConfig(
+        image="python:3.12-slim",
+        command=["python", "-c"],
+        args=["print('ok')"],
+        namespace="test-namespace",
+        job_name="ipfs-accel-persist-job",
+    )
+
+    job_id = backend.submit_job(config)
+    backend.record_job_artifacts(job_id, stdout="ok", stderr="", exit_code=0)
+    result = backend.collect_result(job_id)
+
+    assert result.success is True
+    assert result.output_cid == "cid-store-1"
+    assert result.provenance_cid == "cid-prov"
+    assert storage.store_calls
+    assert datasets.events[0]["event_type"] == "container_execution_completed"
+    assert datasets.events[0]["data"]["job_id"] == "ipfs-accel-persist-job"
+    assert provenance.calls[0]["operation"] == "kubernetes_execution"

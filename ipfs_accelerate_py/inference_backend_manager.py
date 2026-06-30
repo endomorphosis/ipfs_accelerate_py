@@ -398,11 +398,26 @@ class InferenceBackendManager:
         backend_info = self.get_backend(backend_id)
         backend_type = backend_info.backend_type.value if backend_info else None
         endpoint = backend_info.endpoint if backend_info else None
+        protocols = sorted(backend_info.capabilities.protocols) if backend_info else []
+        hardware_types = sorted(backend_info.capabilities.hardware_types) if backend_info else []
+        placement_node = None
+        if backend_info:
+            placement_node = (
+                backend_info.metadata.get("placement_node")
+                or backend_info.metadata.get("node_name")
+                or backend_info.metadata.get("peer_id")
+                or backend_info.metadata.get("worker_id")
+            )
 
         merged = dict(result)
         merged.setdefault("backend_id", backend_id)
         merged.setdefault("backend_type", backend_type)
         merged.setdefault("endpoint", endpoint)
+        merged.setdefault("protocol", protocols[0] if protocols else None)
+        merged.setdefault("protocols", protocols)
+        merged.setdefault("hardware_type", hardware_types[0] if hardware_types else merged.get("device"))
+        merged.setdefault("hardware_types", hardware_types)
+        merged.setdefault("placement_node", placement_node)
         merged.setdefault("task", task)
         merged.setdefault("model", model)
         if backend_info and backend_info.last_selection_reason:
@@ -418,6 +433,11 @@ class InferenceBackendManager:
                     backend_type=backend_type,
                     endpoint=endpoint,
                     device=merged.get("device"),
+                    protocol=merged.get("protocol"),
+                    protocols=merged.get("protocols"),
+                    hardware_type=merged.get("hardware_type"),
+                    hardware_types=merged.get("hardware_types"),
+                    placement_node=merged.get("placement_node"),
                 )
                 if isinstance(recorded, dict):
                     merged = recorded
@@ -735,6 +755,13 @@ class InferenceBackendManager:
                         "endpoint": b.endpoint,
                         "tasks": list(b.capabilities.supported_tasks),
                         "protocols": list(b.capabilities.protocols),
+                        "hardware_types": list(b.capabilities.hardware_types),
+                        "placement_node": (
+                            b.metadata.get("placement_node")
+                            or b.metadata.get("node_name")
+                            or b.metadata.get("peer_id")
+                            or b.metadata.get("worker_id")
+                        ),
                         "last_selection_reason": b.last_selection_reason,
                         "metrics": {
                             "requests": b.metrics.total_requests,

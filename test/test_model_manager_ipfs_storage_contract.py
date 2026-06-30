@@ -80,6 +80,8 @@ class TestModelManagerIpfsStorageContract(unittest.TestCase):
             architecture="TestArchitecture",
             inputs=[IOSpec(name="input_ids", data_type=DataType.TOKENS)],
             outputs=[IOSpec(name="logits", data_type=DataType.LOGITS)],
+            revision_id="rev-001",
+            parent_model_id="parent/model",
         )
 
     def tearDown(self):
@@ -125,7 +127,13 @@ class TestModelManagerIpfsStorageContract(unittest.TestCase):
         self.assertEqual(Path(restored["config_cid"]).read_text(encoding="utf-8"), '{"hidden_size": 768}')
         self.assertEqual(Path(restored["tokenizer_cid"]).read_text(encoding="utf-8"), '{"vocab_size": 30522}')
 
-        self.assertTrue(manager.mark_model_used("test/model", inference_cid="cid:inference-result"))
+        self.assertTrue(
+            manager.mark_model_used(
+                "test/model",
+                inference_cid="cid:inference-result",
+                run_id="run-123",
+            )
+        )
         self.assertTrue(any(event[0] == "model_accessed" for event in fake_datasets.events))
         self.assertTrue(any(record[0] == "model_accessed" for record in fake_provenance.records))
 
@@ -137,7 +145,12 @@ class TestModelManagerIpfsStorageContract(unittest.TestCase):
         self.assertEqual(reloaded.tokenizer_cid, "cid:test_model.tokenizer")
         self.assertEqual(reloaded.artifact_cid, "cid:test_model.artifact-manifest.json")
         self.assertIsNotNone(reloaded.model_revision)
+        self.assertEqual(reloaded.revision_id, "rev-001")
+        self.assertEqual(reloaded.parent_model_id, "parent/model")
+        self.assertIsNotNone(reloaded.revision_created_at)
         self.assertEqual(reloaded.last_inference_cid, "cid:inference-result")
+        self.assertEqual(reloaded.last_run_id, "run-123")
+        self.assertEqual(reloaded.inference_count, 1)
         self.assertIsNotNone(reloaded.last_used_at)
 
         manager.close()

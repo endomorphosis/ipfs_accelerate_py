@@ -26,7 +26,8 @@ class TestBackendManager:
         manager = InferenceBackendManager({
             'enable_health_checks': True,
             'health_check_interval': 30,
-            'load_balancing': 'round_robin'
+            'load_balancing': 'round_robin',
+            'persist_registry': False,
         })
         
         assert manager is not None
@@ -39,7 +40,7 @@ class TestBackendManager:
             InferenceBackendManager, BackendType, BackendCapabilities
         )
         
-        manager = InferenceBackendManager()
+        manager = InferenceBackendManager({'persist_registry': False})
         
         # Create mock backend instance
         mock_backend = Mock()
@@ -68,7 +69,7 @@ class TestBackendManager:
             InferenceBackendManager, BackendType, BackendCapabilities
         )
         
-        manager = InferenceBackendManager()
+        manager = InferenceBackendManager({'persist_registry': False})
         
         # Register multiple backends
         for i, backend_type in enumerate([BackendType.GPU, BackendType.API, BackendType.CLI]):
@@ -102,7 +103,8 @@ class TestBackendManager:
         )
         
         manager = InferenceBackendManager({
-            'load_balancing': 'round_robin'
+            'load_balancing': 'round_robin',
+            'persist_registry': False,
         })
         
         # Register multiple backends for same task
@@ -136,7 +138,7 @@ class TestBackendManager:
             InferenceBackendManager, BackendType
         )
         
-        manager = InferenceBackendManager()
+        manager = InferenceBackendManager({'persist_registry': False})
         
         manager.register_backend(
             backend_id="test_backend",
@@ -162,7 +164,7 @@ class TestBackendManager:
             InferenceBackendManager, BackendType, BackendCapabilities
         )
         
-        manager = InferenceBackendManager()
+        manager = InferenceBackendManager({'persist_registry': False})
         
         # Register backends
         manager.register_backend(
@@ -171,8 +173,11 @@ class TestBackendManager:
             name="GPU Backend",
             instance=Mock(),
             capabilities=BackendCapabilities(
-                supported_tasks={"text-generation", "text-embedding"}
-            )
+                supported_tasks={"text-generation", "text-embedding"},
+                hardware_types={"cuda"},
+                protocols={"http"},
+            ),
+            metadata={"placement_node": "node-gpu-1"},
         )
         
         # Get status report
@@ -183,6 +188,9 @@ class TestBackendManager:
         assert "backends_by_type" in status
         assert "backends" in status
         assert len(status["backends"]) == 1
+        assert status["backends"][0]["hardware_types"] == ["cuda"]
+        assert status["backends"][0]["protocols"] == ["http"]
+        assert status["backends"][0]["placement_node"] == "node-gpu-1"
 
     def test_backend_registry_state_persists_and_reloads(self):
         from ipfs_accelerate_py.inference_backend_manager import (
@@ -288,14 +296,15 @@ class TestBackendManager:
             result["provenance_cid"] = "cid-prov"
             return result
 
-        manager = InferenceBackendManager({"result_recorder": fake_result_recorder})
+        manager = InferenceBackendManager({"result_recorder": fake_result_recorder, "persist_registry": False})
         manager.register_backend(
             backend_id="api_backend_1",
             backend_type=BackendType.API,
             name="API Backend 1",
             instance=Mock(),
-            capabilities=BackendCapabilities(supported_tasks={"text-generation"}),
+            capabilities=BackendCapabilities(supported_tasks={"text-generation"}, protocols={"http"}, hardware_types={"cpu"}),
             endpoint="http://localhost:9000",
+            metadata={"placement_node": "node-a"},
         )
 
         finalized = manager.finalize_inference_result(
@@ -309,6 +318,11 @@ class TestBackendManager:
         assert finalized["backend_id"] == "api_backend_1"
         assert finalized["backend_type"] == "api"
         assert finalized["endpoint"] == "http://localhost:9000"
+        assert finalized["protocol"] == "http"
+        assert finalized["protocols"] == ["http"]
+        assert finalized["hardware_type"] == "cpu"
+        assert finalized["hardware_types"] == ["cpu"]
+        assert finalized["placement_node"] == "node-a"
         assert finalized["output_cid"] == "cid-out"
         assert finalized["provenance_cid"] == "cid-prov"
         assert len(recorded_calls) == 1
@@ -335,14 +349,15 @@ class TestBackendManager:
             result["provenance_cid"] = "cid-prov"
             return result
 
-        manager = InferenceBackendManager({"result_recorder": fake_result_recorder})
+        manager = InferenceBackendManager({"result_recorder": fake_result_recorder, "persist_registry": False})
         manager.register_backend(
             backend_id="api_backend_2",
             backend_type=BackendType.API,
             name="API Backend 2",
             instance=FakeBackend(),
-            capabilities=BackendCapabilities(supported_tasks={"text-generation"}),
+            capabilities=BackendCapabilities(supported_tasks={"text-generation"}, protocols={"http"}, hardware_types={"cpu"}),
             endpoint="http://localhost:9001",
+            metadata={"placement_node": "node-b"},
         )
 
         result = await manager.execute_task(
@@ -353,6 +368,9 @@ class TestBackendManager:
 
         assert result["backend_id"] == "api_backend_2"
         assert result["backend_type"] == "api"
+        assert result["protocol"] == "http"
+        assert result["hardware_type"] == "cpu"
+        assert result["placement_node"] == "node-b"
         assert result["output_cid"] == "cid-generated"
         assert result["provenance_cid"] == "cid-prov"
         assert result["outputs"] == ["generated:hello world"]
@@ -385,7 +403,7 @@ class TestBackendManager:
             result["provenance_cid"] = "cid-embed-prov"
             return result
 
-        manager = InferenceBackendManager({"result_recorder": fake_result_recorder})
+        manager = InferenceBackendManager({"result_recorder": fake_result_recorder, "persist_registry": False})
         manager.register_backend(
             backend_id="api_backend_embed",
             backend_type=BackendType.API,

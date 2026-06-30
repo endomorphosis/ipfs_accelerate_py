@@ -88,12 +88,98 @@ class KubernetesBackend:
 		*,
 		cluster_context: Optional[str] = None,
 		storage: Any | None = None,
+		datasets_manager: Any | None = None,
+		provenance_logger: Any | None = None,
+		persist_results: bool = True,
 	):
 		self.namespace = namespace
 		self.cluster_context = cluster_context
 		self._artifact_storage = storage
+		self._datasets_manager = datasets_manager
+		self._provenance_logger = provenance_logger
+		self._persist_results = bool(persist_results)
 		self._jobs: Dict[str, KubernetesJobRecord] = {}
 		self._client_available = self._try_initialize_client(cluster_context=cluster_context)
+
+	def _record_execution_artifacts(self, record: KubernetesJobRecord) -> None:
+		if not self._persist_results:
+			return
+
+		artifact_payload = {
+			"image": record.config.image,
+			"command": list(record.config.command or []),
+			"entrypoint": [],
+			"container_id": record.pod_name,
+			"execution_time": (record.completed_at or time.time()) - record.started_at if record.started_at else 0.0,
+			"exit_code": record.exit_code,
+			"success": record.status == KubernetesJobStatus.SUCCEEDED,
+			"stdout": record.stdout,
+			"stderr": record.stderr,
+			"error_message": None if record.status == KubernetesJobStatus.SUCCEEDED else (record.stderr or f"Kubernetes job {record.job_id} failed"),
+			"model_artifact": dict(record.metadata.get("model_artifact") or {}),
+		}
+
+		output_cid = record.output_cid
+		provenance_cid = record.provenance_cid
+
+		if self._artifact_storage is not None and not output_cid:
+			try:
+				output_payload = json.dumps(artifact_payload, sort_keys=True, indent=2)
+				output_cid = self._artifact_storage.store(
+					output_payload,
+					filename=f"kubernetes-execution-{record.job_id}.json",
+					pin=False,
+				)
+			except Exception as exc:
+				logger.debug("Failed to persist Kubernetes execution output: %s", exc)
+
+		if self._datasets_manager is not None:
+			try:
+				self._datasets_manager.log_event(
+					"container_execution_completed" if record.status == KubernetesJobStatus.SUCCEEDED else "container_execution_failed",
+					{
+						**artifact_payload,
+						"job_id": record.job_id,
+						"namespace": record.config.namespace,
+						"node_name": record.node_name,
+						"output_cid": output_cid,
+					},
+					level="INFO" if record.status == KubernetesJobStatus.SUCCEEDED else "ERROR",
+					category="PERFORMANCE",
+				)
+			except Exception as exc:
+				logger.debug("Failed to log Kubernetes execution event: %s", exc)
+
+		if self._provenance_logger is not None and not provenance_cid:
+			try:
+				provenance_cid = self._provenance_logger.log_transformation(
+					"kubernetes_execution",
+					artifact_payload,
+					output_cid=output_cid,
+				)
+			except Exception as exc:
+				logger.debug("Failed to record Kubernetes execution provenance: %s", exc)
+
+		record.output_cid = output_cid
+		record.provenance_cid = provenance_cid
+		record.metadata.update({
+			"image": record.config.image,
+			"command": list(record.config.command or []),
+			"entrypoint": [],
+			"container_id": record.pod_name,
+			"execution_time": artifact_payload["execution_time"],
+			"exit_code": record.exit_code,
+			"success": record.status == KubernetesJobStatus.SUCCEEDED,
+			"stdout": record.stdout,
+			"stderr": record.stderr,
+			"error_message": artifact_payload["error_message"],
+			"output_cid": output_cid,
+			"provenance_cid": provenance_cid,
+			"job_id": record.job_id,
+			"namespace": record.config.namespace,
+			"pod_name": record.pod_name,
+			"node_name": record.node_name,
+		})
 
 	def _materialize_model_artifact(self, config: KubernetesExecutionConfig) -> tuple[KubernetesExecutionConfig, Dict[str, Any]]:
 		metadata: Dict[str, Any] = {
@@ -304,6 +390,7 @@ class KubernetesBackend:
 			)
 
 		status = self.get_job_status(job_id)
+		self._record_execution_artifacts(record)
 		execution_time = 0.0
 		if record.started_at:
 			execution_time = (record.completed_at or time.time()) - record.started_at
@@ -321,14 +408,7 @@ class KubernetesBackend:
 			error_message=None if success else (record.stderr or f"Kubernetes job {job_id} failed"),
 			output_cid=record.output_cid,
 			provenance_cid=record.provenance_cid,
-			metadata={
-				"job_id": record.job_id,
-				"namespace": record.config.namespace,
-				"pod_name": record.pod_name,
-				"node_name": record.node_name,
-				"output_cid": record.output_cid,
-				"provenance_cid": record.provenance_cid,
-			},
+			metadata=dict(record.metadata),
 		)
 
 	def execute_job(self, config: KubernetesExecutionConfig) -> DockerExecutionResult:
