@@ -50,6 +50,9 @@ class MCPClient {
                 throw mcpError;
             }
             
+            if (method === 'tools/call') {
+                return this._unwrapToolResult(response.result);
+            }
             return response.result;
         } catch (error) {
             if (error instanceof MCPError) {
@@ -62,6 +65,29 @@ class MCPClient {
             }
             throw internalError;
         }
+    }
+
+    /**
+     * Unwrap an MCP ``tools/call`` result envelope back to the raw tool payload.
+     *
+     * The servers now return spec-conformant ``CallToolResult`` objects
+     * ({ content: [...], structuredContent, isError }) so that external MCP
+     * clients can invoke tools. Existing dashboard code expects the raw payload
+     * (e.g. result.queues, or an array of repos), so transparently restore it
+     * here from ``structuredContent`` while leaving non-enveloped results
+     * untouched for backwards compatibility.
+     */
+    _unwrapToolResult(result) {
+        if (result && typeof result === 'object' && !Array.isArray(result)
+            && Array.isArray(result.content) && 'structuredContent' in result) {
+            const sc = result.structuredContent;
+            if (sc && typeof sc === 'object' && !Array.isArray(sc)
+                && Object.keys(sc).length === 1 && 'result' in sc) {
+                return sc.result;
+            }
+            return sc;
+        }
+        return result;
     }
 
     /**
@@ -89,12 +115,18 @@ class MCPClient {
         }));
 
         const responses = await this._makeHttpRequest(requestBodies);
-        
-        return responses.map(response => {
+
+        // Preserve request order so tools/call responses can be unwrapped back to
+        // their raw payloads for backwards compatibility.
+        return responses.map((response, idx) => {
             if (response.error) {
                 return { error: new MCPError(response.error.code, response.error.message, response.error.data) };
             }
-            return { result: response.result };
+            const method = requests[idx] && requests[idx].method;
+            const result = method === 'tools/call'
+                ? this._unwrapToolResult(response.result)
+                : response.result;
+            return { result };
         });
     }
 

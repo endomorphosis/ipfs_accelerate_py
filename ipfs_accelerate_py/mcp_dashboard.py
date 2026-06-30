@@ -41,6 +41,51 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def _mcp_tool_result(result) -> Dict[str, Any]:
+    """Wrap a raw tool return value in the MCP ``tools/call`` content shape.
+
+    Stock MCP clients (and the official SDK's ``CallToolResult`` model) require
+    ``tools/call`` results to carry a ``content`` array of content blocks. Tool
+    functions here historically returned arbitrary payloads (e.g. ``{"data": [...]}``)
+    which the SDK rejects with a ``CallToolResult`` validation error, so a
+    conformant client could ``initialize`` and ``tools/list`` but never invoke a
+    tool. Normalize every result into the spec shape (preserving the original
+    payload under ``structuredContent`` for richer clients).
+    """
+    import json as _json
+
+    # Pass through values that already conform to the MCP result shape.
+    if isinstance(result, dict) and isinstance(result.get("content"), list):
+        result.setdefault("isError", False)
+        return result
+
+    if isinstance(result, dict):
+        structured = result
+        text = _json.dumps(result, default=str)
+        # Preserve the original top-level keys (e.g. ``queues``, ``error``) so the
+        # dashboard's own frontend, which reads them directly, keeps working while
+        # external MCP clients get the conformant ``content`` array. The MCP
+        # ``CallToolResult`` model is declared ``extra="allow"``, so the extra keys
+        # validate cleanly.
+        wrapped = dict(result)
+        wrapped["content"] = [{"type": "text", "text": text}]
+        wrapped["structuredContent"] = structured
+        wrapped.setdefault("isError", bool(result.get("error")))
+        return wrapped
+    elif isinstance(result, list):
+        structured = {"result": result}
+        text = _json.dumps(result, default=str)
+    else:
+        structured = {"result": result}
+        text = "" if result is None else str(result)
+    return {
+        "content": [{"type": "text", "text": text}],
+        "structuredContent": structured,
+        "isError": False,
+    }
+
+
 class MCPDashboard:
     """MCP Dashboard with links to various services."""
     
@@ -1313,7 +1358,7 @@ class MCPDashboard:
                             result = self.tool_registry.call_tool(tool_name, **tool_args)
                             return jsonify({
                                 'jsonrpc': '2.0',
-                                'result': result,
+                                'result': _mcp_tool_result(result),
                                 'id': request_id
                             })
                         except KeyError:
@@ -1342,7 +1387,7 @@ class MCPDashboard:
                                     result = tool_func(**tool_args)
                                     return jsonify({
                                         'jsonrpc': '2.0',
-                                        'result': result,
+                                        'result': _mcp_tool_result(result),
                                         'id': request_id
                                     })
                                 else:
@@ -1381,7 +1426,7 @@ class MCPDashboard:
                             result = self._call_github_tool(github_ops, tool_name, tool_args)
                             return jsonify({
                                 'jsonrpc': '2.0',
-                                'result': result,
+                                'result': _mcp_tool_result(result),
                                 'id': request_id
                             })
                         except ImportError as e:
