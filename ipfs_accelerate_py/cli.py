@@ -20,6 +20,7 @@ Usage:
 import argparse
 import anyio
 import json
+import dataclasses
 import logging
 import os
 import sys
@@ -1167,6 +1168,20 @@ class IPFSAccelerateCLI:
             """
             if isinstance(result, dict) and isinstance(result.get("content"), list):
                 return result
+            # Normalize dataclasses (e.g. DockerResult/GitHubResult) and other
+            # objects exposing __dict__ into plain dicts so structuredContent and
+            # the text block carry real structured data instead of a repr string.
+            if dataclasses.is_dataclass(result) and not isinstance(result, type):
+                try:
+                    result = dataclasses.asdict(result)
+                except Exception:
+                    pass
+            elif not isinstance(result, (dict, list, str, int, float, bool, type(None))) \
+                    and hasattr(result, "__dict__"):
+                try:
+                    result = {k: v for k, v in vars(result).items() if not k.startswith("_")}
+                except Exception:
+                    pass
             try:
                 text = json.dumps(result, default=str)
             except Exception:
@@ -1282,18 +1297,31 @@ class IPFSAccelerateCLI:
                     self.wfile.write(fallback_html.encode())
 
             def _send_json(self, payload: Dict[str, Any], status: int = 200):
+                # Serialize BEFORE sending any headers so a non-serializable tool
+                # result (e.g. an object or exception in structuredContent) cannot
+                # crash mid-stream. ``default=str`` mirrors ``_mcp_tool_result`` and
+                # guarantees a stock MCP client always receives valid JSON instead
+                # of a corrupt double-sent "HTTP/1.0 500" status line in the body.
+                try:
+                    body = json.dumps(payload, default=str).encode()
+                except Exception as exc:
+                    status = 500
+                    body = json.dumps({
+                        "jsonrpc": "2.0",
+                        "id": payload.get("id") if isinstance(payload, dict) else None,
+                        "error": {"code": -32603, "message": f"response serialization failed: {exc}"},
+                    }).encode()
                 try:
                     self.send_response(status)
                     self.send_header('Content-type', 'application/json')
+                    self.send_header('Content-Length', str(len(body)))
                     self.end_headers()
-                    self.wfile.write(json.dumps(payload).encode())
+                    self.wfile.write(body)
                 except Exception:
-                    # Last-resort: avoid throwing from handler
-                    try:
-                        self.send_response(500)
-                        self.end_headers()
-                    except Exception:
-                        pass
+                    # Headers/body already (partially) committed; never write a
+                    # second status line into the stream — that is what produced
+                    # the corrupt response. Best-effort: drop the connection.
+                    pass
 
             def _handle_cache_stats_api(self):
                 try:
