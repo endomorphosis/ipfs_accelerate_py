@@ -177,6 +177,10 @@ class TaskOrchestrator:
         try:
             manager.log_event(event_type, data, level=level, category="GENERAL")
         except Exception:
+            pass
+        try:
+            manager.track_provenance(event_type, data)
+        except Exception:
             return
 
     @property

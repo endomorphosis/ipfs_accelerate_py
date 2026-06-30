@@ -301,3 +301,22 @@ def get_bootstrap_peers_for_cache() -> List[str]:
     """
     helper = SimplePeerBootstrap()
     return helper.get_bootstrap_addrs()
+def bootstrap_network(max_peers: int = 5) -> List[str]:
+    """Bootstrap to the P2P network and return reachable bootstrap multiaddrs.
+
+    Backward-compatible public entrypoint expected by downstream consumers
+    (the ipfs_datasets_py MCP++ bridge) and external MCP++ clients. Wraps
+    :class:`SimplePeerBootstrap` to discover and return bootstrap peer
+    addresses. Without this symbol the ``from ...p2p.bootstrap import
+    bootstrap_network`` imports fail, which makes the datasets MCP++ bridge
+    report ``bootstrap`` as a missing requirement and surfaces in the
+    Hallucinate app as "MCP++ servers not working".
+
+    Args:
+        max_peers: Maximum number of bootstrap multiaddrs to return.
+
+    Returns:
+        List of bootstrap peer multiaddrs.
+    """
+    helper = SimplePeerBootstrap()
+    return helper.get_bootstrap_addrs(max_peers=max_peers)

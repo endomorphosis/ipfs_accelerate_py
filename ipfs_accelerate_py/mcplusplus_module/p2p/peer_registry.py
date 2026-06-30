@@ -447,3 +447,12 @@ class P2PPeerRegistry:
         Should be called every ~5-10 minutes.
         """
         self.register_peer(peer_id, listen_port, multiaddr)
+# Backward-compatible public alias.
+#
+# The MCP++ peer-registry class is implemented as ``P2PPeerRegistry``, but the
+# documented public name (used by the ipfs_datasets_py MCP++ bridge and by
+# external MCP++ clients) is ``PeerRegistry``. Without this alias those
+# ``from ...p2p.peer_registry import PeerRegistry`` imports fail, which makes
+# the datasets MCP++ bridge report ``peer_registry`` as a missing requirement
+# and surfaces in the Hallucinate app as "MCP++ servers not working".
+PeerRegistry = P2PPeerRegistry

@@ -8,6 +8,20 @@ class _Remote:
         self.multiaddr = multiaddr
 
 
+class _FakeDatasetsManager:
+    def __init__(self):
+        self.events = []
+        self.provenance = []
+
+    def log_event(self, event_type, data, level="INFO", category="GENERAL"):
+        self.events.append({"event_type": event_type, "data": dict(data or {}), "level": level, "category": category})
+        return True
+
+    def track_provenance(self, operation, data, record_type="TRANSFORMATION"):
+        self.provenance.append({"operation": operation, "data": dict(data or {}), "record_type": record_type})
+        return "cid-prov"
+
+
 def test_orchestrator_proxy_submission_carries_lineage(tmp_path):
     queue_path = str(tmp_path / "tasks.duckdb")
     orchestrator = TaskOrchestrator(
@@ -52,3 +66,34 @@ def test_orchestrator_proxy_submission_carries_lineage(tmp_path):
     assert payload["_lineage"]["model_id"] == "model-a"
     assert payload["_lineage"]["persistence_policy"] == "required"
     assert payload["_lineage"]["provenance_policy"] == "strict"
+
+
+def test_orchestrator_workflow_events_emit_provenance(monkeypatch, tmp_path):
+    queue_path = str(tmp_path / "tasks.duckdb")
+    orchestrator = TaskOrchestrator(
+        config=OrchestratorConfig(
+            queue_path=queue_path,
+            orchestrator_id="orch-test",
+            base_worker_id="worker-test",
+            min_workers=0,
+            max_workers=0,
+        )
+    )
+    fake_datasets = _FakeDatasetsManager()
+    monkeypatch.setattr(orchestrator, "_get_datasets_manager", lambda: fake_datasets)
+
+    orchestrator._log_workflow_event(
+        "workflow_dispatched",
+        {
+            "workflow_id": "wf-123",
+            "task_id": "task-1",
+            "model_id": "model-a",
+            "orchestrator_id": "orch-test",
+            "peer_id": "peer-1",
+        },
+    )
+
+    assert len(fake_datasets.events) == 1
+    assert fake_datasets.events[0]["event_type"] == "workflow_dispatched"
+    assert len(fake_datasets.provenance) == 1
+    assert fake_datasets.provenance[0]["operation"] == "workflow_dispatched"
