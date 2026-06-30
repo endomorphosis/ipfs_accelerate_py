@@ -1103,7 +1103,94 @@ class IPFSAccelerateCLI:
 
         dashboard_template_path = os.path.join(_pkg_root, "templates", "dashboard.html")
         static_root_path = os.path.join(_pkg_root, "static")
-        
+
+        # ------------------------------------------------------------------
+        # MCP protocol surface for the integrated (Flask-free) server.
+        #
+        # When Flask is unavailable the CLI falls back to this BaseHTTPServer
+        # implementation. Historically it only served dashboard/`/api/*` data
+        # routes, so it answered 404 to `/mcp`, `/mcp/tools/list` and
+        # `/mcp/tools/call` — which is exactly what hallucinate_app's tool
+        # explorer and any stock MCP client call. That made the server look
+        # "not working". We now serve the same MCP surface as the Flask
+        # dashboard, backed by the unified tool registry, so external MCP
+        # clients (JSON-RPC over POST /mcp) and the app's REST UI both work.
+        #
+        # The registry import pulls in heavy modules (~seconds), so build it on
+        # a background thread to keep the dashboard/health endpoints responsive;
+        # endpoints return an empty-but-valid tool list until it is ready
+        # (never a 404), and populate on the next refresh.
+        # ------------------------------------------------------------------
+        _mcp_registry_state = {"registry": None, "ready": False, "error": None}
+
+        def _build_mcp_registry():
+            try:
+                from ipfs_accelerate_py.mcp.unified_registry import get_global_registry
+                from ipfs_accelerate_py.mcp.tool_migration import populate_unified_registry
+                populate_unified_registry()
+                _mcp_registry_state["registry"] = get_global_registry()
+                logger.info(
+                    "Integrated MCP server: unified tool registry ready (%d tools)",
+                    len(_mcp_registry_state["registry"].list_tool_names()),
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                _mcp_registry_state["error"] = str(exc)
+                logger.warning(f"Integrated MCP server: tool registry unavailable: {exc}")
+            finally:
+                _mcp_registry_state["ready"] = True
+
+        threading.Thread(target=_build_mcp_registry, daemon=True).start()
+
+        def _mcp_tool_descriptors():
+            reg = _mcp_registry_state["registry"]
+            if reg is None:
+                return []
+            descriptors = []
+            try:
+                for meta in reg.list_tools():
+                    descriptors.append({
+                        "name": getattr(meta, "name", None),
+                        "description": getattr(meta, "description", "") or "",
+                        "inputSchema": getattr(meta, "input_schema", None) or {"type": "object"},
+                    })
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(f"Integrated MCP server: tools/list enumeration failed: {exc}")
+            return descriptors
+
+        def _mcp_tool_result(result):
+            """Wrap a raw tool return in the MCP ``CallToolResult`` content shape.
+
+            The MCP spec requires ``tools/call`` results to carry a ``content``
+            array. For dict payloads we also preserve the original top-level keys
+            (CallToolResult is ``extra=allow``) so existing dict-reading consumers
+            keep working.
+            """
+            if isinstance(result, dict) and isinstance(result.get("content"), list):
+                return result
+            try:
+                text = json.dumps(result, default=str)
+            except Exception:
+                text = str(result)
+            structured = result if isinstance(result, dict) else {"result": result}
+            wrapped = {
+                "content": [{"type": "text", "text": text}],
+                "structuredContent": structured,
+                "isError": bool(isinstance(result, dict) and result.get("error")),
+            }
+            if isinstance(result, dict):
+                for key, value in result.items():
+                    if key not in wrapped:
+                        wrapped[key] = value
+            return wrapped
+
+        def _mcp_call_tool(name, arguments):
+            reg = _mcp_registry_state["registry"]
+            if reg is None:
+                if not _mcp_registry_state["ready"]:
+                    raise RuntimeError("tool registry is still initializing")
+                raise RuntimeError(_mcp_registry_state["error"] or "tool registry unavailable")
+            return reg.call_tool(name, **(arguments or {}))
+
         try:
             # Create the integrated dashboard handler
             class IntegratedMCPHandler(BaseHTTPRequestHandler):
@@ -1143,6 +1230,8 @@ class IPFSAccelerateCLI:
                         self._handle_peers_api()
                     elif self.path == '/api/mcp/user':
                         self._handle_user_api()
+                    elif self.path == '/mcp/tools/list':
+                        self._handle_mcp_tools_list()
                     elif self.path.startswith('/api/mcp/models/'):
                         self._handle_model_api()
                     elif self.path.startswith('/api/mcp/'):
@@ -1160,7 +1249,13 @@ class IPFSAccelerateCLI:
                         self.end_headers()
                 
                 def do_POST(self):
-                    if self.path.startswith('/api/'):
+                    if self.path == '/mcp' or self.path.startswith('/mcp?'):
+                        self._handle_mcp_jsonrpc()
+                    elif self.path == '/mcp/tools/list':
+                        self._handle_mcp_tools_list()
+                    elif self.path == '/mcp/tools/call':
+                        self._handle_mcp_tools_call()
+                    elif self.path.startswith('/api/'):
                         self._handle_post_api()
                     else:
                         self.send_response(404)
@@ -1875,6 +1970,97 @@ class IPFSAccelerateCLI:
                     response = {"status": "error", "message": str(e)}
                     self.wfile.write(json.dumps(response).encode())
             
+            # MCP protocol handlers (REST + JSON-RPC) for the integrated server.
+            def _read_json_body(self):
+                try:
+                    length = int(self.headers.get('Content-Length', 0) or 0)
+                    raw = self.rfile.read(length) if length else b''
+                    return json.loads(raw.decode('utf-8')) if raw else {}
+                except Exception:
+                    return {}
+
+            def _handle_mcp_tools_list(self):
+                self._send_json({"jsonrpc": "2.0", "result": {"tools": _mcp_tool_descriptors()}})
+
+            def _handle_mcp_tools_call(self):
+                body = self._read_json_body()
+                params = body.get('params') if isinstance(body.get('params'), dict) else {}
+                name = body.get('name') or body.get('tool') or params.get('name')
+                arguments = body.get('arguments')
+                if arguments is None:
+                    arguments = params.get('arguments')
+                if not name:
+                    self._send_json(
+                        {"jsonrpc": "2.0", "error": {"code": -32602, "message": "Missing tool name"}},
+                        status=400,
+                    )
+                    return
+                try:
+                    result = _mcp_call_tool(name, arguments or {})
+                    self._send_json({"jsonrpc": "2.0", "result": _mcp_tool_result(result)})
+                except Exception as exc:
+                    self._send_json(
+                        {"jsonrpc": "2.0", "error": {"code": -32603, "message": str(exc)}}
+                    )
+
+            def _handle_mcp_jsonrpc(self):
+                body = self._read_json_body()
+                method = body.get('method', '')
+                params = body.get('params') if isinstance(body.get('params'), dict) else {}
+                req_id = body.get('id', None)
+                if method == 'initialize':
+                    client_caps = (params.get('capabilities', {}) or {}).get('experimental', {}) or {}
+                    server_caps = {k: True for k in (
+                        'mcp++/mcp-idl', 'mcp++/cid-envelope', 'mcp++/ucan',
+                        'mcp++/deontic-policy', 'mcp++/event-dag', 'mcp++/p2p-transport',
+                    ) if client_caps.get(k)}
+                    self._send_json({
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {
+                                "tools": {"listChanged": True},
+                                "experimental": server_caps,
+                            },
+                            "serverInfo": {"name": "mcp++", "version": "1.0.0"},
+                        },
+                    })
+                elif method == 'ping':
+                    self._send_json({"jsonrpc": "2.0", "id": req_id, "result": {}})
+                elif method.startswith('notifications/'):
+                    self._send_json({"jsonrpc": "2.0", "id": req_id, "result": None}, status=202)
+                elif method == 'tools/list':
+                    self._send_json({
+                        "jsonrpc": "2.0", "id": req_id,
+                        "result": {"tools": _mcp_tool_descriptors()},
+                    })
+                elif method == 'tools/call':
+                    name = params.get('name', '')
+                    arguments = params.get('arguments', {}) or {}
+                    if not name:
+                        self._send_json({
+                            "jsonrpc": "2.0", "id": req_id,
+                            "error": {"code": -32602, "message": "Missing tool name"},
+                        })
+                        return
+                    try:
+                        result = _mcp_call_tool(name, arguments)
+                        self._send_json({
+                            "jsonrpc": "2.0", "id": req_id,
+                            "result": _mcp_tool_result(result),
+                        })
+                    except Exception as exc:
+                        self._send_json({
+                            "jsonrpc": "2.0", "id": req_id,
+                            "error": {"code": -32603, "message": str(exc)},
+                        })
+                else:
+                    self._send_json({
+                        "jsonrpc": "2.0", "id": req_id,
+                        "error": {"code": -32601, "message": f"Method not found: {method}"},
+                    })
+
             # Bind helper functions as methods on the handler class
             IntegratedMCPHandler._serve_dashboard = _serve_dashboard
             IntegratedMCPHandler._send_json = _send_json
@@ -1891,6 +2077,10 @@ class IPFSAccelerateCLI:
             IntegratedMCPHandler._handle_post_api = _handle_post_api
             IntegratedMCPHandler._handle_model_download = _handle_model_download
             IntegratedMCPHandler._handle_model_test_post = _handle_model_test_post
+            IntegratedMCPHandler._read_json_body = _read_json_body
+            IntegratedMCPHandler._handle_mcp_tools_list = _handle_mcp_tools_list
+            IntegratedMCPHandler._handle_mcp_tools_call = _handle_mcp_tools_call
+            IntegratedMCPHandler._handle_mcp_jsonrpc = _handle_mcp_jsonrpc
 
             # Bind and start the integrated HTTP server
             try:
