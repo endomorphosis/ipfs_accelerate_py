@@ -631,6 +631,24 @@ class InferenceBackendManager:
         Returns:
             Selected backend or None if no suitable backend found
         """
+        normalized_preferred_types: Optional[List[BackendType]] = None
+        if preferred_types:
+            normalized_preferred_types = []
+            seen_types: Set[BackendType] = set()
+            for item in preferred_types:
+                backend_type_value: Optional[BackendType] = None
+                if isinstance(item, BackendType):
+                    backend_type_value = item
+                else:
+                    try:
+                        backend_type_value = BackendType(str(item).strip().lower())
+                    except Exception:
+                        backend_type_value = None
+                if backend_type_value is None or backend_type_value in seen_types:
+                    continue
+                seen_types.add(backend_type_value)
+                normalized_preferred_types.append(backend_type_value)
+
         with self._lock:
             # Get backends that support this task
             candidate_ids = self.task_routing.get(task, [])
@@ -654,7 +672,7 @@ class InferenceBackendManager:
                         reasons.append(f"missing_protocols:{','.join(missing_protocols)}")
                     else:
                         reasons.append(f"protocols:{','.join(required_protocols)}")
-                if preferred_types and candidate.backend_type in preferred_types:
+                if normalized_preferred_types and candidate.backend_type in normalized_preferred_types:
                     reasons.append(f"preferred_type:{candidate.backend_type.value}")
                 if self.load_balancing_strategy:
                     reasons.append(f"strategy:{self.load_balancing_strategy}")
@@ -688,9 +706,9 @@ class InferenceBackendManager:
                 return None
             
             # Sort by preferred types if specified
-            if preferred_types:
-                type_priority = {t: i for i, t in enumerate(preferred_types)}
-                candidates.sort(key=lambda b: type_priority.get(b.backend_type, len(preferred_types)))
+            if normalized_preferred_types:
+                type_priority = {t: i for i, t in enumerate(normalized_preferred_types)}
+                candidates.sort(key=lambda b: type_priority.get(b.backend_type, len(normalized_preferred_types)))
             
             # Apply load balancing strategy
             if self.load_balancing_strategy == 'round_robin':

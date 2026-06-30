@@ -1,5 +1,6 @@
 import asyncio
 import subprocess
+from fastapi.testclient import TestClient
 
 from ipfs_accelerate_py.docker_executor import DockerExecutionConfig, DockerExecutor
 from ipfs_accelerate_py.inference_backend_manager import BackendCapabilities, BackendType, InferenceBackendManager
@@ -270,3 +271,87 @@ def test_call_matrix_kubernetes_materializes_model_artifact_by_cid():
     assert jobs
     model_meta = (jobs[0].get("metadata") or {}).get("model_artifact") or {}
     assert model_meta.get("retrieved") is True
+
+
+def test_call_matrix_hf_model_server_failure_emits_datasets_events(monkeypatch):
+    from ipfs_accelerate_py.hf_model_server.config import ServerConfig
+    from ipfs_accelerate_py.hf_model_server import server as server_module
+
+    class _FailingBackendManager:
+        async def execute_task(self, **kwargs):
+            raise RuntimeError("backend unavailable")
+
+    datasets = _CallTrackingDatasets()
+
+    monkeypatch.setattr(server_module, "get_backend_manager", lambda config=None: _FailingBackendManager())
+    monkeypatch.setattr(server_module, "HAVE_BACKEND_MANAGER", True)
+    monkeypatch.setattr(server_module, "DatasetsManager", lambda *args, **kwargs: datasets)
+    monkeypatch.setattr(server_module, "HAVE_DATASETS_MANAGER", True)
+
+    server = server_module.HFModelServer(
+        ServerConfig(
+            enable_auth=False,
+            enable_metrics=False,
+            auto_discover=False,
+            enable_hardware_detection=False,
+        )
+    )
+
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/v1/completions",
+            json={
+                "model": "demo-model",
+                "prompt": "hello world",
+            },
+        )
+
+    assert response.status_code == 503
+    assert datasets.event_calls
+    assert datasets.event_calls[0]["event_type"] == "inference_failed"
+    assert datasets.provenance_calls
+    assert datasets.provenance_calls[0]["operation"] == "inference_failed"
+
+
+def test_call_matrix_hf_model_server_model_load_failure_emits_datasets_events(monkeypatch):
+    from ipfs_accelerate_py.hf_model_server.config import ServerConfig
+    from ipfs_accelerate_py.hf_model_server import server as server_module
+
+    class _FailingModelManager:
+        def add_model_with_ipfs_storage(self, metadata, model_path=None, config_path=None, tokenizer_path=None, store_to_ipfs=True):
+            return False, None
+
+    datasets = _CallTrackingDatasets()
+
+    monkeypatch.setattr(server_module, "ModelManager", lambda *args, **kwargs: _FailingModelManager())
+    monkeypatch.setattr(server_module, "HAVE_MODEL_MANAGER", True)
+    monkeypatch.setattr(server_module, "DatasetsManager", lambda *args, **kwargs: datasets)
+    monkeypatch.setattr(server_module, "HAVE_DATASETS_MANAGER", True)
+
+    server = server_module.HFModelServer(
+        ServerConfig(
+            enable_auth=False,
+            enable_metrics=False,
+            auto_discover=False,
+            enable_hardware_detection=False,
+        )
+    )
+
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/models/load",
+            json={
+                "model_id": "broken-model",
+                "hardware": "cpu",
+                "options": {
+                    "model_path": "/tmp/broken-model.bin",
+                    "store_to_ipfs": True,
+                },
+            },
+        )
+
+    assert response.status_code == 500
+    assert datasets.event_calls
+    assert datasets.event_calls[0]["event_type"] == "model_load_failed"
+    assert datasets.provenance_calls
+    assert datasets.provenance_calls[0]["operation"] == "model_load_failed"

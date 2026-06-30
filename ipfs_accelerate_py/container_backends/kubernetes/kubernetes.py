@@ -101,6 +101,96 @@ class KubernetesBackend:
 		self._jobs: Dict[str, KubernetesJobRecord] = {}
 		self._client_available = self._try_initialize_client(cluster_context=cluster_context)
 
+	def _set_failure_metadata(
+		self,
+		record: KubernetesJobRecord,
+		*,
+		reason: Optional[str] = None,
+		message: Optional[str] = None,
+		phase: Optional[str] = None,
+		conditions: Optional[List[Dict[str, Any]]] = None,
+		events: Optional[List[Dict[str, Any]]] = None,
+	) -> None:
+		reason_text = str(reason or "").strip() or "kubernetes_job_failed"
+		message_text = str(message or record.stderr or f"Kubernetes job {record.job_id} failed").strip()
+		phase_text = str(phase or record.status.value).strip() or record.status.value
+
+		# Conservative retryability heuristic for transient cluster conditions.
+		reason_l = reason_text.lower()
+		message_l = message_text.lower()
+		transient_tokens = {
+			"evicted",
+			"deadlineexceeded",
+			"imagepullbackoff",
+			"errimagepull",
+			"toomanyrequests",
+			"throttl",
+			"timeout",
+			"temporar",
+			"connection",
+		}
+		retryable = any(tok in reason_l or tok in message_l for tok in transient_tokens)
+
+		record.metadata["failure_reason"] = reason_text
+		record.metadata["failure_message"] = message_text
+		record.metadata["failure_phase"] = phase_text
+		record.metadata["failure_retryable"] = bool(retryable)
+		if conditions is not None:
+			record.metadata["failure_conditions"] = list(conditions)
+		if events is not None:
+			record.metadata["failure_events"] = list(events)
+
+	def _job_conditions_to_dicts(self, conditions: Any) -> List[Dict[str, Any]]:
+		out: List[Dict[str, Any]] = []
+		for cond in list(conditions or []):
+			try:
+				out.append(
+					{
+						"type": str(getattr(cond, "type", "") or ""),
+						"status": str(getattr(cond, "status", "") or ""),
+						"reason": str(getattr(cond, "reason", "") or ""),
+						"message": str(getattr(cond, "message", "") or ""),
+						"last_transition_time": str(getattr(cond, "last_transition_time", "") or ""),
+					}
+				)
+			except Exception:
+				continue
+		return out
+
+	def _pod_conditions_to_dicts(self, conditions: Any) -> List[Dict[str, Any]]:
+		out: List[Dict[str, Any]] = []
+		for cond in list(conditions or []):
+			try:
+				out.append(
+					{
+						"type": str(getattr(cond, "type", "") or ""),
+						"status": str(getattr(cond, "status", "") or ""),
+						"reason": str(getattr(cond, "reason", "") or ""),
+						"message": str(getattr(cond, "message", "") or ""),
+						"last_transition_time": str(getattr(cond, "last_transition_time", "") or ""),
+					}
+				)
+			except Exception:
+				continue
+		return out
+
+	def _event_list_to_dicts(self, events: Any) -> List[Dict[str, Any]]:
+		out: List[Dict[str, Any]] = []
+		for ev in list(events or []):
+			try:
+				out.append(
+					{
+						"reason": str(getattr(ev, "reason", "") or ""),
+						"message": str(getattr(ev, "message", "") or ""),
+						"type": str(getattr(ev, "type", "") or ""),
+						"count": int(getattr(ev, "count", 0) or 0),
+						"last_timestamp": str(getattr(ev, "last_timestamp", "") or ""),
+					}
+				)
+			except Exception:
+				continue
+		return out
+
 	def _record_execution_artifacts(self, record: KubernetesJobRecord) -> None:
 		if not self._persist_results:
 			return
@@ -116,6 +206,12 @@ class KubernetesBackend:
 			"stdout": record.stdout,
 			"stderr": record.stderr,
 			"error_message": None if record.status == KubernetesJobStatus.SUCCEEDED else (record.stderr or f"Kubernetes job {record.job_id} failed"),
+			"failure_reason": record.metadata.get("failure_reason"),
+			"failure_message": record.metadata.get("failure_message"),
+			"failure_phase": record.metadata.get("failure_phase"),
+			"failure_retryable": record.metadata.get("failure_retryable"),
+			"failure_conditions": list(record.metadata.get("failure_conditions") or []),
+			"failure_events": list(record.metadata.get("failure_events") or []),
 			"model_artifact": dict(record.metadata.get("model_artifact") or {}),
 		}
 
@@ -173,6 +269,12 @@ class KubernetesBackend:
 			"stdout": record.stdout,
 			"stderr": record.stderr,
 			"error_message": artifact_payload["error_message"],
+			"failure_reason": artifact_payload["failure_reason"],
+			"failure_message": artifact_payload["failure_message"],
+			"failure_phase": artifact_payload["failure_phase"],
+			"failure_retryable": artifact_payload["failure_retryable"],
+			"failure_conditions": artifact_payload["failure_conditions"],
+			"failure_events": artifact_payload["failure_events"],
 			"output_cid": output_cid,
 			"provenance_cid": provenance_cid,
 			"job_id": record.job_id,
@@ -344,6 +446,12 @@ class KubernetesBackend:
 				record.stderr = str(exc)
 				record.exit_code = 1
 				record.completed_at = time.time()
+				self._set_failure_metadata(
+					record,
+					reason="job_submission_failed",
+					message=str(exc),
+					phase=KubernetesJobStatus.FAILED.value,
+				)
 				logger.debug("Failed to create Kubernetes job %s: %s", job_id, exc)
 		else:
 			logger.info("Kubernetes client unavailable; recorded simulated job %s", job_id)
@@ -359,12 +467,62 @@ class KubernetesBackend:
 			try:
 				job = self._batch_v1.read_namespaced_job(name=job_id, namespace=record.config.namespace)
 				status = getattr(job, "status", None)
+				job_conditions = self._job_conditions_to_dicts(getattr(status, "conditions", None)) if status is not None else []
+				if job_conditions:
+					record.metadata["job_conditions"] = list(job_conditions)
 				if status is not None and getattr(status, "succeeded", 0):
 					record.status = KubernetesJobStatus.SUCCEEDED
 					record.completed_at = time.time()
 				elif status is not None and getattr(status, "failed", 0):
 					record.status = KubernetesJobStatus.FAILED
 					record.completed_at = time.time()
+					failure_reason = str(getattr(status, "reason", "") or "")
+					failure_message = str(getattr(status, "message", "") or "")
+					if not failure_reason and job_conditions:
+						for cond in job_conditions:
+							if str(cond.get("type") or "").lower() == "failed":
+								failure_reason = str(cond.get("reason") or failure_reason)
+								failure_message = str(cond.get("message") or failure_message)
+								break
+
+					pod_conditions: List[Dict[str, Any]] = []
+					pod_phase = ""
+					pod_reason = ""
+					pod_message = ""
+					events: List[Dict[str, Any]] = []
+					if self._core_v1 is not None and record.pod_name:
+						try:
+							pod = self._core_v1.read_namespaced_pod(name=record.pod_name, namespace=record.config.namespace)
+							pod_status = getattr(pod, "status", None)
+							if pod_status is not None:
+								pod_phase = str(getattr(pod_status, "phase", "") or "")
+								pod_reason = str(getattr(pod_status, "reason", "") or "")
+								pod_message = str(getattr(pod_status, "message", "") or "")
+								pod_conditions = self._pod_conditions_to_dicts(getattr(pod_status, "conditions", None))
+						except Exception:
+							pass
+						try:
+							event_list = self._core_v1.list_namespaced_event(
+								namespace=record.config.namespace,
+								field_selector=f"involvedObject.name={record.pod_name}",
+							)
+							events = self._event_list_to_dicts(getattr(event_list, "items", None))
+						except Exception:
+							pass
+
+					combined_conditions = list(job_conditions)
+					if pod_conditions:
+						record.metadata["pod_conditions"] = list(pod_conditions)
+						combined_conditions.extend(pod_conditions)
+
+					self._set_failure_metadata(
+						record,
+						reason=failure_reason or pod_reason or "job_failed",
+						message=failure_message or pod_message or record.stderr or f"Kubernetes job {job_id} failed",
+						phase=pod_phase or KubernetesJobStatus.FAILED.value,
+						conditions=combined_conditions,
+						events=events,
+					)
 				elif status is not None and getattr(status, "active", 0):
 					record.status = KubernetesJobStatus.RUNNING
 				else:
@@ -374,6 +532,12 @@ class KubernetesBackend:
 				record.stderr = str(exc)
 				record.exit_code = 1
 				record.completed_at = time.time()
+				self._set_failure_metadata(
+					record,
+					reason="status_poll_failed",
+					message=str(exc),
+					phase=KubernetesJobStatus.FAILED.value,
+				)
 
 		return record.status
 
@@ -405,7 +569,7 @@ class KubernetesBackend:
 			stderr=record.stderr,
 			container_id=record.pod_name,
 			execution_time=execution_time,
-			error_message=None if success else (record.stderr or f"Kubernetes job {job_id} failed"),
+			error_message=None if success else (str(record.metadata.get("failure_message") or "") or record.stderr or f"Kubernetes job {job_id} failed"),
 			output_cid=record.output_cid,
 			provenance_cid=record.provenance_cid,
 			metadata=dict(record.metadata),
@@ -463,6 +627,12 @@ class KubernetesBackend:
 			record.status = KubernetesJobStatus.SUCCEEDED
 		else:
 			record.status = KubernetesJobStatus.FAILED
+			self._set_failure_metadata(
+				record,
+				reason="non_zero_exit_code",
+				message=str(record.stderr or f"Kubernetes job {job_id} exited with code {record.exit_code}"),
+				phase=KubernetesJobStatus.FAILED.value,
+			)
 
 	def to_json(self) -> str:
 		return json.dumps(self.list_jobs(), indent=2, sort_keys=True, default=str)

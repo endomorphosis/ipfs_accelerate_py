@@ -192,6 +192,12 @@ class UnifiedInferenceService:
         backend_type: Optional[str] = None,
         endpoint: Optional[str] = None,
         device: Optional[str] = None,
+        protocol: Optional[str] = None,
+        protocols: Optional[List[str]] = None,
+        hardware_type: Optional[str] = None,
+        hardware_types: Optional[List[str]] = None,
+        placement_node: Optional[str] = None,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         metadata: Dict[str, Any] = {
             "input_cid": None,
@@ -225,6 +231,11 @@ class UnifiedInferenceService:
                 "backend_id": backend_id,
                 "backend_type": backend_type,
                 "endpoint": endpoint,
+                "protocol": protocol,
+                "protocols": list(protocols or []),
+                "hardware_type": hardware_type,
+                "hardware_types": list(hardware_types or []),
+                "placement_node": placement_node,
                 "device": device or result.get("device"),
                 "input_cid": metadata["input_cid"],
                 "output_cid": metadata["output_cid"],
@@ -243,6 +254,11 @@ class UnifiedInferenceService:
                 logger.debug(f"UnifiedInferenceService provenance tracking failed: {exc}")
 
         merged = dict(result)
+        merged.setdefault("protocol", protocol)
+        merged.setdefault("protocols", list(protocols or []))
+        merged.setdefault("hardware_type", hardware_type)
+        merged.setdefault("hardware_types", list(hardware_types or []))
+        merged.setdefault("placement_node", placement_node)
         merged.update(metadata)
         return merged
     

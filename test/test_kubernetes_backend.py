@@ -152,3 +152,88 @@ def test_kubernetes_backend_persists_artifacts_and_provenance_when_missing(tmp_p
     assert datasets.events[0]["event_type"] == "container_execution_completed"
     assert datasets.events[0]["data"]["job_id"] == "ipfs-accel-persist-job"
     assert provenance.calls[0]["operation"] == "kubernetes_execution"
+
+
+def test_kubernetes_backend_records_failure_diagnostics_for_nonzero_exit(tmp_path):
+    backend = KubernetesBackend(namespace="test-namespace")
+    config = KubernetesExecutionConfig(
+        image="python:3.12-slim",
+        namespace="test-namespace",
+        job_name="ipfs-accel-fail-job",
+    )
+
+    job_id = backend.submit_job(config)
+    backend.record_job_artifacts(job_id, stdout="", stderr="process crashed", exit_code=137)
+    result = backend.collect_result(job_id)
+
+    assert result.success is False
+    assert result.exit_code == 137
+    assert result.error_message == "process crashed"
+    assert result.metadata["failure_reason"] == "non_zero_exit_code"
+    assert result.metadata["failure_message"] == "process crashed"
+    assert result.metadata["failure_phase"] == "failed"
+    assert result.metadata["failure_retryable"] is False
+
+
+def test_kubernetes_backend_records_conditions_and_events_for_failed_status(tmp_path):
+    class _Obj:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class _BatchApi:
+        def create_namespaced_job(self, namespace, body):
+            return None
+
+        def read_namespaced_job(self, name, namespace):
+            failed_cond = _Obj(
+                type="Failed",
+                status="True",
+                reason="BackoffLimitExceeded",
+                message="Job has reached backoff limit",
+                last_transition_time="2026-06-30T12:00:00Z",
+            )
+            return _Obj(status=_Obj(failed=1, succeeded=0, active=0, reason="", message="", conditions=[failed_cond]))
+
+    class _CoreApi:
+        def read_namespaced_pod(self, name, namespace):
+            pod_cond = _Obj(
+                type="Ready",
+                status="False",
+                reason="ContainersNotReady",
+                message="containers with unready status",
+                last_transition_time="2026-06-30T12:00:01Z",
+            )
+            return _Obj(status=_Obj(phase="Failed", reason="Error", message="Pod failed", conditions=[pod_cond]))
+
+        def list_namespaced_event(self, namespace, field_selector):
+            ev = _Obj(
+                reason="Failed",
+                message="Back-off restarting failed container",
+                type="Warning",
+                count=3,
+                last_timestamp="2026-06-30T12:00:02Z",
+            )
+            return _Obj(items=[ev])
+
+    backend = KubernetesBackend(namespace="test-namespace")
+    backend._client_available = True
+    backend._batch_v1 = _BatchApi()
+    backend._core_v1 = _CoreApi()
+
+    config = KubernetesExecutionConfig(
+        image="python:3.12-slim",
+        namespace="test-namespace",
+        job_name="ipfs-accel-cond-job",
+    )
+    job_id = backend.submit_job(config)
+    status = backend.get_job_status(job_id)
+    result = backend.collect_result(job_id)
+
+    assert status == KubernetesJobStatus.FAILED
+    assert result.success is False
+    assert result.metadata["failure_reason"] == "BackoffLimitExceeded"
+    assert "backoff limit" in result.metadata["failure_message"].lower()
+    assert result.metadata["failure_phase"] == "Failed"
+    assert isinstance(result.metadata.get("failure_conditions"), list)
+    assert isinstance(result.metadata.get("failure_events"), list)
+    assert result.metadata["failure_events"][0]["reason"] == "Failed"

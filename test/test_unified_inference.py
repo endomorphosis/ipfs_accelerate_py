@@ -559,6 +559,96 @@ class TestUnifiedInferencePersistence:
         finally:
             await service.stop()
 
+    def test_record_inference_result_accepts_backend_finalize_metadata(self):
+        from ipfs_accelerate_py.inference_backend_manager import (
+            InferenceBackendManager,
+            BackendType,
+            BackendCapabilities,
+        )
+        from ipfs_accelerate_py.unified_inference_service import UnifiedInferenceService
+
+        class FakeBackend:
+            device = "cpu"
+
+            def generate(self, model=None, prompt=None, **kwargs):
+                return {"outputs": [f"ok:{prompt}"], "model": model}
+
+        service = UnifiedInferenceService()
+        manager = InferenceBackendManager(
+            {
+                "result_recorder": service.record_inference_result,
+                "persist_registry": False,
+            }
+        )
+
+        manager.register_backend(
+            backend_id="api_backend_meta",
+            backend_type=BackendType.API,
+            name="API Meta Backend",
+            instance=FakeBackend(),
+            capabilities=BackendCapabilities(
+                supported_tasks={"text-generation"},
+                protocols={"http"},
+                hardware_types={"cpu"},
+            ),
+            endpoint="http://localhost:9999",
+            metadata={"placement_node": "node-meta"},
+        )
+
+        finalized = manager.finalize_inference_result(
+            backend_id="api_backend_meta",
+            task="text-generation",
+            model="demo-model",
+            inputs=["hello"],
+            result={"outputs": ["ok"], "processing_time": 0.01, "device": "cpu"},
+        )
+
+        assert finalized["backend_id"] == "api_backend_meta"
+        assert finalized["protocol"] == "http"
+        assert finalized["hardware_type"] == "cpu"
+        assert finalized["placement_node"] == "node-meta"
+
+    def test_backend_selection_allows_string_preferred_types(self):
+        from ipfs_accelerate_py.inference_backend_manager import (
+            InferenceBackendManager,
+            BackendType,
+            BackendCapabilities,
+            BackendStatus,
+        )
+
+        manager = InferenceBackendManager(
+            {
+                "load_balancing": "round_robin",
+                "persist_registry": False,
+            }
+        )
+
+        manager.register_backend(
+            backend_id="backend_api",
+            backend_type=BackendType.API,
+            name="API Backend",
+            instance=Mock(),
+            capabilities=BackendCapabilities(supported_tasks={"text-generation"}),
+        )
+        manager.register_backend(
+            backend_id="backend_gpu",
+            backend_type=BackendType.GPU,
+            name="GPU Backend",
+            instance=Mock(),
+            capabilities=BackendCapabilities(supported_tasks={"text-generation"}),
+        )
+
+        manager.backends["backend_api"].status = BackendStatus.HEALTHY
+        manager.backends["backend_gpu"].status = BackendStatus.HEALTHY
+
+        selected = manager.select_backend_for_task(
+            task="text-generation",
+            preferred_types=["gpu"],
+        )
+
+        assert selected is not None
+        assert selected.backend_id == "backend_gpu"
+
 
 class TestLibP2PInference:
     """Test libp2p inference functionality"""

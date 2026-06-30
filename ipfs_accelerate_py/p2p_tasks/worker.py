@@ -3432,6 +3432,63 @@ def run_worker(
             return [payload.get("prompt")]
         return []
 
+    def _extract_backend_preferred_types(payload: Dict[str, Any]) -> List[str] | None:
+        raw = payload.get("preferred_types")
+        if raw is None:
+            raw = payload.get("preferred_backend_types")
+        if raw is None:
+            raw = payload.get("backend_types")
+
+        if isinstance(raw, str):
+            values = [raw]
+        elif isinstance(raw, list):
+            values = [str(x) for x in raw]
+        else:
+            return None
+
+        normalized: List[str] = []
+        seen: set[str] = set()
+        for value in values:
+            token = str(value or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            normalized.append(token)
+        return normalized or None
+
+    def _extract_backend_required_protocols(payload: Dict[str, Any]) -> List[str] | None:
+        raw = payload.get("required_protocols")
+        if raw is None:
+            raw = payload.get("backend_protocols")
+        if raw is None:
+            raw = payload.get("protocols")
+
+        if raw is None:
+            single = payload.get("required_protocol")
+            if single is None:
+                single = payload.get("backend_protocol")
+            if single is None:
+                single = payload.get("execution_backend")
+            if single is not None:
+                raw = [single]
+
+        if isinstance(raw, str):
+            values = [raw]
+        elif isinstance(raw, list):
+            values = [str(x) for x in raw]
+        else:
+            return None
+
+        normalized: List[str] = []
+        seen: set[str] = set()
+        for value in values:
+            token = str(value or "").strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            normalized.append(token)
+        return normalized or None
+
     def _execute_via_backend_manager(task_dict: Dict[str, Any]) -> Dict[str, Any] | None:
         payload = task_dict.get("payload")
         if not isinstance(payload, dict):
@@ -3459,6 +3516,8 @@ def run_worker(
 
         model_name = str(task_dict.get("model_name") or payload.get("model") or payload.get("model_id") or "").strip()
         inputs = _extract_backend_inputs(task_type=task_type, payload=payload)
+        preferred_types = _extract_backend_preferred_types(payload)
+        required_protocols = _extract_backend_required_protocols(payload)
         parameters = dict(payload)
         parameters.pop("_p2p_proxy", None)
         parameters.pop("_lineage", None)
@@ -3471,6 +3530,8 @@ def run_worker(
                     task=task_type,
                     model=model_name,
                     inputs=inputs,
+                    preferred_types=preferred_types,
+                    required_protocols=required_protocols,
                     parameters=parameters,
                 )
 
