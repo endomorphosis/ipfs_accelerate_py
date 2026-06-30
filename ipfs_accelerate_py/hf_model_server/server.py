@@ -393,6 +393,19 @@ class HFModelServer:
         if result.get("text") is not None:
             return str(result.get("text"))
         return ""
+
+    def _track_model_usage(self, *, model: str, result: Dict[str, Any], run_id: str) -> None:
+        model_manager = self._get_model_manager()
+        if model_manager is None or not hasattr(model_manager, "mark_model_used"):
+            return
+        try:
+            model_manager.mark_model_used(
+                model,
+                inference_cid=str(result.get("output_cid") or "") or None,
+                run_id=run_id,
+            )
+        except Exception as exc:
+            logger.debug(f"HFModelServer model usage tracking failed: {exc}")
     
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
@@ -665,9 +678,12 @@ class HFModelServer:
             text = self._extract_generated_text(backend_result)
             prompt_tokens = len(str(prompt_value).split())
             completion_tokens = len(text.split())
+            completion_id = f"cmpl-{uuid.uuid4().hex[:8]}"
+
+            self._track_model_usage(model=request.model, result=backend_result, run_id=completion_id)
 
             return CompletionResponse(
-                id=f"cmpl-{uuid.uuid4().hex[:8]}",
+                id=completion_id,
                 created=int(time.time()),
                 model=request.model,
                 choices=[
@@ -716,9 +732,12 @@ class HFModelServer:
             response_text = self._extract_generated_text(backend_result)
             prompt_tokens = sum(len(m.content.split()) for m in request.messages)
             completion_tokens = len(response_text.split())
+            completion_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+
+            self._track_model_usage(model=request.model, result=backend_result, run_id=completion_id)
 
             return ChatCompletionResponse(
-                id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                id=completion_id,
                 created=int(time.time()),
                 model=request.model,
                 choices=[
@@ -764,6 +783,8 @@ class HFModelServer:
             embeddings_data = backend_result.get("embeddings")
             if not isinstance(embeddings_data, list):
                 embeddings_data = []
+
+            self._track_model_usage(model=request.model, result=backend_result, run_id=f"embed-{uuid.uuid4().hex[:8]}")
 
             return EmbeddingResponse(
                 data=[

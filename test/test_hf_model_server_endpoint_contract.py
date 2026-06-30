@@ -20,11 +20,15 @@ class _FakeBackendManager:
                 "embeddings": [[0.1, 0.2], [0.3, 0.4]],
                 "processing_time": 0.01,
                 "device": "cpu",
+                "output_cid": "cid-output",
+                "provenance_cid": "cid-provenance",
             }
         return {
             "outputs": ["generated response"],
             "processing_time": 0.01,
             "device": "cpu",
+            "output_cid": "cid-output",
+            "provenance_cid": "cid-provenance",
         }
 
 
@@ -32,7 +36,9 @@ class _FakeModelManager:
     def __init__(self):
         self.add_calls = []
         self.remove_calls = []
+        self.mark_used_calls = []
         self.known_models = set()
+        self._datasets_manager = None
 
     def add_model_with_ipfs_storage(self, metadata, model_path=None, config_path=None, tokenizer_path=None, store_to_ipfs=True):
         self.add_calls.append(
@@ -53,6 +59,25 @@ class _FakeModelManager:
             self.known_models.remove(model_id)
             return True
         return False
+
+    def mark_model_used(self, model_id, inference_cid=None, run_id=None):
+        self.mark_used_calls.append(
+            {
+                "model_id": model_id,
+                "inference_cid": inference_cid,
+                "run_id": run_id,
+            }
+        )
+        if self._datasets_manager is not None:
+            payload = {
+                "model_id": model_id,
+                "last_inference_cid": inference_cid,
+                "last_run_id": run_id,
+                "status": "usage_linked",
+            }
+            self._datasets_manager.log_event("model_inference_linked", payload, level="INFO", category="GENERAL")
+            self._datasets_manager.track_provenance("model_usage", payload)
+        return True
 
 
 class _FakeDatasetsManager:
@@ -114,6 +139,7 @@ def _build_test_server(monkeypatch, *, backend_manager=None):
     monkeypatch.setattr(server_module, "HAVE_MODEL_MANAGER", True)
     monkeypatch.setattr(server_module, "DatasetsManager", lambda *args, **kwargs: fake_datasets)
     monkeypatch.setattr(server_module, "HAVE_DATASETS_MANAGER", True)
+    fake_model_manager._datasets_manager = fake_datasets
 
     config = ServerConfig(
         enable_auth=False,
@@ -148,6 +174,30 @@ def test_completions_endpoint_routes_via_backend_manager(monkeypatch):
     assert call["task"] == "text-generation"
     assert call["model"] == "demo-model"
     assert call["inputs"] == ["hello world"]
+
+
+def test_completions_endpoint_updates_model_usage_linkage(monkeypatch):
+    server, _, fake_model_manager, fake_datasets = _build_test_server(monkeypatch)
+    fake_model_manager.known_models.add("demo-model")
+
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/v1/completions",
+            json={
+                "model": "demo-model",
+                "prompt": "hello world",
+                "max_tokens": 16,
+            },
+        )
+
+    assert response.status_code == 200
+    assert fake_model_manager.mark_used_calls
+    usage_call = fake_model_manager.mark_used_calls[0]
+    assert usage_call["model_id"] == "demo-model"
+    assert usage_call["run_id"].startswith("cmpl-")
+    assert usage_call["inference_cid"] == "cid-output"
+    assert any(event["event_type"] == "model_inference_linked" for event in fake_datasets.events)
+    assert any(item["operation"] == "model_usage" for item in fake_datasets.provenance)
 
 
 def test_embeddings_endpoint_routes_via_backend_manager(monkeypatch):

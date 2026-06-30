@@ -54,6 +54,30 @@ class _CallTrackingDatasets:
         return "cid-prov"
 
 
+class _CallTrackingModelManager:
+    def __init__(self, datasets):
+        self.datasets = datasets
+        self.calls = []
+
+    def mark_model_used(self, model_id, inference_cid=None, run_id=None):
+        self.calls.append(
+            {
+                "model_id": model_id,
+                "inference_cid": inference_cid,
+                "run_id": run_id,
+            }
+        )
+        payload = {
+            "model_id": model_id,
+            "last_inference_cid": inference_cid,
+            "last_run_id": run_id,
+            "status": "usage_linked",
+        }
+        self.datasets.log_event("model_inference_linked", payload, level="INFO", category="GENERAL")
+        self.datasets.track_provenance("model_usage", payload)
+        return True
+
+
 class _CallTrackingProvenance:
     def __init__(self):
         self.calls = []
@@ -355,3 +379,44 @@ def test_call_matrix_hf_model_server_model_load_failure_emits_datasets_events(mo
     assert datasets.event_calls[0]["event_type"] == "model_load_failed"
     assert datasets.provenance_calls
     assert datasets.provenance_calls[0]["operation"] == "model_load_failed"
+
+
+def test_call_matrix_hf_model_server_inference_updates_model_usage_linkage(monkeypatch):
+    from ipfs_accelerate_py.hf_model_server.config import ServerConfig
+    from ipfs_accelerate_py.hf_model_server import server as server_module
+
+    datasets = _CallTrackingDatasets()
+    fake_model_manager = _CallTrackingModelManager(datasets)
+
+    monkeypatch.setattr(server_module, "get_backend_manager", lambda config=None: _FakeBackendManager())
+    monkeypatch.setattr(server_module, "HAVE_BACKEND_MANAGER", True)
+    monkeypatch.setattr(server_module, "ModelManager", lambda *args, **kwargs: fake_model_manager)
+    monkeypatch.setattr(server_module, "HAVE_MODEL_MANAGER", True)
+    monkeypatch.setattr(server_module, "DatasetsManager", lambda *args, **kwargs: datasets)
+    monkeypatch.setattr(server_module, "HAVE_DATASETS_MANAGER", True)
+
+    server = server_module.HFModelServer(
+        ServerConfig(
+            enable_auth=False,
+            enable_metrics=False,
+            auto_discover=False,
+            enable_hardware_detection=False,
+        )
+    )
+
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/v1/completions",
+            json={
+                "model": "demo-model",
+                "prompt": "hello world",
+            },
+        )
+
+    assert response.status_code == 200
+    assert fake_model_manager.calls
+    assert fake_model_manager.calls[0]["model_id"] == "demo-model"
+    assert fake_model_manager.calls[0]["inference_cid"] == "cid-output"
+    assert fake_model_manager.calls[0]["run_id"].startswith("cmpl-")
+    assert datasets.event_calls[-1]["event_type"] == "model_inference_linked"
+    assert datasets.provenance_calls[-1]["operation"] == "model_usage"

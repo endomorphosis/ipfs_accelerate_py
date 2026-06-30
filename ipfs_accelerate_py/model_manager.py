@@ -889,6 +889,37 @@ class ModelManager:
             except Exception as e:
                 logger.debug(f"Model access provenance logging failed: {e}")
 
+    def _record_model_usage(self, metadata: ModelMetadata) -> None:
+        """Emit normalized model usage linkage events after inference."""
+        event_data = {
+            "model_id": metadata.model_id,
+            "model_type": metadata.model_type.value if hasattr(metadata.model_type, 'value') else str(metadata.model_type),
+            "model_revision": metadata.model_revision,
+            "revision_id": metadata.revision_id,
+            "parent_model_id": metadata.parent_model_id,
+            "last_used_at": metadata.last_used_at.isoformat() if metadata.last_used_at else None,
+            "last_inference_cid": metadata.last_inference_cid,
+            "last_run_id": metadata.last_run_id,
+            "inference_count": metadata.inference_count,
+            "status": "usage_linked",
+        }
+
+        if self._datasets_manager:
+            try:
+                self._datasets_manager.log_event("model_inference_linked", event_data, level="INFO", category="GENERAL")
+                self._datasets_manager.track_provenance("model_usage", event_data)
+            except Exception as e:
+                logger.debug(f"Model usage audit logging failed: {e}")
+
+        if self._provenance_logger:
+            try:
+                self._provenance_logger.log_transformation(
+                    operation="model_inference_linked",
+                    data=event_data,
+                )
+            except Exception as e:
+                logger.debug(f"Model usage provenance logging failed: {e}")
+
     def mark_model_used(
         self,
         model_id: str,
@@ -908,7 +939,7 @@ class ModelManager:
         metadata.inference_count = int(metadata.inference_count or 0) + 1
         metadata.updated_at = datetime.now()
         self._save_data()
-        self._record_model_access(metadata)
+        self._record_model_usage(metadata)
         return True
     
     def remove_model(self, model_id: str) -> bool:
