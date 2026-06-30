@@ -4105,6 +4105,73 @@ class MCPDashboard:
         except Exception as e:
             logger.warning(f"Could not start autoscaler: {e}")
     
+    def _serve(self, debug: bool = False) -> None:
+        """Serve the Flask (WSGI) dashboard over Hypercorn (anyio/trio stack).
+
+        MCP++ standardises on the Hypercorn + anyio/trio transport. The dashboard
+        itself stays a Flask/WSGI application (preserving every existing route and
+        backwards compatibility with stock MCP/HTTP clients); Hypercorn's WSGI
+        middleware adapts it to ASGI. Falls back to the werkzeug dev server only
+        when Hypercorn is unavailable.
+        """
+        try:
+            from hypercorn.config import Config
+        except Exception as exc:  # pragma: no cover - fallback path
+            logger.warning(f"Hypercorn unavailable ({exc}); using werkzeug dev server")
+            self.app.run(host=self.host, port=self.port, debug=debug, threaded=True)
+            return
+
+        config = Config()
+        config.bind = [f"{self.host}:{self.port}"]
+        config.loglevel = "info"
+
+        # Hypercorn drives the ASGI lifespan protocol even for WSGI middleware,
+        # but the WSGI middleware does not implement it (Hypercorn's Trio worker
+        # then crashes on a closed lifespan channel). Wrap the WSGI-as-ASGI app so
+        # lifespan startup/shutdown are answered cleanly on both workers.
+        class _LifespanWSGIWrapper:
+            def __init__(self, inner):
+                self._inner = inner
+
+            async def __call__(self, scope, receive, send):
+                if scope.get("type") == "lifespan":
+                    while True:
+                        message = await receive()
+                        if message["type"] == "lifespan.startup":
+                            await send({"type": "lifespan.startup.complete"})
+                        elif message["type"] == "lifespan.shutdown":
+                            await send({"type": "lifespan.shutdown.complete"})
+                            return
+                else:
+                    await self._inner(scope, receive, send)
+
+        # Prefer Trio (the MCP++ anyio/trio stack) and fall back to asyncio.
+        try:
+            import trio  # noqa: F401
+            from hypercorn.trio import serve as _serve_trio
+            from hypercorn.middleware import TrioWSGIMiddleware
+
+            asgi_app = _LifespanWSGIWrapper(TrioWSGIMiddleware(self.app))
+            logger.info("Serving MCP dashboard via Hypercorn (Trio worker)")
+            trio.run(_serve_trio, asgi_app, config)
+            return
+        except ImportError:
+            pass
+        except Exception as exc:
+            logger.warning(f"Hypercorn/Trio serve failed ({exc}); trying asyncio")
+
+        try:
+            import asyncio
+            from hypercorn.asyncio import serve as _serve_asyncio
+            from hypercorn.middleware import AsyncioWSGIMiddleware
+
+            asgi_app = _LifespanWSGIWrapper(AsyncioWSGIMiddleware(self.app))
+            logger.info("Serving MCP dashboard via Hypercorn (asyncio worker)")
+            asyncio.run(_serve_asyncio(asgi_app, config))
+        except Exception as exc:  # pragma: no cover - final fallback
+            logger.warning(f"Hypercorn serve failed ({exc}); using werkzeug dev server")
+            self.app.run(host=self.host, port=self.port, debug=debug, threaded=True)
+
     def run(self, debug: bool = False) -> None:
         """Run the MCP dashboard.
         
@@ -4137,7 +4204,7 @@ class MCPDashboard:
         self._start_autoscaler()
         
         try:
-            self.app.run(host=self.host, port=self.port, debug=debug, threaded=True)
+            self._serve(debug=debug)
         except KeyboardInterrupt:
             logger.info("Dashboard shutdown requested")
             if self.autoscaler_instance:
