@@ -1236,6 +1236,7 @@ class MCPDashboard:
             })
         
         @self.app.route('/jsonrpc', methods=['POST'])
+        @self.app.route('/mcp', methods=['POST'])
         def jsonrpc_endpoint():
             """JSON-RPC 2.0 endpoint for MCP tools."""
             try:
@@ -1256,7 +1257,49 @@ class MCPDashboard:
                 request_id = data.get('id')
                 
                 logger.info(f"JSON-RPC request: method={method}, params={params}")
-                
+
+                # --- Base MCP handshake (spec-conformant, additive) ---
+                # Lets stock MCP clients connect: initialize -> initialized
+                # -> tools/list before issuing tools/call.
+                if method == 'initialize':
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'id': request_id,
+                        'result': {
+                            'protocolVersion': '2024-11-05',
+                            'capabilities': {
+                                'tools': {'listChanged': True},
+                                'experimental': {'mcp++/server': {'package': 'ipfs_accelerate_py'}},
+                            },
+                            'serverInfo': {'name': 'mcp++', 'version': '1.0.0'},
+                        },
+                    })
+                if method in ('notifications/initialized', 'initialized', 'notifications/cancelled'):
+                    # Notifications carry no response body.
+                    return ('', 202)
+                if method == 'ping':
+                    return jsonify({'jsonrpc': '2.0', 'id': request_id, 'result': {}})
+                if method == 'tools/list':
+                    tools = []
+                    if self.tool_registry:
+                        try:
+                            for tool_meta in self.tool_registry.list_tools():
+                                tools.append({
+                                    'name': tool_meta.name,
+                                    'description': getattr(tool_meta, 'description', '') or '',
+                                    'inputSchema': getattr(tool_meta, 'input_schema', {}) or {},
+                                })
+                        except Exception as exc:
+                            logger.warning(f"tools/list registry enumeration failed: {exc}")
+                    if not tools and self.mcp_server and hasattr(self.mcp_server, 'tools'):
+                        for tool_name, tool_info in (self.mcp_server.tools or {}).items():
+                            tools.append({
+                                'name': tool_name,
+                                'description': (tool_info or {}).get('description', '') or '',
+                                'inputSchema': (tool_info or {}).get('input_schema', {}) or {},
+                            })
+                    return jsonify({'jsonrpc': '2.0', 'id': request_id, 'result': {'tools': tools}})
+
                 # Handle tools/call method for MCP SDK
                 if method == 'tools/call':
                     tool_name = params.get('name')
