@@ -158,6 +158,15 @@ class MCPClient {
      * Make HTTP request with timeout and retry logic
      */
     async _makeHttpRequest(body) {
+        // Pluggable transport (e.g. MCP++ over libp2p via mcpp-client.js
+        // Libp2pTransport). Must expose `request(reqObj)` / `requestBatch(arr)`.
+        // When absent, JSON-RPC is sent over HTTP fetch (default).
+        if (this.options.transport && typeof this.options.transport.request === 'function') {
+            return Array.isArray(body)
+                ? await this.options.transport.requestBatch(body)
+                : await this.options.transport.request(body);
+        }
+
         let lastError;
         
         for (let attempt = 0; attempt < this.options.retries; attempt++) {
@@ -572,6 +581,39 @@ class MCPClient {
             name: toolName,
             arguments: args
         });
+    }
+
+    /**
+     * List the server's tools (hierarchical facade: 4 meta-tools + flat
+     * `<category>.<tool>` descriptors). Returns the raw tools array.
+     */
+    async listTools() {
+        const result = await this.request('tools/list', {});
+        if (result && Array.isArray(result.tools)) return result.tools;
+        return Array.isArray(result) ? result : [];
+    }
+
+    // ---- Hierarchical tool facade helpers (meta-tools) ----
+
+    /** List tool categories: `{ categories: [{ name, tool_count? }], ... }`. */
+    async listCategories(includeCount = true) {
+        return await this.callTool('tools_list_categories', { include_count: includeCount });
+    }
+
+    /** List the tools inside one category: `{ tools: [{ name, description }], ... }`. */
+    async listToolsInCategory(category) {
+        return await this.callTool('tools_list_tools', { category });
+    }
+
+    /** Lazily fetch a single tool's full JSON schema. */
+    async getToolSchema(nameOrTool) {
+        const params = typeof nameOrTool === 'string' ? { name: nameOrTool } : (nameOrTool || {});
+        return await this.callTool('tools_get_schema', params);
+    }
+
+    /** Dispatch a tool inside a category via the `tools_dispatch` meta-tool. */
+    async dispatch(category, tool, params = {}) {
+        return await this.callTool('tools_dispatch', { category, tool, params });
     }
 
     /**
