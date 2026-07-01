@@ -854,6 +854,7 @@ class HFModelServer:
 
             self._loaded_models.add(request.model_id)
             manager = self._get_datasets_manager()
+            provenance_cid = None
             if manager is not None:
                 try:
                     payload = {
@@ -867,14 +868,19 @@ class HFModelServer:
                         "status": "loaded",
                     }
                     manager.log_event("model_loaded", payload, category="GENERAL")
-                    manager.track_provenance("model_load", payload)
+                    provenance_cid = manager.track_provenance("model_load", payload)
                 except Exception:
                     pass
             return LoadModelResponse(
                 model_id=request.model_id,
                 status="loaded",
                 hardware=request.hardware or "cpu",
-                message=f"Model {request.model_id} loaded successfully (artifact_cid={artifact_cid})"
+                message=f"Model {request.model_id} loaded successfully (artifact_cid={artifact_cid})",
+                artifact_cid=artifact_cid,
+                model_cid=metadata.model_cid,
+                config_cid=metadata.config_cid,
+                tokenizer_cid=metadata.tokenizer_cid,
+                provenance_cid=provenance_cid,
             )
         
         @self.app.post("/models/unload", response_model=UnloadModelResponse)
@@ -883,6 +889,13 @@ class HFModelServer:
             model_manager = self._get_model_manager()
             if model_manager is None:
                 raise HTTPException(status_code=503, detail="Model manager unavailable")
+
+            existing = None
+            if hasattr(model_manager, "get_model"):
+                try:
+                    existing = model_manager.get_model(request.model_id)
+                except Exception:
+                    existing = None
 
             removed = model_manager.remove_model(request.model_id)
             if not removed:
@@ -897,20 +910,30 @@ class HFModelServer:
 
             self._loaded_models.discard(request.model_id)
             manager = self._get_datasets_manager()
+            provenance_cid = None
             if manager is not None:
                 try:
                     payload = {
                         "model_id": request.model_id,
+                        "model_cid": getattr(existing, "model_cid", None),
+                        "config_cid": getattr(existing, "config_cid", None),
+                        "tokenizer_cid": getattr(existing, "tokenizer_cid", None),
+                        "artifact_cid": getattr(existing, "artifact_cid", None),
                         "status": "unloaded",
                     }
                     manager.log_event("model_unloaded", payload, category="GENERAL")
-                    manager.track_provenance("model_unload", payload)
+                    provenance_cid = manager.track_provenance("model_unload", payload)
                 except Exception:
                     pass
             return UnloadModelResponse(
                 model_id=request.model_id,
                 status="unloaded",
-                message=f"Model {request.model_id} unloaded successfully"
+                message=f"Model {request.model_id} unloaded successfully",
+                artifact_cid=getattr(existing, "artifact_cid", None),
+                model_cid=getattr(existing, "model_cid", None),
+                config_cid=getattr(existing, "config_cid", None),
+                tokenizer_cid=getattr(existing, "tokenizer_cid", None),
+                provenance_cid=provenance_cid,
             )
         
         # WebSocket endpoint

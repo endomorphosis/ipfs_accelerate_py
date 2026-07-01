@@ -29,10 +29,15 @@ class _FakeStorage:
 class _FakeDatasetsManager:
     def __init__(self):
         self.events = []
+        self.provenance = []
 
     def log_event(self, event_type, data, level="INFO", category="GENERAL"):
         self.events.append({"event_type": event_type, "data": data, "level": level, "category": category})
         return True
+
+    def track_provenance(self, operation, data, record_type="TRANSFORMATION"):
+        self.provenance.append({"operation": operation, "data": data, "record_type": record_type})
+        return "cid-prov"
 
 
 class _FakeProvenanceLogger:
@@ -154,6 +159,32 @@ def test_kubernetes_backend_persists_artifacts_and_provenance_when_missing(tmp_p
     assert provenance.calls[0]["operation"] == "kubernetes_execution"
 
 
+def test_kubernetes_backend_falls_back_to_datasets_provenance_when_logger_missing(tmp_path):
+    storage = _FakeStorage()
+    datasets = _FakeDatasetsManager()
+    backend = KubernetesBackend(
+        namespace="test-namespace",
+        storage=storage,
+        datasets_manager=datasets,
+        provenance_logger=None,
+    )
+    config = KubernetesExecutionConfig(
+        image="python:3.12-slim",
+        command=["python", "-c"],
+        args=["print('ok')"],
+        namespace="test-namespace",
+        job_name="ipfs-accel-fallback-job",
+    )
+
+    job_id = backend.submit_job(config)
+    backend.record_job_artifacts(job_id, stdout="ok", stderr="", exit_code=0)
+    result = backend.collect_result(job_id)
+
+    assert result.success is True
+    assert result.provenance_cid == "cid-prov"
+    assert datasets.provenance[0]["operation"] == "kubernetes_execution"
+
+
 def test_kubernetes_backend_records_failure_diagnostics_for_nonzero_exit(tmp_path):
     backend = KubernetesBackend(namespace="test-namespace")
     config = KubernetesExecutionConfig(
@@ -237,3 +268,62 @@ def test_kubernetes_backend_records_conditions_and_events_for_failed_status(tmp_
     assert isinstance(result.metadata.get("failure_conditions"), list)
     assert isinstance(result.metadata.get("failure_events"), list)
     assert result.metadata["failure_events"][0]["reason"] == "Failed"
+
+
+def test_kubernetes_backend_required_model_artifact_policy_fails_fast(tmp_path):
+    storage = _FakeStorage()
+    datasets = _FakeDatasetsManager()
+    backend = KubernetesBackend(
+        namespace="test-namespace",
+        storage=storage,
+        datasets_manager=datasets,
+        provenance_logger=None,
+    )
+
+    config = KubernetesExecutionConfig(
+        image="python:3.12-slim",
+        namespace="test-namespace",
+        job_name="ipfs-accel-k8s-required-artifact-job",
+        model_artifact_cid="cid-missing",
+        model_artifact_policy="required",
+    )
+
+    job_id = backend.submit_job(config)
+    result = backend.collect_result(job_id)
+
+    assert job_id == "ipfs-accel-k8s-required-artifact-job"
+    assert result.success is False
+    assert result.metadata["failure_reason"] == "model_artifact_materialization_required"
+    assert storage.retrieve_calls == ["cid-missing"]
+    assert any(event["event_type"] == "container_execution_failed" for event in datasets.events)
+    assert any(event["event_type"] == "model_artifact_materialization_failed" for event in datasets.events)
+    assert any(item["operation"] == "model_artifact_materialization_failed" for item in datasets.provenance)
+
+
+def test_kubernetes_backend_optional_model_artifact_policy_emits_degraded_event(tmp_path):
+    storage = _FakeStorage()
+    datasets = _FakeDatasetsManager()
+    backend = KubernetesBackend(
+        namespace="test-namespace",
+        storage=storage,
+        datasets_manager=datasets,
+        provenance_logger=None,
+    )
+
+    config = KubernetesExecutionConfig(
+        image="python:3.12-slim",
+        namespace="test-namespace",
+        job_name="ipfs-accel-k8s-optional-artifact-job",
+        model_artifact_cid="cid-missing",
+        model_artifact_policy="optional",
+    )
+
+    job_id = backend.submit_job(config)
+    result = backend.collect_result(job_id)
+
+    assert job_id == "ipfs-accel-k8s-optional-artifact-job"
+    assert result.success is True
+    degraded_events = [e for e in datasets.events if e["event_type"] == "model_artifact_materialization_degraded"]
+    assert degraded_events
+    assert degraded_events[0]["level"] == "WARNING"
+    assert any(item["operation"] == "model_artifact_materialization_degraded" for item in datasets.provenance)

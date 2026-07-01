@@ -297,6 +297,62 @@ def test_call_matrix_kubernetes_materializes_model_artifact_by_cid():
     assert model_meta.get("retrieved") is True
 
 
+def test_call_matrix_docker_required_model_artifact_policy_fails_fast(monkeypatch):
+    monkeypatch.setattr(DockerExecutor, "_verify_docker_available", lambda self: None)
+
+    storage = _CallTrackingStorage()
+    datasets = _CallTrackingDatasets()
+
+    executor = DockerExecutor(
+        storage=storage,
+        datasets_manager=datasets,
+        provenance_logger=None,
+    )
+
+    called = {"build": False}
+
+    def _build(_config):
+        called["build"] = True
+        return ["docker", "run", "python:3.12-slim", "echo", "ok"]
+
+    monkeypatch.setattr(executor, "_build_docker_command", _build)
+
+    result = executor.execute_container(
+        DockerExecutionConfig(
+            image="python:3.12-slim",
+            command=["echo", "ok"],
+            model_artifact_cid="cid-missing",
+            model_artifact_policy="required",
+        )
+    )
+
+    assert result.success is False
+    assert called["build"] is False
+    assert any(event["event_type"] == "model_artifact_materialization_failed" for event in datasets.event_calls)
+    assert any(item["operation"] == "model_artifact_materialization_failed" for item in datasets.provenance_calls)
+
+
+def test_call_matrix_kubernetes_required_model_artifact_policy_fails_fast():
+    storage = _CallTrackingStorage()
+    datasets = _CallTrackingDatasets()
+    backend = KubernetesBackend(namespace="default", storage=storage, datasets_manager=datasets, provenance_logger=None)
+
+    job_id = backend.submit_job(
+        KubernetesExecutionConfig(
+            image="python:3.12-slim",
+            job_name="readiness-k8s-required-cid",
+            model_artifact_cid="cid-missing",
+            model_artifact_policy="required",
+        )
+    )
+
+    result = backend.collect_result(job_id)
+    assert result.success is False
+    assert result.metadata.get("failure_reason") == "model_artifact_materialization_required"
+    assert any(event["event_type"] == "model_artifact_materialization_failed" for event in datasets.event_calls)
+    assert any(item["operation"] == "model_artifact_materialization_failed" for item in datasets.provenance_calls)
+
+
 def test_call_matrix_hf_model_server_failure_emits_datasets_events(monkeypatch):
     from ipfs_accelerate_py.hf_model_server.config import ServerConfig
     from ipfs_accelerate_py.hf_model_server import server as server_module
@@ -381,6 +437,68 @@ def test_call_matrix_hf_model_server_model_load_failure_emits_datasets_events(mo
     assert datasets.provenance_calls[0]["operation"] == "model_load_failed"
 
 
+def test_call_matrix_hf_model_server_model_load_response_includes_lineage_fields(monkeypatch):
+    from ipfs_accelerate_py.hf_model_server.config import ServerConfig
+    from ipfs_accelerate_py.hf_model_server import server as server_module
+
+    class _ModelMetadata:
+        def __init__(self):
+            self.model_cid = "cid-model-1"
+            self.config_cid = "cid-config-1"
+            self.tokenizer_cid = "cid-tokenizer-1"
+            self.artifact_cid = "cid-artifact-1"
+
+    class _ModelManager:
+        def add_model_with_ipfs_storage(self, metadata, model_path=None, config_path=None, tokenizer_path=None, store_to_ipfs=True):
+            metadata.model_cid = "cid-model-1"
+            metadata.config_cid = "cid-config-1"
+            metadata.tokenizer_cid = "cid-tokenizer-1"
+            metadata.artifact_cid = "cid-artifact-1"
+            return True, "cid-artifact-1"
+
+        def remove_model(self, model_id):
+            return True
+
+        def get_model(self, model_id):
+            return _ModelMetadata()
+
+    datasets = _CallTrackingDatasets()
+
+    monkeypatch.setattr(server_module, "ModelManager", lambda *args, **kwargs: _ModelManager())
+    monkeypatch.setattr(server_module, "HAVE_MODEL_MANAGER", True)
+    monkeypatch.setattr(server_module, "DatasetsManager", lambda *args, **kwargs: datasets)
+    monkeypatch.setattr(server_module, "HAVE_DATASETS_MANAGER", True)
+
+    server = server_module.HFModelServer(
+        ServerConfig(
+            enable_auth=False,
+            enable_metrics=False,
+            auto_discover=False,
+            enable_hardware_detection=False,
+        )
+    )
+
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/models/load",
+            json={
+                "model_id": "demo-model",
+                "hardware": "cpu",
+                "options": {
+                    "store_to_ipfs": True,
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["artifact_cid"] == "cid-artifact-1"
+    assert body["model_cid"] == "cid-model-1"
+    assert body["config_cid"] == "cid-config-1"
+    assert body["tokenizer_cid"] == "cid-tokenizer-1"
+    assert body["provenance_cid"] == "cid-prov"
+
+
 def test_call_matrix_hf_model_server_inference_updates_model_usage_linkage(monkeypatch):
     from ipfs_accelerate_py.hf_model_server.config import ServerConfig
     from ipfs_accelerate_py.hf_model_server import server as server_module
@@ -420,3 +538,91 @@ def test_call_matrix_hf_model_server_inference_updates_model_usage_linkage(monke
     assert fake_model_manager.calls[0]["run_id"].startswith("cmpl-")
     assert datasets.event_calls[-1]["event_type"] == "model_inference_linked"
     assert datasets.provenance_calls[-1]["operation"] == "model_usage"
+
+
+def test_call_matrix_worker_strict_backend_routing_failure_emits_observability_events(monkeypatch, tmp_path):
+    class _FailingBackendManager:
+        async def execute_task(self, **kwargs):
+            raise RuntimeError("backend unavailable")
+
+    datasets = _CallTrackingDatasets()
+
+    import ipfs_accelerate_py.inference_backend_manager as ibm
+    import ipfs_accelerate_py.datasets_integration as datasets_integration
+
+    monkeypatch.setattr(ibm, "get_backend_manager", lambda config=None: _FailingBackendManager())
+    monkeypatch.setattr(datasets_integration, "DatasetsManager", lambda *args, **kwargs: datasets)
+
+    queue_path = str(tmp_path / "task_queue.duckdb")
+    queue = TaskQueue(queue_path)
+    task_id = queue.submit(
+        task_type="text-generation",
+        model_name="model-x",
+        payload={
+            "prompt": "must use backend manager",
+            "workflow_id": "wf-strict",
+            "persistence_policy": "required",
+            "provenance_policy": "strict",
+            "dispatch_via_backend_manager": "required",
+        },
+    )
+
+    rc = run_worker(
+        queue_path=queue_path,
+        worker_id="w1",
+        poll_interval_s=0.05,
+        once=True,
+        p2p_service=False,
+        supported_task_types=["text-generation"],
+    )
+    assert rc == 0
+
+    out = queue.get(task_id)
+    assert out is not None
+    assert out.get("status") == "failed"
+    assert any(event["event_type"] == "workflow_task_failed_backend_routing" for event in datasets.event_calls)
+    assert any(item["operation"] == "workflow_task_failed_backend_routing" for item in datasets.provenance_calls)
+
+
+def test_call_matrix_worker_optional_backend_routing_failure_emits_degraded_observability(monkeypatch, tmp_path):
+    class _FailingBackendManager:
+        async def execute_task(self, **kwargs):
+            raise RuntimeError("backend unavailable")
+
+    datasets = _CallTrackingDatasets()
+
+    import ipfs_accelerate_py.inference_backend_manager as ibm
+    import ipfs_accelerate_py.datasets_integration as datasets_integration
+    import ipfs_accelerate_py.p2p_tasks.worker as worker_module
+
+    monkeypatch.setattr(ibm, "get_backend_manager", lambda config=None: _FailingBackendManager())
+    monkeypatch.setattr(datasets_integration, "DatasetsManager", lambda *args, **kwargs: datasets)
+    monkeypatch.setattr(worker_module, "_run_text_generation", lambda task, accelerate_instance=None: {"text": "fallback"})
+
+    queue_path = str(tmp_path / "task_queue.duckdb")
+    queue = TaskQueue(queue_path)
+    task_id = queue.submit(
+        task_type="text-generation",
+        model_name="model-x",
+        payload={
+            "prompt": "backend manager optional",
+            "workflow_id": "wf-optional",
+            "dispatch_via_backend_manager": "1",
+        },
+    )
+
+    rc = run_worker(
+        queue_path=queue_path,
+        worker_id="w1",
+        poll_interval_s=0.05,
+        once=True,
+        p2p_service=False,
+        supported_task_types=["text-generation"],
+    )
+    assert rc == 0
+
+    out = queue.get(task_id)
+    assert out is not None
+    assert out.get("status") == "completed"
+    assert any(event["event_type"] == "workflow_backend_routing_degraded" for event in datasets.event_calls)
+    assert any(item["operation"] == "workflow_backend_routing_degraded" for item in datasets.provenance_calls)

@@ -80,6 +80,8 @@ class DockerExecutionConfig:
     volumes: Dict[str, str] = field(default_factory=dict)  # host_path: container_path
     model_artifact_cid: Optional[str] = None
     model_artifact_mount_path: Optional[str] = "/workspace/model_artifact"
+    # optional: continue execution if artifact retrieval fails; required: fail fast
+    model_artifact_policy: str = "optional"
     
     # Network settings
     network_mode: str = "none"  # "none", "bridge", "host"
@@ -202,6 +204,34 @@ class DockerExecutor:
             except Exception as exc:
                 logger.debug("Failed to log Docker execution event: %s", exc)
 
+            model_artifact = dict(model_artifact_metadata or {})
+            policy = str(model_artifact.get("policy") or "optional").strip().lower()
+            requested = bool(model_artifact.get("requested"))
+            retrieved = bool(model_artifact.get("retrieved"))
+            error = str(model_artifact.get("error") or "").strip()
+            if requested and not retrieved and error:
+                materialization_event = "model_artifact_materialization_failed" if policy in {"required", "strict"} else "model_artifact_materialization_degraded"
+                materialization_level = "ERROR" if materialization_event.endswith("failed") else "WARNING"
+                materialization_payload = {
+                    "image": config.image,
+                    "model_artifact": model_artifact,
+                    "status": "failed" if materialization_event.endswith("failed") else "degraded",
+                    "error": error,
+                }
+                try:
+                    self._datasets_manager.log_event(
+                        materialization_event,
+                        materialization_payload,
+                        level=materialization_level,
+                        category="GENERAL",
+                    )
+                except Exception as exc:
+                    logger.debug("Failed to log Docker model artifact materialization event: %s", exc)
+                try:
+                    self._datasets_manager.track_provenance(materialization_event, materialization_payload)
+                except Exception as exc:
+                    logger.debug("Failed to record Docker model artifact materialization provenance: %s", exc)
+
         if self._provenance_logger is not None:
             try:
                 provenance_cid = self._provenance_logger.log_transformation(
@@ -212,6 +242,15 @@ class DockerExecutor:
             except Exception as exc:
                 logger.debug("Failed to record Docker execution provenance: %s", exc)
 
+        if not provenance_cid and self._datasets_manager is not None:
+            try:
+                provenance_cid = self._datasets_manager.track_provenance(
+                    "docker_execution",
+                    artifact_payload,
+                )
+            except Exception as exc:
+                logger.debug("Failed to record Docker execution provenance via datasets: %s", exc)
+
         result.output_cid = output_cid
         result.provenance_cid = provenance_cid
         result.metadata = {**artifact_payload, "output_cid": output_cid, "provenance_cid": provenance_cid}
@@ -221,6 +260,7 @@ class DockerExecutor:
         metadata: Dict[str, Any] = {
             "requested": bool(config.model_artifact_cid),
             "cid": config.model_artifact_cid,
+            "policy": str(config.model_artifact_policy or "optional").strip().lower() or "optional",
             "retrieved": False,
             "mount_path": config.model_artifact_mount_path,
             "host_path": None,
@@ -267,6 +307,7 @@ class DockerExecutor:
                 volumes=updated_volumes,
                 model_artifact_cid=config.model_artifact_cid,
                 model_artifact_mount_path=config.model_artifact_mount_path,
+                model_artifact_policy=config.model_artifact_policy,
                 network_mode=config.network_mode,
                 read_only=config.read_only,
                 no_new_privileges=config.no_new_privileges,
@@ -315,6 +356,29 @@ class DockerExecutor:
         
         try:
             config, model_artifact_metadata = self._materialize_model_artifact(config)
+            policy = str(config.model_artifact_policy or "optional").strip().lower()
+            required_artifact = policy in {"required", "strict"}
+            if (
+                required_artifact
+                and bool(model_artifact_metadata.get("requested"))
+                and not bool(model_artifact_metadata.get("retrieved"))
+            ):
+                execution_time = time.time() - start_time
+                error = str(model_artifact_metadata.get("error") or "model artifact retrieval failed")
+                result = DockerExecutionResult(
+                    success=False,
+                    exit_code=-1,
+                    stdout="",
+                    stderr=error,
+                    container_id=container_id,
+                    execution_time=execution_time,
+                    error_message=f"model_artifact_required: {error}",
+                )
+                return self._record_execution_artifacts(
+                    config=config,
+                    result=result,
+                    model_artifact_metadata=model_artifact_metadata,
+                )
             # Build docker run command
             cmd = self._build_docker_command(config)
             

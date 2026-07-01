@@ -1,6 +1,14 @@
 from fastapi.testclient import TestClient
 
 
+class _FakeModelMetadata:
+    def __init__(self, *, model_cid=None, config_cid=None, tokenizer_cid=None, artifact_cid=None):
+        self.model_cid = model_cid
+        self.config_cid = config_cid
+        self.tokenizer_cid = tokenizer_cid
+        self.artifact_cid = artifact_cid
+
+
 class _FakeBackendManager:
     def __init__(self):
         self.calls = []
@@ -39,6 +47,7 @@ class _FakeModelManager:
         self.mark_used_calls = []
         self.known_models = set()
         self._datasets_manager = None
+        self._metadata = {}
 
     def add_model_with_ipfs_storage(self, metadata, model_path=None, config_path=None, tokenizer_path=None, store_to_ipfs=True):
         self.add_calls.append(
@@ -50,8 +59,28 @@ class _FakeModelManager:
                 "store_to_ipfs": store_to_ipfs,
             }
         )
+        metadata.model_cid = "cid-model-1"
+        metadata.config_cid = "cid-config-1"
+        metadata.tokenizer_cid = "cid-tokenizer-1"
+        metadata.artifact_cid = "cid-artifact-1"
         self.known_models.add(metadata.model_id)
+        self._metadata[metadata.model_id] = _FakeModelMetadata(
+            model_cid="cid-model-1",
+            config_cid="cid-config-1",
+            tokenizer_cid="cid-tokenizer-1",
+            artifact_cid="cid-artifact-1",
+        )
         return True, "cid-artifact-1"
+
+    def get_model(self, model_id):
+        if model_id in self.known_models and model_id not in self._metadata:
+            self._metadata[model_id] = _FakeModelMetadata(
+                model_cid="cid-model-1",
+                config_cid="cid-config-1",
+                tokenizer_cid="cid-tokenizer-1",
+                artifact_cid="cid-artifact-1",
+            )
+        return self._metadata.get(model_id)
 
     def remove_model(self, model_id):
         self.remove_calls.append(model_id)
@@ -246,6 +275,11 @@ def test_model_load_endpoint_registers_with_model_manager(monkeypatch):
     body = response.json()
     assert body["status"] == "loaded"
     assert "artifact_cid=cid-artifact-1" in body["message"]
+    assert body["artifact_cid"] == "cid-artifact-1"
+    assert body["model_cid"] == "cid-model-1"
+    assert body["config_cid"] == "cid-config-1"
+    assert body["tokenizer_cid"] == "cid-tokenizer-1"
+    assert body["provenance_cid"] == "cid-prov"
 
     assert len(fake_model_manager.add_calls) == 1
     call = fake_model_manager.add_calls[0]
@@ -270,6 +304,11 @@ def test_model_unload_endpoint_removes_from_model_manager(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "unloaded"
+    assert body["artifact_cid"] == "cid-artifact-1"
+    assert body["model_cid"] == "cid-model-1"
+    assert body["config_cid"] == "cid-config-1"
+    assert body["tokenizer_cid"] == "cid-tokenizer-1"
+    assert body["provenance_cid"] == "cid-prov"
     assert fake_model_manager.remove_calls == ["demo-model"]
 
 

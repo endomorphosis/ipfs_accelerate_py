@@ -48,6 +48,8 @@ class KubernetesExecutionConfig:
 	annotations: Dict[str, str] = field(default_factory=dict)
 	model_artifact_cid: Optional[str] = None
 	model_artifact_mount_path: Optional[str] = "/workspace/model_artifact"
+	# optional: continue execution if artifact retrieval fails; required: fail fast
+	model_artifact_policy: str = "optional"
 	timeout: int = 300
 	backoff_limit: int = 0
 	restart_policy: str = "Never"
@@ -246,6 +248,36 @@ class KubernetesBackend:
 			except Exception as exc:
 				logger.debug("Failed to log Kubernetes execution event: %s", exc)
 
+			model_artifact = dict(record.metadata.get("model_artifact") or {})
+			policy = str(model_artifact.get("policy") or "optional").strip().lower()
+			requested = bool(model_artifact.get("requested"))
+			retrieved = bool(model_artifact.get("retrieved"))
+			error = str(model_artifact.get("error") or "").strip()
+			if requested and not retrieved and error:
+				materialization_event = "model_artifact_materialization_failed" if policy in {"required", "strict"} else "model_artifact_materialization_degraded"
+				materialization_level = "ERROR" if materialization_event.endswith("failed") else "WARNING"
+				materialization_payload = {
+					"job_id": record.job_id,
+					"namespace": record.config.namespace,
+					"image": record.config.image,
+					"model_artifact": model_artifact,
+					"status": "failed" if materialization_event.endswith("failed") else "degraded",
+					"error": error,
+				}
+				try:
+					self._datasets_manager.log_event(
+						materialization_event,
+						materialization_payload,
+						level=materialization_level,
+						category="GENERAL",
+					)
+				except Exception as exc:
+					logger.debug("Failed to log Kubernetes model artifact materialization event: %s", exc)
+				try:
+					self._datasets_manager.track_provenance(materialization_event, materialization_payload)
+				except Exception as exc:
+					logger.debug("Failed to record Kubernetes model artifact materialization provenance: %s", exc)
+
 		if self._provenance_logger is not None and not provenance_cid:
 			try:
 				provenance_cid = self._provenance_logger.log_transformation(
@@ -255,6 +287,15 @@ class KubernetesBackend:
 				)
 			except Exception as exc:
 				logger.debug("Failed to record Kubernetes execution provenance: %s", exc)
+
+		if not provenance_cid and self._datasets_manager is not None:
+			try:
+				provenance_cid = self._datasets_manager.track_provenance(
+					"kubernetes_execution",
+					artifact_payload,
+				)
+			except Exception as exc:
+				logger.debug("Failed to record Kubernetes execution provenance via datasets: %s", exc)
 
 		record.output_cid = output_cid
 		record.provenance_cid = provenance_cid
@@ -287,6 +328,7 @@ class KubernetesBackend:
 		metadata: Dict[str, Any] = {
 			"requested": bool(config.model_artifact_cid),
 			"cid": config.model_artifact_cid,
+			"policy": str(config.model_artifact_policy or "optional").strip().lower() or "optional",
 			"retrieved": False,
 			"mount_path": config.model_artifact_mount_path,
 			"host_path": None,
@@ -333,6 +375,7 @@ class KubernetesBackend:
 				annotations=dict(config.annotations),
 				model_artifact_cid=config.model_artifact_cid,
 				model_artifact_mount_path=config.model_artifact_mount_path,
+				model_artifact_policy=config.model_artifact_policy,
 				timeout=config.timeout,
 				backoff_limit=config.backoff_limit,
 				restart_policy=config.restart_policy,
@@ -432,6 +475,22 @@ class KubernetesBackend:
 		job_id = job_spec["metadata"]["name"]
 		record = KubernetesJobRecord(job_id=job_id, config=config, job_spec=job_spec)
 		record.metadata["model_artifact"] = artifact_metadata
+		policy = str(config.model_artifact_policy or "optional").strip().lower()
+		required_artifact = policy in {"required", "strict"}
+		if required_artifact and bool(artifact_metadata.get("requested")) and not bool(artifact_metadata.get("retrieved")):
+			record.status = KubernetesJobStatus.FAILED
+			record.started_at = time.time()
+			record.completed_at = time.time()
+			record.exit_code = 1
+			record.stderr = str(artifact_metadata.get("error") or "model artifact retrieval failed")
+			self._set_failure_metadata(
+				record,
+				reason="model_artifact_materialization_required",
+				message=record.stderr,
+				phase=KubernetesJobStatus.FAILED.value,
+			)
+			self._jobs[job_id] = record
+			return job_id
 		record.status = KubernetesJobStatus.RUNNING
 		record.started_at = time.time()
 		record.pod_name = f"{job_id}-pod"

@@ -3167,10 +3167,41 @@ def run_worker(
         except Exception:
             pass
 
+    def _emit_backend_routing_failure(task_dict: Dict[str, Any], error: str, *, required: bool) -> None:
+        lineage = _extract_lineage(task_dict)
+        workflow_id = str(lineage.get("workflow_id") or "").strip()
+        if not workflow_id:
+            return
+        manager = _get_datasets_manager()
+        if manager is None:
+            return
+
+        event_type = "workflow_task_failed_backend_routing" if required else "workflow_backend_routing_degraded"
+        level = "ERROR" if required else "WARNING"
+
+        payload = {
+            "workflow_id": workflow_id,
+            "task_id": str(lineage.get("task_id") or "").strip() or str(task_dict.get("task_id") or "").strip(),
+            "model_id": str(lineage.get("model_id") or "").strip() or str(task_dict.get("model_name") or "").strip(),
+            "worker_id": str(worker_id),
+            "session_id": str(local_session or ""),
+            "status": "failed" if required else "degraded",
+            "error": str(error or "backend_manager_routing_required"),
+            "required": bool(required),
+            "lineage": lineage,
+        }
+
+        try:
+            manager.log_event(event_type, payload, level=level, category="GENERAL")
+        except Exception:
+            pass
+
         try:
             manager.track_provenance(event_type, payload)
         except Exception:
             pass
+
+        task_dict["_backend_manager_routing_event_emitted"] = True
 
     last_failover_scan = 0.0
 
@@ -3504,14 +3535,18 @@ def run_worker(
         if not _truthy(str(route_raw)):
             return None
 
+        required = _backend_manager_required(task_dict)
+
         try:
             from ipfs_accelerate_py.inference_backend_manager import get_backend_manager
 
             backend_manager = get_backend_manager()
         except Exception:
+            _emit_backend_routing_failure(task_dict, "backend_manager_unavailable", required=required)
             return None
 
         if backend_manager is None:
+            _emit_backend_routing_failure(task_dict, "backend_manager_unavailable", required=required)
             return None
 
         model_name = str(task_dict.get("model_name") or payload.get("model") or payload.get("model_id") or "").strip()
@@ -3536,7 +3571,8 @@ def run_worker(
                 )
 
             out = anyio.run(_do_execute, backend="trio")
-        except Exception:
+        except Exception as exc:
+            _emit_backend_routing_failure(task_dict, str(exc), required=required)
             return None
 
         result = dict(out) if isinstance(out, dict) else {"result": out}
@@ -3557,6 +3593,8 @@ def run_worker(
             return _with_lineage_result(task_payload, backend_result)
 
         if _backend_manager_required(task_payload):
+            if not bool(task_payload.get("_backend_manager_routing_event_emitted")):
+                _emit_backend_routing_failure(task_payload, "backend_manager_routing_required", required=True)
             raise RuntimeError("backend_manager_routing_required")
 
         ttype = str(task_payload.get("task_type") or "").strip().lower()

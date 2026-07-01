@@ -178,6 +178,11 @@ class LoadModelResponse(BaseModel):
     status: str
     hardware: str
     message: str
+    artifact_cid: Optional[str] = None
+    model_cid: Optional[str] = None
+    config_cid: Optional[str] = None
+    tokenizer_cid: Optional[str] = None
+    provenance_cid: Optional[str] = None
 
 
 class UnloadModelRequest(BaseModel):
@@ -190,6 +195,11 @@ class UnloadModelResponse(BaseModel):
     model_id: str
     status: str
     message: str
+    artifact_cid: Optional[str] = None
+    model_cid: Optional[str] = None
+    config_cid: Optional[str] = None
+    tokenizer_cid: Optional[str] = None
+    provenance_cid: Optional[str] = None
 
 
 class ServerStatus(BaseModel):
