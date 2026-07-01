@@ -1129,10 +1129,47 @@ class IPFSAccelerateCLI:
                 from ipfs_accelerate_py.mcp.unified_registry import get_global_registry
                 from ipfs_accelerate_py.mcp.tool_migration import populate_unified_registry
                 populate_unified_registry()
-                _mcp_registry_state["registry"] = get_global_registry()
+                registry = get_global_registry()
+                # Expose the FULL tool surface, not just the ~13 kit-migrated
+                # tools. register_all_tools() registers ~100 tools (hardware,
+                # models, inference, endpoints, status, workflows, github,
+                # docker, p2p, dashboard, ...) — the same surface the FastMCP
+                # path serves — so external MCP clients and the app's tool
+                # explorer can discover and call every tool. It imports the tool
+                # modules (~10s), which is why the whole registry build runs on a
+                # background thread: dashboard/health stay responsive and
+                # tools/list returns an empty-but-valid list until this is ready.
+                try:
+                    from ipfs_accelerate_py.mcp.server import StandaloneMCP
+                    from ipfs_accelerate_py.mcp.tools import register_all_tools
+                    _full = StandaloneMCP(name="ipfs-accelerate-integrated")
+                    register_all_tools(_full)
+                    added = 0
+                    for _tname, _tmeta in (getattr(_full, "tools", None) or {}).items():
+                        if _tname in registry.tools:
+                            continue
+                        _fn = _tmeta.get("function")
+                        if _fn is None:
+                            continue
+                        registry.register_tool(
+                            name=_tname,
+                            function=_fn,
+                            description=_tmeta.get("description", "") or "",
+                            category=_tmeta.get("category") or "Other",
+                            input_schema=_tmeta.get("input_schema"),
+                        )
+                        added += 1
+                    logger.info(
+                        "Integrated MCP server: merged full tool surface (+%d tools)", added
+                    )
+                except Exception as _full_exc:  # pragma: no cover - defensive
+                    logger.warning(
+                        "Integrated MCP server: full tool surface unavailable: %s", _full_exc
+                    )
+                _mcp_registry_state["registry"] = registry
                 logger.info(
                     "Integrated MCP server: unified tool registry ready (%d tools)",
-                    len(_mcp_registry_state["registry"].list_tool_names()),
+                    len(registry.list_tool_names()),
                 )
             except Exception as exc:  # pragma: no cover - defensive
                 _mcp_registry_state["error"] = str(exc)
@@ -1204,7 +1241,19 @@ class IPFSAccelerateCLI:
                 if not _mcp_registry_state["ready"]:
                     raise RuntimeError("tool registry is still initializing")
                 raise RuntimeError(_mcp_registry_state["error"] or "tool registry unavailable")
-            return reg.call_tool(name, **(arguments or {}))
+            result = reg.call_tool(name, **(arguments or {}))
+            # register_all_tools includes async tool functions; the registry's
+            # call_tool returns the coroutine unawaited, so resolve it here for
+            # the synchronous HTTP handler thread.
+            import inspect as _inspect
+            if _inspect.iscoroutine(result):
+                import asyncio as _asyncio
+                _loop = _asyncio.new_event_loop()
+                try:
+                    result = _loop.run_until_complete(result)
+                finally:
+                    _loop.close()
+            return result
 
         try:
             # Create the integrated dashboard handler
