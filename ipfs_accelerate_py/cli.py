@@ -1179,21 +1179,130 @@ class IPFSAccelerateCLI:
 
         threading.Thread(target=_build_mcp_registry, daemon=True).start()
 
+        # ------------------------------------------------------------------
+        # Hierarchical tool facade (mirrors ipfs_datasets_py):
+        # tools/list advertises 4 meta-tools + a flat ``<category>.<tool>``
+        # surface with MINIMAL descriptors (name + one-line description, no
+        # input schema). Full schemas are served lazily via tools_get_schema
+        # and execution goes through the unified registry. This keeps the
+        # advertised surface small (context-bloat reduction) while every one
+        # of the ~100 tools stays discoverable and callable.
+        # ------------------------------------------------------------------
+        _META_TOOLS = {
+            "tools_list_categories": {
+                "description": "Hierarchical facade: list all tool categories (optionally with per-category tool counts). Start here to discover the tool surface without loading every schema.",
+                "inputSchema": {"type": "object", "properties": {"include_count": {"type": "boolean", "default": False}}},
+            },
+            "tools_list_tools": {
+                "description": "Hierarchical facade: list the tools in a category (name + description). Use after tools_list_categories.",
+                "inputSchema": {"type": "object", "required": ["category"], "properties": {"category": {"type": "string"}}},
+            },
+            "tools_get_schema": {
+                "description": "Hierarchical facade: get the full input schema for a single tool. Accepts (category, tool) or a bare/dotted name.",
+                "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "tool": {"type": "string"}, "name": {"type": "string"}}},
+            },
+            "tools_dispatch": {
+                "description": "Hierarchical facade: execute a tool by category+tool (or name) with params. Equivalent to calling the tool directly.",
+                "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "tool": {"type": "string"}, "name": {"type": "string"}, "params": {"type": "object"}, "arguments": {"type": "object"}}},
+            },
+        }
+
+        def _mcp_category_map():
+            """Return {category: {tool_name: meta}} from the unified registry."""
+            reg = _mcp_registry_state["registry"]
+            groups = {}
+            if reg is None:
+                return groups
+            for meta in reg.list_tools():
+                name = getattr(meta, "name", None)
+                if not name:
+                    continue
+                cat = getattr(meta, "category", None) or "Other"
+                groups.setdefault(cat, {})[name] = meta
+            return groups
+
         def _mcp_tool_descriptors():
             reg = _mcp_registry_state["registry"]
+            descriptors = [
+                {"name": n, "description": m["description"], "inputSchema": m["inputSchema"]}
+                for n, m in _META_TOOLS.items()
+            ]
             if reg is None:
-                return []
-            descriptors = []
+                return descriptors
             try:
-                for meta in reg.list_tools():
-                    descriptors.append({
-                        "name": getattr(meta, "name", None),
-                        "description": getattr(meta, "description", "") or "",
-                        "inputSchema": getattr(meta, "input_schema", None) or {"type": "object"},
-                    })
+                for cat, tools in sorted(_mcp_category_map().items()):
+                    for tname, meta in sorted(tools.items()):
+                        desc = (getattr(meta, "description", "") or "").strip().split("\n", 1)[0]
+                        descriptors.append({
+                            "name": f"{cat}.{tname}",
+                            "description": desc or f"{tname} (category: {cat})",
+                            # Minimal: full schema served lazily by tools_get_schema.
+                            "inputSchema": {"type": "object"},
+                        })
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning(f"Integrated MCP server: tools/list enumeration failed: {exc}")
             return descriptors
+
+        def _mcp_resolve_tool_name(name):
+            """Resolve a bare or ``<category>.<tool>`` name to a registered tool name."""
+            reg = _mcp_registry_state["registry"]
+            if reg is None or not name:
+                return name
+            if name in reg.tools:
+                return name
+            if "." in name:
+                _cat, _, _tool = name.partition(".")
+                if _tool in reg.tools:
+                    return _tool
+            return name
+
+        def _mcp_meta_tool(name, arguments):
+            """Handle the hierarchical facade meta-tools. Returns (handled, result)."""
+            reg = _mcp_registry_state["registry"]
+            args = arguments or {}
+            if name == "tools_list_categories":
+                include_count = bool(args.get("include_count", False))
+                cats = []
+                for cat, tools in sorted(_mcp_category_map().items()):
+                    info = {"name": cat}
+                    if include_count:
+                        info["tool_count"] = len(tools)
+                    cats.append(info)
+                return True, {"status": "success", "category_count": len(cats), "categories": cats}
+            if name == "tools_list_tools":
+                category = args.get("category")
+                groups = _mcp_category_map()
+                if category not in groups:
+                    return True, {"status": "error", "error": f"Category '{category}' not found", "available_categories": sorted(groups.keys())}
+                tools = [
+                    {"name": tn, "description": (getattr(m, "description", "") or "").strip().split("\n", 1)[0]}
+                    for tn, m in sorted(groups[category].items())
+                ]
+                return True, {"status": "success", "category": category, "tool_count": len(tools), "tools": tools}
+            if name == "tools_get_schema":
+                tool = args.get("tool") or args.get("name") or args.get("category")
+                resolved = _mcp_resolve_tool_name(tool)
+                meta = reg.tools.get(resolved) if reg is not None else None
+                if meta is None:
+                    return True, {"status": "error", "error": f"Tool '{tool}' not found"}
+                return True, {
+                    "status": "success",
+                    "name": resolved,
+                    "category": getattr(meta, "category", None) or "Other",
+                    "description": getattr(meta, "description", "") or "",
+                    "schema": getattr(meta, "input_schema", None) or {"type": "object"},
+                }
+            if name == "tools_dispatch":
+                target = args.get("tool") or args.get("name")
+                if target and args.get("category") and target not in (reg.tools if reg else {}):
+                    target = f"{args['category']}.{target}"
+                elif not target:
+                    target = args.get("category")
+                params = args.get("params")
+                if params is None:
+                    params = args.get("arguments") or {}
+                return True, _mcp_call_tool(target, params)
+            return False, None
 
         def _mcp_tool_result(result):
             """Wrap a raw tool return in the MCP ``CallToolResult`` content shape.
@@ -1241,7 +1350,14 @@ class IPFSAccelerateCLI:
                 if not _mcp_registry_state["ready"]:
                     raise RuntimeError("tool registry is still initializing")
                 raise RuntimeError(_mcp_registry_state["error"] or "tool registry unavailable")
-            result = reg.call_tool(name, **(arguments or {}))
+            # Hierarchical facade meta-tools (tools_list_categories, etc.)
+            if name in _META_TOOLS:
+                _handled, _res = _mcp_meta_tool(name, arguments)
+                if _handled:
+                    return _res
+            # Accept both bare names and ``<category>.<tool>`` (back-compat + facade).
+            resolved = _mcp_resolve_tool_name(name)
+            result = reg.call_tool(resolved, **(arguments or {}))
             # register_all_tools includes async tool functions; the registry's
             # call_tool returns the coroutine unawaited, so resolve it here for
             # the synchronous HTTP handler thread.
