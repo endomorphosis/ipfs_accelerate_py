@@ -1127,7 +1127,7 @@ LAUNCH_READINESS_GOAL_TEMPLATES: tuple[dict[str, Any], ...] = (
         "evidence": (
             "Hallucinate App daemon health, daemon launcher, MCP server, MCP dashboard, "
             "ipfs_accelerate_py, ipfs_datasets_py, ipfs_kit_py, dashboard capability catalog, "
-            "Swissknife applications"
+            "Swissknife applications, launch Playwright validation gate"
         ),
         "outputs": (
             "hallucinate_app, swissknife, external/ipfs_accelerate, external/ipfs_datasets, "
@@ -1135,7 +1135,10 @@ LAUNCH_READINESS_GOAL_TEMPLATES: tuple[dict[str, Any], ...] = (
         ),
         "validation": (
             "PYTHONPATH=external/ipfs_accelerate:external/ipfs_datasets "
-            "pytest tests/test_hallucinate_multimodal_control_todo_queue.py -q"
+            "pytest tests/test_hallucinate_multimodal_control_todo_queue.py -q && "
+            "(test ! -f hallucinate_app/package.json || npm --prefix hallucinate_app run test:e2e -- daemon-launch-health.spec.ts) && "
+            "(test ! -f swissknife/package.json || npm --prefix swissknife run test:e2e:meta-glasses) && "
+            "(test ! -f hallucinate_app/package.json || npm --prefix hallucinate_app run test:e2e -- multimodal-control-surface.spec.ts)"
         ),
         "embedding_query": (
             "Hallucinate App daemon launch health MCP server dashboard ipfs_accelerate_py "
