@@ -239,11 +239,26 @@ def reconcile_objective_task_strategy(
     ]
     critical_goal_ids = _critical_goal_ids(goals, mission_terms)
     open_tasks = [task for task in tasks if task.status in OPEN_TASK_STATUSES]
+    previous_receipts = [
+        receipt
+        for receipt in strategy.get("objective_task_janitor_receipts", [])
+        if isinstance(receipt, Mapping)
+    ] if isinstance(strategy.get("objective_task_janitor_receipts"), list) else []
+    previously_blocked = _janitor_owned_task_ids(previous_receipts, "block")
+    previously_deprioritized = _janitor_owned_task_ids(previous_receipts, "deprioritize")
+    strategy_blocked_task_ids = {
+        str(item)
+        for key in ("blocked_tasks", "deprioritized_tasks")
+        for item in (strategy.get(key, []) if isinstance(strategy.get(key), list) else [])
+        if str(item).strip()
+    } - previously_blocked - previously_deprioritized
     open_goal_ids: set[str] = set()
     block_receipts: list[ObjectiveTaskJanitorReceipt] = []
     deprioritize_receipts: list[ObjectiveTaskJanitorReceipt] = []
 
     for task in open_tasks:
+        if task.task_id in strategy_blocked_task_ids:
+            continue
         goal_ids = _task_goal_ids(task)
         task_goal_set = set(goal_ids)
         if task_goal_set & active_goal_ids:
@@ -335,14 +350,6 @@ def reconcile_objective_task_strategy(
         and goal_id in goals_by_id
         and _goal_requires_launch_playwright_gate(goals_by_id[goal_id])
     ]
-
-    previous_receipts = [
-        receipt
-        for receipt in strategy.get("objective_task_janitor_receipts", [])
-        if isinstance(receipt, Mapping)
-    ] if isinstance(strategy.get("objective_task_janitor_receipts"), list) else []
-    previously_blocked = _janitor_owned_task_ids(previous_receipts, "block")
-    previously_deprioritized = _janitor_owned_task_ids(previous_receipts, "deprioritize")
 
     existing_blocked = _unique(
         [str(item) for item in strategy.get("blocked_tasks", [])]
