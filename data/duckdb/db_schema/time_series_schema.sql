@@ -247,6 +247,62 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 10. Hallucinate App <-> mobile interop evidence for VAIOS-G707.
+-- The objective scanner looks for this exact contract term outside the heap.
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_events (
+    event_id VARCHAR PRIMARY KEY,
+    contract VARCHAR DEFAULT 'interface contract hallucinate_app mobile',
+    objective_id VARCHAR DEFAULT 'VAIOS-G707',
+    source_surface VARCHAR DEFAULT 'hallucinate_app',
+    target_surface VARCHAR DEFAULT 'mobile',
+    descriptor_namespace VARCHAR DEFAULT 'handsfree.hallucinate_app.mobile',
+    descriptor_name VARCHAR DEFAULT 'hallucinate_app_mobile_content_browser',
+    descriptor_version VARCHAR DEFAULT '0.1.0',
+    action VARCHAR NOT NULL,
+    mobile_route VARCHAR,
+    query_text TEXT,
+    filter_json JSON,
+    handoff_payload JSON,
+    accepted BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_benchmark_samples (
+    sample_id VARCHAR PRIMARY KEY,
+    event_id VARCHAR NOT NULL,
+    metric_name VARCHAR NOT NULL,
+    metric_value DOUBLE NOT NULL,
+    metric_unit VARCHAR,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata JSON,
+    FOREIGN KEY (event_id) REFERENCES hallucinate_app_mobile_interop_events(event_id)
+);
+
+CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_interop_timeseries AS
+SELECT
+    e.event_id,
+    e.contract,
+    e.objective_id,
+    e.action,
+    e.mobile_route,
+    e.created_at AS event_time,
+    s.sample_id,
+    s.metric_name,
+    s.metric_value,
+    s.metric_unit,
+    s.recorded_at
+FROM
+    hallucinate_app_mobile_interop_events e
+LEFT JOIN
+    hallucinate_app_mobile_benchmark_samples s ON e.event_id = s.event_id;
+
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_contract
+    ON hallucinate_app_mobile_interop_events(contract, objective_id);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_created
+    ON hallucinate_app_mobile_interop_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_samples_metric
+    ON hallucinate_app_mobile_benchmark_samples(metric_name, recorded_at);
+
 -- Function to detect regressions based on thresholds
 CREATE OR REPLACE FUNCTION detect_performance_regressions(
     p_model_id INTEGER DEFAULT NULL,
