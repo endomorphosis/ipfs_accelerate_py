@@ -155,6 +155,60 @@ CREATE INDEX IF NOT EXISTS idx_perf_trends_model_hw ON performance_trends(model_
 CREATE INDEX IF NOT EXISTS idx_perf_trends_metric ON performance_trends(metric_type);
 CREATE INDEX IF NOT EXISTS idx_perf_results_run_group ON performance_results(run_group_id);
 
+-- 8a. Hallucinate App <-> mobile handoff receipts for VAIOS-G707 objective validation repair
+ALTER TABLE IF EXISTS integration_test_results
+ADD COLUMN IF NOT EXISTS hallucinate_mobile_contract VARCHAR,
+ADD COLUMN IF NOT EXISTS control_surface_contract_ref VARCHAR,
+ADD COLUMN IF NOT EXISTS mobile_orb_operation VARCHAR,
+ADD COLUMN IF NOT EXISTS mobile_orb_receipt_cid VARCHAR,
+ADD COLUMN IF NOT EXISTS mobile_mediation_receipt JSON;
+
+CREATE TABLE IF NOT EXISTS hallucinate_mobile_handoff_receipts (
+    receipt_id VARCHAR PRIMARY KEY,
+    run_id INTEGER,
+    test_result_id INTEGER,
+    contract VARCHAR NOT NULL DEFAULT 'handsfree.hallucinate-app/mobile-search-handoff@0.1.0',
+    control_surface_contract_ref VARCHAR NOT NULL DEFAULT 'control_surface_contract:hallucinate-app:remote-client',
+    source_surface VARCHAR NOT NULL,
+    target_surface VARCHAR NOT NULL,
+    handoff_event VARCHAR NOT NULL DEFAULT 'hallucinate-app:mobile-search-handoff',
+    correlation_id VARCHAR NOT NULL,
+    query TEXT,
+    filter JSON,
+    mobile_operation VARCHAR NOT NULL,
+    orb_receipt_cid VARCHAR,
+    mediation_receipt JSON,
+    diagnostics_contract VARCHAR DEFAULT 'handsfree.meta-glasses/mobile-orb-diagnostics@0.1.0',
+    status VARCHAR NOT NULL DEFAULT 'recorded',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
+    FOREIGN KEY (test_result_id) REFERENCES integration_test_results(test_result_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_hallucinate_mobile_receipts_correlation
+    ON hallucinate_mobile_handoff_receipts(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_mobile_receipts_contract
+    ON hallucinate_mobile_handoff_receipts(contract, control_surface_contract_ref);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_mobile_receipts_operation
+    ON hallucinate_mobile_handoff_receipts(mobile_operation);
+
+CREATE VIEW IF NOT EXISTS hallucinate_mobile_handoff_history AS
+SELECT
+    receipt_id,
+    contract,
+    control_surface_contract_ref,
+    source_surface,
+    target_surface,
+    handoff_event,
+    correlation_id,
+    mobile_operation,
+    orb_receipt_cid,
+    diagnostics_contract,
+    status,
+    created_at
+FROM hallucinate_mobile_handoff_receipts
+ORDER BY created_at DESC;
+
 -- 9. Create functions for common time-series operations
 
 -- Function to set a new baseline from recent results
