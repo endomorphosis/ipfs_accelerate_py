@@ -384,3 +384,44 @@ BEGIN
         AND r.baseline_power > 0;
 END;
 $$ LANGUAGE plpgsql;
+
+    -- 8. Hallucinate App <-> Mobile interoperability event tracking (MGW-579 / VAIOS-G707)
+    -- Proves `hallucinate_app` interoperates with `mobile` through the
+    -- `interface contract hallucinate_app mobile` runtime handoff described in
+    -- docs/integration/hallucinate_app-mobile.md. Every
+    -- `hallucinate-app:mobile-interop-handoff` event emitted by
+    -- hallucinate_app/hallucinate_app/node/dashboard/content_browser/search_interface.js
+    -- (via `HALLUCINATE_APP_MOBILE_INTEROP_DESCRIPTOR`) is persisted here so the
+    -- mobile ORB bridge / Meta glasses display widget handoff can be queried and
+    -- audited. See
+    -- hallucinate_app/ipfs_accelerate_py/data/duckdb/scripts/create_benchmark_schema.py
+    -- for the executable table/view creation logic
+    -- (`create_hallucinate_app_mobile_interop_tables`).
+    CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_events (
+        event_id INTEGER PRIMARY KEY,
+        interaction_id VARCHAR NOT NULL,
+        contract VARCHAR NOT NULL DEFAULT 'interface contract hallucinate_app mobile',
+        event VARCHAR NOT NULL DEFAULT 'hallucinate-app:mobile-interop-handoff',
+        source_surface VARCHAR NOT NULL DEFAULT 'hallucinate_app',
+        target_surface VARCHAR NOT NULL DEFAULT 'mobile',
+        action VARCHAR, -- 'search', 'filter', 'clear', etc.
+        widget_id VARCHAR,
+        mobile_interface_key VARCHAR NOT NULL DEFAULT 'HALLUCINATE_APP_MOBILE_INTEROP_INTERFACE',
+        payload JSON, -- Normalized handoff payload (query, filter, widget details)
+        goal_id VARCHAR NOT NULL DEFAULT 'VAIOS-G707',
+        task_id VARCHAR NOT NULL DEFAULT 'MGW-579',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_interop_latest AS
+    SELECT
+        interaction_id,
+        contract,
+        event,
+        action,
+        widget_id,
+        mobile_interface_key,
+        payload,
+        created_at
+    FROM hallucinate_app_mobile_interop_events
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY interaction_id ORDER BY created_at DESC) = 1;
