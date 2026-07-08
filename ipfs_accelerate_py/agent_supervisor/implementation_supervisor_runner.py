@@ -158,7 +158,7 @@ class ConfiguredSupervisorRuntime:
         worktree_submodule_paths: Sequence[str] = (),
         generated_dirty_repair_enabled: bool = False,
         generated_dirty_repair_commit_subject: str | None = None,
-        generated_dirty_repair_include_submodule_gitlinks: bool = True,
+        generated_dirty_repair_include_submodule_gitlinks: bool = False,
         generated_dirty_repair_max_paths: int | None = None,
         generated_dirty_repair_stale_lock_seconds: float | None = None,
         objective: "ObjectiveRefillDefaults | None" = None,
@@ -238,7 +238,7 @@ class ConfiguredSupervisorRuntime:
         worktree_submodule_paths: Sequence[str] = (),
         generated_dirty_repair_enabled: bool = False,
         generated_dirty_repair_commit_subject: str | None = None,
-        generated_dirty_repair_include_submodule_gitlinks: bool = True,
+        generated_dirty_repair_include_submodule_gitlinks: bool = False,
         generated_dirty_repair_max_paths: int | None = None,
         generated_dirty_repair_stale_lock_seconds: float | None = None,
         once_complete_message: str = "Portal implementation supervisor check complete: %s",
@@ -354,7 +354,7 @@ class ConfiguredSupervisorBootstrapRunner:
     worktree_submodule_paths: Sequence[str] = ()
     generated_dirty_repair_enabled: bool = False
     generated_dirty_repair_commit_subject: str | None = None
-    generated_dirty_repair_include_submodule_gitlinks: bool = True
+    generated_dirty_repair_include_submodule_gitlinks: bool = False
     generated_dirty_repair_max_paths: int | None = None
     generated_dirty_repair_stale_lock_seconds: float | None = None
     once_complete_message: str = "Portal implementation supervisor check complete: %s"
@@ -435,7 +435,7 @@ def build_configured_supervisor_bootstrap_runner(
     worktree_submodule_paths: Sequence[str] = (),
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str | None = None,
-    generated_dirty_repair_include_submodule_gitlinks: bool = True,
+    generated_dirty_repair_include_submodule_gitlinks: bool = False,
     generated_dirty_repair_max_paths: int | None = None,
     generated_dirty_repair_stale_lock_seconds: float | None = None,
     once_complete_message: str = "Portal implementation supervisor check complete: %s",
@@ -582,7 +582,7 @@ def build_script_supervisor_bootstrap_runner(
     worktree_submodule_paths: Sequence[str] = (),
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str | None = None,
-    generated_dirty_repair_include_submodule_gitlinks: bool = True,
+    generated_dirty_repair_include_submodule_gitlinks: bool = False,
     generated_dirty_repair_max_paths: int | None = None,
     generated_dirty_repair_stale_lock_seconds: float | None = None,
     once_complete_message: str = "Portal implementation supervisor check complete: %s",
@@ -657,7 +657,7 @@ class ImplementationSupervisorDefaults:
     worktree_submodule_paths: Sequence[str] = ()
     generated_dirty_repair_enabled: bool = False
     generated_dirty_repair_commit_subject: str | None = None
-    generated_dirty_repair_include_submodule_gitlinks: bool = True
+    generated_dirty_repair_include_submodule_gitlinks: bool = False
     generated_dirty_repair_max_paths: int | None = None
     generated_dirty_repair_stale_lock_seconds: float | None = None
 
@@ -695,7 +695,7 @@ def build_implementation_supervisor_defaults_from_paths(
     worktree_submodule_paths: Sequence[str] = (),
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str | None = None,
-    generated_dirty_repair_include_submodule_gitlinks: bool = True,
+    generated_dirty_repair_include_submodule_gitlinks: bool = False,
     generated_dirty_repair_max_paths: int | None = None,
     generated_dirty_repair_stale_lock_seconds: float | None = None,
 ) -> ImplementationSupervisorDefaults:
@@ -1285,7 +1285,7 @@ def apply_portal_implementation_supervisor_defaults_from_paths(
     worktree_submodule_paths: Sequence[str] = (),
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str | None = None,
-    generated_dirty_repair_include_submodule_gitlinks: bool = True,
+    generated_dirty_repair_include_submodule_gitlinks: bool = False,
     generated_dirty_repair_max_paths: int | None = None,
     generated_dirty_repair_stale_lock_seconds: float | None = None,
     objective: ObjectiveRefillDefaults | None = None,

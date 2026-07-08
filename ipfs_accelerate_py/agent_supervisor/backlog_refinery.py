@@ -69,6 +69,16 @@ DEFAULT_IMPLEMENTATION_RETRY_BUDGET = int(
 DEFAULT_STALE_GIT_LOCK_SECONDS = float(
     os.environ.get("IPFS_ACCELERATE_AGENT_STALE_GIT_LOCK_SECONDS", "300")
 )
+DEFAULT_GENERATED_DIRTY_HARD_PATH_CAP = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_GENERATED_DIRTY_HARD_PATH_CAP", "200")
+)
+DEFAULT_GENERATED_DIRTY_MAX_DELETE_PATHS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_GENERATED_DIRTY_MAX_DELETE_PATHS", "0")
+)
+DEFAULT_GENERATED_DIRTY_ALLOW_DELETIONS = (
+    os.environ.get("IPFS_ACCELERATE_AGENT_GENERATED_DIRTY_ALLOW_DELETIONS", "0").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 DEFAULT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS", "5")
 )
@@ -1138,7 +1148,11 @@ def commit_generated_dirty_outputs(
         generated_prefixes=generated_prefixes,
         candidate_git_roots=candidate_git_roots,
     )
-    remaining_budget = max(0, int(max_paths))
+    hard_path_cap = max(1, int(DEFAULT_GENERATED_DIRTY_HARD_PATH_CAP))
+    configured_budget = max(0, int(max_paths))
+    remaining_budget = min(configured_budget, hard_path_cap)
+    max_delete_paths = max(0, int(DEFAULT_GENERATED_DIRTY_MAX_DELETE_PATHS))
+    allow_generated_deletions = bool(DEFAULT_GENERATED_DIRTY_ALLOW_DELETIONS)
     results: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     lock_repairs: list[dict[str, Any]] = []
@@ -1166,6 +1180,11 @@ def commit_generated_dirty_outputs(
         status = git_status_porcelain(git_root)
         if not status:
             continue
+        status_codes: dict[str, str] = {}
+        for line in status:
+            relative = status_line_path(line)
+            if relative and relative not in status_codes:
+                status_codes[relative] = line[:2]
         unmerged = sorted(unmerged_worktree_paths(git_root))
         if unmerged:
             skipped.append(
@@ -1198,6 +1217,8 @@ def commit_generated_dirty_outputs(
                 generated_paths=repo_generated_paths,
                 generated_prefixes=repo_generated_prefixes,
             ):
+                if _path_is_gitlink(git_root, relative):
+                    continue
                 selected.append(relative)
                 selected_reasons[relative] = "generated_output"
                 remaining_budget -= 1
@@ -1208,6 +1229,33 @@ def commit_generated_dirty_outputs(
                     selected.append(relative)
                     selected_reasons[relative] = f"clean_submodule_gitlink:{child_root}"
                     remaining_budget -= 1
+        selected_deletions = [
+            relative
+            for relative in selected
+            if "D" in str(status_codes.get(relative) or "")
+        ]
+        if selected_deletions and not allow_generated_deletions:
+            skipped.append(
+                {
+                    "repo": str(git_root),
+                    "reason": "generated_deletions_blocked",
+                    "selected_deletion_paths": selected_deletions[:50],
+                    "status_short": status[:50],
+                }
+            )
+            continue
+        if len(selected_deletions) > max_delete_paths:
+            skipped.append(
+                {
+                    "repo": str(git_root),
+                    "reason": "generated_deletion_path_limit_exceeded",
+                    "selected_deletion_count": len(selected_deletions),
+                    "max_delete_paths": max_delete_paths,
+                    "selected_deletion_paths": selected_deletions[:50],
+                    "status_short": status[:50],
+                }
+            )
+            continue
         if not selected:
             skipped.append(
                 {
@@ -1236,6 +1284,10 @@ def commit_generated_dirty_outputs(
         "remaining_status_short": final_status[:50],
         "remaining_status_count": len(final_status),
         "max_paths": max_paths,
+        "hard_path_cap": hard_path_cap,
+        "effective_max_paths": min(max(0, int(max_paths)), hard_path_cap),
+        "max_delete_paths": max_delete_paths,
+        "allow_generated_deletions": allow_generated_deletions,
     }
 
 

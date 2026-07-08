@@ -134,7 +134,7 @@ class PortalSupervisorConfig:
     reconciliation_guardrail_commit_subject: str = "Agent: record reconciliation guardrail outputs"
     generated_dirty_repair_enabled: bool = False
     generated_dirty_repair_commit_subject: str = "Agent: commit generated supervisor outputs"
-    generated_dirty_repair_include_submodule_gitlinks: bool = True
+    generated_dirty_repair_include_submodule_gitlinks: bool = False
     generated_dirty_repair_max_paths: int = 200
     generated_dirty_repair_stale_lock_seconds: float = 300.0
     codebase_refill_enabled: bool = False
@@ -4840,7 +4840,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_false",
         help="Do not commit clean submodule gitlink updates during generated dirty repair.",
     )
-    parser.set_defaults(generated_dirty_repair_include_submodule_gitlinks=True)
+    parser.set_defaults(generated_dirty_repair_include_submodule_gitlinks=False)
     parser.add_argument(
         "--generated-dirty-max-paths",
         type=int,
