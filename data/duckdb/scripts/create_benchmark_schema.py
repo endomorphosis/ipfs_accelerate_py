@@ -669,7 +669,7 @@ if __name__ == "__main__":
 
 
 # ---------------------------------------------------------------------------
-# HAO-740 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
+# VAI-674 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
 #
 # These constants mirror `mobile/src/orb/metaGlassesOrbDescriptors.js`'s
 # HALLUCINATE_APP_MOBILE_INTEROP_DESCRIPTOR and the

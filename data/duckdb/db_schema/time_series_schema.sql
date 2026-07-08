@@ -385,7 +385,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-    -- 6. HAO-740 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
+    -- 6. VAI-674 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
     -- Records the control-surface receipts exchanged when the Hallucinate App
     -- desktop search surface hands off a request to the mobile ORB bridge via
     -- `interface contract hallucinate_app mobile`
