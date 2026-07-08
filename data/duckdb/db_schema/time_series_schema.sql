@@ -155,6 +155,47 @@ CREATE INDEX IF NOT EXISTS idx_perf_trends_model_hw ON performance_trends(model_
 CREATE INDEX IF NOT EXISTS idx_perf_trends_metric ON performance_trends(metric_type);
 CREATE INDEX IF NOT EXISTS idx_perf_results_run_group ON performance_results(run_group_id);
 
+-- 10. hallucinate_app <-> mobile interoperability handoff receipt tracking
+-- Contract: handsfree.hallucinate_app/mobile-handoff@0.1.0
+-- Interface descriptor: hallucinate_app.mobile.interface_descriptor.v1
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_handoffs (
+    handoff_id INTEGER PRIMARY KEY,
+    request_id VARCHAR NOT NULL UNIQUE,
+    contract VARCHAR NOT NULL,
+    descriptor VARCHAR NOT NULL,
+    operation VARCHAR NOT NULL,
+    source VARCHAR NOT NULL,
+    target VARCHAR NOT NULL,
+    payload JSON NOT NULL,
+    handoff JSON NOT NULL,
+    policy JSON NOT NULL,
+    receipt JSON,
+    status VARCHAR DEFAULT 'created',
+    mobile_session_id VARCHAR,
+    created_at TIMESTAMP NOT NULL,
+    acknowledged_at TIMESTAMP,
+    CHECK (contract = 'handsfree.hallucinate_app/mobile-handoff@0.1.0'),
+    CHECK (descriptor = 'hallucinate_app.mobile.interface_descriptor.v1'),
+    CHECK (operation IN ('search', 'filter', 'clear', 'module_test', 'benchmark_telemetry'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mobile_handoffs_request
+    ON hallucinate_app_mobile_handoffs(request_id);
+CREATE INDEX IF NOT EXISTS idx_mobile_handoffs_operation
+    ON hallucinate_app_mobile_handoffs(operation);
+CREATE INDEX IF NOT EXISTS idx_mobile_handoffs_created
+    ON hallucinate_app_mobile_handoffs(created_at);
+
+CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_handoff_summary AS
+SELECT
+    operation,
+    status,
+    COUNT(*) AS handoff_count,
+    MIN(created_at) AS first_created_at,
+    MAX(COALESCE(acknowledged_at, created_at)) AS last_seen_at
+FROM hallucinate_app_mobile_handoffs
+GROUP BY operation, status;
+
 -- 9. Create functions for common time-series operations
 
 -- Function to set a new baseline from recent results
