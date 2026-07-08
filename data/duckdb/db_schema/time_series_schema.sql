@@ -410,3 +410,29 @@ $$ LANGUAGE plpgsql;
 
     CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_receipts_route
         ON hallucinate_app_mobile_interop_receipts (route);
+
+    -- Scanner-visible event evidence for VAI-674 / VAIOS-G707.
+    -- Bundle: objective/interoperability/hallucinate_app-mobile
+    -- Evidence: objective validation repair.
+    -- Event: hallucinate-app:mobile-interop-handoff.
+    -- Contract: interface contract hallucinate_app mobile.
+    -- This table is
+    -- intentionally parallel to the receipt table so runtime probes can record
+    -- the canonical `hallucinate-app:mobile-interop-handoff` event before the
+    -- full mediation receipt is persisted.
+    CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_events (
+        event_id INTEGER PRIMARY KEY,
+        contract_id VARCHAR NOT NULL DEFAULT 'interface contract hallucinate_app mobile',
+        goal_id VARCHAR NOT NULL DEFAULT 'VAIOS-G707',
+        event_name VARCHAR NOT NULL DEFAULT 'hallucinate-app:mobile-interop-handoff',
+        source_surface VARCHAR NOT NULL DEFAULT 'hallucinate_app',
+        target_surface VARCHAR NOT NULL DEFAULT 'mobile',
+        route VARCHAR NOT NULL DEFAULT '/v1/mobile/orb/invoke_service',
+        operation VARCHAR NOT NULL DEFAULT 'invoke_service',
+        correlation_id VARCHAR,
+        payload JSON,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_events_event_name
+        ON hallucinate_app_mobile_interop_events (event_name);
