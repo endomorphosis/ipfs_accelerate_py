@@ -333,7 +333,55 @@ def test_objective_graph_generates_forced_launch_validation_gate_when_evidence_p
     assert forced[0].missing_evidence == ["launch Playwright validation gate"]
     assert forced[0].work_scope == "launch_validation_gate"
     assert "npm --prefix swissknife run test:e2e:meta-glasses" in forced[0].validation
-    assert suppressed == []
+    assert [finding.goal_id for finding in suppressed] == ["VAIOS-G697"]
+
+
+def test_objective_graph_generates_forced_interoperability_validation_repair_when_evidence_present(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective-heap.md"
+    receipt = repo / "docs" / "integration" / "swissknife_mobile.md"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text("swissknife mobile interoperability adapter contract test receipt\n", encoding="utf-8")
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G700 Interoperate swissknife with mobile
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: interoperability
+- Priority: P1
+- Bundle: objective/interoperability/swissknife-mobile
+- Goal: Prove swissknife and mobile can be used together.
+- Evidence: docs/integration/swissknife_mobile.md
+- Outputs: docs/integration/swissknife_mobile.md, tests
+- Validation: python -m pytest tests/integration -q
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective-heap.md", "docs/integration/swissknife_mobile.md")
+    _git(repo, "commit", "-m", "seed interoperability objective")
+
+    unforced = scan_objective_gaps(repo, objective_path=objective_path, max_findings=1)
+    forced = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        force_goal_ids=["VAIOS-G700"],
+    )
+
+    assert unforced == []
+    assert len(forced) == 1
+    assert forced[0].candidate_kind == "validation_gate"
+    assert forced[0].missing_evidence == ["objective validation repair"]
+    assert forced[0].work_scope == "objective_validation_repair"
+    assert forced[0].validation == "python -m pytest tests/integration -q"
 
 
 def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
