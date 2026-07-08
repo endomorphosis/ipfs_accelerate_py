@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}Run Calibration - {{ title }}{% endblock %}
+
+{% block header %}Run Calibration{% endblock %}
+
+{% block header_buttons %}
+<div>
+    <a href="{{ url_for('validation_results') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Results
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-sliders"></i> Calibration Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('calibrate') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <!-- Model and Hardware Selection -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="model_id" class="form-label">Model</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="model_id" name="model_id" required>
+                                    <option value="" selected disabled>Select Model</option>
+                                    {% for model in model_types %}
+                                    <option value="{{ model.id }}">{{ model.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="hardware_id" class="form-label">Hardware</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hardware_id" name="hardware_id" required>
+                                    <option value="" selected disabled>Select Hardware</option>
+                                    {% for hw in hardware_types %}
+                                    <option value="{{ hw.id }}">{{ hw.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Calibration Parameters -->
+                    <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light border-secondary{% else %}bg-light{% endif %}">
+                        <div class="card-header">
+                            <h6 class="mb-0">Calibration Parameters</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label for="param_throughput_multiplier" class="form-label">Throughput Multiplier</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="param_throughput_multiplier" name="param_throughput_multiplier" min="0.1" max="10" step="0.1" value="1.0">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="param_latency_multiplier" class="form-label">Latency Multiplier</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="param_latency_multiplier" name="param_latency_multiplier" min="0.1" max="10" step="0.1" value="1.0">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="param_memory_overhead" class="form-label">Memory Overhead (MB)</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="param_memory_overhead" name="param_memory_overhead" min="0" step="1" value="0">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="param_power_factor" class="form-label">Power Factor</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="param_power_factor" name="param_power_factor" min="0.1" max="10" step="0.1" value="1.0">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="param_batch_scaling" class="form-label">Batch Scaling Factor</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="param_batch_scaling" name="param_batch_scaling" min="0.1" max="10" step="0.1" value="1.0">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="param_precision_impact" class="form-label">Precision Impact Factor</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="param_precision_impact" name="param_precision_impact" min="0.1" max="10" step="0.1" value="1.0">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Calibration Options -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">Calibration Options</h6>
+                        
+                        <div class="mb-3">
+                            <label for="calibration_method" class="form-label">Calibration Method</label>
+                            <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="calibration_method" name="calibration_method">
+                                <option value="auto" selected>Automatic (Recommended)</option>
+                                <option value="genetic">Genetic Algorithm</option>
+                                <option value="bayesian">Bayesian Optimization</option>
+                                <option value="grid_search">Grid Search</option>
+                                <option value="manual">Manual (Use Current Values)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="use_all_results" name="use_all_results" checked>
+                            <label class="form-check-label" for="use_all_results">
+                                Use All Validation Results
+                            </label>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                If checked, all available validation results for the selected model and hardware will be used for calibration.
+                            </div>
+                        </div>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="store_calibration" name="store_calibration" checked>
+                            <label class="form-check-label" for="store_calibration">
+                                Store Calibration Results
+                            </label>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                If checked, calibration results will be stored in the database for future reference.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-sliders"></i> Run Calibration
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Calibration Guide -->
+        <div class="card mt-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-question-circle"></i> Calibration Guide</h5>
+            </div>
+            <div class="card-body">
+                <h6>What is Calibration?</h6>
+                <p>
+                    Calibration adjusts simulation parameters to minimize the error between simulation 
+                    and hardware results. This process improves the accuracy of future simulations for 
+                    the selected model and hardware combination.
+                </p>
+                
+                <h6>Calibration Parameters</h6>
+                <ul>
+                    <li><strong>Throughput Multiplier</strong>: Scales the simulation throughput values</li>
+                    <li><strong>Latency Multiplier</strong>: Scales the simulation latency values</li>
+                    <li><strong>Memory Overhead</strong>: Adds additional memory usage to simulation results</li>
+                    <li><strong>Power Factor</strong>: Scales the simulation power consumption values</li>
+                    <li><strong>Batch Scaling Factor</strong>: Adjusts how throughput scales with batch size</li>
+                    <li><strong>Precision Impact Factor</strong>: Adjusts how performance changes with precision</li>
+                </ul>
+                
+                <h6>Calibration Methods</h6>
+                <ul>
+                    <li><strong>Automatic</strong>: Uses the optimal algorithm based on data characteristics</li>
+                    <li><strong>Genetic Algorithm</strong>: Evolutionary approach for complex parameter spaces</li>
+                    <li><strong>Bayesian Optimization</strong>: Efficient search through parameter space</li>
+                    <li><strong>Grid Search</strong>: Systematic search through parameter combinations</li>
+                    <li><strong>Manual</strong>: Uses the parameter values you specify</li>
+                </ul>
+                
+                <div class="alert alert-info mt-3" role="alert">
+                    <i class="bi bi-lightbulb"></i> <strong>Tip:</strong> 
+                    For best results, ensure you have multiple validation results across different
+                    batch sizes and precision levels for the selected model and hardware combination.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle method selection to disable/enable manual parameters
+        const methodSelect = document.getElementById('calibration_method');
+        const paramInputs = document.querySelectorAll('input[id^="param_"]');
+        
+        function updateParamState() {
+            const isManual = methodSelect.value === 'manual';
+            
+            // Enable/disable parameter inputs based on method
+            paramInputs.forEach(input => {
+                input.readOnly = !isManual;
+                if (!isManual) {
+                    input.classList.add('text-muted');
+                } else {
+                    input.classList.remove('text-muted');
+                }
+            });
+        }
+        
+        if (methodSelect) {
+            methodSelect.addEventListener('change', updateParamState);
+            // Initial call
+            updateParamState();
+        }
+    });
+</script>
+{% endblock %}

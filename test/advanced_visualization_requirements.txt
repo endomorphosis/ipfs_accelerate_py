@@ -1,0 +1,27 @@
+# Requirements for the Advanced Visualization System
+
+# Core visualization components
+plotly>=5.18.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# For dimensionality reduction and ML features
+scikit-learn>=1.2.0
+
+# For interactive widgets in Jupyter notebooks
+ipywidgets>=8.0.0
+
+# Optional: for notebook integration
+jupyter>=1.0.0
+ipython>=8.0.0
+
+# Optional: for 3D data processing 
+scipy>=1.10.0
+
+# Optional: for dashboard system
+dash>=2.10.0
+
+# For Monitoring Dashboard Integration
+requests>=2.28.0
+websocket-client>=1.5.0
+playwright>=1.30.0  # For HTML-to-PDF/PNG export

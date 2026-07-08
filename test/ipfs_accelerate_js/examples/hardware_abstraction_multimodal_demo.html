@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardware Abstraction Layer Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        
+        h2 {
+            color: #2c3e50;
+            margin-top: 30px;
+        }
+        
+        .card {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        pre {
+            background-color: #f1f1f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow: auto;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .hardware-info {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .hardware-card {
+            flex: 1;
+            min-width: 300px;
+            background-color: #ecf0f1;
+            border-radius: 6px;
+            padding: 15px;
+        }
+        
+        .hardware-card h3 {
+            margin-top: 0;
+            color: #3498db;
+        }
+        
+        #output {
+            height: 400px;
+            overflow: auto;
+            white-space: pre-wrap;
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .model-section {
+            margin-top: 30px;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Hardware Abstraction Layer (HAL) Multi-Model Demo</h1>
+    
+    <div class="card">
+        <h2>Hardware Detection</h2>
+        <div class="hardware-info">
+            <div class="hardware-card">
+                <h3>Browser</h3>
+                <div id="browser-info">Detecting...</div>
+            </div>
+            <div class="hardware-card">
+                <h3>WebGPU Support</h3>
+                <div id="webgpu-info">Checking...</div>
+            </div>
+            <div class="hardware-card">
+                <h3>WebNN Support</h3>
+                <div id="webnn-info">Checking...</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <h2>Model Controls</h2>
+        <div>
+            <button id="init-all-btn">Initialize All Models</button>
+            <button id="run-bert-btn" disabled>Run BERT</button>
+            <button id="run-whisper-btn" disabled>Run Whisper</button>
+            <button id="run-clip-btn" disabled>Run CLIP</button>
+            <button id="clear-output-btn">Clear Output</button>
+        </div>
+        
+        <div class="status info" id="status">Ready to initialize models</div>
+    </div>
+    
+    <div class="card">
+        <h2>Output</h2>
+        <pre id="output"></pre>
+    </div>
+    
+    <div class="model-section">
+        <h2>BERT Model</h2>
+        <div class="card">
+            <h3>Text Input</h3>
+            <textarea id="bert-input" rows="3" style="width: 100%; margin-bottom: 10px;">This is an example text for BERT to process using hardware acceleration.</textarea>
+            <button id="process-bert-btn" disabled>Process with BERT</button>
+            
+            <div id="bert-info" style="margin-top: 15px;"></div>
+        </div>
+    </div>
+    
+    <div class="model-section">
+        <h2>CLIP Model</h2>
+        <div class="card">
+            <h3>Text Input</h3>
+            <textarea id="clip-text-input" rows="2" style="width: 100%; margin-bottom: 10px;">A photo of a cat</textarea>
+            
+            <h3>Image</h3>
+            <div>
+                <input type="file" id="clip-image-input" accept="image/*">
+                <div style="margin-top: 10px;">
+                    <img id="clip-preview" style="max-width: 300px; max-height: 300px; display: none;">
+                </div>
+            </div>
+            
+            <button id="process-clip-btn" disabled style="margin-top: 10px;">Process with CLIP</button>
+            
+            <div id="clip-info" style="margin-top: 15px;"></div>
+        </div>
+    </div>
+    
+    <script type="module">
+        // This would be the bundled version of our TypeScript code
+        // For the demo, we'll simulate the functionality
+        
+        const output = document.getElementById('output');
+        const statusEl = document.getElementById('status');
+        
+        // Buttons
+        const initAllBtn = document.getElementById('init-all-btn');
+        const runBertBtn = document.getElementById('run-bert-btn');
+        const runWhisperBtn = document.getElementById('run-whisper-btn');
+        const runClipBtn = document.getElementById('run-clip-btn');
+        const clearOutputBtn = document.getElementById('clear-output-btn');
+        const processBertBtn = document.getElementById('process-bert-btn');
+        const processClipBtn = document.getElementById('process-clip-btn');
+        
+        // Info elements
+        const browserInfoEl = document.getElementById('browser-info');
+        const webgpuInfoEl = document.getElementById('webgpu-info');
+        const webnnInfoEl = document.getElementById('webnn-info');
+        const bertInfoEl = document.getElementById('bert-info');
+        const clipInfoEl = document.getElementById('clip-info');
+        
+        // Image preview
+        const clipImageInput = document.getElementById('clip-image-input');
+        const clipPreview = document.getElementById('clip-preview');
+        
+        // Detect browser
+        const detectBrowser = () => {
+            const userAgent = navigator.userAgent;
+            let browserName = "Unknown";
+            
+            if (userAgent.match(/chrome|chromium|crios/i)) {
+                browserName = "Chrome";
+            } else if (userAgent.match(/firefox|fxios/i)) {
+                browserName = "Firefox";
+            } else if (userAgent.match(/safari/i)) {
+                browserName = "Safari";
+            } else if (userAgent.match(/edg/i)) {
+                browserName = "Edge";
+            }
+            
+            browserInfoEl.textContent = `${browserName} (${navigator.platform})`;
+            return browserName;
+        };
+        
+        // Check WebGPU support
+        const checkWebGPU = async () => {
+            try {
+                if (navigator.gpu) {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (adapter) {
+                        const features = [];
+                        adapter.features.forEach(feature => features.push(feature));
+                        
+                        webgpuInfoEl.textContent = `✅ Supported (${adapter.name || 'Unknown GPU'})`;
+                        return true;
+                    } else {
+                        webgpuInfoEl.textContent = "⚠️ Adapter not available";
+                        return false;
+                    }
+                } else {
+                    webgpuInfoEl.textContent = "❌ Not supported";
+                    return false;
+                }
+            } catch (e) {
+                webgpuInfoEl.textContent = `❌ Error: ${e.message}`;
+                return false;
+            }
+        };
+        
+        // Check WebNN support
+        const checkWebNN = () => {
+            if (typeof navigator.ml !== 'undefined') {
+                webnnInfoEl.textContent = "✅ Supported";
+                return true;
+            } else {
+                webnnInfoEl.textContent = "❌ Not supported";
+                return false;
+            }
+        };
+        
+        // Helper to log to output
+        const log = (message) => {
+            const time = new Date().toLocaleTimeString();
+            output.textContent += `[${time}] ${message}\n`;
+            output.scrollTop = output.scrollHeight;
+        };
+        
+        // Set status
+        const setStatus = (message, type = 'info') => {
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        };
+        
+        // Initialize
+        const initialize = () => {
+            log('Detecting browser and hardware capabilities...');
+            const browser = detectBrowser();
+            const hasWebGPU = checkWebGPU();
+            const hasWebNN = checkWebNN();
+            
+            log(`Browser detected: ${browser}`);
+            log(`WebGPU support: ${hasWebGPU ? 'Yes' : 'No'}`);
+            log(`WebNN support: ${hasWebNN ? 'Yes' : 'No'}`);
+            
+            // Setup image preview
+            clipImageInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        clipPreview.src = event.target.result;
+                        clipPreview.style.display = 'block';
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            // Clear output button
+            clearOutputBtn.addEventListener('click', () => {
+                output.textContent = '';
+            });
+            
+            // Initialize models button
+            initAllBtn.addEventListener('click', () => {
+                initializeModels();
+            });
+            
+            // Process BERT button
+            processBertBtn.addEventListener('click', () => {
+                const text = document.getElementById('bert-input').value;
+                processBertText(text);
+            });
+            
+            // Process CLIP button
+            processClipBtn.addEventListener('click', () => {
+                const text = document.getElementById('clip-text-input').value;
+                processClipImageAndText();
+            });
+        };
+        
+        // Simulate initializing models
+        const initializeModels = () => {
+            setStatus('Initializing models...', 'info');
+            log('Starting model initialization...');
+            
+            initAllBtn.disabled = true;
+            
+            // Simulate initialization time
+            setTimeout(() => {
+                log('Creating Hardware Abstraction Layer...');
+                
+                setTimeout(() => {
+                    log('Initializing BERT model...');
+                    
+                    setTimeout(() => {
+                        log('Initializing Whisper model...');
+                        
+                        setTimeout(() => {
+                            log('Initializing CLIP model...');
+                            
+                            setTimeout(() => {
+                                log('All models initialized successfully!');
+                                setStatus('Models initialized successfully!', 'success');
+                                
+                                // Enable model buttons
+                                runBertBtn.disabled = false;
+                                runWhisperBtn.disabled = false;
+                                runClipBtn.disabled = false;
+                                processBertBtn.disabled = false;
+                                processClipBtn.disabled = false;
+                                
+                                // Display model info
+                                bertInfoEl.innerHTML = `
+                                    <p><strong>Model:</strong> bert-base-uncased</p>
+                                    <p><strong>Backend:</strong> ${navigator.gpu ? 'webgpu' : 'cpu'}</p>
+                                    <p><strong>Hidden Size:</strong> 768</p>
+                                    <p><strong>Task:</strong> Embedding</p>
+                                `;
+                                
+                                clipInfoEl.innerHTML = `
+                                    <p><strong>Model:</strong> clip-vit-base-patch32</p>
+                                    <p><strong>Backend:</strong> ${navigator.gpu ? 'webgpu' : 'cpu'}</p>
+                                    <p><strong>Image Size:</strong> 224x224</p>
+                                    <p><strong>Task:</strong> Similarity</p>
+                                `;
+                                
+                            }, 500);
+                        }, 800);
+                    }, 800);
+                }, 500);
+            }, 500);
+        };
+        
+        // Process BERT text
+        const processBertText = (text) => {
+            setStatus('Processing with BERT...', 'info');
+            log(`Processing text with BERT: "${text.substring(0, 30)}..."`);
+            
+            // Simulate processing time
+            setTimeout(() => {
+                log('BERT processing complete');
+                log('Generated text embedding with shape: [1, 768]');
+                log('Text embedding available for sharing with other models');
+                
+                setStatus('BERT processing complete', 'success');
+                
+                // Update info
+                bertInfoEl.innerHTML += `
+                    <div class="status success" style="margin-top: 10px;">
+                        Text processed successfully!<br>
+                        Embedding shape: [1, 768]
+                    </div>
+                `;
+            }, 1500);
+        };
+        
+        // Process CLIP image and text
+        const processClipImageAndText = () => {
+            const text = document.getElementById('clip-text-input').value;
+            
+            if (!clipPreview.src) {
+                alert('Please select an image first');
+                return;
+            }
+            
+            setStatus('Processing with CLIP...', 'info');
+            log(`Processing image and text with CLIP. Text: "${text}"`);
+            
+            // Simulate processing time
+            setTimeout(() => {
+                const similarity = (Math.random() * 0.5 + 0.5).toFixed(4); // Random similarity between 0.5 and 1.0
+                
+                log('CLIP processing complete');
+                log(`Image embedding shape: [1, 512]`);
+                log(`Text embedding shape: [1, 512]`);
+                log(`Similarity score: ${similarity}`);
+                
+                setStatus('CLIP processing complete', 'success');
+                
+                // Update info
+                clipInfoEl.innerHTML += `
+                    <div class="status success" style="margin-top: 10px;">
+                        Image and text processed successfully!<br>
+                        Similarity score: ${similarity}<br>
+                        ${similarity > 0.8 ? '✅ High similarity' : '⚠️ Low similarity'}
+                    </div>
+                `;
+            }, 2000);
+        };
+        
+        // Initialize on load
+        window.onload = initialize;
+    </script>
+</body>
+</html>

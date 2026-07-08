@@ -1,0 +1,5 @@
+result_id,run_id,model_id,hardware_id,test_case,batch_size,precision,total_time_seconds,average_latency_ms,throughput_items_per_second,memory_peak_mb,iterations,warmup_iterations,metrics,created_at
+1,1,1,1,embedding,1,fp32,5.522726,55.227264,133.26736,2874.3987,100,10,{},2025-03-03 05:31:01.215
+2,2,1,2,embedding,1,fp32,9.337961,93.37961,121.155075,3944.9312,100,10,{},2025-03-03 05:33:34.318
+3,2,1,2,embedding,2,fp32,0.6079082,6.0790815,293.61426,4172.811,100,10,{},2025-03-03 05:33:34.318
+4,2,1,2,embedding,4,fp32,1.4940041,14.940042,228.84557,3712.585,100,10,{},2025-03-03 05:33:34.318

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Simulation Validation Framework{% endblock %}
+
+{% block content_class %}col-md-6 offset-md-3{% endblock %}
+
+{% block content %}
+<div class="card shadow">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="bi bi-person-fill"></i> User Login
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('login') }}">
+            {{ form.csrf_token }}
+            
+            <div class="mb-3">
+                <label for="username" class="form-label">{{ form.username.label }}</label>
+                {{ form.username(class="form-control", placeholder="Enter username") }}
+                {% if form.username.errors %}
+                <div class="invalid-feedback d-block">
+                    {% for error in form.username.errors %}
+                    <span>{{ error }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="mb-3">
+                <label for="password" class="form-label">{{ form.password.label }}</label>
+                {{ form.password(class="form-control", placeholder="Enter password") }}
+                {% if form.password.errors %}
+                <div class="invalid-feedback d-block">
+                    {% for error in form.password.errors %}
+                    <span>{{ error }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="mb-3 form-check">
+                {{ form.remember(class="form-check-input") }}
+                <label class="form-check-label" for="remember">Remember Me</label>
+            </div>
+            
+            <div class="d-grid">
+                {{ form.submit(class="btn btn-primary btn-lg") }}
+            </div>
+        </form>
+    </div>
+    <div class="card-footer text-muted">
+        <p class="mb-0 text-center">Simulation Validation Framework - Web UI</p>
+    </div>
+</div>
+{% endblock %}

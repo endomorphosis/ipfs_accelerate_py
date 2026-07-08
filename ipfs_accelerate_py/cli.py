@@ -1,0 +1,3025 @@
+#!/usr/bin/env python3
+"""
+IPFS Accelerate CLI Tool
+
+This is the main CLI tool for IPFS Accelerate that provides a unified interface
+for all functionality including MCP server management, inference operations,
+file operations, and more.
+
+Usage:
+    ipfs-accelerate mcp start               # Start MCP server
+    ipfs-accelerate mcp dashboard           # Start MCP server dashboard
+    ipfs-accelerate mcp status              # Check MCP server status
+    ipfs-accelerate inference generate      # Run text generation
+    ipfs-accelerate files add               # Add files to IPFS
+    ipfs-accelerate network status          # Check network status
+    ipfs-accelerate models list             # List available models
+    ipfs-accelerate --help                  # Show help for all commands
+"""
+
+import argparse
+import anyio
+import json
+import dataclasses
+import logging
+import os
+import sys
+import signal
+import subprocess
+import time
+import webbrowser
+from typing import Dict, Any, List, Optional, Union
+from pathlib import Path
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("ipfs_accelerate_cli")
+
+# Defer heavy imports until needed - global variables for lazy loading
+HAVE_CORE = None
+shared_core = None
+inference_ops = None
+file_ops = None
+model_ops = None
+network_ops = None
+queue_ops = None
+test_ops = None
+IPFSAccelerateMCPServer = None
+
+# Import AI Inference CLI for unified interface
+try:
+    from ipfs_accelerate_py.ai_inference_cli import AIInferenceCLI
+    HAVE_AI_INFERENCE_CLI = True
+except ImportError:
+    HAVE_AI_INFERENCE_CLI = False
+    logger.warning("AI Inference CLI not available - AI inference commands will be disabled")
+
+def _load_heavy_imports():
+    """Load heavy imports only when needed for actual command execution"""
+    global HAVE_CORE, shared_core, inference_ops, file_ops, model_ops, network_ops, queue_ops, test_ops, IPFSAccelerateMCPServer
+    
+    if HAVE_CORE is not None:
+        return  # Already loaded
+    
+    try:
+        from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
+        from ipfs_accelerate_py.shared import (
+            FileOperations,
+            InferenceOperations,
+            ModelOperations,
+            NetworkOperations,
+            QueueOperations,
+            SharedCore,
+            TestOperations,
+        )
+        
+        IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
+        HAVE_CORE = True
+        
+        # Initialize core components
+        shared_core = SharedCore()
+        inference_ops = InferenceOperations(shared_core)
+        file_ops = FileOperations(shared_core)
+        model_ops = ModelOperations(shared_core)
+        network_ops = NetworkOperations(shared_core)
+        queue_ops = QueueOperations(shared_core)
+        test_ops = TestOperations(shared_core)
+        
+    except ImportError as e:
+        logger.warning(f"Core modules not available: {e}")
+        try:
+            # Try alternative import paths (editable checkouts, non-standard layouts)
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from ipfs_accelerate_py.shared import (
+                FileOperations,
+                InferenceOperations,
+                ModelOperations,
+                NetworkOperations,
+                QueueOperations,
+                SharedCore,
+                TestOperations,
+            )
+            from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
+            
+            IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
+            HAVE_CORE = True
+            
+            # Initialize core components
+            shared_core = SharedCore()
+            inference_ops = InferenceOperations(shared_core)
+            file_ops = FileOperations(shared_core)
+            model_ops = ModelOperations(shared_core)
+            network_ops = NetworkOperations(shared_core)
+            queue_ops = QueueOperations(shared_core)
+            test_ops = TestOperations(shared_core)
+            
+        except ImportError as e2:
+            logger.warning(f"Alternative import also failed: {e2}")
+            HAVE_CORE = False
+
+    except ImportError as e:
+        logger.warning(f"Core modules not available: {e}")
+        try:
+            # Try alternative import paths
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from ipfs_accelerate_py.shared import (
+                FileOperations,
+                InferenceOperations,
+                ModelOperations,
+                NetworkOperations,
+                QueueOperations,
+                SharedCore,
+                TestOperations,
+            )
+            from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
+            
+            IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
+            HAVE_CORE = True
+            
+            # Initialize core components
+            shared_core = SharedCore()
+            inference_ops = InferenceOperations(shared_core)
+            file_ops = FileOperations(shared_core)
+            model_ops = ModelOperations(shared_core)
+            network_ops = NetworkOperations(shared_core)
+            queue_ops = QueueOperations(shared_core)
+            test_ops = TestOperations(shared_core)
+            
+        except ImportError as e2:
+            logger.warning(f"Alternative import also failed: {e2}")
+            HAVE_CORE = False
+            
+            # Fallback shared core for when imports fail
+            class SharedCore:
+                def __init__(self):
+                    pass
+                def get_status(self):
+                    return {"error": "Core not available", "fallback": True}
+            
+            shared_core = SharedCore()
+            inference_ops = None
+            file_ops = None
+            model_ops = None
+            network_ops = None
+            queue_ops = None
+            test_ops = None
+            
+            # GitHub and Copilot operations will be initialized lazily
+
+class IPFSAccelerateCLI:
+    """Main CLI class for IPFS Accelerate"""
+    
+    def __init__(self):
+        self.mcp_process = None
+        self.dashboard_process = None
+        self._github_ops = None
+        self._copilot_ops = None
+        
+    @property
+    def github_ops(self):
+        """Lazy load GitHub operations"""
+        if self._github_ops is None:
+            _load_heavy_imports()
+            try:
+                from ipfs_accelerate_py.shared import GitHubOperations
+                self._github_ops = GitHubOperations(shared_core)
+            except Exception as e:
+                logger.warning(f"Failed to load GitHub operations: {e}")
+                self._github_ops = None
+        return self._github_ops
+    
+    @property
+    def copilot_ops(self):
+        """Lazy load Copilot operations"""
+        if self._copilot_ops is None:
+            _load_heavy_imports()
+            try:
+                from ipfs_accelerate_py.shared import CopilotOperations
+                self._copilot_ops = CopilotOperations(shared_core)
+            except Exception as e:
+                logger.warning(f"Failed to load Copilot operations: {e}")
+                self._copilot_ops = None
+        return self._copilot_ops
+    
+    @property
+    def copilot_sdk_ops(self):
+        """Lazy load Copilot SDK operations"""
+        if not hasattr(self, '_copilot_sdk_ops'):
+            self._copilot_sdk_ops = None
+        
+        if self._copilot_sdk_ops is None:
+            _load_heavy_imports()
+            try:
+                from ipfs_accelerate_py.shared import CopilotSDKOperations
+                self._copilot_sdk_ops = CopilotSDKOperations(shared_core)
+            except Exception as e:
+                logger.warning(f"Failed to load Copilot SDK operations: {e}")
+                self._copilot_sdk_ops = None
+        return self._copilot_sdk_ops
+        
+    def setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown"""
+        def signal_handler(signum, frame):
+            logger.info("Received shutdown signal")
+            self.cleanup()
+            sys.exit(0)
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+    
+    def cleanup(self):
+        """Cleanup resources"""
+        if self.mcp_process:
+            self.mcp_process.terminate()
+            self.mcp_process = None
+        if self.dashboard_process:
+            self.dashboard_process.terminate()
+            self.dashboard_process = None
+
+    def _print_output(self, payload: Dict[str, Any], as_json: bool) -> None:
+        if as_json:
+            print(json.dumps(payload, indent=2, default=str))
+        else:
+            print(payload)
+
+    def run_models_list(self, args):
+        """List models via shared ModelOperations or HF Inference metadata manager."""
+        _load_heavy_imports()
+
+        if getattr(args, "hf_inference", False):
+            try:
+                from ipfs_datasets_py.utils.model_manager import list_hf_inference_models
+            except Exception as e:
+                payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+                self._print_output(payload, getattr(args, "output_json", False))
+                return 1
+
+            records = list_hf_inference_models(model_kind=getattr(args, "kind", None))
+            payload = {
+                "status": "success",
+                "source": "hf_inference_model_manager",
+                "models": records,
+                "total": len(records),
+            }
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 0
+
+        if model_ops is None:
+            payload = {"status": "error", "error": "Model operations unavailable"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = model_ops.list_models()
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_search(self, args):
+        """Search models via shared ModelOperations or HF Inference metadata manager."""
+        _load_heavy_imports()
+
+        if getattr(args, "hf_inference", False):
+            try:
+                from ipfs_datasets_py.utils.model_manager import list_hf_inference_models
+            except Exception as e:
+                payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+                self._print_output(payload, getattr(args, "output_json", False))
+                return 1
+
+            query = str(args.query or "").strip().lower()
+            records = list_hf_inference_models(model_kind=getattr(args, "kind", None))
+            if query:
+                records = [
+                    item
+                    for item in records
+                    if query in item.get("model_id", "").lower()
+                    or query in item.get("model_name", "").lower()
+                    or query in str(item.get("pipeline_tag", "")).lower()
+                ]
+            payload = {
+                "status": "success",
+                "source": "hf_inference_model_manager",
+                "query": args.query,
+                "models": records[: int(getattr(args, "limit", 50))],
+                "total": len(records),
+            }
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 0
+
+        if model_ops is None:
+            payload = {"status": "error", "error": "Model operations unavailable"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = model_ops.search_models(query=args.query, limit=int(getattr(args, "limit", 50)))
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_details(self, args):
+        """Get model details via shared ModelOperations or HF Inference metadata manager."""
+        _load_heavy_imports()
+
+        if getattr(args, "hf_inference", False):
+            try:
+                from ipfs_datasets_py.utils.model_manager import get_hf_inference_model_metadata
+            except Exception as e:
+                payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+                self._print_output(payload, getattr(args, "output_json", False))
+                return 1
+
+            meta = get_hf_inference_model_metadata(args.model_id)
+            if meta is None:
+                payload = {"status": "error", "error": f"Model not found: {args.model_id}", "model_id": args.model_id}
+                self._print_output(payload, getattr(args, "output_json", False))
+                return 1
+            payload = {"status": "success", "source": "hf_inference_model_manager", "model": meta}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 0
+
+        if model_ops is None:
+            payload = {"status": "error", "error": "Model operations unavailable"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = model_ops.get_model_info(model_id=args.model_id)
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_ipld_document(self, args):
+        """Build HF inference model manager IPLD document."""
+        _load_heavy_imports()
+
+        try:
+            from ipfs_datasets_py.utils.model_manager import build_hf_inference_ipld_document
+        except Exception as e:
+            payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        include_generated_at = not getattr(args, "deterministic", False)
+        doc = build_hf_inference_ipld_document(
+            model_kind=getattr(args, "kind", None),
+            include_generated_at=include_generated_at,
+        )
+        payload = {
+            "status": "success",
+            "source": "hf_inference_model_manager",
+            "deterministic": not include_generated_at,
+            "document": doc,
+        }
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_ipld_cid(self, args):
+        """Compute deterministic CID for HF inference model manager IPLD document."""
+        _load_heavy_imports()
+
+        try:
+            from ipfs_datasets_py.utils.model_manager import get_hf_inference_ipld_cid
+        except Exception as e:
+            payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        cid = get_hf_inference_ipld_cid(
+            model_kind=getattr(args, "kind", None),
+            base=getattr(args, "base", "base32"),
+            codec=getattr(args, "codec", "raw"),
+            mh_type=getattr(args, "mh_type", "sha2-256"),
+        )
+        payload = {
+            "status": "success",
+            "source": "hf_inference_model_manager",
+            "cid": cid,
+            "model_kind": getattr(args, "kind", None),
+            "base": getattr(args, "base", "base32"),
+            "codec": getattr(args, "codec", "raw"),
+            "mh_type": getattr(args, "mh_type", "sha2-256"),
+        }
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_ipld_publish(self, args):
+        """Publish HF inference model manager IPLD document to IPFS."""
+        _load_heavy_imports()
+
+        try:
+            from ipfs_datasets_py.utils.model_manager import publish_hf_inference_ipld_to_ipfs
+        except Exception as e:
+            payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = publish_hf_inference_ipld_to_ipfs(
+            model_kind=getattr(args, "kind", None),
+            pin=not getattr(args, "no_pin", False),
+            backend=getattr(args, "backend", None),
+        )
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_ipld_load(self, args):
+        """Load HF inference model manager IPLD document from IPFS CID."""
+        _load_heavy_imports()
+
+        try:
+            from ipfs_datasets_py.utils.model_manager import load_hf_inference_ipld_from_ipfs
+        except Exception as e:
+            payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        try:
+            doc = load_hf_inference_ipld_from_ipfs(
+                args.cid,
+                backend=getattr(args, "backend", None),
+            )
+        except Exception as e:
+            payload = {
+                "status": "error",
+                "error": str(e),
+                "cid": args.cid,
+            }
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = {
+            "status": "success",
+            "source": "hf_inference_model_manager",
+            "cid": args.cid,
+            "document": doc,
+        }
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+    
+    def run_mcp_start(self, args):
+        """Start MCP server with integrated dashboard, model manager, and queue monitoring"""
+        logger.info("Starting IPFS Accelerate MCP Server with integrated dashboard...")
+        
+        # Load heavy imports only when needed
+        _load_heavy_imports()
+        
+        # Always enable dashboard integration
+        args.dashboard = True
+
+        # Optional: start the TaskQueue libp2p service inside this process.
+        # Systemd units typically run `ipfs-accelerate mcp start` (this codepath)
+        # rather than `ipfs_accelerate_py.mcp.cli`, so we honor the same env
+        # toggles here to enable unified p2p transport (tools/tasks/cache).
+        try:
+            self._maybe_start_taskqueue_p2p_from_env()
+        except Exception as e:
+            logger.warning(f"Failed to start TaskQueue p2p service (best-effort): {e}")
+
+        # Allow forcing the integrated HTTP dashboard (useful for environments without Flask,
+        # or for testing endpoint parity).
+        if os.environ.get("IPFS_ACCELERATE_FORCE_INTEGRATED_DASHBOARD", "").lower() in ("1", "true", "yes"):
+            logger.info("Forcing integrated HTTP dashboard via IPFS_ACCELERATE_FORCE_INTEGRATED_DASHBOARD")
+            return self._start_integrated_mcp_server(args)
+        
+        # Preferred path: Flask-based dashboard if available
+        try:
+            from ipfs_accelerate_py.mcp_dashboard import MCPDashboard  # requires Flask
+
+            logger.info(f"Starting MCP Dashboard on port {args.port}")
+            
+            # Prepare autoscaler configuration
+            autoscaler_config = {
+                'owner': getattr(args, 'autoscaler_owner', None),
+                'interval': getattr(args, 'autoscaler_interval', 60),
+                'since_days': getattr(args, 'autoscaler_since_days', 1),
+                'max_runners': getattr(args, 'autoscaler_max_runners', None),
+                'filter_by_arch': True,
+                'enable_p2p': not getattr(args, 'no_p2p', False)
+            }
+            
+            # Create dashboard with autoscaler enabled by default
+            enable_autoscaler = not getattr(args, 'disable_autoscaler', False)
+            dashboard = MCPDashboard(
+                port=args.port, 
+                host=args.host,
+                enable_autoscaler=enable_autoscaler,
+                autoscaler_config=autoscaler_config
+            )
+
+            # Open browser if requested
+            if getattr(args, 'open_browser', False):
+                import time, threading, webbrowser
+                def open_browser_delayed():
+                    time.sleep(2)
+                    webbrowser.open(f"http://{args.host}:{args.port}/dashboard")
+                threading.Thread(target=open_browser_delayed, daemon=True).start()
+
+            dashboard.run(debug=False)
+            return 0
+
+        except (ImportError, ModuleNotFoundError) as e:
+            # If Flask or its deps are missing, fall back automatically
+            if 'flask' in str(e).lower() or 'Flask' in str(e):
+                logger.warning("Flask not installed; falling back to integrated HTTP dashboard")
+                return self._start_integrated_mcp_server(args)
+            # Otherwise, re-raise to the generic handler
+            raise
+        except KeyboardInterrupt:
+            logger.info("MCP server stopped by user")
+            return 0
+        except Exception as e:
+            logger.error(f"Error starting MCP server: {e}")
+            # Best-effort fallback to integrated HTTP server
+            try:
+                logger.info("Falling back to integrated HTTP dashboard")
+                return self._start_integrated_mcp_server(args)
+            except Exception as e2:
+                logger.error(f"Integrated dashboard also failed: {e2}")
+                import traceback; traceback.print_exc()
+                return 1
+
+    def _default_taskqueue_path(self) -> str:
+        env_path = os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_PATH") or os.environ.get("IPFS_DATASETS_PY_TASK_QUEUE_PATH")
+        if env_path and str(env_path).strip():
+            return str(env_path).strip()
+
+        def _repo_root() -> str:
+            try:
+                # /path/to/repo/ipfs_accelerate_py/cli.py -> /path/to/repo
+                return os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+            except Exception:
+                return os.getcwd()
+
+        # When the TaskQueue p2p service is enabled for systemd deployments,
+        # the unit typically runs with ProtectHome=read-only. Prefer a path
+        # under the repo working directory, which is already granted write
+        # access via ReadWritePaths.
+        if str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            try:
+                return os.path.join(_repo_root(), "state", "task_queue.duckdb")
+            except Exception:
+                return "state/task_queue.duckdb"
+
+        cache_root = os.environ.get("XDG_CACHE_HOME")
+        if cache_root and str(cache_root).strip():
+            return os.path.join(str(cache_root).strip(), "ipfs_datasets_py", "task_queue.duckdb")
+
+        return "~/.cache/ipfs_datasets_py/task_queue.duckdb"
+
+    def _ensure_parent_dir(self, path: str) -> bool:
+        try:
+            parent = os.path.dirname(path) or "."
+            os.makedirs(parent, exist_ok=True)
+            return os.access(parent, os.W_OK)
+        except Exception:
+            return False
+
+    def _repo_state_taskqueue_path(self) -> str:
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+            return os.path.join(repo_root, "state", "task_queue.duckdb")
+        except Exception:
+            return "state/task_queue.duckdb"
+
+    def _repo_state_p2p_cache_dir(self) -> str:
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+            return os.path.join(repo_root, "state", "cache", "p2p_cache")
+        except Exception:
+            return os.path.join("state", "cache", "p2p_cache")
+
+    def _maybe_start_taskqueue_p2p_from_env(self) -> None:
+        """Start TaskQueue libp2p service when enabled via env.
+
+        This is a best-effort compatibility layer so deployments using
+        `ipfs-accelerate mcp start` can still host the unified libp2p transport.
+        """
+
+        enabled = str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") or "").strip().lower() in {"1", "true", "yes", "on"}
+        if not enabled:
+            return
+
+        # Avoid starting multiple runtimes if CLI is re-entered.
+        if getattr(self, "_taskqueue_p2p_started", False):
+            return
+
+        # Prefer a single shared port for MCP-adjacent libp2p.
+        listen_port_raw = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
+            or os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
+            or "9100"
+        )
+        try:
+            listen_port = int(str(listen_port_raw).strip())
+        except Exception:
+            listen_port = 9100
+
+        # Enable cache sharing and tool bridge when requested.
+        # (These are enforced by the TaskQueue p2p service itself.)
+        if str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS"] = "1"
+        if str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE"] = "1"
+
+        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(listen_port))
+        os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(listen_port))
+
+        # Ensure p2p cache writes go to a writable location under systemd.
+        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_DIR", self._repo_state_p2p_cache_dir())
+        os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_CACHE_DIR", self._repo_state_p2p_cache_dir())
+
+        # When hosting the TaskQueue p2p service, prefer using it for cache
+        # sharing rather than starting a second libp2p host.
+        os.environ.setdefault("IPFS_ACCELERATE_PY_GITHUB_CACHE_TASK_P2P_DISCOVERY", "1")
+        os.environ.setdefault("CACHE_ENABLE_P2P", "false")
+
+        queue_path = os.path.expanduser(self._default_taskqueue_path())
+
+        # If the chosen path isn't writable (common with systemd ProtectHome),
+        # fall back to a repo-local state path and pin it via env so downstream
+        # components stay consistent.
+        if not self._ensure_parent_dir(queue_path):
+            fallback = os.path.expanduser(self._repo_state_taskqueue_path())
+            if self._ensure_parent_dir(fallback):
+                logger.warning(
+                    f"TaskQueue queue path not writable ({queue_path}); using {fallback}"
+                )
+                queue_path = fallback
+                os.environ["IPFS_ACCELERATE_PY_TASK_QUEUE_PATH"] = queue_path
+                os.environ["IPFS_DATASETS_PY_TASK_QUEUE_PATH"] = queue_path
+
+        # Create a local accelerate instance for tool invocation.
+        # This is intentionally best-effort and isolated from the dashboard.
+        # Also seed a global MCP-like registry for deployments that don't use
+        # the FastAPI MCP wrapper (e.g. Flask dashboard) so the libp2p tool
+        # bridge can resolve tools.
+        try:
+            from ipfs_accelerate_py.mcp.server import StandaloneMCP, set_mcp_like_instance
+            from ipfs_accelerate_py.mcp.tools import register_all_tools
+
+            mcp_like = StandaloneMCP(name="ipfs-accelerate")
+            register_all_tools(mcp_like)
+            set_mcp_like_instance(mcp_like)
+        except Exception:
+            pass
+
+        accelerate_instance = None
+        try:
+            from ipfs_accelerate_py import ipfs_accelerate_py
+
+            accelerate_instance = ipfs_accelerate_py()
+            try:
+                if isinstance(getattr(accelerate_instance, "resources", None), dict):
+                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+
+                    accelerate_instance.resources.setdefault("mcp_server", get_mcp_server_instance())
+            except Exception:
+                pass
+        except Exception as exc:
+            logger.warning(f"Could not initialize accelerate core for p2p tool bridge: {exc}")
+
+        try:
+            from ipfs_accelerate_py.p2p_tasks.runtime import TaskQueueP2PServiceRuntime
+
+            rt = TaskQueueP2PServiceRuntime()
+            rt.start(queue_path=queue_path, listen_port=listen_port, accelerate_instance=accelerate_instance)
+            self._taskqueue_p2p_runtime = rt
+            self._taskqueue_p2p_started = True
+            logger.info(f"Started TaskQueue p2p service thread (queue={queue_path}, listen_port={listen_port})")
+        except Exception:
+            # Do not mark started on failure.
+            raise
+    
+    def run_mcp_dashboard(self, args):
+        """Start MCP dashboard only"""
+        # Dashboard command is the same as start with dashboard enabled
+        args.dashboard = True
+        return self.run_mcp_start(args)
+    
+    def run_mcp_status(self, args):
+        """Check MCP server status"""
+        logger.info(f"Checking MCP server status at {args.host}:{args.port}")
+        
+        import urllib.request
+        import json
+        
+        try:
+            # Try to connect to the health endpoint
+            url = f"http://{args.host}:{args.port}/health"
+            logger.debug(f"Checking health endpoint: {url}")
+            
+            with urllib.request.urlopen(url, timeout=5) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode())
+                    logger.info("✓ MCP server is running")
+                    logger.info(f"  Status: {data.get('status', 'unknown')}")
+                    logger.info(f"  Host: {data.get('host', 'unknown')}")
+                    logger.info(f"  Port: {data.get('port', 'unknown')}")
+                    logger.info(f"  Server: {data.get('server', 'unknown')}")
+                    return 0
+                else:
+                    logger.error(f"✗ MCP server returned status {response.status}")
+                    return 1
+                    
+        except urllib.error.URLError as e:
+            logger.error(f"✗ MCP server is not responding at {args.host}:{args.port}")
+            logger.error(f"  Error: {e}")
+            return 1
+        except Exception as e:
+            logger.error(f"✗ Error checking MCP server status: {e}")
+            return 1
+    
+    def run_github_auth(self, args):
+        """Check GitHub authentication status"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        result = self.github_ops.get_auth_status()
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get("authenticated"):
+                logger.info("✓ GitHub CLI is authenticated")
+                logger.info(f"  {result.get('output', '')}")
+            else:
+                logger.error("✗ GitHub CLI is not authenticated")
+                logger.error(f"  {result.get('error', '')}")
+        return 0 if result.get("authenticated") else 1
+    
+    def run_github_repos(self, args):
+        """List GitHub repositories"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        result = self.github_ops.list_repos(owner=args.owner, limit=args.limit)
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            logger.info(f"Found {result.get('count', 0)} repositories:")
+            for repo in result.get('repos', []):
+                print(f"  {repo['owner']['login']}/{repo['name']} - {repo['url']}")
+        return 0
+    
+    def run_github_workflows(self, args):
+        """List workflow runs for a repository"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        result = self.github_ops.list_workflow_runs(
+            repo=args.repo,
+            status=args.status,
+            limit=args.limit
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            logger.info(f"Found {result.get('count', 0)} workflow runs for {args.repo}:")
+            for run in result.get('runs', []):
+                status = run.get('status', 'unknown')
+                conclusion = run.get('conclusion', 'pending')
+                print(f"  #{run.get('databaseId')} - {run.get('workflowName')} - {status}/{conclusion}")
+        return 0
+    
+    def run_github_queues(self, args):
+        """Create workflow queues for repositories"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        logger.info(f"Creating workflow queues for repos updated in the last {args.since_days} day(s)...")
+        result = self.github_ops.create_workflow_queues(
+            owner=args.owner,
+            since_days=args.since_days
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            logger.info(f"✓ Created queues for {result.get('repo_count', 0)} repositories")
+            logger.info(f"  Total workflows: {result.get('total_workflows', 0)}")
+            for repo, workflows in result.get('queues', {}).items():
+                running = sum(1 for w in workflows if w.get('status') == 'in_progress')
+                failed = sum(1 for w in workflows if w.get('conclusion') in ['failure', 'timed_out'])
+                print(f"  {repo}: {len(workflows)} workflows ({running} running, {failed} failed)")
+        return 0
+    
+    def run_github_runners(self, args):
+        """Manage self-hosted runners"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        if args.action == 'list':
+            result = self.github_ops.list_runners(repo=args.repo, org=args.org)
+            if args.output_json:
+                print(json.dumps(result, indent=2))
+            else:
+                logger.info(f"Found {result.get('count', 0)} self-hosted runners:")
+                for runner in result.get('runners', []):
+                    print(f"  {runner.get('name')} - {runner.get('status')}")
+        
+        elif args.action == 'provision':
+            logger.info("Provisioning self-hosted runners based on workflow queues...")
+            result = self.github_ops.provision_runners(
+                owner=args.owner,
+                since_days=args.since_days,
+                max_runners=args.max_runners
+            )
+            
+            if args.output_json:
+                print(json.dumps(result, indent=2))
+            else:
+                logger.info(f"✓ Provisioned runners for {result.get('runners_provisioned', 0)} repositories")
+                for repo, status in result.get('provisioning', {}).items():
+                    if status.get('status') == 'token_generated':
+                        logger.info(f"  {repo}: Token generated ({status.get('total_workflows', 0)} workflows)")
+                    else:
+                        logger.error(f"  {repo}: Failed - {status.get('error')}")
+        
+        return 0
+    
+    def run_copilot_suggest(self, args):
+        """Get command suggestions from Copilot"""
+        if not self.copilot_ops:
+            logger.error("Copilot CLI not available")
+            return 1
+        
+        result = self.copilot_ops.suggest_command(args.prompt, shell=args.shell)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Suggested command:\n{result.get('suggestion', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_explain(self, args):
+        """Get explanation for a command"""
+        if not self.copilot_ops:
+            logger.error("Copilot CLI not available")
+            return 1
+        
+        result = self.copilot_ops.explain_command(args.command)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Explanation:\n{result.get('explanation', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_git(self, args):
+        """Get Git command suggestions from Copilot"""
+        if not self.copilot_ops:
+            logger.error("Copilot CLI not available")
+            return 1
+        
+        result = self.copilot_ops.suggest_git_command(args.prompt)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Suggested Git command:\n{result.get('suggestion', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_create_session(self, args):
+        """Create a new Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.create_session(
+            model=args.model,
+            streaming=args.streaming
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Session created successfully")
+                print(f"Session ID: {result.get('session_id')}")
+                print(f"Model: {result.get('model')}")
+                print(f"Streaming: {result.get('streaming')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_send_message(self, args):
+        """Send a message to a Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.send_message(
+            session_id=args.session_id,
+            prompt=args.prompt,
+            use_cache=not args.no_cache
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Response from session {args.session_id}:")
+                for msg in result.get('messages', []):
+                    print(f"\n[{msg.get('type')}]:")
+                    print(msg.get('content', ''))
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_stream_message(self, args):
+        """Stream a message response from a Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.stream_message(
+            session_id=args.session_id,
+            prompt=args.prompt
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Streaming response from session {args.session_id}:")
+                print(result.get('full_text', ''))
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_list_sessions(self, args):
+        """List all active Copilot SDK sessions"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.list_sessions()
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                sessions = result.get('sessions', [])
+                print(f"Active sessions: {result.get('count', 0)}")
+                for session_id in sessions:
+                    print(f"  - {session_id}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_destroy_session(self, args):
+        """Destroy a Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.destroy_session(args.session_id)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Session {args.session_id} destroyed successfully")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_github_autoscaler(self, args):
+        """Start the GitHub Actions runner autoscaler service"""
+        logger.info("Starting GitHub Actions Runner Autoscaler...")
+        
+        # Import and run the autoscaler
+        try:
+            from github_autoscaler import GitHubRunnerAutoscaler
+            
+            autoscaler = GitHubRunnerAutoscaler(
+                owner=args.owner,
+                poll_interval=args.interval,
+                since_days=args.since_days,
+                max_runners=args.max_runners,
+                enable_p2p=not args.no_p2p if hasattr(args, 'no_p2p') else True
+            )
+            
+            autoscaler.start()
+            return 0
+            
+        except KeyboardInterrupt:
+            logger.info("Autoscaler stopped by user")
+            return 0
+        except Exception as e:
+            logger.error(f"Failed to start autoscaler: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+    
+    def run_p2p_discovery(self, args):
+        """Start P2P workflow discovery service"""
+        logger.info("Starting P2P Workflow Discovery Service...")
+        
+        try:
+            from ipfs_accelerate_py.p2p_workflow_discovery import P2PWorkflowDiscoveryService
+            
+            service = P2PWorkflowDiscoveryService(
+                owner=args.owner,
+                poll_interval=args.interval
+            )
+            
+            service.start()
+            return 0
+            
+        except KeyboardInterrupt:
+            logger.info("Discovery service stopped by user")
+            return 0
+        except Exception as e:
+            logger.error(f"Failed to start discovery service: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+    
+    def run_p2p_discover_once(self, args):
+        """Run P2P workflow discovery once"""
+        try:
+            from ipfs_accelerate_py.p2p_workflow_discovery import P2PWorkflowDiscoveryService
+            
+            service = P2PWorkflowDiscoveryService(
+                owner=args.owner,
+                poll_interval=300
+            )
+            
+            logger.info("Running discovery cycle...")
+            stats = service.run_discovery_cycle()
+            
+            print(f"\nDiscovery Results:")
+            print(f"  Workflows discovered: {stats['discovered']}")
+            print(f"  Workflows submitted: {stats['submitted']}")
+            print(f"\nScheduler Status:")
+            print(f"  Pending tasks: {stats['scheduler']['pending_tasks']}")
+            print(f"  Assigned tasks: {stats['scheduler']['assigned_tasks']}")
+            print(f"  Completed tasks: {stats['scheduler']['completed_tasks']}")
+            print(f"  Known peers: {stats['scheduler']['known_peers']}")
+            
+            if args.output_json:
+                print(json.dumps(stats, indent=2))
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Failed to run discovery: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+    
+    def _start_integrated_mcp_server(self, args):
+        """Start the integrated MCP server with dashboard, model manager, and queue monitoring"""
+        import threading
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+        import json
+        
+        logger.info(f"Starting integrated MCP server on port {args.port}")
+        logger.info("Integrated components: MCP Server, Web Dashboard, Model Manager, Queue Monitor")
+
+        # Resolve asset roots from the installed package if possible.
+        try:
+            import ipfs_accelerate_py as _ipfs_pkg
+            _pkg_root = os.path.dirname(os.path.abspath(_ipfs_pkg.__file__))
+        except Exception:
+            _pkg_root = os.path.join(os.path.dirname(__file__), "ipfs_accelerate_py")
+
+        dashboard_template_path = os.path.join(_pkg_root, "templates", "dashboard.html")
+        static_root_path = os.path.join(_pkg_root, "static")
+
+        # ------------------------------------------------------------------
+        # MCP protocol surface for the integrated (Flask-free) server.
+        #
+        # When Flask is unavailable the CLI falls back to this BaseHTTPServer
+        # implementation. Historically it only served dashboard/`/api/*` data
+        # routes, so it answered 404 to `/mcp`, `/mcp/tools/list` and
+        # `/mcp/tools/call` — which is exactly what hallucinate_app's tool
+        # explorer and any stock MCP client call. That made the server look
+        # "not working". We now serve the same MCP surface as the Flask
+        # dashboard, backed by the unified tool registry, so external MCP
+        # clients (JSON-RPC over POST /mcp) and the app's REST UI both work.
+        #
+        # The registry import pulls in heavy modules (~seconds), so build it on
+        # a background thread to keep the dashboard/health endpoints responsive;
+        # endpoints return an empty-but-valid tool list until it is ready
+        # (never a 404), and populate on the next refresh.
+        # ------------------------------------------------------------------
+        _mcp_registry_state = {"registry": None, "ready": False, "error": None}
+
+        def _build_mcp_registry():
+            try:
+                from ipfs_accelerate_py.mcp.unified_registry import get_global_registry
+                from ipfs_accelerate_py.mcp.tool_migration import populate_unified_registry
+                populate_unified_registry()
+                registry = get_global_registry()
+                # Expose the FULL tool surface, not just the ~13 kit-migrated
+                # tools. register_all_tools() registers ~100 tools (hardware,
+                # models, inference, endpoints, status, workflows, github,
+                # docker, p2p, dashboard, ...) — the same surface the FastMCP
+                # path serves — so external MCP clients and the app's tool
+                # explorer can discover and call every tool. It imports the tool
+                # modules (~10s), which is why the whole registry build runs on a
+                # background thread: dashboard/health stay responsive and
+                # tools/list returns an empty-but-valid list until this is ready.
+                try:
+                    from ipfs_accelerate_py.mcp.server import StandaloneMCP
+                    from ipfs_accelerate_py.mcp.tools import register_all_tools
+                    _full = StandaloneMCP(name="ipfs-accelerate-integrated")
+                    register_all_tools(_full)
+                    added = 0
+                    for _tname, _tmeta in (getattr(_full, "tools", None) or {}).items():
+                        if _tname in registry.tools:
+                            continue
+                        _fn = _tmeta.get("function")
+                        if _fn is None:
+                            continue
+                        registry.register_tool(
+                            name=_tname,
+                            function=_fn,
+                            description=_tmeta.get("description", "") or "",
+                            category=_tmeta.get("category") or "Other",
+                            input_schema=_tmeta.get("input_schema"),
+                        )
+                        added += 1
+                    logger.info(
+                        "Integrated MCP server: merged full tool surface (+%d tools)", added
+                    )
+                except Exception as _full_exc:  # pragma: no cover - defensive
+                    logger.warning(
+                        "Integrated MCP server: full tool surface unavailable: %s", _full_exc
+                    )
+                _mcp_registry_state["registry"] = registry
+                logger.info(
+                    "Integrated MCP server: unified tool registry ready (%d tools)",
+                    len(registry.list_tool_names()),
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                _mcp_registry_state["error"] = str(exc)
+                logger.warning(f"Integrated MCP server: tool registry unavailable: {exc}")
+            finally:
+                _mcp_registry_state["ready"] = True
+
+        threading.Thread(target=_build_mcp_registry, daemon=True).start()
+
+        # ------------------------------------------------------------------
+        # Hierarchical tool facade (mirrors ipfs_datasets_py):
+        # tools/list advertises 4 meta-tools + a flat ``<category>.<tool>``
+        # surface with MINIMAL descriptors (name + one-line description, no
+        # input schema). Full schemas are served lazily via tools_get_schema
+        # and execution goes through the unified registry. This keeps the
+        # advertised surface small (context-bloat reduction) while every one
+        # of the ~100 tools stays discoverable and callable.
+        # ------------------------------------------------------------------
+        _META_TOOLS = {
+            "tools_list_categories": {
+                "description": "Hierarchical facade: list all tool categories (optionally with per-category tool counts). Start here to discover the tool surface without loading every schema.",
+                "inputSchema": {"type": "object", "properties": {"include_count": {"type": "boolean", "default": False}}},
+            },
+            "tools_list_tools": {
+                "description": "Hierarchical facade: list the tools in a category (name + description). Use after tools_list_categories.",
+                "inputSchema": {"type": "object", "required": ["category"], "properties": {"category": {"type": "string"}}},
+            },
+            "tools_get_schema": {
+                "description": "Hierarchical facade: get the full input schema for a single tool. Accepts (category, tool) or a bare/dotted name.",
+                "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "tool": {"type": "string"}, "name": {"type": "string"}}},
+            },
+            "tools_dispatch": {
+                "description": "Hierarchical facade: execute a tool by category+tool (or name) with params. Equivalent to calling the tool directly.",
+                "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "tool": {"type": "string"}, "name": {"type": "string"}, "params": {"type": "object"}, "arguments": {"type": "object"}}},
+            },
+        }
+
+        def _mcp_category_map():
+            """Return {category: {tool_name: meta}} from the unified registry."""
+            reg = _mcp_registry_state["registry"]
+            groups = {}
+            if reg is None:
+                return groups
+            for meta in reg.list_tools():
+                name = getattr(meta, "name", None)
+                if not name:
+                    continue
+                cat = getattr(meta, "category", None) or "Other"
+                groups.setdefault(cat, {})[name] = meta
+            return groups
+
+        def _mcp_tool_descriptors():
+            reg = _mcp_registry_state["registry"]
+            descriptors = [
+                {"name": n, "description": m["description"], "inputSchema": m["inputSchema"]}
+                for n, m in _META_TOOLS.items()
+            ]
+            if reg is None:
+                return descriptors
+            try:
+                for cat, tools in sorted(_mcp_category_map().items()):
+                    for tname, meta in sorted(tools.items()):
+                        desc = (getattr(meta, "description", "") or "").strip().split("\n", 1)[0]
+                        descriptors.append({
+                            "name": f"{cat}.{tname}",
+                            "description": desc or f"{tname} (category: {cat})",
+                            # Minimal: full schema served lazily by tools_get_schema.
+                            "inputSchema": {"type": "object"},
+                        })
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(f"Integrated MCP server: tools/list enumeration failed: {exc}")
+            return descriptors
+
+        def _mcp_resolve_tool_name(name):
+            """Resolve a bare or ``<category>.<tool>`` name to a registered tool name."""
+            reg = _mcp_registry_state["registry"]
+            if reg is None or not name:
+                return name
+            if name in reg.tools:
+                return name
+            if "." in name:
+                _cat, _, _tool = name.partition(".")
+                if _tool in reg.tools:
+                    return _tool
+            return name
+
+        def _mcp_meta_tool(name, arguments):
+            """Handle the hierarchical facade meta-tools. Returns (handled, result)."""
+            reg = _mcp_registry_state["registry"]
+            args = arguments or {}
+            if name == "tools_list_categories":
+                include_count = bool(args.get("include_count", False))
+                cats = []
+                for cat, tools in sorted(_mcp_category_map().items()):
+                    info = {"name": cat}
+                    if include_count:
+                        info["tool_count"] = len(tools)
+                    cats.append(info)
+                return True, {"status": "success", "category_count": len(cats), "categories": cats}
+            if name == "tools_list_tools":
+                category = args.get("category")
+                groups = _mcp_category_map()
+                if category not in groups:
+                    return True, {"status": "error", "error": f"Category '{category}' not found", "available_categories": sorted(groups.keys())}
+                tools = [
+                    {"name": tn, "description": (getattr(m, "description", "") or "").strip().split("\n", 1)[0]}
+                    for tn, m in sorted(groups[category].items())
+                ]
+                return True, {"status": "success", "category": category, "tool_count": len(tools), "tools": tools}
+            if name == "tools_get_schema":
+                tool = args.get("tool") or args.get("name") or args.get("category")
+                resolved = _mcp_resolve_tool_name(tool)
+                meta = reg.tools.get(resolved) if reg is not None else None
+                if meta is None:
+                    return True, {"status": "error", "error": f"Tool '{tool}' not found"}
+                return True, {
+                    "status": "success",
+                    "name": resolved,
+                    "category": getattr(meta, "category", None) or "Other",
+                    "description": getattr(meta, "description", "") or "",
+                    "schema": getattr(meta, "input_schema", None) or {"type": "object"},
+                }
+            if name == "tools_dispatch":
+                target = args.get("tool") or args.get("name")
+                if target and args.get("category") and target not in (reg.tools if reg else {}):
+                    target = f"{args['category']}.{target}"
+                elif not target:
+                    target = args.get("category")
+                params = args.get("params")
+                if params is None:
+                    params = args.get("arguments") or {}
+                return True, _mcp_call_tool(target, params)
+            return False, None
+
+        def _mcp_tool_result(result):
+            """Wrap a raw tool return in the MCP ``CallToolResult`` content shape.
+
+            The MCP spec requires ``tools/call`` results to carry a ``content``
+            array. For dict payloads we also preserve the original top-level keys
+            (CallToolResult is ``extra=allow``) so existing dict-reading consumers
+            keep working.
+            """
+            if isinstance(result, dict) and isinstance(result.get("content"), list):
+                return result
+            # Normalize dataclasses (e.g. DockerResult/GitHubResult) and other
+            # objects exposing __dict__ into plain dicts so structuredContent and
+            # the text block carry real structured data instead of a repr string.
+            if dataclasses.is_dataclass(result) and not isinstance(result, type):
+                try:
+                    result = dataclasses.asdict(result)
+                except Exception:
+                    pass
+            elif not isinstance(result, (dict, list, str, int, float, bool, type(None))) \
+                    and hasattr(result, "__dict__"):
+                try:
+                    result = {k: v for k, v in vars(result).items() if not k.startswith("_")}
+                except Exception:
+                    pass
+            try:
+                text = json.dumps(result, default=str)
+            except Exception:
+                text = str(result)
+            structured = result if isinstance(result, dict) else {"result": result}
+            wrapped = {
+                "content": [{"type": "text", "text": text}],
+                "structuredContent": structured,
+                "isError": bool(isinstance(result, dict) and result.get("error")),
+            }
+            if isinstance(result, dict):
+                for key, value in result.items():
+                    if key not in wrapped:
+                        wrapped[key] = value
+            return wrapped
+
+        def _mcp_call_tool(name, arguments):
+            reg = _mcp_registry_state["registry"]
+            if reg is None:
+                if not _mcp_registry_state["ready"]:
+                    raise RuntimeError("tool registry is still initializing")
+                raise RuntimeError(_mcp_registry_state["error"] or "tool registry unavailable")
+            # Hierarchical facade meta-tools (tools_list_categories, etc.)
+            if name in _META_TOOLS:
+                _handled, _res = _mcp_meta_tool(name, arguments)
+                if _handled:
+                    return _res
+            # Accept both bare names and ``<category>.<tool>`` (back-compat + facade).
+            resolved = _mcp_resolve_tool_name(name)
+            result = reg.call_tool(resolved, **(arguments or {}))
+            # register_all_tools includes async tool functions; the registry's
+            # call_tool returns the coroutine unawaited, so resolve it here for
+            # the synchronous HTTP handler thread.
+            import inspect as _inspect
+            if _inspect.iscoroutine(result):
+                import asyncio as _asyncio
+                _loop = _asyncio.new_event_loop()
+                try:
+                    result = _loop.run_until_complete(result)
+                finally:
+                    _loop.close()
+            return result
+
+        try:
+            # Create the integrated dashboard handler
+            class IntegratedMCPHandler(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    if self.path == '/' or self.path == '/dashboard':
+                        self._serve_dashboard()
+                    elif self.path == '/health':
+                        # Simple health check endpoint
+                        try:
+                            self.send_response(200)
+                            self.send_header('Content-type', 'application/json')
+                            self.end_headers()
+                            # Report the actual bound host/port
+                            try:
+                                bound_host = self.server.server_address[0]
+                                bound_port = getattr(self.server, 'server_port', None)
+                            except Exception:
+                                bound_host = args.host
+                                bound_port = args.port
+                            payload = {
+                                "status": "ok",
+                                "server": "IPFS Accelerate MCP (integrated)",
+                                "host": bound_host,
+                                "port": bound_port
+                            }
+                            self.wfile.write(json.dumps(payload).encode())
+                        except Exception:
+                            self.send_response(500)
+                            self.end_headers()
+                    elif self.path == '/favicon.ico':
+                        # Avoid 404 for favicon requests
+                        self.send_response(204)
+                        self.end_headers()
+                    elif self.path == '/api/mcp/cache/stats':
+                        self._handle_cache_stats_api()
+                    elif self.path == '/api/mcp/peers':
+                        self._handle_peers_api()
+                    elif self.path == '/api/mcp/user':
+                        self._handle_user_api()
+                    elif self.path == '/mcp/tools/list':
+                        self._handle_mcp_tools_list()
+                    elif self.path.startswith('/api/mcp/models/'):
+                        self._handle_model_api()
+                    elif self.path.startswith('/api/mcp/'):
+                        self._handle_mcp_api()
+                    elif self.path.startswith('/api/models/'):
+                        self._handle_model_api()
+                    elif self.path.startswith('/api/queue/'):
+                        self._handle_queue_api()
+                    elif self.path.startswith('/api/github/'):
+                        self._handle_github_api()
+                    elif self.path.startswith('/static/'):
+                        self._serve_static()
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+                
+                def do_POST(self):
+                    if self.path == '/mcp' or self.path.startswith('/mcp?'):
+                        self._handle_mcp_jsonrpc()
+                    elif self.path == '/mcp/tools/list':
+                        self._handle_mcp_tools_list()
+                    elif self.path == '/mcp/tools/call':
+                        self._handle_mcp_tools_call()
+                    elif self.path.startswith('/api/'):
+                        self._handle_post_api()
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+            
+            def _serve_dashboard(self):
+                """Serve the integrated dashboard"""
+                try:
+                    with open(dashboard_template_path, 'r', encoding='utf-8') as f:
+                        dashboard_html = f.read()
+                    
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/html')
+                    self.end_headers()
+                    self.wfile.write(dashboard_html.encode())
+                except Exception as e:
+                    # Fallback to a basic HTML page if template not found
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/html')
+                    self.end_headers()
+                    fallback_html = """<!DOCTYPE html>
+<html><head><title>MCP Dashboard</title></head>
+<body><h1>MCP Server Dashboard</h1><p>Template loading error: """ + str(e) + """</p></body></html>"""
+                    self.wfile.write(fallback_html.encode())
+
+            def _send_json(self, payload: Dict[str, Any], status: int = 200):
+                # Serialize BEFORE sending any headers so a non-serializable tool
+                # result (e.g. an object or exception in structuredContent) cannot
+                # crash mid-stream. ``default=str`` mirrors ``_mcp_tool_result`` and
+                # guarantees a stock MCP client always receives valid JSON instead
+                # of a corrupt double-sent "HTTP/1.0 500" status line in the body.
+                try:
+                    body = json.dumps(payload, default=str).encode()
+                except Exception as exc:
+                    status = 500
+                    body = json.dumps({
+                        "jsonrpc": "2.0",
+                        "id": payload.get("id") if isinstance(payload, dict) else None,
+                        "error": {"code": -32603, "message": f"response serialization failed: {exc}"},
+                    }).encode()
+                try:
+                    self.send_response(status)
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except Exception:
+                    # Headers/body already (partially) committed; never write a
+                    # second status line into the stream — that is what produced
+                    # the corrupt response. Best-effort: drop the connection.
+                    pass
+
+            def _handle_cache_stats_api(self):
+                try:
+                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_cache_stats
+                    self._send_json(get_cache_stats(), status=200)
+                except Exception as e:
+                    self._send_json({"error": str(e), "endpoint": "/api/mcp/cache/stats"}, status=500)
+
+            def _handle_peers_api(self):
+                try:
+                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status
+                    self._send_json(get_peer_status(), status=200)
+                except Exception as e:
+                    self._send_json({"error": str(e), "endpoint": "/api/mcp/peers"}, status=500)
+
+            def _handle_user_api(self):
+                try:
+                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+                    self._send_json(get_user_info(), status=200)
+                except Exception as e:
+                    self._send_json({"error": str(e), "endpoint": "/api/mcp/user"}, status=500)
+            
+            def _handle_mcp_api(self):
+                """Handle MCP-related API calls"""
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                
+                # Mock MCP status for now
+                response = {
+                    "status": "running",
+                    "server": "IPFS Accelerate MCP",
+                    "port": args.port,
+                    "components": ["mcp_server", "dashboard", "model_manager", "queue_monitor"]
+                }
+                self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_api(self):
+                """Handle model manager API calls"""
+                try:
+                    from urllib.parse import urlparse, parse_qs
+                    parsed_url = urlparse(self.path)
+                    query_params = parse_qs(parsed_url.query)
+                    
+                    # Handle different model API endpoints
+                    if '/search' in self.path:
+                        self._handle_model_search(query_params)
+                    elif '/stats' in self.path:
+                        self._handle_model_stats()
+                    elif '/test' in self.path:
+                        self._handle_model_test(query_params)
+                    elif '/details' in self.path:
+                        # Extract model ID from path like /api/mcp/models/Falconsai/nsfw_image_detection/details
+                        model_id = self.path.split('/models/')[-1].replace('/details', '')
+                        self._handle_model_details(model_id)
+                    else:
+                        # Default model listing
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {"models": [], "status": "Model manager API"}
+                        self.wfile.write(json.dumps(response).encode())
+                        
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {"error": str(e)}
+                    self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_search(self, query_params):
+                """Handle HuggingFace model search"""
+                query = query_params.get('q', [''])[0].lower()  # Changed from 'query' to 'q'
+                task = query_params.get('task', [''])[0]
+                hardware = query_params.get('hardware', [''])[0]  # Changed from 'size' to 'hardware'
+                
+                # Enhanced fallback database with realistic models
+                model_database = [
+                    {
+                        "id": "microsoft/DialoGPT-large",
+                        "title": "DialoGPT Large",
+                        "description": "Large-scale conversational response generation model trained on 147M dialogues",
+                        "task": "text-generation",
+                        "downloads": 125000,
+                        "likes": 2300,
+                        "size": "large",
+                        "architecture": "GPT-2",
+                        "parameters": "774M",
+                        "memory_gb": 1.4,
+                        "throughput": 45,
+                        "tags": ["conversational", "dialogue", "pytorch"]
+                    },
+                    {
+                        "id": "microsoft/DialoGPT-medium",
+                        "title": "DialoGPT Medium", 
+                        "description": "Medium-scale conversational response generation model",
+                        "task": "text-generation",
+                        "downloads": 89000,
+                        "likes": 1800,
+                        "size": "medium",
+                        "architecture": "GPT-2",
+                        "parameters": "354M",
+                        "memory_gb": 0.7,
+                        "throughput": 62,
+                        "tags": ["conversational", "dialogue", "pytorch"]
+                    },
+                    {
+                        "id": "meta-llama/Llama-2-7b-chat-hf",
+                        "title": "Llama 2 7B Chat",
+                        "description": "Fine-tuned version of Llama 2 7B for chat conversations",
+                        "task": "text-generation", 
+                        "downloads": 1800000,
+                        "likes": 45000,
+                        "size": "large",
+                        "architecture": "LLaMA",
+                        "parameters": "7B",
+                        "memory_gb": 13.5,
+                        "throughput": 28,
+                        "tags": ["llama", "chat", "conversational"]
+                    },
+                    {
+                        "id": "meta-llama/Llama-2-13b-chat-hf",
+                        "title": "Llama 2 13B Chat",
+                        "description": "Fine-tuned version of Llama 2 13B for chat conversations",
+                        "task": "text-generation",
+                        "downloads": 950000,
+                        "likes": 25000,
+                        "size": "large",
+                        "architecture": "LLaMA",
+                        "parameters": "13B",
+                        "memory_gb": 25.0,
+                        "throughput": 18,
+                        "tags": ["llama", "chat", "conversational"]
+                    },
+                    {
+                        "id": "codellama/CodeLlama-7b-Python-hf",
+                        "title": "Code Llama 7B Python",
+                        "description": "Code Llama model fine-tuned for Python code generation",
+                        "task": "code-generation",
+                        "downloads": 850000,
+                        "likes": 12000,
+                        "size": "large",
+                        "architecture": "LLaMA",
+                        "parameters": "7B",
+                        "memory_gb": 13.5,
+                        "throughput": 32,
+                        "tags": ["llama", "code", "python"]
+                    },
+                    {
+                        "id": "bert-base-uncased",
+                        "title": "BERT Base Uncased",
+                        "description": "Base BERT model, uncased version for text understanding",
+                        "task": "text-classification",
+                        "downloads": 2100000,
+                        "likes": 25000,
+                        "size": "medium",
+                        "architecture": "BERT",
+                        "parameters": "110M",
+                        "memory_gb": 0.4,
+                        "throughput": 120,
+                        "tags": ["bert", "base", "uncased"]
+                    },
+                    {
+                        "id": "distilbert-base-uncased",
+                        "title": "DistilBERT Base Uncased",
+                        "description": "Distilled version of BERT base model, faster inference",
+                        "task": "text-classification",
+                        "downloads": 1500000,
+                        "likes": 18000,
+                        "size": "small",
+                        "architecture": "DistilBERT",
+                        "parameters": "66M",
+                        "memory_gb": 0.3,
+                        "throughput": 180,
+                        "tags": ["distilbert", "base", "uncased"]
+                    },
+                    {
+                        "id": "gpt2",
+                        "title": "GPT-2",
+                        "description": "OpenAI's GPT-2 model for text generation",
+                        "task": "text-generation",
+                        "downloads": 3200000,
+                        "likes": 35000,
+                        "size": "medium",
+                        "architecture": "GPT-2",
+                        "parameters": "124M",
+                        "memory_gb": 0.5,
+                        "throughput": 85,
+                        "tags": ["gpt2", "openai", "generation"]
+                    },
+                    {
+                        "id": "gpt2-medium",
+                        "title": "GPT-2 Medium",
+                        "description": "Medium version of OpenAI's GPT-2 model",
+                        "task": "text-generation", 
+                        "downloads": 1900000,
+                        "likes": 22000,
+                        "size": "medium",
+                        "architecture": "GPT-2",
+                        "parameters": "354M",
+                        "memory_gb": 1.4,
+                        "throughput": 53,
+                        "tags": ["gpt2", "openai", "generation"]
+                    },
+                    {
+                        "id": "gpt2-large",
+                        "title": "GPT-2 Large",
+                        "description": "Large version of OpenAI's GPT-2 model",
+                        "task": "text-generation",
+                        "downloads": 1200000,
+                        "likes": 18000,
+                        "size": "large",
+                        "architecture": "GPT-2",
+                        "parameters": "774M",
+                        "memory_gb": 3.2,
+                        "throughput": 35,
+                        "tags": ["gpt2", "openai", "generation"]
+                    }
+                ]
+                
+                # Filter models based on search criteria
+                filtered_models = []
+                for model in model_database:
+                    # Search in model ID, title, and description
+                    search_text = f"{model['id']} {model['title']} {model['description']}".lower()
+                    
+                    # Check if query matches
+                    query_match = not query or query in search_text
+                    
+                    # Check task filter
+                    task_match = not task or task == 'all' or model['task'] == task
+                    
+                    # Check hardware filter (simplified check)
+                    hardware_match = True
+                    if hardware and hardware != 'all':
+                        if hardware == 'cpu':
+                            hardware_match = model['size'] in ['small', 'medium']  # CPU can handle smaller models
+                        elif hardware == 'gpu':
+                            hardware_match = True  # GPU can handle all models
+                    
+                    if query_match and task_match and hardware_match:
+                        # Transform to expected format
+                        formatted_model = {
+                            "model_id": model['id'],
+                            "model_info": {
+                                "model_name": model['title'],
+                                "description": model['description'],
+                                "pipeline_tag": model['task'],
+                                "downloads": model['downloads'],
+                                "likes": model.get('likes', 0),
+                                "architecture": model.get('architecture', 'Unknown')
+                            },
+                            "performance": {
+                                "parameters": model.get('parameters', ''),
+                                "memory_gb": model.get('memory_gb', 1.0),
+                                "throughput_tokens_per_sec": model.get('throughput', 50)
+                            },
+                            "compatibility": {
+                                "supports_cpu": True,
+                                "supports_gpu": model['size'] != 'large',
+                                "supports_mps": True,
+                                "min_ram_gb": 2 if model['size'] == 'small' else 4 if model['size'] == 'medium' else 8,
+                                "recommended_hardware": "GPU" if model['size'] == 'large' else "CPU"
+                            }
+                        }
+                        filtered_models.append(formatted_model)
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                
+                response = {
+                    "results": filtered_models,
+                    "total": len(filtered_models),
+                    "query": query,
+                    "fallback": True,
+                    "message": "Using integrated fallback model database"
+                }
+                self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_stats(self):
+                """Handle model statistics"""
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                
+                # Mock statistics based on the model database
+                stats = {
+                    "total_cached_models": 10,
+                    "models_with_performance": 10,
+                    "models_with_compatibility": 10,
+                    "architecture_distribution": {
+                        "GPT-2": 4,
+                        "LLaMA": 3,
+                        "BERT": 1,
+                        "DistilBERT": 1,
+                        "Unknown": 1
+                    },
+                    "task_distribution": {
+                        "text-generation": 7,
+                        "text-classification": 2,
+                        "code-generation": 1
+                    },
+                    "popular_models": [
+                        {"model_id": "gpt2", "downloads": 3200000},
+                        {"model_id": "bert-base-uncased", "downloads": 2100000},
+                        {"model_id": "gpt2-medium", "downloads": 1900000},
+                        {"model_id": "meta-llama/Llama-2-7b-chat-hf", "downloads": 1800000},
+                        {"model_id": "distilbert-base-uncased", "downloads": 1500000}
+                    ],
+                    "fallback": True,
+                    "message": "Using integrated fallback statistics"
+                }
+                self.wfile.write(json.dumps(stats).encode())
+            
+            def _handle_model_test(self, query_params):
+                """Handle model compatibility testing"""
+                model_id = query_params.get('model', [''])[0]
+                platforms = query_params.get('platforms', ['cpu'])[0].split(',')
+                batch_size = int(query_params.get('batch_size', ['1'])[0])
+                seq_length = int(query_params.get('seq_length', ['512'])[0])
+                precision = query_params.get('precision', ['FP32'])[0]
+                
+                if not model_id:
+                    self.send_response(400)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {"error": "Model ID is required"}
+                    self.wfile.write(json.dumps(response).encode())
+                    return
+                
+                # Generate realistic test results
+                results = []
+                for platform in platforms:
+                    platform = platform.strip().lower()
+                    
+                    # Simulate different performance characteristics per platform
+                    if platform == 'cpu':
+                        memory_gb = 2.1 + (batch_size * seq_length / 10000)
+                        latency_ms = 150 + (seq_length / 10)
+                        status = 'compatible'
+                        notes = 'Good CPU performance, recommended for development'
+                    elif platform == 'cuda':
+                        memory_gb = 1.4 + (batch_size * seq_length / 15000)
+                        latency_ms = 25 + (seq_length / 50)
+                        status = 'optimal'
+                        notes = 'Excellent GPU acceleration, recommended for production'
+                    elif platform == 'rocm':
+                        memory_gb = 1.6 + (batch_size * seq_length / 12000)
+                        latency_ms = 35 + (seq_length / 40)
+                        status = 'compatible'
+                        notes = 'Good AMD GPU performance'
+                    elif platform == 'openvino':
+                        memory_gb = 1.8 + (batch_size * seq_length / 14000)
+                        latency_ms = 45 + (seq_length / 30)
+                        status = 'compatible'
+                        notes = 'Optimized for Intel hardware'
+                    elif platform == 'mps':
+                        memory_gb = 1.5 + (batch_size * seq_length / 16000)
+                        latency_ms = 30 + (seq_length / 45)
+                        status = 'optimal'
+                        notes = 'Excellent Apple Silicon performance'
+                    else:
+                        memory_gb = 2.5
+                        latency_ms = 200
+                        status = 'limited'
+                        notes = f'Limited support for {platform}'
+                    
+                    results.append({
+                        'platform': platform.upper(),
+                        'status': status,
+                        'memory': f'{memory_gb:.1f} GB',
+                        'performance': f'{int(latency_ms)}ms/token',
+                        'batch_size': batch_size,
+                        'seq_length': seq_length,
+                        'precision': precision,
+                        'notes': notes,
+                        'test_time': '2.3s'
+                    })
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                
+                response = {
+                    "model_id": model_id,
+                    "results": results,
+                    "timestamp": time.time()
+                }
+                self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_details(self, model_id):
+                """Handle model details API request"""
+                try:
+                    from urllib.parse import unquote
+                    from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner
+                    
+                    # Decode URL-encoded model ID
+                    model_id = unquote(model_id)
+                    
+                    # Get HuggingFaceHubScanner instance
+                    scanner = HuggingFaceHubScanner()
+                    
+                    # Check cache first
+                    if model_id in scanner.model_cache:
+                        model_info = scanner.model_cache[model_id]
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {
+                            'status': 'success',
+                            'model': model_info.to_dict()
+                        }
+                        self.wfile.write(json.dumps(response).encode())
+                        return
+                    
+                    # Fetch from API if not in cache
+                    search_results = scanner.search_models(model_id, limit=1)
+                    if search_results:
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {
+                            'status': 'success',
+                            'model': search_results[0].to_dict()
+                        }
+                        self.wfile.write(json.dumps(response).encode())
+                        return
+                    
+                    # Model not found
+                    self.send_response(404)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {
+                        'status': 'error',
+                        'message': f'Model {model_id} not found'
+                    }
+                    self.wfile.write(json.dumps(response).encode())
+                    
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {
+                        'status': 'error',
+                        'message': str(e)
+                    }
+                    self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_queue_api(self):
+                """Handle queue monitoring API calls"""
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                
+                # Mock queue status
+                response = {
+                    "queue_status": "active",
+                    "pending_jobs": 0,
+                    "running_jobs": 0,
+                    "completed_jobs": 0
+                }
+                self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_github_api(self):
+                """Handle GitHub workflows and runners API calls"""
+                from urllib.parse import urlparse, parse_qs
+                
+                parsed = urlparse(self.path)
+                path_parts = parsed.path.split('/')
+                
+                # Get GitHub operations
+                _load_heavy_imports()
+                try:
+                    from ipfs_accelerate_py.shared import GitHubOperations
+                    github_ops = GitHubOperations(shared_core)
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "error": f"GitHub operations not available: {str(e)}"
+                    }).encode())
+                    return
+                
+                if 'workflows' in self.path:
+                    # Get workflow queues
+                    result = github_ops.create_workflow_queues(since_days=1)
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(result.get('queues', {})).encode())
+                
+                elif 'runners' in self.path:
+                    # Get runners (try org-level first)
+                    result = github_ops.list_runners(org=None)
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(result.get('runners', [])).encode())
+                
+                else:
+                    self.send_response(404)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Unknown GitHub API endpoint"}).encode())
+            
+            def _serve_static(self):
+                """Serve static files (CSS, JS, images)"""
+                try:
+                    # Extract the file path from the URL
+                    file_path = self.path[8:]  # Remove '/static/'
+                    safe_rel = os.path.normpath(file_path).lstrip("/\\")
+                    if safe_rel.startswith(".."):
+                        self.send_response(400)
+                        self.send_header('Content-type', 'text/plain')
+                        self.end_headers()
+                        self.wfile.write(b"Invalid path")
+                        return
+
+                    static_file_path = os.path.join(static_root_path, safe_rel)
+                    
+                    if os.path.exists(static_file_path) and os.path.isfile(static_file_path):
+                        # Determine content type based on file extension
+                        content_type = 'text/plain'
+                        if file_path.endswith('.css'):
+                            content_type = 'text/css'
+                        elif file_path.endswith('.js'):
+                            content_type = 'application/javascript'
+                        elif file_path.endswith('.png'):
+                            content_type = 'image/png'
+                        elif file_path.endswith('.jpg') or file_path.endswith('.jpeg'):
+                            content_type = 'image/jpeg'
+                        elif file_path.endswith('.gif'):
+                            content_type = 'image/gif'
+                        elif file_path.endswith('.svg'):
+                            content_type = 'image/svg+xml'
+                        
+                        # Read and serve the file
+                        with open(static_file_path, 'rb') as f:
+                            content = f.read()
+                        
+                        self.send_response(200)
+                        self.send_header('Content-type', content_type)
+                        self.send_header('Content-Length', str(len(content)))
+                        self.end_headers()
+                        self.wfile.write(content)
+                    else:
+                        # File not found
+                        self.send_response(404)
+                        self.send_header('Content-type', 'text/html')
+                        self.end_headers()
+                        error_html = f"<html><body><h1>404 Not Found</h1><p>Static file not found: {safe_rel}</p></body></html>"
+                        self.wfile.write(error_html.encode())
+                        
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'text/html')
+                    self.end_headers()
+                    error_html = f"<html><body><h1>500 Server Error</h1><p>Error serving static file: {str(e)}</p></body></html>"
+                    self.wfile.write(error_html.encode())
+            
+            def _handle_post_api(self):
+                """Handle POST API requests"""
+                try:
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    post_data = self.rfile.read(content_length)
+                    data = json.loads(post_data.decode('utf-8')) if post_data else {}
+                    
+                    # Route based on the path
+                    if '/api/mcp/models/download' in self.path or '/api/models/download' in self.path:
+                        self._handle_model_download(data)
+                    elif '/api/mcp/models/test' in self.path or '/api/models/test' in self.path:
+                        self._handle_model_test_post(data)
+                    else:
+                        # Default stub response for unimplemented endpoints
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {"status": "received", "message": "API endpoint not yet implemented"}
+                        self.wfile.write(json.dumps(response).encode())
+                        
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {"status": "error", "message": str(e)}
+                    self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_download(self, data):
+                """Handle model download POST request"""
+                try:
+                    model_id = data.get('model_id')
+                    if not model_id:
+                        self.send_response(400)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {"status": "error", "message": "model_id is required"}
+                        self.wfile.write(json.dumps(response).encode())
+                        return
+                    
+                    logger.info(f"Download request for model: {model_id}")
+                    
+                    # Try to use the HuggingFace scanner
+                    try:
+                        from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner
+                        scanner = HuggingFaceHubScanner(cache_dir="./mcp_model_cache")
+                        result = scanner.download_model(model_id)
+                        
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps(result).encode())
+                        
+                    except ImportError as e:
+                        logger.warning(f"HuggingFaceHubScanner not available: {e}")
+                        # Fallback to simulated download
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {
+                            "status": "success",
+                            "model_id": model_id,
+                            "download_path": f"./models/{model_id}",
+                            "message": f"Model {model_id} download initiated (simulated)"
+                        }
+                        self.wfile.write(json.dumps(response).encode())
+                        
+                except Exception as e:
+                    logger.error(f"Error handling download: {e}")
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {"status": "error", "message": str(e)}
+                    self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_test_post(self, data):
+                """Handle model test POST request"""
+                try:
+                    model_id = data.get('model_id')
+                    hardware = data.get('hardware', 'cpu')
+                    test_prompt = data.get('test_prompt', 'Hello, world!')
+                    
+                    if not model_id:
+                        self.send_response(400)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {"status": "error", "message": "model_id is required"}
+                        self.wfile.write(json.dumps(response).encode())
+                        return
+                    
+                    logger.info(f"Test request for model: {model_id} on {hardware}")
+                    
+                    # For now, return a stub response for inference
+                    # Real implementation would load and run the model
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {
+                        "status": "success",
+                        "model_id": model_id,
+                        "hardware": hardware,
+                        "test_prompt": test_prompt,
+                        "result": "Model inference not yet implemented. Download functionality is available.",
+                        "message": "Test completed (inference stub)"
+                    }
+                    self.wfile.write(json.dumps(response).encode())
+                    
+                except Exception as e:
+                    logger.error(f"Error handling test: {e}")
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {"status": "error", "message": str(e)}
+                    self.wfile.write(json.dumps(response).encode())
+            
+            # MCP protocol handlers (REST + JSON-RPC) for the integrated server.
+            def _read_json_body(self):
+                try:
+                    length = int(self.headers.get('Content-Length', 0) or 0)
+                    raw = self.rfile.read(length) if length else b''
+                    return json.loads(raw.decode('utf-8')) if raw else {}
+                except Exception:
+                    return {}
+
+            def _handle_mcp_tools_list(self):
+                self._send_json({"jsonrpc": "2.0", "result": {"tools": _mcp_tool_descriptors()}})
+
+            def _handle_mcp_tools_call(self):
+                body = self._read_json_body()
+                params = body.get('params') if isinstance(body.get('params'), dict) else {}
+                name = body.get('name') or body.get('tool') or params.get('name')
+                arguments = body.get('arguments')
+                if arguments is None:
+                    arguments = params.get('arguments')
+                if not name:
+                    self._send_json(
+                        {"jsonrpc": "2.0", "error": {"code": -32602, "message": "Missing tool name"}},
+                        status=400,
+                    )
+                    return
+                try:
+                    result = _mcp_call_tool(name, arguments or {})
+                    self._send_json({"jsonrpc": "2.0", "result": _mcp_tool_result(result)})
+                except Exception as exc:
+                    self._send_json(
+                        {"jsonrpc": "2.0", "error": {"code": -32603, "message": str(exc)}}
+                    )
+
+            def _handle_mcp_jsonrpc(self):
+                body = self._read_json_body()
+                method = body.get('method', '')
+                params = body.get('params') if isinstance(body.get('params'), dict) else {}
+                req_id = body.get('id', None)
+                if method == 'initialize':
+                    client_caps = (params.get('capabilities', {}) or {}).get('experimental', {}) or {}
+                    server_caps = {k: True for k in (
+                        'mcp++/mcp-idl', 'mcp++/cid-envelope', 'mcp++/ucan',
+                        'mcp++/deontic-policy', 'mcp++/event-dag', 'mcp++/p2p-transport',
+                    ) if client_caps.get(k)}
+                    self._send_json({
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {
+                                "tools": {"listChanged": True},
+                                "experimental": server_caps,
+                            },
+                            "serverInfo": {"name": "mcp++", "version": "1.0.0"},
+                        },
+                    })
+                elif method == 'ping':
+                    self._send_json({"jsonrpc": "2.0", "id": req_id, "result": {}})
+                elif method.startswith('notifications/'):
+                    self._send_json({"jsonrpc": "2.0", "id": req_id, "result": None}, status=202)
+                elif method == 'tools/list':
+                    self._send_json({
+                        "jsonrpc": "2.0", "id": req_id,
+                        "result": {"tools": _mcp_tool_descriptors()},
+                    })
+                elif method == 'tools/call':
+                    name = params.get('name', '')
+                    arguments = params.get('arguments', {}) or {}
+                    if not name:
+                        self._send_json({
+                            "jsonrpc": "2.0", "id": req_id,
+                            "error": {"code": -32602, "message": "Missing tool name"},
+                        })
+                        return
+                    try:
+                        result = _mcp_call_tool(name, arguments)
+                        self._send_json({
+                            "jsonrpc": "2.0", "id": req_id,
+                            "result": _mcp_tool_result(result),
+                        })
+                    except Exception as exc:
+                        self._send_json({
+                            "jsonrpc": "2.0", "id": req_id,
+                            "error": {"code": -32603, "message": str(exc)},
+                        })
+                else:
+                    self._send_json({
+                        "jsonrpc": "2.0", "id": req_id,
+                        "error": {"code": -32601, "message": f"Method not found: {method}"},
+                    })
+
+            # Bind helper functions as methods on the handler class
+            IntegratedMCPHandler._serve_dashboard = _serve_dashboard
+            IntegratedMCPHandler._send_json = _send_json
+            IntegratedMCPHandler._handle_cache_stats_api = _handle_cache_stats_api
+            IntegratedMCPHandler._handle_peers_api = _handle_peers_api
+            IntegratedMCPHandler._handle_user_api = _handle_user_api
+            IntegratedMCPHandler._handle_mcp_api = _handle_mcp_api
+            IntegratedMCPHandler._handle_model_api = _handle_model_api
+            IntegratedMCPHandler._handle_model_search = _handle_model_search
+            IntegratedMCPHandler._handle_model_stats = _handle_model_stats
+            IntegratedMCPHandler._handle_model_test = _handle_model_test
+            IntegratedMCPHandler._handle_queue_api = _handle_queue_api
+            IntegratedMCPHandler._serve_static = _serve_static
+            IntegratedMCPHandler._handle_post_api = _handle_post_api
+            IntegratedMCPHandler._handle_model_download = _handle_model_download
+            IntegratedMCPHandler._handle_model_test_post = _handle_model_test_post
+            IntegratedMCPHandler._read_json_body = _read_json_body
+            IntegratedMCPHandler._handle_mcp_tools_list = _handle_mcp_tools_list
+            IntegratedMCPHandler._handle_mcp_tools_call = _handle_mcp_tools_call
+            IntegratedMCPHandler._handle_mcp_jsonrpc = _handle_mcp_jsonrpc
+
+            # Start GitHub Actions autoscaler in background thread (transport
+            # agnostic: runs regardless of which HTTP transport serves below).
+            autoscaler_state = {"instance": None}
+
+            def _start_autoscaler():
+                if getattr(args, 'disable_autoscaler', False):
+                    return
+                try:
+                    from ipfs_accelerate_py.github_autoscaler import GitHubRunnerAutoscaler
+                    from ipfs_accelerate_py.github_cli import GitHubCLI
+                    gh = GitHubCLI()
+                    auth_status = gh.get_auth_status()
+                    if auth_status.get("authenticated"):
+                        logger.info("Starting GitHub Actions autoscaler in background...")
+                        autoscaler_instance = GitHubRunnerAutoscaler(
+                            owner=getattr(args, 'autoscaler_owner', None),
+                            poll_interval=getattr(args, 'autoscaler_interval', 60),
+                            since_days=getattr(args, 'autoscaler_since_days', 1),
+                            max_runners=getattr(args, 'autoscaler_max_runners', None),
+                            filter_by_arch=True
+                        )
+                        autoscaler_state["instance"] = autoscaler_instance
+
+                        def run_autoscaler():
+                            try:
+                                autoscaler_instance.start(setup_signals=False)
+                            except Exception as e:
+                                logger.error(f"Autoscaler error: {e}")
+
+                        threading.Thread(target=run_autoscaler, daemon=True).start()
+                        logger.info("\u2713 GitHub Actions autoscaler started")
+                    else:
+                        logger.warning("GitHub CLI not authenticated - autoscaler disabled")
+                        logger.warning("  To enable: gh auth login")
+                except ImportError as e:
+                    logger.warning(f"GitHub autoscaler not available: {e}")
+                except Exception as e:
+                    logger.warning(f"Could not start autoscaler: {e}")
+
+            # ------------------------------------------------------------------
+            # MCP++ transport selection.
+            #
+            # The MCP++ stack mandates hypercorn/anyio (the same transport used by
+            # ipfs_kit_py and ipfs_datasets_py). Historically this integrated
+            # server served the public socket from stdlib BaseHTTPServer, which
+            # drifted from that directive and presented a non-standard
+            # ``Server: BaseHTTP`` engine to external MCP clients. We now serve the
+            # public socket with Hypercorn (anyio/trio aware) by default: the
+            # battle-tested IntegratedMCPHandler keeps acting as the request
+            # engine on an internal loopback port, and a thin ASGI app reverse-
+            # proxies to it. This keeps 100% of the existing route behaviour
+            # (dashboard, /api/*, /mcp, /mcp/tools/*) while putting the
+            # client-facing transport on the hypercorn/anyio stack. Set
+            # IPFS_ACCELERATE_MCP_TRANSPORT=basehttp to force the legacy stdlib
+            # server; if hypercorn/anyio are unavailable we fall back to it too.
+            # ------------------------------------------------------------------
+            _transport = os.environ.get('IPFS_ACCELERATE_MCP_TRANSPORT', 'hypercorn').strip().lower()
+            _use_hypercorn = _transport not in ('basehttp', 'stdlib', 'http.server')
+            if _use_hypercorn:
+                try:
+                    import anyio  # noqa: F401
+                    from hypercorn.config import Config as _HypercornConfig  # noqa: F401
+                except Exception as exc:
+                    logger.warning(
+                        f"Hypercorn/anyio unavailable ({exc}); falling back to stdlib HTTP server"
+                    )
+                    _use_hypercorn = False
+
+            if _use_hypercorn:
+                from http.server import ThreadingHTTPServer
+                import http.client as _httpclient
+
+                # Internal request engine on an ephemeral loopback port.
+                internal_server = ThreadingHTTPServer(('127.0.0.1', 0), IntegratedMCPHandler)
+                internal_host, internal_port = internal_server.server_address[0], internal_server.server_address[1]
+                threading.Thread(target=internal_server.serve_forever, daemon=True).start()
+
+                _HOP_BY_HOP = {
+                    'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+                    'te', 'trailers', 'transfer-encoding', 'upgrade', 'server', 'date',
+                }
+
+                def _proxy_sync(method, target, headers, body):
+                    conn = _httpclient.HTTPConnection(internal_host, internal_port, timeout=300)
+                    try:
+                        conn.request(method, target, body=(body or None), headers=headers)
+                        resp = conn.getresponse()
+                        data = resp.read()
+                        out_headers = [
+                            (k, v) for (k, v) in resp.getheaders()
+                            if k.lower() not in _HOP_BY_HOP
+                        ]
+                        return resp.status, out_headers, data
+                    finally:
+                        conn.close()
+
+                async def _asgi_app(scope, receive, send):
+                    if scope['type'] == 'lifespan':
+                        while True:
+                            message = await receive()
+                            if message['type'] == 'lifespan.startup':
+                                await send({'type': 'lifespan.startup.complete'})
+                            elif message['type'] == 'lifespan.shutdown':
+                                await send({'type': 'lifespan.shutdown.complete'})
+                                return
+                        return
+                    if scope['type'] != 'http':
+                        return
+                    body = b''
+                    while True:
+                        message = await receive()
+                        body += message.get('body', b'')
+                        if not message.get('more_body'):
+                            break
+                    raw_path = scope.get('raw_path') or scope['path'].encode('latin-1')
+                    target = raw_path.decode('latin-1')
+                    if scope.get('query_string'):
+                        target = target + '?' + scope['query_string'].decode('latin-1')
+                    req_headers = {}
+                    for (k, v) in scope.get('headers', []):
+                        name = k.decode('latin-1')
+                        if name.lower() in ('host', 'connection', 'keep-alive',
+                                            'transfer-encoding', 'upgrade', 'te'):
+                            continue
+                        req_headers[name] = v.decode('latin-1')
+                    req_headers['Host'] = f'{internal_host}:{internal_port}'
+                    try:
+                        status, headers, data = await anyio.to_thread.run_sync(
+                            _proxy_sync, scope['method'], target, req_headers, body
+                        )
+                    except Exception as exc:  # pragma: no cover - defensive
+                        status = 502
+                        headers = [('Content-Type', 'application/json')]
+                        data = json.dumps({
+                            "error": {"code": -32099,
+                                      "message": f"integrated backend proxy error: {exc}"}
+                        }).encode()
+                    await send({
+                        'type': 'http.response.start',
+                        'status': status,
+                        'headers': [(k.encode('latin-1'), v.encode('latin-1')) for (k, v) in headers],
+                    })
+                    await send({'type': 'http.response.body', 'body': data})
+
+                async def _serve_hypercorn(app, host, port, log_level='info'):
+                    config = _HypercornConfig()
+                    config.bind = [f'{host}:{port}']
+                    config.loglevel = log_level
+                    config.accesslog = '-' if log_level == 'debug' else None
+                    try:
+                        import sniffio
+                        backend = sniffio.current_async_library()
+                    except Exception:
+                        backend = 'asyncio'
+                    if backend == 'trio':
+                        from hypercorn.trio import serve as _serve
+                    else:
+                        from hypercorn.asyncio import serve as _serve
+                    await _serve(app, config)
+
+                # Choose a public port (honour the in-use fallback like the
+                # stdlib path did) by pre-binding a probe socket.
+                import socket as _socket
+                bound_port = args.port
+                for _cand in [args.port] + list(range(args.port + 1, args.port + 11)):
+                    _probe = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+                    try:
+                        _probe.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+                        _probe.bind((args.host, _cand))
+                        bound_port = _cand
+                        _probe.close()
+                        if _cand != args.port:
+                            logger.warning(f"Port {args.port} in use. Falling back to port {_cand}.")
+                        break
+                    except OSError:
+                        _probe.close()
+                        continue
+
+                logger.info(
+                    f"Integrated MCP Server + Dashboard (Hypercorn/anyio) at "
+                    f"http://{args.host}:{bound_port} (engine -> 127.0.0.1:{internal_port})"
+                )
+                logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
+
+                _start_autoscaler()
+
+                if getattr(args, 'open_browser', False):
+                    import webbrowser
+                    webbrowser.open(f"http://{args.host}:{bound_port}")
+
+                try:
+                    anyio.run(_serve_hypercorn, _asgi_app, args.host, bound_port)
+                except KeyboardInterrupt:
+                    logger.info("Server shutdown requested")
+                    inst = autoscaler_state.get("instance")
+                    if inst:
+                        logger.info("Stopping autoscaler...")
+                        inst.stop()
+                    try:
+                        internal_server.shutdown()
+                    except Exception:
+                        pass
+                    return 0
+                except Exception as e:
+                    logger.error(f"Hypercorn server error: {e}; falling back to stdlib server")
+                    try:
+                        internal_server.shutdown()
+                    except Exception:
+                        pass
+                    _use_hypercorn = False
+                else:
+                    try:
+                        internal_server.shutdown()
+                    except Exception:
+                        pass
+                    return 0
+
+            # ---- Fallback: stdlib BaseHTTPServer public transport ----
+            # Bind and start the integrated HTTP server
+            try:
+                server = HTTPServer((args.host, args.port), IntegratedMCPHandler)
+                bound_port = args.port
+            except OSError as e:
+                # Address in use: try next 10 ports
+                if getattr(e, 'errno', None) == 98:
+                    server = None
+                    for p in range(args.port + 1, args.port + 11):
+                        try:
+                            server = HTTPServer((args.host, p), IntegratedMCPHandler)
+                            bound_port = p
+                            logger.warning(f"Port {args.port} in use. Falling back to port {p}.")
+                            break
+                        except OSError:
+                            continue
+                    if server is None:
+                        raise
+                else:
+                    raise
+
+            logger.info(f"Integrated MCP Server + Dashboard started at http://{args.host}:{bound_port}")
+            logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
+
+            _start_autoscaler()
+
+            if getattr(args, 'open_browser', False):
+                import webbrowser
+                webbrowser.open(f"http://{args.host}:{bound_port}")
+
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                logger.info("Server shutdown requested")
+                inst = autoscaler_state.get("instance")
+                if inst:
+                    logger.info("Stopping autoscaler...")
+                    inst.stop()
+                server.shutdown()
+                return 0
+            except Exception as e:
+                logger.error(f"Server error: {e}")
+                return 1
+            
+        except Exception as e:
+            logger.error(f"Error creating advanced dashboard: {e}")
+            raise
+
+
+def main():
+    """Main entry point for the CLI"""
+    # When running from a repo checkout, a top-level folder can shadow PyPI
+    # dependencies via the implicit CWD entry in sys.path (e.g., ./mcp vs PyPI
+    # `mcp`, which is required by `fastmcp`). Prune CWD entries to prefer the
+    # installed site-packages.
+    try:
+        cwd = os.getcwd()
+        sys.path = [p for p in sys.path if p not in ("", ".", cwd)]
+    except Exception:
+        pass
+
+    # Initialize error handler
+    error_handler = None
+    
+    try:
+        # Import error handler
+        from ipfs_accelerate_py.error_handler import CLIErrorHandler
+        
+        # Check if we should enable auto features via environment variables
+        enable_auto_issue = os.environ.get('IPFS_AUTO_ISSUE', '').lower() in ('1', 'true', 'yes')
+        enable_auto_pr = os.environ.get('IPFS_AUTO_PR', '').lower() in ('1', 'true', 'yes')
+        enable_auto_heal = os.environ.get('IPFS_AUTO_HEAL', '').lower() in ('1', 'true', 'yes')
+        
+        # Get repository from environment or default
+        repo = os.environ.get('IPFS_REPO', 'endomorphosis/ipfs_accelerate_py')
+        
+        # Initialize error handler only if at least one auto feature is enabled
+        if enable_auto_issue or enable_auto_pr or enable_auto_heal:
+            error_handler = CLIErrorHandler(
+                repo=repo,
+                enable_auto_issue=enable_auto_issue,
+                enable_auto_pr=enable_auto_pr,
+                enable_auto_heal=enable_auto_heal,
+                log_context_lines=50
+            )
+            logger.debug(
+                f"Error handler initialized: auto_issue={enable_auto_issue}, auto_pr={enable_auto_pr}, auto_heal={enable_auto_heal}"
+            )
+        else:
+            logger.debug(
+                "Error handler not initialized because all auto features are disabled "
+                "(IPFS_AUTO_ISSUE, IPFS_AUTO_PR, IPFS_AUTO_HEAL)."
+            )
+        
+    except ImportError as e:
+        logger.debug(f"Error handler not available: {e}")
+        error_handler = None
+    
+    try:
+        # Create argument parser
+        parser = argparse.ArgumentParser(
+            description="IPFS Accelerate CLI - Unified interface for AI inference and IPFS operations",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
+Examples:
+  ipfs-accelerate mcp start --dashboard --open-browser
+  ipfs-accelerate mcp status
+  ipfs-accelerate inference generate --prompt "Hello world"
+  ipfs-accelerate models list --output-json
+  ipfs-accelerate queue status
+  ipfs-accelerate network status
+            """
+        )
+        
+        # Add global arguments
+        parser.add_argument('--output-json', action='store_true', help='Output results in JSON format')
+        parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+        
+        # Create subparsers for different command categories
+        subparsers = parser.add_subparsers(dest='command', help='Available commands')
+        
+        # MCP commands
+        mcp_parser = subparsers.add_parser('mcp', help='MCP server management')
+        mcp_subparsers = mcp_parser.add_subparsers(dest='mcp_command', help='MCP commands')
+        
+        # MCP start command
+        start_parser = mcp_subparsers.add_parser('start', help='Start MCP server')
+        start_parser.add_argument('--name', default='ipfs-accelerate', help='Server name')
+        start_parser.add_argument('--host', default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
+        start_parser.add_argument('--port', type=int, default=9000, help='Port to bind to (default: 9000)')
+        start_parser.add_argument('--dashboard', action='store_true', help='Enable web dashboard')
+        start_parser.add_argument('--open-browser', action='store_true', help='Open browser automatically')
+        start_parser.add_argument('--keep-running', action='store_true', help='Keep server running')
+        
+        # GitHub Actions autoscaler options
+        start_parser.add_argument('--disable-autoscaler', action='store_true', 
+                                 help='Disable GitHub Actions autoscaler')
+        start_parser.add_argument('--autoscaler-owner', type=str,
+                                 help='GitHub owner/org to monitor for autoscaler')
+        start_parser.add_argument('--autoscaler-interval', type=int, default=60,
+                                 help='Autoscaler poll interval in seconds (default: 60)')
+        start_parser.add_argument('--autoscaler-since-days', type=int, default=1,
+                                 help='Monitor repos updated in last N days (default: 1)')
+        start_parser.add_argument('--autoscaler-max-runners', type=int,
+                                 help='Max runners for autoscaler (default: system cores)')
+        start_parser.add_argument('--no-p2p', action='store_true',
+                                 help='Disable P2P workflow monitoring in autoscaler')
+        
+        # MCP dashboard command
+        dashboard_parser = mcp_subparsers.add_parser('dashboard', help='Start dashboard only')
+        dashboard_parser.add_argument('--host', default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
+        dashboard_parser.add_argument('--port', type=int, default=9000, help='Port to bind to (default: 9000)')
+        dashboard_parser.add_argument('--open-browser', action='store_true', help='Open browser automatically')
+        
+        # MCP status command
+        status_parser = mcp_subparsers.add_parser('status', help='Check MCP server status')
+        status_parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
+        status_parser.add_argument('--port', type=int, default=9000, help='Server port (default: 9000)')
+        
+        # GitHub commands
+        github_parser = subparsers.add_parser('github', help='GitHub CLI operations')
+        github_subparsers = github_parser.add_subparsers(dest='github_command', help='GitHub commands')
+        
+        # GitHub auth command
+        github_auth_parser = github_subparsers.add_parser('auth', help='Check authentication status')
+        
+        # GitHub repos command
+        github_repos_parser = github_subparsers.add_parser('repos', help='List repositories')
+        github_repos_parser.add_argument('--owner', help='Repository owner (user or org)')
+        github_repos_parser.add_argument('--limit', type=int, default=30, help='Maximum repos to list')
+        
+        # GitHub workflows command
+        github_workflows_parser = github_subparsers.add_parser('workflows', help='List workflow runs')
+        github_workflows_parser.add_argument('repo', help='Repository (owner/repo)')
+        github_workflows_parser.add_argument('--status', choices=['queued', 'in_progress', 'completed'], 
+                                            help='Filter by status')
+        github_workflows_parser.add_argument('--limit', type=int, default=20, help='Maximum runs to list')
+        
+        # GitHub queues command
+        github_queues_parser = github_subparsers.add_parser('queues', 
+                                                           help='Create workflow queues for recent repos')
+        github_queues_parser.add_argument('--owner', help='Repository owner (user or org)')
+        github_queues_parser.add_argument('--since-days', type=int, default=1, 
+                                         help='Include repos updated in last N days')
+        
+        # GitHub runners command
+        github_runners_parser = github_subparsers.add_parser('runners', help='Manage self-hosted runners')
+        github_runners_parser.add_argument('action', choices=['list', 'provision'], 
+                                          help='Runner action')
+        github_runners_parser.add_argument('--repo', help='Repository (owner/repo)')
+        github_runners_parser.add_argument('--org', help='Organization name')
+        github_runners_parser.add_argument('--owner', help='Owner for provisioning')
+        github_runners_parser.add_argument('--since-days', type=int, default=1, 
+                                          help='Include workflows from last N days')
+        github_runners_parser.add_argument('--max-runners', type=int, 
+                                          help='Max runners to provision (default: system cores)')
+        
+        # GitHub autoscaler command
+        github_autoscaler_parser = github_subparsers.add_parser('autoscaler', 
+                                                                help='Auto-scale runners based on workflow demand')
+        github_autoscaler_parser.add_argument('--owner', help='Owner to monitor (user or org)')
+        github_autoscaler_parser.add_argument('--interval', type=int, default=60,
+                                             help='Poll interval in seconds (default: 60)')
+        github_autoscaler_parser.add_argument('--since-days', type=int, default=1,
+                                             help='Monitor repos updated in last N days (default: 1)')
+        github_autoscaler_parser.add_argument('--max-runners', type=int,
+                                             help='Max runners to provision (default: system cores)')
+        github_autoscaler_parser.add_argument('--no-p2p', action='store_true',
+                                             help='Disable P2P workflow monitoring')
+        
+        # GitHub P2P discovery command
+        github_p2p_parser = github_subparsers.add_parser('p2p-discover',
+                                                        help='Discover P2P workflows across repositories')
+        github_p2p_subparsers = github_p2p_parser.add_subparsers(dest='p2p_action', help='P2P discovery actions')
+        
+        # P2P monitor command (continuous)
+        p2p_monitor_parser = github_p2p_subparsers.add_parser('monitor',
+                                                              help='Continuously monitor for P2P workflows')
+        p2p_monitor_parser.add_argument('--owner', help='Owner to monitor (user or org)')
+        p2p_monitor_parser.add_argument('--interval', type=int, default=300,
+                                       help='Poll interval in seconds (default: 300)')
+        
+        # P2P discover once command
+        p2p_once_parser = github_p2p_subparsers.add_parser('once',
+                                                           help='Run discovery once and exit')
+        p2p_once_parser.add_argument('--owner', help='Owner to monitor (user or org)')
+        p2p_once_parser.add_argument('--output-json', action='store_true',
+                                    help='Output results as JSON')
+        
+        # Copilot commands
+        copilot_parser = subparsers.add_parser('copilot', help='GitHub Copilot CLI operations')
+        copilot_subparsers = copilot_parser.add_subparsers(dest='copilot_command', help='Copilot commands')
+        
+        # Copilot suggest command
+        copilot_suggest_parser = copilot_subparsers.add_parser('suggest', help='Get command suggestions')
+        copilot_suggest_parser.add_argument('prompt', help='Natural language description')
+        copilot_suggest_parser.add_argument('--shell', help='Shell type (bash, zsh, powershell)')
+        
+        # Copilot explain command
+        copilot_explain_parser = copilot_subparsers.add_parser('explain', help='Explain a command')
+        copilot_explain_parser.add_argument('command', help='Command to explain')
+        
+        # Copilot git command
+        copilot_git_parser = copilot_subparsers.add_parser('git', help='Get Git command suggestions')
+        copilot_git_parser.add_argument('prompt', help='Natural language description')
+        
+        # Copilot SDK commands
+        copilot_sdk_parser = subparsers.add_parser('copilot-sdk', help='GitHub Copilot SDK operations')
+        copilot_sdk_subparsers = copilot_sdk_parser.add_subparsers(dest='copilot_sdk_command', help='Copilot SDK commands')
+        
+        # Copilot SDK create session command
+        sdk_create_parser = copilot_sdk_subparsers.add_parser('create-session', help='Create a Copilot SDK session')
+        sdk_create_parser.add_argument('--model', help='Model to use (e.g., gpt-4o, gpt-5)', default=None)
+        sdk_create_parser.add_argument('--streaming', action='store_true', help='Enable streaming responses')
+        sdk_create_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK send message command
+        sdk_send_parser = copilot_sdk_subparsers.add_parser('send', help='Send message to session')
+        sdk_send_parser.add_argument('session_id', help='Session ID')
+        sdk_send_parser.add_argument('prompt', help='Message to send')
+        sdk_send_parser.add_argument('--no-cache', action='store_true', help='Disable caching')
+        sdk_send_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK stream message command
+        sdk_stream_parser = copilot_sdk_subparsers.add_parser('stream', help='Stream message response')
+        sdk_stream_parser.add_argument('session_id', help='Session ID')
+        sdk_stream_parser.add_argument('prompt', help='Message to send')
+        sdk_stream_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK list sessions command
+        sdk_list_parser = copilot_sdk_subparsers.add_parser('list-sessions', help='List active sessions')
+        sdk_list_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK destroy session command
+        sdk_destroy_parser = copilot_sdk_subparsers.add_parser('destroy-session', help='Destroy a session')
+        sdk_destroy_parser.add_argument('session_id', help='Session ID to destroy')
+        sdk_destroy_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Add AI Inference commands if available
+        if HAVE_AI_INFERENCE_CLI:
+            # Text processing commands
+            text_parser = subparsers.add_parser('text', help='AI text processing (generation, classification, embeddings, etc.)')
+            text_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI text command help')
+            
+            # Audio processing commands
+            audio_parser = subparsers.add_parser('audio', help='AI audio processing (transcription, synthesis, etc.)')
+            audio_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI audio command help')
+            
+            # Vision processing commands
+            vision_parser = subparsers.add_parser('vision', help='AI vision processing (classification, detection, etc.)')
+            vision_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI vision command help')
+            
+            # Multimodal processing commands
+            multimodal_parser = subparsers.add_parser('multimodal', help='AI multimodal processing (captioning, VQA, etc.)')
+            multimodal_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI multimodal command help')
+            
+            # Specialized AI commands
+            specialized_parser = subparsers.add_parser('specialized', help='Specialized AI tasks (code generation, timeseries, etc.)')
+            specialized_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI specialized command help')
+
+        # Model commands
+        models_parser = subparsers.add_parser('models', help='Model manager and model search operations')
+        models_subparsers = models_parser.add_subparsers(dest='models_command', help='Model commands')
+
+        models_list_parser = models_subparsers.add_parser('list', help='List models')
+        models_list_parser.add_argument('--hf-inference', action='store_true', help='Use HF inference model manager records')
+        models_list_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+
+        models_search_parser = models_subparsers.add_parser('search', help='Search models')
+        models_search_parser.add_argument('query', help='Search query')
+        models_search_parser.add_argument('--limit', type=int, default=50, help='Maximum results')
+        models_search_parser.add_argument('--hf-inference', action='store_true', help='Use HF inference model manager records')
+        models_search_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+
+        models_details_parser = models_subparsers.add_parser('details', help='Get model details')
+        models_details_parser.add_argument('model_id', help='Model identifier')
+        models_details_parser.add_argument('--hf-inference', action='store_true', help='Use HF inference model manager records')
+
+        models_ipld_document_parser = models_subparsers.add_parser(
+            'ipld-document',
+            help='Build HF inference model manager IPLD document',
+        )
+        models_ipld_document_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+        models_ipld_document_parser.add_argument(
+            '--deterministic',
+            action='store_true',
+            help='Exclude generated_at timestamp for deterministic output',
+        )
+
+        models_ipld_cid_parser = models_subparsers.add_parser(
+            'ipld-cid',
+            help='Compute deterministic CID for HF inference model manager IPLD document',
+        )
+        models_ipld_cid_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+        models_ipld_cid_parser.add_argument('--base', default='base32', help='CID base encoding')
+        models_ipld_cid_parser.add_argument('--codec', default='raw', help='CID codec')
+        models_ipld_cid_parser.add_argument('--mh-type', default='sha2-256', help='Multihash type')
+
+        models_ipld_publish_parser = models_subparsers.add_parser(
+            'ipld-publish',
+            help='Publish HF inference model manager IPLD document to IPFS',
+        )
+        models_ipld_publish_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+        models_ipld_publish_parser.add_argument('--backend', help='Optional IPFS backend name override')
+        models_ipld_publish_parser.add_argument('--no-pin', action='store_true', help='Do not pin on publish')
+
+        models_ipld_load_parser = models_subparsers.add_parser(
+            'ipld-load',
+            help='Load HF inference model manager IPLD document from IPFS CID',
+        )
+        models_ipld_load_parser.add_argument('cid', help='IPFS CID to load')
+        models_ipld_load_parser.add_argument('--backend', help='Optional IPFS backend name override')
+        
+        
+        # Parse arguments
+        args = parser.parse_args()
+        
+        # Set debug logging if requested
+        if args.debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+            logger.setLevel(logging.DEBUG)
+        
+        # Handle commands
+        if not args.command:
+            parser.print_help()
+            return 0
+            
+        cli = IPFSAccelerateCLI()
+        
+        if args.command == 'mcp':
+            if args.mcp_command == 'start':
+                return cli.run_mcp_start(args)
+            elif args.mcp_command == 'dashboard':
+                return cli.run_mcp_dashboard(args)
+            elif args.mcp_command == 'status':
+                return cli.run_mcp_status(args)
+            else:
+                mcp_parser.print_help()
+                return 1
+        
+        elif args.command == 'github':
+            if args.github_command == 'auth':
+                return cli.run_github_auth(args)
+            elif args.github_command == 'repos':
+                return cli.run_github_repos(args)
+            elif args.github_command == 'workflows':
+                return cli.run_github_workflows(args)
+            elif args.github_command == 'queues':
+                return cli.run_github_queues(args)
+            elif args.github_command == 'runners':
+                return cli.run_github_runners(args)
+            elif args.github_command == 'autoscaler':
+                return cli.run_github_autoscaler(args)
+            elif args.github_command == 'p2p-discover':
+                if args.p2p_action == 'monitor':
+                    return cli.run_p2p_discovery(args)
+                elif args.p2p_action == 'once':
+                    return cli.run_p2p_discover_once(args)
+                else:
+                    github_p2p_parser.print_help()
+                    return 1
+            else:
+                github_parser.print_help()
+                return 1
+        
+        elif args.command == 'copilot':
+            if args.copilot_command == 'suggest':
+                return cli.run_copilot_suggest(args)
+            elif args.copilot_command == 'explain':
+                return cli.run_copilot_explain(args)
+            elif args.copilot_command == 'git':
+                return cli.run_copilot_git(args)
+            else:
+                copilot_parser.print_help()
+                return 1
+        
+        elif args.command == 'copilot-sdk':
+            if args.copilot_sdk_command == 'create-session':
+                return cli.run_copilot_sdk_create_session(args)
+            elif args.copilot_sdk_command == 'send':
+                return cli.run_copilot_sdk_send_message(args)
+            elif args.copilot_sdk_command == 'stream':
+                return cli.run_copilot_sdk_stream_message(args)
+            elif args.copilot_sdk_command == 'list-sessions':
+                return cli.run_copilot_sdk_list_sessions(args)
+            elif args.copilot_sdk_command == 'destroy-session':
+                return cli.run_copilot_sdk_destroy_session(args)
+            else:
+                copilot_sdk_parser.print_help()
+                return 1
+
+        elif args.command == 'models':
+            if args.models_command == 'list':
+                return cli.run_models_list(args)
+            elif args.models_command == 'search':
+                return cli.run_models_search(args)
+            elif args.models_command == 'details':
+                return cli.run_models_details(args)
+            elif args.models_command == 'ipld-document':
+                return cli.run_models_ipld_document(args)
+            elif args.models_command == 'ipld-cid':
+                return cli.run_models_ipld_cid(args)
+            elif args.models_command == 'ipld-publish':
+                return cli.run_models_ipld_publish(args)
+            elif args.models_command == 'ipld-load':
+                return cli.run_models_ipld_load(args)
+            else:
+                models_parser.print_help()
+                return 1
+        
+        # Handle AI inference commands by delegating to AIInferenceCLI
+        elif args.command in ['text', 'audio', 'vision', 'multimodal', 'specialized']:
+            if not HAVE_AI_INFERENCE_CLI:
+                logger.error("AI Inference CLI not available. Please ensure ai_inference_cli.py is present.")
+                return 1
+            
+            # Check if user wants AI help
+            if hasattr(args, 'ai_help') and args.ai_help:
+                # Show the AI CLI help by invoking it with the category
+                ai_cli = AIInferenceCLI()
+                ai_parser = ai_cli.create_parser()
+                # Show help for this specific category
+                print(f"\n=== AI Inference: {args.command.upper()} Commands ===\n")
+                ai_parser.parse_args([args.command, '--help'])
+                return 0
+            
+            # Delegate to AI CLI - reconstruct args for AI CLI
+            # The AI CLI expects sys.argv format, so we need to rebuild it
+            ai_argv = [args.command]  # Start with the category
+            
+            # Add all other arguments from the original command line
+            # Skip the first few args that are already parsed
+            original_argv = sys.argv[1:]  # Skip program name
+            
+            # Find where our command starts in the original argv
+            try:
+                cmd_index = original_argv.index(args.command)
+                # Everything after the command should be passed to AI CLI
+                ai_argv.extend(original_argv[cmd_index + 1:])
+            except ValueError:
+                # If we can't find it, just pass what we have
+                pass
+            
+            # Temporarily replace sys.argv and call AI CLI
+            original_argv_backup = sys.argv
+            try:
+                sys.argv = ['ipfs-accelerate'] + ai_argv
+                ai_cli = AIInferenceCLI()
+                ai_parser = ai_cli.create_parser()
+                ai_args = ai_parser.parse_args(ai_argv)
+                return ai_cli.run(ai_args)
+            finally:
+                sys.argv = original_argv_backup
+        
+        
+        else:
+            parser.print_help()
+            return 1
+            
+    except KeyboardInterrupt:
+        logger.info("CLI interrupted by user")
+        return 0
+    except Exception as e:
+        logger.error(f"CLI error: {e}")
+        
+        # Capture error with error handler if available
+        if error_handler:
+            try:
+                error_handler.capture_error(e)
+                
+                # Create issue if auto-issue is enabled
+                if error_handler.enable_auto_issue:
+                    error_handler.create_issue_from_error(e)
+                    
+            except Exception as handler_error:
+                logger.debug(f"Error handler failed: {handler_error}")
+        
+        return 1
+    finally:
+        # Cleanup error handler (only once in outer finally)
+        if error_handler:
+            try:
+                error_handler.cleanup()
+            except Exception as e:
+                logger.debug(f"Error during cleanup: {e}")
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

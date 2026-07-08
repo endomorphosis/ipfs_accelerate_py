@@ -1,0 +1,45 @@
+# Phase 3 Testing Requirements
+
+## Core Testing Framework
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-timeout>=2.1.0
+pytest-xdist>=3.3.0  # For parallel testing
+
+## Performance Monitoring
+psutil>=5.9.0  # Memory monitoring
+py-cpuinfo>=9.0.0  # CPU information
+
+## HuggingFace Dependencies
+transformers>=4.30.0
+tokenizers>=0.13.0
+datasets>=2.14.0
+
+## PyTorch (choose one based on your hardware)
+# For CPU only:
+# torch>=2.0.0
+# For CUDA 11.8:
+# torch>=2.0.0+cu118 -f https://download.pytorch.org/whl/torch_stable.html
+# For CUDA 12.1:
+# torch>=2.0.0+cu121 -f https://download.pytorch.org/whl/torch_stable.html
+# For Apple Silicon:
+# torch>=2.0.0
+
+## Additional ML Libraries (optional but recommended)
+torchvision>=0.15.0  # For vision models
+torchaudio>=2.0.0    # For audio models
+pillow>=10.0.0       # Image processing
+librosa>=0.10.0      # Audio processing
+soundfile>=0.12.0    # Audio I/O
+
+## Utilities
+numpy>=1.24.0
+pandas>=2.0.0
+tqdm>=4.65.0
+requests>=2.31.0
+packaging>=23.0
+
+## Code Quality (optional)
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.4.0

@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cross-Model Tensor Sharing Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .panel {
+            flex: 1;
+            min-width: 300px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .panel h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 0;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        #console {
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 5px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        
+        .log-entry {
+            margin: 2px 0;
+            border-bottom: 1px solid #34495e;
+            padding-bottom: 2px;
+        }
+        
+        .error {
+            color: #e74c3c;
+        }
+        
+        .info {
+            color: #2ecc71;
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        
+        .metric-value {
+            font-weight: bold;
+            color: #3498db;
+        }
+        
+        .visualization {
+            width: 100%;
+            height: 200px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .tensor {
+            position: absolute;
+            background-color: rgba(52, 152, 219, 0.5);
+            border: 1px solid #3498db;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: white;
+            transition: all 0.5s ease;
+        }
+        
+        .model {
+            position: absolute;
+            background-color: rgba(46, 204, 113, 0.5);
+            border: 1px solid #2ecc71;
+            border-radius: 3px;
+            padding: 5px;
+            font-size: 12px;
+            color: white;
+            transition: all 0.5s ease;
+        }
+        
+        .connection {
+            position: absolute;
+            background-color: rgba(231, 76, 60, 0.5);
+            height: 2px;
+            transform-origin: left center;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Cross-Model Tensor Sharing Integration Demo</h1>
+    <p>This demo showcases the IPFS Accelerate JavaScript SDK's tensor sharing capabilities. It allows models to efficiently share tensors in memory and through persistent storage for better memory usage and performance.</p>
+    
+    <div class="container">
+        <div class="panel">
+            <h3>Demo Controls</h3>
+            <div class="controls">
+                <button id="initialize-btn">Initialize Tensor Sharing</button>
+                <button id="create-tensors-btn" disabled>Create Shared Tensors</button>
+                <button id="share-tensors-btn" disabled>Share Between Models</button>
+                <button id="analyze-btn" disabled>Analyze Memory</button>
+                <button id="optimize-btn" disabled>Optimize Memory</button>
+                <button id="persist-btn" disabled>Persist Tensors</button>
+                <button id="clear-btn" disabled>Clear Data</button>
+            </div>
+            
+            <h3>Visualization</h3>
+            <div class="visualization" id="visualization">
+                <!-- Tensors and models will be displayed here -->
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h3>Memory Statistics</h3>
+            <div id="stats">
+                <div class="metric">
+                    <span>Total Tensors:</span>
+                    <span class="metric-value" id="total-tensors">0</span>
+                </div>
+                <div class="metric">
+                    <span>Total Models:</span>
+                    <span class="metric-value" id="total-models">0</span>
+                </div>
+                <div class="metric">
+                    <span>Memory Usage:</span>
+                    <span class="metric-value" id="memory-usage">0 MB</span>
+                </div>
+                <div class="metric">
+                    <span>Cache Hit Rate:</span>
+                    <span class="metric-value" id="cache-hit-rate">0%</span>
+                </div>
+                <div class="metric">
+                    <span>Persistent Tensors:</span>
+                    <span class="metric-value" id="persistent-tensors">0</span>
+                </div>
+                <div class="metric">
+                    <span>Memory Saved (Sharing):</span>
+                    <span class="metric-value" id="memory-saved">0 MB</span>
+                </div>
+            </div>
+            
+            <h3>Console Output</h3>
+            <div id="console"></div>
+        </div>
+    </div>
+    
+    <script type="module">
+        // In a real application, you would import from the SDK
+        // import { TensorSharingIntegration, WebNNBackend } from './ipfs_accelerate_js';
+        
+        // For this demo, we'll simulate the functionality
+        const consoleElement = document.getElementById('console');
+        let demoState = {
+            integration: null,
+            isInitialized: false,
+            tensorsCreated: false,
+            tensorsShared: false,
+            memorySaved: 0
+        };
+        
+        // Logging functions
+        function log(message, type = 'normal') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = message;
+            consoleElement.appendChild(entry);
+            consoleElement.scrollTop = consoleElement.scrollHeight;
+        }
+        
+        // Update stats display
+        function updateStats(stats) {
+            if (!stats) return;
+            
+            document.getElementById('total-tensors').textContent = stats.total_tensors || 0;
+            document.getElementById('total-models').textContent = stats.total_models || 0;
+            document.getElementById('memory-usage').textContent = `${(stats.memory_usage_mb || 0).toFixed(2)} MB`;
+            document.getElementById('cache-hit-rate').textContent = `${((stats.hit_rate || 0) * 100).toFixed(2)}%`;
+            document.getElementById('persistent-tensors').textContent = stats.persistentTensorCount || 0;
+            document.getElementById('memory-saved').textContent = `${demoState.memorySaved.toFixed(2)} MB`;
+        }
+        
+        // Initialize the visualization
+        function initializeVisualization() {
+            const viz = document.getElementById('visualization');
+            viz.innerHTML = ''; // Clear previous visualization
+        }
+        
+        // Add tensor to visualization
+        function addTensorToVisualization(name, shape, producer) {
+            const viz = document.getElementById('visualization');
+            const tensorSize = shape[0] * shape[1];
+            const size = Math.min(50 + Math.sqrt(tensorSize) / 10, 100);
+            
+            // Create tensor element
+            const tensor = document.createElement('div');
+            tensor.className = 'tensor';
+            tensor.id = `tensor-${name}`;
+            tensor.style.width = `${size}px`;
+            tensor.style.height = `${size}px`;
+            tensor.textContent = name;
+            
+            // Position randomly in the visualization
+            const maxX = viz.clientWidth - size;
+            const maxY = viz.clientHeight - size;
+            const x = Math.random() * maxX;
+            const y = Math.random() * maxY;
+            tensor.style.left = `${x}px`;
+            tensor.style.top = `${y}px`;
+            
+            viz.appendChild(tensor);
+            
+            // Add producer model if specified
+            if (producer) {
+                addModelToVisualization(producer, { x, y: y - 40 });
+                connectElements(producer, name);
+            }
+        }
+        
+        // Add model to visualization
+        function addModelToVisualization(name, position) {
+            const viz = document.getElementById('visualization');
+            
+            // Check if model already exists
+            if (document.getElementById(`model-${name}`)) {
+                return;
+            }
+            
+            // Create model element
+            const model = document.createElement('div');
+            model.className = 'model';
+            model.id = `model-${name}`;
+            model.textContent = name;
+            
+            // Position the model
+            const pos = position || {
+                x: Math.random() * (viz.clientWidth - 80),
+                y: Math.random() * (viz.clientHeight - 30)
+            };
+            
+            model.style.left = `${pos.x}px`;
+            model.style.top = `${pos.y}px`;
+            
+            viz.appendChild(model);
+        }
+        
+        // Connect elements with a line
+        function connectElements(modelName, tensorName) {
+            const viz = document.getElementById('visualization');
+            const model = document.getElementById(`model-${modelName}`);
+            const tensor = document.getElementById(`tensor-${tensorName}`);
+            
+            if (!model || !tensor) return;
+            
+            const connection = document.createElement('div');
+            connection.className = 'connection';
+            connection.id = `connection-${modelName}-${tensorName}`;
+            
+            // Get positions
+            const modelRect = model.getBoundingClientRect();
+            const tensorRect = tensor.getBoundingClientRect();
+            const vizRect = viz.getBoundingClientRect();
+            
+            // Calculate center points relative to visualization
+            const modelCenter = {
+                x: modelRect.left + modelRect.width / 2 - vizRect.left,
+                y: modelRect.top + modelRect.height / 2 - vizRect.top
+            };
+            
+            const tensorCenter = {
+                x: tensorRect.left + tensorRect.width / 2 - vizRect.left,
+                y: tensorRect.top + tensorRect.height / 2 - vizRect.top
+            };
+            
+            // Calculate length and angle
+            const dx = tensorCenter.x - modelCenter.x;
+            const dy = tensorCenter.y - modelCenter.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            
+            // Position and rotate line
+            connection.style.width = `${length}px`;
+            connection.style.left = `${modelCenter.x}px`;
+            connection.style.top = `${modelCenter.y}px`;
+            connection.style.transform = `rotate(${angle}deg)`;
+            
+            viz.appendChild(connection);
+        }
+        
+        // Simulate tensor creation
+        async function createSharedTensors() {
+            log("Creating shared tensors...", "info");
+            
+            // Simulate tensor creation delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Add to visualization
+            addTensorToVisualization("text_embedding", [1, 768], "bert-base-uncased");
+            addTensorToVisualization("vision_embedding", [1, 1024], "vit-base-patch16");
+            
+            log("Created text embedding tensor: [1, 768]");
+            log("Created vision embedding tensor: [1, 1024]");
+            
+            // Update state
+            demoState.tensorsCreated = true;
+            document.getElementById('share-tensors-btn').disabled = false;
+            
+            // Update stats
+            updateStats({
+                total_tensors: 2,
+                total_models: 2,
+                memory_usage_mb: 8.2, // (768 + 1024) * 4 bytes / 1024 / 1024
+                hit_rate: 0,
+                persistentTensorCount: 0
+            });
+        }
+        
+        // Simulate tensor sharing
+        async function shareSharedTensors() {
+            log("Sharing tensors between models...", "info");
+            
+            // Simulate processing delay
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            // Add models and connections
+            addModelToVisualization("t5-base");
+            addModelToVisualization("clip-vit-base");
+            addModelToVisualization("distilbert-base");
+            
+            // Connect models to tensors
+            connectElements("t5-base", "text_embedding");
+            connectElements("clip-vit-base", "vision_embedding");
+            connectElements("distilbert-base", "text_embedding");
+            
+            log("Shared text_embedding from bert-base-uncased to t5-base");
+            log("Shared vision_embedding from vit-base-patch16 to clip-vit-base");
+            log("Created view of text_embedding for distilbert-base");
+            
+            // Update state
+            demoState.tensorsShared = true;
+            document.getElementById('analyze-btn').disabled = false;
+            
+            // Calculate memory saved (approximately - would actually be more complex)
+            // Without sharing: Each model would need its own copy of the embeddings
+            const textEmbeddingSize = 768 * 4 / 1024 / 1024; // Size in MB
+            const visionEmbeddingSize = 1024 * 4 / 1024 / 1024; // Size in MB
+            
+            // Memory saved: t5 and distil don't need their own copies
+            demoState.memorySaved = textEmbeddingSize * 2 + visionEmbeddingSize;
+            
+            // Update stats
+            updateStats({
+                total_tensors: 2,
+                total_models: 5,
+                memory_usage_mb: 8.2,
+                hit_rate: 0.8,
+                persistentTensorCount: 0
+            });
+        }
+        
+        // Simulate memory analysis
+        async function analyzeMemory() {
+            log("Analyzing memory usage and sharing opportunities...", "info");
+            
+            // Simulate analysis delay
+            await new Promise(resolve => setTimeout(resolve, 1200));
+            
+            log("Memory usage by model:");
+            log("- bert-base-uncased: 3.07 MB");
+            log("- vit-base-patch16: 4.10 MB");
+            log("- t5-base: 0.00 MB (using shared tensor)");
+            log("- clip-vit-base: 0.00 MB (using shared tensor)");
+            log("- distilbert-base: 0.00 MB (using shared tensor view)");
+            log("");
+            log("Sharing opportunities:");
+            log("- text_embedding can be shared among: bert, t5, llama, bart, distilbert");
+            log("- vision_embedding can be shared among: vit, clip, detr");
+            
+            // Enable optimize button
+            document.getElementById('optimize-btn').disabled = false;
+        }
+        
+        // Simulate memory optimization
+        async function optimizeMemory() {
+            log("Optimizing memory usage...", "info");
+            
+            // Simulate optimization delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            log("Memory optimization complete");
+            log("Initial memory: 8.20 MB");
+            log("Current memory: 8.20 MB");
+            log("Memory reduction: 0.00%");
+            log("Freed tensors: 0");
+            
+            // Enable persist button
+            document.getElementById('persist-btn').disabled = false;
+        }
+        
+        // Simulate persistence
+        async function persistTensors() {
+            log("Persisting tensors to storage...", "info");
+            
+            // Simulate storage delay
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            log("Persisted shared tensor: text_embedding");
+            log("Persisted shared tensor: vision_embedding");
+            log("Synchronized 2 tensors with persistent storage");
+            
+            // Update stats
+            updateStats({
+                total_tensors: 2,
+                total_models: 5,
+                memory_usage_mb: 8.2,
+                hit_rate: 0.9, // Improved hit rate with persistence
+                persistentTensorCount: 2
+            });
+            
+            // Enable clear button
+            document.getElementById('clear-btn').disabled = false;
+        }
+        
+        // Simulate initialization
+        async function initializeTensorSharing() {
+            log("Initializing tensor sharing integration...", "info");
+            
+            // Simulate initialization delay
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            log("WebNN backend initialized successfully");
+            log("Storage manager initialized successfully");
+            log("Tensor sharing integration initialized successfully");
+            
+            // Update state
+            demoState.isInitialized = true;
+            document.getElementById('create-tensors-btn').disabled = false;
+            
+            // Initialize visualization
+            initializeVisualization();
+            
+            // Update stats with initial values
+            updateStats({
+                total_tensors: 0,
+                total_models: 0,
+                memory_usage_mb: 0,
+                hit_rate: 0,
+                persistentTensorCount: 0
+            });
+        }
+        
+        // Simulate clearing data
+        async function clearData() {
+            log("Clearing all data...", "info");
+            
+            // Simulate clearing delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            log("Cleared all stored data");
+            
+            // Reset visualization
+            initializeVisualization();
+            
+            // Reset state
+            demoState = {
+                integration: null,
+                isInitialized: true,
+                tensorsCreated: false,
+                tensorsShared: false,
+                memorySaved: 0
+            };
+            
+            // Reset buttons
+            document.getElementById('create-tensors-btn').disabled = false;
+            document.getElementById('share-tensors-btn').disabled = true;
+            document.getElementById('analyze-btn').disabled = true;
+            document.getElementById('optimize-btn').disabled = true;
+            document.getElementById('persist-btn').disabled = true;
+            document.getElementById('clear-btn').disabled = true;
+            
+            // Update stats with cleared values
+            updateStats({
+                total_tensors: 0,
+                total_models: 0,
+                memory_usage_mb: 0,
+                hit_rate: 0,
+                persistentTensorCount: 0
+            });
+        }
+        
+        // Set up button event listeners
+        document.getElementById('initialize-btn').addEventListener('click', initializeTensorSharing);
+        document.getElementById('create-tensors-btn').addEventListener('click', createSharedTensors);
+        document.getElementById('share-tensors-btn').addEventListener('click', shareSharedTensors);
+        document.getElementById('analyze-btn').addEventListener('click', analyzeMemory);
+        document.getElementById('optimize-btn').addEventListener('click', optimizeMemory);
+        document.getElementById('persist-btn').addEventListener('click', persistTensors);
+        document.getElementById('clear-btn').addEventListener('click', clearData);
+        
+        // Initial log message
+        log("Tensor Sharing Demo ready. Click 'Initialize Tensor Sharing' to begin.");
+    </script>
+</body>
+</html>

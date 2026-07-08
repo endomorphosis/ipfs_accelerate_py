@@ -1,0 +1,1400 @@
+{% extends "layout.html" %}
+
+{% block title %}Real-time Monitoring - Distributed Testing Framework{% endblock %}
+
+{% block header_title %}Real-time Monitoring Dashboard{% endblock %}
+
+{% block styles %}
+<style>
+    .system-overview {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .metric-card {
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        height: 150px;
+        overflow: hidden;
+    }
+    
+    .metric-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .metric-title {
+        font-size: 1rem;
+        color: var(--dark-color);
+        font-weight: bold;
+    }
+    
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin: auto 0;
+        text-align: center;
+    }
+    
+    .metric-trend {
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+    }
+    
+    .metric-trend i {
+        margin-right: 5px;
+    }
+    
+    .trend-up {
+        color: #28a745;
+    }
+    
+    .trend-down {
+        color: #dc3545;
+    }
+    
+    .trend-stable {
+        color: #6c757d;
+    }
+    
+    .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 5px;
+    }
+    
+    .status-healthy {
+        background-color: #28a745;
+    }
+    
+    .status-warning {
+        background-color: #ffc107;
+    }
+    
+    .status-critical {
+        background-color: #dc3545;
+    }
+    
+    .status-unknown {
+        background-color: #6c757d;
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 300px;
+        width: 100%;
+    }
+    
+    .resource-usage-charts {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    @media (max-width: 768px) {
+        .resource-usage-charts {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    .worker-list {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    
+    .worker-card {
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        padding: 15px;
+        margin-bottom: 15px;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .worker-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+    }
+    
+    .worker-id {
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+    }
+    
+    .worker-status {
+        font-size: 0.9rem;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-weight: bold;
+    }
+    
+    .status-active {
+        background-color: #e6fffa;
+        color: #0c9d58;
+    }
+    
+    .status-inactive {
+        background-color: #fff5f5;
+        color: #e53e3e;
+    }
+    
+    .worker-metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 10px;
+    }
+    
+    .worker-metric {
+        font-size: 0.9rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .worker-metric-value {
+        font-weight: bold;
+        font-size: 1.2rem;
+    }
+    
+    .worker-metric-label {
+        color: var(--gray-color);
+        font-size: 0.8rem;
+    }
+    
+    .hardware-indicator {
+        display: flex;
+        align-items: center;
+        margin-top: 10px;
+        font-size: 0.9rem;
+    }
+    
+    .hardware-icon {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 5px;
+        border-radius: 4px;
+        background-color: #f0f0f0;
+    }
+    
+    .hardware-available {
+        color: #28a745;
+    }
+    
+    .hardware-unavailable {
+        color: #6c757d;
+    }
+    
+    .task-queue-container {
+        height: 400px;
+        overflow-y: auto;
+    }
+    
+    .task-item {
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        padding: 15px;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .task-details {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .task-id {
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    .task-type {
+        font-size: 0.9rem;
+        color: var(--gray-color);
+    }
+    
+    .task-priority {
+        display: flex;
+        align-items: center;
+    }
+    
+    .priority-indicator {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 0.8rem;
+        margin-right: 5px;
+    }
+    
+    .priority-1 {
+        background-color: #28a745;
+    }
+    
+    .priority-2 {
+        background-color: #ffc107;
+    }
+    
+    .priority-3 {
+        background-color: #dc3545;
+    }
+    
+    .network-map {
+        width: 100%;
+        height: 300px;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        padding: 10px;
+    }
+    
+    #worker-search {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+    }
+    
+    .refresh-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background-color: var(--primary-color);
+        color: white;
+        cursor: pointer;
+        border: none;
+        font-size: 0.9rem;
+    }
+    
+    .refresh-button:hover {
+        background-color: #0055aa;
+    }
+    
+    .auto-refresh {
+        display: flex;
+        align-items: center;
+        font-size: 0.9rem;
+        margin-left: 10px;
+    }
+    
+    .refresh-interval {
+        margin-left: 5px;
+        width: 60px;
+        padding: 2px 5px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>Cluster Status</h2>
+        <div style="display: flex; align-items: center;">
+            <button id="refresh-data" class="refresh-button" title="Refresh data">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <div class="auto-refresh">
+                <label>
+                    <input type="checkbox" id="auto-refresh" checked>
+                    Auto-refresh every 
+                </label>
+                <input type="number" id="refresh-interval" class="refresh-interval" value="10" min="1" max="60">
+                seconds
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="system-overview">
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-title">Cluster Health</span>
+                    <span class="status-indicator status-healthy" id="cluster-health-indicator"></span>
+                </div>
+                <div class="metric-value" id="cluster-health-score">100%</div>
+                <div class="metric-trend">
+                    <i class="fas fa-equals trend-stable"></i>
+                    <span>Stable</span>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-title">Active Workers</span>
+                </div>
+                <div class="metric-value" id="active-workers-count">0</div>
+                <div class="metric-trend">
+                    <i class="fas fa-arrow-up trend-up"></i>
+                    <span>+2 in last hour</span>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-title">Total Tasks</span>
+                </div>
+                <div class="metric-value" id="total-tasks-count">0</div>
+                <div class="metric-trend">
+                    <i class="fas fa-arrow-up trend-up"></i>
+                    <span>+15 in last hour</span>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-title">Success Rate</span>
+                </div>
+                <div class="metric-value" id="success-rate">0%</div>
+                <div class="metric-trend">
+                    <i class="fas fa-arrow-up trend-up"></i>
+                    <span>+2.5% in last hour</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="resource-usage-charts">
+            <div class="card">
+                <div class="card-header">
+                    <h2>CPU Usage</h2>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="cpu-usage-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h2>Memory Usage</h2>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="memory-usage-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                <h2>Worker Nodes</h2>
+                <input type="text" id="worker-search" placeholder="Search workers...">
+            </div>
+            <div class="card-body">
+                <div class="worker-list" id="worker-list">
+                    <!-- Worker list will be populated by JavaScript -->
+                    <div class="worker-card">
+                        <div class="worker-header">
+                            <div class="worker-id">
+                                <span class="status-indicator status-healthy"></span>
+                                worker-001
+                            </div>
+                            <span class="worker-status status-active">Active</span>
+                        </div>
+                        <div class="worker-metrics">
+                            <div class="worker-metric">
+                                <div class="worker-metric-value">25%</div>
+                                <div class="worker-metric-label">CPU</div>
+                            </div>
+                            <div class="worker-metric">
+                                <div class="worker-metric-value">1.2 GB</div>
+                                <div class="worker-metric-label">Memory</div>
+                            </div>
+                            <div class="worker-metric">
+                                <div class="worker-metric-value">42</div>
+                                <div class="worker-metric-label">Tasks</div>
+                            </div>
+                            <div class="worker-metric">
+                                <div class="worker-metric-value">95%</div>
+                                <div class="worker-metric-label">Success</div>
+                            </div>
+                        </div>
+                        <div class="hardware-indicators">
+                            <div class="hardware-indicator hardware-available">
+                                <div class="hardware-icon">
+                                    <i class="fas fa-microchip"></i>
+                                </div>
+                                <span>CUDA</span>
+                            </div>
+                            <div class="hardware-indicator hardware-available">
+                                <div class="hardware-icon">
+                                    <i class="fas fa-globe"></i>
+                                </div>
+                                <span>WebGPU</span>
+                            </div>
+                            <div class="hardware-indicator hardware-unavailable">
+                                <div class="hardware-icon">
+                                    <i class="fas fa-brain"></i>
+                                </div>
+                                <span>WebNN</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                <h2>Task Queue</h2>
+                <div>
+                    <select id="queue-filter" class="form-control">
+                        <option value="all">All Tasks</option>
+                        <option value="pending">Pending</option>
+                        <option value="running">Running</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="task-queue-container" id="task-queue">
+                    <!-- Task queue will be populated by JavaScript -->
+                    <div class="task-item">
+                        <div class="task-details">
+                            <div class="task-id">task-1234</div>
+                            <div class="task-type">benchmark</div>
+                        </div>
+                        <div class="task-priority">
+                            <div class="priority-indicator priority-1">1</div>
+                            <span class="worker-status status-active">Running</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                <h2>Network Connectivity</h2>
+            </div>
+            <div class="card-body">
+                <div class="network-map" id="network-map">
+                    <!-- Network map will be rendered by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                <h2>Hardware Availability</h2>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="hardware-availability-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Include D3.js for network visualization -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+<script>
+    // Global variables for data and charts
+    let cpuChart = null;
+    let memoryChart = null;
+    let hardwareChart = null;
+    let networkMap = null;
+    
+    // Global variables to store API data
+    let workersData = [];
+    let tasksData = [];
+    let resourceData = { cpu: null, memory: null };
+    let hardwareData = null;
+    let networkData = null;
+    let clusterData = null;
+    
+    // Initialize charts and visualizations
+    function initCharts() {
+        // CPU Usage Chart - initialize with empty data
+        const cpuCtx = document.getElementById('cpu-usage-chart').getContext('2d');
+        cpuChart = new Chart(cpuCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Average CPU Usage',
+                        data: [],
+                        borderColor: '#4c9be8',
+                        backgroundColor: 'rgba(76, 155, 232, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Max CPU Usage',
+                        data: [],
+                        borderColor: '#e86f4c',
+                        backgroundColor: 'rgba(232, 111, 76, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'CPU Usage (%)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+        
+        // Memory Usage Chart - initialize with empty data
+        const memoryCtx = document.getElementById('memory-usage-chart').getContext('2d');
+        memoryChart = new Chart(memoryCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Average Memory Usage (GB)',
+                        data: [],
+                        borderColor: '#4ca6e8',
+                        backgroundColor: 'rgba(76, 166, 232, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Max Memory Usage (GB)',
+                        data: [],
+                        borderColor: '#e84ca6',
+                        backgroundColor: 'rgba(232, 76, 166, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Memory Usage (GB)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+        
+        // Hardware Availability Chart - initialize with empty data
+        const hardwareCtx = document.getElementById('hardware-availability-chart').getContext('2d');
+        hardwareChart = new Chart(hardwareCtx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Available',
+                        data: [],
+                        backgroundColor: 'rgba(40, 167, 69, 0.7)'
+                    },
+                    {
+                        label: 'Total',
+                        data: [],
+                        backgroundColor: 'rgba(108, 117, 125, 0.3)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        stacked: true,
+                        title: {
+                            display: true,
+                            text: 'Hardware Type'
+                        }
+                    },
+                    y: {
+                        stacked: false,
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Worker Count'
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+        
+        // Fetch initial data
+        fetchMonitoringData();
+    }
+    
+    // Initialize network map with D3.js
+    function initNetworkMap() {
+        // Set up the SVG
+        const width = document.getElementById('network-map').clientWidth;
+        const height = document.getElementById('network-map').clientHeight;
+        
+        const svg = d3.select('#network-map')
+            .append('svg')
+            .attr('width', width)
+            .attr('height', height);
+            
+        // Create empty groups for our elements
+        svg.append('g').attr('class', 'links');
+        svg.append('g').attr('class', 'nodes');
+        svg.append('g').attr('class', 'labels');
+        
+        // Create simulation but don't attach data yet
+        const simulation = d3.forceSimulation()
+            .force('link', d3.forceLink().id(d => d.id).distance(100))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(width / 2, height / 2));
+            
+        // Store simulation in global scope for updates
+        networkMap = {
+            svg: svg,
+            simulation: simulation,
+            width: width,
+            height: height
+        };
+    }
+    
+    // Update network map with new data
+    function updateNetworkMap(data) {
+        if (!networkMap || !data) return;
+        
+        const svg = networkMap.svg;
+        const simulation = networkMap.simulation;
+        
+        // Update links
+        const link = svg.select('g.links')
+            .selectAll('line')
+            .data(data.links);
+            
+        link.exit().remove();
+        
+        const linkEnter = link.enter()
+            .append('line')
+            .attr('stroke-width', d => Math.sqrt(d.value))
+            .attr('stroke', d => d.value < 5 ? 'rgba(220, 53, 69, 0.6)' : 'rgba(40, 167, 69, 0.6)');
+            
+        const linkUpdate = linkEnter.merge(link);
+        
+        // Update nodes
+        const node = svg.select('g.nodes')
+            .selectAll('circle')
+            .data(data.nodes);
+            
+        node.exit().remove();
+        
+        const nodeEnter = node.enter()
+            .append('circle')
+            .attr('r', d => d.group === 'coordinator' ? 20 : 10)
+            .attr('fill', d => {
+                if (d.group === 'coordinator') return '#0066cc';
+                return d.status === 'active' ? '#28a745' : '#6c757d';
+            })
+            .call(d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended));
+                
+        const nodeUpdate = nodeEnter.merge(node);
+        
+        // Update labels
+        const text = svg.select('g.labels')
+            .selectAll('text')
+            .data(data.nodes);
+            
+        text.exit().remove();
+        
+        const textEnter = text.enter()
+            .append('text')
+            .text(d => d.id)
+            .attr('font-size', 10)
+            .attr('dx', d => d.group === 'coordinator' ? -30 : -20)
+            .attr('dy', 20);
+            
+        const textUpdate = textEnter.merge(text);
+        
+        // Update simulation
+        simulation.nodes(data.nodes);
+        simulation.force('link').links(data.links);
+        simulation.alpha(1).restart();
+        
+        // Update positions on tick
+        simulation.on('tick', () => {
+            linkUpdate
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+                
+            nodeUpdate
+                .attr('cx', d => d.x)
+                .attr('cy', d => d.y);
+                
+            textUpdate
+                .attr('x', d => d.x)
+                .attr('y', d => d.y);
+        });
+        
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+    }
+    
+    // Fetch monitoring data from API endpoints or WebSocket
+    function fetchMonitoringData() {
+        // Check if WebSocket is available
+        if (typeof io !== 'undefined') {
+            // WebSocket is available, use it for real-time updates
+            console.log('Using WebSocket for real-time updates');
+            setupWebSocketConnection();
+        } else {
+            // WebSocket not available, fall back to polling
+            console.log('WebSocket not available, using polling instead');
+            fetchDataWithPolling();
+        }
+    }
+    
+    // Set up WebSocket connection for real-time updates
+    function setupWebSocketConnection() {
+        const socket = io();
+        
+        socket.on('connect', function() {
+            console.log('Connected to SocketIO for monitoring data');
+            
+            // Dispatch custom event to notify of WebSocket connection
+            window.dispatchEvent(new CustomEvent('websocket-connected'));
+            
+            // Subscribe to monitoring updates
+            socket.emit('subscribe_to_monitoring', {});
+            
+            // Initial data fetch to show something while waiting for WebSocket updates
+            fetchDataWithPolling();
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('Disconnected from SocketIO, falling back to polling');
+            
+            // Dispatch custom event to notify of WebSocket disconnection
+            window.dispatchEvent(new CustomEvent('websocket-disconnected'));
+            
+            // If WebSocket disconnects, fall back to polling
+            const autoRefreshCheckbox = document.getElementById('auto-refresh');
+            if (autoRefreshCheckbox && autoRefreshCheckbox.checked) {
+                fetchDataWithPolling();
+            }
+        });
+        
+        // Handle monitoring updates
+        socket.on('monitoring_update', function(data) {
+            console.log('Received monitoring update via WebSocket');
+            
+            // Update data
+            if (data.cluster) {
+                clusterData = data.cluster;
+                updateClusterOverview();
+            }
+            
+            if (data.workers) {
+                workersData = data.workers;
+                renderWorkerList(workersData);
+            }
+            
+            if (data.tasks) {
+                tasksData = data.tasks;
+                const filter = document.getElementById('queue-filter').value;
+                renderTaskQueue(tasksData, filter);
+            }
+            
+            if (data.resources) {
+                resourceData = data.resources;
+                updateResourceCharts();
+            }
+            
+            if (data.hardware) {
+                hardwareData = data.hardware;
+                updateHardwareChart();
+            }
+            
+            if (data.network) {
+                networkData = data.network;
+                updateNetworkMap(networkData);
+            }
+            
+            // Show a quick visual indicator that data was updated
+            document.getElementById('refresh-data').classList.add('pulsate');
+            setTimeout(() => {
+                document.getElementById('refresh-data').classList.remove('pulsate');
+            }, 500);
+        });
+        
+        // Add handler for manual refresh requests
+        socket.on('request_monitoring_update', (data) => {
+            socket.emit('request_monitoring_update', {});
+        });
+        
+        return socket;
+    }
+    
+    // Fetch data using polling (fallback)
+    function fetchDataWithPolling() {
+        // Fetch cluster status
+        fetch('/api/monitoring/cluster')
+            .then(response => response.json())
+            .then(data => {
+                clusterData = data;
+                updateClusterOverview();
+            })
+            .catch(error => console.error('Error fetching cluster status:', error));
+            
+        // Fetch worker status
+        fetch('/api/monitoring/workers')
+            .then(response => response.json())
+            .then(data => {
+                workersData = data;
+                renderWorkerList(workersData);
+            })
+            .catch(error => console.error('Error fetching worker status:', error));
+            
+        // Fetch task queue
+        const filter = document.getElementById('queue-filter').value;
+        fetch(`/api/monitoring/tasks${filter !== 'all' ? '?status=' + filter : ''}`)
+            .then(response => response.json())
+            .then(data => {
+                tasksData = data;
+                renderTaskQueue(tasksData, filter);
+            })
+            .catch(error => console.error('Error fetching task queue:', error));
+            
+        // Fetch resource usage
+        fetch('/api/monitoring/resources')
+            .then(response => response.json())
+            .then(data => {
+                resourceData = data;
+                updateResourceCharts();
+            })
+            .catch(error => console.error('Error fetching resource usage:', error));
+            
+        // Fetch hardware availability
+        fetch('/api/monitoring/hardware')
+            .then(response => response.json())
+            .then(data => {
+                hardwareData = data;
+                updateHardwareChart();
+            })
+            .catch(error => console.error('Error fetching hardware availability:', error));
+            
+        // Fetch network topology
+        fetch('/api/monitoring/network')
+            .then(response => response.json())
+            .then(data => {
+                networkData = data;
+                updateNetworkMap(networkData);
+            })
+            .catch(error => console.error('Error fetching network topology:', error));
+    }
+    
+    // Render worker list
+    function renderWorkerList(workers) {
+        const workerList = document.getElementById('worker-list');
+        workerList.innerHTML = '';
+        
+        if (workers.length === 0) {
+            workerList.innerHTML = '<div class="empty-state">No workers found</div>';
+            return;
+        }
+        
+        workers.forEach(worker => {
+            const workerCard = document.createElement('div');
+            workerCard.className = 'worker-card';
+            
+            // Status class
+            const statusClass = `status-${worker.status}`;
+            const healthClass = `status-${worker.health}`;
+            
+            // Create worker card content
+            workerCard.innerHTML = `
+                <div class="worker-header">
+                    <div class="worker-id">
+                        <span class="status-indicator ${healthClass}"></span>
+                        ${worker.id}
+                    </div>
+                    <span class="worker-status ${statusClass}">${worker.status}</span>
+                </div>
+                <div class="worker-metrics">
+                    <div class="worker-metric">
+                        <div class="worker-metric-value">${worker.cpu}%</div>
+                        <div class="worker-metric-label">CPU</div>
+                    </div>
+                    <div class="worker-metric">
+                        <div class="worker-metric-value">${worker.memory} GB</div>
+                        <div class="worker-metric-label">Memory</div>
+                    </div>
+                    <div class="worker-metric">
+                        <div class="worker-metric-value">${worker.tasks_completed}</div>
+                        <div class="worker-metric-label">Tasks</div>
+                    </div>
+                    <div class="worker-metric">
+                        <div class="worker-metric-value">${worker.success_rate}%</div>
+                        <div class="worker-metric-label">Success</div>
+                    </div>
+                </div>
+                <div class="hardware-indicators">
+                    ${renderHardwareIndicators(worker.hardware)}
+                </div>
+            `;
+            
+            workerList.appendChild(workerCard);
+        });
+    }
+    
+    // Render hardware indicators
+    function renderHardwareIndicators(hardware) {
+        const allHardware = ['cpu', 'cuda', 'rocm', 'mps', 'openvino', 'qualcomm', 'webnn', 'webgpu'];
+        const icons = {
+            cpu: '<i class="fas fa-microchip"></i>',
+            cuda: '<i class="fas fa-bolt"></i>',
+            rocm: '<i class="fas fa-memory"></i>',
+            mps: '<i class="fab fa-apple"></i>',
+            openvino: '<i class="fas fa-brain"></i>',
+            qualcomm: '<i class="fas fa-mobile-alt"></i>',
+            webnn: '<i class="fas fa-globe"></i>',
+            webgpu: '<i class="fas fa-cube"></i>'
+        };
+        
+        return allHardware.map(hw => {
+            const available = hardware.includes(hw);
+            const availableClass = available ? 'hardware-available' : 'hardware-unavailable';
+            
+            return `
+                <div class="hardware-indicator ${availableClass}">
+                    <div class="hardware-icon">
+                        ${icons[hw] || '<i class="fas fa-question"></i>'}
+                    </div>
+                    <span>${hw.toUpperCase()}</span>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    // Render task queue
+    function renderTaskQueue(tasks, filter) {
+        const taskQueue = document.getElementById('task-queue');
+        taskQueue.innerHTML = '';
+        
+        // Filter tasks
+        const filteredTasks = filter === 'all' ? 
+            tasks : 
+            tasks.filter(task => task.status === filter);
+        
+        if (filteredTasks.length === 0) {
+            taskQueue.innerHTML = '<div class="empty-state">No tasks found</div>';
+            return;
+        }
+        
+        filteredTasks.forEach(task => {
+            const taskItem = document.createElement('div');
+            taskItem.className = 'task-item';
+            
+            // Status class
+            const statusClass = `status-${task.status === 'running' ? 'active' : 
+                                       task.status === 'completed' ? 'completed' : 
+                                       task.status === 'failed' ? 'failed' : 'running'}`;
+            
+            // Create task item content
+            taskItem.innerHTML = `
+                <div class="task-details">
+                    <div class="task-id">${task.id}</div>
+                    <div class="task-type">${task.type}</div>
+                </div>
+                <div class="task-priority">
+                    <div class="priority-indicator priority-${task.priority}">${task.priority}</div>
+                    <span class="worker-status ${statusClass}">${task.status}</span>
+                </div>
+            `;
+            
+            taskQueue.appendChild(taskItem);
+        });
+    }
+    
+    // Update cluster overview with API data
+    function updateClusterOverview() {
+        if (!clusterData) return;
+        
+        // Update active workers count
+        document.getElementById('active-workers-count').textContent = clusterData.active_workers;
+        
+        // Update total tasks count
+        document.getElementById('total-tasks-count').textContent = clusterData.total_tasks;
+        
+        // Update success rate
+        document.getElementById('success-rate').textContent = `${clusterData.success_rate}%`;
+        
+        // Update health score
+        document.getElementById('cluster-health-score').textContent = `${clusterData.health.score}%`;
+        
+        // Update health indicator
+        const healthIndicator = document.getElementById('cluster-health-indicator');
+        healthIndicator.className = 'status-indicator';
+        healthIndicator.classList.add(`status-${clusterData.health.status}`);
+        
+        // Update trends
+        updateTrendIndicator('workers', clusterData.trends.workers);
+        updateTrendIndicator('tasks', clusterData.trends.tasks);
+        updateTrendIndicator('success-rate', clusterData.trends.success_rate);
+    }
+    
+    // Update trend indicators
+    function updateTrendIndicator(metricName, trendData) {
+        const trendsContainers = document.querySelectorAll('.metric-trend');
+        trendsContainers.forEach(container => {
+            // Find the container for this metric
+            const metricContainer = container.closest('.metric-card');
+            const metricValue = metricContainer.querySelector('.metric-value');
+            
+            if (metricValue && metricValue.id.includes(metricName)) {
+                const icon = container.querySelector('i');
+                const text = container.querySelector('span');
+                
+                // Update icon
+                icon.className = '';
+                icon.classList.add('fas', `fa-${trendData.direction === 'up' ? 'arrow-up' : trendData.direction === 'down' ? 'arrow-down' : 'equals'}`);
+                icon.classList.add(`trend-${trendData.status}`);
+                
+                // Update text
+                text.textContent = `${trendData.direction === 'up' ? '+' : trendData.direction === 'down' ? '-' : ''}${trendData.value} in last hour`;
+            }
+        });
+    }
+    
+    // Update resource charts with API data
+    function updateResourceCharts() {
+        if (!resourceData) return;
+        
+        // Update CPU usage chart
+        if (resourceData.cpu && cpuChart) {
+            cpuChart.data.labels = resourceData.cpu.labels;
+            cpuChart.data.datasets[0].data = resourceData.cpu.datasets[0].data;
+            cpuChart.data.datasets[1].data = resourceData.cpu.datasets[1].data;
+            cpuChart.update();
+        }
+        
+        // Update memory usage chart
+        if (resourceData.memory && memoryChart) {
+            memoryChart.data.labels = resourceData.memory.labels;
+            memoryChart.data.datasets[0].data = resourceData.memory.datasets[0].data;
+            memoryChart.data.datasets[1].data = resourceData.memory.datasets[1].data;
+            memoryChart.update();
+        }
+    }
+    
+    // Update hardware chart with API data
+    function updateHardwareChart() {
+        if (!hardwareData || !hardwareChart) return;
+        
+        hardwareChart.data.labels = hardwareData.labels;
+        hardwareChart.data.datasets[0].data = hardwareData.datasets[0].data;
+        hardwareChart.data.datasets[1].data = hardwareData.datasets[1].data;
+        hardwareChart.update();
+    }
+    
+    // Search workers
+    function searchWorkers() {
+        const searchTerm = document.getElementById('worker-search').value.toLowerCase();
+        if (!workersData) return;
+        
+        const filteredWorkers = workersData.filter(worker => 
+            worker.id.toLowerCase().includes(searchTerm) ||
+            worker.status.toLowerCase().includes(searchTerm) ||
+            worker.hardware.some(hw => hw.toLowerCase().includes(searchTerm))
+        );
+        renderWorkerList(filteredWorkers);
+    }
+    
+    // Initialize the dashboard
+    function initDashboard() {
+        // Initialize charts
+        initCharts();
+        
+        // Initialize network map
+        initNetworkMap();
+        
+        // Set up worker search
+        document.getElementById('worker-search').addEventListener('input', searchWorkers);
+        
+        // Set up task queue filter
+        document.getElementById('queue-filter').addEventListener('change', function() {
+            if (tasksData) {
+                renderTaskQueue(tasksData, this.value);
+            } else {
+                // If no data yet, fetch with filter
+                const filter = this.value;
+                fetch(`/api/monitoring/tasks${filter !== 'all' ? '?status=' + filter : ''}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        tasksData = data;
+                        renderTaskQueue(tasksData, filter);
+                    })
+                    .catch(error => console.error('Error fetching task queue:', error));
+            }
+        });
+        
+        // Set up refresh button
+        document.getElementById('refresh-data').addEventListener('click', refreshData);
+        
+        // Set up auto-refresh for polling mode (not needed when WebSocket is active)
+        const autoRefreshCheckbox = document.getElementById('auto-refresh');
+        const refreshIntervalInput = document.getElementById('refresh-interval');
+        
+        let autoRefreshInterval = null;
+        let usingWebSocket = false;
+        
+        function updateAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            
+            // Only set up the interval if we're not using WebSocket and auto-refresh is checked
+            if (autoRefreshCheckbox.checked && !usingWebSocket) {
+                const interval = parseInt(refreshIntervalInput.value, 10) || 10;
+                autoRefreshInterval = setInterval(refreshData, interval * 1000);
+                console.log(`Auto-refresh enabled with interval ${interval} seconds`);
+            }
+        }
+        
+        // When WebSocket connects/disconnects, update auto-refresh state
+        window.addEventListener('websocket-connected', function() {
+            usingWebSocket = true;
+            
+            // If we have an interval running, stop it
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            
+            // Update UI to indicate WebSocket mode
+            document.querySelector('.auto-refresh').innerHTML = `
+                <span class="websocket-indicator">
+                    <i class="fas fa-bolt" style="color: #28a745;"></i> WebSocket Connected
+                </span>
+            `;
+            
+            console.log('WebSocket connected, disabled polling auto-refresh');
+        });
+        
+        window.addEventListener('websocket-disconnected', function() {
+            usingWebSocket = false;
+            
+            // Restore the auto-refresh controls
+            document.querySelector('.auto-refresh').innerHTML = `
+                <label>
+                    <input type="checkbox" id="auto-refresh" checked>
+                    Auto-refresh every 
+                </label>
+                <input type="number" id="refresh-interval" class="refresh-interval" value="10" min="1" max="60">
+                seconds
+            `;
+            
+            // Re-add event listeners
+            document.getElementById('auto-refresh').addEventListener('change', updateAutoRefresh);
+            document.getElementById('refresh-interval').addEventListener('change', updateAutoRefresh);
+            
+            // Restart auto-refresh if it was previously checked
+            if (autoRefreshCheckbox.checked) {
+                updateAutoRefresh();
+            }
+            
+            console.log('WebSocket disconnected, falling back to polling');
+        });
+        
+        autoRefreshCheckbox.addEventListener('change', updateAutoRefresh);
+        refreshIntervalInput.addEventListener('change', updateAutoRefresh);
+        
+        // Initialize auto-refresh (will be disabled if WebSocket connects)
+        updateAutoRefresh();
+    }
+    
+    // Refresh data 
+    function refreshData() {
+        // Show refresh animation
+        document.getElementById('refresh-data').classList.add('rotating');
+        
+        // For WebSocket mode: just request an immediate update
+        if (typeof io !== 'undefined' && io.connected) {
+            // If connected to WebSocket, emit a request for fresh data
+            io().emit('request_monitoring_update', {});
+            console.log('Requested fresh monitoring data via WebSocket');
+        } else {
+            // Otherwise use polling
+            fetchDataWithPolling();
+            console.log('Fetched fresh monitoring data via polling');
+        }
+        
+        // Remove rotation class after animation completes
+        setTimeout(() => {
+            document.getElementById('refresh-data').classList.remove('rotating');
+        }, 1000);
+    }
+    
+    // Initialize when the DOM is loaded
+    document.addEventListener('DOMContentLoaded', initDashboard);
+</script>
+
+<style>
+@keyframes rotating {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.rotating {
+    animation: rotating 1s linear infinite;
+}
+
+@keyframes pulsate {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.8; background-color: var(--success-color); color: white; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.pulsate {
+    animation: pulsate 0.5s ease-in-out;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 20px;
+    color: var(--gray-color);
+}
+
+.hardware-indicators {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.websocket-indicator {
+    display: flex;
+    align-items: center;
+    font-weight: bold;
+    color: var(--success-color);
+}
+
+.websocket-indicator i {
+    margin-right: 5px;
+}
+</style>
+{% endblock %}

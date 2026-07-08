@@ -1,0 +1,10 @@
+Total files: 5
+Successfully fixed: 5
+Failed to fix: 0
+
+Fixed files:
+  - fixed_files_manual/test_hf_encoder_only.py
+  - fixed_files_manual/test_hf_encoder_decoder.py
+  - fixed_files_manual/test_hf_xlm_roberta.py
+  - fixed_files_manual/test_hf_gpt_neo.py
+  - fixed_files_manual/test_hf_decoder_only.py

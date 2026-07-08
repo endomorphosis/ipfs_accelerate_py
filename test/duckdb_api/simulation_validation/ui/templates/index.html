@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Home - {{ title }}{% endblock %}
+
+{% block header %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <!-- Overview -->
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-info-circle"></i> Overview</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead">Welcome to the Simulation Validation Framework Web UI.</p>
+                <p>This web interface allows you to validate simulation results against hardware results, 
+                calibrate simulation parameters, detect drift in simulation accuracy, and generate comprehensive reports.</p>
+                
+                <div class="row g-4 py-3">
+                    <div class="col-md-4">
+                        <div class="d-flex flex-column h-100 p-3 text-center border rounded {% if theme == 'dark' %}bg-dark border-secondary{% else %}bg-light{% endif %}">
+                            <h2><i class="bi bi-clipboard-check text-primary"></i></h2>
+                            <h5>Validation</h5>
+                            <p>Validate simulation results against hardware results</p>
+                            <div class="mt-auto">
+                                <a href="{{ url_for('validate') }}" class="btn btn-primary">Run Validation</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex flex-column h-100 p-3 text-center border rounded {% if theme == 'dark' %}bg-dark border-secondary{% else %}bg-light{% endif %}">
+                            <h2><i class="bi bi-sliders text-success"></i></h2>
+                            <h5>Calibration</h5>
+                            <p>Calibrate simulation parameters for better accuracy</p>
+                            <div class="mt-auto">
+                                <a href="{{ url_for('calibrate') }}" class="btn btn-success">Run Calibration</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex flex-column h-100 p-3 text-center border rounded {% if theme == 'dark' %}bg-dark border-secondary{% else %}bg-light{% endif %}">
+                            <h2><i class="bi bi-file-earmark-text text-info"></i></h2>
+                            <h5>Reports</h5>
+                            <p>Generate comprehensive reports from validation results</p>
+                            <div class="mt-auto">
+                                <a href="{{ url_for('generate_report') }}" class="btn btn-info">Generate Report</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recent Validation Results -->
+        {% if recent_validations %}
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-clock-history"></i> Recent Validation Results</h4>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table {% if theme == 'dark' %}table-dark{% endif %}">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Model</th>
+                                <th>Hardware</th>
+                                <th>Timestamp</th>
+                                <th>Accuracy</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for validation in recent_validations %}
+                            <tr>
+                                <td>{{ validation.id }}</td>
+                                <td>{{ validation.model_id }}</td>
+                                <td>{{ validation.hardware_id }}</td>
+                                <td>{{ validation.validation_timestamp }}</td>
+                                <td>
+                                    {% if validation.overall_accuracy_score is defined %}
+                                        {% if validation.overall_accuracy_score < 0.05 %}
+                                            <span class="status-good">{{ "%.2f"|format(validation.overall_accuracy_score * 100) }}%</span>
+                                        {% elif validation.overall_accuracy_score < 0.10 %}
+                                            <span class="status-warning">{{ "%.2f"|format(validation.overall_accuracy_score * 100) }}%</span>
+                                        {% else %}
+                                            <span class="status-bad">{{ "%.2f"|format(validation.overall_accuracy_score * 100) }}%</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('validation_details', validation_id=validation.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('validation_results') }}" class="btn btn-outline-primary">View All Results</a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Statistics -->
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-bar-chart"></i> Statistics</h4>
+            </div>
+            <div class="card-body">
+                <div class="row text-center g-3">
+                    <div class="col-sm-4">
+                        <div class="border rounded py-3 {% if theme == 'dark' %}bg-dark border-secondary{% else %}bg-light{% endif %}">
+                            <h5 class="mb-0">{{ validation_count }}</h5>
+                            <p class="text-muted mb-0">Validations</p>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="border rounded py-3 {% if theme == 'dark' %}bg-dark border-secondary{% else %}bg-light{% endif %}">
+                            <h5 class="mb-0">{{ hardware_count }}</h5>
+                            <p class="text-muted mb-0">Hardware</p>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="border rounded py-3 {% if theme == 'dark' %}bg-dark border-secondary{% else %}bg-light{% endif %}">
+                            <h5 class="mb-0">{{ model_count }}</h5>
+                            <p class="text-muted mb-0">Models</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Links -->
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-link-45deg"></i> Quick Links</h4>
+            </div>
+            <div class="card-body">
+                <div class="list-group {% if theme == 'dark' %}list-group-dark{% endif %}">
+                    <a href="{{ url_for('validate') }}" class="list-group-item list-group-item-action {% if theme == 'dark' %}bg-dark text-light border-secondary{% endif %}">
+                        <i class="bi bi-check-circle"></i> Run Validation
+                    </a>
+                    <a href="{{ url_for('calibrate') }}" class="list-group-item list-group-item-action {% if theme == 'dark' %}bg-dark text-light border-secondary{% endif %}">
+                        <i class="bi bi-sliders"></i> Run Calibration
+                    </a>
+                    <a href="{{ url_for('drift_detection') }}" class="list-group-item list-group-item-action {% if theme == 'dark' %}bg-dark text-light border-secondary{% endif %}">
+                        <i class="bi bi-graph-up"></i> Detect Drift
+                    </a>
+                    <a href="{{ url_for('parameter_discovery') }}" class="list-group-item list-group-item-action {% if theme == 'dark' %}bg-dark text-light border-secondary{% endif %}">
+                        <i class="bi bi-braces"></i> Discover Parameters
+                    </a>
+                    <a href="{{ url_for('generate_report') }}" class="list-group-item list-group-item-action {% if theme == 'dark' %}bg-dark text-light border-secondary{% endif %}">
+                        <i class="bi bi-file-earmark-text"></i> Generate Report
+                    </a>
+                    <a href="{{ url_for('dashboard') }}" class="list-group-item list-group-item-action {% if theme == 'dark' %}bg-dark text-light border-secondary{% endif %}">
+                        <i class="bi bi-speedometer2"></i> View Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Documentation -->
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-book"></i> Documentation</h4>
+            </div>
+            <div class="card-body">
+                <p>Learn more about the Simulation Validation Framework:</p>
+                <ul class="list-unstyled">
+                    <li><i class="bi bi-file-text"></i> <a href="#" target="_blank">User Guide</a></li>
+                    <li><i class="bi bi-file-code"></i> <a href="#" target="_blank">API Reference</a></li>
+                    <li><i class="bi bi-lightbulb"></i> <a href="#" target="_blank">Examples</a></li>
+                    <li><i class="bi bi-question-circle"></i> <a href="#" target="_blank">FAQ</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

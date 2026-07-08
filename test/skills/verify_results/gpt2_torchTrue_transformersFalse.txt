@@ -1,0 +1,21 @@
+2025-03-20 20:13:34,395 - WARNING - torch not available, using mock
+2025-03-20 20:13:36,680 - INFO - Testing model: gpt2
+2025-03-20 20:13:36,680 - INFO - Using cpu as preferred device
+2025-03-20 20:13:36,680 - INFO - Testing gpt2 with pipeline() on cpu...
+2025-03-20 20:13:37,325 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
+<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
+2025-03-20 20:13:45,711 - INFO - Testing gpt2 with from_pretrained() on cpu...
+2025-03-20 20:13:45,992 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
+
+TEST RESULTS SUMMARY:
+[34m🔷 Using MOCK OBJECTS for CI/CD testing only[0m
+   Dependencies: transformers=True, torch=False, tokenizers=True, sentencepiece=True
+✅ Successfully tested gpt2
+  - pipeline_cpu: 1.8615s average inference time
+  - from_pretrained_cpu: 0.0456s average inference time
+
+Example output:
+  Input: Once upon a time
+  Output: [{'generated_text': 'Once upon a time of many centuries the Church was an all-powerful social and cultural force, with considerable power and influence over the world. But before that, it possessed an...
+
+For detailed results, use --save flag and check the JSON output file.

@@ -1,0 +1,11 @@
+# MCP requirements for IPFS Accelerate
+fastmcp>=0.1.0
+uvicorn>=0.17.0
+fastapi>=0.95.0
+pydantic>=1.10.0
+psutil>=5.9.0
+numpy>=1.20.0
+requests>=2.28.0
+
+# Optional dependencies
+# torch>=2.0.0  # For CUDA detection and hardware acceleration

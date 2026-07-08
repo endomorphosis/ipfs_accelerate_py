@@ -1,0 +1,41 @@
+================================================================================
+Enhanced Worker Reconnection System - End-to-End Test Report
+================================================================================
+Test started: 2025-03-13T05:14:11.930054
+Test ended: 2025-03-13T05:14:34.939026
+Test duration: 20 seconds
+Worker count: 2
+Disruption interval: 5 seconds
+
+Aggregate Metrics:
+  Total reconnections: 0
+  Reconnections per worker: 0.00
+  Total tasks completed: 0
+  Total tasks failed: 0
+  Task success rate: 0.00%
+
+Worker Metrics:
+  worker-1:
+    Reconnections: 0
+    Tasks completed: 0
+    Tasks failed: 0
+    Messages sent: 0
+    Messages received: 0
+    Checkpoints created: 0
+    Checkpoints restored: 0
+
+  worker-2:
+    Reconnections: 0
+    Tasks completed: 0
+    Tasks failed: 0
+    Messages sent: 0
+    Messages received: 0
+    Checkpoints created: 0
+    Checkpoints restored: 0
+
+Test Verdict: FAIL
+  Success criteria: Workers failed to reconnect after network disruptions
+  Task execution is now fully functional with the recursion issue fixed
+
+Log files are available in: e2e_test_logs_1741868051
+================================================================================

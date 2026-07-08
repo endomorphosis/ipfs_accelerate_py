@@ -1,0 +1,1167 @@
+"""DuckDB-backed task queue for distributed inference.
+
+This is a lightweight task delegation mechanism used by both ipfs_datasets_py and
+ipfs_accelerate_py. Schema is stable and backwards compatible.
+
+Environment:
+- IPFS_ACCELERATE_PY_TASK_QUEUE_PATH (preferred)
+- IPFS_DATASETS_PY_TASK_QUEUE_PATH (compat)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import random
+import threading
+import time
+import uuid
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, Optional
+
+
+@dataclass(frozen=True)
+class QueuedTask:
+    task_id: str
+    task_type: str
+    model_name: str
+    payload: Dict[str, Any]
+    created_at: float
+    status: str
+    assigned_worker: Optional[str] = None
+
+
+def default_queue_path() -> str:
+    return os.environ.get(
+        "IPFS_ACCELERATE_PY_TASK_QUEUE_PATH",
+        os.environ.get(
+            "IPFS_DATASETS_PY_TASK_QUEUE_PATH",
+            os.path.join(os.path.expanduser("~"), ".cache", "ipfs_datasets_py", "task_queue.duckdb"),
+        ),
+    )
+
+
+class TaskQueue:
+    """DuckDB-backed task queue.
+
+    Concurrency model:
+    - multiple workers may poll concurrently
+    - claiming uses an atomic UPDATE guarded by a transaction
+    """
+
+    def __init__(self, path: Optional[str] = None):
+        self.path = path or default_queue_path()
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+
+        # DuckDB connection management:
+        # - In practice, p2p stream handlers may invoke TaskQueue concurrently.
+        # - DuckDB 1.4.x can intermittently raise binder errors like
+        #   "Unique file handle conflict: Cannot attach ... already attached"
+        #   when connections are created concurrently.
+        # Use a single shared connection per TaskQueue instance and serialize
+        # access with a lock to keep behavior deterministic.
+        self._conn_lock = threading.RLock()
+        self._conn: object | None = None
+        self._init_db()
+
+    def _connect(self):
+        try:
+            import duckdb  # type: ignore
+        except Exception as exc:
+            raise RuntimeError("duckdb is required for TaskQueue") from exc
+
+        # Best-effort retries to handle transient connection races.
+        last_exc: Exception | None = None
+        for attempt in range(8):
+            try:
+                return duckdb.connect(self.path)
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc)
+                low = msg.lower()
+                if (
+                    "unique file handle conflict" in low
+                    or "already attached" in low
+                    or "catalog" in low
+                    and "conflict" in low
+                ):
+                    time.sleep(0.02 * (attempt + 1))
+                    continue
+                raise
+
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("duckdb.connect failed")
+
+    def _get_conn(self):
+        with self._conn_lock:
+            if self._conn is None:
+                self._conn = self._connect()
+            return self._conn
+
+    def close(self) -> None:
+        with self._conn_lock:
+            conn = self._conn
+            self._conn = None
+        if conn is not None:
+            try:
+                conn.close()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+    def _init_db(self) -> None:
+        # DuckDB can throw transient write-write conflicts if multiple processes
+        # (or threads) try to create the schema at the same time.
+        last_exc: Exception | None = None
+        for attempt in range(12):
+            with self._conn_lock:
+                # Force a fresh connection if init previously failed.
+                try:
+                    if self._conn is None:
+                        self._conn = self._connect()
+                    conn = self._conn
+                except Exception as exc:
+                    last_exc = exc
+                    time.sleep(0.05 * (attempt + 1))
+                    continue
+
+                try:
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS tasks (
+                            task_id VARCHAR PRIMARY KEY,
+                            task_type VARCHAR NOT NULL,
+                            model_name VARCHAR NOT NULL,
+                            payload_json VARCHAR NOT NULL,
+                            status VARCHAR NOT NULL,
+                            assigned_worker VARCHAR,
+                            created_at DOUBLE NOT NULL,
+                            updated_at DOUBLE NOT NULL,
+                            result_json VARCHAR,
+                            error VARCHAR
+                        )
+                        """
+                    )
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)")
+                    return
+                except Exception as exc:
+                    last_exc = exc
+                    msg = str(exc).lower()
+                    # Reset connection and retry on transient write/attach conflicts.
+                    if (
+                        "write-write conflict" in msg
+                        or "unique file handle conflict" in msg
+                        or "already attached" in msg
+                        or "catalog" in msg
+                        and "conflict" in msg
+                    ):
+                        try:
+                            if self._conn is not None:
+                                self._conn.close()  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
+                        self._conn = None
+                        time.sleep(0.05 * (attempt + 1))
+                        continue
+                    raise
+
+        if last_exc is not None:
+            raise last_exc
+
+    def submit(
+        self,
+        *,
+        task_type: str,
+        model_name: str,
+        payload: Dict[str, Any],
+        task_id: Optional[str] = None,
+    ) -> str:
+        tid = task_id or uuid.uuid4().hex
+        now = time.time()
+        payload_json = json.dumps(payload, sort_keys=True)
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            conn.execute(
+                """
+                INSERT INTO tasks(
+                    task_id,
+                    task_type,
+                    model_name,
+                    payload_json,
+                    status,
+                    assigned_worker,
+                    created_at,
+                    updated_at
+                )
+                VALUES(?, ?, ?, ?, 'queued', NULL, ?, ?)
+                """,
+                (tid, str(task_type), str(model_name), payload_json, now, now),
+            )
+        return tid
+
+    def get(self, task_id: str) -> Optional[Dict[str, Any]]:
+        if not task_id:
+            return None
+
+        # Use a fresh connection so readers reliably observe updates from other
+        # TaskQueue instances (e.g. worker heartbeats) across threads/processes.
+        with self._conn_lock:
+            conn = self._connect()
+            try:
+                row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        if row is None:
+            return None
+
+        (
+            _task_id,
+            task_type,
+            model_name,
+            payload_json,
+            status,
+            assigned_worker,
+            created_at,
+            updated_at,
+            result_json,
+            error,
+        ) = row
+
+        result: Any = None
+        if isinstance(result_json, str) and result_json:
+            try:
+                result = json.loads(result_json)
+            except Exception:
+                result = result_json
+        return {
+            "task_id": _task_id,
+            "task_type": task_type,
+            "model_name": model_name,
+            "payload": json.loads(payload_json),
+            "status": status,
+            "assigned_worker": assigned_worker,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "result": result,
+            "error": error,
+        }
+
+    def list(
+        self,
+        *,
+        status: Optional[str] = None,
+        limit: int = 100,
+        task_types: Optional[Iterable[str]] = None,
+    ) -> list[Dict[str, Any]]:
+        """List tasks (best-effort, for debugging/visibility).
+
+        Args:
+            status: Optional status filter (e.g. queued/running/completed/failed)
+            limit: Max rows returned
+            task_types: Optional task_type allowlist
+        """
+
+        lim = max(1, min(int(limit or 100), 1000))
+        status_norm = str(status).strip().lower() if status is not None else ""
+        types = [t for t in (task_types or []) if isinstance(t, str) and t.strip()]
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            if status_norm and types:
+                placeholders = ",".join(["?"] * len(types))
+                rows = conn.execute(
+                    (
+                        "SELECT * FROM tasks WHERE status=? "
+                        f"AND task_type IN ({placeholders}) "
+                        "ORDER BY created_at ASC LIMIT ?"
+                    ),
+                    (status_norm, *types, lim),
+                ).fetchall()
+            elif status_norm:
+                rows = conn.execute(
+                    "SELECT * FROM tasks WHERE status=? ORDER BY created_at ASC LIMIT ?",
+                    (status_norm, lim),
+                ).fetchall()
+            elif types:
+                placeholders = ",".join(["?"] * len(types))
+                rows = conn.execute(
+                    f"SELECT * FROM tasks WHERE task_type IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",
+                    (*types, lim),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM tasks ORDER BY created_at ASC LIMIT ?",
+                    (lim,),
+                ).fetchall()
+
+        out: list[Dict[str, Any]] = []
+        for row in rows or []:
+            (
+                _task_id,
+                task_type,
+                model_name,
+                payload_json,
+                st,
+                assigned_worker,
+                created_at,
+                updated_at,
+                result_json,
+                error,
+            ) = row
+
+            try:
+                payload = json.loads(payload_json)
+            except Exception:
+                payload = {"raw": payload_json}
+
+            result: Any = None
+            if isinstance(result_json, str) and result_json:
+                try:
+                    result = json.loads(result_json)
+                except Exception:
+                    result = result_json
+
+            out.append(
+                {
+                    "task_id": str(_task_id),
+                    "task_type": str(task_type),
+                    "model_name": str(model_name),
+                    "payload": payload if isinstance(payload, dict) else {"payload": payload},
+                    "status": str(st),
+                    "assigned_worker": str(assigned_worker) if assigned_worker else None,
+                    "created_at": float(created_at),
+                    "updated_at": float(updated_at),
+                    "result": result,
+                    "error": str(error) if error else None,
+                }
+            )
+        return out
+
+    def counts_by_task_type(
+        self,
+        *,
+        status: Optional[str] = None,
+        task_types: Optional[Iterable[str]] = None,
+    ) -> Dict[str, int]:
+        """Return counts grouped by task_type.
+
+        This is intended for lightweight monitoring/autoscaling logic.
+        """
+
+        status_norm = str(status).strip().lower() if status is not None else ""
+        types = [t for t in (task_types or []) if isinstance(t, str) and t.strip()]
+
+        where = []
+        params: list[Any] = []
+        if status_norm:
+            where.append("status = ?")
+            params.append(status_norm)
+        if types:
+            where.append("task_type IN (%s)" % ",".join(["?"] * len(types)))
+            params.extend([str(t) for t in types])
+
+        sql = "SELECT task_type, COUNT(*) AS n FROM tasks"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " GROUP BY task_type"
+
+        # Use a fresh connection so readers reliably observe updates from other
+        # TaskQueue instances across threads/processes.
+        with self._conn_lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(sql, params).fetchall()
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        out: Dict[str, int] = {}
+        for row in rows or []:
+            try:
+                ttype, n = row
+                out[str(ttype)] = int(n)
+            except Exception:
+                continue
+        return out
+
+    def count(
+        self,
+        *,
+        status: Optional[str] = None,
+        task_types: Optional[Iterable[str]] = None,
+    ) -> int:
+        """Return a total count of tasks matching filters."""
+
+        counts = self.counts_by_task_type(status=status, task_types=task_types)
+        return int(sum(int(v) for v in counts.values()))
+
+    def claim_next(
+        self,
+        *,
+        worker_id: str,
+        supported_task_types: Optional[Iterable[str]] = None,
+        session_id: str | None = None,
+    ) -> Optional[QueuedTask]:
+        if not worker_id:
+            raise ValueError("worker_id is required")
+
+        task_types = [t for t in (supported_task_types or []) if isinstance(t, str) and t.strip()]
+        session = str(session_id or "").strip()
+        now = time.time()
+
+        required_expr = (
+            "coalesce("
+            "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
+            "nullif(json_extract_string(payload_json, '$.session'), ''), "
+            "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
+            ")"
+        )
+
+        sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
+
+        def _is_transient_conflict(exc: Exception) -> bool:
+            msg = str(exc or "")
+            low = msg.lower()
+            return (
+                "conflict on tuple" in low
+                or "transactioncontext" in low
+                or ("transaction" in low and "conflict" in low)
+            )
+
+        row2 = None
+        for attempt in range(8):
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN TRANSACTION")
+
+                where: list[str] = ["status='queued'"]
+                params: list[object] = []
+
+                if task_types:
+                    placeholders = ",".join(["?"] * len(task_types))
+                    where.append(f"task_type IN ({placeholders})")
+                    params.extend([str(t) for t in task_types])
+
+                # Optional per-task sticky routing (session resume affinity).
+                where.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+                params.append(str(worker_id))
+
+                if session:
+                    where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+                    params.append(str(session))
+
+                where_sql = " AND ".join(where)
+                row = conn.execute(
+                    f"SELECT task_id FROM tasks WHERE {where_sql} ORDER BY created_at ASC LIMIT 1",
+                    tuple(params),
+                ).fetchone()
+
+                if row is None:
+                    conn.execute("COMMIT")
+                    return None
+
+                task_id = str(row[0])
+
+                # Re-check sticky+session guards at update time to avoid races.
+                update_sql = (
+                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                    f"WHERE task_id=? AND status='queued' "
+                    f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
+                )
+                update_params: list[object] = [str(worker_id), now, task_id, str(worker_id)]
+                if session:
+                    update_sql += f" AND ({required_expr} IS NULL OR {required_expr} = ?)"
+                    update_params.append(str(session))
+                conn.execute(update_sql, tuple(update_params))
+
+                row2 = conn.execute(
+                    "SELECT * FROM tasks WHERE task_id=? AND status='running' AND assigned_worker=?",
+                    (task_id, str(worker_id)),
+                ).fetchone()
+                conn.execute("COMMIT")
+
+                if row2 is None:
+                    return None
+                break
+            except Exception as exc:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                if attempt < 7 and _is_transient_conflict(exc):
+                    time.sleep(0.002 + random.random() * 0.02)
+                    continue
+                raise
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        if row2 is None:
+            return None
+
+        try:
+            payload = json.loads(row2[3])
+        except Exception:
+            payload = {"raw": row2[3]}
+
+        return QueuedTask(
+            task_id=str(row2[0]),
+            task_type=str(row2[1]),
+            model_name=str(row2[2]),
+            payload=payload if isinstance(payload, dict) else {"payload": payload},
+            created_at=float(row2[6]),
+            status=str(row2[4]),
+            assigned_worker=str(row2[5]) if row2[5] else None,
+        )
+
+    def claim_next_many(
+        self,
+        *,
+        worker_id: str,
+        supported_task_types: Optional[Iterable[str]] = None,
+        max_tasks: int = 1,
+        same_task_type: bool = True,
+        session_id: str | None = None,
+    ) -> list[QueuedTask]:
+        """Atomically claim up to `max_tasks` queued tasks.
+
+        When `same_task_type=True`, the first claimed task determines the
+        `task_type`, and the method claims additional queued tasks of that same
+        type (FIFO by created_at). This is useful for batching homogeneous work
+        (e.g., text-generation).
+        """
+
+        if not worker_id:
+            raise ValueError("worker_id is required")
+
+        try:
+            limit = int(max_tasks)
+        except Exception:
+            limit = 1
+        limit = max(1, min(limit, 128))
+
+        task_types = [t for t in (supported_task_types or []) if isinstance(t, str) and t.strip()]
+        session = str(session_id or "").strip()
+        now = time.time()
+
+        required_expr = (
+            "coalesce("
+            "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
+            "nullif(json_extract_string(payload_json, '$.session'), ''), "
+            "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
+            ")"
+        )
+
+        sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
+
+        def _is_transient_conflict(exc: Exception) -> bool:
+            msg = str(exc or "")
+            low = msg.lower()
+            return (
+                "conflict on tuple" in low
+                or "transactioncontext" in low
+                or ("transaction" in low and "conflict" in low)
+            )
+
+        rows2: list[object] = []
+        for attempt in range(8):
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN TRANSACTION")
+
+                # Pick the oldest queued task (optionally filtered by supported types)
+                # to establish the batch's task_type.
+                picked_type: str | None = None
+                if same_task_type:
+                    where0: list[str] = ["status='queued'"]
+                    params0: list[object] = []
+                    if task_types:
+                        placeholders = ",".join(["?"] * len(task_types))
+                        where0.append(f"task_type IN ({placeholders})")
+                        params0.extend([str(t) for t in task_types])
+                    where0.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+                    params0.append(str(worker_id))
+                    if session:
+                        where0.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+                        params0.append(str(session))
+                    where0_sql = " AND ".join(where0)
+                    row0 = conn.execute(
+                        f"SELECT task_type FROM tasks WHERE {where0_sql} ORDER BY created_at ASC LIMIT 1",
+                        tuple(params0),
+                    ).fetchone()
+                    if row0 is None:
+                        conn.execute("COMMIT")
+                        return []
+                    picked_type = str(row0[0])
+
+                # Select task_ids to claim.
+                params: list[object] = []
+                where = ["status='queued'"]
+                if task_types:
+                    placeholders = ",".join(["?"] * len(task_types))
+                    where.append(f"task_type IN ({placeholders})")
+                    params.extend([str(t) for t in task_types])
+                if same_task_type and picked_type:
+                    where.append("task_type = ?")
+                    params.append(str(picked_type))
+                where.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+                params.append(str(worker_id))
+                if session:
+                    where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+                    params.append(str(session))
+
+                where_sql = " AND ".join(where)
+                rows = conn.execute(
+                    (
+                        f"SELECT task_id FROM tasks WHERE {where_sql} "
+                        "ORDER BY created_at ASC "
+                        f"LIMIT {int(limit)}"
+                    ),
+                    tuple(params),
+                ).fetchall()
+                ids = [str(r[0]) for r in (rows or []) if r and r[0]]
+                if not ids:
+                    conn.execute("COMMIT")
+                    return []
+
+                id_placeholders = ",".join(["?"] * len(ids))
+                if session:
+                    # NOTE: this is best-effort; it prevents accidental claims even
+                    # if the initial SELECT raced with another session.
+                    sql = (
+                        "UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                        f"WHERE task_id IN ({id_placeholders}) AND status='queued' "
+                        f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?) "
+                        f"AND ({required_expr} IS NULL OR {required_expr} = ?)"
+                    )
+                    conn.execute(
+                        sql,
+                        tuple([str(worker_id), now] + ids + [str(worker_id), str(session)]),
+                    )
+                else:
+                    sql = (
+                        "UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                        f"WHERE task_id IN ({id_placeholders}) AND status='queued' "
+                        f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
+                    )
+                    conn.execute(
+                        sql,
+                        tuple([str(worker_id), now] + ids + [str(worker_id)]),
+                    )
+
+                rows2 = conn.execute(
+                    (
+                        f"SELECT * FROM tasks WHERE task_id IN ({id_placeholders}) "
+                        "AND status='running' AND assigned_worker=? "
+                        "ORDER BY created_at ASC"
+                    ),
+                    tuple(ids + [str(worker_id)]),
+                ).fetchall()
+
+                conn.execute("COMMIT")
+                break
+            except Exception as exc:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                if attempt < 7 and _is_transient_conflict(exc):
+                    time.sleep(0.002 + random.random() * 0.02)
+                    continue
+                raise
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        out: list[QueuedTask] = []
+        for row2 in rows2 or []:
+            try:
+                payload = json.loads(row2[3])
+            except Exception:
+                payload = {"raw": row2[3]}
+
+            out.append(
+                QueuedTask(
+                    task_id=str(row2[0]),
+                    task_type=str(row2[1]),
+                    model_name=str(row2[2]),
+                    payload=payload if isinstance(payload, dict) else {"payload": payload},
+                    created_at=float(row2[6]),
+                    status=str(row2[4]),
+                    assigned_worker=str(row2[5]) if row2[5] else None,
+                )
+            )
+        return out
+
+    def claim(
+        self,
+        *,
+        task_id: str,
+        worker_id: str,
+        session_id: str | None = None,
+    ) -> Optional[QueuedTask]:
+        """Atomically claim a specific queued task by id."""
+
+        if not task_id:
+            return None
+        if not worker_id:
+            raise ValueError("worker_id is required")
+
+        now = time.time()
+        session = str(session_id or "").strip()
+        required_expr = (
+            "coalesce("
+            "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
+            "nullif(json_extract_string(payload_json, '$.session'), ''), "
+            "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
+            ")"
+        )
+        sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN TRANSACTION")
+            if session:
+                conn.execute(
+                    f"""
+                    UPDATE tasks
+                    SET status='running', assigned_worker=?, updated_at=?
+                    WHERE task_id=? AND status='queued'
+                      AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)
+                      AND ({required_expr} IS NULL OR {required_expr} = ?)
+                    """,
+                    (str(worker_id), now, str(task_id), str(worker_id), str(session)),
+                )
+            else:
+                conn.execute(
+                    f"""
+                    UPDATE tasks
+                    SET status='running', assigned_worker=?, updated_at=?
+                    WHERE task_id=? AND status='queued'
+                      AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)
+                    """.strip(),
+                    (str(worker_id), now, str(task_id), str(worker_id)),
+                )
+
+            row = conn.execute(
+                "SELECT * FROM tasks WHERE task_id=? AND status='running' AND assigned_worker=?",
+                (str(task_id), str(worker_id)),
+            ).fetchone()
+            conn.execute("COMMIT")
+        except Exception:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        if row is None:
+            return None
+
+        try:
+            payload = json.loads(row[3])
+        except Exception:
+            payload = {"raw": row[3]}
+
+        return QueuedTask(
+            task_id=str(row[0]),
+            task_type=str(row[1]),
+            model_name=str(row[2]),
+            payload=payload if isinstance(payload, dict) else {"payload": payload},
+            created_at=float(row[6]),
+            status=str(row[4]),
+            assigned_worker=str(row[5]) if row[5] else None,
+        )
+
+    def complete(
+        self,
+        *,
+        task_id: str,
+        status: str,
+        result: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+    ) -> bool:
+        if not task_id:
+            return False
+        status_norm = (status or "").strip().lower()
+        if status_norm not in {"completed", "failed", "cancelled"}:
+            status_norm = "failed"
+
+        def _json_dict(value: Any) -> Dict[str, Any]:
+            if isinstance(value, dict):
+                return value
+            if isinstance(value, str) and value:
+                try:
+                    parsed = json.loads(value)
+                    return parsed if isinstance(parsed, dict) else {}
+                except Exception:
+                    return {}
+            return {}
+
+        now = time.time()
+
+        # Merge any existing progress/logs with the final result so peers can
+        # keep observing stdout/stderr after completion.
+        with self._conn_lock:
+            conn = self._get_conn()
+            try:
+                existing_row = conn.execute(
+                    "SELECT result_json FROM tasks WHERE task_id=?",
+                    (str(task_id),),
+                ).fetchone()
+                existing = _json_dict(existing_row[0]) if existing_row else {}
+                incoming = result if isinstance(result, dict) else {}
+
+                merged: Dict[str, Any] = {}
+                if isinstance(existing, dict):
+                    merged.update(existing)
+                if isinstance(incoming, dict):
+                    merged.update(incoming)
+
+                # Preserve existing logs/progress if incoming doesn't provide them.
+                if "logs" in existing and "logs" not in incoming:
+                    merged["logs"] = existing.get("logs")
+                if "progress" in existing and "progress" not in incoming:
+                    merged["progress"] = existing.get("progress")
+
+                result_json = json.dumps(merged, sort_keys=True) if merged else None
+
+                conn.execute(
+                    """
+                    UPDATE tasks
+                    SET status=?, updated_at=?, result_json=?, error=?
+                    WHERE task_id=?
+                    """,
+                    (status_norm, now, result_json, str(error) if error else None, str(task_id)),
+                )
+                return True
+            except Exception as exc:
+                msg = str(exc).lower()
+                if (
+                    "write-write conflict" in msg
+                    or "catalog" in msg
+                    and "conflict" in msg
+                    or "conflict on tuple" in msg
+                    or "transactioncontext error" in msg
+                ):
+                    return False
+                raise
+
+    def cancel(self, *, task_id: str, reason: str | None = None) -> bool:
+        """Cancel a queued task.
+
+        This is used by higher-level orchestrators when a task is pinned to an
+        offline worker (e.g., session resume) and needs to be retried elsewhere.
+
+        Only tasks in status='queued' are cancelled.
+        """
+
+        if not task_id:
+            return False
+
+        now = time.time()
+
+        def _merge_progress(existing: Any) -> Dict[str, Any]:
+            base: Dict[str, Any] = {}
+            if isinstance(existing, dict):
+                base = dict(existing)
+            progress = base.get("progress")
+            if not isinstance(progress, dict):
+                progress = {}
+            base["progress"] = progress
+            return base
+
+        with self._conn_lock:
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN TRANSACTION")
+                row = conn.execute(
+                    "SELECT result_json FROM tasks WHERE task_id=? AND status='queued'",
+                    (str(task_id),),
+                ).fetchone()
+                if row is None:
+                    conn.execute("COMMIT")
+                    return False
+
+                try:
+                    existing = json.loads(row[0]) if row[0] else {}
+                except Exception:
+                    existing = {}
+
+                result_obj = _merge_progress(existing)
+                result_obj["progress"]["cancelled_at"] = now
+                if isinstance(reason, str) and reason.strip():
+                    result_obj["progress"]["cancel_reason"] = reason.strip()
+
+                conn.execute(
+                    (
+                        "UPDATE tasks SET status='cancelled', result_json=?, updated_at=? "
+                        "WHERE task_id=? AND status='queued'"
+                    ),
+                    (json.dumps(result_obj, sort_keys=True), now, str(task_id)),
+                )
+                conn.execute("COMMIT")
+                return True
+            except Exception:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    def delete(self, *, task_id: str) -> bool:
+        """Delete a task row by id.
+
+        This is intended for internal/ephemeral tasks where the caller already
+        returned the result to the requester (e.g. p2p call_tool -> tool.call).
+        """
+
+        if not task_id:
+            return False
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            try:
+                conn.execute("DELETE FROM tasks WHERE task_id=?", (str(task_id),))
+                return True
+            except Exception:
+                return False
+
+    def prune_terminal(
+        self,
+        *,
+        older_than_s: float,
+        limit: int = 1000,
+        statuses: Optional[Iterable[str]] = None,
+    ) -> int:
+        """Prune terminal tasks (completed/failed/cancelled) older than a cutoff."""
+
+        keep_s = float(older_than_s)
+        if keep_s <= 0:
+            return 0
+        lim = max(1, min(int(limit or 1000), 10000))
+
+        st_default = {"completed", "failed", "cancelled"}
+        st_in = [str(s).strip().lower() for s in (statuses or st_default) if str(s).strip()]
+        st_in = [s for s in st_in if s in st_default]
+        if not st_in:
+            st_in = sorted(st_default)
+
+        cutoff = time.time() - keep_s
+        placeholders = ",".join(["?"] * len(st_in))
+
+        # Delete in small batches to avoid long write locks.
+        sql = (
+            "DELETE FROM tasks WHERE task_id IN ("
+            "  SELECT task_id FROM tasks"
+            f"  WHERE status IN ({placeholders}) AND updated_at < ?"
+            "  ORDER BY updated_at ASC"
+            "  LIMIT ?"
+            ")"
+        )
+        params: list[Any] = [*st_in, float(cutoff), int(lim)]
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            try:
+                cur = conn.execute(sql, tuple(params))
+                try:
+                    return int(getattr(cur, "rowcount", 0) or 0)
+                except Exception:
+                    return 0
+            except Exception:
+                return 0
+
+    def release(
+        self,
+        *,
+        task_id: str,
+        worker_id: str,
+        reason: str | None = None,
+    ) -> bool:
+        """Best-effort: release a running task back to queued.
+
+        This is used when a worker claims a task but determines it should not
+        execute it (e.g., session-affinity mismatch).
+
+        Only releases tasks currently in status='running' and assigned to the
+        provided worker_id.
+        """
+
+        tid = str(task_id or "").strip()
+        wid = str(worker_id or "").strip()
+        if not tid or not wid:
+            return False
+
+        now = time.time()
+        try:
+            note = str(reason or "released")
+        except Exception:
+            note = "released"
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT result_json FROM tasks WHERE task_id=?",
+                    (tid,),
+                ).fetchone()
+                existing = {}
+                if row and isinstance(row[0], str) and row[0]:
+                    try:
+                        parsed = json.loads(row[0])
+                        existing = parsed if isinstance(parsed, dict) else {}
+                    except Exception:
+                        existing = {}
+
+                merged: Dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+                progress = merged.get("progress")
+                if not isinstance(progress, dict):
+                    progress = {}
+                progress = dict(progress)
+                progress.setdefault("release_count", 0)
+                try:
+                    progress["release_count"] = int(progress.get("release_count") or 0) + 1
+                except Exception:
+                    progress["release_count"] = 1
+                progress["last_release_reason"] = note
+                progress["last_release_ts"] = float(now)
+                merged["progress"] = progress
+
+                result_json = json.dumps(merged, sort_keys=True) if merged else None
+
+                conn.execute(
+                    """
+                    UPDATE tasks
+                    SET status='queued', assigned_worker=NULL, updated_at=?, result_json=?
+                    WHERE task_id=? AND status='running' AND assigned_worker=?
+                    """,
+                    (float(now), result_json, tid, wid),
+                )
+                return True
+            except Exception:
+                return False
+
+    def update(
+        self,
+        *,
+        task_id: str,
+        status: Optional[str] = None,
+        result_patch: Optional[Dict[str, Any]] = None,
+        append_log: Optional[str] = None,
+        log_stream: str = "stdout",
+        error: Optional[str] = None,
+        max_logs: int = 200,
+    ) -> bool:
+        """Best-effort task progress update.
+
+        This is intended for long-running tasks (e.g. docker) so peers can poll
+        `get`/`wait` and observe heartbeats + stdout/stderr incrementally.
+        """
+
+        if not task_id:
+            return False
+
+        status_norm = str(status).strip().lower() if status is not None else ""
+        if status_norm and status_norm not in {"queued", "running", "completed", "failed", "cancelled"}:
+            status_norm = ""
+
+        def _json_dict(value: Any) -> Dict[str, Any]:
+            if isinstance(value, dict):
+                return value
+            if isinstance(value, str) and value:
+                try:
+                    parsed = json.loads(value)
+                    return parsed if isinstance(parsed, dict) else {}
+                except Exception:
+                    return {}
+            return {}
+
+        now = time.time()
+        max_keep = max(0, min(int(max_logs or 200), 2000))
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT status, result_json FROM tasks WHERE task_id=?",
+                    (str(task_id),),
+                ).fetchone()
+                if not row:
+                    return False
+
+                current_status = str(row[0] or "")
+                current = _json_dict(row[1])
+
+                if isinstance(result_patch, dict) and result_patch:
+                    # Shallow merge patches into result dict.
+                    for k, v in result_patch.items():
+                        try:
+                            key = str(k)
+                            if isinstance(current.get(key), dict) and isinstance(v, dict):
+                                # Prefer merging nested dicts (e.g. progress) so
+                                # independent updaters can cooperate.
+                                merged = dict(current.get(key) or {})
+                                merged.update(v)
+                                current[key] = merged
+                            else:
+                                current[key] = v
+                        except Exception:
+                            continue
+
+                if append_log is not None:
+                    entry = {
+                        "ts": float(now),
+                        "stream": str(log_stream or "stdout"),
+                        "message": str(append_log),
+                    }
+                    logs = current.get("logs")
+                    if not isinstance(logs, list):
+                        logs = []
+                    logs.append(entry)
+                    if max_keep and len(logs) > max_keep:
+                        logs = logs[-max_keep:]
+                    current["logs"] = logs
+
+                result_json = json.dumps(current, sort_keys=True) if current else None
+                new_status = status_norm or current_status
+
+                conn.execute(
+                    """
+                    UPDATE tasks
+                    SET status=?, updated_at=?, result_json=?, error=?
+                    WHERE task_id=?
+                    """,
+                    (new_status, now, result_json, str(error) if error else None, str(task_id)),
+                )
+                return True
+            except Exception as exc:
+                msg = str(exc).lower()
+                if (
+                    "write-write conflict" in msg
+                    or "catalog" in msg
+                    and "conflict" in msg
+                    or "conflict on tuple" in msg
+                    or "transactioncontext error" in msg
+                ):
+                    return False
+                raise

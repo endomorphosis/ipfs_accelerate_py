@@ -1,0 +1,1 @@
+# fixes module for generators

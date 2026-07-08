@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Merkle DAG CRDT Visualization</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+    }
+    canvas {
+      width: 100%;
+      border: 1px solid #ccc;
+      background: linear-gradient(135deg, #f0f8ff, #e6f7ff);
+    }
+    .documentation {
+      margin-top: 20px;
+      min-width: 800px;
+    }
+    .docs-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 20px;
+    }
+    .docs-cell {
+      width: 50%;
+      padding: 20px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+      vertical-align: top;
+    }
+    hr {
+      margin: 20px 0;
+      border: none;
+      border-top: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="1400" height="600"></canvas>
+  
+  <hr>
+
+  <div class="documentation">
+    <table class="docs-table">
+      <tr>
+        <td class="docs-cell">
+          <h3>Left Panel: Merkle Clock DAG</h3>
+          <ul>
+            <li>Nodes represent transactions in a Merkle-based directed acyclic graph (DAG)</li>
+            <li>The gold-highlighted node indicates the current head of the Merkle logical clock</li>
+            <li>Node colors represent different peer origins</li>
+            <li>Lines visualize causal relationships and partial ordering between transactions</li>
+            <li>Each node displays:
+              <ul>
+                <li>Transaction ID</li>
+                <li>IPFS content-addressed hash</li>
+                <li>Peer vector information with distance metrics</li>
+              </ul>
+            </li>
+          </ul>
+        </td>
+        <td class="docs-cell">
+          <h3>Right Panel: Task Assignment System</h3>
+          <ul>
+            <li>Each peer maintains a prioritized transaction stack based on the Dot product of:
+              <ul>
+                <li>Hamming distance between peer ID and Merkle clock and head transaction hash</li>
+                <li>2d batch-normalized network latency metrics of all peers and transaction history. 
+              </ul>
+            </li>
+            <li>Red arrows show optimal task assignments determined by combined distance metrics</li>
+            <li>Peer headers display:
+              <ul>
+                <li>Peer identifier and IPFS peer ID</li>
+                <li>Current performance score based on assignment efficiency</li>
+                <li>Active transaction count and processing status</li>
+              </ul>
+            </li>
+            <li>Stack entries show transaction hashes and their composite distance scores</li>
+          </ul>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <script>
+    // --- Setup ---
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    // Define available peers and their colors
+    const peerList = ["peer1", "peer2", "peer3", "peer4", "peer5", "peer6", "peer7", "peer8", "peer9"];
+    const peerColors = {
+      "peer1": "#ff9999",
+      "peer2": "#99ff99", 
+      "peer3": "#9999ff",
+      "peer4": "#ffff99",
+      "peer5": "#ff99ff",
+      "peer6": "#99ffff",
+      "peer7": "#ff8c69",
+      "peer8": "#98fb98",
+      "peer9": "#dda0dd"
+    };
+
+    // Fixed positions for peer stacks in 3x3 grid
+    const RIGHT_PANEL_START = canvas.width / 2; // Split at half canvas width
+    const RIGHT_PANEL_WIDTH = canvas.width / 2;
+    const GRID_START_X = RIGHT_PANEL_START + 50; // Add padding from divider
+    const GRID_START_Y = 30;
+    const GRID_COL_WIDTH = (RIGHT_PANEL_WIDTH - 100) / 3; // Divide remaining space by 3 columns
+    const GRID_ROW_HEIGHT = 190;
+
+    const peerStackPositions = {
+      "peer1": { x: GRID_START_X, y: GRID_START_Y },
+      "peer2": { x: GRID_START_X + GRID_COL_WIDTH, y: GRID_START_Y },
+      "peer3": { x: GRID_START_X + (GRID_COL_WIDTH * 2), y: GRID_START_Y },
+      "peer4": { x: GRID_START_X, y: GRID_START_Y + GRID_ROW_HEIGHT },
+      "peer5": { x: GRID_START_X + GRID_COL_WIDTH, y: GRID_START_Y + GRID_ROW_HEIGHT },
+      "peer6": { x: GRID_START_X + (GRID_COL_WIDTH * 2), y: GRID_START_Y + GRID_ROW_HEIGHT },
+      "peer7": { x: GRID_START_X, y: GRID_START_Y + (GRID_ROW_HEIGHT * 2) },
+      "peer8": { x: GRID_START_X + GRID_COL_WIDTH, y: GRID_START_Y + (GRID_ROW_HEIGHT * 2) },
+      "peer9": { x: GRID_START_X + (GRID_COL_WIDTH * 2), y: GRID_START_Y + (GRID_ROW_HEIGHT * 2) }
+    };
+
+    // Updated IPFS peer IDs to be shorter
+    const ipfsPeerIds = {
+      "peer1": "QmW8CYxKUz5CzqR",
+      "peer2": "QmY7Yh2zHUpqkQv",
+      "peer3": "QmX9K8dQrXJKfPY",
+      "peer4": "QmP3FgX7mKjN8w",
+      "peer5": "QmR5tH2yWpLs9v",
+      "peer6": "QmT8vB4kMpE2xn",
+      "peer7": "QmU9nJ6pQwXmK",
+      "peer8": "QmV2kL7rNcPtY",
+      "peer9": "QmZ4wM8sRjLxK"
+    };
+
+    // Data structures with limits
+    const MAX_TRANSACTIONS = 30; // Limit total nodes in the tree
+    const MAX_STACK_ITEMS = 7; // Reduced stack items to fit more peers
+    let transactions = [];
+    let transactionCount = 0;
+    const peerStacks = {};
+    peerList.forEach(peer => peerStacks[peer] = []);
+    const assignmentMap = {};
+    const merkleClock = { head: null };
+
+    // Utility: Compute Hamming distance between two strings (pad shorter string)
+    function hammingDistance(str1, str2) {
+      const maxLen = Math.max(str1.length, str2.length);
+      const s1 = str1.padStart(maxLen, '0');
+      const s2 = str2.padStart(maxLen, '0');
+      let dist = 0;
+      for (let i = 0; i < maxLen; i++) {
+        if (s1[i] !== s2[i]) dist++;
+      }
+      return dist;
+    }
+
+    // Utility: Get a random number between min and max
+    function randomBetween(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    // Utility: Generate a dummy IPFS hash for a transaction
+    function generateIPFSHash(id) {
+      // For simplicity, combine 'Qm' with a random alphanumeric string and id
+      return 'Qm' + Math.random().toString(36).substring(2, 10) + id;
+    }
+
+    // --- Updated Genesis Initialization ---
+    function initGenesis() {
+      transactionCount++;
+      const genesis = {
+        id: 'tx' + transactionCount,
+        peerId: peerList[0],
+        // Place genesis at top center of left panel
+        x: 300,
+        y: 50,
+        parent: null,
+        hash: generateIPFSHash(transactionCount),
+        level: 0  // Root level
+      };
+      transactions.push(genesis);
+      merkleClock.head = genesis;
+    }
+
+    // --- Updated Transaction Addition ---
+    function addTransaction() {
+      // Check transaction limit
+      if (transactions.length >= MAX_TRANSACTIONS) {
+        // Remove oldest non-genesis transaction
+        const oldestNonGenesis = transactions.find((tx, idx) => idx > 0);
+        if (oldestNonGenesis) {
+          transactions = transactions.filter(tx => tx.id !== oldestNonGenesis.id);
+          // Clean up related assignments
+          delete assignmentMap[oldestNonGenesis.id];
+        }
+      }
+
+      transactionCount++;
+      const newPeer = peerList[randomBetween(0, peerList.length - 1)];
+      
+      // Select 1-2 random recent parents (from last 5 transactions)
+      const recentTxs = transactions.slice(-5);
+      const numParents = randomBetween(1, Math.min(2, recentTxs.length));
+      const parentIndices = new Set();
+      while (parentIndices.size < numParents) {
+        parentIndices.add(randomBetween(0, recentTxs.length - 1));
+      }
+      
+      const parents = Array.from(parentIndices).map(idx => recentTxs[idx]);
+      
+      // Improved positioning for Christmas tree shape
+      const avgParentX = parents.reduce((sum, p) => sum + p.x, 0) / parents.length;
+      const maxParentY = Math.max(...parents.map(p => p.y));
+      const level = Math.max(...parents.map(p => p.level)) + 1;
+      
+      // Tighter Christmas tree bounds for 50/50 split
+      const maxWidth = RIGHT_PANEL_START - 100; // Constrain to left panel width
+      const levelWidth = maxWidth * Math.max(0.2, (1 - level / 10)); // Gradually decrease width
+      const horizontalSpread = Math.max(20, levelWidth / 2);
+      
+      // Keep x position within left panel bounds
+      const minX = 50;
+      const maxX = RIGHT_PANEL_START - 50;
+      let newX = avgParentX + randomBetween(-horizontalSpread, horizontalSpread);
+      newX = Math.max(minX, Math.min(maxX, newX));
+      
+      // Keep y position within bounds
+      const newY = Math.min(550, maxParentY + 60);
+
+      const newHash = generateIPFSHash(transactionCount);
+      const peerIpfsId = ipfsPeerIds[newPeer];
+      const minLen = Math.min(peerIpfsId.length, newHash.length);
+      const distance = hammingDistance(
+        peerIpfsId.substring(0, minLen),
+        newHash.substring(0, minLen)
+      );
+
+      const newTx = {
+        id: 'tx' + transactionCount,
+        peerId: newPeer,
+        x: newX,
+        y: newY,
+        parents: parents.map(p => p.id),
+        hash: newHash,
+        level: level,
+        distance: distance
+      };
+      
+      transactions.push(newTx);
+      merkleClock.head = newTx;
+
+      // Matchmaking with stack size limit
+      let bestMatch = null;
+      let bestDistance = Infinity;
+      peerList.forEach(peer => {
+        const d = hammingDistance(
+          ipfsPeerIds[peer].substring(0, minLen),
+          newHash.substring(0, minLen)
+        );
+        if (d < bestDistance) {
+          bestDistance = d;
+          bestMatch = peer;
+        }
+      });
+
+      if (bestMatch) {
+        // Limit stack size
+        if (peerStacks[bestMatch].length >= MAX_STACK_ITEMS) {
+          peerStacks[bestMatch].shift(); // Remove oldest item
+        }
+        peerStacks[bestMatch].push({
+          ...newTx,
+          hammingDistance: bestDistance
+        });
+        assignmentMap[newTx.id] = bestMatch;
+        updatePeerScore(bestMatch, bestDistance);
+      }
+    }
+
+    // Drawing functions optimization
+    function drawDAG() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw divider at center
+      ctx.strokeStyle = '#000';
+      ctx.beginPath();
+      ctx.moveTo(RIGHT_PANEL_START, 0);
+      ctx.lineTo(RIGHT_PANEL_START, canvas.height);
+      ctx.stroke();
+
+      // Draw edges first (beneath nodes)
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#aaa';
+      transactions.forEach(tx => {
+        if (tx.parents) {
+          tx.parents.forEach(parentId => {
+            const parentTx = transactions.find(t => t.id === parentId);
+            if (parentTx) {
+              ctx.beginPath();
+              ctx.moveTo(parentTx.x, parentTx.y);
+              const midX = (parentTx.x + tx.x) / 2;
+              const midY = (parentTx.y + tx.y) / 2;
+              ctx.bezierCurveTo(
+                midX, parentTx.y,
+                midX, tx.y,
+                tx.x, tx.y
+              );
+              ctx.stroke();
+            }
+          });
+        }
+      });
+
+      // Draw nodes
+      transactions.forEach(tx => {
+        // Create gradient once per node
+        const gradient = ctx.createRadialGradient(tx.x, tx.y, 5, tx.x, tx.y, 20);
+        gradient.addColorStop(0, "white");
+        gradient.addColorStop(1, peerColors[tx.peerId] || "#ccc");
+
+        ctx.beginPath();
+        ctx.arc(tx.x, tx.y, 20, 0, 2 * Math.PI);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#333";
+        ctx.stroke();
+
+        // Organized text rendering
+        ctx.fillStyle = "#000";
+        ctx.font = "10px monospace";
+        // Transaction ID on top
+        ctx.fillText(tx.id, tx.x - 18, tx.y - 25);
+        // Hash below node
+        ctx.fillText(tx.hash.substring(0, 8), tx.x - 20, tx.y + 35);
+        // Peer info in vector format
+        ctx.font = "bold 10px sans-serif";
+        ctx.fillText(`< ${tx.peerId}, distance=${tx.distance} >`, tx.x - 35, tx.y + 50);
+      });
+
+      // Draw current head highlight
+      if (merkleClock.head) {
+        ctx.save();
+        ctx.shadowColor = 'gold';
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        ctx.arc(merkleClock.head.x, merkleClock.head.y, 25, 0, 2 * Math.PI);
+        ctx.strokeStyle = "gold";
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Batch draw all assignment arrows
+      ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
+      ctx.fillStyle = "rgba(255, 0, 0, 0.4)";
+      ctx.lineWidth = 2;
+      
+      transactions.forEach(tx => {
+        if (assignmentMap[tx.id]) {
+          const targetPos = peerStackPositions[assignmentMap[tx.id]];
+          const midX = (tx.x + targetPos.x) / 2;
+          
+          ctx.beginPath();
+          ctx.moveTo(tx.x, tx.y);
+          ctx.quadraticCurveTo(midX, tx.y, targetPos.x, targetPos.y);
+          ctx.stroke();
+          
+          const angle = Math.atan2(targetPos.y - tx.y, targetPos.x - tx.x);
+          const arrowLength = 10;
+          ctx.beginPath();
+          ctx.moveTo(targetPos.x, targetPos.y);
+          ctx.lineTo(
+            targetPos.x - arrowLength * Math.cos(angle - Math.PI/6),
+            targetPos.y - arrowLength * Math.sin(angle - Math.PI/6)
+          );
+          ctx.lineTo(
+            targetPos.x - arrowLength * Math.cos(angle + Math.PI/6),
+            targetPos.y - arrowLength * Math.sin(angle + Math.PI/6)
+          );
+          ctx.fill();
+        }
+      });
+    }
+
+    // Optimize peer stacks drawing with flexible layout
+    
+    // Track peer scores
+    const peerScores = {
+      "peer1": 0,
+      "peer2": 0,
+      "peer3": 0,
+      "peer4": 0,
+      "peer5": 0,
+      "peer6": 0,
+      "peer7": 0,
+      "peer8": 0,
+      "peer9": 0
+    };
+
+    function updatePeerScore(peerId, distance) {
+      // Lower distance means better score
+      peerScores[peerId] += (100 - distance) / 100;
+    }
+
+    function drawPeerStacks() {
+      const stackWidth = 160;
+      const stackHeight = 170;
+      const headerHeight = 35;
+      const itemHeight = 12;
+      const radius = 3;
+
+      peerList.forEach(peer => {
+        const pos = peerStackPositions[peer];
+        const items = peerStacks[peer];
+        
+        // Draw stack container with header
+        ctx.beginPath();
+        ctx.roundRect(pos.x, pos.y, stackWidth, stackHeight, radius);
+        ctx.strokeStyle = peerColors[peer];
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Header background
+        ctx.fillStyle = peerColors[peer] + '40';
+        ctx.fillRect(pos.x, pos.y, stackWidth, headerHeight);
+
+        // Header text
+        ctx.fillStyle = "#000";
+        ctx.font = "bold 12px sans-serif";
+        const peerNumber = peer.replace('peer', '');
+        ctx.fillText(`Peer ${peerNumber} | score: ${peerScores[peer].toFixed(2)}`, pos.x + 10, pos.y + 20);
+        ctx.font = "10px monospace";
+        ctx.fillText(`Peer ID: ${ipfsPeerIds[peer]}`, pos.x + 10, pos.y + 35);
+
+        // Stack items
+        const availableStackHeight = stackHeight - headerHeight - 10;
+        const maxVisibleItems = Math.floor(availableStackHeight / itemHeight);
+        const visibleItems = items.slice(-maxVisibleItems);
+        
+        let textY = pos.y + headerHeight + 15;
+
+        if (items.length > maxVisibleItems) {
+          ctx.fillText(`... ${items.length - maxVisibleItems} more ...`, 
+            pos.x + 10, textY);
+          textY += itemHeight;
+        }
+
+        visibleItems.forEach(tx => {
+          const text = `< ${tx.hash.substring(0, 8)}, distance=${tx.hammingDistance} >`;
+          ctx.fillText(text, pos.x + 10, textY);
+          textY += itemHeight + 2;
+        });
+      });
+    }
+
+    function updateVisualization() {
+      // Request next frame for smooth animation
+      requestAnimationFrame(() => {
+        drawDAG();
+        drawPeerStacks();
+      });
+    }
+
+    // Initialize genesis transaction
+    initGenesis();
+    updateVisualization();
+
+    // Slower interval for better performance
+    setInterval(() => {
+      addTransaction();
+      updateVisualization();
+    }, 3000); // Increased to 3 seconds
+
+  </script>
+</body>
+</html>

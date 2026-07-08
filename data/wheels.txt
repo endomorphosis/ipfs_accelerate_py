@@ -1,0 +1,6 @@
+./new-wheels/filelock-3.17.0-py3-none-any.whl
+./new-wheels/huggingface_hub-0.20.3-py3-none-any.whl
+./new-wheels/fsspec-2025.2.0-py3-none-any.whl
+./new-wheels/packaging-24.2-py3-none-any.whl
+./new-wheels/tqdm-4.67.1-py3-none-any.whl
+./new-wheels/typing_extensions-4.12.2-py3-none-any.whl

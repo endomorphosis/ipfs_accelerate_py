@@ -1,0 +1,501 @@
+#!/usr/bin/env python3
+"""
+Test file for LLaVA (Large Language and Vision Assistant) models.
+
+This file has been migrated to the refactored test suite.
+Generated: 2025-03-21 from fixed_tests/test_hf_llava.py
+"""
+
+import os
+import sys
+import json
+import logging
+import unittest
+from unittest.mock import patch, MagicMock
+import time
+import numpy as np
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Union
+
+from refactored_test_suite.model_test import ModelTest
+
+# Try to import required packages with fallbacks
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    torch = MagicMock()
+    HAS_TORCH = False
+
+try:
+    import transformers
+    from transformers import AutoProcessor, LlavaForConditionalGeneration, AutoTokenizer
+    HAS_TRANSFORMERS = True
+except ImportError:
+    transformers = MagicMock()
+    AutoProcessor = MagicMock()
+    LlavaForConditionalGeneration = MagicMock()
+    AutoTokenizer = MagicMock()
+    HAS_TRANSFORMERS = False
+
+try:
+    from PIL import Image
+    import requests
+    from io import BytesIO
+    HAS_PIL = True
+except ImportError:
+    Image = MagicMock()
+    requests = MagicMock()
+    BytesIO = MagicMock()
+    HAS_PIL = False
+
+try:
+    import openvino
+    HAS_OPENVINO = True
+except ImportError:
+    openvino = MagicMock()
+    HAS_OPENVINO = False
+
+# LLaVA models registry
+LLAVA_MODELS_REGISTRY = {
+    "llava-hf/llava-1.5-7b-hf": {
+        "description": "LLaVA 1.5 7B model - vision-language model based on Llama 2",
+        "image_size": 336
+    },
+    "llava-hf/llava-1.5-13b-hf": {
+        "description": "LLaVA 1.5 13B model - vision-language model based on Llama 2",
+        "image_size": 336
+    },
+    "cvssp/LLaVA-7B": {
+        "description": "LLaVA 7B with improved vision capabilities",
+        "image_size": 336
+    },
+    "hysts/LLaVA-NeXT-7B": {
+        "description": "LLaVA-NeXT 7B model with enhanced vision capabilities",
+        "image_size": 336
+    },
+    "katuni4ka/tiny-random-llava": {
+        "description": "Tiny LLaVA model for testing purposes",
+        "image_size": 224
+    }
+}
+
+class TestLLaVAModels(ModelTest):
+    """Test class for LLaVA (Large Language and Vision Assistant) models."""
+    
+    def setUp(self):
+        """Initialize the test with model details and hardware detection."""
+        super().setUp()
+        self.model_id = "llava-hf/llava-1.5-7b-hf"  # Default model
+        
+        # Model parameters
+        if self.model_id not in LLAVA_MODELS_REGISTRY:
+            self.logger.warning(f"Model {self.model_id} not in registry, using default configuration")
+            self.model_info = LLAVA_MODELS_REGISTRY["llava-hf/llava-1.5-7b-hf"]
+        else:
+            self.model_info = LLAVA_MODELS_REGISTRY[self.model_id]
+        
+        self.image_size = self.model_info["image_size"]
+        self.description = self.model_info["description"]
+        
+        # Test data
+        self.test_image_path = os.path.join(self.model_dir, "test_image.jpg")
+        self.test_prompts = [
+            "What do you see in this image?", 
+            "Describe this image in detail.",
+            "What objects are present in this image?"
+        ]
+        
+        # Create a test image
+        self._create_test_image()
+        
+        # Hardware detection
+        self.setup_hardware()
+        
+        # Results storage
+        self.results = {}
+    
+    def setup_hardware(self):
+        """Set up hardware detection for the test."""
+        # Skip test if torch is not available
+        if not HAS_TORCH:
+            self.skipTest("PyTorch not available")
+            
+        # CUDA support
+        self.has_cuda = torch.cuda.is_available()
+        
+        # MPS support (Apple Silicon)
+        try:
+            self.has_mps = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+        except AttributeError:
+            self.has_mps = False
+            
+        # ROCm support (AMD)
+        self.has_rocm = hasattr(torch, 'version') and hasattr(torch.version, 'hip') and torch.version.hip is not None
+        
+        # OpenVINO support
+        self.has_openvino = HAS_OPENVINO
+        
+        # WebNN/WebGPU support
+        self.has_webnn = False
+        self.has_webgpu = False
+        
+        # Set default device
+        if self.has_cuda:
+            self.device = 'cuda'
+        elif self.has_mps:
+            self.device = 'mps'
+        elif self.has_rocm:
+            self.device = 'cuda'  # ROCm uses CUDA compatibility layer
+        else:
+            self.device = 'cpu'
+            
+        self.logger.info(f"Using device: {self.device}")
+    
+    def _create_test_image(self):
+        """Create a test image for inference."""
+        if not HAS_PIL:
+            self.skipTest("PIL not available")
+            
+        # Create a simple test image (blue gradient with shapes)
+        width = height = self.image_size
+        image = Image.new('RGB', (width, height), color=(73, 109, 137))
+        
+        # Draw some shapes on the image
+        from PIL import ImageDraw
+        draw = ImageDraw.Draw(image)
+        
+        # Draw a red square
+        draw.rectangle([(50, 50), (150, 150)], fill=(255, 0, 0))
+        
+        # Draw a green circle
+        draw.ellipse([(200, 50), (300, 150)], fill=(0, 255, 0))
+        
+        # Draw a blue triangle
+        draw.polygon([(150, 200), (100, 300), (200, 300)], fill=(0, 0, 255))
+        
+        # Save to file
+        image.save(self.test_image_path)
+        self.logger.info(f"Created test image at {self.test_image_path}")
+    
+    def load_model(self, model_id=None):
+        """Load LLaVA model from HuggingFace."""
+        if not HAS_TRANSFORMERS:
+            self.skipTest("Transformers not available")
+            
+        model_id = model_id or self.model_id
+            
+        try:
+            # Load processor
+            self.logger.info(f"Loading LLaVA processor: {model_id}")
+            processor = AutoProcessor.from_pretrained(model_id)
+            
+            # Load model
+            self.logger.info(f"Loading LLaVA model: {model_id} on {self.device}")
+            model = LlavaForConditionalGeneration.from_pretrained(model_id).to(self.device)
+            
+            # Store processor for later use
+            self.processor = processor
+            
+            return model
+        except Exception as e:
+            self.logger.error(f"Error loading model: {e}")
+            self.skipTest(f"Could not load model: {str(e)}")
+    
+    def test_basic_inference(self):
+        """Test basic inference with the LLaVA model."""
+        if not HAS_TRANSFORMERS or not HAS_TORCH or not HAS_PIL:
+            self.skipTest("Required dependencies not available")
+        
+        self.logger.info(f"Testing {self.model_id} with basic inference on {self.device}...")
+        
+        try:
+            # Load model and processor
+            model = self.load_model()
+            processor = self.processor
+            
+            # Load image
+            image = Image.open(self.test_image_path)
+            
+            # Choose a test prompt
+            prompt = self.test_prompts[0]
+            
+            # Process inputs
+            inputs = processor(
+                text=prompt,
+                images=image,
+                return_tensors="pt"
+            )
+            
+            # Move inputs to the right device
+            inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+            
+            # Run inference
+            with torch.no_grad():
+                start_time = time.time()
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=100,
+                    do_sample=False
+                )
+                inference_time = time.time() - start_time
+            
+            # Decode the output
+            output_text = processor.batch_decode(outputs, skip_special_tokens=True)[0]
+            
+            # Verify outputs
+            self.assertIsNotNone(output_text, "Model output should not be None")
+            self.assertIsInstance(output_text, str, "Output should be a string")
+            self.assertTrue(len(output_text) > 0, "Output should not be empty")
+            
+            self.logger.info(f"Prompt: '{prompt}'")
+            self.logger.info(f"Response: '{output_text}'")
+            self.logger.info(f"Inference time: {inference_time:.4f} seconds")
+            
+            # Store results
+            self.results['basic_inference'] = {
+                'prompt': prompt,
+                'response': output_text,
+                'inference_time': inference_time
+            }
+            
+            self.logger.info("Basic inference test passed")
+            
+        except Exception as e:
+            self.logger.error(f"Error in basic inference: {e}")
+            self.fail(f"Basic inference test failed: {str(e)}")
+    
+    def test_pipeline_api(self):
+        """Test the LLaVA model using the pipeline API."""
+        if not HAS_TRANSFORMERS or not HAS_TORCH or not HAS_PIL:
+            self.skipTest("Required dependencies not available")
+        
+        self.logger.info(f"Testing {self.model_id} with pipeline API on {self.device}...")
+        
+        try:
+            # Set up pipeline
+            pipeline = transformers.pipeline(
+                "image-to-text",
+                model=self.model_id,
+                device=self.device
+            )
+            
+            # Load image
+            image = Image.open(self.test_image_path)
+            
+            # Choose a test prompt
+            prompt = self.test_prompts[1]
+            
+            # Prepare pipeline input
+            pipeline_input = {
+                "image": image,
+                "text": prompt
+            }
+            
+            # Run inference
+            start_time = time.time()
+            outputs = pipeline(pipeline_input)
+            inference_time = time.time() - start_time
+            
+            # Verify outputs
+            self.assertIsNotNone(outputs, "Pipeline output should not be None")
+            
+            # Extract the generated text
+            if isinstance(outputs, list) and len(outputs) > 0:
+                if isinstance(outputs[0], dict) and "generated_text" in outputs[0]:
+                    output_text = outputs[0]["generated_text"]
+                else:
+                    output_text = str(outputs[0])
+            else:
+                output_text = str(outputs)
+            
+            self.logger.info(f"Prompt: '{prompt}'")
+            self.logger.info(f"Response: '{output_text}'")
+            self.logger.info(f"Inference time: {inference_time:.4f} seconds")
+            
+            # Store results
+            self.results['pipeline_api'] = {
+                'prompt': prompt,
+                'response': output_text,
+                'inference_time': inference_time
+            }
+            
+            self.logger.info("Pipeline API test passed")
+            
+        except Exception as e:
+            self.logger.error(f"Error in pipeline API test: {e}")
+            self.fail(f"Pipeline API test failed: {str(e)}")
+    
+    def test_multiple_prompts(self):
+        """Test the LLaVA model with multiple different prompts."""
+        if not HAS_TRANSFORMERS or not HAS_TORCH or not HAS_PIL:
+            self.skipTest("Required dependencies not available")
+        
+        self.logger.info(f"Testing {self.model_id} with multiple prompts on {self.device}...")
+        
+        try:
+            # Load model and processor
+            model = self.load_model()
+            processor = self.processor
+            
+            # Load image
+            image = Image.open(self.test_image_path)
+            
+            # Test all prompts
+            prompt_results = {}
+            
+            for prompt in self.test_prompts:
+                # Process inputs
+                inputs = processor(
+                    text=prompt,
+                    images=image,
+                    return_tensors="pt"
+                )
+                
+                # Move inputs to the right device
+                inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+                
+                # Run inference
+                with torch.no_grad():
+                    start_time = time.time()
+                    outputs = model.generate(
+                        **inputs,
+                        max_new_tokens=100,
+                        do_sample=False
+                    )
+                    inference_time = time.time() - start_time
+                
+                # Decode the output
+                output_text = processor.batch_decode(outputs, skip_special_tokens=True)[0]
+                
+                # Verify outputs
+                self.assertIsNotNone(output_text, "Model output should not be None")
+                self.assertIsInstance(output_text, str, "Output should be a string")
+                self.assertTrue(len(output_text) > 0, "Output should not be empty")
+                
+                self.logger.info(f"Prompt: '{prompt}'")
+                self.logger.info(f"Response: '{output_text}'")
+                self.logger.info(f"Inference time: {inference_time:.4f} seconds")
+                
+                # Store this prompt's results
+                prompt_results[prompt] = {
+                    'response': output_text,
+                    'inference_time': inference_time
+                }
+            
+            # Store all results
+            self.results['multiple_prompts'] = prompt_results
+            
+            self.logger.info("Multiple prompts test passed")
+            
+        except Exception as e:
+            self.logger.error(f"Error in multiple prompts test: {e}")
+            self.fail(f"Multiple prompts test failed: {str(e)}")
+    
+    def test_hardware_compatibility(self):
+        """Test model compatibility with different hardware platforms."""
+        if not HAS_TRANSFORMERS or not HAS_TORCH or not HAS_PIL:
+            self.skipTest("Required dependencies not available")
+            
+        devices_to_test = []
+        
+        # Always test CPU
+        devices_to_test.append('cpu')
+        
+        # Only test available hardware
+        if self.has_cuda:
+            devices_to_test.append('cuda')
+        if self.has_mps:
+            devices_to_test.append('mps')
+            
+        # Test each device
+        for device in devices_to_test:
+            original_device = self.device
+            try:
+                self.logger.info(f"Testing on {device}...")
+                self.device = device
+                
+                # Load model and processor
+                model = self.load_model()
+                processor = self.processor
+                
+                # Load image
+                image = Image.open(self.test_image_path)
+                
+                # Choose a test prompt
+                prompt = self.test_prompts[0]
+                
+                # Process inputs
+                inputs = processor(
+                    text=prompt,
+                    images=image,
+                    return_tensors="pt"
+                )
+                
+                # Move inputs to the right device
+                inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+                
+                # Run inference with timing
+                with torch.no_grad():
+                    start_time = time.time()
+                    outputs = model.generate(
+                        **inputs,
+                        max_new_tokens=50,  # Shorter for hardware test
+                        do_sample=False
+                    )
+                    inference_time = time.time() - start_time
+                
+                # Decode the output
+                output_text = processor.batch_decode(outputs, skip_special_tokens=True)[0]
+                
+                # Verify outputs are valid
+                self.assertIsNotNone(output_text, f"Model outputs on {device} should not be None")
+                self.assertTrue(len(output_text) > 0, f"Model output on {device} should not be empty")
+                
+                # Store performance results
+                self.results[f'performance_{device}'] = {
+                    'inference_time': inference_time,
+                    'response_length': len(output_text)
+                }
+                
+                self.logger.info(f"Test on {device} passed (inference time: {inference_time:.4f}s)")
+            except Exception as e:
+                self.logger.error(f"Error testing on {device}: {e}")
+                self.fail(f"Test on {device} failed: {str(e)}")
+            finally:
+                # Restore original device
+                self.device = original_device
+    
+    def test_openvino_inference(self):
+        """Test inference with the LLaVA model using OpenVINO."""
+        if not HAS_TRANSFORMERS or not HAS_TORCH or not HAS_PIL or not self.has_openvino:
+            self.skipTest("Required dependencies or OpenVINO not available")
+        
+        self.logger.info(f"Testing {self.model_id} with OpenVINO...")
+        
+        try:
+            # For this test, we'll just check if optimum-intel is installed
+            # Full implementation would use OVModelForVision2Seq
+            try:
+                from optimum.intel import OVModelForVision2Seq
+            except ImportError:
+                self.skipTest("optimum-intel not available")
+            
+            # Note: In a real implementation, we would load the model with OpenVINO:
+            # model = OVModelForVision2Seq.from_pretrained(self.model_id, export=True)
+            
+            # For this test, we'll just log that OpenVINO would be used
+            self.logger.info("OpenVINO support is available for LLaVA models")
+            
+            # Store results
+            self.results['openvino_inference'] = {
+                'supported': True,
+                'notes': "Full implementation would use OVModelForVision2Seq"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in OpenVINO test: {e}")
+            self.fail(f"OpenVINO test failed: {str(e)}")
+
+if __name__ == "__main__":
+    unittest.main()

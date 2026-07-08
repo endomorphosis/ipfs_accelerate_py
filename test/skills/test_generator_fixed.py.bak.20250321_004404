@@ -1,0 +1,1105 @@
+#!/usr/bin/env python3
+
+# Import hardware detection capabilities if available
+try:
+    from generators.hardware.hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
+
+import os
+import sys
+import json
+import time
+import datetime
+import traceback
+import logging
+import argparse
+import re
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
+
+# Define architecture types for model mapping
+ARCHITECTURE_TYPES = {
+    "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta"],
+    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt"],
+    "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan"],
+    "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2"],
+    "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip"],
+    "speech": ["wav2vec2", "hubert", "whisper", "bark", "speecht5"],
+    "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava"]
+}
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
+# Model lookup integration
+try:
+    from find_models import get_recommended_default_model, query_huggingface_api
+    HAS_MODEL_LOOKUP = True
+    logger.info("Model lookup integration available")
+except ImportError:
+    HAS_MODEL_LOOKUP = False
+    logger.warning("Model lookup not available, using static model registry")
+
+def get_model_from_registry(model_type):
+    '''Get the best default model for a model type, using dynamic lookup if available.'''
+    if HAS_MODEL_LOOKUP:
+        # Try to get a recommended model from the HuggingFace API
+        try:
+            default_model = get_recommended_default_model(model_type)
+            logger.info(f"Using recommended model for {model_type}: {default_model}")
+            return default_model
+        except Exception as e:
+            logger.warning(f"Error getting recommended model for {model_type}: {e}")
+            # Fall back to registry lookup
+    
+    # Use the static registry as fallback
+    if model_type in MODEL_REGISTRY:
+        return MODEL_REGISTRY[model_type].get("default_model")
+    
+    # For unknown models, use a heuristic approach
+    return f"{model_type}-base" if "-base" not in model_type else model_type
+# Forward declarations for indentation fixing functions
+def fix_class_method_indentation(content):
+    """Fix indentation issues in class methods."""
+    return content
+
+def fix_syntax_errors(content):
+    """Fix common syntax errors like unterminated string literals."""
+    # Fix extra quotes ("""")
+    content = content.replace('""""', '"""')
+    
+    # Check for unclosed triple quotes
+    triple_quotes_count = content.count('"""')
+    if triple_quotes_count % 2 != 0:
+        logger.info(f"Odd number of triple quotes found: {triple_quotes_count}, fixing...")
+        # Try to find the problem location
+        lines = content.split('\n')
+        found_docstring = False
+        line_num = 0
+        
+        for i, line in enumerate(lines):
+            if '"""' in line:
+                if found_docstring:
+                    found_docstring = False
+                else:
+                    found_docstring = True
+                    line_num = i
+            
+            # If we found an open docstring and there are extra quotes, fix them
+            if found_docstring and '""""' in line:
+                lines[i] = line.replace('""""', '"""')
+                logger.info(f"Fixed extra quotes on line {i+1}")
+        
+        content = '\n'.join(lines)
+    
+    return content
+
+def fix_test_indentation(template_content):
+    """Fix indentation issues in generated test files."""
+    try:
+        # Apply all indentation fixes
+        fixed_content = fix_class_method_indentation(template_content)
+        
+        # Normalize excessive spacing
+        fixed_content = re.sub(r'\n\s*\n\s*\n', '\n\n', fixed_content)
+        
+        return fixed_content
+    except Exception as e:
+        logger.error(f"Error applying indentation fixes: {e}")
+        # Return original content if fixing fails
+        return template_content
+
+# Constants
+CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+PARENT_DIR = CURRENT_DIR.parent
+RESULTS_DIR = CURRENT_DIR / "collected_results"
+EXPECTED_DIR = CURRENT_DIR / "expected_results"
+TEMPLATES_DIR = CURRENT_DIR / "templates"
+
+# Try to import torch
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Try to import transformers
+try:
+    import transformers
+    HAS_TRANSFORMERS = True
+except ImportError:
+    transformers = MagicMock()
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
+
+# Try to import tokenizers
+try:
+    import tokenizers
+    HAS_TOKENIZERS = True
+except ImportError:
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
+
+# Try to import sentencepiece
+try:
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
+
+# Model Registry - Maps model families to their configurations
+MODEL_REGISTRY = {
+    "albert": {
+        "family_name": "ALBERT",
+        "description": "ALBERT (A Lite BERT) masked language models",
+        "default_model": "albert-base-v2",
+        "class": "AlbertForMaskedLM",
+        "test_class": "TestAlbertModels",
+        "module_name": "test_hf_albert",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "ALBERT is a <mask> language model."
+        }
+    },
+    "bart": {
+        "family_name": "BART",
+        "description": "BART sequence-to-sequence models",
+        "default_model": "facebook/bart-base",
+        "class": "BartForConditionalGeneration",
+        "test_class": "TestBartModels",
+        "module_name": "test_hf_bart",
+        "tasks": ["summarization", "translation"],
+        "inputs": {
+            "text": "BART is a denoising autoencoder for pretraining sequence-to-sequence models."
+        }
+    },
+    "bert": {
+        "family_name": "BERT",
+        "description": "BERT-family masked language models",
+        "default_model": "bert-base-uncased",
+        "class": "BertForMaskedLM",
+        "test_class": "TestBertModels",
+        "module_name": "test_hf_bert",
+        "tasks": ['fill-mask'],
+        "inputs": {
+            "text": "The quick brown fox jumps over the [MASK] dog.",
+        },
+    "blip": {
+        "family_name": "BLIP",
+        "description": "Bootstrapping Language-Image Pre-training models",
+        "default_model": "Salesforce/blip-image-captioning-base",
+        "class": "BlipForConditionalGeneration",
+        "test_class": "TestBlipModels",
+        "module_name": "test_hf_blip",
+        "tasks": ["image-to-text"],
+        "inputs": {}
+    },
+    "bloom": {
+        "family_name": "BLOOM",
+        "description": "BigScience Large Open-science Open-access Multilingual language models",
+        "default_model": "bigscience/bloom-560m",
+        "class": "BloomForCausalLM",
+        "test_class": "TestBloomModels",
+        "module_name": "test_hf_bloom",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "BLOOM is a multilingual language model that",
+        },
+    "clip": {
+        "family_name": "CLIP",
+        "description": "Contrastive Language-Image Pre-training models",
+        "default_model": "openai/clip-vit-base-patch32",
+        "class": "CLIPModel",
+        "test_class": "TestCLIPModels",
+        "module_name": "test_hf_clip",
+        "tasks": ["zero-shot-image-classification"],
+        "inputs": {}
+    },
+    "distilbert": {
+        "family_name": "DistilBERT",
+        "description": "DistilBERT masked language models",
+        "default_model": "distilbert-base-uncased",
+        "class": "DistilBertForMaskedLM",
+        "test_class": "TestDistilBertModels",
+        "module_name": "test_hf_distilbert",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "DistilBERT is a <mask> language model."
+        }
+    },
+    "electra": {
+        "family_name": "ELECTRA",
+        "description": "ELECTRA discriminator models",
+        "default_model": "google/electra-small-discriminator",
+        "class": "ElectraForMaskedLM",
+        "test_class": "TestElectraModels",
+        "module_name": "test_hf_electra",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "ELECTRA is a <mask> language model."
+        }
+    },
+    "gpt-j": {
+        "family_name": "GPT-J",
+        "description": "GPT-J autoregressive language models",
+        "default_model": "EleutherAI/gpt-j-6b",
+        "class": "GPTJForCausalLM",
+        "test_class": "TestGPTJModels",
+        "module_name": "test_hf_gpt_j",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "GPT-J is a transformer model that"
+        },
+    "gpt-neo": {
+        "family_name": "GPT-Neo",
+        "description": "GPT-Neo autoregressive language models",
+        "default_model": "EleutherAI/gpt-neo-1.3B",
+        "class": "GPTNeoForCausalLM",
+        "test_class": "TestGPTNeoModels",
+        "module_name": "test_hf_gpt_neo",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "GPT-Neo is a transformer model that"
+        }
+    },
+    "gpt2": {
+        "family_name": "GPT-2",
+        "description": "GPT-2 autoregressive language models",
+        "default_model": "gpt2",
+        "class": "GPT2LMHeadModel",
+        "test_class": "TestGPT2Models",
+        "module_name": "test_hf_gpt2",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "GPT-2 is a transformer model that",
+        },
+    "hubert": {
+        "family_name": "HuBERT",
+        "description": "Hidden-Unit BERT speech models",
+        "default_model": "facebook/hubert-base-ls960",
+        "class": "HubertForCTC",
+        "test_class": "TestHubertModels",
+        "module_name": "test_hf_hubert",
+        "tasks": ["automatic-speech-recognition"],
+        "inputs": {}
+    },
+    "inputs": {
+            "text": "translate English to German: The house is wonderful."
+        },
+    "llama": {
+        "family_name": "LLaMA",
+        "description": "Large Language Model Meta AI",
+        "default_model": "meta-llama/Llama-2-7b-hf",
+        "class": "LlamaForCausalLM",
+        "test_class": "TestLlamaModels",
+        "module_name": "test_hf_llama",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "LLaMA is a foundational language model that"
+        }
+    },
+    "llava": {
+        "family_name": "LLaVA",
+        "description": "Large Language and Vision Assistant",
+        "default_model": "llava-hf/llava-1.5-7b-hf",
+        "class": "LlavaForConditionalGeneration",
+        "test_class": "TestLlavaModels",
+        "module_name": "test_hf_llava",
+        "tasks": ["visual-question-answering"],
+        "inputs": {}
+    },
+    "mbart": {
+        "family_name": "mBART",
+        "description": "Multilingual BART sequence-to-sequence models",
+        "default_model": "facebook/mbart-large-cc25",
+        "class": "MBartForConditionalGeneration",
+        "test_class": "TestMBartModels",
+        "module_name": "test_hf_mbart",
+        "tasks": ["translation"],
+        "inputs": {
+            "text": "mBART is a multilingual sequence-to-sequence model."
+        }
+    },
+    "mt5": {
+        "family_name": "mT5",
+        "description": "Multilingual T5 models",
+        "default_model": "google/mt5-small",
+        "class": "MT5ForConditionalGeneration",
+        "test_class": "TestMT5Models",
+        "module_name": "test_hf_mt5",
+        "tasks": ["translation"],
+        "inputs": {
+            "text": "translate English to German: The house is wonderful."
+        }
+    },
+    "opt": {
+        "family_name": "OPT",
+        "description": "Open Pre-trained Transformer language models",
+        "default_model": "facebook/opt-125m",
+        "class": "OPTForCausalLM",
+        "test_class": "TestOPTModels",
+        "module_name": "test_hf_opt",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "OPT is an open-source language model that"
+        }
+    },
+    "pegasus": {
+        "family_name": "Pegasus",
+        "description": "Pegasus summarization models",
+        "default_model": "google/pegasus-xsum",
+        "class": "PegasusForConditionalGeneration",
+        "test_class": "TestPegasusModels",
+        "module_name": "test_hf_pegasus",
+        "tasks": ["summarization"],
+        "inputs": {
+            "text": "Pegasus is a model for abstractive summarization optimized for ROUGE."
+        }
+    },
+    "roberta": {
+        "family_name": "RoBERTa",
+        "description": "RoBERTa masked language models",
+        "default_model": "roberta-base",
+        "class": "RobertaForMaskedLM",
+        "test_class": "TestRobertaModels",
+        "module_name": "test_hf_roberta",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "RoBERTa is a <mask> language model."
+        }
+    },
+    "t5": {
+        "family_name": "T5",
+        "description": "T5 encoder-decoder models",
+        "default_model": "t5-small",
+        "class": "T5ForConditionalGeneration",
+        "test_class": "TestT5Models",
+        "module_name": "test_hf_t5",
+        "tasks": ['text2text-generation'],
+        "inputs": {
+            "text": "translate English to German: The house is wonderful.",
+        },
+    "task_specific_args": {
+            "text-generation": {
+                "max_length": 50
+            }
+        }
+    },
+    "vit": {
+        "family_name": "ViT",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "ViTForImageClassification",
+        "test_class": "TestVitModels",
+        "module_name": "test_hf_vit",
+        "tasks": ["image-classification"],
+        "inputs": {}
+    },
+    "wav2vec2": {
+        "family_name": "Wav2Vec2",
+        "description": "Speech representation models",
+        "default_model": "facebook/wav2vec2-base",
+        "class": "Wav2Vec2ForCTC",
+        "test_class": "TestWav2Vec2Models",
+        "module_name": "test_hf_wav2vec2",
+        "tasks": ["automatic-speech-recognition"],
+        "inputs": {}
+    },
+    "whisper": {
+        "family_name": "Whisper",
+        "description": "Speech recognition models",
+        "default_model": "openai/whisper-tiny",
+        "class": "WhisperForConditionalGeneration",
+        "test_class": "TestWhisperModels",
+        "module_name": "test_hf_whisper",
+        "tasks": ["automatic-speech-recognition"],
+        "inputs": {}
+    },
+    "xlm-roberta": {
+        "family_name": "XLM-RoBERTa",
+        "description": "XLM-RoBERTa masked language models for cross-lingual understanding",
+        "default_model": "xlm-roberta-base",
+        "class": "XLMRobertaForMaskedLM",
+        "test_class": "TestXLMRobertaModels",
+        "module_name": "test_hf_xlm_roberta",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "XLM-RoBERTa is a <mask> language model."
+        }
+    },
+}# Class name capitalization fixes
+CLASS_NAME_FIXES = {
+    "VitForImageClassification": "ViTForImageClassification",
+    "SwinForImageClassification": "SwinForImageClassification",
+    "DeitForImageClassification": "DeiTForImageClassification",
+    "BeitForImageClassification": "BEiTForImageClassification",
+    "ConvnextForImageClassification": "ConvNextForImageClassification",
+    "Gpt2LMHeadModel": "GPT2LMHeadModel",
+    "GptjForCausalLM": "GPTJForCausalLM",
+    "GptneoForCausalLM": "GPTNeoForCausalLM",
+    "XlmRobertaForMaskedLM": "XLMRobertaForMaskedLM",
+    "XlmRobertaModel": "XLMRobertaModel",
+    "RobertaForMaskedLM": "RobertaForMaskedLM",
+    "DistilbertForMaskedLM": "DistilBertForMaskedLM",
+    "AlbertForMaskedLM": "AlbertForMaskedLM",
+    "ElectraForMaskedLM": "ElectraForMaskedLM",
+    "BartForConditionalGeneration": "BartForConditionalGeneration",
+    "MbartForConditionalGeneration": "MBartForConditionalGeneration",
+    "PegasusForConditionalGeneration": "PegasusForConditionalGeneration",
+    "Mt5ForConditionalGeneration": "MT5ForConditionalGeneration",
+    "ClipModel": "CLIPModel",
+    "BlipForConditionalGeneration": "BlipForConditionalGeneration",
+    "LlavaForConditionalGeneration": "LlavaForConditionalGeneration",
+    "WhisperForConditionalGeneration": "WhisperForConditionalGeneration",
+    "Wav2vec2ForCTC": "Wav2Vec2ForCTC",
+    "HubertForCTC": "HubertForCTC",
+    "LlamaForCausalLM": "LlamaForCausalLM",
+    "OptForCausalLM": "OPTForCausalLM",
+    "BloomForCausalLM": "BloomForCausalLM"
+}
+
+def to_valid_identifier(text):
+    """Convert text to a valid Python identifier."""
+    # Replace hyphens with underscores
+    text = text.replace("-", "_")
+    # Remove any other invalid characters
+    text = re.sub(r'[^a-zA-Z0-9_]', '', text)
+    # Ensure it doesn't start with a number
+    if text and text[0].isdigit():
+        text = '_' + text
+    return text
+
+def get_architecture_type(model_type):
+    """Determine architecture type based on model type."""
+    model_type_lower = model_type.lower()
+    for arch_type, models in ARCHITECTURE_TYPES.items():
+        if any(model in model_type_lower for model in models):
+            return arch_type
+    return "encoder-only"  # Default to encoder-only if unknown
+
+def get_template_for_architecture(model_type, templates_dir="templates"):
+    """Get the template path for a specific model type's architecture."""
+    arch_type = get_architecture_type(model_type)
+    
+    template_map = {
+        "encoder-only": os.path.join(templates_dir, "encoder_only_template.py"),
+        "decoder-only": os.path.join(templates_dir, "decoder_only_template.py"),
+        "encoder-decoder": os.path.join(templates_dir, "encoder_decoder_template.py"),
+        "vision": os.path.join(templates_dir, "vision_template.py"),
+        "vision-text": os.path.join(templates_dir, "vision_text_template.py"),
+        "speech": os.path.join(templates_dir, "speech_template.py"),
+        "multimodal": os.path.join(templates_dir, "multimodal_template.py")
+    }
+    
+    template_path = template_map.get(arch_type)
+    if not template_path or not os.path.exists(template_path):
+        logger.warning(f"Template not found for {arch_type}, using encoder-only template")
+        fallback_template = os.path.join(templates_dir, "encoder_only_template.py")
+        if not os.path.exists(fallback_template):
+            logger.error(f"Fallback template not found: {fallback_template}")
+            return None
+        return fallback_template
+        
+    return template_path
+
+def generate_test_file(model_family, output_dir="."):
+    """Generate a test file for a model family."""
+    # Check if the model family exists in the registry
+    if model_family not in MODEL_REGISTRY:
+        logger.error(f"Model family '{model_family}' not found in registry")
+        return False
+    
+    # Fix hyphenated model names for valid Python identifiers
+    model_family_valid = to_valid_identifier(model_family)
+    
+    # Get model configuration from registry
+    model_config = MODEL_REGISTRY[model_family]
+    module_name = model_config.get("module_name", f"test_hf_{model_family_valid}")
+    
+    # Create proper capitalized name for class (handling cases like gpt-j → GptJ, xlm-roberta → XlmRoberta)
+    if "-" in model_family:
+        # Handle hyphenated model names by capitalizing each part
+        model_capitalized = ''.join(part.capitalize() for part in model_family.split('-'))
+        test_class = model_config.get("test_class", f"Test{model_capitalized}Models")
+    else:
+        test_class = model_config.get("test_class", f"Test{model_family.upper()}Models")
+    
+    default_model = get_model_from_registry(model_family)
+    tasks = model_config.get("tasks", ["text-generation"])
+    inputs = model_config.get("inputs", {})
+    
+    # Get architecture-specific template
+    template_path = get_template_for_architecture(model_family)
+    if not template_path:
+        logger.error(f"Could not find template for {model_family}")
+        return False
+        
+    logger.info(f"Using template: {os.path.basename(template_path)} for {model_family}")
+    
+    try:
+        with open(template_path, "r") as f:
+            template = f.read()
+        
+        # Prepare replacements
+        if "-" in model_family:
+            # For hyphenated model names, handle capitalization specially
+            model_capitalized = ''.join(part.capitalize() for part in model_family.split('-'))
+            model_upper = model_family_valid.upper()
+        else:
+            model_capitalized = model_family.capitalize()
+            model_upper = model_family.upper()
+            
+        default_task = tasks[0] if tasks else "fill-mask"
+        
+        # Make replacements based on model type
+        replacements = {
+            # Replace registry name
+            "BERT_MODELS_REGISTRY": f"{model_upper}_MODELS_REGISTRY",
+            "VIT_MODELS_REGISTRY": f"{model_upper}_MODELS_REGISTRY",
+            
+            # Replace class names
+            "TestBertModels": test_class,
+            "TestVitModels": test_class,
+            
+            # Replace model types
+            "bert-base-uncased": default_model,
+            "google/vit-base-patch16-224": default_model,
+            
+            # Replace class identifiers
+            "BERT": model_upper,
+            "ViT": model_capitalized,
+            
+            # Replace lowercase identifiers
+            "bert": model_family_valid,
+            "vit": model_family_valid,
+            
+            # Replace tasks
+            "fill-mask": default_task,
+            
+            # Fix hyphenated references in file paths
+            "hf_bert_": f"hf_{model_family_valid}_",
+            "hf_vit_": f"hf_{model_family_valid}_"
+        }
+        
+        # Create the test content with replacements
+        content = template
+        for old, new in replacements.items():
+            content = content.replace(old, new)
+        
+        # Fix syntax errors first
+        content = fix_syntax_errors(content)
+        
+        # Then apply indentation fixing
+        content = fix_test_indentation(content)
+        
+        # Ensure the output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Write the test file
+        output_file = os.path.join(output_dir, f"{module_name}.py")
+        with open(output_file, "w") as f:
+            f.write(content)
+        
+        # Validate syntax
+        try:
+            compile(content, output_file, 'exec')
+            logger.info(f"✅ Syntax is valid for {output_file}")
+        except SyntaxError as e:
+            logger.error(f"❌ Syntax error in generated file: {e}")
+            # Show the problematic line for debugging
+            if hasattr(e, 'lineno') and e.lineno is not None:
+                lines = content.split('\n')
+                line_no = e.lineno - 1  # 0-based index
+                if 0 <= line_no < len(lines):
+                    logger.error(f"Problematic line {e.lineno}: {lines[line_no].rstrip()}")
+            
+            # Try to fix the syntax error
+            logger.info("Attempting additional syntax fixes...")
+            try:
+                # Apply more aggressive syntax fixing
+                lines = content.split('\n')
+                for i, line in enumerate(lines):
+                    if '""""' in line:
+                        lines[i] = line.replace('""""', '"""')
+                        logger.info(f"Fixed extra quotes on line {i+1}")
+                
+                fixed_content = '\n'.join(lines)
+                with open(output_file, 'w') as f:
+                    f.write(fixed_content)
+                
+                # Verify syntax again
+                compile(fixed_content, output_file, 'exec')
+                logger.info(f"✅ Syntax is valid after fixes for {output_file}")
+            except Exception as fix_error:
+                logger.error(f"Failed to fix syntax errors: {fix_error}")
+                return False
+        
+        logger.info(f"Generated test file: {output_file}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error generating test file for {model_family}: {e}")
+        traceback.print_exc()
+        return False
+
+def list_model_families():
+    """List all available model families in the registry."""
+    families = sorted(MODEL_REGISTRY.keys())
+    print("\nAvailable model families:")
+    for family in families:
+        config = MODEL_REGISTRY[family]
+        arch_type = get_architecture_type(family)
+        print(f"  - {family} ({config['family_name']}): {config['description']} [Architecture: {arch_type}]")
+    print()
+    return families
+
+def run_tests(all_models=False):
+    """
+    Run tests for model families.
+    
+    Args:
+        all_models: If True, tests all models in registry
+        
+    Returns:
+        Dict containing test results
+    """
+    # Determine if real inference or mock objects were used
+    using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
+    using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+    
+    results = {}
+    
+    if all_models:
+        for model_family in MODEL_REGISTRY.keys():
+            try:
+                # Generate and run test for this family
+                success = generate_test_file(model_family, "fixed_tests")
+                results[model_family] = {"success": success}
+            except Exception as e:
+                logger.error(f"Error testing {model_family}: {e}")
+                results[model_family] = {"success": False, "error": str(e)}
+    
+    return {
+        "results": results,
+        "metadata": {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "has_transformers": HAS_TRANSFORMERS,
+            "has_torch": HAS_TORCH,
+            "has_tokenizers": HAS_TOKENIZERS,
+            "has_sentencepiece": HAS_SENTENCEPIECE,
+            "using_real_inference": using_real_inference,
+            "using_mocks": using_mocks,
+            "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
+        }
+    }
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Generate HuggingFace model test files")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--list-families", action="store_true", help="List available model families")
+    group.add_argument("--generate", type=str, help="Generate test for a specific model family")
+    group.add_argument("--all", action="store_true", help="Generate tests for all model families")
+    group.add_argument("--hyphenated-only", action="store_true", help="Generate tests only for models with hyphenated names")
+    
+    parser.add_argument("--output-dir", type=str, default="fixed_tests", help="Output directory for test files")
+    parser.add_argument("--verify", action="store_true", help="Verify syntax of generated tests")
+    
+    args = parser.parse_args()
+    
+    if args.list_families:
+        list_model_families()
+        return 0
+    
+    if args.all or args.hyphenated_only:
+        # Get all families or just hyphenated ones
+        if args.hyphenated_only:
+            families = [f for f in MODEL_REGISTRY.keys() if '-' in f]
+            logger.info(f"Found {len(families)} model families with hyphenated names")
+        else:
+            families = MODEL_REGISTRY.keys()
+            
+        success_count = 0
+        fail_count = 0
+        
+        for family in families:
+            logger.info(f"Generating test for {family}...")
+            success = generate_test_file(family, args.output_dir)
+            
+            if success:
+                success_count += 1
+            else:
+                fail_count += 1
+        
+        # Determine if real inference or mock objects were used
+        using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
+        using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+        
+        print("\nTEST RESULTS SUMMARY:")
+        
+        # Indicate real vs mock inference clearly
+        if using_real_inference and not using_mocks:
+            print(f"🚀 Using REAL INFERENCE with actual models")
+        else:
+            print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
+            print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+        
+        logger.info(f"Generated {success_count} test files successfully, {fail_count} failed")
+        return 0 if fail_count == 0 else 1
+    
+    if args.generate:
+        family = args.generate
+        success = generate_test_file(family, args.output_dir)
+        
+        if args.verify and success:
+            output_file = os.path.join(args.output_dir, f"test_hf_{family}.py")
+            try:
+                with open(output_file, "r") as f:
+                    code = f.read()
+                compile(code, output_file, "exec")
+                logger.info(f"✅ {output_file}: Syntax is valid")
+            except SyntaxError as e:
+                logger.error(f"❌ {output_file}: Syntax error: {e}")
+                return 1
+        
+        # Determine if real inference or mock objects were used
+        using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
+        using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+        
+        print("\nTEST RESULTS SUMMARY:")
+        
+        # Indicate real vs mock inference clearly
+        if using_real_inference and not using_mocks:
+            print(f"🚀 Using REAL INFERENCE with actual models")
+        else:
+            print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
+            print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+        
+        return 0 if success else 1
+
+# Indentation fixing utilities - full implementation
+def apply_indentation(code, base_indent=0):
+    """Apply consistent indentation to code blocks."""
+    # Split the code into lines
+    lines = code.strip().split('\n')
+    
+    # Determine the minimum indentation of non-empty lines
+    min_indent = float('inf')
+    for line in lines:
+        if line.strip():  # Skip empty lines
+            leading_spaces = len(line) - len(line.lstrip())
+            min_indent = min(min_indent, leading_spaces)
+    
+    # If no indentation found, set to 0
+    if min_indent == float('inf'):
+        min_indent = 0
+    
+    # Remove the minimum indentation from all lines and add the base indentation
+    indented_lines = []
+    indent_spaces = ' ' * base_indent
+    
+    for line in lines:
+        if line.strip():  # If not an empty line
+            # Remove original indentation and add new base indentation
+            indented_line = indent_spaces + line[min_indent:]
+            indented_lines.append(indented_line)
+        else:
+            # For empty lines, just add base indentation
+            indented_lines.append(indent_spaces)
+    
+    # Join the lines back into a single string
+    return '\n'.join(indented_lines)
+
+def fix_method_boundaries(content):
+    """Fix method boundaries to ensure proper spacing and indentation."""
+    # First add proper spacing between methods
+    content = content.replace("        return results\n    def ", "        return results\n\n    def ")
+    
+    # Make sure __init__ has correct spacing after it
+    content = content.replace("        self.performance_stats = {}\n    def ", "        self.performance_stats = {}\n\n    def ")
+        
+    # Place all method declarations at the right indentation level
+    content = re.sub(r'(\s+)def test_pipeline\(', r'    def test_pipeline(', content)
+    content = re.sub(r'(\s+)def test_from_pretrained\(', r'    def test_from_pretrained(', content)
+    content = re.sub(r'(\s+)def run_tests\(', r'    def run_tests(', content)
+    
+    # Fix any other methods (save_results, main, etc.)
+    content = re.sub(r'^(\s*)def ([^(]+)\(', r'def \2(', content, flags=re.MULTILINE)
+    
+    return content
+
+def extract_method(content, method_name):
+    """Extract a method from the class content."""
+    # Find the method definition
+    pattern = re.compile(rf'(\s+)def {method_name}\([^)]*\):(.*?)(?=\s+def|\Z)', re.DOTALL)
+    match = pattern.search(content)
+    
+    if match:
+        return match.group(0)
+    return None
+
+def fix_method_content(method_text, method_name):
+    """Fix the indentation of a method's content."""
+    # Normalize method indentation first
+    lines = method_text.split('\n')
+    method_lines = []
+    
+    # First line should be the method definition with exactly 4 spaces
+    if lines and lines[0].strip().startswith(f"def {method_name}"):
+        method_lines.append(f"    def {method_name}" + lines[0].strip()[4 + len(method_name):])
+    else:
+        # If we can't find the method definition, return unchanged
+        return method_text
+    
+    # Process the remaining lines with proper indentation for method body
+    i = 1
+    in_docstring = False
+    
+    while i < len(lines):
+        line = lines[i].rstrip()
+        stripped = line.strip()
+        
+        # Skip empty lines
+        if not stripped:
+            method_lines.append("")
+            i += 1
+            continue
+        
+        # Handle docstrings
+        if stripped.startswith('"""') and stripped.endswith('"""') and len(stripped) > 3:
+            # Single line docstring
+            method_lines.append("        " + stripped)
+            i += 1
+            continue
+        elif stripped.startswith('"""'):
+            # Start of multi-line docstring
+            method_lines.append("        " + stripped)
+            in_docstring = True
+            i += 1
+            continue
+        elif stripped.endswith('"""') and in_docstring:
+            # End of multi-line docstring
+            method_lines.append("        " + stripped)
+            in_docstring = False
+            i += 1
+            continue
+        elif in_docstring:
+            # Inside multi-line docstring
+            method_lines.append("        " + stripped)
+            i += 1
+            continue
+        
+        # Handle method body with 8 spaces base indentation
+        if stripped.startswith("if ") or stripped.startswith("for ") or stripped.startswith("while ") or \
+           stripped.startswith("try:") or stripped.startswith("except ") or stripped.startswith("else:") or \
+           stripped.startswith("elif ") or stripped.startswith("with ") or stripped.startswith("class "):
+            # Control flow statements at 8 spaces
+            method_lines.append("        " + stripped)
+        elif stripped.startswith("return "):
+            # Return statements at 8 spaces
+            method_lines.append("        " + stripped)
+        elif stripped.startswith(("self.", "results[", "logger.")):
+            # Method level variable access at 8 spaces
+            method_lines.append("        " + stripped)
+        elif stripped.startswith("#"):
+            # Comments at same level as surrounding code
+            method_lines.append("        " + stripped)
+        elif stripped in ["pass", "continue", "break"]:
+            # Simple statements at 8 spaces
+            method_lines.append("        " + stripped)
+        elif "=" in stripped and not stripped.startswith(" "):
+            # Variable assignments at 8 spaces
+            method_lines.append("        " + stripped)
+        elif stripped.startswith(("(", "[", "{")) or stripped.endswith((")", "]", "}")):
+            # Collection literals or continuations at 8 spaces
+            method_lines.append("        " + stripped)
+        else:
+            # Most nested blocks at 12 spaces
+            # This is a heuristic that can be improved
+            method_lines.append("            " + stripped)
+        
+        i += 1
+    
+    return "\n".join(method_lines)
+
+def fix_dependency_checks(content):
+    """Fix indentation in dependency check blocks."""
+    # Fix dependency checks indentation to 8 spaces inside methods
+    content = re.sub(r'(\s+)if not HAS_(\w+):', r'        if not HAS_\2:', content)
+    
+    # Fix returns in dependency checks
+    content = re.sub(r'(\s+)return results', r'        return results', content)
+    
+    return content
+
+def fix_imports(content):
+    """Fix import section indentation."""
+    # Make all top-level imports properly unindented
+    lines = content.split('\n')
+    fixed_lines = []
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(('import ', 'from ')):
+            # Top-level imports should have no indentation
+            fixed_lines.append(stripped)
+        elif stripped.startswith(('try:', 'except ')):
+            # Try/except blocks around imports should have no indentation
+            fixed_lines.append(stripped)
+        else:
+            fixed_lines.append(line)
+    
+    return '\n'.join(fixed_lines)
+
+def fix_mock_definitions(content):
+    """Fix mock class definitions indentation."""
+    # Fix indentation of mock classes
+    mock_classes = re.findall(r'(\s+)class Mock(\w+):', content)
+    for indent, class_name in mock_classes:
+        # Replace with proper indentation (4 spaces for class inside a conditional block)
+        content = content.replace(f"{indent}class Mock{class_name}:", f"    class Mock{class_name}:")
+    
+    return content
+
+def fix_try_except_blocks(content):
+    """Fix try/except block indentation."""
+    # Find all try blocks and properly indent their content
+    try_pattern = re.compile(r'(\s+)try:(.*?)(\s+)except', re.DOTALL)
+    
+    def fix_try_block(match):
+        indent = match.group(1)
+        block_content = match.group(2)
+        except_indent = match.group(3)
+        
+        # Normalize the block content indentation
+        fixed_block = apply_indentation(block_content, len(indent) + 4)
+        
+        return f"{indent}try:{fixed_block}\n{except_indent}except"
+    
+    content = try_pattern.sub(fix_try_block, content)
+    
+    # Fix except blocks with similar approach
+    except_pattern = re.compile(r'(\s+)except.*?:(.*?)(?=\s+(?:try:|except|else:|finally:|def|$))', re.DOTALL)
+    
+    def fix_except_block(match):
+        indent = match.group(1)
+        block_content = match.group(2)
+        
+        # Normalize the block content indentation
+        fixed_block = apply_indentation(block_content, len(indent) + 4)
+        
+        return f"{indent}except Exception:{fixed_block}"
+    
+    content = except_pattern.sub(fix_except_block, content)
+    
+    return content
+
+def fix_if_blocks(content):
+    """Fix if/else block indentation."""
+    # Find all if blocks and properly indent their content
+    if_pattern = re.compile(r'(\s+)if\s+.*?:(.*?)(?=\s+(?:elif|else:|try:|except|def|$))', re.DOTALL)
+    
+    def fix_if_block(match):
+        indent = match.group(1)
+        block_content = match.group(2)
+        
+        # Normalize the block content indentation
+        fixed_block = apply_indentation(block_content, len(indent) + 4)
+        
+        return f"{indent}if{fixed_block}"
+    
+    content = if_pattern.sub(fix_if_block, content)
+    
+    # Fix else blocks with similar approach
+    else_pattern = re.compile(r'(\s+)else:(.*?)(?=\s+(?:try:|except|def|if|$))', re.DOTALL)
+    
+    def fix_else_block(match):
+        indent = match.group(1)
+        block_content = match.group(2)
+        
+        # Normalize the block content indentation
+        fixed_block = apply_indentation(block_content, len(indent) + 4)
+        
+        return f"{indent}else:{fixed_block}"
+    
+    content = else_pattern.sub(fix_else_block, content)
+    
+    return content
+
+def fix_class_method_indentation(content):
+    """Fix indentation issues in class methods."""
+    # Fix top-level imports and class definitions
+    content = fix_imports(content)
+    
+    # Find the class definition(s)
+    class_matches = re.finditer(r'class\s+(\w+):', content)
+    
+    for class_match in class_matches:
+        class_name = class_match.group(1)
+        class_start_pos = class_match.start()
+        
+        # Find all methods of this class 
+        # This looks for methods until another class definition or EOF
+        class_content_pattern = re.compile(r'class\s+' + class_name + r':(.*?)(?=class\s+\w+:|$)', re.DOTALL)
+        class_content_match = class_content_pattern.search(content, class_start_pos)
+        
+        if not class_content_match:
+            logger.warning(f"Could not extract content for class {class_name}")
+            continue
+        
+        class_content = class_content_match.group(1)
+        
+        # Fix method indentation for common methods
+        for method_name in ['__init__', 'test_pipeline', 'test_from_pretrained', 'run_tests']:
+            method_text = extract_method(class_content, method_name)
+            if method_text:
+                fixed_method = fix_method_content(method_text, method_name)
+                class_content = class_content.replace(method_text, fixed_method)
+        
+        # Fix dependency checks in methods
+        class_content = fix_dependency_checks(class_content)
+        
+        # Fix mock class definitions inside the class
+        class_content = fix_mock_definitions(class_content)
+        
+        # Fix try/except blocks
+        class_content = fix_try_except_blocks(class_content)
+        
+        # Fix if/else blocks
+        class_content = fix_if_blocks(class_content)
+        
+        # Fix spacing between methods
+        class_content = fix_method_boundaries(class_content)
+        
+        # Replace the original class content with fixed content
+        content = content[:class_start_pos] + "class " + class_name + ":" + class_content + content[class_content_match.end():]
+    
+    # Fix indentation of utility functions and main function
+    for func_match in re.finditer(r'def\s+(\w+)\s*\(', content):
+        func_name = func_match.group(1)
+        if func_name not in ['__init__', 'test_pipeline', 'test_from_pretrained', 'run_tests']:
+            func_pattern = re.compile(r'def\s+' + func_name + r'\s*\(.*?\):(.*?)(?=def\s+\w+\s*\(|$)', re.DOTALL)
+            func_match = func_pattern.search(content, func_match.start())
+            if func_match:
+                func_text = func_match.group(0)
+                fixed_func = apply_indentation(func_text, 0)  # Top-level functions have 0 indentation
+                content = content.replace(func_text, fixed_func)
+    
+    return content
+
+if __name__ == "__main__":
+    sys.exit(main())

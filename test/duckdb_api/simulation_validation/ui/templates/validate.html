@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Run Validation - {{ title }}{% endblock %}
+
+{% block header %}Run Validation{% endblock %}
+
+{% block header_buttons %}
+<div>
+    <a href="{{ url_for('validation_results') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Results
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-check-circle"></i> New Validation</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('validate') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <!-- Model and Hardware Selection -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="model_id" class="form-label">Model</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="model_id" name="model_id" required>
+                                    <option value="" selected disabled>Select Model</option>
+                                    {% for model in model_types %}
+                                    <option value="{{ model.id }}">{{ model.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="hardware_id" class="form-label">Hardware</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hardware_id" name="hardware_id" required>
+                                    <option value="" selected disabled>Select Hardware</option>
+                                    {% for hw in hardware_types %}
+                                    <option value="{{ hw.id }}">{{ hw.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Batch Size and Precision -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="batch_size" class="form-label">Batch Size</label>
+                                <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="batch_size" name="batch_size" min="1" value="1" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="precision" class="form-label">Precision</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="precision" name="precision" required>
+                                    <option value="float32" selected>float32 (FP32)</option>
+                                    <option value="float16">float16 (FP16)</option>
+                                    <option value="int8">int8</option>
+                                    <option value="int4">int4</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Protocol Selection -->
+                    <div class="mb-4">
+                        <label for="protocol" class="form-label">Validation Protocol</label>
+                        <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="protocol" name="protocol">
+                            <option value="standard" selected>Standard</option>
+                            <option value="strict">Strict</option>
+                            <option value="lenient">Lenient</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                        <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                            Select the validation protocol to use for this validation.
+                        </div>
+                    </div>
+                    
+                    <!-- Simulation Metrics -->
+                    <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light border-secondary{% else %}bg-light{% endif %}">
+                        <div class="card-header">
+                            <h6 class="mb-0">Simulation Metrics</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label for="sim_throughput" class="form-label">Throughput (items/sec)</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="sim_throughput" name="sim_throughput" min="0" step="0.01" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="sim_latency" class="form-label">Latency (ms)</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="sim_latency" name="sim_latency" min="0" step="0.01" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="sim_memory" class="form-label">Memory (MB)</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="sim_memory" name="sim_memory" min="0" step="0.01" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="sim_power" class="form-label">Power (W)</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="sim_power" name="sim_power" min="0" step="0.01" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Hardware Metrics -->
+                    <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light border-secondary{% else %}bg-light{% endif %}">
+                        <div class="card-header">
+                            <h6 class="mb-0">Hardware Metrics</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label for="hw_throughput" class="form-label">Throughput (items/sec)</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hw_throughput" name="hw_throughput" min="0" step="0.01" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="hw_latency" class="form-label">Latency (ms)</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hw_latency" name="hw_latency" min="0" step="0.01" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="hw_memory" class="form-label">Memory (MB)</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hw_memory" name="hw_memory" min="0" step="0.01" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="hw_power" class="form-label">Power (W)</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hw_power" name="hw_power" min="0" step="0.01" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Run Validation
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Quick Help -->
+        <div class="card mt-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-question-circle"></i> Help</h5>
+            </div>
+            <div class="card-body">
+                <h6>Validation Protocols</h6>
+                <ul>
+                    <li><strong>Standard</strong>: Balances precision and recall with default thresholds (5% MAPE for passing)</li>
+                    <li><strong>Strict</strong>: Applies stricter thresholds (3% MAPE for passing)</li>
+                    <li><strong>Lenient</strong>: Applies more lenient thresholds (10% MAPE for passing)</li>
+                    <li><strong>Custom</strong>: Uses custom threshold settings defined in configuration</li>
+                </ul>
+                
+                <h6>Metrics Guide</h6>
+                <ul>
+                    <li><strong>Throughput</strong>: Number of items processed per second (higher is better)</li>
+                    <li><strong>Latency</strong>: Time to process a single request in milliseconds (lower is better)</li>
+                    <li><strong>Memory</strong>: Peak memory usage in megabytes (lower is better)</li>
+                    <li><strong>Power</strong>: Power consumption in watts (lower is better)</li>
+                </ul>
+                
+                <div class="alert alert-info mt-3" role="alert">
+                    <i class="bi bi-info-circle"></i> Validation compares simulation metrics against hardware metrics to 
+                    calculate error percentages and determine if the simulation is accurate.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Add JavaScript functionality here if needed
+    document.addEventListener('DOMContentLoaded', function() {
+        // Example: Auto-populate simulation metrics based on model and hardware selection
+        const modelSelect = document.getElementById('model_id');
+        const hardwareSelect = document.getElementById('hardware_id');
+        
+        // This would typically be connected to an API endpoint that provides default values
+        // For demonstration purposes, we're just showing the structure
+        function updateDefaultMetrics() {
+            // In a real implementation, you would fetch these values from your backend
+            console.log('Model changed to:', modelSelect.value);
+            console.log('Hardware changed to:', hardwareSelect.value);
+        }
+        
+        if (modelSelect && hardwareSelect) {
+            modelSelect.addEventListener('change', updateDefaultMetrics);
+            hardwareSelect.addEventListener('change', updateDefaultMetrics);
+        }
+    });
+</script>
+{% endblock %}

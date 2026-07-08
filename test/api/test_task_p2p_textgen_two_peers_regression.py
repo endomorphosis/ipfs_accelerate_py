@@ -1,0 +1,310 @@
+import json
+import os
+import socket
+import sys
+import time
+import multiprocessing as mp
+from pathlib import Path
+import runpy
+
+import pytest
+
+
+def _have_libp2p() -> bool:
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("libp2p") is not None
+    except Exception:
+        return False
+
+
+def _have_textgen_deps() -> bool:
+    try:
+        import importlib.util
+
+        return (importlib.util.find_spec("transformers") is not None) and (importlib.util.find_spec("torch") is not None)
+    except Exception:
+        return False
+
+
+def _free_port() -> int:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = int(s.getsockname()[1])
+    s.close()
+    return port
+
+
+def _wait_for_announce(path: str, timeout_s: float = 25.0) -> dict:
+    deadline = time.time() + float(timeout_s)
+    while time.time() < deadline:
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            try:
+                with open(path, "r", encoding="utf-8") as handle:
+                    data = json.load(handle)
+                return data if isinstance(data, dict) else {}
+            except Exception:
+                pass
+        time.sleep(0.1)
+    raise TimeoutError(f"announce file not written: {path}")
+
+
+def _wait_for_status_ok(*, multiaddr: str, timeout_s: float = 20.0) -> bool:
+    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, request_status_sync
+
+    remote = RemoteQueue(multiaddr=str(multiaddr))
+    deadline = time.time() + float(timeout_s)
+    while time.time() < deadline:
+        try:
+            resp = request_status_sync(remote=remote, timeout_s=3.0, detail=False)
+            if isinstance(resp, dict) and bool(resp.get("ok")):
+                return True
+        except Exception:
+            pass
+        time.sleep(0.25)
+    return False
+
+
+def _run_textgen_worker_with_service(
+    *,
+    queue_path: str,
+    listen_host: str,
+    listen_port: int,
+    announce_file: str,
+    worker_id: str,
+) -> None:
+    # Force CPU-only execution for deterministic behavior across test hosts.
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    os.environ["IPFS_ACCELERATE_PY_LLM_DEVICE"] = "cpu"
+    os.environ["IPFS_ACCELERATE_PY_DEFAULT_DEVICE"] = "cpu"
+
+    # Deterministic local-only behavior.
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = str(listen_host)
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT"] = str(int(listen_port))
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = "auto" if str(listen_host).strip() == "0.0.0.0" else str(listen_host)
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = announce_file
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "1"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT"] = "0"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RELAY"] = "0"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH"] = "0"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRIES"] = "2"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRY_BASE_MS"] = "50"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_MAX_S"] = "180"
+
+    # Keep worker behavior stable and minimal.
+    os.environ["IPFS_ACCEL_SKIP_CORE"] = "1"
+    os.environ["IPFS_KIT_DISABLE"] = "1"
+    os.environ["STORAGE_FORCE_LOCAL"] = "1"
+    os.environ["TRANSFORMERS_PATCH_DISABLE"] = "1"
+
+    os.environ["IPFS_ACCELERATE_PY_LLM_PROVIDER"] = "hf"
+    os.environ["IPFS_ACCELERATE_PY_LLM_MODEL"] = "gpt2"
+
+    # Ensure the worker will claim text-generation tasks.
+    os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES"] = "text-generation"
+
+    from ipfs_accelerate_py.p2p_tasks.worker import run_worker
+
+    run_worker(
+        queue_path=queue_path,
+        worker_id=str(worker_id),
+        poll_interval_s=0.05,
+        once=False,
+        p2p_service=True,
+        p2p_listen_port=int(listen_port),
+        accelerate_instance=None,
+        supported_task_types=["text-generation"],
+    )
+
+
+@pytest.mark.skipif(not _have_libp2p(), reason="libp2p not installed")
+@pytest.mark.skipif(not _have_textgen_deps(), reason="transformers/torch not installed")
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.text
+def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
+    """Regression: 2 peers, 50 GPT-2 generations, collect outputs.
+
+    This test specifically guards against:
+    - DuckDB attach/handle flakiness under concurrent P2P RPC access
+    - non-durable reporting from the load driver (must write --output JSON)
+    """
+
+    if os.environ.get("IPFS_ACCELERATE_PY_RUN_GPT2_P2P_REGRESSION", "0") != "1":
+        pytest.skip("set IPFS_ACCELERATE_PY_RUN_GPT2_P2P_REGRESSION=1 to run two-peer GPT-2 regression")
+
+    # Keep the regression deterministic for local/CI execution by constraining
+    # all peers to loopback addressing.
+    host_a = "127.0.0.1"
+    host_b = "127.0.0.1"
+    host_client = "127.0.0.1"
+    port_a = _free_port()
+    port_b = _free_port()
+    assert port_a != port_b
+
+    state_dir = tmp_path / "p2p_textgen_regression"
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    queue_a = str(state_dir / "peer1_queue.duckdb")
+    queue_b = str(state_dir / "peer2_queue.duckdb")
+    announce_a = str(state_dir / "peer1_announce.json")
+    announce_b = str(state_dir / "peer2_announce.json")
+
+    ctx = mp.get_context("spawn")
+    proc_a = ctx.Process(
+        target=_run_textgen_worker_with_service,
+        kwargs={
+            "queue_path": queue_a,
+            "listen_host": host_a,
+            "listen_port": port_a,
+            "announce_file": announce_a,
+            "worker_id": "peer1",
+        },
+        daemon=True,
+    )
+    proc_b = ctx.Process(
+        target=_run_textgen_worker_with_service,
+        kwargs={
+            "queue_path": queue_b,
+            "listen_host": host_b,
+            "listen_port": port_b,
+            "announce_file": announce_b,
+            "worker_id": "peer2",
+        },
+        daemon=True,
+    )
+
+    proc_a.start()
+    proc_b.start()
+
+    try:
+        ann_a = _wait_for_announce(announce_a)
+        ann_b = _wait_for_announce(announce_b)
+
+        peer_a = str(ann_a.get("peer_id") or "").strip()
+        peer_b = str(ann_b.get("peer_id") or "").strip()
+        assert peer_a and peer_b
+
+        report_path = str(state_dir / "load_report.json")
+
+        script = Path(__file__).resolve().parents[2] / "scripts" / "queue_textgen_load.py"
+        assert script.exists(), f"missing load driver: {script}"
+
+        os.environ["IPFS_KIT_DISABLE"] = "1"
+        os.environ["STORAGE_FORCE_LOCAL"] = "1"
+        os.environ["TRANSFORMERS_PATCH_DISABLE"] = "1"
+        os.environ["IPFS_ACCEL_SKIP_CORE"] = "1"
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        os.environ["IPFS_ACCELERATE_PY_LLM_DEVICE"] = "cpu"
+        os.environ["IPFS_ACCELERATE_PY_DEFAULT_DEVICE"] = "cpu"
+
+        # Force the client to dial via mDNS discovery (no announce-file dialing).
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = "0"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = host_client
+        # mDNS discovery does not require a specific client listen port; keep it stable.
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT"] = "9710"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "1"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DISCOVERY_TIMEOUT_S"] = "15"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_EXPLICIT_DISCOVERY_FALLBACK"] = "1"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_WAIT_RETRIES"] = "6"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_WAIT_RETRY_BASE_MS"] = "200"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_MAX_S"] = "180"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRIES"] = "2"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRY_BASE_MS"] = "50"
+
+        # Prefer announce-file multiaddrs for deterministic local dialing; if
+        # missing, fall back to a one-time mDNS resolve.
+        ma_a = str(ann_a.get("multiaddr") or "").strip()
+        ma_b = str(ann_b.get("multiaddr") or "").strip()
+        if not ma_a or not ma_b:
+            from ipfs_accelerate_py.p2p_tasks.client import discover_multiaddr_via_mdns_sync
+
+            ma_a = discover_multiaddr_via_mdns_sync(peer_id=peer_a, timeout_s=30.0)
+            ma_b = discover_multiaddr_via_mdns_sync(peer_id=peer_b, timeout_s=30.0)
+        assert ma_a and ma_b
+
+        assert _wait_for_status_ok(multiaddr=ma_a, timeout_s=20.0)
+        assert _wait_for_status_ok(multiaddr=ma_b, timeout_s=20.0)
+
+        # Run the load driver in-process to avoid import shadowing issues
+        # (the repo contains similarly-named modules under test/).
+        mod = runpy.run_path(str(script))
+        rc = int(mod["main"](
+            [
+                "--multiaddr",
+                ma_a,
+                "--multiaddr",
+                ma_b,
+                "--count",
+                "50",
+                "--concurrency",
+                "1",
+                "--wait",
+                "--timeout-s",
+                "900",
+                "--collect-results",
+                "--suffix-index",
+                "--max-new-tokens",
+                "16",
+                "--temperature",
+                "0.2",
+                "--prompt",
+                "The quick brown fox",
+                "--submit-retries",
+                "6",
+                "--submit-retry-sleep-s",
+                "1.0",
+                "--output",
+                report_path,
+            ]
+        ))
+        assert rc == 0
+
+        assert os.path.exists(report_path) and os.path.getsize(report_path) > 0
+        with open(report_path, "r", encoding="utf-8") as handle:
+            report = json.load(handle)
+
+        assert report.get("ok") is True
+        assert int(report.get("count") or 0) == 50
+        assert int(report.get("submit_ok_count") or 0) == 50
+        assert int(report.get("submit_failed_count") or 0) == 0
+        assert report.get("wait") is True
+        assert int(report.get("completed") or 0) == 50
+        assert int(report.get("failed") or 0) == 0
+        assert int(report.get("timed_out") or 0) == 0
+
+        outputs = report.get("outputs")
+        assert isinstance(outputs, list)
+        assert len(outputs) == 50
+
+        # Validate distribution: the load driver round-robins by index, so we
+        # expect an exact 25/25 split across the two targets.
+        peer_counts: dict[str, int] = {}
+        for item in outputs:
+            assert isinstance(item, dict)
+            assert item.get("status") == "completed"
+            txt = item.get("text")
+            assert isinstance(txt, str) and len(txt) > 0
+            peer_id = str(item.get("peer_id") or "")
+            peer_counts[peer_id] = peer_counts.get(peer_id, 0) + 1
+
+        assert peer_counts.get(peer_a, 0) == 25
+        assert peer_counts.get(peer_b, 0) == 25
+    finally:
+        for p in (proc_a, proc_b):
+            try:
+                p.terminate()
+            except Exception:
+                pass
+        for p in (proc_a, proc_b):
+            try:
+                p.join(timeout=10.0)
+            except Exception:
+                pass

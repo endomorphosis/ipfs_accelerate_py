@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebNN Storage Example</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    
+    h1 {
+      color: #333;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    
+    h2 {
+      margin-top: 30px;
+      color: #444;
+    }
+    
+    .card {
+      background-color: #f9f9f9;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    
+    button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    
+    button:hover {
+      background-color: #45a049;
+    }
+    
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    
+    pre {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 5px;
+      overflow-x: auto;
+      font-size: 14px;
+    }
+    
+    .output {
+      background-color: #f8f8f8;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 15px;
+      margin-top: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+    
+    .error {
+      color: #d32f2f;
+    }
+    
+    .success {
+      color: #388e3c;
+    }
+    
+    .info {
+      color: #1976d2;
+    }
+    
+    .model-list {
+      list-style-type: none;
+      padding: 0;
+    }
+    
+    .model-item {
+      padding: 10px;
+      margin: 5px 0;
+      background-color: #f1f1f1;
+      border-radius: 3px;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .model-actions {
+      display: flex;
+      gap: 5px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 20px 0;
+    }
+    
+    .stat-box {
+      background-color: #e9f5e9;
+      padding: 15px;
+      border-radius: 5px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebNN Storage Example</h1>
+  
+  <div class="card">
+    <h2>WebNN Support</h2>
+    <p>This example demonstrates how to use IndexedDB storage to cache WebNN model weights for faster loading.</p>
+    <p id="webnn-support">Checking WebNN support...</p>
+    <button id="check-support">Check WebNN Support</button>
+  </div>
+  
+  <div class="card">
+    <h2>Storage Operations</h2>
+    <p>Test model storage and loading operations:</p>
+    <div>
+      <button id="create-model">Create & Store Model</button>
+      <button id="load-model">Load Model</button>
+      <button id="delete-model">Delete Model</button>
+      <button id="clear-cache">Clear Cache</button>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h2>Storage Statistics</h2>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-value" id="model-count">-</div>
+        <div class="stat-label">Models</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="storage-size">-</div>
+        <div class="stat-label">Storage Used</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="storage-quota">-</div>
+        <div class="stat-label">Storage Remaining</div>
+      </div>
+    </div>
+    <button id="refresh-stats">Refresh Statistics</button>
+  </div>
+  
+  <div class="card">
+    <h2>Stored Models</h2>
+    <ul class="model-list" id="model-list">
+      <li>No models available</li>
+    </ul>
+    <button id="refresh-models">Refresh Model List</button>
+  </div>
+  
+  <div class="card">
+    <h2>Run Example</h2>
+    <p>Run the full example to test both storage and inference:</p>
+    <button id="run-example">Run Full Example</button>
+  </div>
+  
+  <div class="output" id="output"></div>
+  
+  <script type="module">
+    import { WebNNBackend } from './ipfs_accelerate_js_webnn_backend.js';
+    import { WebNNStorageIntegration } from './ipfs_accelerate_js_webnn_storage_integration.js';
+    import { runStorageExample } from './ipfs_accelerate_js_storage_example.js';
+    
+    // DOM elements
+    const webnnSupportElement = document.getElementById('webnn-support');
+    const outputElement = document.getElementById('output');
+    const modelCountElement = document.getElementById('model-count');
+    const storageSizeElement = document.getElementById('storage-size');
+    const storageQuotaElement = document.getElementById('storage-quota');
+    const modelListElement = document.getElementById('model-list');
+    
+    // Buttons
+    const checkSupportButton = document.getElementById('check-support');
+    const createModelButton = document.getElementById('create-model');
+    const loadModelButton = document.getElementById('load-model');
+    const deleteModelButton = document.getElementById('delete-model');
+    const clearCacheButton = document.getElementById('clear-cache');
+    const refreshStatsButton = document.getElementById('refresh-stats');
+    const refreshModelsButton = document.getElementById('refresh-models');
+    const runExampleButton = document.getElementById('run-example');
+    
+    // Global variables
+    let backend;
+    let storage;
+    let isInitialized = false;
+    const modelId = 'simple-mlp';
+    const modelName = 'Simple MLP Model';
+    
+    // Helper functions
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      outputElement.innerHTML += `<div class="${type}">[${timestamp}] ${message}</div>`;
+      outputElement.scrollTop = outputElement.scrollHeight;
+    }
+    
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    // Initialize backend and storage
+    async function initialize() {
+      if (isInitialized) return true;
+      
+      try {
+        // Create WebNN backend
+        backend = new WebNNBackend({
+          enableLogging: true,
+          deviceType: 'gpu',
+          powerPreference: 'high-performance'
+        });
+        
+        // Create storage integration
+        storage = new WebNNStorageIntegration(backend, {
+          enableLogging: true,
+          enableModelCaching: true,
+          dbName: 'webnn-example-storage'
+        });
+        
+        // Initialize storage integration
+        log('Initializing WebNN and storage...');
+        const initialized = await storage.initialize();
+        
+        if (!initialized) {
+          log('Failed to initialize storage integration', 'error');
+          return false;
+        }
+        
+        log('WebNN and storage initialized successfully', 'success');
+        isInitialized = true;
+        return true;
+      } catch (error) {
+        log(`Initialization error: ${error.message}`, 'error');
+        return false;
+      }
+    }
+    
+    // Check WebNN support
+    async function checkWebNNSupport() {
+      try {
+        const tempBackend = new WebNNBackend();
+        const isSupported = await tempBackend.isSupported();
+        
+        if (isSupported) {
+          webnnSupportElement.textContent = 'WebNN is supported in this browser 👍';
+          webnnSupportElement.style.color = '#388e3c';
+        } else {
+          webnnSupportElement.textContent = 'WebNN is not supported in this browser ❌';
+          webnnSupportElement.style.color = '#d32f2f';
+        }
+        
+        return isSupported;
+      } catch (error) {
+        webnnSupportElement.textContent = `Error checking WebNN support: ${error.message}`;
+        webnnSupportElement.style.color = '#d32f2f';
+        return false;
+      }
+    }
+    
+    // Create and store model
+    async function createModel() {
+      if (!await initialize()) return;
+      
+      log('Creating and storing model...');
+      
+      try {
+        // Create weights
+        const weights = new Map();
+        
+        // Layer 1: 4x2 weight matrix
+        weights.set('weights', {
+          data: new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]),
+          shape: [4, 2],
+          dataType: 'float32'
+        });
+        
+        // Layer 1: 1x2 bias
+        weights.set('bias', {
+          data: new Float32Array([0.1, 0.2]),
+          shape: [1, 2],
+          dataType: 'float32'
+        });
+        
+        // Store model
+        const stored = await storage.storeModel(
+          modelId,
+          modelName,
+          weights,
+          {
+            version: '1.0.0',
+            framework: 'custom',
+            description: 'A simple MLP model for demonstration'
+          }
+        );
+        
+        if (stored) {
+          log('Model stored successfully', 'success');
+          await refreshStats();
+          await refreshModels();
+        } else {
+          log('Failed to store model', 'error');
+        }
+      } catch (error) {
+        log(`Error creating model: ${error.message}`, 'error');
+      }
+    }
+    
+    // Load model
+    async function loadModel() {
+      if (!await initialize()) return;
+      
+      log('Loading model from cache...');
+      
+      try {
+        // Check if model is cached
+        const isCached = await storage.isModelCached(modelId);
+        
+        if (!isCached) {
+          log(`Model "${modelName}" is not cached`, 'error');
+          return;
+        }
+        
+        // Load model
+        const tensors = await storage.loadModel(modelId);
+        
+        if (tensors) {
+          log(`Loaded ${tensors.size} tensors from cache`, 'success');
+          
+          // Example usage: Run matrix multiplication with loaded weights
+          if (tensors.has('weights') && tensors.has('bias')) {
+            const input = await backend.createTensor(
+              new Float32Array([1, 2, 3, 4]),
+              [1, 4],
+              'float32'
+            );
+            
+            const weights = tensors.get('weights');
+            const bias = tensors.get('bias');
+            
+            const result1 = await backend.execute('matmul', {
+              a: input,
+              b: weights
+            });
+            
+            const result2 = await backend.execute('add', {
+              a: result1,
+              b: bias
+            });
+            
+            // Read result
+            const output = await backend.readTensor(result2.tensor, result2.shape);
+            log('Inference result: ' + Array.from(output).join(', '), 'success');
+          }
+        } else {
+          log('Failed to load model from cache', 'error');
+        }
+      } catch (error) {
+        log(`Error loading model: ${error.message}`, 'error');
+      }
+    }
+    
+    // Delete model
+    async function deleteModel() {
+      if (!await initialize()) return;
+      
+      log(`Deleting model: ${modelId}`);
+      
+      try {
+        const deleted = await storage.deleteModel(modelId);
+        
+        if (deleted) {
+          log('Model deleted successfully', 'success');
+          await refreshStats();
+          await refreshModels();
+        } else {
+          log('Failed to delete model', 'error');
+        }
+      } catch (error) {
+        log(`Error deleting model: ${error.message}`, 'error');
+      }
+    }
+    
+    // Clear cache
+    async function clearCache() {
+      if (!await initialize()) return;
+      
+      log('Clearing model cache...');
+      
+      try {
+        const cleared = await storage.clearCache();
+        
+        if (cleared) {
+          log('Cache cleared successfully', 'success');
+          await refreshStats();
+          await refreshModels();
+        } else {
+          log('Failed to clear cache', 'error');
+        }
+      } catch (error) {
+        log(`Error clearing cache: ${error.message}`, 'error');
+      }
+    }
+    
+    // Refresh storage statistics
+    async function refreshStats() {
+      if (!await initialize()) return;
+      
+      try {
+        const stats = await storage.getStorageStats();
+        
+        modelCountElement.textContent = stats.modelCount;
+        storageSizeElement.textContent = formatBytes(stats.totalSize);
+        
+        if (stats.remainingQuota) {
+          storageQuotaElement.textContent = formatBytes(stats.remainingQuota);
+        } else {
+          storageQuotaElement.textContent = 'Unknown';
+        }
+        
+        log('Storage statistics refreshed');
+      } catch (error) {
+        log(`Error refreshing statistics: ${error.message}`, 'error');
+      }
+    }
+    
+    // Refresh model list
+    async function refreshModels() {
+      if (!await initialize()) return;
+      
+      try {
+        const models = await storage.listModels();
+        
+        if (models.length === 0) {
+          modelListElement.innerHTML = '<li>No models available</li>';
+        } else {
+          modelListElement.innerHTML = '';
+          
+          for (const model of models) {
+            const li = document.createElement('li');
+            li.className = 'model-item';
+            
+            const info = document.createElement('div');
+            info.innerHTML = `
+              <strong>${model.name}</strong> (${model.id})
+              <div>Version: ${model.version} | Size: ${formatBytes(model.size)}</div>
+              <div>Last accessed: ${new Date(model.lastAccessed).toLocaleString()}</div>
+            `;
+            
+            const actions = document.createElement('div');
+            actions.className = 'model-actions';
+            
+            const loadButton = document.createElement('button');
+            loadButton.textContent = 'Load';
+            loadButton.addEventListener('click', () => {
+              loadModelById(model.id);
+            });
+            
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = 'Delete';
+            deleteButton.addEventListener('click', () => {
+              deleteModelById(model.id);
+            });
+            
+            actions.appendChild(loadButton);
+            actions.appendChild(deleteButton);
+            
+            li.appendChild(info);
+            li.appendChild(actions);
+            modelListElement.appendChild(li);
+          }
+        }
+        
+        log('Model list refreshed');
+      } catch (error) {
+        log(`Error refreshing model list: ${error.message}`, 'error');
+      }
+    }
+    
+    // Load model by ID
+    async function loadModelById(id) {
+      if (!await initialize()) return;
+      
+      log(`Loading model: ${id}`);
+      
+      try {
+        const tensors = await storage.loadModel(id);
+        
+        if (tensors) {
+          log(`Loaded ${tensors.size} tensors from model: ${id}`, 'success');
+        } else {
+          log(`Failed to load model: ${id}`, 'error');
+        }
+      } catch (error) {
+        log(`Error loading model: ${error.message}`, 'error');
+      }
+    }
+    
+    // Delete model by ID
+    async function deleteModelById(id) {
+      if (!await initialize()) return;
+      
+      log(`Deleting model: ${id}`);
+      
+      try {
+        const deleted = await storage.deleteModel(id);
+        
+        if (deleted) {
+          log(`Model deleted: ${id}`, 'success');
+          await refreshStats();
+          await refreshModels();
+        } else {
+          log(`Failed to delete model: ${id}`, 'error');
+        }
+      } catch (error) {
+        log(`Error deleting model: ${error.message}`, 'error');
+      }
+    }
+    
+    // Run full example
+    async function runFullExample() {
+      log('Running full example...');
+      
+      try {
+        await runStorageExample();
+        await refreshStats();
+        await refreshModels();
+      } catch (error) {
+        log(`Error running example: ${error.message}`, 'error');
+      }
+    }
+    
+    // Event listeners
+    checkSupportButton.addEventListener('click', checkWebNNSupport);
+    createModelButton.addEventListener('click', createModel);
+    loadModelButton.addEventListener('click', loadModel);
+    deleteModelButton.addEventListener('click', deleteModel);
+    clearCacheButton.addEventListener('click', clearCache);
+    refreshStatsButton.addEventListener('click', refreshStats);
+    refreshModelsButton.addEventListener('click', refreshModels);
+    runExampleButton.addEventListener('click', runFullExample);
+    
+    // Initial check
+    checkWebNNSupport();
+  </script>
+</body>
+</html>

@@ -1,0 +1,570 @@
+#!/usr/bin/env python3
+"""Chatty smoketest for 2-peer systemd deployments.
+
+Validates:
+- Session gating: tasks tagged with session_id A should only execute on a peer
+  whose TaskQueue worker session tag is A.
+- Sticky resume: a second-round task with continue_session + sticky_worker_id
+  should execute on the same worker that handled round 1.
+- Throughput (best-effort): submits additional non-session tasks and reports
+  how many distinct executors handled them.
+
+This script is designed to run *outside* systemd, talking to already-running
+TaskQueue P2P services.
+
+Example:
+  .venv/bin/python scripts/dev_tools/systemd_chatty_session_resume_smoketest.py \
+    --peer-a-id Qm... --peer-a-multiaddr /ip4/.../tcp/9100/p2p/Qm... --peer-a-session S_A \
+    --peer-b-id Qm... --peer-b-multiaddr /ip4/.../tcp/9100/p2p/Qm... --peer-b-session S_B \
+    --provider copilot_cli --jobs 6 --timeout-s 180
+
+Notes:
+- For deterministic runs without real Copilot, ensure both peers have
+  ipfs_accelerate_py_COPILOT_CLI_CMD set in their systemd env (e.g. secrets.env)
+  and IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
+
+# Keep this dev tool quiet and predictable by default.
+# These env vars are safe to override from the shell when you *want* full-stack
+# initialization.
+os.environ.setdefault("IPFS_KIT_DISABLE", "1")
+os.environ.setdefault("STORAGE_FORCE_LOCAL", "1")
+os.environ.setdefault("TRANSFORMERS_PATCH_DISABLE", "1")
+os.environ.setdefault("IPFS_ACCEL_SKIP_CORE", "1")
+
+import anyio
+
+from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+from ipfs_accelerate_py.p2p_tasks.client import get_task, get_capabilities, submit_task
+
+
+@dataclass
+class Peer:
+    name: str
+    peer_id: str
+    multiaddr: str
+    session: str
+
+    def remote(self) -> RemoteQueue:
+        return RemoteQueue(peer_id=self.peer_id, multiaddr=self.multiaddr)
+
+
+def _now() -> float:
+    return time.time()
+
+
+async def _get_task_retry(*, remote: RemoteQueue, task_id: str, deadline: float) -> Optional[Dict[str, Any]]:
+    backoff = 0.2
+    while _now() < deadline:
+        try:
+            return await get_task(remote=remote, task_id=str(task_id))
+        except Exception:
+            await anyio.sleep(backoff)
+            backoff = min(2.0, backoff * 1.5)
+    return None
+
+
+async def _wait_completed_chatty(
+    *,
+    remote: RemoteQueue,
+    task_id: str,
+    timeout_s: float,
+) -> Optional[Dict[str, Any]]:
+    deadline = _now() + max(1.0, float(timeout_s))
+    last_status = None
+
+    while _now() < deadline:
+        task = await _get_task_retry(remote=remote, task_id=task_id, deadline=min(deadline, _now() + 5.0))
+        if isinstance(task, dict):
+            status = str(task.get("status") or "").strip().lower()
+            if status and status != last_status:
+                last_status = status
+            if status in {"completed", "failed", "cancelled"}:
+                return task
+        await anyio.sleep(0.25)
+    return None
+
+
+def _fmt_excerpt(text: str, *, max_chars: int = 200) -> str:
+    s = str(text or "")
+    s = " ".join(s.split())
+    if len(s) <= max_chars:
+        return s
+    return s[: max_chars - 3] + "..."
+
+
+def _print_block(title: str, block: Dict[str, Any]) -> None:
+    print("\n" + ("=" * 90))
+    print(title)
+    print("-" * 90)
+    print(json.dumps(block, indent=2, sort_keys=True))
+
+
+def _summarize_capabilities(caps: object) -> object:
+    if not isinstance(caps, dict):
+        return caps
+
+    out: Dict[str, Any] = {}
+    for k in ("task_types", "models", "hwtest", "endpoint_types_by_model", "endpoints_by_model"):
+        if k in caps:
+            out[k] = caps.get(k)
+
+    mcp = caps.get("mcp")
+    if isinstance(mcp, dict):
+        mcp_out: Dict[str, Any] = {}
+        if "counts" in mcp:
+            mcp_out["counts"] = mcp.get("counts")
+
+        def _name_sample(value: object, *, key: str, limit: int = 12) -> None:
+            if not isinstance(value, list):
+                return
+            names: list[str] = []
+            for item in value:
+                if isinstance(item, dict):
+                    n = item.get("name") or item.get("uri")
+                    if isinstance(n, str) and n.strip():
+                        names.append(n.strip())
+                elif isinstance(item, str) and item.strip():
+                    names.append(item.strip())
+            uniq = sorted(set(names))
+            mcp_out[f"{key}_count"] = len(uniq)
+            mcp_out[f"{key}_sample"] = uniq[: max(0, int(limit))]
+
+        _name_sample(mcp.get("tools"), key="tool")
+        _name_sample(mcp.get("prompts"), key="prompt")
+        _name_sample(mcp.get("resources"), key="resource")
+
+        out["mcp"] = mcp_out
+
+    return out
+
+
+async def _probe_peer(peer: Peer) -> Dict[str, Any]:
+    caps = await get_capabilities(remote=peer.remote(), timeout_s=8.0, detail=False)
+    return caps
+
+
+async def _submit_llm_task(
+    *,
+    peer: Peer,
+    prompt: str,
+    provider: str,
+    model_name: str,
+    session_id: Optional[str],
+    sticky_worker_id: Optional[str] = None,
+    chat_session_id: Optional[str] = None,
+    continue_session: bool = False,
+) -> str:
+    payload: Dict[str, Any] = {
+        "prompt": str(prompt),
+        "provider": str(provider),
+    }
+    if session_id:
+        payload["session_id"] = str(session_id)
+    if sticky_worker_id:
+        payload["sticky_worker_id"] = str(sticky_worker_id)
+    if chat_session_id:
+        payload["chat_session_id"] = str(chat_session_id)
+    if continue_session:
+        payload["continue_session"] = True
+
+    tid = await submit_task(remote=peer.remote(), task_type="llm.generate", model_name=str(model_name), payload=payload)
+    return str(tid)
+
+
+def _result_executor(task: Dict[str, Any]) -> Tuple[str, str]:
+    res = task.get("result")
+    if not isinstance(res, dict):
+        return ("", "")
+    return (str(res.get("executor_peer_id") or "").strip(), str(res.get("executor_worker_id") or "").strip())
+
+
+def _result_text(task: Dict[str, Any]) -> str:
+    res = task.get("result")
+    if not isinstance(res, dict):
+        return ""
+    return str(res.get("text") or "")
+
+
+async def main_async(argv: Optional[list[str]] = None) -> int:
+    p = argparse.ArgumentParser()
+    p.add_argument("--peer-a-id", required=True)
+    p.add_argument("--peer-a-multiaddr", required=True)
+    p.add_argument("--peer-a-session", required=True)
+    p.add_argument("--peer-b-id", required=True)
+    p.add_argument("--peer-b-multiaddr", required=True)
+    p.add_argument("--peer-b-session", required=True)
+
+    p.add_argument("--provider", default="copilot_cli")
+    p.add_argument("--model", default="gpt-5-mini")
+    p.add_argument("--jobs", type=int, default=6)
+    p.add_argument("--timeout-s", type=float, default=180.0)
+    p.add_argument(
+        "--failover-only",
+        action="store_true",
+        help=(
+            "Only run the session-failover check: submit a task to peer A with peer B's session_id, "
+            "then verify peer A cancels+resubmits locally after the worker-side failover timeout. "
+            "This is intended to be run while peer B is offline/unreachable."
+        ),
+    )
+    p.add_argument(
+        "--failover-wait-s",
+        type=float,
+        default=360.0,
+        help="Max seconds to wait for failover cancel+resubmit to complete (default: 360).",
+    )
+    p.add_argument(
+        "--probe-detail",
+        action="store_true",
+        help="Print verbose peer capabilities (can be very large).",
+    )
+    p.add_argument(
+        "--skip-sticky-resume",
+        action="store_true",
+        help="Skip Round 2 (continue_session + sticky_worker_id). Useful when using real copilot_cli via npx without native session support.",
+    )
+    args = p.parse_args(argv)
+
+    peer_a = Peer("A", args.peer_a_id, args.peer_a_multiaddr, args.peer_a_session)
+    peer_b = Peer("B", args.peer_b_id, args.peer_b_multiaddr, args.peer_b_session)
+
+    if peer_a.session == peer_b.session:
+        print("WARNING: peer sessions are identical; session-gating test is not meaningful.")
+
+    # Probe
+    for peer in (peer_a, peer_b):
+        try:
+            caps = await get_capabilities(remote=peer.remote(), timeout_s=8.0, detail=bool(args.probe_detail))
+            _print_block(
+                f"Peer {peer.name} capabilities",
+                {
+                    "peer": peer.__dict__,
+                    "capabilities": caps if bool(args.probe_detail) else _summarize_capabilities(caps),
+                },
+            )
+        except Exception as exc:
+            _print_block(f"Peer {peer.name} probe FAILED", {"peer": peer.__dict__, "error": str(exc)})
+            if peer.name == "B" and bool(args.failover_only):
+                _print_block(
+                    "Peer B probe skipped for failover-only",
+                    {
+                        "note": "Continuing because --failover-only is set and peer B is expected to be offline/unreachable.",
+                        "peer_b": peer.__dict__,
+                        "error": str(exc),
+                    },
+                )
+                continue
+            return 2
+
+    if bool(args.failover_only):
+        # Submit a task to peer A that requires peer B's session. If peer B can't
+        # drain it, peer A should eventually fail it over locally.
+        chat_id = f"chat-{int(time.time())}-FAILOVER"
+        tid_old = await _submit_llm_task(
+            peer=peer_a,
+            prompt="(smoketest) failover: say OK and echo FAILOVER.",
+            provider=str(args.provider),
+            model_name=str(args.model),
+            session_id=peer_b.session,
+            chat_session_id=chat_id,
+        )
+
+        deadline = _now() + max(10.0, float(args.failover_wait_s))
+        new_tid = ""
+        old_task = None
+        while _now() < deadline:
+            old_task = await _get_task_retry(remote=peer_a.remote(), task_id=tid_old, deadline=min(deadline, _now() + 5.0))
+            if isinstance(old_task, dict) and str(old_task.get("status") or "").lower() == "cancelled":
+                res = old_task.get("result")
+                if isinstance(res, dict):
+                    prog = res.get("progress")
+                    if isinstance(prog, dict):
+                        reason = str(prog.get("cancel_reason") or "")
+                        if "session_failover->" in reason:
+                            new_tid = reason.split("session_failover->", 1)[-1].strip()
+                            break
+            await anyio.sleep(0.25)
+
+        _print_block(
+            "Failover: old task status",
+            {
+                "old_task_id": tid_old,
+                "status": (old_task or {}).get("status") if isinstance(old_task, dict) else None,
+                "result": (old_task or {}).get("result") if isinstance(old_task, dict) else None,
+                "error": (old_task or {}).get("error") if isinstance(old_task, dict) else None,
+                "parsed_new_task_id": new_tid,
+            },
+        )
+
+        if not new_tid:
+            _print_block(
+                "FAIL: Did not observe session failover cancel_reason",
+                {
+                    "hint": (
+                        "Ensure peer A is running a recent worker build and has session failover enabled (default-on) "
+                        "and that peer B is offline/unreachable so it cannot drain the task. "
+                        "Also check that IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S is not too large."
+                    ),
+                    "old_task_id": tid_old,
+                },
+            )
+            return 30
+
+        new_task = await _wait_completed_chatty(remote=peer_a.remote(), task_id=new_tid, timeout_s=float(args.timeout_s))
+        if not isinstance(new_task, dict):
+            _print_block(
+                "FAIL: Failover new task TIMEOUT",
+                {"new_task_id": new_tid, "old_task_id": tid_old, "peer": peer_a.__dict__},
+            )
+            return 31
+
+        ex_peer, ex_worker = _result_executor(new_task)
+        _print_block(
+            "Failover: new task result",
+            {
+                "new_task_id": new_tid,
+                "status": new_task.get("status"),
+                "error": new_task.get("error"),
+                "executor_peer_id": ex_peer,
+                "executor_worker_id": ex_worker,
+                "result_excerpt": _fmt_excerpt(_result_text(new_task)),
+                "result": new_task.get("result"),
+            },
+        )
+
+        if str(new_task.get("status") or "").lower() != "completed":
+            return 32
+        if ex_peer and ex_peer != peer_a.peer_id:
+            _print_block(
+                "FAIL: Failover new task executed on wrong peer",
+                {"expected_peer_id": peer_a.peer_id, "got_peer_id": ex_peer, "new_task_id": new_tid},
+            )
+            return 33
+
+        print("PASS")
+        return 0
+
+    # Phase 1: session gating + real Copilot execution on both peers
+    chat_id_a = f"chat-{int(time.time())}-A"
+    prompt1a = "(smoketest) Round 1A: say OK and echo the word ALPHA."
+    tid1a = await _submit_llm_task(
+        peer=peer_a,
+        prompt=prompt1a,
+        provider=str(args.provider),
+        model_name=str(args.model),
+        session_id=peer_a.session,
+        chat_session_id=chat_id_a,
+    )
+
+    t1a = await _wait_completed_chatty(remote=peer_a.remote(), task_id=tid1a, timeout_s=float(args.timeout_s))
+    if not isinstance(t1a, dict):
+        _print_block("Round 1A TIMEOUT", {"task_id": tid1a, "peer": peer_a.__dict__})
+        return 3
+
+    ex_peer1a, ex_worker1a = _result_executor(t1a)
+    block1a = {
+        "phase": "round1a",
+        "task_id": tid1a,
+        "submit_peer": peer_a.__dict__,
+        "status": t1a.get("status"),
+        "error": t1a.get("error"),
+        "executor_peer_id": ex_peer1a,
+        "executor_worker_id": ex_worker1a,
+        "result_excerpt": _fmt_excerpt(_result_text(t1a)),
+        "result": t1a.get("result"),
+    }
+    _print_block("Round 1A result", block1a)
+
+    if str(t1a.get("status") or "").lower() != "completed":
+        return 4
+
+    if ex_peer1a and ex_peer1a != peer_a.peer_id:
+        _print_block(
+            "FAIL: Round 1A executed on wrong peer",
+            {"expected_peer_id": peer_a.peer_id, "got_peer_id": ex_peer1a, "task": block1a},
+        )
+        return 10
+
+    chat_id_b = f"chat-{int(time.time())}-B"
+    prompt1b = "(smoketest) Round 1B: say OK and echo the word BETA."
+    tid1b = await _submit_llm_task(
+        peer=peer_b,
+        prompt=prompt1b,
+        provider=str(args.provider),
+        model_name=str(args.model),
+        session_id=peer_b.session,
+        chat_session_id=chat_id_b,
+    )
+
+    t1b = await _wait_completed_chatty(remote=peer_b.remote(), task_id=tid1b, timeout_s=float(args.timeout_s))
+    if not isinstance(t1b, dict):
+        _print_block("Round 1B TIMEOUT", {"task_id": tid1b, "peer": peer_b.__dict__})
+        return 3
+
+    ex_peer1b, ex_worker1b = _result_executor(t1b)
+    block1b = {
+        "phase": "round1b",
+        "task_id": tid1b,
+        "submit_peer": peer_b.__dict__,
+        "status": t1b.get("status"),
+        "error": t1b.get("error"),
+        "executor_peer_id": ex_peer1b,
+        "executor_worker_id": ex_worker1b,
+        "result_excerpt": _fmt_excerpt(_result_text(t1b)),
+        "result": t1b.get("result"),
+    }
+    _print_block("Round 1B result", block1b)
+
+    if str(t1b.get("status") or "").lower() != "completed":
+        return 4
+
+    if ex_peer1b and ex_peer1b != peer_b.peer_id:
+        _print_block(
+            "FAIL: Round 1B executed on wrong peer",
+            {"expected_peer_id": peer_b.peer_id, "got_peer_id": ex_peer1b, "task": block1b},
+        )
+        return 10
+
+    if bool(args.skip_sticky_resume):
+        _print_block(
+            "Skipping Round 2 (sticky resume)",
+            {
+                "reason": "--skip-sticky-resume was set",
+                "note": "Round 2 requires continue_session support, which typically needs a native Copilot CLI with persistent auth on the worker.",
+                "round1a_executor_worker_id": ex_worker1a,
+                "round1b_executor_worker_id": ex_worker1b,
+            },
+        )
+        return 0
+
+    if not ex_worker1a:
+        _print_block("FAIL: Missing executor_worker_id", {"task": block1a})
+        return 11
+
+    # Phase 2: sticky resume (requires continue_session support in the provider)
+    prompt2 = "(smoketest) Round 2: continue the previous session and say OK then echo BETA."
+    tid2 = await _submit_llm_task(
+        peer=peer_a,
+        prompt=prompt2,
+        provider=str(args.provider),
+        model_name=str(args.model),
+        session_id=peer_a.session,
+        sticky_worker_id=ex_worker1a,
+        chat_session_id=chat_id_a,
+        continue_session=True,
+    )
+
+    t2 = await _wait_completed_chatty(remote=peer_a.remote(), task_id=tid2, timeout_s=float(args.timeout_s))
+    if not isinstance(t2, dict):
+        _print_block("Round 2 TIMEOUT", {"task_id": tid2, "peer": peer_a.__dict__, "sticky_worker_id": ex_worker1a})
+        return 5
+
+    ex_peer2, ex_worker2 = _result_executor(t2)
+    block2 = {
+        "phase": "round2",
+        "task_id": tid2,
+        "submit_peer": peer_a.__dict__,
+        "sticky_worker_id": ex_worker1a,
+        "status": t2.get("status"),
+        "error": t2.get("error"),
+        "executor_peer_id": ex_peer2,
+        "executor_worker_id": ex_worker2,
+        "result_excerpt": _fmt_excerpt(_result_text(t2)),
+        "result": t2.get("result"),
+    }
+    _print_block("Round 2 result", block2)
+
+    if str(t2.get("status") or "").lower() != "completed":
+        return 6
+
+    if ex_worker2 and ex_worker2 != ex_worker1a:
+        _print_block(
+            "FAIL: Sticky resume executed on different worker",
+            {"expected_worker_id": ex_worker1a, "got_worker_id": ex_worker2, "task": block2},
+        )
+        return 12
+
+    # Phase 2: throughput observation (best-effort)
+    jobs = max(0, int(args.jobs))
+    if jobs <= 0:
+        print("PASS")
+        return 0
+
+    tids: list[Tuple[str, str]] = []
+    for i in range(jobs):
+        prompt = f"(smoketest) throughput job {i+1}/{jobs}: say OK and echo JOB{i+1}."
+        submit_peer = peer_a if (i % 2 == 0) else peer_b
+        tid = await _submit_llm_task(
+            peer=submit_peer,
+            prompt=prompt,
+            provider=str(args.provider),
+            model_name=str(args.model),
+            session_id=None,
+        )
+        tids.append((submit_peer.name, tid))
+
+    executors: Dict[str, int] = {}
+    for submit_name, tid in tids:
+        submit_peer = peer_a if submit_name == "A" else peer_b
+        t = await _wait_completed_chatty(remote=submit_peer.remote(), task_id=tid, timeout_s=float(args.timeout_s))
+        if not isinstance(t, dict):
+            _print_block("Job TIMEOUT", {"task_id": tid, "submit_peer": submit_peer.__dict__})
+            continue
+        ex_peer, ex_worker = _result_executor(t)
+        key = ex_peer or ex_worker or "unknown"
+        executors[key] = executors.get(key, 0) + 1
+        _print_block(
+            f"Job result ({submit_name})",
+            {
+                "task_id": tid,
+                "submit_peer": submit_peer.__dict__,
+                "status": t.get("status"),
+                "error": t.get("error"),
+                "executor_peer_id": ex_peer,
+                "executor_worker_id": ex_worker,
+                "result_excerpt": _fmt_excerpt(_result_text(t)),
+            },
+        )
+
+    _print_block("Throughput summary", {"jobs": jobs, "executors": executors, "distinct_executors": len(executors)})
+
+    # If we expected >1 executor but saw only one, fail with actionable hints.
+    if jobs >= 2 and len(executors) < 2:
+        _print_block(
+            "WARN/FAIL: Only one executor observed",
+            {
+                "hint": (
+                    "If you expected both peers to execute copilot_cli, verify on BOTH hosts: "
+                    "(1) IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1, "
+                    "(2) copilot CLI is installed OR ipfs_accelerate_py_COPILOT_CLI_CMD is set to a deterministic command, "
+                    "(3) mesh is enabled and remote autoscale/mesh-children are enabled if you want draining."
+                ),
+                "executors": executors,
+            },
+        )
+        return 20
+
+    print("PASS")
+    return 0
+
+
+def main() -> int:
+    try:
+        return anyio.run(main_async, backend="trio")
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

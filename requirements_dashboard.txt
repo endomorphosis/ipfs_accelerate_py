@@ -1,0 +1,18 @@
+# MCP Dashboard Requirements
+# Install with: pip install -r requirements_dashboard.txt
+
+# Core web framework
+flask>=2.0.0
+flask-cors>=3.0.0
+
+# HTTP client
+requests>=2.25.0
+
+# HuggingFace Hub API
+huggingface_hub>=0.16.0
+
+# Optional: For async HuggingFace Hub operations
+# aiohttp>=3.8.0
+
+# Optional: For enhanced testing
+# playwright>=1.40.0

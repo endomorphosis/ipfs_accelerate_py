@@ -1,0 +1,187 @@
+name: Android Mobile CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'ipfs_accelerate_py/**'
+      - 'test/android_test_harness/**'
+      - 'models/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'ipfs_accelerate_py/**'
+      - 'test/android_test_harness/**'
+      - 'models/**'
+  workflow_dispatch:
+    inputs:
+      models:
+        description: 'Comma-separated list of models to test (leave empty for default)'
+        required: false
+        default: ''
+      device_type:
+        description: 'Device type (emulator or physical)'
+        required: false
+        default: 'emulator'
+        options:
+          - emulator
+          - physical
+      timeout:
+        description: 'Benchmark timeout in seconds'
+        required: false
+        default: '3600'
+
+jobs:
+  android-benchmark:
+    name: Android Benchmark
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        api-level: [30]
+        arch: [x86_64]
+        device-profile:
+          - name: "Pixel 4"
+            id: "pixel4"
+          - name: "Samsung Galaxy S21"
+            id: "s21"
+        include:
+          - api-level: 30
+            arch: x86_64
+            target: google_apis_playstore
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r test/android_test_harness/requirements.txt
+      
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+      
+      - name: Create benchmark directory
+        run: mkdir -p benchmark_results
+      
+      - name: Download models
+        run: |
+          mkdir -p models
+          python test/android_test_harness/download_test_models.py
+      
+      - name: Setup Android emulator
+        if: ${{ github.event.inputs.device_type != 'physical' }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: ${{ matrix.arch }}
+          target: ${{ matrix.target }}
+          profile: ${{ matrix.device-profile.name }}
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: echo "Emulator started successfully"
+      
+      - name: Run benchmark on emulator
+        if: ${{ github.event.inputs.device_type != 'physical' }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: ${{ matrix.arch }}
+          target: ${{ matrix.target }}
+          profile: ${{ matrix.device-profile.name }}
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            # Get emulator device ID
+            DEVICE_ID=$(adb devices | grep emulator | cut -f1)
+            echo "Running benchmarks on emulator with ID: $DEVICE_ID"
+            
+            # Get models list from input or use defaults
+            MODELS_LIST=""
+            if [[ -n "${{ github.event.inputs.models }}" ]]; then
+              MODELS_INPUT="${{ github.event.inputs.models }}"
+              # Create JSON model list
+              python -c "import json; models = '$MODELS_INPUT'.split(','); print(json.dumps([{'name': m.strip(), 'path': f'models/{m.strip()}.onnx', 'type': 'onnx', 'batch_sizes': [1], 'iterations': 20, 'priority': 'high'} for m in models]))" > models.json
+              MODELS_LIST="--model-list models.json"
+            fi
+            
+            # Set timeout from input or use default
+            TIMEOUT="${{ github.event.inputs.timeout }}"
+            if [[ -z "$TIMEOUT" ]]; then
+              TIMEOUT="3600"
+            fi
+            
+            # Run benchmarks
+            python test/android_test_harness/run_ci_benchmarks.py \
+              --device-id $DEVICE_ID \
+              --output-db benchmark_results/${{ matrix.device-profile.id }}_results.duckdb \
+              $MODELS_LIST \
+              --timeout $TIMEOUT \
+              --verbose
+      
+      - name: Run benchmark on physical device
+        if: ${{ github.event.inputs.device_type == 'physical' }}
+        run: |
+          # Check for connected physical devices
+          DEVICES=$(adb devices | grep -v "List" | grep "device$" | cut -f1)
+          DEVICE_COUNT=$(echo "$DEVICES" | grep -v "^$" | wc -l)
+          
+          if [[ $DEVICE_COUNT -eq 0 ]]; then
+            echo "No physical devices found. Exiting."
+            exit 1
+          fi
+          
+          # Get first available device
+          DEVICE_ID=$(echo "$DEVICES" | head -1)
+          echo "Running benchmarks on physical device with ID: $DEVICE_ID"
+          
+          # Get models list from input or use defaults
+          MODELS_LIST=""
+          if [[ -n "${{ github.event.inputs.models }}" ]]; then
+            MODELS_INPUT="${{ github.event.inputs.models }}"
+            # Create JSON model list
+            python -c "import json; models = '$MODELS_INPUT'.split(','); print(json.dumps([{'name': m.strip(), 'path': f'models/{m.strip()}.onnx', 'type': 'onnx', 'batch_sizes': [1], 'iterations': 20, 'priority': 'high'} for m in models]))" > models.json
+            MODELS_LIST="--model-list models.json"
+          fi
+          
+          # Set timeout from input or use default
+          TIMEOUT="${{ github.event.inputs.timeout }}"
+          if [[ -z "$TIMEOUT" ]]; then
+            TIMEOUT="3600"
+          fi
+          
+          # Run benchmarks
+          python test/android_test_harness/run_ci_benchmarks.py \
+            --device-id $DEVICE_ID \
+            --output-db benchmark_results/${{ matrix.device-profile.id }}_results.duckdb \
+            $MODELS_LIST \
+            --timeout $TIMEOUT \
+            --verbose
+      
+      - name: Upload benchmark database
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-benchmark-${{ matrix.device-profile.id }}
+          path: benchmark_results/${{ matrix.device-profile.id }}_results.duckdb
+      
+      - name: Upload benchmark reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-benchmark-reports-${{ matrix.device-profile.id }}
+          path: android_benchmark_results/

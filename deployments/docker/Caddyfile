@@ -1,0 +1,16 @@
+{
+  auto_https disable_redirects
+}
+
+${SITE_DOMAIN} {
+  encode gzip
+
+  @api path /mcp* /docs* /openapi.json /redoc*
+  handle @api {
+    reverse_proxy api:8000
+  }
+
+  handle {
+    reverse_proxy dashboard:8080
+  }
+}

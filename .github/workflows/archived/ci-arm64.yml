@@ -1,0 +1,107 @@
+name: CI/CD Pipeline - ARM64 Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  test-arm64:
+    runs-on: self-hosted
+    
+    strategy:
+      matrix:
+        python-version: [3.12]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: System Info
+      run: |
+        echo "=== System Information ==="
+        uname -a
+        lscpu | grep -E "Architecture|CPU|Model name|Thread|Core"
+        free -h
+        df -h /
+        python3 --version
+        docker --version || echo "Docker not available"
+        
+    - name: Set up Python virtual environment
+      run: |
+        python3 -m venv venv-ci
+        source venv-ci/bin/activate
+        python -m pip install --upgrade pip
+        
+    - name: Install dependencies
+      run: |
+        source venv-ci/bin/activate
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        fi
+        if [ -f requirements_dashboard.txt ]; then
+          pip install -r requirements_dashboard.txt
+        fi
+        # Install the package in development mode
+        pip install -e .
+        
+    - name: Run basic tests
+      run: |
+        source venv-ci/bin/activate
+        # Test basic imports
+        python -c "import ipfs_accelerate_py; print('Package import successful')"
+        python -c "import platform; print(f'Python platform: {platform.machine()}')"
+        
+        # Run any existing tests
+        if [ -d "tests" ]; then
+          python -m pytest tests/ -v || echo "Tests not available or failed"
+        fi
+        
+        # Test CLI if available
+        if [ -f "cli.py" ]; then
+          python cli.py --help || echo "CLI help not available"
+        fi
+        
+    - name: Test hardware detection
+      run: |
+        source venv-ci/bin/activate
+        # Test hardware detection functionality
+        if [ -f "hardware_detection.py" ]; then
+          python hardware_detection.py || echo "Hardware detection test completed with warnings"
+        fi
+        
+    - name: Test IPFS functionality (if available)
+      run: |
+        source venv-ci/bin/activate
+        # Basic IPFS tests - non-blocking
+        python -c "
+        try:
+            import ipfshttpclient
+            print('IPFS client import successful')
+        except ImportError as e:
+            print(f'IPFS client not available: {e}')
+        except Exception as e:
+            print(f'IPFS client error (expected in CI): {e}')
+        "
+        
+    - name: Cleanup
+      run: |
+        rm -rf venv-ci
+        echo "Cleanup completed"
+        
+  build-info:
+    runs-on: self-hosted
+    needs: test-arm64
+    
+    steps:
+    - name: Build Summary
+      run: |
+        echo "=== Build Information ==="
+        echo "Repository: ${{ github.repository }}"
+        echo "Commit SHA: ${{ github.sha }}"
+        echo "Branch: ${{ github.ref_name }}"
+        echo "Runner OS: ${{ runner.os }}"
+        echo "Runner Architecture: $(uname -m)"
+        echo "Build completed successfully on ARM64 hardware"

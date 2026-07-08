@@ -1,0 +1,24 @@
+# Core Requirements
+numpy>=1.21.0
+pandas>=1.3.0
+duckdb>=0.3.4
+scipy>=1.7.0
+scikit-learn>=1.0.0
+statsmodels>=0.13.0
+
+# Visualization Requirements
+matplotlib>=3.5.0
+plotly>=5.5.0
+kaleido>=0.2.1  # For static image export with plotly
+
+# Database Requirements
+pyarrow>=6.0.0  # For efficient DuckDB I/O
+
+# Testing Requirements
+pytest>=6.2.5
+pytest-cov>=2.12.1
+
+# Utility Requirements
+PyYAML>=6.0
+requests>=2.26.0
+tqdm>=4.62.0    # Progress bar for long-running operations

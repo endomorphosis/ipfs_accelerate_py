@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hardware Abstracted CLIP Demo - IPFS Accelerate JS</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+      line-height: 1.5;
+    }
+    
+    h1 {
+      color: #1a73e8;
+      border-bottom: 2px solid #1a73e8;
+      padding-bottom: 10px;
+    }
+    
+    h2 {
+      color: #1a73e8;
+      margin-top: 30px;
+    }
+    
+    h3 {
+      margin-top: 20px;
+    }
+    
+    .card {
+      background-color: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .control-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    
+    @media (max-width: 768px) {
+      .control-panel {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .image-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .options-panel {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    
+    textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      min-height: 100px;
+      font-family: inherit;
+      resize: vertical;
+    }
+    
+    button {
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: #0d62c9;
+    }
+    
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    
+    #image-preview {
+      max-width: 100%;
+      max-height: 300px;
+      margin-top: 15px;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: none;
+    }
+    
+    #status-display {
+      font-weight: 500;
+      margin-bottom: 20px;
+      padding: 10px;
+      border-radius: 4px;
+      background-color: #e8f0fe;
+      color: #1a73e8;
+    }
+    
+    #result-display {
+      margin-top: 30px;
+    }
+    
+    #metrics-display {
+      font-family: monospace;
+      font-size: 14px;
+      white-space: pre-wrap;
+      background-color: #f5f5f5;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin-top: 20px;
+    }
+    
+    #backend-display {
+      background-color: #e8f0fe;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      margin-bottom: 20px;
+    }
+    
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    
+    th, td {
+      padding: 8px 12px;
+      text-align: left;
+    }
+    
+    th {
+      background-color: #f1f3f4;
+      font-weight: 500;
+    }
+    
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    
+    .meter {
+      height: 20px;
+      position: relative;
+      background: #f1f3f4;
+      border-radius: 25px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    
+    .meter > span {
+      display: block;
+      height: 100%;
+      border-radius: 25px;
+      background-color: #1a73e8;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .tab-container {
+      margin-top: 15px;
+    }
+    
+    .tab-buttons {
+      display: flex;
+      border-bottom: 1px solid #ccc;
+    }
+    
+    .tab-button {
+      padding: 10px 15px;
+      cursor: pointer;
+      background: none;
+      color: #333;
+      border: none;
+      margin-right: 5px;
+      font-weight: normal;
+    }
+    
+    .tab-button.active {
+      border-bottom: 2px solid #1a73e8;
+      color: #1a73e8;
+      font-weight: 500;
+    }
+    
+    .tab-content {
+      padding: 15px 0;
+    }
+    
+    .tab-pane {
+      display: none;
+    }
+    
+    .tab-pane.active {
+      display: block;
+    }
+    
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #ccc;
+      font-size: 0.9em;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Hardware Abstracted CLIP Demo</h1>
+  
+  <p>
+    This demo showcases the Hardware Abstracted CLIP model with automatic hardware acceleration.
+    The model will intelligently select the optimal hardware backend (WebGPU, WebNN, or CPU) based on your browser and device capabilities.
+  </p>
+  
+  <div id="status-display">Waiting for initialization...</div>
+  
+  <div class="card">
+    <h2>CLIP Model</h2>
+    
+    <button id="initialize-button">Initialize Model</button>
+    
+    <div id="backend-display"></div>
+    
+    <div class="control-panel">
+      <div class="image-panel">
+        <div class="form-group">
+          <label for="image-input">Select an image:</label>
+          <input type="file" id="image-input" accept="image/*" />
+        </div>
+        <img id="image-preview" alt="Preview" />
+      </div>
+      
+      <div class="options-panel">
+        <div class="tab-container">
+          <div class="tab-buttons">
+            <button class="tab-button active" data-tab="similarity">Similarity Analysis</button>
+            <button class="tab-button" data-tab="classification">Zero-Shot Classification</button>
+            <button class="tab-button" data-tab="benchmark">Performance</button>
+          </div>
+          
+          <div class="tab-content">
+            <div class="tab-pane active" id="similarity-tab">
+              <div class="form-group">
+                <label for="text-input">Enter text to compare with the image:</label>
+                <input type="text" id="text-input" placeholder="e.g., a photo of a dog" />
+              </div>
+              <button id="similarity-button" disabled>Compute Similarity</button>
+            </div>
+            
+            <div class="tab-pane" id="classification-tab">
+              <div class="form-group">
+                <label for="classes-input">Enter classes (one per line):</label>
+                <textarea id="classes-input" placeholder="dog&#10;cat&#10;car&#10;building&#10;mountain&#10;beach"></textarea>
+              </div>
+              <button id="classify-button" disabled>Classify Image</button>
+            </div>
+            
+            <div class="tab-pane" id="benchmark-tab">
+              <p>Run benchmark tests to compare performance across available backends.</p>
+              <button id="view-metrics-button" disabled>View Performance Metrics</button>
+              <div id="metrics-display"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div id="result-display" class="card">
+    <h2>Results</h2>
+    <p>Initialize the model and select an operation to see results.</p>
+  </div>
+  
+  <div class="footer">
+    <p>Hardware Abstracted CLIP Demo - IPFS Accelerate JavaScript SDK</p>
+    <p>This demo uses the hardware abstraction layer to automatically select the best available hardware backend (WebGPU, WebNN, or CPU).</p>
+    <p>Browser detection and optimization is applied to get the best performance for your specific browser.</p>
+  </div>
+  
+  <script>
+    // Tab switching functionality
+    document.addEventListener('DOMContentLoaded', () => {
+      const tabButtons = document.querySelectorAll('.tab-button');
+      
+      tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          // Remove active class from all buttons and panes
+          document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+          document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+          
+          // Add active class to current button
+          button.classList.add('active');
+          
+          // Show corresponding tab pane
+          const tabId = button.getAttribute('data-tab');
+          document.getElementById(`${tabId}-tab`).classList.add('active');
+        });
+      });
+    });
+  </script>
+  
+  <script src="hardware_abstracted_clip_example.js"></script>
+</body>
+</html>

@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hardware Abstraction Layer Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      color: #2c3e50;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-right: 10px;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+    button:disabled {
+      background-color: #95a5a6;
+      cursor: not-allowed;
+    }
+    pre {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+      overflow-x: auto;
+      margin-top: 20px;
+      font-family: monospace;
+    }
+    .log-container {
+      height: 400px;
+      overflow-y: auto;
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      color: #333;
+    }
+    .error {
+      color: #e74c3c;
+    }
+    .success {
+      color: #27ae60;
+    }
+    .info {
+      color: #2980b9;
+    }
+    .result-container {
+      margin-top: 20px;
+    }
+    .result-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .matrix {
+      font-family: monospace;
+      white-space: pre;
+    }
+    .footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 14px;
+      color: #7f8c8d;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Hardware Abstraction Layer Demo</h1>
+    
+    <div class="card">
+      <h2>About this Demo</h2>
+      <p>
+        This demo showcases the Hardware Abstraction Layer (HAL) of the IPFS Accelerate TypeScript SDK.
+        The HAL provides a unified interface for executing operations across different hardware backends.
+        For detailed documentation, see <a href="HARDWARE_ABSTRACTION_LAYER_GUIDE.md">HARDWARE_ABSTRACTION_LAYER_GUIDE.md</a>.
+      </p>
+      <ul>
+        <li><strong>WebGPU</strong>: Accelerated computation using the GPU through the WebGPU API</li>
+        <li><strong>WebNN</strong>: Optimized neural network operations through the WebNN API</li>
+        <li><strong>CPU</strong>: Fallback JavaScript implementation for all operations</li>
+      </ul>
+      <p>
+        The demo includes a matrix multiplication operation on different model types and a Vision Transformer (ViT) implementation
+        that demonstrates how the HAL selects the most appropriate backend based on the model type and available hardware.
+      </p>
+    </div>
+    
+    <div class="card">
+      <h2>Hardware Detection</h2>
+      <button id="detectBtn">Detect Hardware Capabilities</button>
+      <pre id="capabilitiesOutput">Hardware capabilities will appear here...</pre>
+    </div>
+    
+    <div class="card">
+      <h2>Matrix Multiplication Demo</h2>
+      <p>This demo will multiply the following matrices:</p>
+      <div class="result-container">
+        <div class="result-title">Matrix A (2x3):</div>
+        <div class="matrix">
+          [ 1 2 3 ]
+          [ 4 5 6 ]
+        </div>
+      </div>
+      <div class="result-container">
+        <div class="result-title">Matrix B (3x3):</div>
+        <div class="matrix">
+          [ 7  8  9  ]
+          [ 10 11 12 ]
+          [ 13 14 15 ]
+        </div>
+      </div>
+      
+      <div style="margin-top: 20px;">
+        <button id="runBtn">Run Matrix Multiplication</button>
+        <button id="benchmarkBtn">Run Benchmark</button>
+        <button id="clearBtn">Clear Output</button>
+      </div>
+      
+      <div class="log-container" id="outputLog">
+        Output will appear here...
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>Vision Transformer (ViT) Demo</h2>
+      <p>
+        This demo shows the Hardware Abstraction Layer running a Vision Transformer (ViT) model for image classification.
+        The HAL automatically selects the optimal backend (WebGPU, WebNN, CPU) based on your browser and hardware capabilities.
+      </p>
+      <div id="hal-vit-demo-container" style="margin-top: 20px;">
+        <!-- The interactive demo will be inserted here -->
+        <p class="loading">Loading ViT demo...</p>
+        
+        <div class="hardware-info-section">
+          <h3>Hardware Capabilities for ViT</h3>
+          <div id="vit-hardware-capabilities">
+            <button id="detect-vit-capabilities-btn">Detect Hardware Capabilities for ViT</button>
+            <pre id="vit-capabilities-result" style="margin-top: 10px; background: #f8f9fa; padding: 15px;">Hardware capabilities will appear here...</pre>
+            <div id="vit-backend-list" style="margin-top: 10px; background: #f1f1f1; padding: 15px;"></div>
+          </div>
+        </div>
+        
+        <div class="vit-model-section" style="margin-top: 20px;">
+          <h3>ViT Model with Hardware Abstraction Layer</h3>
+          <div class="input-section" style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <input type="text" id="image-url" placeholder="Enter image URL" 
+                   value="https://storage.googleapis.com/ipfs_accelerate_example_data/cat.jpg" 
+                   style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" />
+            <button id="run-inference-btn">Run Inference</button>
+          </div>
+          <div class="preview-section" style="display: flex; gap: 20px;">
+            <div class="image-preview" style="flex: 1;">
+              <h4>Preview</h4>
+              <img id="preview-image" src="" alt="Preview" style="max-width: 100%; border-radius: 4px; border: 1px solid #ddd;" />
+            </div>
+            <div class="results-section" style="flex: 1;">
+              <h4>Results</h4>
+              <div id="inference-results" style="background: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #ddd;"></div>
+              <div id="inference-time" style="margin-top: 10px; font-weight: bold;"></div>
+              <div id="backend-used" style="margin-top: 10px; font-weight: bold;"></div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="benchmark-section" style="margin-top: 20px;">
+          <h3>Backend Comparison for ViT</h3>
+          <button id="run-comparison-btn">Compare Available Backends</button>
+          <div id="comparison-results" style="margin-top: 10px;"></div>
+          <div id="comparison-chart" style="height: 300px; margin-top: 20px; background: #fff; border: 1px solid #ddd; border-radius: 4px;"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="footer">
+      IPFS Accelerate TypeScript SDK - Hardware Abstraction Layer Demo
+    </div>
+  </div>
+
+  <script type="module">
+    // Import the hardware abstraction demo functions
+    import { runMatrixMultiplication, runHardwareAbstractionDemo } from './ipfs_accelerate_js_hardware_abstraction_example.js';
+    import { createHardwareAbstraction } from './ipfs_accelerate_js_hardware_abstraction.js';
+    // For ViT demo we would import
+    // import { createInteractiveHALDemo } from './ipfs_accelerate_js_hardware_abstracted_vit_example.js';
+    
+    // Elements
+    const detectBtn = document.getElementById('detectBtn');
+    const runBtn = document.getElementById('runBtn');
+    const benchmarkBtn = document.getElementById('benchmarkBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const capabilitiesOutput = document.getElementById('capabilitiesOutput');
+    const outputLog = document.getElementById('outputLog');
+    
+    // Log to the output element
+    function log(message, cssClass = '') {
+      const line = document.createElement('div');
+      line.textContent = message;
+      if (cssClass) {
+        line.className = cssClass;
+      }
+      outputLog.appendChild(line);
+      outputLog.scrollTop = outputLog.scrollHeight;
+    }
+    
+    // Override console.log to also display in our UI
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    
+    console.log = (...args) => {
+      originalLog(...args);
+      log(args.join(' '));
+    };
+    
+    console.error = (...args) => {
+      originalError(...args);
+      log(args.join(' '), 'error');
+    };
+    
+    console.warn = (...args) => {
+      originalWarn(...args);
+      log(args.join(' '), 'warning');
+    };
+    
+    // Detect hardware capabilities
+    detectBtn.addEventListener('click', async () => {
+      detectBtn.disabled = true;
+      capabilitiesOutput.textContent = 'Detecting capabilities...';
+      
+      try {
+        const hal = await createHardwareAbstraction();
+        const capabilities = hal.getCapabilities();
+        
+        capabilitiesOutput.textContent = JSON.stringify(capabilities, null, 2);
+        
+        // Add available backends
+        const availableBackends = hal.getAvailableBackends();
+        capabilitiesOutput.textContent += '\n\nAvailable Backends: ' + availableBackends.join(', ');
+        
+        hal.dispose();
+      } catch (error) {
+        capabilitiesOutput.textContent = 'Error detecting capabilities: ' + error.message;
+      }
+      
+      detectBtn.disabled = false;
+    });
+    
+    // Run matrix multiplication demo
+    runBtn.addEventListener('click', async () => {
+      runBtn.disabled = true;
+      outputLog.textContent = '';
+      
+      try {
+        log('Starting Hardware Abstraction Layer Demo...', 'info');
+        await runHardwareAbstractionDemo();
+        log('Demo completed successfully!', 'success');
+      } catch (error) {
+        log('Error running demo: ' + error.message, 'error');
+      }
+      
+      runBtn.disabled = false;
+    });
+    
+    // Benchmark function
+    benchmarkBtn.addEventListener('click', async () => {
+      benchmarkBtn.disabled = true;
+      outputLog.textContent = '';
+      
+      try {
+        // Create sample matrices
+        const matrixA = new Float32Array([1, 2, 3, 4, 5, 6]);
+        const matrixAShape = [2, 3];
+        const matrixB = new Float32Array([7, 8, 9, 10, 11, 12, 13, 14, 15]);
+        const matrixBShape = [3, 3];
+        
+        // Model types to test
+        const modelTypes = ['vision', 'text', 'audio', 'generic'];
+        
+        // Number of iterations for each model type
+        const iterations = 10;
+        
+        log('Starting benchmark...', 'info');
+        log(`Running ${iterations} iterations for each model type`);
+        
+        // Run benchmark for each model type
+        for (const modelType of modelTypes) {
+          log(`\nBenchmarking model type: ${modelType}`, 'info');
+          
+          const times = [];
+          
+          for (let i = 0; i < iterations; i++) {
+            const startTime = performance.now();
+            
+            const result = await runMatrixMultiplication(
+              matrixA,
+              matrixAShape,
+              matrixB,
+              matrixBShape,
+              modelType
+            );
+            
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            times.push(duration);
+            
+            log(`Iteration ${i + 1}: ${duration.toFixed(2)} ms on ${result.backendType} backend`);
+          }
+          
+          // Calculate statistics
+          const average = times.reduce((sum, time) => sum + time, 0) / times.length;
+          const min = Math.min(...times);
+          const max = Math.max(...times);
+          
+          log(`\nResults for ${modelType}:`, 'success');
+          log(`  Average execution time: ${average.toFixed(2)} ms`);
+          log(`  Min execution time: ${min.toFixed(2)} ms`);
+          log(`  Max execution time: ${max.toFixed(2)} ms`);
+        }
+        
+        log('\nBenchmark completed!', 'success');
+      } catch (error) {
+        log('Error running benchmark: ' + error.message, 'error');
+      }
+      
+      benchmarkBtn.disabled = false;
+    });
+    
+    // Clear output
+    clearBtn.addEventListener('click', () => {
+      outputLog.textContent = '';
+    });
+    
+    // ViT Hardware Abstraction Demo
+    // In a real implementation, this would load the actual ViT demo code
+    function setupVitDemo() {
+      const demoContainer = document.getElementById('hal-vit-demo-container');
+      const loadingText = demoContainer.querySelector('.loading');
+      
+      // Update loading text
+      loadingText.textContent = 'This is a placeholder for the interactive ViT demo. In a real implementation, the HAL-powered ViT demo would be loaded here.';
+      loadingText.style.marginBottom = '20px';
+      loadingText.style.fontStyle = 'italic';
+      loadingText.style.color = '#666';
+      
+      // Set up mock demo behavior
+      const detectVitCapabilitiesBtn = document.getElementById('detect-vit-capabilities-btn');
+      const vitCapabilitiesResult = document.getElementById('vit-capabilities-result');
+      const vitBackendList = document.getElementById('vit-backend-list');
+      const imageUrlInput = document.getElementById('image-url');
+      const runInferenceBtn = document.getElementById('run-inference-btn');
+      const previewImage = document.getElementById('preview-image');
+      const inferenceResults = document.getElementById('inference-results');
+      const inferenceTime = document.getElementById('inference-time');
+      const backendUsed = document.getElementById('backend-used');
+      const runComparisonBtn = document.getElementById('run-comparison-btn');
+      const comparisonResults = document.getElementById('comparison-results');
+      
+      // Detect ViT capabilities
+      detectVitCapabilitiesBtn.addEventListener('click', async () => {
+        detectVitCapabilitiesBtn.disabled = true;
+        vitCapabilitiesResult.textContent = 'Detecting capabilities...';
+        
+        // Simulate detection delay
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        try {
+          // Simulate capabilities detection for ViT
+          const mockCapabilities = {
+            browserType: navigator.userAgent.includes('Chrome') ? 'chrome' : 
+                          navigator.userAgent.includes('Firefox') ? 'firefox' :
+                          navigator.userAgent.includes('Safari') ? 'safari' : 'unknown',
+            webgpuSupported: true,
+            webnnSupported: navigator.userAgent.includes('Edg'),
+            cpuSupported: true,
+            performance: {
+              gpu: {
+                vendor: 'Mock GPU Vendor',
+                model: 'Mock GPU Model',
+                score: 85
+              },
+              cpu: {
+                cores: 8,
+                score: 70
+              }
+            }
+          };
+          
+          vitCapabilitiesResult.textContent = JSON.stringify(mockCapabilities, null, 2);
+          
+          // Display backends
+          const mockBackends = ['webgpu'];
+          if (mockCapabilities.webnnSupported) mockBackends.push('webnn');
+          mockBackends.push('cpu');
+          
+          vitBackendList.innerHTML = '<h4>Available Backends:</h4>';
+          vitBackendList.innerHTML += mockBackends.map(backend => {
+            const backendClass = backend.replace(/[^a-z0-9]/gi, '').toLowerCase();
+            const color = backend === 'webgpu' ? '#4285f4' : 
+                           backend === 'webnn' ? '#0f9d58' : '#db4437';
+            return `<span style="display: inline-block; padding: 4px 8px; border-radius: 4px; margin-right: 8px; margin-bottom: 8px; background: ${color}; color: white;">${backend}</span>`;
+          }).join(' ');
+          
+          // Add HAL auto selection badge
+          vitBackendList.innerHTML += '<span style="display: inline-block; padding: 4px 8px; border-radius: 4px; margin-right: 8px; margin-bottom: 8px; background: #f4b400; color: black;">HAL Auto-Selection</span>';
+          
+          // Best backend for vision
+          const bestBackend = 'webgpu'; // Vision models typically perform best on WebGPU
+          vitBackendList.innerHTML += `<div>Best backend for vision: <strong>${bestBackend}</strong></div>`;
+          
+        } catch (error) {
+          vitCapabilitiesResult.textContent = 'Error detecting capabilities: ' + error.message;
+        }
+        
+        detectVitCapabilitiesBtn.disabled = false;
+      });
+      
+      // Run inference
+      runInferenceBtn.addEventListener('click', async () => {
+        const imageUrl = imageUrlInput.value.trim();
+        if (!imageUrl) {
+          inferenceResults.textContent = 'Please enter an image URL';
+          return;
+        }
+        
+        runInferenceBtn.disabled = true;
+        inferenceResults.textContent = 'Running inference...';
+        inferenceTime.textContent = '';
+        backendUsed.textContent = '';
+        
+        // Update preview image
+        previewImage.src = imageUrl;
+        
+        // Simulate inference delay
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        try {
+          // Mock inference results
+          const mockPredictions = [
+            { label: 'cat', probability: 0.92 },
+            { label: 'tabby cat', probability: 0.05 },
+            { label: 'tiger cat', probability: 0.02 },
+            { label: 'Siamese cat', probability: 0.005 },
+            { label: 'Egyptian Mau', probability: 0.001 }
+          ];
+          
+          // Display results
+          inferenceResults.innerHTML = mockPredictions.map((pred, i) => `
+            <div style="margin-bottom: 5px;">
+              <strong>${i + 1}. ${pred.label}</strong>: ${(pred.probability * 100).toFixed(2)}%
+            </div>
+          `).join('');
+          
+          inferenceTime.textContent = `Inference time: 138.25ms`;
+          backendUsed.textContent = `Backend: webgpu`;
+          
+        } catch (error) {
+          inferenceResults.textContent = 'Error running inference: ' + error.message;
+        }
+        
+        runInferenceBtn.disabled = false;
+      });
+      
+      // Run backend comparison
+      runComparisonBtn.addEventListener('click', async () => {
+        runComparisonBtn.disabled = true;
+        comparisonResults.textContent = 'Running comparison...';
+        
+        // Simulate comparison delay
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Mock comparison results
+        const mockResults = {
+          webgpu: { inferenceTime: 138.25, supportLevel: 'full', topPrediction: 'cat' },
+          webnn: { inferenceTime: 245.78, supportLevel: 'full', topPrediction: 'cat' },
+          cpu: { inferenceTime: 891.42, supportLevel: 'full', topPrediction: 'cat' }
+        };
+        
+        // Display results
+        comparisonResults.innerHTML = `
+          <div style="margin-bottom: 20px;">
+            <h4>Results</h4>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+              <thead>
+                <tr>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;">Backend</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;">Inference Time (ms)</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;">Support Level</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;">Top Prediction</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="background-color: #e6f7ff; font-weight: bold;">
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">webgpu</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">138.25</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">full</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">cat</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">webnn</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">245.78</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">full</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">cat</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">cpu</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">891.42</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">full</td>
+                  <td style="border: 1px solid #ddd; padding: 8px; text-align: left;">cat</td>
+                </tr>
+              </tbody>
+            </table>
+            <div style="font-weight: bold;">
+              Best backend: webgpu (6.45x faster than CPU)
+            </div>
+          </div>
+        `;
+        
+        // Create chart
+        const comparisonChart = document.getElementById('comparison-chart');
+        comparisonChart.innerHTML = `
+          <div style="display: flex; height: 100%; padding: 20px;">
+            <div style="writing-mode: vertical-lr; transform: rotate(180deg); padding-right: 10px; font-weight: bold;">Backend</div>
+            <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: space-around;">
+              <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                <div style="width: 100px; font-weight: bold;">webgpu</div>
+                <div style="height: 40px; display: flex; align-items: center; padding: 0 10px; color: white; font-weight: bold; border-radius: 4px; width: 15.5%; background: #4285f4;">
+                  138.25ms
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                <div style="width: 100px; font-weight: bold;">webnn</div>
+                <div style="height: 40px; display: flex; align-items: center; padding: 0 10px; color: white; font-weight: bold; border-radius: 4px; width: 27.6%; background: #0f9d58;">
+                  245.78ms
+                </div>
+              </div>
+              <div style="display: flex; align-items: center;">
+                <div style="width: 100px; font-weight: bold;">cpu</div>
+                <div style="height: 40px; display: flex; align-items: center; padding: 0 10px; color: white; font-weight: bold; border-radius: 4px; width: 100%; background: #db4437;">
+                  891.42ms
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        runComparisonBtn.disabled = false;
+      });
+      
+      // Run initial detection
+      detectVitCapabilitiesBtn.click();
+    }
+    
+    // Initial hardware detection for main demo
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const hal = await createHardwareAbstraction();
+        const capabilities = hal.getCapabilities();
+        
+        // Show a basic summary in the capabilities output
+        capabilitiesOutput.textContent = 'Browser: ' + capabilities.browserName + ' ' + capabilities.browserVersion + 
+          '\nPlatform: ' + capabilities.platform +
+          '\nWebGPU Support: ' + (capabilities.webgpuSupported ? 'Yes' : 'No') +
+          '\nWebNN Support: ' + (capabilities.webnnSupported ? 'Yes' : 'No') +
+          '\nRecommended Backend: ' + capabilities.recommendedBackend +
+          '\n\nClick "Detect Hardware Capabilities" for more details';
+        
+        hal.dispose();
+        
+        // Setup the ViT demo with mock implementation
+        setupVitDemo();
+        
+        /*
+        // In a real implementation, we would load the actual HAL ViT demo:
+        const demoContainer = document.getElementById('hal-vit-demo-container');
+        try {
+          // Import the createInteractiveHALDemo function
+          // const { createInteractiveHALDemo } = await import('./ipfs_accelerate_js_hardware_abstracted_vit_example.js');
+          
+          // Create the interactive demo
+          // const demo = await createInteractiveHALDemo(demoContainer);
+        } catch (error) {
+          demoContainer.innerHTML = `<div class="error">Error loading ViT demo: ${error.message}</div>`;
+        }
+        */
+      } catch (error) {
+        capabilitiesOutput.textContent = 'Error during initial detection: ' + error.message;
+      }
+    });
+  </script>
+</body>
+</html>

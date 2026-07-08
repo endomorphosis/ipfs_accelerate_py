@@ -1,0 +1,286 @@
+name: Hardware Monitoring Integration Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'test/distributed_testing/hardware_utilization_monitor.py'
+      - 'test/distributed_testing/coordinator_hardware_monitoring_integration.py'
+      - 'test/distributed_testing/tests/test_hardware_utilization_monitor.py'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'test/distributed_testing/hardware_utilization_monitor.py'
+      - 'test/distributed_testing/coordinator_hardware_monitoring_integration.py'
+      - 'test/distributed_testing/tests/test_hardware_utilization_monitor.py'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode'
+        required: true
+        default: 'standard'
+        type: choice
+        options:
+          - standard
+          - full
+          - long
+
+jobs:
+  hardware-monitoring-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9]
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install duckdb psutil numpy pandas matplotlib
+
+    - name: Create test database directory
+      run: |
+        mkdir -p test_data
+    
+    - name: Run hardware monitoring tests
+      run: |
+        cd test/distributed_testing
+        if [ "${{ github.event.inputs.test_mode }}" == "full" ]; then
+          python run_hardware_monitoring_tests.py --verbose --db-path ../../test_data/test_metrics.duckdb --html-report ../../test_data/test_report.html
+        elif [ "${{ github.event.inputs.test_mode }}" == "long" ]; then
+          python run_hardware_monitoring_tests.py --verbose --run-long-tests --db-path ../../test_data/test_metrics.duckdb --html-report ../../test_data/test_report.html
+        else
+          python run_hardware_monitoring_tests.py --html-report ../../test_data/test_report.html
+        fi
+    
+    - name: Upload test report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: hardware-monitoring-test-report-${{ matrix.python-version }}
+        path: test_data/test_report.html
+        
+    - name: Send notifications on failure
+      if: failure()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        cd test/distributed_testing
+        python ci_notification.py \
+          --test-status failure \
+          --test-report ../../test_data/test_report.html \
+          --notification-config notification_config.json \
+          --channels github \
+          --verbose
+    
+    - name: Register test results with benchmark database
+      if: success()
+      run: |
+        cd test/distributed_testing
+        python -c "
+        import sys
+        import os
+        import json
+        
+        # Add parent directory to path
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath('.'))))
+        
+        try:
+            from duckdb_api.core.benchmark_db_updater import BenchmarkDBUpdater
+            
+            # Create DB updater
+            db_path = os.environ.get('BENCHMARK_DB_PATH', '../../test_data/test_metrics.duckdb')
+            updater = BenchmarkDBUpdater(db_path)
+            
+            # Register test run
+            run_id = updater.register_test_run(
+                test_type='hardware_monitoring',
+                status='passed',
+                metadata={
+                    'python_version': '${{ matrix.python-version }}',
+                    'workflow_run': '${{ github.run_id }}',
+                    'commit_sha': '${{ github.sha }}',
+                    'test_mode': '${{ github.event.inputs.test_mode or 'standard' }}'
+                }
+            )
+            
+            print(f'Registered test run with ID: {run_id}')
+            
+        except Exception as e:
+            print(f'Error registering test results: {str(e)}')
+        "
+  
+  generate-status-badge:
+    runs-on: ubuntu-latest
+    needs: hardware-monitoring-tests
+    if: always()
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        ref: ${{ github.ref }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install duckdb
+    
+    - name: Download test database
+      uses: actions/download-artifact@v3
+      with:
+        name: hardware-monitoring-test-db-3.9
+        path: test_data
+    
+    - name: Generate status badge
+      run: |
+        cd test/distributed_testing
+        python generate_status_badge.py \
+          --output-path ../../test_data/hardware_monitoring_status.svg \
+          --db-path ../../test_data/test_metrics.duckdb \
+          --style flat-square
+    
+    - name: Upload status badge
+      uses: actions/upload-artifact@v3
+      with:
+        name: hardware-monitoring-status-badge
+        path: |
+          test_data/hardware_monitoring_status.svg
+          test_data/hardware_monitoring_status.json
+    
+    - name: Commit status badge to repository
+      if: github.ref == 'refs/heads/main'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        mkdir -p badges
+        cp test_data/hardware_monitoring_status.svg badges/
+        cp test_data/hardware_monitoring_status.json badges/
+        
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        
+        git add badges/hardware_monitoring_status.svg badges/hardware_monitoring_status.json
+        
+        # Only commit if there are changes
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update hardware monitoring status badge [skip ci]"
+          git push origin ${{ github.ref }}
+        fi
+  
+  ci-artifact-integration:
+    runs-on: ubuntu-latest
+    needs: hardware-monitoring-tests
+    if: ${{ github.event.inputs.test_mode == 'full' || github.event.inputs.test_mode == 'long' }}
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install duckdb psutil numpy pandas matplotlib requests
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Download test artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: hardware-monitoring-test-report-3.9
+        path: test_data
+    
+    - name: Test CI artifact integration
+      run: |
+        cd test/distributed_testing
+        # Test the artifact handler with the downloaded reports
+        python -c "
+        import sys
+        import os
+        import json
+        from pathlib import Path
+        
+        # Add parent directory to path
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath('.'))))
+        
+        try:
+            from distributed_testing.ci.artifact_handler import get_artifact_handler
+            from distributed_testing.ci.register_providers import register_all_providers
+            from distributed_testing.ci.api_interface import CIProviderFactory
+            
+            # Register all providers
+            register_all_providers()
+            
+            # Create a mock provider for testing
+            provider = CIProviderFactory.create_provider('mock', {})
+            
+            # Get artifact handler
+            handler = get_artifact_handler()
+            
+            # Register provider with handler
+            handler.register_provider('mock', provider)
+            
+            # Create test run
+            test_run = provider.create_test_run({
+                'name': 'Hardware Monitoring Artifact Integration Test',
+                'commit_sha': '${{ github.sha }}',
+                'branch': '${{ github.ref_name }}'
+            })
+            
+            # Upload test report artifact
+            report_path = '../../test_data/test_report.html'
+            if os.path.exists(report_path):
+                success, metadata = handler.upload_artifact(
+                    source_path=report_path,
+                    artifact_name='hardware_monitoring_test_report.html',
+                    artifact_type='report',
+                    test_run_id=test_run['id'],
+                    provider_name='mock'
+                )
+                
+                if success:
+                    print(f'Successfully uploaded test report artifact: {metadata}')
+                else:
+                    print('Failed to upload test report artifact')
+            else:
+                print(f'Test report not found at {report_path}')
+                
+            # Write results to file for reference
+            Path('../../test_data/artifact_results.json').write_text(json.dumps({
+                'test_run_id': test_run['id'],
+                'artifacts': handler.get_artifacts_for_test_run(test_run['id']),
+                'status': 'success' if success else 'failure'
+            }))
+            
+        except Exception as e:
+            print(f'Error testing CI artifact integration: {str(e)}')
+            # Write error to file
+            Path('../../test_data/artifact_results.json').write_text(json.dumps({
+                'error': str(e),
+                'status': 'error'
+            }))
+        "
+    
+    - name: Upload artifact results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: ci-artifact-integration-results
+        path: test_data/artifact_results.json

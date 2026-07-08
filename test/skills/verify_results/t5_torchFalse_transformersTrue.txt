@@ -1,0 +1,11 @@
+<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
+2025-03-20 20:14:11,989 - WARNING - transformers not available, using mock
+2025-03-20 20:14:12,023 - INFO - Testing model: t5-small
+2025-03-20 20:14:12,023 - INFO - Using cuda as preferred device
+
+TEST RESULTS SUMMARY:
+[34m🔷 Using MOCK OBJECTS for CI/CD testing only[0m
+   Dependencies: transformers=False, torch=True, tokenizers=True, sentencepiece=True
+❌ Failed to test t5-small
+
+For detailed results, use --save flag and check the JSON output file.

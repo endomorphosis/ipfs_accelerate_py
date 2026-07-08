@@ -1,0 +1,22 @@
+# Chrome WebNN Flags
+
+To enable WebNN in Chrome:
+
+## Method 1: Chrome Flags UI
+1. Navigate to chrome://flags in the address bar
+2. Search for "WebNN"
+3. Enable the flag "WebNN API"
+4. Restart Chrome
+
+## Method 2: Command Line
+Launch Chrome with these flags:
+
+```
+google-chrome --enable-features=WebML --disable-web-security --enable-features=WebNN,WebNNDMLCompute
+```
+
+## Latest Chrome versions:
+The above flags work for Chrome 120+. For newer versions, additional flags may include:
+```
+google-chrome --enable-dawn-features=allow_unsafe_apis --enable-webgpu-developer-features --enable-webnn
+```

@@ -1,0 +1,257 @@
+# Docker Compose configuration for IPFS Accelerate Python
+# Multi-architecture support with hardware acceleration options
+
+version: '3.8'
+
+services:
+  # Main production service
+  ipfs-accelerate-py:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      args:
+        PYTHON_VERSION: 3.11
+        BUILD_TYPE: production
+    image: ipfs-accelerate-py:latest
+    container_name: ipfs-accelerate-py-main
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - IPFS_ACCELERATE_MODE=production
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - ./models:/app/models
+    ports:
+      - "8000:8000"
+    networks:
+      - accelerate-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import ipfs_accelerate_py; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development service with full tooling
+  ipfs-accelerate-py-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+      args:
+        PYTHON_VERSION: 3.11
+    image: ipfs-accelerate-py:dev
+    container_name: ipfs-accelerate-py-dev
+    restart: "no"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=DEBUG
+      - DEVELOPMENT=1
+      - IPFS_ACCELERATE_MODE=development
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./models:/app/models
+    ports:
+      - "8001:8000"
+      - "5678:5678"  # debugpy port
+      - "8888:8888"  # jupyter port
+    networks:
+      - accelerate-network
+    command: ["python", "-m", "ipfs_accelerate_py.cli_entry", "server", "start", "--host", "0.0.0.0", "--port", "8000", "--debug"]
+
+  # Minimal service for lightweight deployments
+  ipfs-accelerate-py-minimal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: minimal
+      args:
+        PYTHON_VERSION: 3.11
+        BUILD_TYPE: minimal
+    image: ipfs-accelerate-py:minimal
+    container_name: ipfs-accelerate-py-minimal
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - IPFS_ACCELERATE_MODE=minimal
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "8002:8000"
+    networks:
+      - accelerate-network
+    profiles:
+      - minimal
+
+  # Hardware-accelerated service
+  ipfs-accelerate-py-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: hardware-accelerated
+      args:
+        PYTHON_VERSION: 3.11
+        BUILD_TYPE: hardware
+    image: ipfs-accelerate-py:gpu
+    container_name: ipfs-accelerate-py-gpu
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - IPFS_ACCELERATE_MODE=gpu
+      - CUDA_VISIBLE_DEVICES=all
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - ./models:/app/models
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    ports:
+      - "8003:8000"
+    networks:
+      - accelerate-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import ipfs_accelerate_py; print('GPU OK')"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    profiles:
+      - gpu
+
+  # Testing service
+  ipfs-accelerate-py-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: testing
+      args:
+        PYTHON_VERSION: 3.11
+    image: ipfs-accelerate-py:test
+    container_name: ipfs-accelerate-py-test
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=DEBUG
+      - TESTING=1
+    volumes:
+      - .:/app
+      - ./test-results:/app/test-results
+      - ./coverage-reports:/app/coverage-reports
+    networks:
+      - accelerate-network
+    command: ["python", "-m", "pytest", "tests/", "--verbose", "--timeout=300", "--cov=ipfs_accelerate_py", "--cov-report=html:/app/coverage-reports"]
+    profiles:
+      - testing
+
+  # Benchmark service
+  ipfs-accelerate-py-benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: hardware-accelerated
+      args:
+        PYTHON_VERSION: 3.11
+        BUILD_TYPE: benchmark
+    image: ipfs-accelerate-py:benchmark
+    container_name: ipfs-accelerate-py-benchmark
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - IPFS_ACCELERATE_MODE=benchmark
+    volumes:
+      - ./benchmarks:/app/benchmarks
+      - ./benchmark-results:/app/benchmark-results
+      - ./models:/app/models
+    networks:
+      - accelerate-network
+    command: ["python", "-m", "ipfs_accelerate_py.cli_entry", "benchmark", "--output", "/app/benchmark-results"]
+    profiles:
+      - benchmarking
+
+  # IPFS node for local development
+  ipfs-node:
+    image: ipfs/kubo:latest
+    container_name: ipfs-accelerate-ipfs
+    restart: unless-stopped
+    environment:
+      - IPFS_PROFILE=server
+    volumes:
+      - ipfs-data:/data/ipfs
+      - ipfs-staging:/export
+    ports:
+      - "4001:4001"     # P2P port
+      - "5001:5001"     # API port
+      - "8080:8080"     # Gateway port
+    networks:
+      - accelerate-network
+    profiles:
+      - ipfs
+
+  # DuckDB service for data analytics
+  duckdb-server:
+    build:
+      context: ./duckdb_api
+      dockerfile: Dockerfile
+    image: ipfs-accelerate-py:duckdb
+    container_name: ipfs-accelerate-duckdb
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data/duckdb:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "8004:8000"
+    networks:
+      - accelerate-network
+    profiles:
+      - analytics
+
+networks:
+  accelerate-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  ipfs-data:
+    driver: local
+  ipfs-staging:
+    driver: local
+  accelerate-data:
+    driver: local
+  accelerate-logs:
+    driver: local
+  test-results:
+    driver: local
+  coverage-reports:
+    driver: local
+  benchmark-results:
+    driver: local
+  model-cache:
+    driver: local

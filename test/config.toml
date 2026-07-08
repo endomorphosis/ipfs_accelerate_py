@@ -1,0 +1,31 @@
+# Basic configuration for IPFS Accelerate Python
+[general]
+debug = true
+log_level = "INFO"
+
+[cache]
+enabled = true
+max_size_mb = 1000
+path = "./cache"
+
+[endpoints]
+default = "local"
+
+[endpoints.local]
+host = "localhost"
+port = 8000
+
+[endpoints.ipfs_gateway]
+host = "ipfs.io"
+port = 443
+gateway = true
+
+[endpoints.infura]
+host = "ipfs.infura.io"
+port = 443
+gateway = true
+api_key = "YOUR_API_KEY"  # Replace with your actual API key
+
+[docker]
+enable = true
+timeout = 30

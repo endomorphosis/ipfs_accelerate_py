@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}User Preferences - Simulation Validation Framework{% endblock %}
+
+{% block content %}
+<div class="card shadow">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="bi bi-sliders"></i> User Preferences
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('preferences') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            
+            <div class="row">
+                <!-- Interface Preferences -->
+                <div class="col-md-6">
+                    <h6 class="fw-bold mb-3">Interface Preferences</h6>
+                    
+                    <!-- Theme Selection -->
+                    <div class="mb-3">
+                        <label class="form-label" for="theme">Theme</label>
+                        <select class="form-select" id="theme" name="theme">
+                            <option value="light" {% if preferences.theme == 'light' %}selected{% endif %}>Light</option>
+                            <option value="dark" {% if preferences.theme == 'dark' %}selected{% endif %}>Dark</option>
+                        </select>
+                        <div class="form-text">Select the theme for the web interface.</div>
+                    </div>
+                    
+                    <!-- Pagination Size -->
+                    <div class="mb-3">
+                        <label class="form-label" for="pagination_size">Items Per Page</label>
+                        <select class="form-select" id="pagination_size" name="pagination_size">
+                            <option value="10" {% if preferences.pagination_size == 10 %}selected{% endif %}>10</option>
+                            <option value="20" {% if preferences.pagination_size == 20 %}selected{% endif %}>20</option>
+                            <option value="50" {% if preferences.pagination_size == 50 %}selected{% endif %}>50</option>
+                            <option value="100" {% if preferences.pagination_size == 100 %}selected{% endif %}>100</option>
+                        </select>
+                        <div class="form-text">Number of items to display per page.</div>
+                    </div>
+                </div>
+                
+                <!-- Notification Preferences -->
+                <div class="col-md-6">
+                    <h6 class="fw-bold mb-3">Notification Preferences</h6>
+                    
+                    <!-- Enable Notifications -->
+                    <div class="mb-3 form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="notifications_enabled" name="notifications_enabled" {% if preferences.notifications_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="notifications_enabled">Enable Notifications</label>
+                        <div class="form-text">Show notifications for important events.</div>
+                    </div>
+                    
+                    <!-- Notification Types -->
+                    <div class="mb-3">
+                        <label class="form-label">Notification Types</label>
+                        
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notify_validation" name="notify_validation" {% if preferences.notify_validation %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_validation">Validation Results</label>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notify_job" name="notify_job" {% if preferences.notify_job %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_job">Job Status Changes</label>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notify_system" name="notify_system" {% if preferences.notify_system %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_system">System Notifications</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <hr class="my-4">
+            
+            <div class="row">
+                <!-- Default Settings -->
+                <div class="col-md-6">
+                    <h6 class="fw-bold mb-3">Default Settings</h6>
+                    
+                    <!-- Default Hardware Profile -->
+                    <div class="mb-3">
+                        <label class="form-label" for="default_hardware">Default Hardware Profile</label>
+                        <select class="form-select" id="default_hardware" name="default_hardware">
+                            <option value="" {% if not preferences.default_hardware %}selected{% endif %}>No Default</option>
+                            <option value="cpu" {% if preferences.default_hardware == 'cpu' %}selected{% endif %}>CPU</option>
+                            <option value="cuda" {% if preferences.default_hardware == 'cuda' %}selected{% endif %}>CUDA</option>
+                            <option value="rocm" {% if preferences.default_hardware == 'rocm' %}selected{% endif %}>ROCm</option>
+                            <option value="mps" {% if preferences.default_hardware == 'mps' %}selected{% endif %}>MPS</option>
+                            <option value="openvino" {% if preferences.default_hardware == 'openvino' %}selected{% endif %}>OpenVINO</option>
+                            <option value="qnn" {% if preferences.default_hardware == 'qnn' %}selected{% endif %}>QNN</option>
+                            <option value="webnn" {% if preferences.default_hardware == 'webnn' %}selected{% endif %}>WebNN</option>
+                            <option value="webgpu" {% if preferences.default_hardware == 'webgpu' %}selected{% endif %}>WebGPU</option>
+                        </select>
+                        <div class="form-text">Default hardware profile for validation.</div>
+                    </div>
+                    
+                    <!-- Default Model -->
+                    <div class="mb-3">
+                        <label class="form-label" for="default_model">Default Model</label>
+                        <select class="form-select" id="default_model" name="default_model">
+                            <option value="" {% if not preferences.default_model %}selected{% endif %}>No Default</option>
+                            <option value="bert-base-uncased" {% if preferences.default_model == 'bert-base-uncased' %}selected{% endif %}>BERT Base Uncased</option>
+                            <option value="t5-small" {% if preferences.default_model == 't5-small' %}selected{% endif %}>T5 Small</option>
+                            <option value="vit-base-patch16-224" {% if preferences.default_model == 'vit-base-patch16-224' %}selected{% endif %}>ViT Base</option>
+                            <option value="whisper-tiny" {% if preferences.default_model == 'whisper-tiny' %}selected{% endif %}>Whisper Tiny</option>
+                        </select>
+                        <div class="form-text">Default model for validation.</div>
+                    </div>
+                </div>
+                
+                <!-- Analysis Preferences -->
+                <div class="col-md-6">
+                    <h6 class="fw-bold mb-3">Analysis Preferences</h6>
+                    
+                    <!-- Default Report Format -->
+                    <div class="mb-3">
+                        <label class="form-label" for="default_report_format">Default Report Format</label>
+                        <select class="form-select" id="default_report_format" name="default_report_format">
+                            <option value="html" {% if preferences.default_report_format == 'html' %}selected{% endif %}>HTML</option>
+                            <option value="markdown" {% if preferences.default_report_format == 'markdown' %}selected{% endif %}>Markdown</option>
+                            <option value="csv" {% if preferences.default_report_format == 'csv' %}selected{% endif %}>CSV</option>
+                            <option value="json" {% if preferences.default_report_format == 'json' %}selected{% endif %}>JSON</option>
+                        </select>
+                        <div class="form-text">Default format for generated reports.</div>
+                    </div>
+                    
+                    <!-- Include Visualizations -->
+                    <div class="mb-3 form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="include_visualizations" name="include_visualizations" {% if preferences.include_visualizations %}checked{% endif %}>
+                        <label class="form-check-label" for="include_visualizations">Include Visualizations</label>
+                        <div class="form-text">Include visualizations in reports by default.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="d-grid mt-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save"></i> Save Preferences
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Account Settings -->
+<div class="card shadow mt-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="bi bi-person-fill"></i> Account Settings
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6 class="fw-bold mb-3">Account Information</h6>
+                <table class="table table-sm">
+                    <tr>
+                        <th style="width: 150px;">Username</th>
+                        <td>{{ user.username }}</td>
+                    </tr>
+                    <tr>
+                        <th>Email</th>
+                        <td>{{ user.email }}</td>
+                    </tr>
+                    <tr>
+                        <th>Role</th>
+                        <td>
+                            <span class="badge bg-primary">{{ user.role|title }}</span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6 class="fw-bold mb-3">Password Management</h6>
+                <a href="{{ url_for('reset_password') }}" class="btn btn-outline-primary">
+                    <i class="bi bi-key"></i> Change Password
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

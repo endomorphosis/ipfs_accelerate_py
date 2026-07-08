@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - {{ title }}{% endblock %}
+
+{% block header %}Settings{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <!-- Settings Form -->
+        <div class="card {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> Application Settings</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('settings') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <!-- General Settings -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">General Settings</h6>
+                        
+                        <!-- Theme -->
+                        <div class="mb-3">
+                            <label for="theme" class="form-label">Theme</label>
+                            <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="theme" name="theme">
+                                <option value="light" {% if theme == 'light' %}selected{% endif %}>Light</option>
+                                <option value="dark" {% if theme == 'dark' %}selected{% endif %}>Dark</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Pagination Size -->
+                        <div class="mb-3">
+                            <label for="page_size" class="form-label">Results Per Page</label>
+                            <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="page_size" name="page_size">
+                                <option value="10" {% if page_size == 10 %}selected{% endif %}>10</option>
+                                <option value="20" {% if page_size == 20 %}selected{% endif %}>20</option>
+                                <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+                                <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Database Settings -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">Database Settings</h6>
+                        
+                        <div class="mb-3">
+                            <label for="db_path" class="form-label">Database Path</label>
+                            <input type="text" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="db_path" name="db_path" value="{{ db_path|default('benchmark_db.duckdb') }}" readonly>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Database path cannot be changed through the UI for security reasons.
+                            </div>
+                        </div>
+                        
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="db_enabled" name="db_enabled" {% if db_enabled %}checked{% endif %} disabled>
+                            <label class="form-check-label" for="db_enabled">
+                                Enable Database Integration
+                            </label>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Database integration can only be configured at server startup.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Future Settings Section (Placeholder) -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">Advanced Settings</h6>
+                        
+                        <div class="alert alert-info" role="alert">
+                            <i class="bi bi-info-circle"></i> Advanced settings such as authentication, job scheduling, and notification preferences will be available in a future update.
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Save Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- System Information -->
+        <div class="card mt-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> System Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Application</h6>
+                        <dl class="row">
+                            <dt class="col-sm-6">Version</dt>
+                            <dd class="col-sm-6">1.0.0</dd>
+                            
+                            <dt class="col-sm-6">Framework Version</dt>
+                            <dd class="col-sm-6">{{ framework_version|default('1.0.0') }}</dd>
+                            
+                            <dt class="col-sm-6">Environment</dt>
+                            <dd class="col-sm-6">{{ environment|default('Production') }}</dd>
+                        </dl>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>Status</h6>
+                        <dl class="row">
+                            <dt class="col-sm-6">Framework Available</dt>
+                            <dd class="col-sm-6">
+                                {% if framework_available %}
+                                <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                <span class="badge bg-danger">No</span>
+                                {% endif %}
+                            </dd>
+                            
+                            <dt class="col-sm-6">Database Available</dt>
+                            <dd class="col-sm-6">
+                                {% if db_available %}
+                                <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                <span class="badge bg-danger">No</span>
+                                {% endif %}
+                            </dd>
+                            
+                            <dt class="col-sm-6">API Endpoint</dt>
+                            <dd class="col-sm-6">
+                                <a href="{{ url_for('api_status') }}" target="_blank">/api/status</a>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add theme preview functionality
+        const themeSelect = document.getElementById('theme');
+        
+        if (themeSelect) {
+            themeSelect.addEventListener('change', function() {
+                const selectedTheme = themeSelect.value;
+                const previewText = document.getElementById('theme-preview-text');
+                
+                if (previewText) {
+                    if (selectedTheme === 'dark') {
+                        previewText.innerHTML = 'Preview: Dark Theme';
+                        previewText.className = 'bg-dark text-light p-2 rounded';
+                    } else {
+                        previewText.innerHTML = 'Preview: Light Theme';
+                        previewText.className = 'bg-light text-dark p-2 rounded';
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

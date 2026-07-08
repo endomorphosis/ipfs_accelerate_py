@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Error Notification Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        .notification-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 24px;
+            border-left: 5px solid #3498db;
+            position: relative;
+        }
+        .card-system-critical {
+            border-left-color: #e74c3c;
+            border-width: 8px;
+            background-color: #ffeeee;
+        }
+        .card-critical {
+            border-left-color: #e67e22;
+        }
+        .card-warning {
+            border-left-color: #f1c40f;
+        }
+        .card-info {
+            border-left-color: #3498db;
+        }
+        .error-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        .badge-system-critical {
+            background-color: #e74c3c;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+        .badge-critical {
+            background-color: #e67e22;
+            color: white;
+        }
+        .badge-warning {
+            background-color: #f1c40f;
+            color: #333;
+        }
+        .badge-info {
+            background-color: #3498db;
+            color: white;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 5px;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .btn-system-critical {
+            background-color: #e74c3c;
+        }
+        .btn-system-critical:hover {
+            background-color: #c0392b;
+        }
+        .btn-critical {
+            background-color: #e67e22;
+        }
+        .btn-critical:hover {
+            background-color: #d35400;
+        }
+        .btn-warning {
+            background-color: #f1c40f;
+            color: #333;
+        }
+        .btn-warning:hover {
+            background-color: #f39c12;
+        }
+        .btn-info {
+            background-color: #3498db;
+        }
+        .btn-info:hover {
+            background-color: #2980b9;
+        }
+        .controls {
+            margin-top: 24px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .volume-control {
+            display: flex;
+            align-items: center;
+            margin-top: 12px;
+        }
+        .volume-control label {
+            margin-right: 16px;
+            width: 100px;
+        }
+        .volume-control input {
+            flex-grow: 1;
+        }
+        input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        .notification-log {
+            margin-top: 24px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .log-system-critical {
+            background-color: #ffeeee;
+            border-left: 4px solid #e74c3c;
+        }
+        .log-critical {
+            background-color: #fff5e6;
+            border-left: 4px solid #e67e22;
+        }
+        .log-warning {
+            background-color: #fffbe6;
+            border-left: 4px solid #f1c40f;
+        }
+        .log-info {
+            background-color: #e6f7ff;
+            border-left: 4px solid #3498db;
+        }
+        .severity-demo {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        .demo-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        .explanation {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 8px;
+        }
+        .system-critical-card {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <h1>Enhanced Error Notification System Demo</h1>
+    <p>This demo allows you to test the enhanced error notification system with the new system-critical sound alerts.</p>
+    
+    <div class="severity-demo">
+        <div class="notification-card card-system-critical system-critical-card">
+            <span class="error-badge badge-system-critical">SYSTEM CRITICAL</span>
+            <h2>System-Critical Error</h2>
+            <p><strong>Coordinator process has crashed unexpectedly</strong></p>
+            <p>The coordinator component has failed, which will affect all distributed testing operations. This requires immediate attention.</p>
+            <div class="demo-actions">
+                <button class="btn-system-critical" onclick="simulateError('system_critical', 'COORDINATOR_FAILURE', 'Coordinator process has crashed unexpectedly')">Simulate System-Critical Error</button>
+            </div>
+            <div class="explanation">
+                <strong>Technical details:</strong> Error plays highest-priority sound (rising frequency pattern 880Hz → 1046.5Hz → 1318.5Hz with accelerating pulse rate)
+            </div>
+        </div>
+        
+        <div class="notification-card card-critical">
+            <span class="error-badge badge-critical">CRITICAL</span>
+            <h2>Critical Error</h2>
+            <p><strong>GPU device unavailable: CUDA error (2): out of memory</strong></p>
+            <p>A hardware resource is unavailable, potentially affecting multiple tests. This requires prompt attention.</p>
+            <div class="demo-actions">
+                <button class="btn-critical" onclick="simulateError('critical', 'HARDWARE_AVAILABILITY_ERROR', 'GPU device unavailable: CUDA error (2): out of memory')">Simulate Critical Error</button>
+            </div>
+            <div class="explanation">
+                <strong>Technical details:</strong> Error plays high-priority sound (880Hz/440Hz with 8Hz pulsing)
+            </div>
+        </div>
+    </div>
+    
+    <div class="severity-demo">
+        <div class="notification-card card-warning">
+            <span class="error-badge badge-warning">WARNING</span>
+            <h2>Warning Error</h2>
+            <p><strong>Network connection to worker-05 unstable</strong></p>
+            <p>A non-critical issue has occurred that may need attention if it persists. The system continues to function.</p>
+            <div class="demo-actions">
+                <button class="btn-warning" onclick="simulateError('warning', 'NETWORK_CONNECTION_ERROR', 'Network connection to worker-05 unstable')">Simulate Warning Error</button>
+            </div>
+            <div class="explanation">
+                <strong>Technical details:</strong> Error plays medium-priority sound (660Hz/330Hz with moderate decay)
+            </div>
+        </div>
+        
+        <div class="notification-card card-info">
+            <span class="error-badge badge-info">INFO</span>
+            <h2>Info Error</h2>
+            <p><strong>Test batch_size=32 failed with non-zero exit code</strong></p>
+            <p>An informational issue has occurred. This does not require immediate attention but is logged for reference.</p>
+            <div class="demo-actions">
+                <button class="btn-info" onclick="simulateError('info', 'TEST_EXECUTION_ERROR', 'Test batch_size=32 failed with non-zero exit code')">Simulate Info Error</button>
+            </div>
+            <div class="explanation">
+                <strong>Technical details:</strong> Error plays low-priority sound (523Hz with quick decay)
+            </div>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <h2>Sound Controls</h2>
+        <div class="volume-control">
+            <label for="volume">Volume:</label>
+            <input type="range" id="volume" min="0" max="1" step="0.1" value="0.7">
+            <span id="volume-value">70%</span>
+        </div>
+        <div>
+            <input type="checkbox" id="mute">
+            <label for="mute">Mute all sounds</label>
+        </div>
+        <div class="demo-actions">
+            <button onclick="playAllSounds()">Play All Sounds in Sequence</button>
+            <button onclick="testSystemCriticalError()">Test System-Critical Error</button>
+            <button onclick="clearLog()">Clear Notification Log</button>
+        </div>
+    </div>
+    
+    <div class="notification-log">
+        <h2>Notification Log</h2>
+        <div id="log-container">
+            <div class="log-entry log-info">System initialized. Ready to receive error notifications.</div>
+        </div>
+    </div>
+    
+    <script>
+        // Audio context and audio elements
+        let audioContext;
+        let gainNode;
+        const audioElements = {};
+        let isMuted = false;
+        let notificationVolume = 0.7;
+        
+        // Initialize audio context on user interaction
+        function initAudio() {
+            if (audioContext) return;
+            
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                gainNode = audioContext.createGain();
+                gainNode.connect(audioContext.destination);
+                
+                // Load all sound files
+                const soundFiles = [
+                    'error-system-critical.mp3',
+                    'error-critical.mp3',
+                    'error-warning.mp3',
+                    'error-info.mp3'
+                ];
+                
+                soundFiles.forEach(file => {
+                    const audio = new Audio(file);
+                    audioElements[file] = audio;
+                });
+                
+                console.log('Audio context initialized');
+                logMessage('info', 'Audio system initialized successfully');
+            } catch (e) {
+                console.error('Failed to initialize audio context:', e);
+                logMessage('critical', `Error initializing audio: ${e.message}`);
+                alert('Your browser does not support Web Audio API. Sound playback may not work correctly.');
+            }
+        }
+        
+        // Play a sound with the current volume setting
+        function playSound(soundFile) {
+            initAudio();
+            
+            if (isMuted) {
+                logMessage('info', `Sound muted: ${soundFile}`);
+                return;
+            }
+            
+            // Stop any currently playing sounds
+            Object.values(audioElements).forEach(audio => {
+                audio.pause();
+                audio.currentTime = 0;
+            });
+            
+            const audio = audioElements[soundFile] || new Audio(soundFile);
+            audio.volume = notificationVolume;
+            
+            logMessage('info', `Playing sound: ${soundFile} (Volume: ${Math.round(notificationVolume * 100)}%)`);
+            
+            audio.play().catch(function(error) {
+                console.log(`Error playing ${soundFile}:`, error);
+                logMessage('warning', `Error playing ${soundFile}: ${error.message}`);
+                
+                // Try the default notification sound as fallback
+                if (soundFile !== 'error-notification.mp3') {
+                    audio.src = 'error-notification.mp3';
+                    audio.play().catch(function(fallbackError) {
+                        console.log('Error playing fallback sound:', fallbackError);
+                        logMessage('critical', `Error playing fallback sound: ${fallbackError.message}`);
+                    });
+                }
+            });
+        }
+        
+        // Play all sounds in sequence
+        function playAllSounds() {
+            if (isMuted) {
+                logMessage('warning', 'Cannot play sounds: audio is muted');
+                return;
+            }
+            
+            const sounds = [
+                'error-system-critical.mp3',
+                'error-critical.mp3',
+                'error-warning.mp3',
+                'error-info.mp3'
+            ];
+            
+            logMessage('info', 'Playing all notification sounds in sequence');
+            
+            let delay = 0;
+            sounds.forEach((sound, index) => {
+                setTimeout(() => {
+                    const severities = ['system_critical', 'critical', 'warning', 'info'];
+                    logMessage(severities[index], `Playing ${sound.replace('.mp3', '')} sound`);
+                    playSound(sound);
+                }, delay);
+                delay += 2000; // 2 seconds between sounds
+            });
+        }
+        
+        // Simulate an error
+        function simulateError(severity, category, message) {
+            // Log the error
+            logMessage(severity, `${category}: ${message}`);
+            
+            // Play the appropriate sound
+            let soundFile = 'error-notification.mp3'; // Default
+            
+            if (severity === 'system_critical') {
+                soundFile = 'error-system-critical.mp3';
+            } else if (severity === 'critical') {
+                soundFile = 'error-critical.mp3';
+            } else if (severity === 'warning') {
+                soundFile = 'error-warning.mp3';
+            } else if (severity === 'info') {
+                soundFile = 'error-info.mp3';
+            }
+            
+            playSound(soundFile);
+        }
+        
+        // Test system-critical error
+        function testSystemCriticalError() {
+            // Play system-critical sound
+            logMessage('system_critical', 'Testing System-Critical Error Notification');
+            playSound('error-system-critical.mp3');
+            
+            // Add simulated error to log
+            setTimeout(() => {
+                logMessage('system_critical', 'DATABASE_CORRUPTION: Database corruption detected in main results table');
+            }, 1000);
+            
+            setTimeout(() => {
+                logMessage('system_critical', 'SECURITY_BREACH: Unauthorized access attempt detected');
+            }, 2000);
+        }
+        
+        // Log a message to the notification log
+        function logMessage(severity, message) {
+            const logContainer = document.getElementById('log-container');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${severity}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            let severityText = severity.toUpperCase();
+            
+            if (severity === 'system_critical') {
+                severityText = 'SYSTEM CRITICAL';
+            }
+            
+            logEntry.textContent = `[${timestamp}] [${severityText}] ${message}`;
+            
+            logContainer.prepend(logEntry);
+            
+            // Trim log if it gets too long
+            const entries = logContainer.getElementsByClassName('log-entry');
+            if (entries.length > 100) {
+                logContainer.removeChild(entries[entries.length - 1]);
+            }
+        }
+        
+        // Clear the notification log
+        function clearLog() {
+            const logContainer = document.getElementById('log-container');
+            logContainer.innerHTML = '';
+            logMessage('info', 'Notification log cleared');
+        }
+        
+        // Update volume display value
+        document.getElementById('volume').addEventListener('input', function() {
+            notificationVolume = parseFloat(this.value);
+            const volumePercent = Math.round(notificationVolume * 100);
+            document.getElementById('volume-value').textContent = volumePercent + '%';
+            logMessage('info', `Volume set to ${volumePercent}%`);
+        });
+        
+        // Handle mute toggle
+        document.getElementById('mute').addEventListener('change', function() {
+            isMuted = this.checked;
+            if (isMuted) {
+                logMessage('warning', 'Sound notifications muted');
+            } else {
+                logMessage('info', 'Sound notifications enabled');
+            }
+        });
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // We'll initialize audio on the first user interaction
+            document.body.addEventListener('click', initAudio, { once: true });
+            
+            // Log initial state
+            const timestamp = new Date().toLocaleTimeString();
+            logMessage('info', `Error Notification Demo initialized at ${timestamp}`);
+        });
+    </script>
+</body>
+</html>

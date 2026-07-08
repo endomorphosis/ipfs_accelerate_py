@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily auto-update timer for IPFS Accelerate MCP Service
+Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
+
+[Timer]
+# Run daily at 4:20 AM local time (respects PST/PDT automatically)
+OnCalendar=*-*-* 04:20:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

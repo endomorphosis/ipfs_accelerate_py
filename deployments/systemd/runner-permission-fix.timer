@@ -1,0 +1,17 @@
+[Unit]
+Description=Run GitHub Actions Runner Permission Fix every 15 minutes
+Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
+Requires=runner-permission-fix.service
+
+[Timer]
+# Run every 15 minutes
+OnCalendar=*:0/15
+# Run immediately on boot
+OnBootSec=2min
+# If missed (system was off), run as soon as possible
+Persistent=true
+# Randomize execution time by up to 1 minute to avoid thundering herd
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

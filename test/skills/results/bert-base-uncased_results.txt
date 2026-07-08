@@ -1,0 +1,9 @@
+Test results for bert-base-uncased
+========================================
+
+Pipeline test: Success
+Device: auto
+
+Model loading: Success
+Tokenizer loading: Success
+Inference: Success

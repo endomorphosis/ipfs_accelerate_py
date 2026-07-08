@@ -1,0 +1,33 @@
+# Core dependencies
+fastmcp>=0.1.0
+anyio>=3.7.0
+typing_extensions>=4.5.0
+
+# IPFS integration (use main branch from GitHub)
+ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py@main
+
+# Ensure protobuf is available for google.protobuf imports
+protobuf>=4.25.0
+
+# Runtime deps for ipfs_kit_py/libp2p integration
+# websockets 10.x exposes WebSocketServerProtocol used by ipfs_kit_py
+websockets==10.4
+semver>=2.13.0
+# libp2p Python package (enables p2p features) - track upstream main
+libp2p @ git+https://github.com/libp2p/py-libp2p.git@main
+
+# Optional dependencies
+# For WebSocket transport
+websockets>=10.4; extra == "ws"
+
+# For Server-Sent Events transport
+sse-starlette>=1.6.1; extra == "sse"
+starlette>=0.26.1; extra == "sse"
+uvicorn>=0.22.0; extra == "sse"
+
+# For development and testing
+pytest>=7.3.1; extra == "dev"
+pytest-anyio>=0.21.0; extra == "dev"
+black>=23.3.0; extra == "dev"
+isort>=5.12.0; extra == "dev"
+mypy>=1.3.0; extra == "dev"

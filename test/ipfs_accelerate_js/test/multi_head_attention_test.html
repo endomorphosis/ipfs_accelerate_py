@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser-Specific Multi-Head Attention Test</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      line-height: 1.6;
+      color: #333;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #2c3e50;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #2980b9;
+      margin-top: 30px;
+    }
+    #status {
+      margin: 20px 0;
+      padding: 15px;
+      background-color: #f8f9fa;
+      border-left: 5px solid #6c757d;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+    #results {
+      margin-top: 20px;
+    }
+    .result-container {
+      margin-bottom: 30px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 15px;
+      background-color: #f8f9fa;
+    }
+    .result-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 18px;
+      color: #2c3e50;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+    }
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    tr:hover {
+      background-color: #f5f5f5;
+    }
+    .highlight {
+      background-color: #e3f2fd;
+      font-weight: bold;
+    }
+    .passed {
+      color: #28a745;
+    }
+    .failed {
+      color: #dc3545;
+    }
+    canvas {
+      max-width: 100%;
+      margin: 20px 0;
+    }
+    .browser-info {
+      background-color: #e9ecef;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Browser-Specific Multi-Head Attention Test</h1>
+  
+  <div class="browser-info">
+    <p><strong>Browser:</strong> <span id="browser-name">Detecting...</span></p>
+    <p><strong>WebGPU Support:</strong> <span id="webgpu-support">Checking...</span></p>
+  </div>
+  
+  <h2>Test Status</h2>
+  <div id="status">Initializing WebGPU...</div>
+  
+  <h2>Test Results</h2>
+  <div id="results">
+    <div class="result-container">
+      <div class="result-title">Basic Multi-Head Attention Performance</div>
+      <div id="basic-results">Running tests...</div>
+    </div>
+    
+    <div class="result-container">
+      <div class="result-title">Model Size Comparison</div>
+      <div id="model-size-results">Running tests...</div>
+    </div>
+    
+    <div class="result-container">
+      <div class="result-title">Fusion Performance</div>
+      <div id="fusion-results">Running tests...</div>
+    </div>
+    
+    <canvas id="performance-chart" width="800" height="400"></canvas>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script type="module" src="multi_head_attention_test.js"></script>
+</body>
+</html>

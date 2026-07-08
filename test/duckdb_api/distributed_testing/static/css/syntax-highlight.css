@@ -1,0 +1,140 @@
+/**
+ * Distributed Testing Framework - Syntax Highlighting
+ * CSS styles for code syntax highlighting
+ */
+
+/* Base pre/code styles */
+pre {
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    padding: 15px;
+    overflow-x: auto;
+    font-family: 'Fira Mono', 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+code {
+    font-family: 'Fira Mono', 'Courier New', Courier, monospace;
+}
+
+/* JSON syntax highlighting */
+.string {
+    color: #008000;
+}
+
+.number {
+    color: #0000ff;
+}
+
+.boolean {
+    color: #b22222;
+}
+
+.null {
+    color: #808080;
+}
+
+.key {
+    color: #a52a2a;
+    font-weight: bold;
+}
+
+/* Dark mode adjustments */
+[data-bs-theme="dark"] pre {
+    background-color: #2d3748;
+    color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .string {
+    color: #48bb78;
+}
+
+[data-bs-theme="dark"] .number {
+    color: #63b3ed;
+}
+
+[data-bs-theme="dark"] .boolean {
+    color: #fc8181;
+}
+
+[data-bs-theme="dark"] .null {
+    color: #a0aec0;
+}
+
+[data-bs-theme="dark"] .key {
+    color: #f6ad55;
+    font-weight: bold;
+}
+
+/* Animation for updating metrics */
+@keyframes updating {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        color: var(--primary-color);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.updating {
+    animation: updating 0.5s ease-in-out;
+}
+
+/* Refresh button animation */
+@keyframes rotating {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.rotating {
+    animation: rotating 1s linear infinite;
+}
+
+/* Toast container */
+.toast-container {
+    z-index: 1100;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-track {
+    background: #2d3748;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: #4a5568;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: #718096;
+}

@@ -1,0 +1,2 @@
+model_id,hardware,batch_size,sequence_length,timestamp,error
+bert-base-uncased,cpu,1,16,2025-03-23T14:24:38.837851,name 'np' is not defined

@@ -1,0 +1,218 @@
+[Unit]
+Description=IPFS Accelerate (secondary) MCP++ (Trio) + TaskQueue P2P service
+Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=devel
+Group=devel
+WorkingDirectory=%h/ipfs_accelerate_py
+
+# Environment variables
+Environment="PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONPATH=%h/ipfs_accelerate_py"
+Environment="VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv"
+Environment="IPFS_ACCELERATE_REPO_DIR=%h/ipfs_accelerate_py"
+Environment="MCP_HOST=0.0.0.0"
+# Use a distinct MCP port so this unit can run alongside ipfs-accelerate.service
+Environment="MCP_PORT=9002"
+
+# Serve MCP++ over HTTPS (TLS) on MCP_PORT.
+# Set the following vars in /etc/ipfs-accelerate/secrets.env (recommended):
+#   MCP_SSL_CERTFILE=/path/to/fullchain.pem
+#   MCP_SSL_KEYFILE=/path/to/privkey.pem
+Environment="MCP_ENABLE_HTTPS=1"
+Environment="MCP_SSL_CERTFILE=%h/ipfs_accelerate_py/state/tls/mcpplusplus.crt"
+Environment="MCP_SSL_KEYFILE=%h/ipfs_accelerate_py/state/tls/mcpplusplus.key"
+# Optional: explicitly set the LAN IP used for the certificate SAN.
+# If unset, the generator auto-detects a non-loopback IPv4.
+# If you want to override auto-detection, set this in /etc/ipfs-accelerate/secrets.env:
+#   MCP_LAN_IP_OVERRIDE=192.168.1.10
+
+# Optional secrets/env overrides (recommended):
+#   GH_TOKEN=... (preferred for gh)
+#   GITHUB_TOKEN=... (optional)
+#   IPFS_ACCELERATE_GITHUB_REPO=owner/repo
+# Auto-generated runtime env (written on first start).
+# Used to persist detected LAN IP without editing /etc/ipfs-accelerate/secrets.env.
+# Loaded first so /etc/ipfs-accelerate/secrets.env can override.
+EnvironmentFile=-%h/ipfs_accelerate_py/state/mcpplusplus.env
+
+EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
+
+# If you use `gh auth login` (user-scoped auth), point gh at the service user's
+# config directory. This is especially important when the unit is installed with
+# `deployments/systemd/install.sh --user <you>`.
+Environment=GH_CONFIG_DIR=%h/.config/gh
+
+# P2P Cache Configuration (GitHub CLI cache)
+# When the TaskQueue P2P service is enabled, prefer sharing cache entries via
+# TaskQueue cache.get/set over a *second* libp2p host (avoids port conflicts).
+Environment="CACHE_ENABLE_P2P=false"
+Environment="IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py"
+
+# TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1"
+Environment="IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1"
+
+# Autoscaling: allow this unit to scale worker threads up/down when using the
+# integrated MCP CLI worker thread path.
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX=4"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S=2"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S=30"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=0"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S=5"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS=10"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=0"
+
+# DuckDB-backed TaskQueue uses a single-writer lock per DB file.
+# Ensure autoscaling uses threads (single process) to avoid worker child
+# processes contending on the same queue DB.
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES=0"
+
+# Batching + multi-peer draining (TaskQueue worker launched in this unit)
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT=4"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH=16"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH=16"
+
+# Enable additional HuggingFace task types (beyond text-generation)
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE=cuda:0"
+
+# Per-task micro-batch caps (0/auto enables safe estimation)
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX=4"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX=auto"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX=auto"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX=auto"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_MULTIMODAL=1"
+Environment="IPFS_DATASETS_PY_TASK_WORKER_ENABLE_MULTIMODAL=1"
+
+# Estimator tuning
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_FRACTION=0.75"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_RESERVE_MB=1024"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_ACT_MULT=4.0"
+
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,llm.generate,llm_generate,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,multimodal-generation,multimodal_generation,vision-generation,vision_generation,docker.execute,docker.execute_docker_container,docker.github"
+Environment="IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,llm.generate,llm_generate,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,multimodal-generation,multimodal_generation,vision-generation,vision_generation,docker.execute,docker.execute_docker_container,docker.github"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_CONTINUE_WITHOUT_RESUME=1"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1"
+# Use a distinct P2P port so this unit can run alongside ipfs-accelerate.service
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9101"
+Environment="IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT=9101"
+# Persist the local queue DB somewhere stable
+Environment="IPFS_ACCELERATE_PY_TASK_QUEUE_PATH=%h/ipfs_accelerate_py/state/task_queue_mcp.duckdb"
+# Auto-detect a non-loopback IP for the announce multiaddr
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP=auto"
+# Ensure announce file is accessible (used for local self-dial avoidance)
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=%h/ipfs_accelerate_py/state/task_p2p_announce_mcp.json"
+
+# Enable /dnsaddr/... -> concrete multiaddr expansion for public bootstraps
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE=1"
+Environment="IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1"
+
+# Conservative default for single-host/LAN deployments:
+# avoid public bootstrap + DHT/rendezvous discovery, which can generate
+# persistent libp2p secure-handshake failures against incompatible peers.
+# Disable mDNS by default as well; set to 1 in task-worker.env when you
+# intentionally run a trusted LAN mesh.
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS=off"
+Environment="IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS=off"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_DHT=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_DHT=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_MDNS=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_MDNS=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_AUTONAT=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_RELAY=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_RELAY=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH=0"
+
+# Session failover (conservative): resubmit locally if a queued task requires a
+# different session_id and the matching session peer can't drain it.
+# - Enabled by default in code (set IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER=0 to disable)
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240"
+Environment="IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240"
+
+# Optional worker overrides (session tags, autoscale knobs, failover tuning, etc.).
+# Keep this *after* hardcoded defaults so host-specific values take precedence.
+EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
+
+# NOTE: Avoid auto-updating on every restart; it can be slow and brittle.
+# Run scripts/auto-update.sh manually when you actually want to update.
+ExecStartPre=/bin/mkdir -p %h/ipfs_accelerate_py/state
+ExecStartPre=/bin/bash -lc '\
+	set -euo pipefail; \
+	if [[ "${MCP_ENABLE_HTTPS:-1}" == "1" || "${MCP_ENABLE_HTTPS:-}" == "true" || "${MCP_ENABLE_HTTPS:-}" == "yes" ]]; then \
+	  %h/ipfs_accelerate_py/.venv/bin/python3 %h/ipfs_accelerate_py/scripts/systemd/generate_self_signed_cert.py \
+	    --certfile "${MCP_SSL_CERTFILE}" \
+	    --keyfile "${MCP_SSL_KEYFILE}" \
+	    --write-env-file "%h/ipfs_accelerate_py/state/mcpplusplus.env" \
+	    --ip "${MCP_LAN_IP_OVERRIDE:-}"; \
+	fi\
+'
+
+# Updates + pip installs can take longer than systemd's default 90s
+TimeoutStartSec=0
+
+# Run MCP++ (Trio-oriented) server and a dedicated TaskQueue P2P worker/service.
+# - MCP++ is served via Hypercorn with Trio workers (no asyncio loop).
+# - TaskQueue worker runs in the same unit on the secondary P2P port.
+ExecStart=/bin/bash -lc '\
+	set -euo pipefail; \
+	QUEUE_PATH="%h/ipfs_accelerate_py/state/task_queue_mcp.duckdb"; \
+	WORKER_ID="$${IPFS_ACCELERATE_PY_TASK_WORKER_ID:-mcpplusplus}"; \
+	P2P_PORT="$${IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT:-9101}"; \
+	MCP_PORT="$${MCP_PORT:-9001}"; \
+	TLS_ARGS=""; \
+	if [[ "$${MCP_ENABLE_HTTPS:-1}" == "1" || "$${MCP_ENABLE_HTTPS:-}" == "true" || "$${MCP_ENABLE_HTTPS:-}" == "yes" ]]; then \
+	  if [[ -z "$${MCP_SSL_CERTFILE:-}" || -z "$${MCP_SSL_KEYFILE:-}" ]]; then \
+	    echo "ERROR: MCP_ENABLE_HTTPS=1 but MCP_SSL_CERTFILE/MCP_SSL_KEYFILE are not set" >&2; \
+	    exit 2; \
+	  fi; \
+	  TLS_ARGS="--certfile $${MCP_SSL_CERTFILE} --keyfile $${MCP_SSL_KEYFILE}"; \
+	fi; \
+	%h/ipfs_accelerate_py/.venv/bin/python3 -m ipfs_accelerate_py.p2p_tasks.worker \
+		--queue "$${QUEUE_PATH}" \
+		--worker-id "$${WORKER_ID}" \
+		--p2p-service \
+		--p2p-listen-port "$${P2P_PORT}" \
+		& \
+	exec %h/ipfs_accelerate_py/.venv/bin/python3 -m hypercorn \
+		--worker-class trio \
+		--bind "0.0.0.0:$${MCP_PORT}" \
+		--log-level info \
+		$${TLS_ARGS} \
+		ipfs_accelerate_py.mcplusplus_module.trio.asgi:app\
+'
+
+# Restart configuration
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ipfs-accelerate-mcp
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+MemoryMax=4G
+CPUQuota=200%
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+# Firefox WebGPU Flags
+
+Firefox doesn't fully support WebNN yet, but it has excellent WebGPU support.
+
+## Method 1: Firefox Config UI
+1. Navigate to about:config in the address bar
+2. Search for "webgpu"
+3. Set "dom.webgpu.enabled" to true
+4. For testing with compute shaders, set "dom.webgpu.compute.enabled" to true
+
+## Method 2: Command Line
+Launch Firefox with these flags:
+
+```
+firefox --MOZ_WEBGPU_FEATURES=dawn --MOZ_ENABLE_WEBGPU=1
+```
+
+## For advanced compute shader support (especially for audio models):
+```
+firefox --MOZ_WEBGPU_ADVANCED_COMPUTE=1
+```
+
+Note: Firefox shows superior WebGPU compute shader performance for audio models compared to Chrome/Edge (~20-25% faster).
