@@ -3415,8 +3415,12 @@ class PortalImplementationSupervisor:
             "changed": bool(result.get("changed")),
             "blocked_task_ids": list(result.get("blocked_task_ids") or []),
             "deprioritized_task_ids": list(result.get("deprioritized_task_ids") or []),
+            "unblocked_task_ids": list(result.get("unblocked_task_ids") or []),
+            "removed_task_ids": list(result.get("removed_task_ids") or []),
             "materialized_blocked_task_ids": list(materialized.get("blocked_task_ids") or []),
             "materialized_reason_task_ids": list(materialized.get("reason_task_ids") or []),
+            "materialized_unblocked_task_ids": list(materialized.get("unblocked_task_ids") or []),
+            "materialized_removed_task_ids": list(materialized.get("removed_task_ids") or []),
             "reopened_goal_ids": list(result.get("reopened_goal_ids") or []),
             "mission_terms": list(mission_terms),
             "critical_goal_count": len(result.get("critical_goal_ids") or []),
@@ -3442,6 +3446,8 @@ class PortalImplementationSupervisor:
             return {"changed": False, "reason": "no_receipts"}
 
         reasons_by_task_id: dict[str, str] = {}
+        unblock_task_ids: list[str] = []
+        remove_task_ids: list[str] = []
         for receipt in receipts:
             if not isinstance(receipt, Mapping):
                 continue
@@ -3462,8 +3468,14 @@ class PortalImplementationSupervisor:
                     f" because {retired_reason}; this keeps lanes focused on Swissknife,"
                     " Hallucinate App, MCP++, Meta glasses, and Playwright launch readiness."
                 )
+                continue
+            if action == "unblock":
+                unblock_task_ids.append(task_id)
+                continue
+            if action == "remove":
+                remove_task_ids.append(task_id)
 
-        if not reasons_by_task_id:
+        if not reasons_by_task_id and not unblock_task_ids and not remove_task_ids:
             return {"changed": False, "reason": "no_materializable_receipts"}
         try:
             todo_text = self.config.todo_path.read_text(encoding="utf-8")
@@ -3471,24 +3483,59 @@ class PortalImplementationSupervisor:
             return {"changed": False, "reason": "todo_read_failed", "error": str(exc)}
 
         task_prefix = task_id_prefix(self.config.task_prefix)
-        updated_text, blocked_task_ids = mark_task_statuses_in_todo_text(
-            todo_text,
-            list(reasons_by_task_id),
-            task_prefix=task_prefix,
-            status="blocked",
-        )
+        updated_text = todo_text
+        blocked_task_ids: list[str] = []
+        unblocked_task_ids: list[str] = []
+        removed_task_ids: list[str] = []
+        removed_reason_task_ids: list[str] = []
+        if reasons_by_task_id:
+            updated_text, blocked_task_ids = mark_task_statuses_in_todo_text(
+                updated_text,
+                list(reasons_by_task_id),
+                task_prefix=task_prefix,
+                status="blocked",
+            )
+        if unblock_task_ids:
+            updated_text, unblocked_task_ids = mark_task_statuses_in_todo_text(
+                updated_text,
+                unblock_task_ids,
+                task_prefix=task_prefix,
+                status="todo",
+            )
+        if remove_task_ids:
+            updated_text, removed_task_ids = mark_task_statuses_in_todo_text(
+                updated_text,
+                remove_task_ids,
+                task_prefix=task_prefix,
+                status="completed",
+            )
+        if unblock_task_ids or remove_task_ids:
+            updated_text, removed_reason_task_ids = self._remove_blocked_reason_lines(
+                updated_text,
+                [*unblock_task_ids, *remove_task_ids],
+                task_prefix=task_prefix,
+            )
         updated_text, reason_task_ids = self._ensure_blocked_reason_lines(
             updated_text,
             reasons_by_task_id,
             task_prefix=task_prefix,
         )
-        if not blocked_task_ids and not reason_task_ids:
+        if (
+            not blocked_task_ids
+            and not reason_task_ids
+            and not unblocked_task_ids
+            and not removed_task_ids
+            and not removed_reason_task_ids
+        ):
             return {"changed": False, "reason": "todo_already_materialized"}
         write_text_atomic(self.config.todo_path, updated_text)
         return {
             "changed": True,
             "blocked_task_ids": blocked_task_ids,
             "reason_task_ids": reason_task_ids,
+            "unblocked_task_ids": unblocked_task_ids,
+            "removed_task_ids": removed_task_ids,
+            "removed_reason_task_ids": removed_reason_task_ids,
         }
 
     @staticmethod
@@ -3542,6 +3589,42 @@ class PortalImplementationSupervisor:
         if not inserted:
             return todo_text, []
         return "".join(output), inserted
+
+    @staticmethod
+    def _remove_blocked_reason_lines(
+        todo_text: str,
+        task_ids: list[str],
+        *,
+        task_prefix: str,
+    ) -> tuple[str, list[str]]:
+        """Remove stale blocked reason lines from tasks the janitor reclassified."""
+
+        target_task_ids = {
+            str(task_id).strip()
+            for task_id in task_ids
+            if str(task_id).strip()
+        }
+        if not target_task_ids:
+            return todo_text, []
+
+        lines = todo_text.splitlines(keepends=True)
+        output: list[str] = []
+        current_task_id = ""
+        removed: list[str] = []
+        for line in lines:
+            if line.startswith(f"## {task_prefix}"):
+                parts = line[3:].strip().split(" ", 1)
+                current_task_id = parts[0] if parts else ""
+                output.append(line)
+                continue
+            if current_task_id in target_task_ids and line.startswith("- Blocked reason:"):
+                removed.append(current_task_id)
+                continue
+            output.append(line)
+
+        if not removed:
+            return todo_text, []
+        return "".join(output), list(dict.fromkeys(removed))
 
     def refill_objective_backlog(self) -> dict[str, Any]:
         """Refine the objective heap and feed todos when the backlog is low or drained."""
