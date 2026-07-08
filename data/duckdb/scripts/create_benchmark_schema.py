@@ -672,8 +672,8 @@ if __name__ == "__main__":
 # HAO-740 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
 #
 # These constants mirror `mobile/src/orb/metaGlassesOrbDescriptors.js`'s
-# HALLUCINATE_APP_MOBILE_INTEROP_CONTRACT and the
-# `hallucinate_app_mobile_interop_receipts` table defined in
+# HALLUCINATE_APP_MOBILE_INTEROP_INTERFACE and the
+# `hallucinate_app_mobile_interop_receipts` / `hallucinate_app_mobile_interop_events` tables defined in
 # ipfs_accelerate_py/data/duckdb/db_schema/time_series_schema.sql, so that a
 # benchmark schema build can identify and populate interop receipt evidence
 # for `interface contract hallucinate_app mobile`. This block is intentionally
@@ -682,6 +682,11 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 HALLUCINATE_APP_MOBILE_INTEROP_CONTRACT_ID = "interface contract hallucinate_app mobile"
 HALLUCINATE_APP_MOBILE_INTEROP_TABLE = "hallucinate_app_mobile_interop_receipts"
+HALLUCINATE_APP_MOBILE_INTEROP_EVENTS_TABLE = "hallucinate_app_mobile_interop_events"
+HALLUCINATE_APP_MOBILE_INTEROP_TABLES = (
+    HALLUCINATE_APP_MOBILE_INTEROP_TABLE,
+    HALLUCINATE_APP_MOBILE_INTEROP_EVENTS_TABLE,
+)
 HALLUCINATE_APP_MOBILE_INTEROP_ROUTES = (
     "/v1/mobile/orb/register_edge_capabilities",
     "/v1/mobile/orb/publish_glasses_event",
@@ -695,3 +700,5 @@ HALLUCINATE_APP_MOBILE_INTEROP_ARTIFACT_REFS = (
     "policy_decision",
     "mediation_receipt",
 )
+HALLUCINATE_APP_MOBILE_INTEROP_EVENT_NAME = "hallucinate-app:mobile-interop-handoff"
+HALLUCINATE_APP_MOBILE_INTEROP_DESCRIPTOR_ID = "hallucinate-app-mobile-interop@0.1.0"

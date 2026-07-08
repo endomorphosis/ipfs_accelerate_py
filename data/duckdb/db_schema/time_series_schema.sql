@@ -390,7 +390,7 @@ $$ LANGUAGE plpgsql;
     -- desktop search surface hands off a request to the mobile ORB bridge via
     -- `interface contract hallucinate_app mobile`
     -- (see docs/integration/hallucinate_app-mobile.md and
-    -- mobile/src/orb/metaGlassesOrbDescriptors.js::HALLUCINATE_APP_MOBILE_INTEROP_CONTRACT).
+    -- mobile/src/orb/metaGlassesOrbDescriptors.js::HALLUCINATE_APP_MOBILE_INTEROP_INTERFACE).
     CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_receipts (
         receipt_id INTEGER PRIMARY KEY,
         contract_id VARCHAR NOT NULL DEFAULT 'interface contract hallucinate_app mobile',
@@ -410,3 +410,21 @@ $$ LANGUAGE plpgsql;
 
     CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_receipts_route
         ON hallucinate_app_mobile_interop_receipts (route);
+
+    CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_events (
+        event_id INTEGER PRIMARY KEY,
+        contract_id VARCHAR NOT NULL DEFAULT 'interface contract hallucinate_app mobile',
+        descriptor_id VARCHAR NOT NULL DEFAULT 'hallucinate-app-mobile-interop@0.1.0',
+        event_name VARCHAR NOT NULL DEFAULT 'hallucinate-app:mobile-interop-handoff',
+        source_surface VARCHAR NOT NULL DEFAULT 'hallucinate_app',
+        target_surface VARCHAR NOT NULL DEFAULT 'mobile',
+        operation VARCHAR NOT NULL DEFAULT 'invoke_service',
+        route VARCHAR NOT NULL DEFAULT '/v1/mobile/orb/invoke_service',
+        correlation_id VARCHAR,
+        payload JSON,
+        receipt_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_events_contract
+        ON hallucinate_app_mobile_interop_events (contract_id, event_name);
