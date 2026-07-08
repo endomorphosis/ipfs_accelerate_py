@@ -155,6 +155,68 @@ CREATE INDEX IF NOT EXISTS idx_perf_trends_model_hw ON performance_trends(model_
 CREATE INDEX IF NOT EXISTS idx_perf_trends_metric ON performance_trends(metric_type);
 CREATE INDEX IF NOT EXISTS idx_perf_results_run_group ON performance_results(run_group_id);
 
+-- 10. Hallucinate App <-> mobile runtime handoff evidence for VAIOS-G707
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_handoffs (
+    handoff_id INTEGER PRIMARY KEY,
+    request_id VARCHAR NOT NULL,
+    objective_id VARCHAR DEFAULT 'VAIOS-G707',
+    interface_contract VARCHAR DEFAULT 'handsfree.hallucinate_app/mobile-search-handoff@0.1.0',
+    action_id VARCHAR DEFAULT 'mobile_hallucinate_app_search',
+    event_type VARCHAR DEFAULT 'transport.handoff',
+    source_surface VARCHAR DEFAULT 'hallucinate_app.content_browser',
+    target_surface VARCHAR DEFAULT 'mobile.results',
+    query TEXT,
+    filter JSON,
+    handoff JSON,
+    mobile_payload JSON,
+    control_plane JSON,
+    receipts JSON,
+    mediation_receipt JSON,
+    receipt_cid VARCHAR,
+    edge_session_id VARCHAR,
+    correlation_id VARCHAR,
+    ipfs_cids JSON,
+    libp2p_peer_id VARCHAR,
+    status VARCHAR DEFAULT 'queued',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_handoff_assertions (
+    assertion_id INTEGER PRIMARY KEY,
+    handoff_id INTEGER,
+    assertion_name VARCHAR NOT NULL,
+    assertion_status VARCHAR NOT NULL,
+    expected_value VARCHAR,
+    actual_value VARCHAR,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (handoff_id) REFERENCES hallucinate_app_mobile_handoffs(handoff_id)
+);
+
+CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_interop_status AS
+SELECT
+    request_id,
+    objective_id,
+    interface_contract,
+    action_id,
+    source_surface,
+    target_surface,
+    edge_session_id,
+    correlation_id,
+    receipt_cid,
+    status,
+    created_at,
+    completed_at
+FROM hallucinate_app_mobile_handoffs;
+
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_handoffs_request
+    ON hallucinate_app_mobile_handoffs(request_id);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_handoffs_contract
+    ON hallucinate_app_mobile_handoffs(interface_contract);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_handoffs_created
+    ON hallucinate_app_mobile_handoffs(created_at);
+
 -- 9. Create functions for common time-series operations
 
 -- Function to set a new baseline from recent results
