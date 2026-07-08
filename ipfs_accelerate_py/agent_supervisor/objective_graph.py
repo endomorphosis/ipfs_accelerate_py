@@ -722,6 +722,9 @@ def objective_goal_validation_gap_terms(goal: ObjectiveGoal) -> list[str]:
     """Return synthetic evidence terms for forced validation-gate work."""
 
     if not objective_goal_requires_launch_playwright_validation(goal):
+        validation = str(goal.fields.get("validation") or "").strip()
+        if validation:
+            return ["objective validation repair"]
         return []
     return [LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE]
 
@@ -1343,6 +1346,7 @@ def scan_objective_gaps(
             if not missing_terms:
                 continue
             validation_gap = True
+        launch_validation_gap = validation_gap and objective_goal_requires_launch_playwright_validation(goal)
         fields = goal.fields
         present = {term: evidence.get(term, []) for term in terms if evidence.get(term)}
         explicit_bundle = bool(str(fields.get("bundle") or "").strip())
@@ -1378,6 +1382,8 @@ def scan_objective_gaps(
                 gap_task=(
                     "Run and repair the launch readiness validation gate until the phone, desktop, "
                     "Swissknife, Hallucinate App, and Meta glasses Playwright checks pass."
+                    if launch_validation_gap
+                    else "Run and repair the objective validation command until it passes, then record the evidence."
                     if validation_gap
                     else str(fields.get("gap_task") or "")
                 ),
@@ -1400,7 +1406,13 @@ def scan_objective_gaps(
                 merge_family=objective_surplus_group(goal),
                 merge_role=candidate_kind,
                 work_item_count=len(candidate_missing_terms),
-                work_scope="launch_validation_gate" if validation_gap else "goal_subgoal_multi_evidence_batch",
+                work_scope=(
+                    "launch_validation_gate"
+                    if launch_validation_gap
+                    else "objective_validation_repair"
+                    if validation_gap
+                    else "goal_subgoal_multi_evidence_batch"
+                ),
                 todo_vector_key=objective_todo_vector_key(
                     goal,
                     candidate_missing_terms,
