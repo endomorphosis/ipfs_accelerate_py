@@ -83,6 +83,26 @@ CREATE TABLE IF NOT EXISTS regression_notifications (
     FOREIGN KEY (regression_id) REFERENCES performance_regressions(regression_id)
 );
 
+-- MGW-579 / VAIOS-G707: persistent Hallucinate App to mobile handoff evidence.
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_events (
+    event_id VARCHAR PRIMARY KEY,
+    event_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    interface_contract VARCHAR NOT NULL DEFAULT 'interface contract hallucinate_app mobile',
+    goal_id VARCHAR NOT NULL DEFAULT 'VAIOS-G707',
+    source_surface VARCHAR NOT NULL DEFAULT 'hallucinate_app',
+    target_surface VARCHAR NOT NULL DEFAULT 'mobile',
+    event_name VARCHAR NOT NULL DEFAULT 'hallucinate-app:mobile-interop-handoff',
+    route VARCHAR NOT NULL DEFAULT 'hallucinate-app-content-browser-to-mobile-widget',
+    content_browser_operation VARCHAR NOT NULL,
+    mobile_widget_action VARCHAR NOT NULL,
+    query TEXT,
+    filter_json JSON,
+    result_count INTEGER DEFAULT 0,
+    content_cid VARCHAR,
+    payload_sha256 VARCHAR,
+    evidence VARCHAR NOT NULL DEFAULT 'objective validation repair'
+);
+
 -- 6. Create performance_comparisons view for easier analysis
 CREATE VIEW IF NOT EXISTS performance_comparisons AS
 SELECT 
