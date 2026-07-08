@@ -3,6 +3,9 @@
 -- Date: March 15, 2025
 
 -- This schema extension adds time-series tracking capabilities to the benchmark database
+-- HAO-740 / VAIOS-G707 evidence: Hallucinate App mobile interoperability
+-- stores objective validation repair receipts for the interface contract
+-- hallucinate_app mobile handoff through mobile ORB runtime routes.
 
 -- 1. Add versioning to performance_results table
 ALTER TABLE IF EXISTS performance_results
@@ -83,7 +86,26 @@ CREATE TABLE IF NOT EXISTS regression_notifications (
     FOREIGN KEY (regression_id) REFERENCES performance_regressions(regression_id)
 );
 
--- 6. Create performance_comparisons view for easier analysis
+-- 6. Create hallucinate_app_mobile_interop_receipts to correlate benchmark
+-- runs with mobile ORB handoff receipts and control-surface mediation.
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_receipts (
+    receipt_id VARCHAR PRIMARY KEY,
+    run_id INTEGER,
+    contract_id VARCHAR DEFAULT 'interface contract hallucinate_app mobile',
+    source_surface VARCHAR DEFAULT 'hallucinate_app',
+    target_surface VARCHAR DEFAULT 'mobile',
+    control_surface_contract_ref VARCHAR DEFAULT 'control_surface_contract:hallucinate-app:remote-client',
+    route VARCHAR,
+    operation VARCHAR,
+    interaction_envelope JSON,
+    policy_decision JSON,
+    mediation_receipt JSON,
+    status VARCHAR DEFAULT 'observed',
+    observed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES test_runs(run_id)
+);
+
+-- 7. Create performance_comparisons view for easier analysis
 CREATE VIEW IF NOT EXISTS performance_comparisons AS
 SELECT 
     p.id as performance_id,
@@ -119,7 +141,7 @@ LEFT JOIN
         AND (p.sequence_length = b.sequence_length OR (p.sequence_length IS NULL AND b.sequence_length IS NULL))
         AND p.precision = b.precision;
 
--- 7. Create performance_metrics_history view for time-series analysis
+-- 8. Create performance_metrics_history view for time-series analysis
 CREATE VIEW IF NOT EXISTS performance_metrics_history AS
 SELECT 
     m.model_name,
@@ -145,7 +167,7 @@ JOIN
 ORDER BY 
     m.model_name, h.hardware_type, p.batch_size, p.precision, p.timestamp;
 
--- 8. Create indexes for faster time-series queries
+-- 9. Create indexes for faster time-series queries
 CREATE INDEX IF NOT EXISTS idx_perf_results_timestamp ON performance_results(timestamp);
 CREATE INDEX IF NOT EXISTS idx_perf_results_version ON performance_results(version_tag);
 CREATE INDEX IF NOT EXISTS idx_perf_results_model_hw_time ON performance_results(model_id, hardware_id, timestamp);
@@ -154,8 +176,10 @@ CREATE INDEX IF NOT EXISTS idx_perf_regressions_date ON performance_regressions(
 CREATE INDEX IF NOT EXISTS idx_perf_trends_model_hw ON performance_trends(model_id, hardware_id);
 CREATE INDEX IF NOT EXISTS idx_perf_trends_metric ON performance_trends(metric_type);
 CREATE INDEX IF NOT EXISTS idx_perf_results_run_group ON performance_results(run_group_id);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_run ON hallucinate_app_mobile_interop_receipts(run_id);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_route ON hallucinate_app_mobile_interop_receipts(route, operation);
 
--- 9. Create functions for common time-series operations
+-- 10. Create functions for common time-series operations
 
 -- Function to set a new baseline from recent results
 CREATE OR REPLACE FUNCTION set_performance_baseline(

@@ -14,6 +14,17 @@ import duckdb
 import pandas as pd
 from pathlib import Path
 
+HALLUCINATE_APP_MOBILE_INTEROP_CONTRACT_ID = "interface contract hallucinate_app mobile"
+HALLUCINATE_APP_MOBILE_INTEROP_TABLE = "hallucinate_app_mobile_interop_receipts"
+HALLUCINATE_APP_MOBILE_INTEROP_ROUTES = (
+    "/v1/mobile/orb/register_edge_capabilities",
+    "/v1/mobile/orb/invoke_service",
+    "/v1/mobile/orb/dispatch_glasses_response",
+    "/v1/mobile/orb/diagnostics",
+)
+# HAO-740 objective validation repair: benchmark schemas retain mobile ORB
+# mediation receipt evidence for hallucinate_app/mobile interop runs.
+
 # Add parent directory to path for module imports
 sys.path.append())))))))))))str())))))))))))Path())))))))))))__file__).parent.parent))
 
