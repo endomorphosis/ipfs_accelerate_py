@@ -83,7 +83,53 @@ CREATE TABLE IF NOT EXISTS regression_notifications (
     FOREIGN KEY (regression_id) REFERENCES performance_regressions(regression_id)
 );
 
--- 6. Create performance_comparisons view for easier analysis
+-- 6. Hallucinate App/mobile interoperability event evidence for VAIOS-G707.
+-- The dashboard emits `hallucinate-app:mobile-interop-handoff` payloads and
+-- mobile registers the matching `hallucinate_app_mobile_interop` descriptor.
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_events (
+    event_id VARCHAR PRIMARY KEY,
+    descriptor_id VARCHAR NOT NULL,
+    interface_contract VARCHAR NOT NULL,
+    objective_goal VARCHAR NOT NULL,
+    source_surface VARCHAR NOT NULL,
+    target_surface VARCHAR NOT NULL,
+    event_name VARCHAR NOT NULL,
+    operation VARCHAR NOT NULL,
+    edge_session_id VARCHAR,
+    query TEXT,
+    filter JSON,
+    render_targets JSON,
+    dispatch_operation VARCHAR,
+    status VARCHAR DEFAULT 'emitted',
+    evidence_term VARCHAR DEFAULT 'objective validation repair',
+    emitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CHECK (interface_contract = 'interface contract hallucinate_app mobile'),
+    CHECK (objective_goal = 'VAIOS-G707'),
+    CHECK (source_surface = 'hallucinate_app'),
+    CHECK (target_surface = 'mobile'),
+    CHECK (event_name = 'hallucinate-app:mobile-interop-handoff')
+);
+
+CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_interop_latest AS
+SELECT
+    event_id,
+    descriptor_id,
+    interface_contract,
+    objective_goal,
+    source_surface,
+    target_surface,
+    event_name,
+    operation,
+    edge_session_id,
+    status,
+    evidence_term,
+    emitted_at,
+    recorded_at
+FROM hallucinate_app_mobile_interop_events
+WHERE objective_goal = 'VAIOS-G707';
+
+-- 7. Create performance_comparisons view for easier analysis
 CREATE VIEW IF NOT EXISTS performance_comparisons AS
 SELECT 
     p.id as performance_id,
