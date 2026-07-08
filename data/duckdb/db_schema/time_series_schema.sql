@@ -385,10 +385,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-    -- 6. HAO-740 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
+    -- 6. HAO-740 / HAO-752 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
     -- Records the control-surface receipts exchanged when the Hallucinate App
     -- desktop search surface hands off a request to the mobile ORB bridge via
     -- `interface contract hallucinate_app mobile`
+    -- HAO-752 records the current objective validation repair for the same
+    -- scanner gap and keeps this receipt table aligned with the objective heap.
     -- (see docs/integration/hallucinate_app-mobile.md and
     -- mobile/src/orb/metaGlassesOrbDescriptors.js::HALLUCINATE_APP_MOBILE_INTEROP_DESCRIPTOR).
     CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_receipts (
