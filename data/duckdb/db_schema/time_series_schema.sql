@@ -384,3 +384,29 @@ BEGIN
         AND r.baseline_power > 0;
 END;
 $$ LANGUAGE plpgsql;
+
+    -- 6. HAO-740 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
+    -- Records the control-surface receipts exchanged when the Hallucinate App
+    -- desktop search surface hands off a request to the mobile ORB bridge via
+    -- `interface contract hallucinate_app mobile`
+    -- (see docs/integration/hallucinate_app-mobile.md and
+    -- mobile/src/orb/metaGlassesOrbDescriptors.js::HALLUCINATE_APP_MOBILE_INTEROP_CONTRACT).
+    CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_receipts (
+        receipt_id INTEGER PRIMARY KEY,
+        contract_id VARCHAR NOT NULL DEFAULT 'interface contract hallucinate_app mobile',
+        source_surface VARCHAR NOT NULL DEFAULT 'hallucinate_app',
+        target_surface VARCHAR NOT NULL DEFAULT 'mobile',
+        route VARCHAR NOT NULL,
+        operation VARCHAR NOT NULL,
+        edge_session_id VARCHAR,
+        binding_handle VARCHAR,
+        correlation_id VARCHAR,
+        interaction_envelope JSON,
+        policy_decision JSON,
+        mediation_receipt JSON,
+        receipt_cid VARCHAR,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_receipts_route
+        ON hallucinate_app_mobile_interop_receipts (route);
