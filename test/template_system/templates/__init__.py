@@ -1,1 +1,0 @@
-# Test templates for IPFS Accelerate

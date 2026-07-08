@@ -1,1 +1,0 @@
-# DuckDB API - visualization module

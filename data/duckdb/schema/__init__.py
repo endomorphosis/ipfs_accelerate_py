@@ -1,1 +1,0 @@
-# DuckDB API - schema module

@@ -1,1 +1,0 @@
-# Template system for generating IPFS Accelerate tests
