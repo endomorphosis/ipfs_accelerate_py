@@ -155,7 +155,75 @@ CREATE INDEX IF NOT EXISTS idx_perf_trends_model_hw ON performance_trends(model_
 CREATE INDEX IF NOT EXISTS idx_perf_trends_metric ON performance_trends(metric_type);
 CREATE INDEX IF NOT EXISTS idx_perf_results_run_group ON performance_results(run_group_id);
 
--- 9. Create functions for common time-series operations
+-- 10. Track hallucinate_app to mobile interoperability handoff receipts
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_handoffs (
+    handoff_id INTEGER PRIMARY KEY,
+    performance_id INTEGER,
+    request_id VARCHAR NOT NULL,
+    correlation_id VARCHAR,
+    contract VARCHAR NOT NULL DEFAULT 'handsfree.hallucinate_app/mobile-search-handoff@0.1.0',
+    action_id VARCHAR NOT NULL DEFAULT 'mobile_hallucinate_app_search',
+    profile VARCHAR DEFAULT 'swissknife.mcp++/event-envelope@0.1.0',
+    source_surface VARCHAR NOT NULL DEFAULT 'hallucinate_app.content_browser',
+    target_surface VARCHAR NOT NULL DEFAULT 'mobile.results',
+    query VARCHAR,
+    filters JSON,
+    cid VARCHAR,
+    path VARCHAR,
+    mobile_payload JSON NOT NULL,
+    control_plane JSON,
+    handoff JSON,
+    policy JSON,
+    receipts JSON,
+    status VARCHAR DEFAULT 'queued',
+    receipt_cid VARCHAR,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (performance_id) REFERENCES performance_results(id)
+);
+
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_handoff_assertions (
+    assertion_id INTEGER PRIMARY KEY,
+    handoff_id INTEGER NOT NULL,
+    assertion_name VARCHAR NOT NULL,
+    passed BOOLEAN NOT NULL,
+    expected_value VARCHAR,
+    actual_value VARCHAR,
+    message VARCHAR,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (handoff_id) REFERENCES hallucinate_app_mobile_handoffs(handoff_id)
+);
+
+CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_interop_status AS
+SELECT
+    h.request_id,
+    h.contract,
+    h.action_id,
+    h.source_surface,
+    h.target_surface,
+    h.query,
+    h.status,
+    h.receipt_cid,
+    COUNT(a.assertion_id) AS assertion_count,
+    COUNT(CASE WHEN a.passed THEN 1 END) AS passed_assertions,
+    h.created_at
+FROM hallucinate_app_mobile_handoffs h
+LEFT JOIN hallucinate_app_mobile_handoff_assertions a
+    ON h.handoff_id = a.handoff_id
+GROUP BY
+    h.request_id,
+    h.contract,
+    h.action_id,
+    h.source_surface,
+    h.target_surface,
+    h.query,
+    h.status,
+    h.receipt_cid,
+    h.created_at;
+
+CREATE INDEX IF NOT EXISTS idx_hallucinate_mobile_request ON hallucinate_app_mobile_handoffs(request_id);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_mobile_contract ON hallucinate_app_mobile_handoffs(contract, action_id);
+
+-- 11. Create functions for common time-series operations
 
 -- Function to set a new baseline from recent results
 CREATE OR REPLACE FUNCTION set_performance_baseline(
