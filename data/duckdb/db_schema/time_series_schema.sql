@@ -155,6 +155,53 @@ CREATE INDEX IF NOT EXISTS idx_perf_trends_model_hw ON performance_trends(model_
 CREATE INDEX IF NOT EXISTS idx_perf_trends_metric ON performance_trends(metric_type);
 CREATE INDEX IF NOT EXISTS idx_perf_results_run_group ON performance_results(run_group_id);
 
+-- VAIOS-G707: Hallucinate App <-> mobile runtime handoff evidence.
+-- The dashboard records each content-search handoff sent to the mobile ORB
+-- bridge so objective validation can verify descriptor, receipt, and CID terms.
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_handoff_events (
+    handoff_id VARCHAR PRIMARY KEY,
+    objective_id VARCHAR DEFAULT 'VAIOS-G707',
+    interface_contract VARCHAR NOT NULL,
+    source_surface VARCHAR DEFAULT 'hallucinate_app',
+    target_surface VARCHAR DEFAULT 'mobile',
+    operation VARCHAR DEFAULT 'dispatch_content_search',
+    edge_session_id VARCHAR NOT NULL,
+    correlation_id VARCHAR NOT NULL,
+    query TEXT,
+    filters JSON,
+    ipfs_cids JSON,
+    libp2p_peer_id VARCHAR,
+    libp2p_session_id VARCHAR,
+    descriptor_refs JSON,
+    mediation_receipt JSON,
+    receipt_cid VARCHAR,
+    status VARCHAR DEFAULT 'queued',
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ha_mobile_handoff_edge
+    ON hallucinate_app_mobile_handoff_events(edge_session_id, recorded_at);
+CREATE INDEX IF NOT EXISTS idx_ha_mobile_handoff_correlation
+    ON hallucinate_app_mobile_handoff_events(correlation_id);
+
+CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_handoff_latest AS
+SELECT
+    handoff_id,
+    objective_id,
+    interface_contract,
+    source_surface,
+    target_surface,
+    operation,
+    edge_session_id,
+    correlation_id,
+    query,
+    receipt_cid,
+    status,
+    recorded_at
+FROM hallucinate_app_mobile_handoff_events
+WHERE objective_id = 'VAIOS-G707'
+ORDER BY recorded_at DESC;
+
 -- 9. Create functions for common time-series operations
 
 -- Function to set a new baseline from recent results
