@@ -390,7 +390,7 @@ $$ LANGUAGE plpgsql;
     -- desktop search surface hands off a request to the mobile ORB bridge via
     -- `interface contract hallucinate_app mobile`
     -- (see docs/integration/hallucinate_app-mobile.md and
-    -- mobile/src/orb/metaGlassesOrbDescriptors.js::HALLUCINATE_APP_MOBILE_INTEROP_CONTRACT).
+    -- mobile/src/orb/metaGlassesOrbDescriptors.js::HALLUCINATE_APP_MOBILE_INTEROP_DESCRIPTOR).
     CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_receipts (
         receipt_id INTEGER PRIMARY KEY,
         contract_id VARCHAR NOT NULL DEFAULT 'interface contract hallucinate_app mobile',
