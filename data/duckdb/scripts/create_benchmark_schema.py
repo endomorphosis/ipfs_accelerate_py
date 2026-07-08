@@ -695,3 +695,47 @@ HALLUCINATE_APP_MOBILE_INTEROP_ARTIFACT_REFS = (
     "policy_decision",
     "mediation_receipt",
 )
+
+# ---------------------------------------------------------------------------
+# VAI-674 / VAIOS-G707: objective validation repair evidence
+#
+# This block records the exact task/goal identifiers, discovery evidence
+# paths, and DuckDB objects that make the `interface contract
+# hallucinate_app mobile` handoff scanner-visible and testable for the
+# supervisor-fed objective heap (implementation_plan/docs/
+# 23-virtual-ai-os-objective-goal-heap.md). It stays self-contained (pure
+# literals) so it remains importable/parseable evidence independent of the
+# legacy script body above.
+# ---------------------------------------------------------------------------
+HALLUCINATE_APP_MOBILE_INTEROP_VAI_TASK_ID = "VAI-674"
+HALLUCINATE_APP_MOBILE_INTEROP_GOAL_ID = "VAIOS-G707"
+HALLUCINATE_APP_MOBILE_INTEROP_EVENT_NAME = "hallucinate-app:mobile-interop-handoff"
+HALLUCINATE_APP_MOBILE_INTEROP_EVIDENCE_VIEW = "hallucinate_app_mobile_interop_evidence"
+HALLUCINATE_APP_MOBILE_INTEROP_EVIDENCE = "objective validation repair"
+HALLUCINATE_APP_MOBILE_INTEROP_OBJECTIVE_GAP_REF = (
+    "data/virtual_ai_os/discovery/2026-07-08-vai-674-objective-gap-7edb316279e5.md"
+)
+HALLUCINATE_APP_MOBILE_INTEROP_VALIDATION_REPAIR_REF = (
+    "data/virtual_ai_os/discovery/2026-07-08-vai-674-objective-validation-repair.md"
+)
+
+
+def build_hallucinate_app_mobile_interop_evidence_record():
+    """Return a deterministic evidence record for VAI-674/VAIOS-G707.
+
+    This mirrors the fields recorded in the
+    ``hallucinate_app_mobile_interop_evidence`` DuckDB view (see
+    ``ipfs_accelerate_py/data/duckdb/db_schema/time_series_schema.sql``) so
+    integration tests can validate the Python and SQL evidence stay in sync
+    without needing a live DuckDB connection.
+    """
+    return {
+        "vai_task_id": HALLUCINATE_APP_MOBILE_INTEROP_VAI_TASK_ID,
+        "goal_id": HALLUCINATE_APP_MOBILE_INTEROP_GOAL_ID,
+        "contract_id": HALLUCINATE_APP_MOBILE_INTEROP_CONTRACT_ID,
+        "receipt_table": HALLUCINATE_APP_MOBILE_INTEROP_TABLE,
+        "event_name": HALLUCINATE_APP_MOBILE_INTEROP_EVENT_NAME,
+        "evidence": HALLUCINATE_APP_MOBILE_INTEROP_EVIDENCE,
+        "objective_gap_ref": HALLUCINATE_APP_MOBILE_INTEROP_OBJECTIVE_GAP_REF,
+        "validation_repair_ref": HALLUCINATE_APP_MOBILE_INTEROP_VALIDATION_REPAIR_REF,
+    }

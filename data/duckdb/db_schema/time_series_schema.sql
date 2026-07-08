@@ -410,3 +410,24 @@ $$ LANGUAGE plpgsql;
 
     CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_receipts_route
         ON hallucinate_app_mobile_interop_receipts (route);
+
+    -- VAI-674 / VAIOS-G707 objective validation repair: records which
+    -- objective heap goal and discovery evidence this table satisfies so
+    -- the `hallucinate_app_mobile_interop_receipts` table stays scanner
+    -- visible as the shared DuckDB evidence for
+    -- `interface contract hallucinate_app mobile` across both the
+    -- HAO-740 and VAI-674 repair passes. See also
+    -- tests/integration/test_hallucinate_app_mobile_interop.py and
+    -- docs/integration/hallucinate_app-mobile.md.
+    CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_interop_evidence AS
+    SELECT
+        'VAI-674' AS vai_task_id,
+        'VAIOS-G707' AS goal_id,
+        'interface contract hallucinate_app mobile' AS contract_id,
+        'hallucinate_app_mobile_interop_receipts' AS receipt_table,
+        'hallucinate-app:mobile-interop-handoff' AS event_name,
+        'objective validation repair' AS evidence,
+        'data/virtual_ai_os/discovery/2026-07-08-vai-674-objective-gap-7edb316279e5.md'
+            AS objective_gap_ref,
+        'data/virtual_ai_os/discovery/2026-07-08-vai-674-objective-validation-repair.md'
+            AS validation_repair_ref;
