@@ -155,7 +155,52 @@ CREATE INDEX IF NOT EXISTS idx_perf_trends_model_hw ON performance_trends(model_
 CREATE INDEX IF NOT EXISTS idx_perf_trends_metric ON performance_trends(metric_type);
 CREATE INDEX IF NOT EXISTS idx_perf_results_run_group ON performance_results(run_group_id);
 
--- 9. Create functions for common time-series operations
+-- 9. Hallucinate App <-> mobile interoperability handoff evidence
+-- Objective validation repair for VAIOS-G707 / MGW-579.
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_events (
+    interop_event_id INTEGER PRIMARY KEY,
+    event_name VARCHAR NOT NULL DEFAULT 'hallucinate-app:mobile-interop-handoff',
+    contract VARCHAR NOT NULL DEFAULT 'interface contract hallucinate_app mobile',
+    descriptor_name VARCHAR NOT NULL DEFAULT 'HALLUCINATE_APP_MOBILE_INTEROP_DESCRIPTOR',
+    mobile_interface VARCHAR NOT NULL DEFAULT 'handsfree.meta_glasses.mobile.hallucinate_app_mobile_interop@0.1.0',
+    edge_session_id VARCHAR,
+    correlation_id VARCHAR,
+    action VARCHAR NOT NULL,
+    query TEXT,
+    filter_json JSON,
+    route_json JSON,
+    receipt_cid VARCHAR,
+    accepted BOOLEAN DEFAULT FALSE,
+    source_path VARCHAR NOT NULL DEFAULT 'hallucinate_app/hallucinate_app/node/dashboard/content_browser/search_interface.js',
+    mobile_descriptor_path VARCHAR NOT NULL DEFAULT 'mobile/src/orb/metaGlassesOrbDescriptors.js',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_event_name
+    ON hallucinate_app_mobile_interop_events(event_name);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_edge_session
+    ON hallucinate_app_mobile_interop_events(edge_session_id);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_created
+    ON hallucinate_app_mobile_interop_events(created_at);
+
+CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_interop_latest AS
+SELECT
+    interop_event_id,
+    event_name,
+    contract,
+    descriptor_name,
+    mobile_interface,
+    edge_session_id,
+    correlation_id,
+    action,
+    query,
+    accepted,
+    receipt_cid,
+    created_at
+FROM hallucinate_app_mobile_interop_events
+ORDER BY created_at DESC;
+
+-- 10. Create functions for common time-series operations
 
 -- Function to set a new baseline from recent results
 CREATE OR REPLACE FUNCTION set_performance_baseline(
