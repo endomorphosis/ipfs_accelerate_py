@@ -669,7 +669,8 @@ if __name__ == "__main__":
 
 
 # ---------------------------------------------------------------------------
-# HAO-740 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
+# VAI-674 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
+# Objective validation repair for objective/interoperability/hallucinate_app-mobile.
 #
 # These constants mirror `mobile/src/orb/metaGlassesOrbDescriptors.js`'s
 # HALLUCINATE_APP_MOBILE_INTEROP_CONTRACT and the
@@ -681,6 +682,9 @@ if __name__ == "__main__":
 # it remains scanner-visible and importable evidence for the objective heap.
 # ---------------------------------------------------------------------------
 HALLUCINATE_APP_MOBILE_INTEROP_CONTRACT_ID = "interface contract hallucinate_app mobile"
+HALLUCINATE_APP_MOBILE_INTEROP_GOAL_ID = "VAIOS-G707"
+HALLUCINATE_APP_MOBILE_INTEROP_TASK_ID = "VAI-674"
+HALLUCINATE_APP_MOBILE_INTEROP_EVIDENCE = "objective validation repair"
 HALLUCINATE_APP_MOBILE_INTEROP_TABLE = "hallucinate_app_mobile_interop_receipts"
 HALLUCINATE_APP_MOBILE_INTEROP_ROUTES = (
     "/v1/mobile/orb/register_edge_capabilities",
