@@ -255,6 +255,63 @@ def reconcile_objective_task_strategy(
     open_goal_ids: set[str] = set()
     block_receipts: list[ObjectiveTaskJanitorReceipt] = []
     deprioritize_receipts: list[ObjectiveTaskJanitorReceipt] = []
+    unblock_receipts: list[ObjectiveTaskJanitorReceipt] = []
+    remove_receipts: list[ObjectiveTaskJanitorReceipt] = []
+
+    janitor_owned_task_ids = previously_blocked | previously_deprioritized
+    for task in tasks:
+        if task.status != "blocked" or task.task_id not in janitor_owned_task_ids:
+            continue
+        goal_ids = _task_goal_ids(task)
+        task_goal_set = set(goal_ids)
+        goal_known = [goal_id for goal_id in goal_ids if goal_id in goals_by_id]
+        goal_missing = [goal_id for goal_id in goal_ids if goal_id not in goals_by_id]
+        task_text = _task_haystack(task)
+        mission_aligned = task.priority == "P0" or _matches_any_term(task_text, mission_terms)
+        codebase_scan_task = _is_codebase_scan_backlog_task(task)
+        retired_reason = ""
+        if goal_known and all(goals_by_id[goal_id].status == "completed" for goal_id in goal_known):
+            retired_reason = "goal_completed"
+        elif goal_missing and not goal_known:
+            retired_reason = "orphaned_goal_reference"
+        elif _is_generated_objective_task(task) and not mission_aligned:
+            retired_reason = "off_mission_objective_generated_task"
+        elif (
+            codebase_scan_task
+            and not _is_mission_critical_codebase_scan_task(task, task_text, mission_terms)
+            and not _is_guardrail_repair_task(task)
+        ):
+            retired_reason = "off_mission_codebase_scan_task"
+        elif _is_worktree_cleanup_backlog_task(task) and not mission_aligned:
+            retired_reason = "off_mission_worktree_cleanup_task"
+
+        if retired_reason:
+            remove_receipts.append(
+                ObjectiveTaskJanitorReceipt(
+                    task_id=task.task_id,
+                    action="remove",
+                    retired_task_reason=retired_reason,
+                    goal_ids=goal_ids,
+                    title=task.title,
+                    priority=task.priority,
+                    track=task.track,
+                )
+            )
+            continue
+
+        if task_goal_set & active_goal_ids or mission_aligned or _is_guardrail_repair_task(task):
+            open_goal_ids.update(task_goal_set & active_goal_ids)
+            unblock_receipts.append(
+                ObjectiveTaskJanitorReceipt(
+                    task_id=task.task_id,
+                    action="unblock",
+                    retired_task_reason="active_goal_or_mission_alignment_restored",
+                    goal_ids=goal_ids,
+                    title=task.title,
+                    priority=task.priority,
+                    track=task.track,
+                )
+            )
 
     for task in open_tasks:
         if task.task_id in strategy_blocked_task_ids:
@@ -338,6 +395,8 @@ def reconcile_objective_task_strategy(
     deprioritize_receipts = deprioritize_receipts[: max(0, int(max_deprioritized_tasks))]
     blocked_task_ids = [receipt.task_id for receipt in block_receipts]
     deprioritized_task_ids = [receipt.task_id for receipt in deprioritize_receipts]
+    unblocked_task_ids = [receipt.task_id for receipt in unblock_receipts]
+    removed_task_ids = [receipt.task_id for receipt in remove_receipts]
     reopened_goal_ids = [
         goal_id
         for goal_id in scheduled_goal_ids
@@ -362,15 +421,28 @@ def reconcile_objective_task_strategy(
         else []
     )
     next_blocked = _unique(
-        [task_id for task_id in existing_blocked if task_id not in previously_blocked] + blocked_task_ids
+        [
+            task_id
+            for task_id in existing_blocked
+            if task_id not in previously_blocked
+            and task_id not in unblocked_task_ids
+            and task_id not in removed_task_ids
+        ]
+        + blocked_task_ids
     )
     next_deprioritized = _unique(
-        [task_id for task_id in existing_deprioritized if task_id not in previously_deprioritized]
+        [
+            task_id
+            for task_id in existing_deprioritized
+            if task_id not in previously_deprioritized
+            and task_id not in unblocked_task_ids
+            and task_id not in removed_task_ids
+        ]
         + deprioritized_task_ids
     )
 
     receipt_payloads = []
-    for receipt in [*block_receipts, *deprioritize_receipts]:
+    for receipt in [*block_receipts, *deprioritize_receipts, *unblock_receipts, *remove_receipts]:
         payload = receipt.to_dict()
         payload["schema"] = JANITOR_RECEIPT_SCHEMA
         payload["recorded_at"] = now
@@ -400,6 +472,8 @@ def reconcile_objective_task_strategy(
     updated_strategy["objective_task_janitor_last_run_summary"] = {
         "blocked_count": len(blocked_task_ids),
         "deprioritized_count": len(deprioritized_task_ids),
+        "unblocked_count": len(unblocked_task_ids),
+        "removed_count": len(removed_task_ids),
         "reopened_goal_count": len(reopened_goal_ids),
         "active_goal_count": len(active_goal_ids),
         "scheduled_goal_count": len(scheduled_goal_ids),
@@ -422,6 +496,8 @@ def reconcile_objective_task_strategy(
         "strategy": updated_strategy,
         "blocked_task_ids": blocked_task_ids,
         "deprioritized_task_ids": deprioritized_task_ids,
+        "unblocked_task_ids": unblocked_task_ids,
+        "removed_task_ids": removed_task_ids,
         "reopened_goal_ids": reopened_goal_ids,
         "receipts": receipt_payloads,
         "active_goal_ids": sorted(active_goal_ids),
