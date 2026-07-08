@@ -247,6 +247,77 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 10. Hallucinate App <-> mobile interop event stream.
+-- MGW-579 objective validation repair / MGW-582 retry-budget unblocker.
+CREATE TABLE IF NOT EXISTS hallucinate_app_mobile_interop_events (
+    event_id VARCHAR PRIMARY KEY,
+    run_id INTEGER,
+    test_result_id INTEGER,
+    contract VARCHAR DEFAULT 'interface contract hallucinate_app mobile',
+    event VARCHAR DEFAULT 'hallucinate-app:mobile-interop-handoff',
+    descriptor JSON DEFAULT '{"mobile_interface":"handsfree.meta_glasses.mobile.hallucinate_app_mobile_interop@0.1.0","name":"hallucinate_app_mobile_content_browser","namespace":"handsfree.hallucinate_app.mobile","objective_id":"VAIOS-G707","version":"0.1.0"}',
+    source VARCHAR DEFAULT 'hallucinate_app.content_browser.search_interface',
+    target VARCHAR DEFAULT 'mobile.meta_glasses.mobile_orb_bridge',
+    action VARCHAR NOT NULL,
+    query VARCHAR DEFAULT '',
+    filter JSON,
+    route JSON,
+    mobile_interface_cid VARCHAR DEFAULT 'handsfree.meta_glasses.mobile.hallucinate_app_mobile_interop@0.1.0',
+    mobile_operation VARCHAR DEFAULT 'accept_handoff',
+    correlation_id VARCHAR,
+    receipt_cid VARCHAR,
+    mediation_receipt JSON,
+    status VARCHAR DEFAULT 'queued',
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS hallucinate_mobile_handoff_receipts (
+    receipt_id VARCHAR PRIMARY KEY,
+    run_id INTEGER,
+    test_result_id INTEGER,
+    event_id VARCHAR,
+    contract VARCHAR DEFAULT 'interface contract hallucinate_app mobile',
+    control_surface_contract_ref VARCHAR DEFAULT 'control_surface_contract:hallucinate-app:remote-client',
+    source_surface VARCHAR DEFAULT 'hallucinate_app.content_browser.search_interface',
+    target_surface VARCHAR DEFAULT 'mobile.meta_glasses.mobile_orb_bridge',
+    handoff_event VARCHAR DEFAULT 'hallucinate-app:mobile-interop-handoff',
+    correlation_id VARCHAR,
+    query VARCHAR DEFAULT '',
+    filter JSON,
+    mobile_operation VARCHAR DEFAULT 'accept_handoff',
+    orb_receipt_cid VARCHAR,
+    mediation_receipt JSON,
+    diagnostics_contract VARCHAR DEFAULT 'handsfree.meta-glasses/mobile-orb-diagnostics@0.1.0',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_interop_latest AS
+SELECT *
+FROM hallucinate_app_mobile_interop_events
+QUALIFY ROW_NUMBER() OVER (PARTITION BY correlation_id ORDER BY timestamp DESC) = 1;
+
+CREATE VIEW IF NOT EXISTS hallucinate_app_mobile_interop_timeseries AS
+SELECT
+    timestamp,
+    contract,
+    event,
+    action,
+    status,
+    mobile_operation,
+    COUNT(*) AS events
+FROM hallucinate_app_mobile_interop_events
+GROUP BY timestamp, contract, event, action, status, mobile_operation;
+
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_contract
+    ON hallucinate_app_mobile_interop_events(contract);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_correlation
+    ON hallucinate_app_mobile_interop_events(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_app_mobile_interop_timestamp
+    ON hallucinate_app_mobile_interop_events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_hallucinate_mobile_handoff_receipts_contract
+    ON hallucinate_mobile_handoff_receipts(contract);
+
 -- Function to detect regressions based on thresholds
 CREATE OR REPLACE FUNCTION detect_performance_regressions(
     p_model_id INTEGER DEFAULT NULL,
