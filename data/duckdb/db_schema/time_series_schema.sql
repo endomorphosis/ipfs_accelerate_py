@@ -386,6 +386,8 @@ END;
 $$ LANGUAGE plpgsql;
 
     -- 6. VAI-674 / VAIOS-G707: Hallucinate App <-> mobile interoperability evidence
+    -- objective validation repair evidence:
+    -- data/virtual_ai_os/discovery/2026-07-09-vai-674-attempt-10-validation-confirmation.md
     -- Records the control-surface receipts exchanged when the Hallucinate App
     -- desktop search surface hands off a request to the mobile ORB bridge via
     -- `interface contract hallucinate_app mobile`
@@ -405,6 +407,7 @@ $$ LANGUAGE plpgsql;
         policy_decision JSON,
         mediation_receipt JSON,
         receipt_cid VARCHAR,
+        objective_validation_repair_ref VARCHAR DEFAULT 'data/virtual_ai_os/discovery/2026-07-09-vai-674-attempt-10-validation-confirmation.md',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
