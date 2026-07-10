@@ -1313,7 +1313,7 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
     if pk in {"codex", "codex_cli"}:
         return (
             _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL")
-            or "gpt-5.1-codex-mini"
+            or "chatgpt-5.6-terra"
         ).strip()
     if pk == "copilot_sdk":
         return (os.environ.get("ipfs_accelerate_py_COPILOT_SDK_MODEL", "") or "").strip()
@@ -1630,7 +1630,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
     class _CodexCLIProvider:
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            model = (model_name or _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL") or "gpt-5.1-codex-mini").strip()
+            model = (model_name or _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL") or "chatgpt-5.6-terra").strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
             skip_git_repo_check = os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
             timeout = float(kwargs.get("timeout", 180))
