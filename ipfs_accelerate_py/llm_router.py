@@ -32,6 +32,10 @@ Additional optional providers (opt-in by selecting provider):
 - `claude_code`: Claude Code CLI command
     - `ipfs_accelerate_py_CLAUDE_CODE_CLI_CMD` (supports `{prompt}` placeholder)
 - `claude_py`: Python wrapper in `ipfs_accelerate_py.utils.claude_cli.ClaudeCLI`
+- `mistral_vibe`: Mistral Vibe CLI (`vibe`)
+    - `ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD` (supports `{prompt}` and `{model}` placeholders)
+    - `ipfs_accelerate_py_MISTRAL_VIBE_MODEL` (optional default model)
+    - `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` for auth
 """
 
 from __future__ import annotations
@@ -1457,6 +1461,10 @@ def _clean_gemini_output(text: str) -> str:
     return _clean_codex_output(text)
 
 
+def _clean_mistral_vibe_output(text: str) -> str:
+    return _clean_codex_output(text)
+
+
 def _cli_available(command: str) -> bool:
     if not command:
         return False
@@ -1475,6 +1483,7 @@ def _run_cli_command(
     timeout_seconds: float = 120.0,
     template_vars: Optional[Dict[str, str]] = None,
     label: Optional[str] = None,
+    extra_env: Optional[Dict[str, str]] = None,
 ) -> str:
     if not command:
         raise RuntimeError("CLI command not configured")
@@ -1493,6 +1502,11 @@ def _run_cli_command(
         input_text = prompt
 
     try:
+        env = os.environ.copy()
+        if extra_env:
+            for key, value in extra_env.items():
+                if key and value is not None and str(value).strip():
+                    env[str(key)] = str(value)
         proc = subprocess.run(
             cmd,
             input=input_text,
@@ -1500,7 +1514,7 @@ def _run_cli_command(
             capture_output=True,
             check=False,
             timeout=timeout_seconds,
-            env=os.environ.copy(),
+            env=env,
         )
     except FileNotFoundError as exc:
         name = (label or "CLI").strip() or "CLI"
@@ -2009,6 +2023,63 @@ def _get_claude_py_provider() -> Optional[LLMProvider]:
     return _ClaudePyProvider()
 
 
+def _get_mistral_vibe_provider() -> Optional[LLMProvider]:
+    command = os.environ.get(
+        "ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD",
+        "vibe --prompt {prompt} --output text --max-turns 1",
+    )
+    if not _cli_available(command):
+        return None
+
+    def _mistral_auth_available() -> bool:
+        if _coalesce_env("MISTRAL_API_KEY", "ipfs_accelerate_py_MISTRAL_API_KEY"):
+            return True
+        home = os.path.expanduser("~")
+        env_file = os.path.join(home, ".vibe", ".env")
+        try:
+            if not os.path.exists(env_file):
+                return False
+            text = open(env_file, "r", encoding="utf-8", errors="replace").read()
+            return "MISTRAL_API_KEY=" in text
+        except Exception:
+            return False
+
+    class _MistralVibeProvider:
+        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+            model = (model_name or os.environ.get("ipfs_accelerate_py_MISTRAL_VIBE_MODEL", "") or "").strip()
+            timeout = float(kwargs.get("timeout", 240))
+            per_call_key = kwargs.pop("mistral_api_key", None)
+            mistral_api_key = (
+                str(per_call_key).strip() if per_call_key is not None and str(per_call_key).strip() else _coalesce_env("ipfs_accelerate_py_MISTRAL_API_KEY", "MISTRAL_API_KEY")
+            )
+
+            try:
+                raw = _run_cli_command(
+                    command,
+                    prompt,
+                    timeout_seconds=timeout,
+                    template_vars={"model": model},
+                    label="Mistral Vibe CLI",
+                    extra_env={
+                        **({"MISTRAL_API_KEY": mistral_api_key} if mistral_api_key else {}),
+                        **({"VIBE_ACTIVE_MODEL": model} if model else {}),
+                    }
+                    or None,
+                )
+            except LLMRouterError as exc:
+                if not mistral_api_key and not _mistral_auth_available():
+                    raise LLMRouterError(
+                        "Mistral Vibe call failed and no local auth markers were found. "
+                        "If you are logged in via a non-env auth flow, keep using it; otherwise set "
+                        "MISTRAL_API_KEY (or ipfs_accelerate_py_MISTRAL_API_KEY) or run 'vibe --setup'."
+                    ) from exc
+                raise
+
+            return _clean_mistral_vibe_output(raw)
+
+    return _MistralVibeProvider()
+
+
 def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
     enable_value = os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE")
     if enable_value is not None and enable_value.strip() and not _truthy(enable_value):
@@ -2080,6 +2151,8 @@ def _provider_cache_key() -> tuple:
         os.getenv("ipfs_accelerate_py_COPILOT_CLI_CMD", "").strip(),
         os.getenv("ipfs_accelerate_py_GEMINI_CLI_CMD", "").strip(),
         os.getenv("ipfs_accelerate_py_CLAUDE_CODE_CLI_CMD", "").strip(),
+        os.getenv("ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD", "").strip(),
+        os.getenv("ipfs_accelerate_py_MISTRAL_VIBE_MODEL", "").strip(),
     )
 
 
@@ -2148,6 +2221,8 @@ def _builtin_provider_by_name(name: str) -> Optional[LLMProvider]:
         return _get_claude_code_provider()
     if key in {"claude", "claude_py"}:
         return _get_claude_py_provider()
+    if key in {"mistral_vibe", "mistral-vibe", "vibe"}:
+        return _get_mistral_vibe_provider()
     if key in {"hf", "huggingface", "local_hf"}:
         return _get_local_hf_provider(deps=get_default_router_deps())
     return None
@@ -2347,7 +2422,17 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         return accelerate_provider
 
     # Try common optional CLI/API providers if available.
-    for name in ["openrouter", "codex_cli", "copilot_cli", "gemini_cli", "claude_code", "claude_py", "gemini_py", "copilot_sdk"]:
+    for name in [
+        "openrouter",
+        "codex_cli",
+        "copilot_cli",
+        "gemini_cli",
+        "claude_code",
+        "mistral_vibe",
+        "claude_py",
+        "gemini_py",
+        "copilot_sdk",
+    ]:
         candidate = _builtin_provider_by_name(name)
         if candidate is not None:
             return candidate
