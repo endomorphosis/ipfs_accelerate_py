@@ -1,17 +1,17 @@
-"""Zero-Knowledge DAG Compaction for MCP++ Event DAG.
+"""Profile F Event DAG archival and compaction for MCP++.
 
 When the EventDAG grows beyond a configurable threshold, older epochs are
-compacted into a single ZK-verifiable summary node. This allows:
+compacted into a single certificate-backed summary node. This allows:
 
 1. **Memory efficiency**: Only recent events stay in hot memory
-2. **Verifiability**: Compacted epochs produce a Merkle root + ZK proof
+2. **Verifiability**: Compacted epochs produce a Merkle root + certificate
    that attests to the integrity of all compacted events without keeping them
 3. **Full recovery**: Cold events remain on disk and can be loaded on demand
 
 Compaction Strategy:
 - Events are grouped into epochs (default 1000 events per epoch)
 - When an epoch completes, its events are hashed into a Merkle tree
-- A ZK proof (simulated Groth16 or real if available) attests that:
+- A certificate records the Merkle root and epoch boundary:
   * The Merkle root correctly summarizes N events
   * All parent references within the epoch are valid
   * The epoch frontier connects to the next epoch's roots
@@ -51,7 +51,7 @@ class MerkleNode:
 
 @dataclass
 class CompactionProof:
-    """Zero-knowledge proof that an epoch of events is valid.
+    """Profile F archive certificate for an epoch of events.
 
     Contains:
     - merkle_root: Root hash of the Merkle tree over all epoch events
@@ -59,7 +59,7 @@ class CompactionProof:
     - event_count: Number of events in the compacted epoch
     - frontier_cids: CIDs of leaf events at epoch boundary (connect to next epoch)
     - root_cids: CIDs of root events in this epoch (connect from previous epoch)
-    - proof: ZK proof bytes (Groth16 simulated or real)
+    - proof: integrity commitment or a verifier-backed proof
     - timestamp_range: (start, end) timestamps of epoch
     - cold_storage_path: File path where full epoch data is stored
     """
@@ -68,7 +68,10 @@ class CompactionProof:
     event_count: int
     frontier_cids: List[str] = field(default_factory=list)
     root_cids: List[str] = field(default_factory=list)
-    proof: str = ""  # Hex-encoded proof
+    proof: str = ""  # Hex-encoded integrity commitment or proof bytes
+    proof_system: str = "hash-commitment-v1"
+    zero_knowledge: bool = False
+    verification_key_cid: str = ""
     timestamp_start: float = 0.0
     timestamp_end: float = 0.0
     cold_storage_path: str = ""
@@ -83,18 +86,26 @@ class CompactionProof:
             "event_count": self.event_count,
             "frontier_cids": self.frontier_cids,
             "root_cids": self.root_cids,
+            "proof_system": self.proof_system,
+            "zero_knowledge": self.zero_knowledge,
         }, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "cid": self.cid,
+            "certificate_cid": self.cid,
+            "profile": "mcp++/event-dag",
+            "profile_name": "Profile F: Event DAG Provenance, Archival, and Compaction",
             "merkle_root": self.merkle_root,
             "epoch_id": self.epoch_id,
             "event_count": self.event_count,
             "frontier_cids": self.frontier_cids,
             "root_cids": self.root_cids,
             "proof": self.proof,
+            "proof_system": self.proof_system,
+            "zero_knowledge": self.zero_knowledge,
+            "verification_key_cid": self.verification_key_cid or None,
             "timestamp_start": self.timestamp_start,
             "timestamp_end": self.timestamp_end,
             "cold_storage_path": self.cold_storage_path,
@@ -183,7 +194,7 @@ def verify_merkle_proof(event_cid: str, proof_path: List[Dict[str, str]], expect
 
 
 # ---------------------------------------------------------------------------
-# ZK Proof Generation (Simulated Groth16)
+# Certificate Commitment Generation
 # ---------------------------------------------------------------------------
 
 def generate_compaction_proof(
@@ -191,10 +202,11 @@ def generate_compaction_proof(
     merkle_root: str,
     epoch_id: int,
 ) -> str:
-    """Generate a ZK proof attesting to epoch validity.
+    """Generate a hash commitment attesting to epoch integrity.
 
-    This uses a simulated Groth16 proof by default. When the groth16 backend
-    is available (via IPFS_DATASETS_ENABLE_GROTH16=1), uses real proofs.
+    The current implementation is a hash commitment, not a zero-knowledge
+    proof. The unused Groth16 hook requires a real circuit and verifier key
+    before it can set ``zero_knowledge=True``.
 
     The proof attests:
     1. The Merkle root correctly covers all N events
@@ -203,16 +215,7 @@ def generate_compaction_proof(
 
     Returns hex-encoded proof string.
     """
-    # Check if real Groth16 is available
-    use_real_groth16 = os.environ.get("IPFS_DATASETS_ENABLE_GROTH16", "0") == "1"
-
-    if use_real_groth16:
-        try:
-            return _generate_real_groth16_proof(epoch_events, merkle_root, epoch_id)
-        except Exception as e:
-            logger.warning("Real Groth16 failed (%s), falling back to simulated", e)
-
-    # Simulated proof: hash of (merkle_root || epoch_id || event_count || validation_digest)
+    # Hash commitment: binds root, epoch, and the validation digest.
     # The validation_digest proves we checked internal consistency
     validation_digest = _compute_validation_digest(epoch_events)
 
@@ -221,11 +224,11 @@ def generate_compaction_proof(
         "epoch_id": epoch_id,
         "event_count": len(epoch_events),
         "validation_digest": validation_digest,
-        "proof_type": "simulated_groth16",
+        "proof_type": "hash-commitment-v1",
         "timestamp": time.time(),
     }, sort_keys=True, separators=(",", ":"))
 
-    # Simulated proof = double-SHA256 (mimics the structure without the ZK property)
+    # Double-SHA256 integrity commitment. It has no zero-knowledge property.
     first_hash = hashlib.sha256(proof_input.encode()).digest()
     proof_bytes = hashlib.sha256(first_hash).hexdigest()
     return proof_bytes
@@ -268,18 +271,18 @@ def _generate_real_groth16_proof(
 
 
 def verify_compaction_proof(proof: CompactionProof) -> bool:
-    """Verify a compaction proof is valid.
+    """Validate the certificate representation before archive verification.
 
-    For simulated proofs, re-checks the proof structure.
-    For real Groth16, would verify the proof against the verification key.
+    The hash commitment is only an integrity witness. Call
+    ``DAGCompactor.verify_cold_epoch`` to rebuild the Merkle root. A true ZK
+    certificate must have a real verifier before ``zero_knowledge`` can be set.
     """
     if not proof.proof:
         return False
 
-    # Reconstruct what the proof should be (for simulated)
-    # In production with real ZK, this would use a verification key
-    if len(proof.proof) == 64:  # SHA-256 hex = 64 chars (simulated)
-        # We can't re-derive without the events, but we can check structure
+    if proof.zero_knowledge:
+        return False
+    if proof.proof_system == "hash-commitment-v1" and len(proof.proof) == 64:
         return True
 
     return False
@@ -356,6 +359,9 @@ class DAGCompactor:
                         frontier_cids=pd.get("frontier_cids", []),
                         root_cids=pd.get("root_cids", []),
                         proof=pd.get("proof", ""),
+                        proof_system=pd.get("proof_system", "hash-commitment-v1"),
+                        zero_knowledge=bool(pd.get("zero_knowledge", False)),
+                        verification_key_cid=pd.get("verification_key_cid", "") or "",
                         timestamp_start=pd.get("timestamp_start", 0.0),
                         timestamp_end=pd.get("timestamp_end", 0.0),
                         cold_storage_path=pd.get("cold_storage_path", ""),
