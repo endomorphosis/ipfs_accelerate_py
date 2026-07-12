@@ -305,6 +305,8 @@ if not SKIP_CORE:
             register_llm_provider,
             clear_llm_router_caches,
             LLMProvider,
+            MistralVibeInstallResult,
+            ensure_mistral_vibe,
         )
         from .router_deps import (
             RouterDeps,
@@ -317,6 +319,8 @@ if not SKIP_CORE:
         export["register_llm_provider"] = register_llm_provider
         export["clear_llm_router_caches"] = clear_llm_router_caches
         export["LLMProvider"] = LLMProvider
+        export["MistralVibeInstallResult"] = MistralVibeInstallResult
+        export["ensure_mistral_vibe"] = ensure_mistral_vibe
         export["RouterDeps"] = RouterDeps
         export["get_default_router_deps"] = get_default_router_deps
         export["set_default_router_deps"] = set_default_router_deps
@@ -327,6 +331,8 @@ if not SKIP_CORE:
         register_llm_provider = None
         clear_llm_router_caches = None
         LLMProvider = None
+        MistralVibeInstallResult = None
+        ensure_mistral_vibe = None
         RouterDeps = None
         get_default_router_deps = None
         set_default_router_deps = None
@@ -337,6 +343,8 @@ else:
     register_llm_provider = None
     clear_llm_router_caches = None
     LLMProvider = None
+    MistralVibeInstallResult = None
+    ensure_mistral_vibe = None
     RouterDeps = None
     get_default_router_deps = None
     set_default_router_deps = None
@@ -390,6 +398,7 @@ __all__ = [
     'auto_patch_transformers',
     'generate_text', 'get_llm_provider', 'register_llm_provider',
     'clear_llm_router_caches', 'LLMProvider', 'RouterDeps',
+    'MistralVibeInstallResult', 'ensure_mistral_vibe',
     'get_default_router_deps', 'set_default_router_deps', 'llm_router_available',
     'embed_texts', 'embed_text', 'get_embeddings_provider', 'register_embeddings_provider',
     'clear_embeddings_router_caches', 'EmbeddingsProvider', 'embeddings_router_available'

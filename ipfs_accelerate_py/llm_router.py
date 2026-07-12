@@ -33,9 +33,11 @@ Additional optional providers (opt-in by selecting provider):
     - `ipfs_accelerate_py_CLAUDE_CODE_CLI_CMD` (supports `{prompt}` placeholder)
 - `claude_py`: Python wrapper in `ipfs_accelerate_py.utils.claude_cli.ClaudeCLI`
 - `mistral_vibe`: Mistral Vibe CLI (`vibe`)
-    - `ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD` (supports `{prompt}` and `{model}` placeholders)
-    - `ipfs_accelerate_py_MISTRAL_VIBE_MODEL` (optional default model)
-    - `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` for auth
+    - Explicit provider selection installs `mistral-vibe` with `uv tool` when missing
+    - `IPFS_ACCELERATE_MISTRAL_VIBE_AUTO_INSTALL=0` disables installation
+    - `IPFS_ACCELERATE_MISTRAL_VIBE_CLI_CMD` (supports `{prompt}`, `{model}`, and `{agent}`)
+    - `IPFS_ACCELERATE_MISTRAL_VIBE_MODEL` (optional default model)
+    - `MISTRAL_API_KEY` or `IPFS_ACCELERATE_MISTRAL_API_KEY` for auth
 """
 
 from __future__ import annotations
@@ -61,6 +63,11 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Protocol, Sequence, TypedDict, runtime_checkable
 
 from .router_deps import RouterDeps, get_default_router_deps
+from .utils.mistral_vibe import (
+    MistralVibeInstallResult,
+    ensure_mistral_vibe,
+    mistral_vibe_auth_available,
+)
 
 
 class LLMRouterError(RuntimeError):
@@ -2023,42 +2030,68 @@ def _get_claude_py_provider() -> Optional[LLMProvider]:
     return _ClaudePyProvider()
 
 
-def _get_mistral_vibe_provider() -> Optional[LLMProvider]:
-    command = os.environ.get(
+def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMProvider]:
+    configured_command = _coalesce_env(
+        "IPFS_ACCELERATE_MISTRAL_VIBE_CLI_CMD",
+        "IPFS_ACCELERATE_PY_MISTRAL_VIBE_CLI_CMD",
         "ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD",
-        "vibe --prompt {prompt} --output text --max-turns 1",
     )
+    command = configured_command or "vibe --prompt {prompt} --output text --max-turns 1"
     if not _cli_available(command):
-        return None
+        # A custom command is operator-owned; do not install a different CLI to
+        # compensate for a misspelled or unavailable override.
+        if configured_command:
+            return None
+        if not auto_install:
+            return None
+        install_result = ensure_mistral_vibe(auto_install=True)
+        if not install_result.available:
+            detail = install_result.reason or "installation did not produce a vibe executable"
+            raise LLMRouterError(f"Mistral Vibe provider unavailable: {detail}")
+        command = (
+            f"{shlex.quote(install_result.executable)} "
+            "--prompt {prompt} --output text --max-turns 1"
+        )
 
     def _mistral_auth_available() -> bool:
-        if _coalesce_env("MISTRAL_API_KEY", "ipfs_accelerate_py_MISTRAL_API_KEY"):
-            return True
-        home = os.path.expanduser("~")
-        env_file = os.path.join(home, ".vibe", ".env")
-        try:
-            if not os.path.exists(env_file):
-                return False
-            text = open(env_file, "r", encoding="utf-8", errors="replace").read()
-            return "MISTRAL_API_KEY=" in text
-        except Exception:
-            return False
+        return mistral_vibe_auth_available()
 
     class _MistralVibeProvider:
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            model = (model_name or os.environ.get("ipfs_accelerate_py_MISTRAL_VIBE_MODEL", "") or "").strip()
+            model = (
+                model_name
+                or _coalesce_env(
+                    "IPFS_ACCELERATE_MISTRAL_VIBE_MODEL",
+                    "IPFS_ACCELERATE_PY_MISTRAL_VIBE_MODEL",
+                    "ipfs_accelerate_py_MISTRAL_VIBE_MODEL",
+                )
+                or ""
+            ).strip()
             timeout = float(kwargs.get("timeout", 240))
+            agent = str(kwargs.pop("mistral_vibe_agent", "") or "").strip()
+            if agent and not re.fullmatch(r"[A-Za-z0-9_-]+", agent):
+                raise ValueError("mistral_vibe_agent must contain only letters, digits, underscores, or hyphens")
+            command_for_call = command
+            if agent and "{agent}" not in command_for_call:
+                command_for_call = f"{command_for_call} --agent {{agent}}"
             per_call_key = kwargs.pop("mistral_api_key", None)
             mistral_api_key = (
-                str(per_call_key).strip() if per_call_key is not None and str(per_call_key).strip() else _coalesce_env("ipfs_accelerate_py_MISTRAL_API_KEY", "MISTRAL_API_KEY")
+                str(per_call_key).strip()
+                if per_call_key is not None and str(per_call_key).strip()
+                else _coalesce_env(
+                    "IPFS_ACCELERATE_MISTRAL_API_KEY",
+                    "IPFS_ACCELERATE_PY_MISTRAL_API_KEY",
+                    "ipfs_accelerate_py_MISTRAL_API_KEY",
+                    "MISTRAL_API_KEY",
+                )
             )
 
             try:
                 raw = _run_cli_command(
-                    command,
+                    command_for_call,
                     prompt,
                     timeout_seconds=timeout,
-                    template_vars={"model": model},
+                    template_vars={"agent": agent, "model": model},
                     label="Mistral Vibe CLI",
                     extra_env={
                         **({"MISTRAL_API_KEY": mistral_api_key} if mistral_api_key else {}),
@@ -2071,7 +2104,7 @@ def _get_mistral_vibe_provider() -> Optional[LLMProvider]:
                     raise LLMRouterError(
                         "Mistral Vibe call failed and no local auth markers were found. "
                         "If you are logged in via a non-env auth flow, keep using it; otherwise set "
-                        "MISTRAL_API_KEY (or ipfs_accelerate_py_MISTRAL_API_KEY) or run 'vibe --setup'."
+                        "MISTRAL_API_KEY (or IPFS_ACCELERATE_MISTRAL_API_KEY) or run 'vibe --setup'."
                     ) from exc
                 raise
 
@@ -2199,7 +2232,7 @@ def _get_local_hf_provider(*, deps: Optional[RouterDeps] = None) -> Optional[LLM
     return _LocalHFProvider()
 
 
-def _builtin_provider_by_name(name: str) -> Optional[LLMProvider]:
+def _builtin_provider_by_name(name: str, *, auto_install: bool = False) -> Optional[LLMProvider]:
     key = (name or "").strip().lower()
     if not key:
         return None
@@ -2222,7 +2255,7 @@ def _builtin_provider_by_name(name: str) -> Optional[LLMProvider]:
     if key in {"claude", "claude_py"}:
         return _get_claude_py_provider()
     if key in {"mistral_vibe", "mistral-vibe", "vibe"}:
-        return _get_mistral_vibe_provider()
+        return _get_mistral_vibe_provider(auto_install=auto_install)
     if key in {"hf", "huggingface", "local_hf"}:
         return _get_local_hf_provider(deps=get_default_router_deps())
     return None
@@ -2387,7 +2420,11 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
                 raise LLMRouterError("Copilot Python SDK not installed (optional dependency).")
             return builtin
 
-        builtin = _builtin_provider_by_name(name)
+        builtin = (
+            _get_mistral_vibe_provider(auto_install=True)
+            if name in {"mistral_vibe", "mistral-vibe", "vibe"}
+            else _builtin_provider_by_name(name)
+        )
         if builtin is not None:
             return builtin
         raise ValueError(f"Unknown LLM provider: {preferred_value}")
@@ -2413,7 +2450,11 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
                 raise LLMRouterError("Copilot Python SDK not installed (optional dependency).")
             return builtin
 
-        builtin = _builtin_provider_by_name(forced_name)
+        builtin = (
+            _get_mistral_vibe_provider(auto_install=True)
+            if forced_name in {"mistral_vibe", "mistral-vibe", "vibe"}
+            else _builtin_provider_by_name(forced_name)
+        )
         if builtin is not None:
             return builtin
         raise ValueError(f"Unknown LLM provider: {forced}")
