@@ -1495,18 +1495,19 @@ def _run_cli_command(
     if not command:
         raise RuntimeError("CLI command not configured")
 
-    rendered = command
-    if template_vars:
-        for key, value in template_vars.items():
-            rendered = rendered.replace("{" + str(key) + "}", str(value))
-
-    if "{prompt}" in rendered:
-        rendered = rendered.replace("{prompt}", prompt)
-        cmd = shlex.split(rendered)
-        input_text: str | None = None
-    else:
-        cmd = shlex.split(rendered)
-        input_text = prompt
+    # Split the operator-owned command before substituting dynamic values so a
+    # prompt, model, or agent remains one argv item even when it contains spaces.
+    cmd = shlex.split(command)
+    replacements = {
+        "prompt": prompt,
+        **{str(key): str(value) for key, value in (template_vars or {}).items()},
+    }
+    prompt_in_command = any("{prompt}" in part for part in cmd)
+    for index, part in enumerate(cmd):
+        for key, value in replacements.items():
+            part = part.replace("{" + key + "}", value)
+        cmd[index] = part
+    input_text: str | None = None if prompt_in_command else prompt
 
     try:
         env = os.environ.copy()

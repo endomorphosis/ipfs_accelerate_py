@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 import ipfs_accelerate_py.llm_router as llm_router
@@ -95,3 +97,30 @@ def test_mistral_vibe_provider_rejects_unsafe_agent_name(monkeypatch):
     with pytest.raises(ValueError, match="mistral_vibe_agent"):
         provider.generate("audit", mistral_vibe_agent="lean; rm -rf")
 
+
+def test_cli_template_values_remain_single_arguments(monkeypatch):
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(command=command, kwargs=kwargs)
+        return subprocess.CompletedProcess(command, 0, stdout="ROUTER_OK", stderr="")
+
+    monkeypatch.setattr(llm_router.subprocess, "run", fake_run)
+
+    result = llm_router._run_cli_command(
+        "vibe --prompt {prompt} --agent {agent} --output text",
+        "Return exactly ROUTER_OK and do not use tools.",
+        template_vars={"agent": "lean agent"},
+    )
+
+    assert result == "ROUTER_OK"
+    assert captured["command"] == [
+        "vibe",
+        "--prompt",
+        "Return exactly ROUTER_OK and do not use tools.",
+        "--agent",
+        "lean agent",
+        "--output",
+        "text",
+    ]
+    assert captured["kwargs"]["input"] is None
