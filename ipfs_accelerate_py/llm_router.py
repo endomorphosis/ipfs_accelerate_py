@@ -1535,7 +1535,7 @@ def _run_cli_command(
     timeout_seconds: float = 120.0,
     template_vars: Optional[Dict[str, str]] = None,
     label: Optional[str] = None,
-    extra_env: Optional[Dict[str, str]] = None,
+    extra_env: Optional[Dict[str, Optional[str]]] = None,
 ) -> str:
     if not command:
         raise RuntimeError("CLI command not configured")
@@ -1558,7 +1558,11 @@ def _run_cli_command(
         env = os.environ.copy()
         if extra_env:
             for key, value in extra_env.items():
-                if key and value is not None and str(value).strip():
+                if not key:
+                    continue
+                if value is None:
+                    env.pop(str(key), None)
+                elif str(value).strip():
                     env[str(key)] = str(value)
         proc = subprocess.run(
             cmd,
@@ -2082,7 +2086,7 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
         "IPFS_ACCELERATE_PY_MISTRAL_VIBE_CLI_CMD",
         "ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD",
     )
-    command = configured_command or "vibe --prompt {prompt} --output text --max-turns 1"
+    command = configured_command or "vibe --prompt --output text --max-turns 1"
     if not _cli_available(command):
         # A custom command is operator-owned; do not install a different CLI to
         # compensate for a misspelled or unavailable override.
@@ -2096,7 +2100,7 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
             raise LLMRouterError(f"Mistral Vibe provider unavailable: {detail}")
         command = (
             f"{shlex.quote(install_result.executable)} "
-            "--prompt {prompt} --output text --max-turns 1"
+            "--prompt --output text --max-turns 1"
         )
 
     def _mistral_auth_available() -> bool:
@@ -2115,8 +2119,15 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
             ).strip()
             timeout = float(kwargs.get("timeout", 240))
             agent = str(kwargs.pop("mistral_vibe_agent", "") or "").strip()
+            is_leanstral = model.casefold() in {"leanstral", "labs-leanstral-1-5"}
+            if is_leanstral and not agent:
+                agent = "lean"
             if agent and not re.fullmatch(r"[A-Za-z0-9_-]+", agent):
                 raise ValueError("mistral_vibe_agent must contain only letters, digits, underscores, or hyphens")
+            # Vibe's lean agent installs and selects its own versioned Leanstral
+            # model. An active-model environment override is validated before
+            # the agent profile and causes a misleading fallback warning.
+            vibe_active_model = "" if agent.casefold() == "lean" else model
             command_for_call = command
             if agent and "{agent}" not in command_for_call:
                 command_for_call = f"{command_for_call} --agent {{agent}}"
@@ -2141,9 +2152,8 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
                     label="Mistral Vibe CLI",
                     extra_env={
                         **({"MISTRAL_API_KEY": mistral_api_key} if mistral_api_key else {}),
-                        **({"VIBE_ACTIVE_MODEL": model} if model else {}),
+                        "VIBE_ACTIVE_MODEL": vibe_active_model or None,
                     }
-                    or None,
                 )
             except LLMRouterError as exc:
                 if not mistral_api_key and not _mistral_auth_available():

@@ -15,6 +15,7 @@ _VIBE_ENV_NAMES = (
     "IPFS_ACCELERATE_MISTRAL_VIBE_MODEL",
     "IPFS_ACCELERATE_PY_MISTRAL_VIBE_MODEL",
     "ipfs_accelerate_py_MISTRAL_VIBE_MODEL",
+    "VIBE_ACTIVE_MODEL",
 )
 
 
@@ -57,7 +58,7 @@ def test_automatic_provider_discovery_does_not_install_vibe(monkeypatch):
     assert llm_router._builtin_provider_by_name("mistral_vibe") is None
 
 
-def test_mistral_vibe_provider_forwards_model_agent_and_prompt(monkeypatch):
+def test_mistral_vibe_provider_lets_lean_agent_select_model_and_reads_stdin(monkeypatch):
     _clear_vibe_env(monkeypatch)
     captured = {}
     monkeypatch.setattr(llm_router, "_cli_available", lambda _command: True)
@@ -78,14 +79,35 @@ def test_mistral_vibe_provider_forwards_model_agent_and_prompt(monkeypatch):
     )
 
     assert response == '{"classification":"compiler_rule_gap"}'
+    assert captured["command"].startswith("vibe --prompt --output text")
+    assert "{prompt}" not in captured["command"]
     assert "--agent {agent}" in captured["command"]
     assert captured["prompt"] == "audit this"
     assert captured["kwargs"]["template_vars"] == {
         "agent": "lean",
         "model": "Leanstral",
     }
-    assert captured["kwargs"]["extra_env"]["VIBE_ACTIVE_MODEL"] == "Leanstral"
+    assert captured["kwargs"]["extra_env"]["VIBE_ACTIVE_MODEL"] is None
     assert captured["kwargs"]["timeout_seconds"] == 12
+
+
+def test_mistral_vibe_provider_infers_lean_agent_for_leanstral(monkeypatch):
+    _clear_vibe_env(monkeypatch)
+    captured = {}
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _command: True)
+
+    def fake_run(command, prompt, **kwargs):
+        captured.update(command=command, prompt=prompt, kwargs=kwargs)
+        return "ok"
+
+    monkeypatch.setattr(llm_router, "_run_cli_command", fake_run)
+    provider = llm_router._get_mistral_vibe_provider()
+
+    assert provider is not None
+    assert provider.generate("prove this", model_name="Leanstral") == "ok"
+    assert captured["command"].endswith("--agent {agent}")
+    assert captured["kwargs"]["template_vars"]["agent"] == "lean"
+    assert captured["kwargs"]["extra_env"]["VIBE_ACTIVE_MODEL"] is None
 
 
 def test_mistral_vibe_provider_rejects_unsafe_agent_name(monkeypatch):
