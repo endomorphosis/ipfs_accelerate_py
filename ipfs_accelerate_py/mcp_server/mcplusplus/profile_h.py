@@ -42,6 +42,7 @@ from mcplusplus_profile_h import (
     SellerResult,
     SellerRuntime,
     ProfileHControlPlane,
+    ProfileHTransportAdapter,
     http_response,
     libp2p_response,
 )
@@ -399,6 +400,8 @@ class PaidAcceleratorService:
             reconcile=self.reconcile, evidence=self._control_evidence, mode=mode,
             upstream_x402_http_conformance=mode != "local-test",
         )
+        self.profile_h_transports = ProfileHTransportAdapter(self.control_plane)
+        self.profile_h_http_app = self.profile_h_transports.http
 
     def _build_catalog(self) -> dict[str, Any]:
         path = self.state_dir / "signed-accelerator-catalog.json"
@@ -462,6 +465,10 @@ class PaidAcceleratorService:
     async def profile_h(self, method: str, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """Dispatch one complete Profile H control-plane operation."""
         return await self.control_plane.dispatch(method, params)
+
+    async def handle_profile_h_libp2p(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Route one decoded Profile E frame through the seller authority."""
+        return await self.profile_h_transports.libp2p(request)
 
     async def dispatch(self, operation: str, context: RequestContext, params: Mapping[str, Any],
                        effect: Callable[..., Any | Awaitable[Any]], *, payment: PaymentContext | None = None) -> SellerResult:
@@ -615,4 +622,3 @@ __all__ = [
     "PaidAccelerateService", "PaidAcceleratorService",
     "default_compute_tiers",
 ]
-

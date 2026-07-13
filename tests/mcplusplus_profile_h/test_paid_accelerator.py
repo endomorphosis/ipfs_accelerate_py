@@ -168,4 +168,9 @@ async def test_http_and_libp2p_payment_parity(service, request_context):
     wire = await service.handle_libp2p({"operation": fixture["name"], "params": params(fixture)},
                                       request_context, lambda: pytest.fail("duplicate inference"))
     assert wire["receipt_cid"]
-
+    control = await service.handle_profile_h_libp2p({
+        "jsonrpc": "2.0", "id": 1, "method": "mcp++/payments/profile", "params": {},
+    })
+    assert control["result"]["ready"] is True
+    http_status, _, http_profile = await service.profile_h_http_app.handle("GET", "/mcp/payments/profile")
+    assert http_status == 200 and http_profile == control["result"]
