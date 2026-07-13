@@ -131,11 +131,10 @@ def pytest_collection_modifyitems(config, items):
         if "model_test" in item.keywords:
             item.add_marker(skip_model_tests)
 
-    # Compatibility: route legacy Trio tests through pytest-anyio. Asyncio
-    # tests remain owned by pytest-asyncio; adding anyio after parametrization
-    # duplicates them and drops ordinary @pytest.mark.parametrize values.
+    # Compatibility: route legacy trio/asyncio-marked async tests through
+    # pytest-anyio so they execute without requiring extra async plugins.
     for item in items:
-        if item.get_closest_marker("trio"):
+        if item.get_closest_marker("trio") or item.get_closest_marker("asyncio"):
             if not item.get_closest_marker("anyio"):
                 item.add_marker(pytest.mark.anyio)
 

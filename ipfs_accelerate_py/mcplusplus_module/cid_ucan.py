@@ -684,55 +684,6 @@ class EventDAG:
             result["total_events"] = result["hot_events"]
         return result
 
-    # ------------------------------------------------------------------
-    # Profile F archival metadata and certificates
-    # ------------------------------------------------------------------
-
-    def profile_metadata(self) -> Dict[str, Any]:
-        """Return the named MCP++ Profile F retention contract."""
-        compactor = self._get_compactor()
-        return {
-            "capability": "mcp++/event-dag",
-            "profile_name": "Profile F: Event DAG Provenance, Archival, and Compaction",
-            "retention": {
-                "hot_event_max": getattr(compactor, "epoch_size", 0) * 2 if compactor else 0,
-                "epoch_size": getattr(compactor, "epoch_size", 0),
-                "archive_backend": "filesystem-cold-tier",
-            },
-            "certificate_policy": {
-                "default_proof_system": "hash-commitment-v1",
-                "zero_knowledge": False,
-                "note": "The current certificate is a Merkle-backed integrity commitment; a verifier-backed ZK system is required before zero_knowledge can be true.",
-            },
-        }
-
-    def archives(self) -> List[Dict[str, Any]]:
-        """List compacted cold epochs without loading their event payloads."""
-        compactor = self._get_compactor()
-        return [proof.to_dict() for proof in getattr(compactor, "compaction_proofs", [])] if compactor else []
-
-    def certificate(self, certificate_cid: str) -> Optional[Dict[str, Any]]:
-        for certificate in self.archives():
-            if certificate.get("certificate_cid") == certificate_cid or certificate.get("cid") == certificate_cid:
-                return certificate
-        return None
-
-    def verify_certificate(self, certificate_cid: str) -> Dict[str, Any]:
-        compactor = self._get_compactor()
-        certificate = self.certificate(certificate_cid)
-        if compactor is None or certificate is None:
-            return {"valid": False, "reason": "certificate_not_found", "profile": self.profile_metadata()}
-        from .dag_compaction import verify_compaction_proof
-        proof = next((item for item in compactor.compaction_proofs if item.cid == certificate.get("cid")), None)
-        valid = bool(proof and verify_compaction_proof(proof) and compactor.verify_cold_epoch(proof.epoch_id))
-        return {
-            "valid": valid,
-            "certificate": certificate,
-            "proof_system": certificate.get("proof_system"),
-            "zero_knowledge": False,
-            "profile": self.profile_metadata(),
-        }
-
 
 # ---------------------------------------------------------------------------
 # Global singletons (thread-safe)

@@ -721,56 +721,27 @@ class TrioMCPServer:
 
         @app.get("/mcp/dag/frontier")
         async def dag_frontier():
-            """Profile F: Get the Event DAG frontier (leaf nodes)."""
+            """Profile B: Get Event DAG frontier (leaf nodes)."""
             from ..cid_ucan import get_event_dag
             dag = get_event_dag()
             frontier = dag.frontier()
-            return {
-                "frontier": [{"cid": e.cid, "type": e.event_type, "timestamp": e.timestamp} for e in frontier],
-                "profile": dag.profile_metadata(),
-            }
+            return {"frontier": [{"cid": e.cid, "type": e.event_type, "timestamp": e.timestamp} for e in frontier]}
 
         @app.get("/mcp/dag/history")
         async def dag_history(limit: int = 50):
-            """Profile F: Get recent Event DAG history."""
+            """Profile B: Get recent Event DAG history."""
             from ..cid_ucan import get_event_dag
             dag = get_event_dag()
             events = dag.history(limit=limit)
-            return {"events": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp, "payload": getattr(e, "payload", {})} for e in events], "profile": dag.profile_metadata()}
+            return {"events": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp, "payload": getattr(e, "payload", {})} for e in events]}
 
         @app.get("/mcp/dag/provenance/{cid}")
         async def dag_provenance(cid: str):
-            """Profile F: Trace bounded provenance for a CID."""
+            """Profile B: Trace provenance for a CID."""
             from ..cid_ucan import get_event_dag
             dag = get_event_dag()
             chain = dag.provenance(cid)
-            return {"provenance": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "payload": getattr(e, "payload", {})} for e in chain], "profile": dag.profile_metadata()}
-
-        @app.get("/mcp/dag/archives")
-        async def dag_archives():
-            """Profile F: list cold archives and their certificates."""
-            from ..cid_ucan import get_event_dag
-            dag = get_event_dag()
-            return {"archives": dag.archives(), "profile": dag.profile_metadata()}
-
-        @app.get("/mcp/dag/certificates/{certificate_cid}")
-        async def dag_certificate(certificate_cid: str):
-            """Profile F: return a certificate without loading archived events."""
-            from ..cid_ucan import get_event_dag
-            from fastapi import HTTPException
-            dag = get_event_dag()
-            certificate = dag.certificate(certificate_cid)
-            if certificate is None:
-                raise HTTPException(status_code=404, detail="certificate_not_found")
-            return {"certificate": certificate, "profile": dag.profile_metadata()}
-
-        @app.post("/mcp/dag/certificates/verify")
-        async def dag_verify_certificate(request: Request):
-            """Profile F: rebuild the archive Merkle root and verify a certificate."""
-            from ..cid_ucan import get_event_dag
-            dag = get_event_dag()
-            body = await request.json()
-            return dag.verify_certificate(str(body.get("certificate_cid") or ""))
+            return {"provenance": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "payload": getattr(e, "payload", {})} for e in chain]}
 
         @app.post("/mcp/ucan/delegate")
         async def ucan_delegate(request: Request):
@@ -1649,10 +1620,6 @@ class TrioMCPServer:
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {"listChanged": True}, "experimental": server_caps},
                     "serverInfo": {"name": self.config.name, "version": "1.0.0"},
-                    "profile_metadata": {"mcp++/event-dag": {
-                        "profile_name": "Profile F: Event DAG Provenance, Archival, and Compaction",
-                        "certificate_policy": {"default_proof_system": "hash-commitment-v1", "zero_knowledge": False},
-                    }},
                 },
             }
         elif method == "tools/call":
@@ -1765,31 +1732,6 @@ class TrioMCPServer:
                 }}
             except Exception as e:
                 return {"jsonrpc": "2.0", "id": req_id, "result": {"decision": "allow", "obligations": [], "reason": str(e)}}
-        elif method == "mcp++/dag/frontier":
-            from ..cid_ucan import get_event_dag
-            dag = get_event_dag()
-            return {"jsonrpc": "2.0", "id": req_id, "result": {"frontier": [event.cid for event in dag.frontier()], "profile": dag.profile_metadata()}}
-        elif method == "mcp++/dag/history":
-            from ..cid_ucan import get_event_dag
-            dag = get_event_dag()
-            events = dag.history(limit=int(params.get("limit", 50)))
-            return {"jsonrpc": "2.0", "id": req_id, "result": {"events": [{"event_cid": event.cid, "parents": event.parent_cids, "timestamp": event.timestamp, "payload": event.payload} for event in events], "profile": dag.profile_metadata()}}
-        elif method == "mcp++/dag/provenance":
-            from ..cid_ucan import get_event_dag
-            dag = get_event_dag()
-            events = dag.provenance(str(params.get("event_cid") or params.get("cid") or ""))
-            return {"jsonrpc": "2.0", "id": req_id, "result": {"chain": [{"event_cid": event.cid, "parents": event.parent_cids, "timestamp": event.timestamp, "payload": event.payload} for event in events], "profile": dag.profile_metadata()}}
-        elif method == "mcp++/dag/archives":
-            from ..cid_ucan import get_event_dag
-            dag = get_event_dag()
-            return {"jsonrpc": "2.0", "id": req_id, "result": {"archives": dag.archives(), "profile": dag.profile_metadata()}}
-        elif method == "mcp++/dag/certificate/get":
-            from ..cid_ucan import get_event_dag
-            dag = get_event_dag()
-            return {"jsonrpc": "2.0", "id": req_id, "result": dag.certificate(str(params.get("certificate_cid") or "")) or {"found": False}}
-        elif method == "mcp++/dag/certificate/verify":
-            from ..cid_ucan import get_event_dag
-            return {"jsonrpc": "2.0", "id": req_id, "result": get_event_dag().verify_certificate(str(params.get("certificate_cid") or ""))}
         elif method == "mcp++/p2p/peers":
             return {"jsonrpc": "2.0", "id": req_id, "result": {"peers": [], "protocol": "/mcp+p2p/1.0.0"}}
         elif method == "shutdown":

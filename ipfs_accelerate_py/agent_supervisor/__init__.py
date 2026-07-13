@@ -170,6 +170,15 @@ __all__ = [
     "goal_graph",
     "objective_heap_schedule",
     "launch_bundle_lanes",
+    "LeaseCoordinator",
+    "LeaseGrant",
+    "LeaseQueueBridge",
+    "LeasedQueuedTask",
+    "LeaseConflictError",
+    "LeaseError",
+    "LeaseExpiredError",
+    "StaleFencingTokenError",
+    "adapt_goal_bundle",
     "invoke_llm_resolver",
     "JavaScriptActionContractConfig",
     "latest_failed_merge_event",
@@ -364,6 +373,20 @@ def __getattr__(name: str):
         from . import bundle_supervisor
 
         return getattr(bundle_supervisor, name)
+    if name in {
+        "LeaseConflictError",
+        "LeaseCoordinator",
+        "LeaseError",
+        "LeaseExpiredError",
+        "LeaseGrant",
+        "LeaseQueueBridge",
+        "LeasedQueuedTask",
+        "StaleFencingTokenError",
+        "adapt_goal_bundle",
+    }:
+        from . import lease_coordination
+
+        return getattr(lease_coordination, name)
     if name in {"build_merge_prompt", "invoke_llm_resolver", "latest_failed_merge_event", "resolver_payload"}:
         from . import merge_resolver
 

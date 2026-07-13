@@ -80,7 +80,7 @@ from .tools.rate_limiting import register_native_rate_limiting_tools
 from .tools.rate_limiting_tools import register_native_rate_limiting_tools_category
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
-from .mcplusplus.policy_engine import evaluate_raw_policy
+from .mcplusplus.policy_engine import evaluate_with_ipfs_datasets_policy
 from .mcplusplus.event_dag import EventDAGStore
 from .mcplusplus.risk_scheduler import RiskScheduler
 from .risk_scorer import RiskScorer, RiskScoringPolicy
@@ -123,11 +123,12 @@ def get_unified_wave_a_categories() -> list[str]:
 def get_unified_supported_profiles() -> list[str]:
     """Return MCP++ profile capabilities advertised by unified bootstrap."""
     return [
-        "mcp++/profile-a-idl",
-        "mcp++/profile-b-cid-artifacts",
-        "mcp++/profile-c-ucan",
-        "mcp++/profile-d-temporal-policy",
-        "mcp++/profile-e-mcp-p2p",
+        "mcp++/idl",
+        "mcp++/cid-envelope",
+        "mcp++/ucan",
+        "mcp++/deontic-policy",
+        "mcp++/p2p-transport",
+        "mcp++/risk-scheduling",
     ]
 
 
@@ -1069,7 +1070,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
         policy_decision = None
         if enforce_policy:
-            policy_decision = evaluate_raw_policy(
+            policy_decision = evaluate_with_ipfs_datasets_policy(
                 raw_clauses=policy_clauses,
                 actor=policy_actor,
                 action=f"{category}.{tool_name}",
@@ -1525,6 +1526,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_secrets_vault", secrets_vault)
     setattr(server, "_unified_secrets_status", secrets_status)
     setattr(server, "_unified_supported_profiles", list(unified_context.supported_profiles))
+    from .mcplusplus.profile_g_transport import get_profile_g_dispatcher, profile_metadata
+    setattr(server, "_unified_profile_g_dispatcher", get_profile_g_dispatcher())
+    setattr(server, "_unified_profile_g_metadata", profile_metadata())
     setattr(
         server,
         "_unified_profile_negotiation",

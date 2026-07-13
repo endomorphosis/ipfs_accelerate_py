@@ -1770,7 +1770,11 @@ def generate_objective_todos(
 
 
 def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
-    """Build task-queue payloads for each bundle shard in an index."""
+    """Build task-queue payloads and their canonical Profile G task adapters."""
+
+    # Local import avoids making objective scanning depend on coordination
+    # initialization while ensuring queue consumers receive immutable links.
+    from .lease_coordination import adapt_goal_bundle
 
     payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
     bundles = payload.get("bundles") if isinstance(payload, Mapping) else {}
@@ -1780,17 +1784,17 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
     for key, info in sorted(bundles.items()):
         if not isinstance(info, Mapping):
             continue
-        tasks.append(
-            {
-                "bundle_key": str(key),
-                "todo_path": info.get("shard_path", ""),
-                "parallel_lane": info.get("parallel_lane", key),
-                "conflict_policy": info.get("conflict_policy", ""),
-                "tasks": info.get("tasks", []),
-                "source_todo": payload.get("source_todo", ""),
-                "objective_bundle_index": str(bundle_index_path),
-            }
-        )
+        task_payload = {
+            "bundle_key": str(key),
+            "todo_path": info.get("shard_path", ""),
+            "parallel_lane": info.get("parallel_lane", key),
+            "conflict_policy": info.get("conflict_policy", ""),
+            "tasks": info.get("tasks", []),
+            "source_todo": payload.get("source_todo", ""),
+            "objective_bundle_index": str(bundle_index_path),
+        }
+        task_payload["profile_g"] = adapt_goal_bundle(task_payload)
+        tasks.append(task_payload)
     return tasks
 
 

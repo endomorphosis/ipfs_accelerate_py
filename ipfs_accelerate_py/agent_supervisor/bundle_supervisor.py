@@ -7,12 +7,19 @@ import json
 import logging
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
-from .objective_graph import DEFAULT_TASK_PREFIX, build_bundle_task_payloads, repo_relative_path, safe_bundle_key, utc_now
-
+from .lease_coordination import LeaseCoordinator, LeaseError
+from .objective_graph import (
+    DEFAULT_TASK_PREFIX,
+    build_bundle_task_payloads,
+    repo_relative_path,
+    safe_bundle_key,
+    utc_now,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +39,10 @@ class BundleLaneSpec:
     command: list[str]
     log_path: Path
     source_todo: str = ""
+    task_cid: str = ""
+    goal_cid: str = ""
+    subgoal_cid: str = ""
+    queue_payload: dict[str, Any] | None = None
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
         payload = asdict(self)
@@ -137,6 +148,7 @@ def plan_bundle_lanes(
             for item in payload.get("tasks", [])
             if isinstance(item, dict) and item.get("task_id")
         ]
+        profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         command = implementation_supervisor_command(
             todo_path=todo_path,
             state_dir=state_dir,
@@ -165,6 +177,10 @@ def plan_bundle_lanes(
                 command=command,
                 log_path=log_path,
                 source_todo=str(payload.get("source_todo") or ""),
+                task_cid=str(profile_g.get("task_cid") or ""),
+                goal_cid=str(profile_g.get("goal_cid") or ""),
+                subgoal_cid=str(profile_g.get("subgoal_cid") or ""),
+                queue_payload=dict(payload),
             )
         )
     return lanes
@@ -174,37 +190,61 @@ def launch_bundle_lanes(
     lanes: Sequence[BundleLaneSpec],
     *,
     repo_root: Path,
+    coordination_path: Path | None = None,
+    claimant_did: str = "did:web:ipfs-accelerate.local",
+    lease_ms: int = 60_000,
+    heartbeat_interval: float = 5.0,
+    capacity_millionths: int = 1_000_000,
 ) -> list[dict[str, Any]]:
-    """Launch lane supervisors in detached process sessions."""
+    """Claim and launch lane supervisors under accepted, fenced leases."""
 
     results: list[dict[str, Any]] = []
-    for lane in lanes:
-        lane.state_dir.mkdir(parents=True, exist_ok=True)
-        lane.worktree_root.mkdir(parents=True, exist_ok=True)
-        lane.log_path.parent.mkdir(parents=True, exist_ok=True)
-        handle = lane.log_path.open("ab")
-        try:
-            process = subprocess.Popen(
-                lane.command,
-                cwd=repo_root,
-                stdin=subprocess.DEVNULL,
-                stdout=handle,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
+    path = coordination_path or default_state_root(repo_root) / "coordination.sqlite3"
+    with LeaseCoordinator(path) as coordinator:
+        for lane in lanes:
+            if not lane.queue_payload:
+                results.append({"bundle_key": lane.bundle_key, "accepted": False, "error": "missing queue payload"})
+                continue
+            adapted = coordinator.register_bundle(lane.queue_payload)
+            try:
+                grant = coordinator.claim(adapted["task_cid"], claimant_did, requested_lease_ms=lease_ms)
+            except LeaseError as exc:
+                results.append({"bundle_key": lane.bundle_key, "accepted": False, "error": str(exc), "code": exc.code})
+                continue
+            lane.state_dir.mkdir(parents=True, exist_ok=True)
+            lane.worktree_root.mkdir(parents=True, exist_ok=True)
+            lane.log_path.parent.mkdir(parents=True, exist_ok=True)
+            guarded_command = [
+                sys.executable, "-m", "ipfs_accelerate_py.agent_supervisor.leased_lane",
+                "--coordination-path", str(path), "--grant-json", json.dumps(grant.to_dict(), sort_keys=True),
+                "--lease-ms", str(lease_ms), "--heartbeat-interval", str(heartbeat_interval),
+                "--capacity-millionths", str(capacity_millionths), "--", *lane.command,
+            ]
+            handle = lane.log_path.open("ab")
+            try:
+                try:
+                    process = subprocess.Popen(
+                        guarded_command,
+                        cwd=repo_root,
+                        stdin=subprocess.DEVNULL,
+                        stdout=handle,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,
+                    )
+                except Exception:
+                    coordinator.release(grant)
+                    raise
+            finally:
+                handle.close()
+            pid_path = lane.state_dir / f"{lane.state_prefix}_bundle_supervisor.pid"
+            pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
+            results.append(
+                {
+                    "bundle_key": lane.bundle_key, "accepted": True, "pid": process.pid,
+                    "pid_path": repo_relative_path(repo_root, pid_path), "log_path": repo_relative_path(repo_root, lane.log_path),
+                    "command": guarded_command, "lease": grant.to_dict(),
+                }
             )
-        finally:
-            handle.close()
-        pid_path = lane.state_dir / f"{lane.state_prefix}_bundle_supervisor.pid"
-        pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
-        results.append(
-            {
-                "bundle_key": lane.bundle_key,
-                "pid": process.pid,
-                "pid_path": repo_relative_path(repo_root, pid_path),
-                "log_path": repo_relative_path(repo_root, lane.log_path),
-                "command": lane.command,
-            }
-        )
     return results
 
 
@@ -212,6 +252,8 @@ def check_lane_health(
     lanes: Sequence[BundleLaneSpec],
     *,
     repo_root: Path,
+    coordination_path: Path | None = None,
+    claimant_did: str = "did:web:ipfs-accelerate.local",
 ) -> list[dict[str, Any]]:
     """Check health of all launched lanes and restart any dead ones.
 
@@ -219,7 +261,6 @@ def check_lane_health(
     automatically relaunched so the bundle supervisor can run indefinitely.
     """
     import os
-    import signal
 
     reports: list[dict[str, Any]] = []
     for lane in lanes:
@@ -243,23 +284,13 @@ def check_lane_health(
         if not report["alive"]:
             # Restart the dead lane
             try:
-                lane.log_path.parent.mkdir(parents=True, exist_ok=True)
-                handle = lane.log_path.open("ab")
-                try:
-                    process = subprocess.Popen(
-                        lane.command,
-                        cwd=repo_root,
-                        stdin=subprocess.DEVNULL,
-                        stdout=handle,
-                        stderr=subprocess.STDOUT,
-                        start_new_session=True,
-                    )
-                finally:
-                    handle.close()
-                pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
-                report["restarted"] = True
-                report["new_pid"] = process.pid
-                logger.info("Restarted dead lane %s with PID %d", lane.bundle_key, process.pid)
+                started = launch_bundle_lanes([lane], repo_root=repo_root, coordination_path=coordination_path, claimant_did=claimant_did)
+                if started and started[0].get("accepted"):
+                    report["restarted"] = True
+                    report["new_pid"] = started[0]["pid"]
+                    logger.info("Restarted dead lane %s with PID %d", lane.bundle_key, started[0]["pid"])
+                else:
+                    report["restart_error"] = str(started[0].get("error") if started else "lease not accepted")
             except OSError as exc:
                 report["restart_error"] = str(exc)
                 logger.error("Failed to restart lane %s: %s", lane.bundle_key, exc)
@@ -317,6 +348,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument("--coordination-path", type=Path, default=None)
+    parser.add_argument("--claimant-did", default="did:web:ipfs-accelerate.local")
+    parser.add_argument("--lease-ms", type=int, default=60_000)
+    parser.add_argument("--heartbeat-interval", type=float, default=5.0)
+    parser.add_argument("--capacity-millionths", type=int, default=1_000_000)
     return parser
 
 
@@ -344,7 +380,15 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         log_level=args.log_level,
         max_lanes=args.max_lanes,
     )
-    started = launch_bundle_lanes(lanes, repo_root=repo_root) if args.start else []
+    started = launch_bundle_lanes(
+        lanes,
+        repo_root=repo_root,
+        coordination_path=getattr(args, "coordination_path", None),
+        claimant_did=getattr(args, "claimant_did", "did:web:ipfs-accelerate.local"),
+        lease_ms=getattr(args, "lease_ms", 60_000),
+        heartbeat_interval=getattr(args, "heartbeat_interval", 5.0),
+        capacity_millionths=getattr(args, "capacity_millionths", 1_000_000),
+    ) if args.start else []
     payload = write_bundle_lane_manifest(
         manifest_path=manifest_path,
         repo_root=repo_root,

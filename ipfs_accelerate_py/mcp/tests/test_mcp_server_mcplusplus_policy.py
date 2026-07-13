@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import unittest
 
 from ipfs_accelerate_py.mcp_server.mcplusplus.policy_engine import (
+    evaluate_with_ipfs_datasets_policy,
     evaluate_raw_policy,
     parse_policy_clauses,
 )
@@ -186,6 +187,26 @@ class TestMCPServerMCPPlusPlusPolicy(unittest.TestCase):
         metadata = decision.obligations[0].get("metadata") or {}
         self.assertEqual(metadata.get("policy_version"), "v2")
         self.assertEqual(metadata.get("migration"), "2026-q1")
+
+    def test_datasets_export_returns_formal_logic_and_zkp_ready_statement(self) -> None:
+        decision = evaluate_with_ipfs_datasets_policy(
+            raw_clauses=[
+                {
+                    "clause_type": "permission",
+                    "actor": "did:model:worker",
+                    "action": "smoke.echo",
+                }
+            ],
+            actor="did:model:worker",
+            action="smoke.echo",
+        )
+
+        self.assertEqual(decision.decision, "allow")
+        self.assertIsNotNone(decision.evidence)
+        assert decision.evidence is not None
+        self.assertIn("policy_cid", decision.evidence)
+        self.assertEqual(decision.evidence["zkp_certificate"]["status"], "statement_ready")
+        self.assertFalse(decision.evidence["zkp_certificate"]["zero_knowledge"])
 
 
 if __name__ == "__main__":

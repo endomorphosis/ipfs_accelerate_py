@@ -66,7 +66,9 @@ from .policy_engine import (
     PolicyClause,
     PolicyDecision,
     evaluate_policy,
+    evaluate_profile_d_execution_policy,
     evaluate_raw_policy,
+    evaluate_with_ipfs_datasets_policy,
     parse_policy_clauses,
 )
 from .event_dag import EventDAGStore, EventNode
@@ -77,6 +79,14 @@ from .p2p_framing import (
     TokenBucketLimiter,
     decode_jsonrpc_frame,
     encode_jsonrpc_frame,
+)
+from .profile_g_transport import (
+    PROFILE_G_METHODS,
+    PROFILE_G_PROFILE,
+    ProfileGDispatcher,
+    ProfileGTransportError,
+    configure_profile_g_dispatcher,
+    get_profile_g_dispatcher,
 )
 
 __all__ = [
@@ -142,6 +152,7 @@ __all__ = [
     "PolicyDecision",
     "parse_policy_clauses",
     "evaluate_policy",
+    "evaluate_profile_d_execution_policy",
     "evaluate_raw_policy",
     "EventNode",
     "EventDAGStore",
@@ -153,4 +164,10 @@ __all__ = [
     "TokenBucketLimiter",
     "encode_jsonrpc_frame",
     "decode_jsonrpc_frame",
+    "PROFILE_G_METHODS",
+    "PROFILE_G_PROFILE",
+    "ProfileGDispatcher",
+    "ProfileGTransportError",
+    "configure_profile_g_dispatcher",
+    "get_profile_g_dispatcher",
 ]

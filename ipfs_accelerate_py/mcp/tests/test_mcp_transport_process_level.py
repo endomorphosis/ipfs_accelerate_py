@@ -82,11 +82,12 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
 
         mounted_server = getattr(app, "_mcp_server")
         expected_profiles = [
-            "mcp++/profile-a-idl",
-            "mcp++/profile-b-cid-artifacts",
-            "mcp++/profile-c-ucan",
-            "mcp++/profile-d-temporal-policy",
-            "mcp++/profile-e-mcp-p2p",
+            "mcp++/idl",
+            "mcp++/cid-envelope",
+            "mcp++/ucan",
+            "mcp++/deontic-policy",
+            "mcp++/p2p-transport",
+            "mcp++/risk-scheduling",
         ]
 
         self.assertEqual(getattr(mounted_server, "_unified_supported_profiles", []), expected_profiles)

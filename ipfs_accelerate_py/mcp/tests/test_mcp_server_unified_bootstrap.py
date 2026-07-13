@@ -457,11 +457,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         mock_create.return_value = dummy
 
         expected_profiles = [
-            "mcp++/profile-a-idl",
-            "mcp++/profile-b-cid-artifacts",
-            "mcp++/profile-c-ucan",
-            "mcp++/profile-d-temporal-policy",
-            "mcp++/profile-e-mcp-p2p",
+            "mcp++/idl",
+            "mcp++/cid-envelope",
+            "mcp++/ucan",
+            "mcp++/deontic-policy",
+            "mcp++/p2p-transport",
+            "mcp++/risk-scheduling",
         ]
         expected_negotiation = {
             "supports_profile_negotiation": True,

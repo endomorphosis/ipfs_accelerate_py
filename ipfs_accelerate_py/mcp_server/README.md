@@ -90,7 +90,7 @@ The unified bootstrap currently advertises the following supported profiles:
 - `mcp++/profile-a-idl`
 - `mcp++/profile-b-cid-artifacts`
 - `mcp++/profile-c-ucan`
-- `mcp++/profile-d-temporal-policy`
+- `mcp++/deontic-policy`
 - `mcp++/profile-e-mcp-p2p`
 
 ## Feature areas

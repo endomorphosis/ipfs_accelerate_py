@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import importlib
+from pathlib import Path
+import sys
 from typing import Any, Dict, Iterable, List
 
 
@@ -57,11 +60,11 @@ class PolicyClause:
     metadata: Dict[str, Any] | None = None
 
     def applies(self, *, actor: str, action: str, resource: str | None, now: datetime) -> bool:
-        if self.actor not in {"*", actor}:
+        if not _matches_pattern(self.actor, actor):
             return False
-        if self.action not in {"*", action}:
+        if not _matches_pattern(self.action, action):
             return False
-        if self.resource is not None and resource is not None and self.resource != resource:
+        if self.resource is not None and (resource is None or not _matches_pattern(self.resource, resource)):
             return False
 
         start = _parse_iso8601(self.valid_from)
@@ -73,6 +76,10 @@ class PolicyClause:
         return True
 
 
+def _matches_pattern(pattern: str, value: str) -> bool:
+    return pattern == "*" or pattern == value or (pattern.endswith("/*") and value.startswith(pattern[:-1]))
+
+
 @dataclass(frozen=True)
 class PolicyDecision:
     """Evaluation output for one intent/action check."""
@@ -80,13 +87,17 @@ class PolicyDecision:
     decision: str  # allow | deny | allow_with_obligations
     justification: str
     obligations: List[Dict[str, Any]]
+    evidence: Dict[str, Any] | None = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "decision": self.decision,
             "justification": self.justification,
             "obligations": [dict(x) for x in self.obligations],
         }
+        if self.evidence is not None:
+            result["evidence"] = dict(self.evidence)
+        return result
 
 
 def parse_policy_clauses(raw_clauses: Iterable[Dict[str, Any]]) -> List[PolicyClause]:
@@ -203,10 +214,113 @@ def evaluate_raw_policy(
     )
 
 
+def evaluate_with_ipfs_datasets_policy(
+    *,
+    raw_clauses: Iterable[Dict[str, Any]],
+    actor: str,
+    action: str,
+    resource: str | None = None,
+    policy_text: str | List[str] | None = None,
+    request_zkp_certificate: bool = True,
+) -> PolicyDecision:
+    """Evaluate Profile D through the canonical ``ipfs_datasets_py`` export.
+
+    The local evaluator remains a dependency-light fallback for installations
+    that intentionally omit datasets.  The canonical path carries policy and
+    decision CIDs, formal logic, and a ZKP-ready statement into accelerator
+    receipts without claiming that the statement is already a proof.
+    """
+    try:
+        evaluate_execution_policy = _load_datasets_profile_d_evaluator()
+
+        result = evaluate_execution_policy(
+            actor=actor,
+            action=action,
+            resource=resource,
+            policy={"clauses": list(raw_clauses)} if policy_text is None else None,
+            policy_text=policy_text,
+            request_zkp_certificate=request_zkp_certificate,
+        )
+        return PolicyDecision(
+            decision=str(result["decision"]),
+            justification=str(result.get("justification") or ""),
+            obligations=[dict(item) for item in result.get("obligations", []) if isinstance(item, dict)],
+            evidence={
+                key: result[key]
+                for key in ("policy_cid", "decision_cid", "formal_logic", "formal_logic_cid", "zkp_certificate")
+                if key in result
+            },
+        )
+    except Exception:
+        return evaluate_raw_policy(
+            raw_clauses=raw_clauses,
+            actor=actor,
+            action=action,
+            resource=resource,
+        )
+
+
+def evaluate_profile_d_execution_policy(
+    *,
+    actor: str,
+    action: str,
+    resource: str | None = None,
+    policy: Dict[str, Any] | None = None,
+    policy_text: str | List[str] | None = None,
+    evaluated_at: str | None = None,
+    intent_cid: str | None = None,
+    request_zkp_certificate: bool = False,
+) -> Dict[str, Any]:
+    """Run the interoperable Profile D RPC contract through datasets.
+
+    Network-facing endpoints cannot silently fall back to the older local
+    evaluator because it drops formal-logic provenance and ZKP statements.
+    Internal execution keeps the dependency-light fallback above; this public
+    transport function fails closed when the canonical dependency rejects a
+    request or is unavailable.
+    """
+    evaluate_execution_policy = _load_datasets_profile_d_evaluator()
+    return evaluate_execution_policy(
+        actor=actor,
+        action=action,
+        resource=resource,
+        policy=policy,
+        policy_text=policy_text,
+        evaluated_at=evaluated_at,
+        intent_cid=intent_cid,
+        request_zkp_certificate=request_zkp_certificate,
+    )
+
+
+def _load_datasets_profile_d_evaluator():
+    """Load the canonical dependency despite the legacy vendored namespace.
+
+    This repository still contains ``external/ipfs_accelerate/ipfs_datasets_py``
+    for compatibility.  It shadows the separately installed package in source
+    checkouts, so prefer the external canonical package when the legacy copy
+    lacks Profile D.  Normal installations take the first import path.
+    """
+    try:
+        module = importlib.import_module("ipfs_datasets_py.logic.profile_d_policy")
+        return module.evaluate_execution_policy
+    except ModuleNotFoundError:
+        canonical_root = Path(__file__).resolve().parents[4] / "ipfs_datasets"
+        if not (canonical_root / "ipfs_datasets_py" / "logic" / "profile_d_policy.py").is_file():
+            raise
+        for name in list(sys.modules):
+            if name == "ipfs_datasets_py" or name.startswith("ipfs_datasets_py."):
+                del sys.modules[name]
+        sys.path.insert(0, str(canonical_root))
+        module = importlib.import_module("ipfs_datasets_py.logic.profile_d_policy")
+        return module.evaluate_execution_policy
+
+
 __all__ = [
     "PolicyClause",
     "PolicyDecision",
     "evaluate_policy",
+    "evaluate_profile_d_execution_policy",
+    "evaluate_with_ipfs_datasets_policy",
     "evaluate_raw_policy",
     "parse_policy_clauses",
 ]
