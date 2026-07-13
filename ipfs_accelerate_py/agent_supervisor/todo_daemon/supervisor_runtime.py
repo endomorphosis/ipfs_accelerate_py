@@ -19,7 +19,7 @@ from ..wrapper_utils import with_exclusive_flag_default
 from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
 
 
-@dataclass(frozen=True)
+@dataclass
 class RestartPolicy:
     """Restart delays for a supervised daemon child.
 
@@ -52,7 +52,7 @@ class RestartPolicy:
             return max(0.0, float(self.fast_restart_backoff_seconds))
 
         base = max(0.0, float(self.restart_backoff_seconds))
-        multiplier = self.backoff_factor ** min(self._consecutive_failures - 1, 10)
+        multiplier = self.backoff_factor ** min(max(self._consecutive_failures - 1, 0), 10)
         return min(base * multiplier, self.max_backoff_seconds)
 
     def reset(self) -> None:

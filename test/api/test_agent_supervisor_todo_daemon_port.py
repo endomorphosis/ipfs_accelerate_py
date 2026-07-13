@@ -3763,6 +3763,25 @@ def test_stop_daemon_moves_directory_pid_markers(tmp_path):
         assert (backups[0] / "fragment").exists()
 
 
+def test_restart_policy_applies_backoff_and_resets_after_a_healthy_run():
+    policy = RestartPolicy(
+        restart_backoff_seconds=10,
+        fast_restart_backoff_seconds=2,
+        backoff_factor=2,
+        max_backoff_seconds=60,
+        healthy_run_seconds=120,
+    )
+
+    assert policy.delay_for_status("stale_heartbeat", run_duration=0) == 10
+    assert policy.delay_for_status("stale_heartbeat", run_duration=0) == 20
+    assert policy.delay_for_status("stale_heartbeat", run_duration=120) == 10
+    assert policy._consecutive_failures == 0
+
+    policy.reset()
+
+    assert policy._consecutive_failures == 0
+
+
 def test_supervisor_loop_retries_child_launch_failures(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
