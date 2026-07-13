@@ -98,6 +98,35 @@ def test_mistral_vibe_provider_rejects_unsafe_agent_name(monkeypatch):
         provider.generate("audit", mistral_vibe_agent="lean; rm -rf")
 
 
+def test_mistral_vibe_provider_explains_labs_permission_gate(monkeypatch):
+    _clear_vibe_env(monkeypatch)
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _command: True)
+    monkeypatch.setattr(
+        llm_router,
+        "_run_cli_command",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            llm_router.LLMRouterError(
+                "Model labs-leanstral-1-5 is a Labs model (code 1913)"
+            )
+        ),
+    )
+    provider = llm_router._get_mistral_vibe_provider()
+
+    assert provider is not None
+    with pytest.raises(llm_router.LLMRouterError) as error:
+        provider.generate(
+            "audit",
+            model_name="Leanstral",
+            mistral_vibe_agent="lean",
+            mistral_api_key="configured-key",
+        )
+
+    message = str(error.value)
+    assert "Mistral Labs model access is disabled" in message
+    assert "https://admin.mistral.ai/plateforme/privacy" in message
+    assert "model training" in message
+
+
 def test_cli_template_values_remain_single_arguments(monkeypatch):
     captured = {}
 

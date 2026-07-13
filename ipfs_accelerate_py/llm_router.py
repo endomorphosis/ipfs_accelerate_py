@@ -1472,6 +1472,28 @@ def _clean_mistral_vibe_output(text: str) -> str:
     return _clean_codex_output(text)
 
 
+_MISTRAL_LABS_PRIVACY_URL = "https://admin.mistral.ai/plateforme/privacy"
+
+
+def _raise_mistral_vibe_access_error(exc: LLMRouterError) -> None:
+    detail = str(exc).strip()
+    lowered = detail.lower()
+    if (
+        "labs_not_enabled" in lowered
+        or "labs model" in lowered
+        or "code 1913" in lowered
+        or '"code":"1913"' in lowered
+    ):
+        raise LLMRouterError(
+            "Mistral Labs model access is disabled for this organization. "
+            "An organization admin must enable API > Privacy > Labs models at "
+            f"{_MISTRAL_LABS_PRIVACY_URL}. Enabling Labs permits Mistral to use "
+            "Labs API data for model training regardless of the normal API opt-out. "
+            f"Provider detail: {detail}"
+        ) from exc
+    raise exc
+
+
 def _cli_available(command: str) -> bool:
     if not command:
         return False
@@ -2107,7 +2129,7 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
                         "If you are logged in via a non-env auth flow, keep using it; otherwise set "
                         "MISTRAL_API_KEY (or IPFS_ACCELERATE_MISTRAL_API_KEY) or run 'vibe --setup'."
                     ) from exc
-                raise
+                _raise_mistral_vibe_access_error(exc)
 
             return _clean_mistral_vibe_output(raw)
 
