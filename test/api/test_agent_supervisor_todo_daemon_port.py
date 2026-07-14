@@ -4039,6 +4039,62 @@ def test_implementation_daemon_reconciles_nested_submodule_gitlink_inside_recove
     assert _git(grand, "merge-base", "--is-ancestor", later_commit, "main") == ""
 
 
+def test_implementation_daemon_skips_unrelated_submodule_branch_when_gitlink_is_unchanged(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", "implementation/auto-117")
+    (repo / "README.md").write_text("parent-only task\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "AUTO-117: update parent only")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    submodule_branch = daemon._submodule_worktree_branch_name(
+        "implementation/auto-117",
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", submodule_branch)
+    (submodule / "unrelated.txt").write_text("unrelated task work\n", encoding="utf-8")
+    _git(submodule, "add", "unrelated.txt")
+    _git(submodule, "commit", "-m", "unrelated child task")
+    unrelated_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "main")
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-117",
+        PortalTask(
+            task_id="AUTO-117",
+            title="Merge a parent-only task",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+        baseline_ref=baseline_ref,
+    )
+
+    assert result["merged"] is True
+    assert result["submodule_merge_results"] == [
+        {
+            "path": "libs/child",
+            "branch": submodule_branch,
+            "default_branch": "main",
+            "merged": True,
+            "reason": "unchanged_gitlink_in_task",
+        }
+    ]
+    assert _git(submodule, "rev-parse", "main") != unrelated_commit
+
+
 def test_implementation_daemon_preserves_nested_tmp_and_allows_unchanged_dirty_submodule(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     (repo / "README.md").write_text("base\n", encoding="utf-8")

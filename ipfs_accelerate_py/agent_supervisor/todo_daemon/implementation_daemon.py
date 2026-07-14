@@ -3794,6 +3794,7 @@ class PortalImplementationDaemon:
                     branch_name,
                     task=task,
                     attempt=attempt,
+                    baseline_ref=baseline_ref,
                 )
             elif removed_untracked:
                 self._restore_removed_untracked_paths(removed_untracked, cwd=merge_workspace)
@@ -4556,6 +4557,7 @@ class PortalImplementationDaemon:
         *,
         task: PortalTask,
         attempt: int,
+        baseline_ref: str = "",
     ) -> list[dict[str, Any]]:
         return self._merge_submodule_branches_to_main_in_repo(
             repo_path=self.repo_root,
@@ -4563,7 +4565,34 @@ class PortalImplementationDaemon:
             parent_relative="",
             task=task,
             attempt=attempt,
+            baseline_ref=baseline_ref,
         )
+
+    def _root_submodule_changed_in_task(
+        self,
+        branch_name: str,
+        baseline_ref: str,
+        relative: str,
+    ) -> bool:
+        """Return whether a task changed a configured top-level gitlink.
+
+        A task worktree creates branches for every configured submodule. Those
+        branches may contain unrelated prior work, so reconciling them merely
+        because they exist can turn a successful parent task into a false
+        failure. When the task baseline is available, reconcile only gitlinks
+        changed by that task. An inconclusive diff preserves the existing
+        conservative behavior.
+        """
+
+        if not baseline_ref:
+            return True
+        diff = self._run_git(
+            ["diff", "--quiet", baseline_ref, branch_name, "--", relative],
+            cwd=self.repo_root,
+        )
+        if diff.returncode in (0, 1):
+            return diff.returncode == 1
+        return True
 
     def _merge_submodule_branches_to_main_in_repo(
         self,
@@ -4573,6 +4602,7 @@ class PortalImplementationDaemon:
         parent_relative: str,
         task: PortalTask,
         attempt: int,
+        baseline_ref: str = "",
         checkpoint: MergeCheckpoint | None = None,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
@@ -4613,12 +4643,32 @@ class PortalImplementationDaemon:
                             parent_relative=full_relative,
                             task=task,
                             attempt=attempt,
+                            baseline_ref=baseline_ref,
                             checkpoint=checkpoint,
                         )
                     )
                 continue
             submodule_branch = self._submodule_worktree_branch_name(branch_name, full_relative)
             if not self._is_git_worktree(source):
+                continue
+            if (
+                not parent_relative
+                and baseline_ref
+                and not self._root_submodule_changed_in_task(
+                    branch_name,
+                    baseline_ref,
+                    relative,
+                )
+            ):
+                result = {
+                    "path": full_relative,
+                    "branch": submodule_branch,
+                    "default_branch": self._submodule_default_branch(relative, source),
+                    "merged": True,
+                    "reason": "unchanged_gitlink_in_task",
+                }
+                results.append(result)
+                checkpoint.record_submodule(full_relative, result)
                 continue
             if not self._git_ref_exists_in_repo(source, submodule_branch):
                 # A parent branch may be unchanged or already cleaned while a
@@ -4630,6 +4680,7 @@ class PortalImplementationDaemon:
                         parent_relative=full_relative,
                         task=task,
                         attempt=attempt,
+                        baseline_ref=baseline_ref,
                         checkpoint=checkpoint,
                     )
                 )
@@ -4654,6 +4705,7 @@ class PortalImplementationDaemon:
                         parent_relative=full_relative,
                         task=task,
                         attempt=attempt,
+                        baseline_ref=baseline_ref,
                         checkpoint=checkpoint,
                     )
                 )
@@ -4865,6 +4917,7 @@ class PortalImplementationDaemon:
                         parent_relative=full_relative,
                         task=task,
                         attempt=attempt,
+                        baseline_ref=baseline_ref,
                         checkpoint=checkpoint,
                     )
                 )
@@ -6329,6 +6382,7 @@ class PortalImplementationDaemon:
                     branch,
                     task=task,
                     attempt=attempt,
+                    baseline_ref=str(event.get("baseline_ref") or ""),
                 ) if branch else []
                 failed_submodules = [
                     item for item in submodule_merge_results if not item.get("merged", False)
