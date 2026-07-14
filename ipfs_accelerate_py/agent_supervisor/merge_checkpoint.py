@@ -52,8 +52,10 @@ class MergeCheckpoint:
         """Record the merge result for a submodule."""
         if result.get("merged"):
             self.merged_submodules[submodule_path] = result
+            self.failed_submodules.pop(submodule_path, None)
         else:
             self.failed_submodules[submodule_path] = result
+            self.merged_submodules.pop(submodule_path, None)
         self._save()
 
     def is_already_merged(self, submodule_path: str) -> bool:

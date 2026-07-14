@@ -4103,7 +4103,12 @@ class PortalImplementationDaemon:
         repairs: list[dict[str, Any]] = []
         for relative, stages in sorted(conflicts.items()):
             full_relative = f"{parent_relative.rstrip('/')}/{relative}" if parent_relative else relative
-            resolution = self._submodule_gitlink_resolution(full_relative, stages, task=task)
+            resolution = self._submodule_gitlink_resolution(
+                full_relative,
+                stages,
+                task=task,
+                attempt=attempt,
+            )
             selected_commit = str(resolution.get("selected_commit") or "")
             if not selected_commit:
                 repairs.append(
@@ -4268,6 +4273,7 @@ class PortalImplementationDaemon:
         stages: dict[str, str],
         *,
         task: PortalTask,
+        attempt: int = 0,
     ) -> dict[str, Any]:
         """Select only a commit proven to contain both gitlink candidates.
 
@@ -4356,6 +4362,7 @@ class PortalImplementationDaemon:
             theirs=theirs,
             recovery_ref=recovery_ref,
             task=task,
+            attempt=attempt,
         )
         diagnostic["recovery"] = recovery
         selected = str(recovery.get("commit") or "")
@@ -4426,6 +4433,7 @@ class PortalImplementationDaemon:
         theirs: str,
         recovery_ref: str,
         task: PortalTask,
+        attempt: int = 0,
     ) -> dict[str, Any]:
         """Create a clean merge commit without changing the active checkout."""
 
@@ -4465,9 +4473,24 @@ class PortalImplementationDaemon:
             capture_output=True,
             check=False,
         )
+        nested_gitlink_repair: dict[str, Any] = {}
+        effective_merge_returncode = merge.returncode
+        if merge.returncode != 0:
+            # A gitlink conflict can occur at every nesting level.  Reconcile it
+            # in this detached recovery worktree, then continue validating the
+            # recovery commit against both candidates.  This never mutates the
+            # active submodule checkout.
+            nested_gitlink_repair = self._repair_submodule_gitlink_merge_conflicts(
+                workspace,
+                task=task,
+                attempt=attempt,
+                parent_relative=relative,
+            )
+            if nested_gitlink_repair.get("repaired", False):
+                effective_merge_returncode = 0
         commit = ""
         update_ref = subprocess.CompletedProcess([], 1, "", "merge did not complete")
-        if merge.returncode == 0:
+        if effective_merge_returncode == 0:
             commit = self._run_git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
             if self._commit_descends_from_both(source, commit, ours, theirs):
                 update_ref = subprocess.run(
@@ -4484,7 +4507,7 @@ class PortalImplementationDaemon:
             capture_output=True,
             check=False,
         )
-        created = bool(commit and merge.returncode == 0 and update_ref.returncode == 0)
+        created = bool(commit and effective_merge_returncode == 0 and update_ref.returncode == 0)
         result = {
             "created": created,
             "reason": "recovery_ref_created" if created else "recovery_merge_failed",
@@ -4492,6 +4515,7 @@ class PortalImplementationDaemon:
             "commit": commit if created else "",
             "task_id": task.task_id,
             "merge_returncode": merge.returncode,
+            "effective_merge_returncode": effective_merge_returncode,
             "merge_stdout": merge.stdout[-4000:],
             "merge_stderr": merge.stderr[-4000:],
             "update_ref_returncode": update_ref.returncode,
@@ -4500,6 +4524,8 @@ class PortalImplementationDaemon:
             "cleanup_returncode": remove.returncode,
             "cleanup_stderr": remove.stderr[-4000:],
         }
+        if nested_gitlink_repair:
+            result["nested_gitlink_repair"] = nested_gitlink_repair
         if remove.returncode != 0:
             result["preserved_recovery_workspace"] = str(workspace)
         return result
@@ -4527,6 +4553,7 @@ class PortalImplementationDaemon:
         parent_relative: str,
         task: PortalTask,
         attempt: int,
+        checkpoint: MergeCheckpoint | None = None,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         stale_config_repair = self._repair_stale_submodule_worktree_configs(repo_path)
@@ -4534,32 +4561,58 @@ class PortalImplementationDaemon:
         # Sort submodules by dependency order: leaf submodules merge first
         relatives = self._topological_sort_submodules(relatives, repo_path)
         # Resume from checkpoint if one exists (crash recovery)
-        checkpoint_dir = self.state_path.parent / "merge_checkpoints"
-        checkpoint = MergeCheckpoint.resume(checkpoint_dir, branch_name)
-        if checkpoint:
-            self._record_event("merge_checkpoint_resumed", {
-                "branch_name": branch_name,
-                "task_id": task.task_id,
-                "previously_merged": list(checkpoint.merged_submodules.keys()),
-            })
-        else:
-            checkpoint = MergeCheckpoint.create(
-                checkpoint_dir=checkpoint_dir,
-                branch_name=branch_name,
-                task_id=task.task_id,
-                attempt=attempt,
-            )
+        owns_checkpoint = checkpoint is None
+        if checkpoint is None:
+            checkpoint_dir = self.state_path.parent / "merge_checkpoints"
+            checkpoint = MergeCheckpoint.resume(checkpoint_dir, branch_name)
+            if checkpoint:
+                self._record_event("merge_checkpoint_resumed", {
+                    "branch_name": branch_name,
+                    "task_id": task.task_id,
+                    "previously_merged": list(checkpoint.merged_submodules.keys()),
+                    "previously_failed": list(checkpoint.failed_submodules.keys()),
+                })
+            else:
+                checkpoint = MergeCheckpoint.create(
+                    checkpoint_dir=checkpoint_dir,
+                    branch_name=branch_name,
+                    task_id=task.task_id,
+                    attempt=attempt,
+                )
         for relative in relatives:
-            # Skip submodules already merged in a previous checkpoint
-            if checkpoint.is_already_merged(relative):
-                results.append(checkpoint.merged_submodules[relative])
-                continue
             full_relative = f"{parent_relative.rstrip('/')}/{relative}" if parent_relative else relative
             source = (self.repo_root / full_relative).resolve()
+            # Skip submodules already merged in a previous checkpoint
+            if checkpoint.is_already_merged(full_relative):
+                results.append(checkpoint.merged_submodules[full_relative])
+                if self._is_git_worktree(source):
+                    results.extend(
+                        self._merge_submodule_branches_to_main_in_repo(
+                            repo_path=source,
+                            branch_name=branch_name,
+                            parent_relative=full_relative,
+                            task=task,
+                            attempt=attempt,
+                            checkpoint=checkpoint,
+                        )
+                    )
+                continue
             submodule_branch = self._submodule_worktree_branch_name(branch_name, full_relative)
             if not self._is_git_worktree(source):
                 continue
             if not self._git_ref_exists_in_repo(source, submodule_branch):
+                # A parent branch may be unchanged or already cleaned while a
+                # deeper daemon-owned branch still needs reconciliation.
+                results.extend(
+                    self._merge_submodule_branches_to_main_in_repo(
+                        repo_path=source,
+                        branch_name=branch_name,
+                        parent_relative=full_relative,
+                        task=task,
+                        attempt=attempt,
+                        checkpoint=checkpoint,
+                    )
+                )
                 continue
             default_branch = self._submodule_default_branch(relative, source)
             if self._git_ref_is_ancestor_in_repo(source, submodule_branch, default_branch):
@@ -4573,6 +4626,17 @@ class PortalImplementationDaemon:
                 if stale_config_repair.get("repairs"):
                     result["stale_submodule_worktree_config_repair"] = stale_config_repair
                 results.append(result)
+                checkpoint.record_submodule(full_relative, result)
+                results.extend(
+                    self._merge_submodule_branches_to_main_in_repo(
+                        repo_path=source,
+                        branch_name=branch_name,
+                        parent_relative=full_relative,
+                        task=task,
+                        attempt=attempt,
+                        checkpoint=checkpoint,
+                    )
+                )
                 continue
             dirty = self._run_git(["status", "--porcelain"], cwd=source).stdout.strip()
             if dirty:
@@ -4603,18 +4667,18 @@ class PortalImplementationDaemon:
                         },
                     )
                 else:
-                    results.append(
-                        {
-                            "path": full_relative,
-                            "branch": submodule_branch,
-                            "default_branch": default_branch,
-                            "merged": False,
-                            "reason": "submodule_checkout_dirty",
-                            "status": dirty,
-                            "dirty_paths": self._dirty_status_paths(dirty),
-                            "llm_merge_resolver": llm_merge_resolver,
-                        }
-                    )
+                    result = {
+                        "path": full_relative,
+                        "branch": submodule_branch,
+                        "default_branch": default_branch,
+                        "merged": False,
+                        "reason": "submodule_checkout_dirty",
+                        "status": dirty,
+                        "dirty_paths": self._dirty_status_paths(dirty),
+                        "llm_merge_resolver": llm_merge_resolver,
+                    }
+                    results.append(result)
+                    checkpoint.record_submodule(full_relative, result)
                     continue
             if self._git_current_branch(source) != default_branch:
                 checkout = subprocess.run(
@@ -4657,19 +4721,19 @@ class PortalImplementationDaemon:
                             },
                         )
                     else:
-                        results.append(
-                            {
-                                "path": full_relative,
-                                "branch": submodule_branch,
-                                "default_branch": default_branch,
-                                "merged": False,
-                                "returncode": checkout.returncode,
-                                "reason": "default_branch_checkout_failed",
-                                "stdout": checkout.stdout[-4000:],
-                                "stderr": checkout.stderr[-4000:],
-                                "llm_merge_resolver": llm_merge_resolver,
-                            }
-                        )
+                        result = {
+                            "path": full_relative,
+                            "branch": submodule_branch,
+                            "default_branch": default_branch,
+                            "merged": False,
+                            "returncode": checkout.returncode,
+                            "reason": "default_branch_checkout_failed",
+                            "stdout": checkout.stdout[-4000:],
+                            "stderr": checkout.stderr[-4000:],
+                            "llm_merge_resolver": llm_merge_resolver,
+                        }
+                        results.append(result)
+                        checkpoint.record_submodule(full_relative, result)
                         continue
             merge_command = ["git", "merge", "--ff-only", submodule_branch]
             merge = subprocess.run(
@@ -4781,10 +4845,23 @@ class PortalImplementationDaemon:
                         parent_relative=full_relative,
                         task=task,
                         attempt=attempt,
+                        checkpoint=checkpoint,
                     )
                 )
-        # Mark checkpoint complete on success
-        checkpoint.complete()
+        # Keep failed checkpoints durable.  A later reconciliation pass resumes
+        # at the failed nested path while retaining proof of successful siblings.
+        if owns_checkpoint:
+            if checkpoint.failed_submodules:
+                self._record_event(
+                    "merge_checkpoint_pending",
+                    {
+                        **checkpoint.summary(),
+                        "failed_paths": sorted(checkpoint.failed_submodules),
+                        "retryable": True,
+                    },
+                )
+            else:
+                checkpoint.complete()
         return results
 
     def _topological_sort_submodules(
@@ -4805,7 +4882,7 @@ class PortalImplementationDaemon:
         # depends on those nested submodules being merged first
         depth: dict[str, int] = {}
         for relative in relatives:
-            source = (self.repo_root / relative).resolve()
+            source = (repo_path / relative).resolve()
             if source.exists():
                 nested = self._declared_submodule_paths(source)
                 # Depth = number of nested submodules (more nested = merge later)
@@ -6208,17 +6285,49 @@ class PortalImplementationDaemon:
             implementation_commit = str(event.get("implementation_commit") or "")
             if not task_id or not implementation_commit:
                 continue
+            task = PortalTask(
+                task_id=task_id,
+                title=str(event.get("title") or "failed implementation merge"),
+                status="todo",
+                completion="manual",
+                priority="P2",
+                track="ops",
+            )
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
-                cleanup_result = self._cleanup_merged_worktree(worktree_path, branch) if branch else {}
+                # The parent commit can land before its daemon-owned submodule
+                # branches finish merging.  Do not interpret parent ancestry as
+                # proof that nested work is complete: resume the durable
+                # submodule checkpoint first.
+                submodule_merge_results = self._merge_submodule_branches_to_main(
+                    branch,
+                    task=task,
+                    attempt=attempt,
+                ) if branch else []
+                failed_submodules = [
+                    item for item in submodule_merge_results if not item.get("merged", False)
+                ]
+                cleanup_result = (
+                    self._cleanup_merged_worktree(worktree_path, branch)
+                    if branch and not failed_submodules
+                    else {}
+                )
                 cleanup_cleaned = bool(cleanup_result.get("cleaned", False)) if cleanup_result else True
-                todo_update_result = self._mark_task_completed_in_todo(task_id) if cleanup_cleaned else {}
+                resolved = not failed_submodules and cleanup_cleaned
+                todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
-                    "resolved": cleanup_cleaned,
-                    "reason": "implementation_commit_already_merged" if cleanup_cleaned else "cleanup_retry_failed",
+                    "resolved": resolved,
+                    "reason": (
+                        "submodule_merge_retry_failed"
+                        if failed_submodules
+                        else "implementation_commit_already_merged"
+                        if cleanup_cleaned
+                        else "cleanup_retry_failed"
+                    ),
+                    "submodule_merge_results": submodule_merge_results,
                     "cleanup_result": cleanup_result,
                 }
                 if todo_update_result:
@@ -6263,14 +6372,6 @@ class PortalImplementationDaemon:
                 results.append(result)
                 continue
 
-            task = PortalTask(
-                task_id=task_id,
-                title=str(event.get("title") or "failed implementation merge"),
-                status="todo",
-                completion="manual",
-                priority="P2",
-                track="ops",
-            )
             self._mark_long_running_phase(
                 task_id=task_id,
                 phase="merge_reconciliation",
