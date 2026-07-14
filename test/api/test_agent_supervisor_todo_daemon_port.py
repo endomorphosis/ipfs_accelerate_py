@@ -11188,6 +11188,73 @@ def test_implementation_supervisor_ignores_generated_objective_heap_dirty_main(t
     assert objective_path.read_text(encoding="utf-8") == "# Objective\n\n## Generated goal\n"
 
 
+def test_implementation_supervisor_ignores_generated_state_directory_dirty_main(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    state_dir = repo / "tmp" / "supervisor" / "state"
+    diagnostics_path = state_dir / "submodule-merge-diagnostics.json"
+    diagnostics_path.parent.mkdir(parents=True)
+    diagnostics_path.write_text('{"attempts": []}\n', encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "tmp/supervisor/state/submodule-merge-diagnostics.json")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-011-attempt-1-789"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "checkout", "main")
+    diagnostics_path.write_text('{"attempts": [{"task_id": "ACCEL-011"}]}\n', encoding="utf-8")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "accel-011-attempt-1-789"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 1
+    assert result["main_checkout_dirty"] is False
+    assert result["main_status_short"] == []
+    assert result["raw_main_checkout_dirty"] is True
+    assert "tmp/supervisor/state/submodule-merge-diagnostics.json" in result["raw_main_dirty_evidence"]["status_paths"]
+    assert "tmp/supervisor/state/submodule-merge-diagnostics.json" in result["main_dirty_evidence"]["filtered_generated_status_paths"]
+    assert (repo / "feature.txt").exists()
+    assert diagnostics_path.read_text(encoding="utf-8") == '{"attempts": [{"task_id": "ACCEL-011"}]}\n'
+
+
+def test_implementation_daemon_recognizes_configured_state_directory_as_generated_output(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "tmp" / "supervisor" / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+
+    assert daemon._path_is_generated_status_output("tmp/supervisor/state/submodule-merge-diagnostics.json") is True
+    assert daemon._path_is_generated_status_output("tmp/supervisor/state/submodule-merge-recovery-worktrees/attempt") is True
+    assert daemon._path_is_generated_status_output("tmp/supervisor/unrelated.json") is False
+
+
 def test_implementation_supervisor_reuses_reconciliation_scan_cache_when_main_dirty(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()

@@ -2094,6 +2094,7 @@ class PortalImplementationSupervisor:
                 self.config.objective_bundle_dir,
                 self.config.objective_dataset_dir,
                 self.config.objective_discovery_dir,
+                self.config.state_dir,
             )
             if path is not None
         ]

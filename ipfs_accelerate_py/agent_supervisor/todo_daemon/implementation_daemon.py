@@ -5781,7 +5781,14 @@ class PortalImplementationDaemon:
 
         discovery_dir = self.state_path.parent.parent / "discovery"
         additional_paths = [path for path in (self.objective_path,) if path is not None]
-        additional_prefixes = [path for path in (self.objective_bundle_dir,) if path is not None]
+        additional_prefixes = [
+            path
+            for path in (
+                self.objective_bundle_dir,
+                self.state_path.parent,
+            )
+            if path is not None
+        ]
         generated_paths, generated_prefixes = generated_guardrail_status_filters(
             todo_path=self.todo_path,
             discovery_dir=discovery_dir,
