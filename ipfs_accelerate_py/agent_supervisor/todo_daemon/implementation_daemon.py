@@ -4589,9 +4589,15 @@ class PortalImplementationDaemon:
 
         if not baseline_ref:
             return True
-        diff = self._run_git(
-            ["diff", "--quiet", baseline_ref, branch_name, "--", relative],
+        # ``git diff --quiet`` returns 1 for a normal, positive finding. Do
+        # not route it through ``_run_git``, which correctly treats any
+        # non-zero status as an operational failure for mutating commands.
+        diff = subprocess.run(
+            ["git", "diff", "--quiet", baseline_ref, branch_name, "--", relative],
             cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
         )
         if diff.returncode in (0, 1):
             return diff.returncode == 1

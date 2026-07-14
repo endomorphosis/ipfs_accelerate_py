@@ -4095,6 +4095,34 @@ def test_implementation_daemon_skips_unrelated_submodule_branch_when_gitlink_is_
     assert _git(submodule, "rev-parse", "main") != unrelated_commit
 
 
+def test_implementation_daemon_detects_changed_submodule_gitlink_without_error(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    (submodule / "task-owned.txt").write_text("task-owned child work\n", encoding="utf-8")
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "child work for AUTO-118")
+    _git(repo, "checkout", "-b", "implementation/auto-118")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-118: update child gitlink")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    assert daemon._root_submodule_changed_in_task(
+        "implementation/auto-118",
+        baseline_ref,
+        "libs/child",
+    ) is True
+
+
 def test_implementation_daemon_preserves_nested_tmp_and_allows_unchanged_dirty_submodule(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     (repo / "README.md").write_text("base\n", encoding="utf-8")
