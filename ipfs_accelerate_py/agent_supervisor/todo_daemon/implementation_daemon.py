@@ -4424,6 +4424,14 @@ class PortalImplementationDaemon:
         safe_path = re.sub(r"[^A-Za-z0-9._/-]+", "-", relative).strip("/.-") or "submodule"
         return f"refs/agent-supervisor/submodule-merge-recovery/{safe_path}/{digest}"
 
+    def _submodule_recovery_worktree_root(self) -> Path:
+        """Return an absolute recovery root outside every submodule checkout."""
+
+        state_dir = self.state_path.parent
+        if not state_dir.is_absolute():
+            state_dir = self.repo_root / state_dir
+        return (state_dir / "submodule-merge-recovery-worktrees").resolve()
+
     def _create_submodule_recovery_ref(
         self,
         *,
@@ -4437,7 +4445,13 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Create a clean merge commit without changing the active checkout."""
 
-        recovery_root = self.state_path.parent / "submodule-merge-recovery-worktrees"
+        if not source.exists() or not self._is_git_worktree(source):
+            return {
+                "created": False,
+                "reason": "recovery_source_unavailable",
+                "source": str(source),
+            }
+        recovery_root = self._submodule_recovery_worktree_root()
         recovery_root.mkdir(parents=True, exist_ok=True)
         digest = hashlib.sha256(f"{relative}\0{ours}\0{theirs}".encode()).hexdigest()[:16]
         workspace = recovery_root / f"{digest}-{os.getpid()}-{time.time_ns()}"
@@ -4455,6 +4469,12 @@ class PortalImplementationDaemon:
                 "returncode": add.returncode,
                 "stdout": add.stdout[-4000:],
                 "stderr": add.stderr[-4000:],
+            }
+        if not workspace.exists() or not self._is_git_worktree(workspace):
+            return {
+                "created": False,
+                "reason": "recovery_worktree_unavailable",
+                "workspace": str(workspace),
             }
         merge = subprocess.run(
             [

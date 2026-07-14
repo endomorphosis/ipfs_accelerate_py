@@ -3732,6 +3732,56 @@ def test_implementation_daemon_submodule_gitlink_reconciliation_uses_verified_re
     assert diagnostic["latest"]["conflicts"][0]["selected_commit"] == selected
 
 
+def test_implementation_daemon_anchors_relative_recovery_worktrees_to_repo_root(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=Path("todo.md"),
+        state_path=Path("tmp/supervisor/state/task_state.json"),
+        strategy_path=Path("tmp/supervisor/state/strategy.json"),
+        events_path=Path("tmp/supervisor/state/events.jsonl"),
+        repo_root=repo,
+    )
+
+    assert daemon._submodule_recovery_worktree_root() == (
+        repo / "tmp/supervisor/state/submodule-merge-recovery-worktrees"
+    ).resolve()
+
+
+def test_implementation_daemon_reports_missing_submodule_recovery_source(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    result = daemon._create_submodule_recovery_ref(
+        source=repo / "missing-submodule",
+        relative="missing-submodule",
+        ours="a" * 40,
+        theirs="b" * 40,
+        recovery_ref="refs/agent-supervisor/submodule-merge-recovery/missing",
+        task=PortalTask(
+            task_id="AUTO-RECOVERY",
+            title="Handle missing recovery source",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+    )
+
+    assert result == {
+        "created": False,
+        "reason": "recovery_source_unavailable",
+        "source": str(repo / "missing-submodule"),
+    }
+
+
 def test_implementation_daemon_records_full_nested_submodule_gitlink_path(tmp_path):
     repo, submodule, base, ours, theirs = _seed_parent_with_divergent_gitlinks(tmp_path)
     merge = subprocess.run(
