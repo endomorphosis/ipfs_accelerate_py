@@ -6945,10 +6945,15 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
         last_implementation_task_id="ACCEL-999",
         last_implementation_started_at="2026-06-07T00:00:00+00:00",
     ).save(state_path)
+    strategy_path = repo / "state" / "strategy.json"
+    strategy_path.write_text(
+        json.dumps({"deprioritized_tasks": ["ACCEL-001"]}),
+        encoding="utf-8",
+    )
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=state_path,
-        strategy_path=repo / "state" / "strategy.json",
+        strategy_path=strategy_path,
         events_path=repo / "state" / "events.jsonl",
         repo_root=repo,
         task_header_prefix="## ACCEL-",
@@ -6959,6 +6964,7 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
         recovered = TodoTaskState.load(state_path)
         assert recovered.implementation_in_progress is False
         assert recovered.active_phase == ""
+        assert deprioritized_task_ids == set()
         return []
 
     daemon._reconcile_failed_merges = assert_state_recovered_before_reconcile  # type: ignore[method-assign]

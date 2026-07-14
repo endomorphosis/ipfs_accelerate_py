@@ -980,7 +980,10 @@ class PortalImplementationDaemon:
         now = utc_now()
         status_completed_task_ids = {task.task_id for task in tasks if task.status == "completed"}
         strategy_blocked_task_ids = {str(task_id) for task_id in strategy.get("blocked_tasks", [])}
-        strategy_deprioritized_task_ids = {str(task_id) for task_id in strategy.get("deprioritized_tasks", [])}
+        # A historical deprioritization is only a scheduling hint.  Failed
+        # implementation merges must still be reconciled unless the janitor
+        # explicitly retired the task as off-mission.
+        strategy_deprioritized_task_ids = self._strict_off_mission_deprioritized_task_ids(strategy)
         merge_skip_task_ids = status_completed_task_ids | strategy_blocked_task_ids
         live_inflight_implementation = self._find_live_inflight_implementation()
         if previous.implementation_in_progress and live_inflight_implementation is None:
