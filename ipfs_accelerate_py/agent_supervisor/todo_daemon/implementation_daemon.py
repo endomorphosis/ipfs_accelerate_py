@@ -173,6 +173,9 @@ GENERATED_WORKTREE_DIR_NAMES = {
     "test-results",
 }
 GENERATED_WORKTREE_SUFFIXES = (".pyc", ".pyo")
+GENERATED_NESTED_WORKTREE_DIR_NAMES = frozenset({"tmp"})
+SUBMODULE_MERGE_DIAGNOSTICS_FILENAME = "submodule-merge-diagnostics.json"
+SUBMODULE_MERGE_DIAGNOSTICS_MAX_ATTEMPTS = 200
 UNTRACKED_WORKTREE_CONTEXT_PREFIXES = (
     ".gitmodules",
     "docs/",
@@ -797,6 +800,9 @@ class PortalImplementationDaemon:
             else normalize_relative_path_list(worktree_submodule_paths)
         )
         self.worktree_submodule_paths = configured_submodules
+        self.submodule_merge_diagnostics_path = (
+            self.state_path.parent / SUBMODULE_MERGE_DIAGNOSTICS_FILENAME
+        )
         self.degradation_state = DegradationState.load(
             self.state_path.parent / "submodule_degradation.json"
         )
@@ -3479,6 +3485,7 @@ class PortalImplementationDaemon:
         baseline_ref: str = "",
     ) -> dict[str, Any]:
         started_at = utc_now()
+        self._preserve_generated_nested_worktree_directories()
         stale_submodule_worktree_config_repair = self._repair_stale_submodule_worktree_configs(self.repo_root)
         target_branch = self._main_branch_name()
         # Attempt to rebase stale submodule pointers before merge
@@ -3729,9 +3736,20 @@ class PortalImplementationDaemon:
                     submodule_conflict_repair = self._repair_submodule_gitlink_merge_conflicts(
                         merge_workspace,
                         task=task,
+                        attempt=attempt,
                     )
                 if merge_returncode != 0 and submodule_conflict_repair.get("repaired", False):
                     merge_returncode = 0
+                elif (
+                    merge_returncode != 0
+                    and submodule_conflict_repair
+                    and submodule_conflict_repair.get("reason") != "no_gitlink_conflicts"
+                    and not merge_abort_result
+                ):
+                    # An unresolved gitlink must never be handed to a resolver
+                    # that could blindly stage ours or theirs.  Abort this merge;
+                    # the failed implementation event remains eligible for retry.
+                    merge_abort_result = self._abort_failed_merge(merge_workspace)
                 elif merge_returncode != 0 and not merge_abort_result:
                     llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
                         workspace=merge_workspace,
@@ -4076,38 +4094,25 @@ class PortalImplementationDaemon:
         workspace: Path,
         *,
         task: PortalTask,
+        attempt: int = 0,
+        parent_relative: str = "",
     ) -> dict[str, Any]:
         conflicts = self._unmerged_gitlink_conflicts(workspace)
         if not conflicts:
             return {"repaired": False, "reason": "no_gitlink_conflicts"}
         repairs: list[dict[str, Any]] = []
-        unresolvable_count = 0
-        max_unresolvable = int(os.environ.get("IPFS_ACCELERATE_AGENT_MAX_UNRESOLVABLE_GITLINKS", "3"))
-        for relative, stages in conflicts.items():
-            selected_commit = self._select_submodule_gitlink_resolution(relative, stages, task=task)
+        for relative, stages in sorted(conflicts.items()):
+            full_relative = f"{parent_relative.rstrip('/')}/{relative}" if parent_relative else relative
+            resolution = self._submodule_gitlink_resolution(full_relative, stages, task=task)
+            selected_commit = str(resolution.get("selected_commit") or "")
             if not selected_commit:
-                unresolvable_count += 1
                 repairs.append(
                     {
-                        "path": relative,
+                        **resolution,
                         "repaired": False,
-                        "reason": "no_safe_resolution",
-                        "stages": stages,
+                        "reason": str(resolution.get("reason") or "no_safe_resolution"),
                     }
                 )
-                # If too many conflicts are unresolvable, abort early rather than
-                # looping forever. Mark merge as terminal failure for this branch.
-                if unresolvable_count >= max_unresolvable:
-                    result = {
-                        "repaired": False,
-                        "reason": "too_many_unresolvable_gitlinks",
-                        "repairs": repairs,
-                        "unresolvable_count": unresolvable_count,
-                        "max_unresolvable": max_unresolvable,
-                        "total_conflicts": len(conflicts),
-                    }
-                    self._record_event("submodule_gitlink_conflict_repair", result)
-                    return result
                 continue
             update = subprocess.run(
                 ["git", "update-index", "--add", "--cacheinfo", f"160000,{selected_commit},{relative}"],
@@ -4118,13 +4123,11 @@ class PortalImplementationDaemon:
             )
             repairs.append(
                 {
-                    "path": relative,
+                    **resolution,
                     "repaired": update.returncode == 0,
-                    "reason": "selected_current_equivalent_submodule_head"
+                    "reason": str(resolution.get("selection_reason") or "selected_verified_descendant")
                     if update.returncode == 0
                     else "update_index_failed",
-                    "selected_commit": selected_commit,
-                    "stages": stages,
                     "returncode": update.returncode,
                     "stdout": update.stdout[-4000:],
                     "stderr": update.stderr[-4000:],
@@ -4138,8 +4141,9 @@ class PortalImplementationDaemon:
                 "repairs": repairs,
                 "unresolved_paths": sorted(unresolved),
             }
-            self._record_event("submodule_gitlink_conflict_repair", result)
-            return result
+            return self._record_submodule_gitlink_repair_result(
+                result, workspace=workspace, task=task, attempt=attempt
+            )
         commit = subprocess.run(
             [
                 "git",
@@ -4164,8 +4168,9 @@ class PortalImplementationDaemon:
                 "stdout": commit.stdout[-4000:],
                 "stderr": commit.stderr[-4000:],
             }
-            self._record_event("submodule_gitlink_conflict_repair", result)
-            return result
+            return self._record_submodule_gitlink_repair_result(
+                result, workspace=workspace, task=task, attempt=attempt
+            )
         merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
         result = {
             "repaired": True,
@@ -4175,7 +4180,48 @@ class PortalImplementationDaemon:
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
         }
+        return self._record_submodule_gitlink_repair_result(
+            result, workspace=workspace, task=task, attempt=attempt
+        )
+
+    def _record_submodule_gitlink_repair_result(
+        self,
+        result: dict[str, Any],
+        *,
+        workspace: Path,
+        task: PortalTask,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Persist a bounded, retry-oriented audit trail for every gitlink conflict."""
+
         self._record_event("submodule_gitlink_conflict_repair", result)
+        existing = load_json_dict(self.submodule_merge_diagnostics_path) or {}
+        attempts = existing.get("attempts")
+        if not isinstance(attempts, list):
+            attempts = []
+        entry = {
+            "timestamp": utc_now(),
+            "task_id": task.task_id,
+            "attempt": int(attempt),
+            "workspace": str(workspace),
+            "repaired": bool(result.get("repaired", False)),
+            "retryable": not bool(result.get("repaired", False)),
+            "reason": str(result.get("reason") or ""),
+            "conflicts": list(result.get("repairs") or []),
+        }
+        attempts.append(entry)
+        payload = {
+            "schema_version": 1,
+            "updated_at": entry["timestamp"],
+            "latest": entry,
+            "attempts": attempts[-SUBMODULE_MERGE_DIAGNOSTICS_MAX_ATTEMPTS:],
+        }
+        try:
+            write_json_atomic(self.submodule_merge_diagnostics_path, payload)
+        except OSError as exc:
+            result["diagnostic_write_error"] = str(exc)[-1000:]
+        else:
+            result["diagnostic_path"] = str(self.submodule_merge_diagnostics_path)
         return result
 
     def _unmerged_gitlink_conflicts(self, cwd: Path) -> dict[str, dict[str, str]]:
@@ -4211,166 +4257,252 @@ class PortalImplementationDaemon:
         *,
         task: PortalTask,
     ) -> str:
-        """Select the best commit to resolve a submodule gitlink conflict.
+        """Compatibility wrapper returning only a safely selected commit."""
 
-        Improved strategy:
-        1. If one commit is ancestor of the other, pick the descendant (fast-forward)
-        2. If HEAD already contains theirs, keep HEAD
-        3. If our task introduced HEAD, prefer HEAD
-        4. Compare commit timestamps - prefer newer commit
-        5. Attempt merge of ours+theirs in the submodule
-        6. Fall back to empty (unresolvable)
+        resolution = self._submodule_gitlink_resolution(relative, stages, task=task)
+        return str(resolution.get("selected_commit") or "")
+
+    def _submodule_gitlink_resolution(
+        self,
+        relative: str,
+        stages: dict[str, str],
+        *,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Select only a commit proven to contain both gitlink candidates.
+
+        A divergent pair is merged in an isolated worktree and published under a
+        deterministic recovery ref.  The active submodule checkout is never used
+        as an implicit third candidate and is never modified by this operation.
         """
+
         source = (self.repo_root / relative).resolve()
+        ours = str(stages.get("2") or "")
+        theirs = str(stages.get("3") or "")
+        base = str(stages.get("1") or "")
+        diagnostic: dict[str, Any] = {
+            "path": relative,
+            "stages": dict(stages),
+            "base_candidate": base,
+            "ours_candidate": ours,
+            "theirs_candidate": theirs,
+            "reachable_merge_bases": [],
+            "selected_commit": "",
+            "selection_reason": "",
+            "recovery_ref": "",
+        }
         if not self._is_git_worktree(source):
-            return ""
-        if self._run_git(["status", "--porcelain"], cwd=source).stdout.strip():
-            return ""
-        head = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
-        ours = stages.get("2", "")
-        theirs = stages.get("3", "")
+            diagnostic["reason"] = "submodule_checkout_unavailable"
+            return diagnostic
+        if not ours or not theirs:
+            diagnostic["reason"] = "missing_gitlink_candidate"
+            return diagnostic
+        missing_candidates = [
+            candidate
+            for candidate in (ours, theirs)
+            if not self._git_commit_exists_in_repo(source, candidate)
+        ]
+        if missing_candidates:
+            diagnostic["reason"] = "gitlink_candidate_unavailable"
+            diagnostic["missing_candidates"] = missing_candidates
+            return diagnostic
 
-        # Strategy 1: Check ancestry - if one is ancestor of other, pick descendant
-        if ours and theirs and ours != theirs:
-            ours_is_ancestor = self._git_ref_is_ancestor_in_repo(source, ours, theirs)
-            theirs_is_ancestor = self._git_ref_is_ancestor_in_repo(source, theirs, ours)
-            if ours_is_ancestor and not theirs_is_ancestor:
-                # Theirs is strictly ahead - fast-forward to theirs
-                return theirs
-            elif theirs_is_ancestor and not ours_is_ancestor:
-                # Ours is strictly ahead - keep ours
-                return ours
-
-        # Strategy 2: If HEAD already contains theirs
-        if theirs and self._git_ref_is_ancestor_in_repo(source, theirs, head):
-            return head
-
-        # Strategy 3: Our task introduced HEAD
-        if ours and head == ours and theirs and not self._git_ref_exists_in_repo(source, theirs):
-            return head
-        if task.task_id and self._submodule_head_has_task_commit(source, task.task_id):
-            return head
-
-        # Strategy 4: Compare commit timestamps - prefer newer
-        if ours and theirs and ours != theirs:
-            ours_ts = self._git_commit_timestamp_in_repo(source, ours)
-            theirs_ts = self._git_commit_timestamp_in_repo(source, theirs)
-            if ours_ts > 0 and theirs_ts > 0:
-                if theirs_ts > ours_ts:
-                    # Theirs is newer - check if it's reachable from HEAD
-                    if self._git_ref_is_ancestor_in_repo(source, head, theirs):
-                        return theirs
-                # If ours is newer or same, try sibling merge below
-
-        # Strategy 5: Attempt sibling merge
-        if theirs:
-            merged_head = self._merge_submodule_gitlink_sibling_head(
-                source=source,
-                relative=relative,
-                current_head=head,
-                ours=ours,
-                theirs=theirs,
-                task=task,
+        diagnostic["reachable_merge_bases"] = self._git_merge_bases_in_repo(source, ours, theirs)
+        if ours == theirs:
+            diagnostic.update(
+                {
+                    "selected_commit": ours,
+                    "selection_reason": "identical_candidates",
+                    "reason": "selected_verified_descendant",
+                }
             )
-            if merged_head:
-                return merged_head
-        return ""
+            return diagnostic
+        if self._git_ref_is_ancestor_in_repo(source, ours, theirs):
+            diagnostic.update(
+                {
+                    "selected_commit": theirs,
+                    "selection_reason": "theirs_verified_descendant_of_ours",
+                    "reason": "selected_verified_descendant",
+                }
+            )
+            return diagnostic
+        if self._git_ref_is_ancestor_in_repo(source, theirs, ours):
+            diagnostic.update(
+                {
+                    "selected_commit": ours,
+                    "selection_reason": "ours_verified_descendant_of_theirs",
+                    "reason": "selected_verified_descendant",
+                }
+            )
+            return diagnostic
 
-    def _git_commit_timestamp_in_repo(self, repo: Path, ref: str) -> float:
-        """Get the committer timestamp for a ref in a repo."""
+        recovery_ref = self._submodule_recovery_ref(relative, ours, theirs)
+        diagnostic["recovery_ref"] = recovery_ref
+        recovered = self._resolve_git_commit_in_repo(source, recovery_ref)
+        if recovered and self._commit_descends_from_both(source, recovered, ours, theirs):
+            diagnostic.update(
+                {
+                    "selected_commit": recovered,
+                    "selection_reason": "validated_deterministic_recovery_ref",
+                    "reason": "selected_deterministic_recovery_ref",
+                }
+            )
+            return diagnostic
+
+        recovery = self._create_submodule_recovery_ref(
+            source=source,
+            relative=relative,
+            ours=ours,
+            theirs=theirs,
+            recovery_ref=recovery_ref,
+            task=task,
+        )
+        diagnostic["recovery"] = recovery
+        selected = str(recovery.get("commit") or "")
+        if selected and self._commit_descends_from_both(source, selected, ours, theirs):
+            diagnostic.update(
+                {
+                    "selected_commit": selected,
+                    "selection_reason": "created_deterministic_recovery_ref",
+                    "reason": "selected_deterministic_recovery_ref",
+                }
+            )
+            return diagnostic
+        diagnostic["reason"] = str(recovery.get("reason") or "no_safe_resolution")
+        return diagnostic
+
+    def _git_commit_exists_in_repo(self, repo: Path, ref: str) -> bool:
         result = subprocess.run(
-            ["git", "log", "-1", "--format=%ct", ref],
+            ["git", "cat-file", "-e", f"{ref}^{{commit}}"],
             cwd=repo,
             text=True,
             capture_output=True,
             check=False,
         )
-        if result.returncode != 0 or not result.stdout.strip():
-            return 0.0
-        try:
-            return float(result.stdout.strip())
-        except ValueError:
-            return 0.0
+        return result.returncode == 0
 
-    def _merge_submodule_gitlink_sibling_head(
+    def _resolve_git_commit_in_repo(self, repo: Path, ref: str) -> str:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{ref}^{{commit}}"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    def _git_merge_bases_in_repo(self, repo: Path, ours: str, theirs: str) -> list[str]:
+        result = subprocess.run(
+            ["git", "merge-base", "--all", ours, theirs],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        return sorted({line.strip() for line in result.stdout.splitlines() if line.strip()})
+
+    def _commit_descends_from_both(self, repo: Path, commit: str, ours: str, theirs: str) -> bool:
+        return bool(commit) and all(
+            self._git_ref_is_ancestor_in_repo(repo, candidate, commit)
+            for candidate in (ours, theirs)
+        )
+
+    @staticmethod
+    def _submodule_recovery_ref(relative: str, ours: str, theirs: str) -> str:
+        digest = hashlib.sha256(
+            f"{relative}\0{ours}\0{theirs}".encode("utf-8", errors="surrogateescape")
+        ).hexdigest()[:24]
+        safe_path = re.sub(r"[^A-Za-z0-9._/-]+", "-", relative).strip("/.-") or "submodule"
+        return f"refs/agent-supervisor/submodule-merge-recovery/{safe_path}/{digest}"
+
+    def _create_submodule_recovery_ref(
         self,
         *,
         source: Path,
         relative: str,
-        current_head: str,
         ours: str,
         theirs: str,
+        recovery_ref: str,
         task: PortalTask,
-    ) -> str:
-        if not ours or not current_head:
-            return ""
-        if current_head != ours and not self._git_ref_is_ancestor_in_repo(source, ours, current_head):
-            return ""
-        if self._git_merge_head_in_repo(source):
-            return ""
-        if self._run_git(["status", "--porcelain"], cwd=source).stdout.strip():
-            return ""
-        if self._git_ref_is_ancestor_in_repo(source, current_head, theirs):
-            merge_command = ["git", "merge", "--ff-only", theirs]
-        else:
-            merge_command = ["git", "merge", "--no-ff", "--no-edit", theirs]
-        merge = subprocess.run(
-            merge_command,
-            cwd=source,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        event: dict[str, Any] = {
-            "path": relative,
-            "task_id": task.task_id,
-            "command": merge_command,
-            "returncode": merge.returncode,
-            "stdout": merge.stdout[-4000:],
-            "stderr": merge.stderr[-4000:],
-            "ours": ours,
-            "theirs": theirs,
-            "current_head": current_head,
-        }
-        if merge.returncode != 0:
-            abort = subprocess.run(
-                ["git", "merge", "--abort"],
-                cwd=source,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            event.update(
-                {
-                    "merged": False,
-                    "reason": "submodule_sibling_merge_failed",
-                    "abort_returncode": abort.returncode,
-                    "abort_stdout": abort.stdout[-4000:],
-                    "abort_stderr": abort.stderr[-4000:],
-                }
-            )
-            self._record_event("submodule_gitlink_sibling_merge", event)
-            return ""
-        merged_head = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
-        event.update(
-            {
-                "merged": True,
-                "reason": "merged_sibling_gitlink_head",
-                "merged_head": merged_head,
-            }
-        )
-        self._record_event("submodule_gitlink_sibling_merge", event)
-        return merged_head
+    ) -> dict[str, Any]:
+        """Create a clean merge commit without changing the active checkout."""
 
-    def _submodule_head_has_task_commit(self, source: Path, task_id: str) -> bool:
-        result = subprocess.run(
-            ["git", "log", "--format=%H", "--fixed-strings", f"--grep={task_id}:", "HEAD"],
+        recovery_root = self.state_path.parent / "submodule-merge-recovery-worktrees"
+        recovery_root.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256(f"{relative}\0{ours}\0{theirs}".encode()).hexdigest()[:16]
+        workspace = recovery_root / f"{digest}-{os.getpid()}-{time.time_ns()}"
+        add = subprocess.run(
+            ["git", "worktree", "add", "--detach", str(workspace), ours],
             cwd=source,
             text=True,
             capture_output=True,
             check=False,
         )
-        return result.returncode == 0 and bool(result.stdout.strip())
+        if add.returncode != 0:
+            return {
+                "created": False,
+                "reason": "recovery_worktree_add_failed",
+                "returncode": add.returncode,
+                "stdout": add.stdout[-4000:],
+                "stderr": add.stderr[-4000:],
+            }
+        merge = subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Implementation Daemon",
+                "-c",
+                "user.email=implementation-daemon@example.invalid",
+                "merge",
+                "--no-ff",
+                "--no-edit",
+                theirs,
+            ],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        commit = ""
+        update_ref = subprocess.CompletedProcess([], 1, "", "merge did not complete")
+        if merge.returncode == 0:
+            commit = self._run_git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
+            if self._commit_descends_from_both(source, commit, ours, theirs):
+                update_ref = subprocess.run(
+                    ["git", "update-ref", recovery_ref, commit],
+                    cwd=source,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+        remove = subprocess.run(
+            ["git", "worktree", "remove", "--force", str(workspace)],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        created = bool(commit and merge.returncode == 0 and update_ref.returncode == 0)
+        result = {
+            "created": created,
+            "reason": "recovery_ref_created" if created else "recovery_merge_failed",
+            "recovery_ref": recovery_ref,
+            "commit": commit if created else "",
+            "task_id": task.task_id,
+            "merge_returncode": merge.returncode,
+            "merge_stdout": merge.stdout[-4000:],
+            "merge_stderr": merge.stderr[-4000:],
+            "update_ref_returncode": update_ref.returncode,
+            "update_ref_stdout": str(update_ref.stdout)[-4000:],
+            "update_ref_stderr": str(update_ref.stderr)[-4000:],
+            "cleanup_returncode": remove.returncode,
+            "cleanup_stderr": remove.stderr[-4000:],
+        }
+        if remove.returncode != 0:
+            result["preserved_recovery_workspace"] = str(workspace)
+        return result
 
     def _merge_submodule_branches_to_main(
         self,
@@ -4550,6 +4682,7 @@ class PortalImplementationDaemon:
             merge_abort_result: dict[str, Any] = {}
             llm_merge_resolver: dict[str, Any] = {}
             llm_merge_commit_result: dict[str, Any] = {}
+            nested_gitlink_repair: dict[str, Any] = {}
             ff_only_result = {
                 "returncode": merge.returncode,
                 "stdout": merge.stdout[-4000:],
@@ -4565,36 +4698,47 @@ class PortalImplementationDaemon:
                     check=False,
                 )
                 if merge.returncode != 0:
-                    llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
-                        workspace=source,
+                    nested_gitlink_repair = self._repair_submodule_gitlink_merge_conflicts(
+                        source,
                         task=task,
                         attempt=attempt,
-                        branch_name=submodule_branch,
-                        target_branch=default_branch,
-                        merge_command=merge_command,
-                        merge_stdout=merge.stdout,
-                        merge_stderr=merge.stderr,
-                        reason="submodule_merge_conflict",
+                        parent_relative=full_relative,
                     )
-                    if llm_merge_resolver.get("applied", False):
-                        llm_merge_commit_result = self._commit_llm_resolved_merge(source)
-                        if llm_merge_commit_result.get("completed", False):
-                            merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
-                        elif (
-                            llm_merge_commit_result.get("reason") == "no_merge_in_progress"
-                            and self._branch_merged_in_workspace(source, submodule_branch)
-                        ):
-                            llm_merge_commit_result = {
-                                **llm_merge_commit_result,
-                                "completed": True,
-                                "reason": "resolver_committed_merge",
-                                "commit": self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip(),
-                            }
-                            merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
+                    if nested_gitlink_repair.get("repaired", False):
+                        merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
+                    elif nested_gitlink_repair.get("reason") != "no_gitlink_conflicts":
+                        merge_abort_result = self._abort_failed_merge(source)
+                    else:
+                        llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
+                            workspace=source,
+                            task=task,
+                            attempt=attempt,
+                            branch_name=submodule_branch,
+                            target_branch=default_branch,
+                            merge_command=merge_command,
+                            merge_stdout=merge.stdout,
+                            merge_stderr=merge.stderr,
+                            reason="submodule_merge_conflict",
+                        )
+                        if llm_merge_resolver.get("applied", False):
+                            llm_merge_commit_result = self._commit_llm_resolved_merge(source)
+                            if llm_merge_commit_result.get("completed", False):
+                                merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
+                            elif (
+                                llm_merge_commit_result.get("reason") == "no_merge_in_progress"
+                                and self._branch_merged_in_workspace(source, submodule_branch)
+                            ):
+                                llm_merge_commit_result = {
+                                    **llm_merge_commit_result,
+                                    "completed": True,
+                                    "reason": "resolver_committed_merge",
+                                    "commit": self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip(),
+                                }
+                                merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
+                            else:
+                                merge_abort_result = self._abort_failed_merge(source)
                         else:
                             merge_abort_result = self._abort_failed_merge(source)
-                    else:
-                        merge_abort_result = self._abort_failed_merge(source)
             result = {
                 "path": full_relative,
                 "branch": submodule_branch,
@@ -4613,6 +4757,8 @@ class PortalImplementationDaemon:
                 result["llm_merge_resolver"] = llm_merge_resolver
             if llm_merge_commit_result:
                 result["llm_merge_commit_result"] = llm_merge_commit_result
+            if nested_gitlink_repair:
+                result["nested_gitlink_repair"] = nested_gitlink_repair
             if merge.returncode == 0:
                 result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
                 # Post-merge validation: ensure submodule is in a healthy state
@@ -5200,7 +5346,7 @@ class PortalImplementationDaemon:
         This includes:
         - Cleaning up stale worktrees (abandoned after failures)
         - Removing stale lock files (orphaned after crashes)
-        - Resetting dirty submodule state that blocks merges
+        - Preserving generated submodule artifacts and reporting user-dirty state
         - Git garbage collection (loose objects, reflogs, repacking)
         - Task queue compaction (removing stale entries)
         """
@@ -5231,71 +5377,43 @@ class PortalImplementationDaemon:
         return results
 
     def _reset_persistently_dirty_submodules(self) -> dict[str, Any]:
-        """Reset submodules that have been dirty for multiple consecutive iterations.
+        """Preserve generated dirt and report remaining submodules without resetting.
 
-        If a submodule stays dirty across 3+ merge attempts (tracked via event log),
-        force-reset it to avoid blocking all further work.
+        A previous maintenance path used ``checkout --force`` and ``submodule
+        update --force`` here.  That could destroy user work merely because a
+        checkout stayed dirty across daemon passes.  Reconciliation now decides
+        whether a gitlink is actually relevant to a merge, so destructive reset
+        is neither necessary nor safe.
         """
         max_dirty_attempts = int(os.environ.get("IPFS_ACCELERATE_AGENT_MAX_DIRTY_ATTEMPTS", "3"))
         if max_dirty_attempts <= 0:
             return {"attempted": False, "reason": "disabled"}
-
-        # Check if any submodules are currently dirty
-        status_result = subprocess.run(
-            ["git", "submodule", "status"],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if status_result.returncode != 0:
-            return {"attempted": False, "reason": "submodule_status_failed"}
-
-        dirty_submodules: list[str] = []
-        for line in status_result.stdout.splitlines():
-            line = line.strip()
-            if line.startswith("+") or line.startswith("U"):
-                # Dirty or merge conflict
-                parts = line.split()
-                if len(parts) >= 2:
-                    dirty_submodules.append(parts[1])
-
-        if not dirty_submodules:
-            return {"attempted": True, "dirty_count": 0, "reset": []}
-
-        reset_results: list[dict[str, Any]] = []
-        for submodule_path in dirty_submodules:
-            full_path = self.repo_root / submodule_path
-            if not full_path.exists():
-                continue
-            # Force-reset the submodule
-            reset = subprocess.run(
-                ["git", "checkout", "--force", "."],
-                cwd=full_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            update = subprocess.run(
-                ["git", "submodule", "update", "--init", "--force", "--", submodule_path],
-                cwd=self.repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            reset_results.append({
-                "path": submodule_path,
-                "reset_ok": reset.returncode == 0,
-                "update_ok": update.returncode == 0,
-            })
-
+        preservation = self._preserve_generated_nested_worktree_directories()
+        dirty_submodules: list[dict[str, Any]] = []
+        for relative, source in self._initialized_submodule_worktrees():
+            status = self._run_git(
+                ["status", "--porcelain", "--untracked-files=all"],
+                cwd=source,
+            ).stdout.strip()
+            if status:
+                dirty_submodules.append(
+                    {
+                        "path": relative,
+                        "reset_ok": False,
+                        "update_ok": False,
+                        "preserved": True,
+                        "reason": "non_destructive_reconciliation",
+                        "dirty_paths": self._dirty_status_paths(status),
+                    }
+                )
         result = {
             "attempted": True,
             "dirty_count": len(dirty_submodules),
-            "reset": reset_results,
+            "reset": dirty_submodules,
+            "generated_artifact_preservation": preservation,
         }
-        if reset_results:
-            self._record_event("dirty_submodule_reset", result)
+        if dirty_submodules or preservation:
+            self._record_event("dirty_submodule_reset_deferred", result)
         return result
 
     def _dirty_merge_conflict_paths(
@@ -5850,6 +5968,168 @@ class PortalImplementationDaemon:
             return result.stdout.strip()
         return target_branch
 
+    def _initialized_submodule_worktrees(self) -> list[tuple[str, Path]]:
+        """Return initialized submodules at every declared nesting level."""
+
+        discovered: list[tuple[str, Path]] = []
+        seen: set[str] = set()
+        queue: list[tuple[Path, str, str]] = []
+        top_level = list(dict.fromkeys([*self.worktree_submodule_paths, *self._declared_submodule_paths(self.repo_root)]))
+        for relative in top_level:
+            queue.append((self.repo_root, "", relative))
+        while queue:
+            parent_repo, parent_relative, relative = queue.pop(0)
+            full_relative = f"{parent_relative}/{relative}" if parent_relative else relative
+            if full_relative in seen or not self._repo_relative_path_safe(full_relative):
+                continue
+            seen.add(full_relative)
+            source = (parent_repo / relative).resolve()
+            if not self._is_git_worktree(source):
+                continue
+            discovered.append((full_relative, source))
+            for nested in self._declared_submodule_paths(source):
+                queue.append((source, full_relative, nested))
+        return discovered
+
+    def _preserve_generated_nested_worktree_directories(self) -> list[dict[str, Any]]:
+        """Move untracked nested ``tmp`` trees into durable supervisor state.
+
+        These directories are generated by nested worktree tooling, but may hold
+        logs or recovery material.  Moving instead of deleting them makes the
+        checkout mergeable without losing evidence.
+        """
+
+        preserved: list[dict[str, Any]] = []
+        preservation_root = self.state_path.parent / "preserved-nested-worktree-artifacts"
+        for submodule_relative, source in self._initialized_submodule_worktrees():
+            for directory_name in sorted(GENERATED_NESTED_WORKTREE_DIR_NAMES):
+                generated_dir = source / directory_name
+                if not generated_dir.is_dir() or generated_dir.is_symlink():
+                    continue
+                tracked = subprocess.run(
+                    ["git", "ls-files", "--", directory_name],
+                    cwd=source,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if tracked.returncode != 0 or tracked.stdout.strip():
+                    continue
+                status = subprocess.run(
+                    ["git", "status", "--porcelain", "--untracked-files=all", "--", directory_name],
+                    cwd=source,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                status_lines = [line for line in status.stdout.splitlines() if line.strip()]
+                if status.returncode != 0 or not status_lines or any(not line.startswith("??") for line in status_lines):
+                    continue
+                safe_submodule = self._safe_ref_path_fragment(submodule_relative.replace("/", "-"))
+                content_fingerprint = hashlib.sha256(
+                    "\n".join(sorted(status_lines)).encode("utf-8", errors="surrogateescape")
+                ).hexdigest()[:12]
+                destination_dir = preservation_root / safe_submodule
+                destination_dir.mkdir(parents=True, exist_ok=True)
+                destination = destination_dir / f"{directory_name}-{content_fingerprint}-{time.time_ns()}"
+                try:
+                    shutil.move(str(generated_dir), str(destination))
+                except OSError as exc:
+                    preserved.append(
+                        {
+                            "path": f"{submodule_relative}/{directory_name}",
+                            "preserved": False,
+                            "reason": "preservation_move_failed",
+                            "error": str(exc)[-1000:],
+                        }
+                    )
+                    continue
+                preserved.append(
+                    {
+                        "path": f"{submodule_relative}/{directory_name}",
+                        "preserved": True,
+                        "reason": "generated_nested_worktree_directory_moved",
+                        "destination": str(destination),
+                    }
+                )
+        if preserved:
+            self._record_event(
+                "generated_nested_worktree_artifacts_preserved",
+                {"results": preserved},
+            )
+        return preserved
+
+    def _gitlink_commit_at_ref(self, ref: str, relative: str) -> str:
+        if not ref or not self._repo_relative_path_safe(relative):
+            return ""
+        result = subprocess.run(
+            ["git", "ls-tree", ref, "--", relative],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        for line in result.stdout.splitlines():
+            metadata, separator, path = line.partition("\t")
+            fields = metadata.split()
+            if separator and path == relative and len(fields) >= 3 and fields[0] == "160000":
+                return fields[2]
+        return ""
+
+    def _dirty_gitlink_is_unchanged_for_candidates(
+        self,
+        relative: str,
+        candidates: Sequence[dict[str, Any]],
+        *,
+        target_branch: str,
+    ) -> bool:
+        """Prove that a dirty gitlink is unrelated to every pending merge."""
+
+        target_commit = self._gitlink_commit_at_ref(target_branch, relative)
+        if not target_commit:
+            return False
+        compared = 0
+        for event in candidates:
+            branch = str(event.get("branch") or "")
+            implementation_commit = str(event.get("implementation_commit") or "")
+            merge_ref = branch if branch and self._git_ref_exists(branch) else implementation_commit
+            candidate_commit = self._gitlink_commit_at_ref(merge_ref, relative)
+            if not candidate_commit:
+                return False
+            compared += 1
+            if candidate_commit != target_commit:
+                return False
+        return compared > 0
+
+    def _reconciliation_blocking_dirty_paths(
+        self,
+        candidates: Sequence[dict[str, Any]],
+        *,
+        target_branch: str,
+    ) -> tuple[list[str], list[str]]:
+        blocking: list[str] = []
+        nonblocking: list[str] = []
+        for relative in sorted(self._dirty_worktree_paths(self.repo_root)):
+            state_relative = ""
+            try:
+                state_relative = self.state_path.parent.resolve().relative_to(self.repo_root.resolve()).as_posix()
+            except (OSError, ValueError):
+                pass
+            if state_relative and self._path_matches_prefix(relative, state_relative):
+                nonblocking.append(relative)
+                continue
+            if self._dirty_gitlink_is_unchanged_for_candidates(
+                relative,
+                candidates,
+                target_branch=target_branch,
+            ):
+                nonblocking.append(relative)
+            else:
+                blocking.append(relative)
+        return blocking, nonblocking
+
     def _reconcile_failed_merges(
         self,
         *,
@@ -5867,7 +6147,11 @@ class PortalImplementationDaemon:
             results.append(result)
         candidates = fresh_candidates
         if candidates:
-            main_checkout_dirty_paths = sorted(self._dirty_worktree_paths(self.repo_root))
+            nested_artifact_preservation = self._preserve_generated_nested_worktree_directories()
+            main_checkout_dirty_paths, nonblocking_dirty_paths = self._reconciliation_blocking_dirty_paths(
+                candidates,
+                target_branch=target_branch,
+            )
             if main_checkout_dirty_paths:
                 result = {
                     "resolved": False,
@@ -5876,9 +6160,22 @@ class PortalImplementationDaemon:
                     "processed_count": 0,
                     "dirty_paths": main_checkout_dirty_paths,
                 }
+                if nested_artifact_preservation:
+                    result["nested_artifact_preservation"] = nested_artifact_preservation
+                if nonblocking_dirty_paths:
+                    result["nonblocking_dirty_paths"] = nonblocking_dirty_paths
                 self._record_event("merge_reconciliation_deferred", result)
                 results.append(result)
                 return results
+            if nonblocking_dirty_paths or nested_artifact_preservation:
+                self._record_event(
+                    "merge_reconciliation_nonblocking_checkout_state",
+                    {
+                        "nonblocking_dirty_paths": nonblocking_dirty_paths,
+                        "nested_artifact_preservation": nested_artifact_preservation,
+                        "candidate_count": len(candidates),
+                    },
+                )
         max_merges = int(self.merge_reconciliation_max_merges)
         selected_candidates = self._select_failed_merge_candidates_for_reconciliation(
             candidates,
@@ -6146,13 +6443,6 @@ class PortalImplementationDaemon:
                 elif implementation_commit and merge_reason == "baseline_not_ancestor_of_target":
                     abandoned_commits.add(implementation_commit)
                 elif implementation_commit and reconcile_reason == "stale_failed_merge_candidate":
-                    abandoned_commits.add(implementation_commit)
-                elif (
-                    implementation_commit
-                    and isinstance(merge_result, dict)
-                    and merge_result.get("attempted")
-                    and not merge_result.get("merged")
-                ):
                     abandoned_commits.add(implementation_commit)
                 continue
             if str(event.get("type") or "") != "implementation_finished":

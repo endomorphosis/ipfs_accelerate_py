@@ -3646,6 +3646,306 @@ def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     return repo, submodule
 
 
+def _seed_parent_with_divergent_gitlinks(
+    tmp_path: Path,
+    *,
+    content_conflict: bool = False,
+) -> tuple[Path, Path, str, str, str]:
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    base_submodule = _git(submodule, "rev-parse", "HEAD")
+    base_parent = _git(repo, "rev-parse", "HEAD")
+
+    if content_conflict:
+        (submodule / "child.txt").write_text("ours\n", encoding="utf-8")
+        _git(submodule, "commit", "-am", "ours child change")
+    else:
+        (submodule / "ours.txt").write_text("ours\n", encoding="utf-8")
+        _git(submodule, "add", "ours.txt")
+        _git(submodule, "commit", "-m", "ours child change")
+    ours = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child on main")
+
+    _git(submodule, "checkout", "-b", "child-side", base_submodule)
+    if content_conflict:
+        (submodule / "child.txt").write_text("theirs\n", encoding="utf-8")
+        _git(submodule, "commit", "-am", "theirs child change")
+    else:
+        (submodule / "theirs.txt").write_text("theirs\n", encoding="utf-8")
+        _git(submodule, "add", "theirs.txt")
+        _git(submodule, "commit", "-m", "theirs child change")
+    theirs = _git(submodule, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-b", "implementation/auto-116", base_parent)
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-116: advance child on implementation")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    assert _git(submodule, "rev-parse", "HEAD") == ours
+    assert _git(repo, "status", "--porcelain") == ""
+    return repo, submodule, base_submodule, ours, theirs
+
+
+def test_implementation_daemon_submodule_gitlink_reconciliation_uses_verified_recovery_ref(tmp_path):
+    repo, submodule, base, ours, theirs = _seed_parent_with_divergent_gitlinks(tmp_path)
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-116",
+        PortalTask(
+            task_id="AUTO-116",
+            title="Reconcile divergent gitlinks",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["merged"] is True
+    repair = result["submodule_conflict_repair"]["repairs"][0]
+    selected = repair["selected_commit"]
+    assert repair["path"] == "libs/child"
+    assert repair["ours_candidate"] == ours
+    assert repair["theirs_candidate"] == theirs
+    assert repair["reachable_merge_bases"] == [base]
+    assert repair["selection_reason"] == "created_deterministic_recovery_ref"
+    assert repair["recovery_ref"].startswith("refs/agent-supervisor/submodule-merge-recovery/")
+    assert _git(submodule, "merge-base", "--is-ancestor", ours, selected) == ""
+    assert _git(submodule, "merge-base", "--is-ancestor", theirs, selected) == ""
+    assert _git(submodule, "rev-parse", "HEAD") == ours
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == selected
+
+    diagnostic = json.loads((state_dir / "submodule-merge-diagnostics.json").read_text(encoding="utf-8"))
+    assert diagnostic["schema_version"] == 1
+    assert diagnostic["latest"]["repaired"] is True
+    assert diagnostic["latest"]["retryable"] is False
+    assert diagnostic["latest"]["conflicts"][0]["selected_commit"] == selected
+
+
+def test_implementation_daemon_records_full_nested_submodule_gitlink_path(tmp_path):
+    repo, submodule, base, ours, theirs = _seed_parent_with_divergent_gitlinks(tmp_path)
+    merge = subprocess.run(
+        ["git", "merge", "--no-ff", "--no-edit", "implementation/auto-116"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert merge.returncode != 0
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+    )
+
+    result = daemon._repair_submodule_gitlink_merge_conflicts(
+        repo,
+        task=PortalTask(
+            task_id="AUTO-116",
+            title="Reconcile nested gitlink",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=3,
+        parent_relative="parent",
+    )
+
+    assert result["repaired"] is True
+    conflict = result["repairs"][0]
+    assert conflict["path"] == "parent/libs/child"
+    assert conflict["ours_candidate"] == ours
+    assert conflict["theirs_candidate"] == theirs
+    assert conflict["reachable_merge_bases"] == [base]
+    assert _git(submodule, "merge-base", "--is-ancestor", ours, conflict["selected_commit"]) == ""
+    assert _git(submodule, "merge-base", "--is-ancestor", theirs, conflict["selected_commit"]) == ""
+
+
+def test_implementation_daemon_submodule_gitlink_conflict_stays_retryable_without_side_selection(tmp_path):
+    repo, submodule, base, ours, theirs = _seed_parent_with_divergent_gitlinks(
+        tmp_path,
+        content_conflict=True,
+    )
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-116",
+        PortalTask(
+            task_id="AUTO-116",
+            title="Keep unsafe gitlink conflict retryable",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        2,
+    )
+
+    assert result["merged"] is False
+    assert result["merge_abort_result"]["aborted"] is True
+    conflict = result["submodule_conflict_repair"]["repairs"][0]
+    assert conflict["ours_candidate"] == ours
+    assert conflict["theirs_candidate"] == theirs
+    assert conflict["reachable_merge_bases"] == [base]
+    assert conflict["selected_commit"] == ""
+    assert conflict["repaired"] is False
+    assert _git(submodule, "rev-parse", "HEAD") == ours
+    ancestor_check = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", "implementation/auto-116", "main"],
+        cwd=repo,
+        capture_output=True,
+        check=False,
+    )
+    assert ancestor_check.returncode != 0
+
+    diagnostic = json.loads((state_dir / "submodule-merge-diagnostics.json").read_text(encoding="utf-8"))
+    assert diagnostic["latest"]["repaired"] is False
+    assert diagnostic["latest"]["retryable"] is True
+    assert diagnostic["latest"]["conflicts"][0]["selected_commit"] == ""
+
+
+def test_implementation_daemon_preserves_nested_tmp_and_allows_unchanged_dirty_submodule(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "add parent readme")
+    _git(repo, "checkout", "-b", "implementation/auto-116")
+    (repo / "README.md").write_text("implementation\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "AUTO-116: update parent only")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    (submodule / "child.txt").write_text("unrelated user dirt\n", encoding="utf-8")
+    nested_tmp = submodule / "tmp"
+    nested_tmp.mkdir()
+    (nested_tmp / "worker.log").write_text("preserve me\n", encoding="utf-8")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    candidates = [
+        {
+            "task_id": "AUTO-116",
+            "branch": "implementation/auto-116",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    preservation = daemon._preserve_generated_nested_worktree_directories()
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert preservation[0]["path"] == "libs/child/tmp"
+    assert preservation[0]["preserved"] is True
+    preserved_path = Path(preservation[0]["destination"])
+    assert (preserved_path / "worker.log").read_text(encoding="utf-8") == "preserve me\n"
+    assert not nested_tmp.exists()
+    assert blocking == []
+    assert nonblocking == ["libs/child"]
+
+    merge = daemon._merge_branch_to_main(
+        "implementation/auto-116",
+        PortalTask(
+            task_id="AUTO-116",
+            title="Merge with unrelated dirty submodule",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+    )
+    assert merge["merged"] is True
+    assert (submodule / "child.txt").read_text(encoding="utf-8") == "unrelated user dirt\n"
+    maintenance = daemon._reset_persistently_dirty_submodules()
+    assert maintenance["dirty_count"] == 1
+    assert maintenance["reset"][0]["preserved"] is True
+    assert maintenance["reset"][0]["reset_ok"] is False
+    assert (submodule / "child.txt").read_text(encoding="utf-8") == "unrelated user dirt\n"
+
+
+def test_implementation_daemon_failed_merge_reconciliation_remains_retryable(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-116")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-116: feature")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "missing.todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "AUTO-116",
+            "attempt": 1,
+            "branch": "implementation/auto-116",
+            "implementation_commit": implementation_commit,
+            "merge_result": {"attempted": True, "merged": False, "reason": "submodule_merge_failed"},
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "AUTO-116",
+            "attempt": 1,
+            "branch": "implementation/auto-116",
+            "implementation_commit": implementation_commit,
+            "resolved": False,
+            "reason": "merge_retry_failed",
+            "merge_result": {"attempted": True, "merged": False, "reason": "submodule_merge_failed"},
+        },
+    )
+
+    candidates = daemon._failed_merge_candidates()
+
+    assert len(candidates) == 1
+    assert candidates[0]["implementation_commit"] == implementation_commit
+
+
 def test_todo_daemon_runtime_is_ported_to_accelerate_package():
     assert TodoDaemonRunner.__module__ == "ipfs_accelerate_py.agent_supervisor.todo_daemon.runner"
     assert TodoImplementationDaemon.__module__ == (
