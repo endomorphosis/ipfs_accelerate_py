@@ -44,9 +44,11 @@ class RestartPolicy:
 
     def delay_for_status(self, status: str, *, run_duration: float = 0.0) -> float:
         if run_duration >= self.healthy_run_seconds:
-            self._consecutive_failures = 0
+            object.__setattr__(self, "_consecutive_failures", 0)
         else:
-            self._consecutive_failures += 1
+            object.__setattr__(
+                self, "_consecutive_failures", self._consecutive_failures + 1
+            )
 
         if status in self.fast_restart_statuses:
             return max(0.0, float(self.fast_restart_backoff_seconds))
@@ -57,7 +59,7 @@ class RestartPolicy:
 
     def reset(self) -> None:
         """Reset backoff state (e.g. after a healthy run)."""
-        self._consecutive_failures = 0
+        object.__setattr__(self, "_consecutive_failures", 0)
 
 
 @dataclass(frozen=True)
