@@ -6337,6 +6337,37 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
     assert any(event["type"] == "implementation_state_recovered" for event in events)
 
 
+def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    worktree_path = repo / "worktrees" / "accel-999-attempt-1"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {"worktree_path": str(worktree_path), "command": ["bash", "-lc", "runner"]}
+    monkeypatch.setattr(
+        daemon,
+        "_list_process_commands",
+        lambda: [
+            f"node {worktree_path}/swissknife/scripts/start-ipfs-kit-mcp-compat.cjs --port 8014",
+            f"python {worktree_path}/swissknife/scripts/ipfs_mcp_libp2p_bridge.py --port 9114",
+        ],
+    )
+
+    assert daemon._implementation_process_active(event) is False
+
+    monkeypatch.setattr(
+        daemon,
+        "_list_process_commands",
+        lambda: [f"node /usr/local/bin/codex exec -C {worktree_path} -"],
+    )
+
+    assert daemon._implementation_process_active(event) is True
+
+
 def test_implementation_supervisor_recovers_missing_inflight_before_worktree_reconciliation(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

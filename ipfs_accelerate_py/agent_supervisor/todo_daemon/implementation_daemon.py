@@ -83,6 +83,7 @@ TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
+IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(r"(?:^|[\s/])(codex|copilot)(?:\s|$)")
 SHARED_WORKTREE_PATHS = (
     "wallet_interface/ui/node_modules",
     "mobile/node_modules",
@@ -6657,11 +6658,19 @@ class PortalImplementationDaemon:
         command = event.get("command") or []
         process_lines = self._list_process_commands()
         if worktree_path:
-            return any(worktree_path in line for line in process_lines)
+            # Task validation can leave MCP bridge servers in its worktree. Only
+            # the configured Codex/Copilot runner proves implementation is live.
+            return any(
+                worktree_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+                for line in process_lines
+            )
         if isinstance(command, list):
             command_text = " ".join(str(item) for item in command if item)
             if command_text:
-                return any(command_text in line for line in process_lines)
+                return any(
+                    command_text in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+                    for line in process_lines
+                )
         return False
 
     def _list_process_commands(self) -> list[str]:
