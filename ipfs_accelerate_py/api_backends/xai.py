@@ -9,13 +9,10 @@ Environment variables:
   ipfs_accelerate_py_XAI_BASE_URL                 - Override base URL
 """
 
-import hashlib
 import json
 import logging
 import threading
 import time
-import uuid
-from queue import Queue
 from typing import Any, Dict, List, Optional
 
 try:
@@ -116,11 +113,6 @@ class xai:
 
         self.max_retries = int(self.metadata.get("max_retries", 3))
         self.timeout = float(self.metadata.get("timeout", 60.0))
-
-        self.max_concurrent_requests = 5
-        self.queue_lock = threading.RLock()
-        self.request_queue = Queue(maxsize=100)
-        self.active_requests = 0
 
         self.circuit_state = "CLOSED"
         self.failure_threshold = 5

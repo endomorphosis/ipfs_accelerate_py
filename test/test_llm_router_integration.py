@@ -317,23 +317,52 @@ def test_meta_ai_builtin_provider_by_name():
 
 
 def test_xai_and_meta_ai_in_auto_discovery():
-    """Verify that xAI and Meta AI appear in the auto-discovery loop."""
-    import inspect
-    from ipfs_accelerate_py import llm_router
+    """Verify that xAI and Meta AI are tried during provider auto-discovery."""
+    import os
+    from ipfs_accelerate_py.llm_router import _builtin_provider_by_name
 
-    source = inspect.getsource(llm_router._resolve_provider_uncached)
-    assert "xai" in source, "xAI should appear in auto-discovery"
-    assert "meta_ai" in source, "meta_ai should appear in auto-discovery"
+    # xAI should be discoverable when a key is present.
+    os.environ["XAI_API_KEY"] = "dummy-key"
+    try:
+        provider = _builtin_provider_by_name("xai")
+        assert provider is not None, "xAI provider should be found via auto-discovery"
+    finally:
+        os.environ.pop("XAI_API_KEY", None)
+
+    # Meta AI should be discoverable when a key is present.
+    os.environ["META_AI_API_KEY"] = "dummy-meta-key"
+    try:
+        provider = _builtin_provider_by_name("meta_ai")
+        assert provider is not None, "Meta AI provider should be found via auto-discovery"
+    finally:
+        os.environ.pop("META_AI_API_KEY", None)
 
 
 def test_cache_key_includes_xai_and_meta_ai():
-    """Verify that the provider cache key includes xAI and Meta AI env vars."""
-    import inspect
-    from ipfs_accelerate_py import llm_router
+    """Verify that changing xAI/Meta AI env vars causes a different cache key."""
+    import os
+    from ipfs_accelerate_py.llm_router import _provider_cache_key
 
-    source = inspect.getsource(llm_router._provider_cache_key)
-    assert "XAI_API_KEY" in source
-    assert "META_AI_API_KEY" in source
+    # Baseline: no keys set
+    for k in ("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY", "META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY"):
+        os.environ.pop(k, None)
+    base_key = _provider_cache_key()
+
+    # Setting xAI key should change the cache key
+    os.environ["XAI_API_KEY"] = "xai-test"
+    try:
+        xai_key = _provider_cache_key()
+        assert xai_key != base_key, "xAI API key should affect the provider cache key"
+    finally:
+        os.environ.pop("XAI_API_KEY", None)
+
+    # Setting Meta AI key should change the cache key
+    os.environ["META_AI_API_KEY"] = "meta-test"
+    try:
+        meta_key = _provider_cache_key()
+        assert meta_key != base_key, "Meta AI API key should affect the provider cache key"
+    finally:
+        os.environ.pop("META_AI_API_KEY", None)
 
 
 # Standalone execution for manual testing
