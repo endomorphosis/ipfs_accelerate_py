@@ -80,7 +80,20 @@ except ImportError as e:
     logger.debug(f"Failed to import s3_kit: {e}")
     s3_kit = None
 
+try:
+    from .xai import xai
+except ImportError as e:
+    logger.debug(f"Failed to import xai: {e}")
+    xai = None
+
+try:
+    from .meta_ai import meta_ai
+except ImportError as e:
+    logger.debug(f"Failed to import meta_ai: {e}")
+    meta_ai = None
+
 # List of all backend classes
 __all__ = [
-    "claude", "openai_api", "groq", "gemini", "ollama", "hf_tgi", "hf_tei", "llvm", "opea", "ovms", "s3_kit"
+    "claude", "openai_api", "groq", "gemini", "ollama", "hf_tgi", "hf_tei",
+    "llvm", "opea", "ovms", "s3_kit", "xai", "meta_ai",
 ]

@@ -36,6 +36,14 @@ Additional optional providers (opt-in by selecting provider):
     - `ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD` (supports `{prompt}` and `{model}` placeholders)
     - `ipfs_accelerate_py_MISTRAL_VIBE_MODEL` (optional default model)
     - `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` for auth
+- `xai`: xAI Grok AI (REST API, OpenAI-compatible)
+    - `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY`
+    - `ipfs_accelerate_py_XAI_MODEL` (default model, e.g. grok-3)
+    - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
+- `meta_ai`: Meta AI / Meta Spark (Llama API, OpenAI-compatible)
+    - `META_AI_API_KEY` or `ipfs_accelerate_py_META_AI_API_KEY`
+    - `ipfs_accelerate_py_META_AI_MODEL` (default model, e.g. meta-llama/Llama-3.3-70B-Instruct)
+    - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.llamameta.net/v1)
 """
 
 from __future__ import annotations
@@ -1317,6 +1325,18 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
         ).strip()
     if pk == "copilot_sdk":
         return (os.environ.get("ipfs_accelerate_py_COPILOT_SDK_MODEL", "") or "").strip()
+    if pk in {"xai", "grok", "xai_grok"}:
+        return (
+            os.getenv("ipfs_accelerate_py_XAI_MODEL")
+            or os.getenv("ipfs_accelerate_py_LLM_MODEL")
+            or "grok-3"
+        ).strip()
+    if pk in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
+        return (
+            os.getenv("ipfs_accelerate_py_META_AI_MODEL")
+            or os.getenv("ipfs_accelerate_py_LLM_MODEL")
+            or "meta-llama/Llama-3.3-70B-Instruct"
+        ).strip()
     if pk in {"hf", "huggingface", "local_hf"}:
         return (os.getenv("ipfs_accelerate_py_LLM_MODEL", "gpt2") or "gpt2").strip()
 
@@ -2080,6 +2100,190 @@ def _get_mistral_vibe_provider() -> Optional[LLMProvider]:
     return _MistralVibeProvider()
 
 
+def _get_xai_provider() -> Optional[LLMProvider]:
+    """Return an xAI Grok provider if XAI_API_KEY (or equivalent) is set."""
+    api_key = _coalesce_env("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")
+    if not api_key:
+        return None
+
+    base_url = os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "https://api.x.ai/v1").rstrip("/")
+
+    def _request(payload: dict, *, timeout: float) -> dict:
+        import urllib.request
+        import urllib.error
+
+        url = f"{base_url}/chat/completions"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": "Bearer " + api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            raise RuntimeError(f"xAI HTTP {exc.code}: {detail or exc.reason}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"xAI request failed: {exc}") from exc
+
+        try:
+            data = json.loads(raw)
+        except Exception as exc:
+            raise RuntimeError("xAI returned invalid JSON") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("xAI returned invalid JSON")
+        return data
+
+    class _XAIProvider:
+        def chat_completions(
+            self,
+            messages: Sequence[ChatMessage],
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> dict:
+            model = (
+                model_name
+                or os.getenv("ipfs_accelerate_py_XAI_MODEL")
+                or os.getenv("ipfs_accelerate_py_LLM_MODEL")
+                or "grok-3"
+            )
+            max_tokens = kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))
+            temperature = kwargs.get("temperature", 0.2)
+            payload: dict = {
+                "model": model,
+                "messages": list(messages),
+                "max_tokens": int(max_tokens),
+                "temperature": float(temperature),
+            }
+            if "logprobs" in kwargs:
+                payload["logprobs"] = bool(kwargs.get("logprobs"))
+            if "top_logprobs" in kwargs and kwargs.get("top_logprobs") is not None:
+                payload["top_logprobs"] = int(kwargs.get("top_logprobs"))
+            if "response_format" in kwargs and kwargs.get("response_format") is not None:
+                payload["response_format"] = kwargs.get("response_format")
+            if "seed" in kwargs and kwargs.get("seed") is not None:
+                payload["seed"] = int(kwargs.get("seed"))
+            timeout = float(kwargs.get("timeout", 120))
+            return _request(payload, timeout=timeout)
+
+        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+            data = self.chat_completions(
+                [{"role": "user", "content": prompt}],
+                model_name=model_name,
+                **kwargs,
+            )
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+                if isinstance(msg, dict) and isinstance(msg.get("content"), str):
+                    return msg["content"].strip()
+                text = choices[0].get("text") if isinstance(choices[0], dict) else None
+                if isinstance(text, str):
+                    return text.strip()
+            raise RuntimeError("xAI response missing choices")
+
+    return _XAIProvider()
+
+
+def _get_meta_ai_provider() -> Optional[LLMProvider]:
+    """Return a Meta AI provider if META_AI_API_KEY (or equivalent) is set."""
+    api_key = _coalesce_env("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")
+    if not api_key:
+        return None
+
+    base_url = os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "https://api.llamameta.net/v1").rstrip("/")
+
+    def _request(payload: dict, *, timeout: float) -> dict:
+        import urllib.request
+        import urllib.error
+
+        url = f"{base_url}/chat/completions"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": "Bearer " + api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            raise RuntimeError(f"Meta AI HTTP {exc.code}: {detail or exc.reason}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"Meta AI request failed: {exc}") from exc
+
+        try:
+            data = json.loads(raw)
+        except Exception as exc:
+            raise RuntimeError("Meta AI returned invalid JSON") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("Meta AI returned invalid JSON")
+        return data
+
+    class _MetaAIProvider:
+        def chat_completions(
+            self,
+            messages: Sequence[ChatMessage],
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> dict:
+            model = (
+                model_name
+                or os.getenv("ipfs_accelerate_py_META_AI_MODEL")
+                or os.getenv("ipfs_accelerate_py_LLM_MODEL")
+                or "meta-llama/Llama-3.3-70B-Instruct"
+            )
+            max_tokens = kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))
+            temperature = kwargs.get("temperature", 0.2)
+            payload: dict = {
+                "model": model,
+                "messages": list(messages),
+                "max_tokens": int(max_tokens),
+                "temperature": float(temperature),
+            }
+            if "logprobs" in kwargs:
+                payload["logprobs"] = bool(kwargs.get("logprobs"))
+            if "top_logprobs" in kwargs and kwargs.get("top_logprobs") is not None:
+                payload["top_logprobs"] = int(kwargs.get("top_logprobs"))
+            if "response_format" in kwargs and kwargs.get("response_format") is not None:
+                payload["response_format"] = kwargs.get("response_format")
+            if "seed" in kwargs and kwargs.get("seed") is not None:
+                payload["seed"] = int(kwargs.get("seed"))
+            timeout = float(kwargs.get("timeout", 120))
+            return _request(payload, timeout=timeout)
+
+        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+            data = self.chat_completions(
+                [{"role": "user", "content": prompt}],
+                model_name=model_name,
+                **kwargs,
+            )
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+                if isinstance(msg, dict) and isinstance(msg.get("content"), str):
+                    return msg["content"].strip()
+                text = choices[0].get("text") if isinstance(choices[0], dict) else None
+                if isinstance(text, str):
+                    return text.strip()
+            raise RuntimeError("Meta AI response missing choices")
+
+    return _MetaAIProvider()
+
+
 def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
     enable_value = os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE")
     if enable_value is not None and enable_value.strip() and not _truthy(enable_value):
@@ -2153,6 +2357,14 @@ def _provider_cache_key() -> tuple:
         os.getenv("ipfs_accelerate_py_CLAUDE_CODE_CLI_CMD", "").strip(),
         os.getenv("ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD", "").strip(),
         os.getenv("ipfs_accelerate_py_MISTRAL_VIBE_MODEL", "").strip(),
+        os.getenv("XAI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_XAI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_XAI_MODEL", "").strip(),
+        os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "").strip(),
+        os.getenv("META_AI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_META_AI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_META_AI_MODEL", "").strip(),
+        os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "").strip(),
     )
 
 
@@ -2223,6 +2435,10 @@ def _builtin_provider_by_name(name: str) -> Optional[LLMProvider]:
         return _get_claude_py_provider()
     if key in {"mistral_vibe", "mistral-vibe", "vibe"}:
         return _get_mistral_vibe_provider()
+    if key in {"xai", "grok", "xai_grok"}:
+        return _get_xai_provider()
+    if key in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
+        return _get_meta_ai_provider()
     if key in {"hf", "huggingface", "local_hf"}:
         return _get_local_hf_provider(deps=get_default_router_deps())
     return None
@@ -2424,6 +2640,8 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
     # Try common optional CLI/API providers if available.
     for name in [
         "openrouter",
+        "xai",
+        "meta_ai",
         "codex_cli",
         "copilot_cli",
         "gemini_cli",
