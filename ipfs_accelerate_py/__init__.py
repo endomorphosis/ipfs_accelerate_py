@@ -378,8 +378,72 @@ else:
     EmbeddingsProvider = None
     embeddings_router_available = False
 
+# Add Multimodal router functionality
+if not SKIP_CORE:
+    try:
+        from .multimodal_router import (
+            generate_multimodal,
+            get_multimodal_provider,
+            register_multimodal_provider,
+            clear_multimodal_router_caches,
+            MultimodalProvider,
+        )
+
+        export["generate_multimodal"] = generate_multimodal
+        export["get_multimodal_provider"] = get_multimodal_provider
+        export["register_multimodal_provider"] = register_multimodal_provider
+        export["clear_multimodal_router_caches"] = clear_multimodal_router_caches
+        export["MultimodalProvider"] = MultimodalProvider
+        multimodal_router_available = True
+    except ImportError:
+        generate_multimodal = None
+        get_multimodal_provider = None
+        register_multimodal_provider = None
+        clear_multimodal_router_caches = None
+        MultimodalProvider = None
+        multimodal_router_available = False
+else:
+    generate_multimodal = None
+    get_multimodal_provider = None
+    register_multimodal_provider = None
+    clear_multimodal_router_caches = None
+    MultimodalProvider = None
+    multimodal_router_available = False
+
+# Add TTS router functionality
+if not SKIP_CORE:
+    try:
+        from .tts_router import (
+            text_to_speech,
+            get_tts_provider,
+            register_tts_provider,
+            clear_tts_router_caches,
+            TTSProvider,
+        )
+
+        export["text_to_speech"] = text_to_speech
+        export["get_tts_provider"] = get_tts_provider
+        export["register_tts_provider"] = register_tts_provider
+        export["clear_tts_router_caches"] = clear_tts_router_caches
+        export["TTSProvider"] = TTSProvider
+        tts_router_available = True
+    except ImportError:
+        text_to_speech = None
+        get_tts_provider = None
+        register_tts_provider = None
+        clear_tts_router_caches = None
+        TTSProvider = None
+        tts_router_available = False
+else:
+    text_to_speech = None
+    get_tts_provider = None
+    register_tts_provider = None
+    clear_tts_router_caches = None
+    TTSProvider = None
+    tts_router_available = False
+
 __all__ = [
-    'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
+    'ipfs_accelerate_py', 'get_instance', 'backends', 'config',
     'install_depends', 'worker', 'ipfs_multiformats_py',
     'accelerate_with_browser', 'WebNNWebGPUAccelerator', 'get_accelerator',
     'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
@@ -392,7 +456,11 @@ __all__ = [
     'clear_llm_router_caches', 'LLMProvider', 'RouterDeps',
     'get_default_router_deps', 'set_default_router_deps', 'llm_router_available',
     'embed_texts', 'embed_text', 'get_embeddings_provider', 'register_embeddings_provider',
-    'clear_embeddings_router_caches', 'EmbeddingsProvider', 'embeddings_router_available'
+    'clear_embeddings_router_caches', 'EmbeddingsProvider', 'embeddings_router_available',
+    'generate_multimodal', 'get_multimodal_provider', 'register_multimodal_provider',
+    'clear_multimodal_router_caches', 'MultimodalProvider', 'multimodal_router_available',
+    'text_to_speech', 'get_tts_provider', 'register_tts_provider',
+    'clear_tts_router_caches', 'TTSProvider', 'tts_router_available',
 ]
 
 # Package version
