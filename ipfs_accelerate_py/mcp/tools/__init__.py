@@ -1,10 +1,20 @@
 """
 IPFS Accelerate MCP Tools
 
-This package provides tools for the IPFS Accelerate MCP server.
+.. deprecated::
+    This package (``ipfs_accelerate_py.mcp.tools``) is a legacy compatibility
+    shim.  All tools have been migrated to the unified canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools``.  New code should use the
+    canonical categories directly (e.g. ``hardware_tools``, ``inference_tools``,
+    ``ipfs_network_tools``, ``workflow_management_tools``, ``shared_tools``,
+    ``enhanced_inference_tools``, etc.).
+
+    ``register_all_tools`` continues to work for backward compatibility but
+    emits a deprecation warning at runtime.
 """
 
 import logging
+import warnings
 from typing import Any
 
 # Set up logging
@@ -12,17 +22,23 @@ logger = logging.getLogger("ipfs_accelerate_mcp.tools")
 
 
 def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) -> None:
-    """
-    Register all tools with the MCP server
-    
-    This function registers all tools with the MCP server, including:
-    - Unified tools from kit modules (new architecture)
-    - Legacy tools (for backward compatibility)
-    
+    """Register all tools with the MCP server.
+
+    .. deprecated::
+        All tools have been migrated to ``ipfs_accelerate_py.mcp_server.tools``.
+        This function is preserved for backward compatibility only.
+
     Args:
-        mcp: MCP server instance
+        mcp: MCP server instance.
     """
-    logger.debug("Registering all tools with MCP server")
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.register_all_tools is deprecated. "
+        "Use the canonical mcp_server tool categories instead "
+        "(e.g. register_native_hardware_tools, register_native_inference_tools, etc.).",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    logger.debug("Registering all tools with MCP server (legacy shim)")
 
     # Provide StandaloneMCP-like register_tool API when running under FastMCP.
     try:

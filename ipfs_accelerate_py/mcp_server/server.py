@@ -90,6 +90,10 @@ from .tools.endpoint_tools import register_native_endpoint_tools
 from .tools.github_tools import register_native_github_tools
 from .tools.copilot_tools import register_native_copilot_tools
 from .tools.cli_endpoint_tools import register_native_cli_endpoint_tools
+from .tools.ipfs_network_tools import register_native_ipfs_network_tools
+from .tools.enhanced_inference_tools import register_native_enhanced_inference_tools
+from .tools.workflow_management_tools import register_native_workflow_management_tools
+from .tools.shared_tools import register_native_shared_tools
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
 from .mcplusplus.policy_engine import evaluate_with_ipfs_datasets_policy
@@ -588,6 +592,22 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "cli_endpoint_tools",
         lambda mgr: register_native_cli_endpoint_tools(mgr),
+    )
+    manager.register_category_loader(
+        "ipfs_network_tools",
+        lambda mgr: register_native_ipfs_network_tools(mgr),
+    )
+    manager.register_category_loader(
+        "enhanced_inference_tools",
+        lambda mgr: register_native_enhanced_inference_tools(mgr),
+    )
+    manager.register_category_loader(
+        "workflow_management_tools",
+        lambda mgr: register_native_workflow_management_tools(mgr),
+    )
+    manager.register_category_loader(
+        "shared_tools",
+        lambda mgr: register_native_shared_tools(mgr),
     )
     manager.register_category_loader(
         "idl",

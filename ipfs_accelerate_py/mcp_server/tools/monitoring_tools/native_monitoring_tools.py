@@ -858,6 +858,30 @@ async def get_log_stats(service: str = "ipfs-accelerate") -> Dict[str, Any]:
         return _normalize_payload({"status": "error", "error": str(exc)})
 
 
+async def get_mcp_manifest(include_schemas: bool = True) -> Dict[str, Any]:
+    """Return a JSON-friendly manifest of registered MCP tools and resources.
+
+    Migrated from ipfs_accelerate_py/mcp/tools/manifest.py.
+    """
+    try:
+        from ipfs_accelerate_py.tool_manifest import extract_mcp_manifest  # type: ignore
+
+        manifest = extract_mcp_manifest(None, include_schemas=bool(include_schemas))
+        return _normalize_payload(manifest if isinstance(manifest, dict) else {"manifest": manifest})
+    except Exception as exc:
+        logger.warning("get_mcp_manifest extract_mcp_manifest failed: %s", exc)
+
+    return _normalize_payload(
+        {
+            "tools": [],
+            "resources": [],
+            "prompts": [],
+            "include_schemas": include_schemas,
+            "message": "Manifest extraction unavailable in this environment",
+        }
+    )
+
+
 def register_native_monitoring_tools(manager: Any) -> None:
     """Register native monitoring tools in unified hierarchical manager."""
     manager.register_tool(
@@ -1160,4 +1184,24 @@ def register_native_monitoring_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "monitoring", "logs"],
+    )
+    # --- Manifest tool (migrated from legacy mcp/tools/manifest.py) ---
+    manager.register_tool(
+        category="monitoring_tools",
+        name="get_mcp_manifest",
+        func=get_mcp_manifest,
+        description="Return a JSON-friendly manifest of all registered MCP tools and resources.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "include_schemas": {
+                    "type": "boolean",
+                    "description": "Include tool input schemas in the manifest.",
+                    "default": True,
+                }
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "monitoring", "manifest"],
     )
