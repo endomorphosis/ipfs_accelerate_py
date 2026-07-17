@@ -476,29 +476,38 @@ class HFModelServer:
     async def _queue_worker(self):
         """Background worker that dequeues requests and dispatches them to the backend manager."""
         logger.info("Queue worker started")
-        while True:
-            queued_request = await self.queue_manager.dequeue(timeout=1.0)
-            if queued_request is None:
-                continue
+        try:
+            while True:
+                queued_request = await self.queue_manager.dequeue(timeout=1.0)
+                if queued_request is None:
+                    continue
 
-            request_id = queued_request.request_id
-            pending = self._pending_results.pop(request_id, None)
-            if pending is None:
-                # Request already expired or cancelled on the caller side
-                continue
+                request_id = queued_request.request_id
+                pending = self._pending_results.pop(request_id, None)
+                if pending is None:
+                    # Request already expired or was cancelled by the caller
+                    logger.debug(f"Queue worker: no pending result for request {request_id}; skipping")
+                    continue
 
-            data = queued_request.data
-            try:
-                result = await self.backend_manager.execute_task(
-                    task=data["task"],
-                    model=data["model"],
-                    inputs=data["inputs"],
-                    parameters=data.get("parameters", {}),
-                )
-                pending.set_result(result)
-            except Exception as exc:
-                logger.warning(f"Queue worker: inference failed for {request_id}: {exc}")
-                pending.set_exception(exc)
+                data = queued_request.data
+                try:
+                    result = await self.backend_manager.execute_task(
+                        task=data["task"],
+                        model=data["model"],
+                        inputs=data["inputs"],
+                        parameters=data.get("parameters", {}),
+                    )
+                    pending.set_result(result)
+                except Exception as exc:
+                    logger.warning(f"Queue worker: inference failed for {request_id}: {exc}")
+                    pending.set_exception(exc)
+        except BaseException:
+            # Graceful shutdown: notify all callers that are still waiting
+            for pending in self._pending_results.values():
+                if not pending.event.is_set():
+                    pending.set_exception(RuntimeError("Server is shutting down"))
+            self._pending_results.clear()
+            raise
     
     def _setup_middleware(self):
         """Setup middleware"""
@@ -550,15 +559,35 @@ class HFModelServer:
             backend = self.backend_manager.select_backend_for_task(task=task, model=model)
             if backend is not None and backend.capabilities.supports_batching:
                 async def _batch_inference_fn(batch_requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-                    results = []
+                    # Combine all inputs from every request in the batch into a single backend call
+                    all_inputs: List[Any] = []
+                    input_counts: List[int] = []
+                    batch_task = batch_requests[0]["task"]
+                    batch_model = batch_requests[0]["model"]
+                    batch_params = batch_requests[0].get("parameters", {})
                     for req in batch_requests:
-                        r = await self.backend_manager.execute_task(
-                            task=req["task"],
-                            model=req["model"],
-                            inputs=req["inputs"],
-                            parameters=req.get("parameters", {}),
-                        )
-                        results.append(r)
+                        req_inputs = req["inputs"]
+                        all_inputs.extend(req_inputs)
+                        input_counts.append(len(req_inputs))
+
+                    combined = await self.backend_manager.execute_task(
+                        task=batch_task,
+                        model=batch_model,
+                        inputs=all_inputs,
+                        parameters=batch_params,
+                    )
+
+                    # Split the combined result back into per-request results
+                    results: List[Dict[str, Any]] = []
+                    start = 0
+                    for count in input_counts:
+                        per = dict(combined)
+                        if isinstance(combined.get("embeddings"), list):
+                            per["embeddings"] = combined["embeddings"][start:start + count]
+                        if isinstance(combined.get("outputs"), list):
+                            per["outputs"] = combined["outputs"][start:start + count]
+                        results.append(per)
+                        start += count
                     return results
 
                 return await self.batching_middleware.add_request(
