@@ -70,6 +70,7 @@ from .tools.security_tools import register_native_security_tools
 from .tools.session_tools import register_native_session_tools
 from .tools.sparse_embedding_tools import register_native_sparse_embedding_tools
 from .tools.software_engineering_tools import register_native_software_engineering_tools
+from .tools.docker_tools import register_native_docker_tools
 from .tools.storage_tools import register_native_storage_tools
 from .tools.vector_store_tools import register_native_vector_store_tools
 from .tools.vector_tools import register_native_vector_tools
@@ -504,6 +505,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "software_engineering_tools",
         lambda mgr: register_native_software_engineering_tools(mgr),
+    )
+    manager.register_category_loader(
+        "docker_tools",
+        lambda mgr: register_native_docker_tools(mgr),
     )
     manager.register_category_loader(
         "session_tools",
