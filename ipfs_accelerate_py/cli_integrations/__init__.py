@@ -22,6 +22,7 @@ Available CLI Wrappers:
 - HuggingFaceCLIIntegration: HuggingFace CLI with caching
 - VastAICLIIntegration: Vast AI CLI with caching
 - GroqCLIIntegration: Groq with dual-mode support
+- XAIGrokCLIIntegration: xAI Grok Build with Plan Mode, Subagents, and live Web/X Search
 
 Usage Example:
     from ipfs_accelerate_py.cli_integrations import GitHubCLIIntegration
@@ -63,6 +64,7 @@ from .gemini_cli_integration import GeminiCLIIntegration, get_gemini_cli_integra
 from .huggingface_cli_integration import HuggingFaceCLIIntegration, get_huggingface_cli_integration
 from .vastai_cli_integration import VastAICLIIntegration, get_vastai_cli_integration
 from .groq_cli_integration import GroqCLIIntegration, get_groq_cli_integration
+from .xai_grok_cli_integration import XAIGrokCLIIntegration, get_xai_grok_cli_integration
 
 __all__ = [
     # Base classes
@@ -82,6 +84,7 @@ __all__ = [
     'HuggingFaceCLIIntegration',
     'VastAICLIIntegration',
     'GroqCLIIntegration',
+    'XAIGrokCLIIntegration',
     
     # Global instance getters
     'get_github_cli_integration',
@@ -93,6 +96,7 @@ __all__ = [
     'get_huggingface_cli_integration',
     'get_vastai_cli_integration',
     'get_groq_cli_integration',
+    'get_xai_grok_cli_integration',
 ]
 
 
@@ -113,4 +117,5 @@ def get_all_cli_integrations():
         'huggingface': get_huggingface_cli_integration(),
         'vastai': get_vastai_cli_integration(),
         'groq': get_groq_cli_integration(),
+        'xai_grok': get_xai_grok_cli_integration(),
     }
