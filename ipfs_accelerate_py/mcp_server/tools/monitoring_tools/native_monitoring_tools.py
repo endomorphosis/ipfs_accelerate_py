@@ -692,6 +692,172 @@ async def manage_alerts(
     return payload
 
 
+# ---------------------------------------------------------------------------
+# Status tools (migrated from legacy mcp/tools/status.py)
+# ---------------------------------------------------------------------------
+
+_SESSION_STORE: Dict[str, Any] = {}
+
+
+def _load_status_api() -> Dict[str, Any]:
+    """Resolve legacy status tool implementations with fallback."""
+    try:
+        import ipfs_accelerate_py.mcp.tools.status as _status_mod  # type: ignore
+
+        return {"_module": _status_mod}
+    except Exception:
+        return {}
+
+
+_STATUS_API = _load_status_api()
+
+
+async def get_server_status() -> Dict[str, Any]:
+    """Return the current status of the IPFS Accelerate server."""
+    try:
+        mod = _STATUS_API.get("_module")
+        if mod is not None and hasattr(mod, "_ipfs_instance") and mod._ipfs_instance is not None:
+            try:
+                inst = mod._ipfs_instance
+                status = inst.get_status() if hasattr(inst, "get_status") else {}
+                return _normalize_payload(status if isinstance(status, dict) else {"status_data": status})
+            except Exception:
+                pass
+        import time as _time
+        return _normalize_payload(
+            {
+                "server": "ipfs-accelerate",
+                "timestamp": _time.time(),
+                "operational": True,
+            }
+        )
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
+async def start_session(session_name: str = "") -> Dict[str, Any]:
+    """Start a new named monitoring/tracking session."""
+    try:
+        import uuid, time as _time
+
+        session_id = str(uuid.uuid4())
+        session = {
+            "session_id": session_id,
+            "name": session_name,
+            "started_at": _time.time(),
+            "operations": [],
+            "active": True,
+        }
+        _SESSION_STORE[session_id] = session
+        return _normalize_payload({"session_id": session_id, "session": session})
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
+async def end_session(session_id: str) -> Dict[str, Any]:
+    """End an active monitoring/tracking session."""
+    try:
+        import time as _time
+
+        if session_id not in _SESSION_STORE:
+            return _normalize_payload({"status": "error", "error": f"Session {session_id!r} not found"})
+        session = dict(_SESSION_STORE[session_id])
+        session["ended_at"] = _time.time()
+        session["active"] = False
+        session["duration_s"] = session["ended_at"] - session.get("started_at", session["ended_at"])
+        _SESSION_STORE[session_id] = session
+        return _normalize_payload({"session_id": session_id, "session": session})
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
+async def log_operation(
+    session_id: str,
+    operation: str,
+    details: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Log an operation event within a session."""
+    try:
+        import time as _time
+
+        if session_id not in _SESSION_STORE:
+            return _normalize_payload({"status": "error", "error": f"Session {session_id!r} not found"})
+        entry = {
+            "operation": operation,
+            "timestamp": _time.time(),
+            "details": details or {},
+        }
+        _SESSION_STORE[session_id].setdefault("operations", []).append(entry)
+        return _normalize_payload({"session_id": session_id, "logged": True, "entry": entry})
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
+async def get_session(session_id: str) -> Dict[str, Any]:
+    """Get details for a specific monitoring session."""
+    if session_id not in _SESSION_STORE:
+        return _normalize_payload({"status": "error", "error": f"Session {session_id!r} not found"})
+    return _normalize_payload({"session_id": session_id, "session": _SESSION_STORE[session_id]})
+
+
+# ---------------------------------------------------------------------------
+# System log tools (migrated from legacy mcp/tools/system_logs.py)
+# ---------------------------------------------------------------------------
+
+
+def _load_system_logs_api() -> Dict[str, Any]:
+    """Resolve legacy system_logs tool implementations with fallback."""
+    try:
+        import ipfs_accelerate_py.mcp.tools.system_logs as _logs_mod  # type: ignore
+
+        return {"_module": _logs_mod}
+    except Exception:
+        return {}
+
+
+_LOGS_API = _load_system_logs_api()
+
+
+async def get_system_logs(
+    lines: int = 100,
+    level: str = "INFO",
+    service: str = "ipfs-accelerate",
+) -> Dict[str, Any]:
+    """Retrieve system log entries with optional filtering."""
+    try:
+        mod = _LOGS_API.get("_module")
+        if mod is not None and hasattr(mod, "get_system_logs"):
+            result = mod.get_system_logs(lines=lines, level=level, service=service)
+            return _normalize_payload(result if isinstance(result, dict) else {"logs": result, "count": len(result) if isinstance(result, list) else 0})
+        return _normalize_payload({"logs": [], "count": 0, "backend_available": False})
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
+async def get_recent_errors(hours: int = 24, service: str = "ipfs-accelerate") -> Dict[str, Any]:
+    """Retrieve recent error log entries."""
+    try:
+        mod = _LOGS_API.get("_module")
+        if mod is not None and hasattr(mod, "get_recent_errors"):
+            result = mod.get_recent_errors(hours=hours, service=service)
+            return _normalize_payload(result if isinstance(result, dict) else {"errors": result, "count": len(result) if isinstance(result, list) else 0})
+        return _normalize_payload({"errors": [], "count": 0, "hours": hours, "backend_available": False})
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
+async def get_log_stats(service: str = "ipfs-accelerate") -> Dict[str, Any]:
+    """Get aggregate statistics about system log entries."""
+    try:
+        mod = _LOGS_API.get("_module")
+        if mod is not None and hasattr(mod, "get_log_stats"):
+            result = mod.get_log_stats(service=service)
+            return _normalize_payload(result if isinstance(result, dict) else {"stats": result})
+        return _normalize_payload({"stats": {}, "service": service, "backend_available": False})
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
 def register_native_monitoring_tools(manager: Any) -> None:
     """Register native monitoring tools in unified hierarchical manager."""
     manager.register_tool(
@@ -843,4 +1009,155 @@ def register_native_monitoring_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "monitoring", "enhanced"],
+    )
+
+    # --- Status tools (migrated from legacy mcp/tools/status.py) ---
+    manager.register_tool(
+        category="monitoring_tools",
+        name="get_server_status",
+        func=get_server_status,
+        description="Get the current status of the IPFS Accelerate server.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "status"],
+    )
+    manager.register_tool(
+        category="monitoring_tools",
+        name="start_session",
+        func=start_session,
+        description="Start a new named monitoring/tracking session.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "session_name": {
+                    "type": "string",
+                    "description": "Human-readable session name.",
+                    "default": "",
+                }
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "status"],
+    )
+    manager.register_tool(
+        category="monitoring_tools",
+        name="end_session",
+        func=end_session,
+        description="End an active monitoring/tracking session.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Session identifier to end."}
+            },
+            "required": ["session_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "status"],
+    )
+    manager.register_tool(
+        category="monitoring_tools",
+        name="log_operation",
+        func=log_operation,
+        description="Log an operation event within a session.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Session identifier."},
+                "operation": {"type": "string", "description": "Operation name or description."},
+                "details": {"type": "object", "description": "Optional operation details."},
+            },
+            "required": ["session_id", "operation"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "status"],
+    )
+    manager.register_tool(
+        category="monitoring_tools",
+        name="get_session",
+        func=get_session,
+        description="Get details for a specific monitoring session.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Session identifier."}
+            },
+            "required": ["session_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "status"],
+    )
+
+    # --- System log tools (migrated from legacy mcp/tools/system_logs.py) ---
+    manager.register_tool(
+        category="monitoring_tools",
+        name="get_system_logs",
+        func=get_system_logs,
+        description="Retrieve system log entries with optional filtering.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "lines": {
+                    "type": "integer",
+                    "description": "Number of log lines to retrieve.",
+                    "default": 100,
+                },
+                "level": {
+                    "type": "string",
+                    "description": "Minimum log level filter (DEBUG, INFO, WARNING, ERROR).",
+                    "default": "INFO",
+                },
+                "service": {
+                    "type": "string",
+                    "description": "Service name filter.",
+                    "default": "ipfs-accelerate",
+                },
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "logs"],
+    )
+    manager.register_tool(
+        category="monitoring_tools",
+        name="get_recent_errors",
+        func=get_recent_errors,
+        description="Retrieve recent error log entries.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "hours": {
+                    "type": "integer",
+                    "description": "Number of hours to look back.",
+                    "default": 24,
+                },
+                "service": {
+                    "type": "string",
+                    "description": "Service name filter.",
+                    "default": "ipfs-accelerate",
+                },
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "logs"],
+    )
+    manager.register_tool(
+        category="monitoring_tools",
+        name="get_log_stats",
+        func=get_log_stats,
+        description="Get aggregate statistics about system log entries.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "service": {
+                    "type": "string",
+                    "description": "Service name filter.",
+                    "default": "ipfs-accelerate",
+                }
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "logs"],
     )

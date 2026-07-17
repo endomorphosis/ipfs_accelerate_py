@@ -80,6 +80,16 @@ from .tools.workflow_tools import register_native_workflow_tools_category
 from .tools.vllm_tools import register_native_vllm_tools
 from .tools.rate_limiting import register_native_rate_limiting_tools
 from .tools.rate_limiting_tools import register_native_rate_limiting_tools_category
+# Migrated legacy mcp/tools categories
+from .tools.hardware_tools import register_native_hardware_tools
+from .tools.inference_tools import register_native_inference_tools
+from .tools.model_tools import register_native_model_tools
+from .tools.acceleration_tools import register_native_acceleration_tools
+from .tools.backend_management_tools import register_native_backend_management_tools
+from .tools.endpoint_tools import register_native_endpoint_tools
+from .tools.github_tools import register_native_github_tools
+from .tools.copilot_tools import register_native_copilot_tools
+from .tools.cli_endpoint_tools import register_native_cli_endpoint_tools
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
 from .mcplusplus.policy_engine import evaluate_with_ipfs_datasets_policy
@@ -541,6 +551,43 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "vllm_tools",
         lambda mgr: register_native_vllm_tools(mgr),
+    )
+    # Migrated legacy mcp/tools categories
+    manager.register_category_loader(
+        "hardware_tools",
+        lambda mgr: register_native_hardware_tools(mgr),
+    )
+    manager.register_category_loader(
+        "inference_tools",
+        lambda mgr: register_native_inference_tools(mgr),
+    )
+    manager.register_category_loader(
+        "model_tools",
+        lambda mgr: register_native_model_tools(mgr),
+    )
+    manager.register_category_loader(
+        "acceleration_tools",
+        lambda mgr: register_native_acceleration_tools(mgr),
+    )
+    manager.register_category_loader(
+        "backend_management_tools",
+        lambda mgr: register_native_backend_management_tools(mgr),
+    )
+    manager.register_category_loader(
+        "endpoint_tools",
+        lambda mgr: register_native_endpoint_tools(mgr),
+    )
+    manager.register_category_loader(
+        "github_tools",
+        lambda mgr: register_native_github_tools(mgr),
+    )
+    manager.register_category_loader(
+        "copilot_tools",
+        lambda mgr: register_native_copilot_tools(mgr),
+    )
+    manager.register_category_loader(
+        "cli_endpoint_tools",
+        lambda mgr: register_native_cli_endpoint_tools(mgr),
     )
     manager.register_category_loader(
         "idl",

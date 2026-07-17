@@ -6,8 +6,13 @@ from .native_ipfs_tools import (
     ipfs_files_get_file,
     ipfs_files_list_files,
     ipfs_files_pin_file,
+    ipfs_files_read,
     ipfs_files_unpin_file,
     ipfs_files_validate_cid,
+    ipfs_files_write,
+    ipfs_mkdir,
+    ipfs_pin_add,
+    ipfs_pin_rm,
     register_native_ipfs_tools,
 )
 
@@ -19,5 +24,10 @@ __all__ = [
     "ipfs_files_get_file",
     "ipfs_files_cat",
     "ipfs_files_validate_cid",
+    "ipfs_mkdir",
+    "ipfs_pin_add",
+    "ipfs_pin_rm",
+    "ipfs_files_write",
+    "ipfs_files_read",
     "register_native_ipfs_tools",
 ]
