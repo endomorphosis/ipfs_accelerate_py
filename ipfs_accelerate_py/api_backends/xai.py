@@ -11,7 +11,6 @@ Environment variables:
 
 import json
 import logging
-import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -55,6 +54,14 @@ except ImportError:
 
 logger = logging.getLogger("xai_api")
 
+try:
+    from .base import BaseAPIBackend
+except ImportError:
+    try:
+        from base import BaseAPIBackend
+    except ImportError:
+        BaseAPIBackend = object
+
 _DEFAULT_BASE_URL = "https://api.x.ai/v1"
 _DEFAULT_MODEL = "grok-3"
 
@@ -93,7 +100,7 @@ CHAT_MODELS = {
 ALL_MODELS = dict(CHAT_MODELS)
 
 
-class xai:
+class xai(BaseAPIBackend):
     """xAI Grok API client.
 
     Supports chat completions via the OpenAI-compatible xAI endpoint.
@@ -114,12 +121,7 @@ class xai:
         self.max_retries = int(self.metadata.get("max_retries", 3))
         self.timeout = float(self.metadata.get("timeout", 60.0))
 
-        self.circuit_state = "CLOSED"
-        self.failure_threshold = 5
-        self.reset_timeout = 30
-        self.failure_count = 0
-        self.last_failure_time = 0
-        self.circuit_lock = threading.RLock()
+        self._init_circuit_breaker()
 
         if HAVE_STORAGE_WRAPPER:
             try:
@@ -149,33 +151,6 @@ class xai:
         ).strip() or None
 
     # ------------------------------------------------------------------
-    # Circuit breaker
-    # ------------------------------------------------------------------
-
-    def _check_circuit(self) -> bool:
-        with self.circuit_lock:
-            now = time.time()
-            if self.circuit_state == "OPEN":
-                if now - self.last_failure_time > self.reset_timeout:
-                    self.circuit_state = "HALF_OPEN"
-                    return True
-                return False
-            return True
-
-    def _record_result(self, success: bool) -> None:
-        with self.circuit_lock:
-            if success:
-                self.circuit_state = "CLOSED"
-                self.failure_count = 0
-            else:
-                self.failure_count += 1
-                self.last_failure_time = time.time()
-                if self.circuit_state == "CLOSED" and self.failure_count >= self.failure_threshold:
-                    self.circuit_state = "OPEN"
-                elif self.circuit_state == "HALF_OPEN":
-                    self.circuit_state = "OPEN"
-
-    # ------------------------------------------------------------------
     # Low-level HTTP request
     # ------------------------------------------------------------------
 
@@ -190,7 +165,7 @@ class xai:
             raise RuntimeError(
                 "xAI API key not configured. Set XAI_API_KEY or ipfs_accelerate_py_XAI_API_KEY."
             )
-        if not self._check_circuit():
+        if not self.check_circuit_breaker():
             raise RuntimeError("xAI circuit breaker is OPEN; too many recent failures")
 
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
@@ -226,14 +201,14 @@ class xai:
                     with urllib.request.urlopen(req, timeout=_timeout) as r:
                         data = json.loads(r.read().decode("utf-8", errors="replace"))
 
-                self._record_result(True)
+                self.track_request_result(True)
                 return data
             except Exception as exc:
                 last_exc = exc
                 retry_after = 2 ** attempt
                 time.sleep(min(retry_after, 16))
 
-        self._record_result(False)
+        self.track_request_result(False)
         raise RuntimeError(f"xAI API request failed after {self.max_retries} retries: {last_exc}")
 
     # ------------------------------------------------------------------

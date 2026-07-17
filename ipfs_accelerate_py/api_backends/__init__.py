@@ -5,6 +5,12 @@ import os
 import logging
 logger = logging.getLogger(__name__)
 
+try:
+    from .base import BaseAPIBackend
+except ImportError as e:
+    logger.debug(f"Failed to import BaseAPIBackend: {e}")
+    BaseAPIBackend = None
+
 # Make sure model_list directory exists
 model_list_dir = os.path.join(os.path.dirname(__file__), "model_list")
 if not os.path.exists(model_list_dir):
@@ -94,6 +100,7 @@ except ImportError as e:
 
 # List of all backend classes
 __all__ = [
+    "BaseAPIBackend",
     "claude", "openai_api", "groq", "gemini", "ollama", "hf_tgi", "hf_tei",
     "llvm", "opea", "ovms", "s3_kit", "xai", "meta_ai",
 ]

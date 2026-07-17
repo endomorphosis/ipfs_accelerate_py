@@ -19,7 +19,6 @@ import uuid
 import hashlib
 import logging
 from concurrent.futures import Future
-from queue import Queue
 from pathlib import Path
 
 # Try to import storage wrapper
@@ -58,7 +57,16 @@ except ImportError:
 # Configure logging
 logger = logging.getLogger("ollama_api")
 
-class ollama:
+try:
+    from .base import BaseAPIBackend
+except ImportError:
+    try:
+        from base import BaseAPIBackend
+    except ImportError:
+        BaseAPIBackend = object
+
+
+class ollama(BaseAPIBackend):
     def __init__(self, resources=None, metadata=None):
         """
         Initialize the Ollama API client with resources and metadata.
@@ -83,18 +91,8 @@ class ollama:
             "total_completion_tokens": 0
         }
         
-        # Queue configuration - Priority levels: HIGH, NORMAL, LOW
-        self.PRIORITY_HIGH = 0
-        self.PRIORITY_NORMAL = 1
-        self.PRIORITY_LOW = 2
-        
         # Initialize queue and backoff systems
-        self.max_concurrent_requests = 5
-        self.queue_size = 100
-        self.request_queue = []  # List-based queue for simplicity
-        self.queue_lock = threading.RLock()  # Thread-safe access
-        self.queue_processing = False
-        self.active_requests = 0
+        self._init_queue(queue_size=100, max_concurrent_requests=5)
         
         # Batching settings
         self.batching_enabled = True
@@ -127,10 +125,6 @@ class ollama:
         # Enable metrics collection
         self.collect_metrics = True
         
-        # Start queue processor
-        self.queue_processor = threading.Thread(target=self._process_queue)
-        self.queue_processor.daemon = True
-        self.queue_processor.start()
         
         # Initialize distributed storage
         self._storage = None
@@ -148,13 +142,8 @@ class ollama:
         self.backoff_factor = 2
         self.max_retry_delay = 16
         
-        # Implement circuit breaker pattern
-        self.circuit_state = "CLOSED"  # CLOSED, OPEN, HALF-OPEN
-        self.failure_count = 0
-        self.failure_threshold = 5
-        self.circuit_timeout = 30  # seconds
-        self.last_failure_time = 0
-        self.circuit_lock = threading.RLock()
+        self._init_circuit_breaker()
+        self.circuit_timeout = self.reset_timeout
         
         # Default model
         self.default_model = os.environ.get("OLLAMA_MODEL", "llama3")
@@ -187,142 +176,75 @@ class ollama:
         return "http://localhost:11434/api"
     
     def _process_queue(self):
-        """Process requests in the queue with standard pattern"""
-        with self.queue_lock:
-            if self.queue_processing:
-                return  # Another thread is already processing
-            self.queue_processing = True
-        
-        try:
-            while True:
-                # Get the next request from the queue
-                request_info = None
-                
-                with self.queue_lock:
-                    if not self.request_queue:
-                        self.queue_processing = False
-                        break
-                        
-                    # Check if we're at capacity
-                    if self.active_requests >= self.max_concurrent_requests:
-                        time.sleep(0.1)  # Brief pause
-                        continue
-                        
-                    # Get next request and increment counter
-                    request_info = self.request_queue.pop(0)
-                    self.active_requests += 1
-                
-                # Process the request outside the lock
-                if request_info:
-                    try:
-                        # Extract request details
-                        future = request_info.get("future")
-                        func = request_info.get("func")
-                        args = request_info.get("args", [])
-                        kwargs = request_info.get("kwargs", {})
-                        
-                        # Special handling for different request formats
-                        if func and callable(func):
-                            # Function-based request
-                            try:
-                                result = func(*args, **kwargs)
-                                if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error executing queued function: {e}")
-                        else:
-                            # Direct API request format
-                            endpoint_url = request_info.get("endpoint_url")
-                            data = request_info.get("data")
-                            api_key = request_info.get("api_key")
-                            request_id = request_info.get("request_id")
-                            
-                            if hasattr(self, "make_request"):
-                                method = self.make_request
-                            elif hasattr(self, "make_post_request"):
-                                method = self.make_post_request
-                            else:
-                                raise AttributeError("No request method found")
-                            
-                            # Temporarily disable queueing to prevent recursion
-                            original_queue_enabled = getattr(self, "queue_enabled", True)
-                            setattr(self, "queue_enabled", False)
-                            
-                            try:
-                                result = method(
-                                    endpoint_url=endpoint_url,
-                                    data=data,
-                                    api_key=api_key,
-                                    request_id=request_id
-                                )
-                                
-                                if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error processing queued request: {e}")
-                            finally:
-                                # Restore original queue_enabled
-                                setattr(self, "queue_enabled", original_queue_enabled)
-                    
-                    finally:
-                        # Decrement counter
-                        with self.queue_lock:
-                            self.active_requests = max(0, self.active_requests - 1)
-                
-                # Brief pause to prevent CPU hogging
-                time.sleep(0.01)
-                
-        except Exception as e:
-            logger.error(f"Error in queue processing thread: {e}")
-            
-        finally:
-            # Reset queue processing flag
-            with self.queue_lock:
-                self.queue_processing = False
+        """Delegate to the shared BaseAPIBackend implementation."""
+        return super()._process_queue()
 
     def make_post_request_ollama(self, endpoint_url, data, stream=False, request_id=None, priority=None):
-        """
-        Make a request to Ollama API with queue and backoff.
-        
-        Args:
-            endpoint_url: The Ollama API endpoint URL
-            data: Request data to send
-            stream: Whether to stream the response
-            request_id: Optional unique ID for request tracking
-            priority: Request priority (PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW)
-            
-        Returns:
-            The API response
-        """
-        # Generate unique request ID if not provided
+        """Make a request to Ollama API with queue and backoff."""
+        if not self.check_circuit_breaker():
+            raise RuntimeError("Circuit breaker is OPEN. Service unavailable.")
+
         if request_id is None:
             request_id = str(uuid.uuid4())
-        
-        # Set default priority if not provided
         if priority is None:
             priority = self.PRIORITY_NORMAL
-        
-        # Queue system with proper concurrency management
-        future = Future()
-        
-        # Add to queue
-        self.request_queue.append((future, endpoint_url, data, stream, request_id, priority))
-        
-        # If queue processor isn't running, start it
-        if not self.queue_processing:
-            threading.Thread(target=self._process_queue).start()
-        
-        # Get result (blocks until request is processed)
-        return future.result()
-        
+
+        def _execute_request():
+            headers = {"Content-Type": "application/json", "X-Request-ID": request_id}
+            response = requests.post(endpoint_url, json=data, headers=headers, timeout=60, stream=stream)
+            if response.status_code != 200:
+                message = f"Ollama request failed with status {response.status_code}"
+                try:
+                    payload = response.json()
+                    if isinstance(payload, dict) and payload.get("error"):
+                        message = f"{message}: {payload['error']}"
+                except Exception:
+                    if response.text:
+                        message = f"{message}: {response.text[:200]}"
+                self.track_request_result(False, "HTTPError")
+                raise ValueError(message)
+            self.track_request_result(True)
+            if stream:
+                def _iter_stream():
+                    try:
+                        for line in response.iter_lines(decode_unicode=True):
+                            if not line:
+                                continue
+                            try:
+                                yield json.loads(line)
+                            except json.JSONDecodeError:
+                                yield {"message": {"content": line}, "done": False}
+                    finally:
+                        response.close()
+                return _iter_stream()
+            return response.json()
+
+        if stream:
+            return _execute_request()
+
+        with self.queue_lock:
+            at_capacity = self.active_requests >= self.max_concurrent_requests
+            if not at_capacity:
+                self.active_requests += 1
+
+        if at_capacity and getattr(self, "queue_enabled", True):
+            result_future = self.queue_with_priority({"func": _execute_request, "request_id": request_id}, priority)
+            max_wait = 300
+            wait_start = time.time()
+            while not result_future["completed"] and (time.time() - wait_start) < max_wait:
+                time.sleep(0.05)
+            if not result_future["completed"]:
+                raise TimeoutError("Request timed out waiting in queue")
+            if result_future["error"]:
+                raise result_future["error"]
+            return result_future["result"]
+
+        try:
+            return _execute_request()
+        finally:
+            with self.queue_lock:
+                self.active_requests = max(0, self.active_requests - 1)
+
     def chat(self, model_name=None, model=None, messages=None, max_tokens=None, temperature=None, request_id=None, options=None, **kwargs):
         """
         Send a chat request to Ollama API.

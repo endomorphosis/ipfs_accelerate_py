@@ -7,8 +7,18 @@ import uuid
 import requests
 import numpy as np
 from concurrent.futures import Future
-from queue import Queue
 from dotenv import load_dotenv
+import logging
+
+logger = logging.getLogger(__name__)
+
+try:
+    from .base import BaseAPIBackend
+except ImportError:
+    try:
+        from base import BaseAPIBackend
+    except ImportError:
+        BaseAPIBackend = object
 
 # Try to import storage wrapper
 try:
@@ -43,7 +53,7 @@ except ImportError:
         ProvenanceLogger = None
         DatasetsManager = None
 
-class ovms:
+class ovms(BaseAPIBackend):
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
@@ -55,11 +65,7 @@ class ovms:
         self.default_precision = self.metadata.get("ovms_precision", os.environ.get("OVMS_PRECISION", "FP32"))
         
         # Initialize queue and backoff systems
-        self.max_concurrent_requests = 5
-        self.queue_size = 100
-        self.request_queue = Queue(maxsize=self.queue_size)
-        self.active_requests = 0
-        self.queue_lock = threading.RLock()
+        self._init_queue(queue_size=100, max_concurrent_requests=5)
         # Batching settings
         self.batching_enabled = True
         self.max_batch_size = 10
@@ -73,27 +79,7 @@ class ovms:
         self.completion_models = []  # Models supporting batched completions
         self.supported_batch_models = []  # All models supporting batching
 
-        # Circuit breaker settings
-        self.circuit_state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
-        self.failure_threshold = 5  # Number of failures before opening circuit
-        self.reset_timeout = 30  # Seconds to wait before trying half-open
-        self.failure_count = 0
-        self.last_failure_time = 0
-        self.circuit_lock = threading.RLock()
-
-        # Priority levels
-        self.PRIORITY_HIGH = 0
-        self.PRIORITY_NORMAL = 1
-        self.PRIORITY_LOW = 2
-        
-        # Change request queue to priority-based
-        self.request_queue = []  # Will store (priority, request_info) tuples
-        self.queue_processing = False
-        
-        # Start queue processor
-        self.queue_processor = threading.Thread(target=self._process_queue)
-        self.queue_processor.daemon = True
-        self.queue_processor.start()
+        self._init_circuit_breaker()
         
         # Initialize backoff configuration
         self.max_retries = 5
@@ -125,7 +111,6 @@ class ovms:
             try:
                 self._storage = get_storage_wrapper()
                 if self._storage:
-                    import logging
                     logging.getLogger(__name__).info("OVMS: Distributed storage initialized")
             except Exception as e:
                 import logging
@@ -135,204 +120,71 @@ class ovms:
         
     
     def _process_queue(self):
-        """Process requests in the queue with standard pattern"""
-        with self.queue_lock:
-            if self.queue_processing:
-                return  # Another thread is already processing
-            self.queue_processing = True
-        
-        try:
-            while True:
-                # Get the next request from the queue
-                request_info = None
-                
-                with self.queue_lock:
-                    if not self.request_queue:
-                        self.queue_processing = False
-                        break
-                        
-                    # Check if we're at capacity
-                    if self.active_requests >= self.max_concurrent_requests:
-                        time.sleep(0.1)  # Brief pause
-                        continue
-                        
-                    # Get next request and increment counter
-                    request_info = self.request_queue.pop(0)
-                    self.active_requests += 1
-                
-                # Process the request outside the lock
-                if request_info:
-                    try:
-                        # Extract request details
-                        future = request_info.get("future")
-                        func = request_info.get("func")
-                        args = request_info.get("args", [])
-                        kwargs = request_info.get("kwargs", {})
-                        
-                        # Special handling for different request formats
-                        if func and callable(func):
-                            # Function-based request
-                            try:
-                                result = func(*args, **kwargs)
-                                if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error executing queued function: {e}")
-                        else:
-                            # Direct API request format
-                            endpoint_url = request_info.get("endpoint_url")
-                            data = request_info.get("data")
-                            api_key = request_info.get("api_key")
-                            request_id = request_info.get("request_id")
-                            
-                            if hasattr(self, "make_request"):
-                                method = self.make_request
-                            elif hasattr(self, "make_post_request"):
-                                method = self.make_post_request
-                            else:
-                                raise AttributeError("No request method found")
-                            
-                            # Temporarily disable queueing to prevent recursion
-                            original_queue_enabled = getattr(self, "queue_enabled", True)
-                            setattr(self, "queue_enabled", False)
-                            
-                            try:
-                                result = method(
-                                    endpoint_url=endpoint_url,
-                                    data=data,
-                                    api_key=api_key,
-                                    request_id=request_id
-                                )
-                                
-                                if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error processing queued request: {e}")
-                            finally:
-                                # Restore original queue_enabled
-                                setattr(self, "queue_enabled", original_queue_enabled)
-                    
-                    finally:
-                        # Decrement counter
-                        with self.queue_lock:
-                            self.active_requests = max(0, self.active_requests - 1)
-                
-                # Brief pause to prevent CPU hogging
-                time.sleep(0.01)
-                
-        except Exception as e:
-            logger.error(f"Error in queue processing thread: {e}")
-            
-        finally:
-            # Reset queue processing flag
-            with self.queue_lock:
-                self.queue_processing = False
+        """Delegate to the shared BaseAPIBackend implementation."""
+        return super()._process_queue()
 
     def make_post_request_ovms(self, endpoint_url, data, request_id=None, endpoint_id=None, api_key=None):
-        """Make a request to OVMS API with queue and backoff and endpoint-specific settings"""
-        # Use endpoint-specific settings if available
-        if endpoint_id and endpoint_id in self.endpoints:
-            # Get endpoint settings
-            endpoint = self.endpoints[endpoint_id]
-            
-            # Generate unique request ID if not provided
-            if request_id is None:
-                request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
-            
-            # Queue system with proper concurrency management
-            future = Future()
-            
-            # Create request info
-            request_info = {
-                "endpoint_url": endpoint_url,
-                "data": data,
-                "api_key": api_key or endpoint.get("api_key"),
-                "request_id": request_id,
-                "endpoint_id": endpoint_id,
-                "future": future
-            }
-            
-            # Check if endpoint queue is enabled and at capacity
-            if endpoint.get("queue_enabled", True) and endpoint.get("current_requests", 0) >= endpoint.get("max_concurrent_requests", 5):
-                with endpoint["queue_lock"]:
-                    # Check if queue is full
-                    if len(endpoint["request_queue"]) >= endpoint.get("queue_size", 100):
-                        raise ValueError(f"Request queue is full ({endpoint['queue_size']} items). Try again later.")
-                    
-                    # Add to endpoint queue
-                    endpoint["request_queue"].append(request_info)
-                    print(f"Request queued. Queue size: {len(endpoint['request_queue'])}. Request ID: {request_id}")
-                    
-                    # Start queue processing if not already running
-                    if not endpoint.get("queue_processing", False):
-                        threading.Thread(target=self._process_queue, args=(endpoint_id,)).start()
-                
-                # Wait for result with timeout
-                wait_start = time.time()
-                max_wait = 300  # 5 minutes
-                
-                while not request_info["future"].get("completed", False) and (time.time() - wait_start) < max_wait:
-                    time.sleep(0.1)
-                
-                # Check if completed or timed out
-                if not request_info["future"].get("completed", False):
-                    raise TimeoutError(f"Request timed out after {max_wait} seconds in queue")
-                
-                # Propagate error if any
-                if request_info["future"].get("error"):
-                    raise request_info["future"]["error"]
-                
-                return request_info["future"]["result"]
-            else:
-                # Process request directly without queueing
-                with endpoint["queue_lock"]:
-                    endpoint["current_requests"] = endpoint.get("current_requests", 0) + 1
-                
-                # Add to regular queue
-                self.request_queue.append((future, endpoint_url, data, request_id))
-                
-                # Get result and update endpoint stats
+        """Make a request to OVMS API with queue and backoff."""
+        if not self.check_circuit_breaker():
+            raise RuntimeError("Circuit breaker is OPEN. Service unavailable.")
+
+        endpoint = self.endpoints.get(endpoint_id) if endpoint_id else None
+        api_key = api_key or (endpoint.get("api_key") if endpoint else None) or self.api_key
+
+        if request_id is None:
+            request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
+
+        def _execute_request():
+            headers = {"Content-Type": "application/json", "X-Request-ID": request_id}
+            if api_key:
+                headers["Authorization"] = f"******"
+
+            retries = 0
+            while True:
                 try:
-                    result = future.result()
-                    
-                    # Update endpoint statistics
-                    with endpoint["queue_lock"]:
-                        endpoint["current_requests"] = max(0, endpoint.get("current_requests", 0) - 1)
-                        endpoint["successful_requests"] = endpoint.get("successful_requests", 0) + 1
-                        endpoint["last_request_at"] = time.time()
-                    
-                    return result
+                    response = requests.post(endpoint_url, json=data, headers=headers, timeout=60)
+                    if response.status_code != 200:
+                        message = f"OVMS request failed with status {response.status_code}"
+                        try:
+                            payload = response.json()
+                            if isinstance(payload, dict) and payload.get("error"):
+                                message = f"{message}: {payload['error']}"
+                        except Exception:
+                            if response.text:
+                                message = f"{message}: {response.text[:200]}"
+                        raise ValueError(message)
+                    self.track_request_result(True)
+                    return response.json()
                 except Exception as e:
-                    # Update endpoint statistics
-                    with endpoint["queue_lock"]:
-                        endpoint["current_requests"] = max(0, endpoint.get("current_requests", 0) - 1)
-                        endpoint["failed_requests"] = endpoint.get("failed_requests", 0) + 1
-                        endpoint["last_request_at"] = time.time()
-                    
-                    raise
-        else:
-            # Use global settings
-            # Generate unique request ID if not provided
-            if request_id is None:
-                request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
-            
-            # Queue system with proper concurrency management
-            future = Future()
-            
-            # Add to queue
-            self.request_queue.append((future, endpoint_url, data, request_id))
-            
-            # Get result (blocks until request is processed)
-            return future.result()
-    
+                    if retries >= self.max_retries:
+                        self.track_request_result(False, type(e).__name__)
+                        raise
+                    retries += 1
+                    time.sleep(min(self.initial_retry_delay * (self.backoff_factor ** (retries - 1)), self.max_retry_delay))
+
+        with self.queue_lock:
+            at_capacity = self.active_requests >= self.max_concurrent_requests
+            if not at_capacity:
+                self.active_requests += 1
+
+        if at_capacity and getattr(self, "queue_enabled", True):
+            result_future = self.queue_with_priority({"func": _execute_request, "request_id": request_id})
+            max_wait = 300
+            wait_start = time.time()
+            while not result_future["completed"] and (time.time() - wait_start) < max_wait:
+                time.sleep(0.05)
+            if not result_future["completed"]:
+                raise TimeoutError("Request timed out waiting in queue")
+            if result_future["error"]:
+                raise result_future["error"]
+            return result_future["result"]
+
+        try:
+            return _execute_request()
+        finally:
+            with self.queue_lock:
+                self.active_requests = max(0, self.active_requests - 1)
+
     def format_request(self, handler, data, model=None, version=None):
         """Format a request for OVMS"""
         # Use default model and version if not provided
@@ -771,71 +623,6 @@ class ovms:
             except Exception as e:
                 print(f"Error testing OVMS endpoint: {e}")
                 return False
-    def check_circuit_breaker(self):
-        # Check if circuit breaker allows requests to proceed
-        with self.circuit_lock:
-            now = time.time()
-            
-            if self.circuit_state == "OPEN":
-                # Check if enough time has passed to try again
-                if now - self.last_failure_time > self.reset_timeout:
-                    logger.info("Circuit breaker transitioning from OPEN to HALF-OPEN")
-                    self.circuit_state = "HALF_OPEN"
-                    return True
-                else:
-                    # Circuit is open, fail fast
-                    return False
-                    
-            elif self.circuit_state == "HALF_OPEN":
-                # In half-open state, we allow a single request to test the service
-                return True
-                
-            else:  # CLOSED
-                # Normal operation, allow requests
-                return True
-
-    def track_request_result(self, success, error_type=None):
-        # Track the result of a request for circuit breaker logic tracking
-        with self.circuit_lock:
-            if success:
-                # Successful request
-                if self.circuit_state == "HALF_OPEN":
-                    # Service is working again, close the circuit
-                    logger.info("Circuit breaker transitioning from HALF-OPEN to CLOSED")
-                    self.circuit_state = "CLOSED"
-                    self.failure_count = 0
-                elif self.circuit_state == "CLOSED":
-                    # Reset failure count on success
-                    self.failure_count = 0
-            else:
-                # Failed request
-                self.failure_count += 1
-                self.last_failure_time = time.time()
-                
-                # Update error statistics
-                if error_type and hasattr(self, "collect_metrics") and self.collect_metrics:
-                    with self.stats_lock:
-                        if error_type not in self.request_stats["errors_by_type"]:
-                            self.request_stats["errors_by_type"][error_type] = 0
-                        self.request_stats["errors_by_type"][error_type] += 1
-                
-                if self.circuit_state == "CLOSED" and self.failure_count >= self.failure_threshold:
-                    # Too many failures, open the circuit
-                    logger.warning(f"Circuit breaker transitioning from CLOSED to OPEN after {self.failure_count} failures")
-                    self.circuit_state = "OPEN"
-                    
-                    # Update circuit breaker statistics
-                    if hasattr(self, "stats_lock") and hasattr(self, "request_stats"):
-                        with self.stats_lock:
-                            if "circuit_breaker_trips" not in self.request_stats:
-                                self.request_stats["circuit_breaker_trips"] = 0
-                            self.request_stats["circuit_breaker_trips"] += 1
-                    
-                elif self.circuit_state == "HALF_OPEN":
-                    # Failed during test request, back to open
-                    logger.warning("Circuit breaker transitioning from HALF-OPEN to OPEN after test request failure")
-                    self.circuit_state = "OPEN"
-    
     def add_to_batch(self, model, request_info):
         # Add a request to the batch queue for the specified model
         if not hasattr(self, "batching_enabled") or not self.batching_enabled or model not in self.supported_batch_models:
