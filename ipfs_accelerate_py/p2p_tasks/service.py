@@ -52,6 +52,7 @@ from .protocol import PROTOCOL_V1, auth_ok, get_shared_token, read_ndjson_messag
 
 # Optional MCP++ transport binding skeleton (length-prefixed JSON-RPC over libp2p)
 from .mcp_p2p import PROTOCOL_MCP_P2P_V1, get_mcp_p2p_stats, handle_mcp_p2p_stream
+from .peer_trust import PeerTrustLevel, baseline_max_claim_priority, resolve_peer_trust_level, trust_tiers_enabled
 from .task_queue import TaskQueue
 from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
 
@@ -1202,6 +1203,7 @@ async def serve_task_queue(
         peer_id_hint: str,
         supported_types: list[str],
         session_id: str | None = None,
+        max_priority: Optional[int] = None,
     ) -> dict | None:
         try:
             candidates = queue.list(status="queued", limit=200, task_types=supported_types or None)
@@ -1242,6 +1244,20 @@ async def serve_task_queue(
             return (10 - pr, created)
 
         candidates.sort(key=_prio_key)
+
+        # Trust-tiered priority cap: filter out tasks above the cap for baseline peers.
+        if max_priority is not None:
+            cap = max(1, min(10, int(max_priority)))
+            filtered = []
+            for t in candidates:
+                payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                try:
+                    pr = int(payload.get("priority") or 5)
+                except Exception:
+                    pr = 5
+                if pr <= cap:
+                    filtered.append(t)
+            candidates = filtered
 
         peers = _alive_peers(peer_id_hint)
         clock_hash = sched_clock.get_hash()
@@ -1367,6 +1383,12 @@ async def serve_task_queue(
                 .lower()
             )
 
+            # Resolve peer trust level for tiered access control.
+            # This is evaluated regardless of auth_mode so trust metadata is
+            # always available for downstream priority/rate-limit decisions.
+            _event_dag = getattr(accelerate_instance, "_event_dag", None) if accelerate_instance is not None else None
+            peer_trust = resolve_peer_trust_level(msg, event_dag=_event_dag)
+
             if auth_mode in {"mcp_token", "mcp", "jwt"}:
                 # Host-driven auth: require the embedding host to validate the message.
                 allowed = False
@@ -1387,6 +1409,11 @@ async def serve_task_queue(
                 if not auth_ok(msg):
                     await _safe_write_json({"ok": False, "error": "unauthorized", "peer_id": peer_id})
                     return
+            elif trust_tiers_enabled():
+                # Tiered whitelist mode: all peers are allowed access, but the
+                # resolved PeerTrustLevel gates which tasks they may claim.
+                # No peer is denied at this layer; restrictions apply per-operation.
+                pass
             else:
                 # Back-compat default: shared token, if configured, is enforced.
                 # If shared token auth fails, consult the optional host validator.
@@ -1405,6 +1432,12 @@ async def serve_task_queue(
                     if not allowed:
                         await _safe_write_json({"ok": False, "error": "unauthorized", "peer_id": peer_id})
                         return
+
+            # Compute the priority cap that applies to claim operations from this peer.
+            # TRUSTED and ELEVATED peers have no cap; BASELINE peers are restricted.
+            _claim_max_priority: Optional[int] = None
+            if trust_tiers_enabled() and peer_trust == PeerTrustLevel.BASELINE:
+                _claim_max_priority = baseline_max_claim_priority()
 
             op = (msg.get("op") or "").strip().lower()
 
@@ -1465,6 +1498,7 @@ async def serve_task_queue(
                             peer_id_hint=peer_ident,
                             supported_types=supported_list,
                             session_id=session_id or None,
+                            max_priority=_claim_max_priority,
                         )
                         if picked is None:
                             claimed = None
@@ -1479,6 +1513,7 @@ async def serve_task_queue(
                             worker_id=worker_id,
                             supported_task_types=supported_list,
                             session_id=session_id or None,
+                            max_priority=_claim_max_priority,
                         )
                 except Exception as exc:
                     await _safe_write_json({"ok": False, "error": str(exc), "peer_id": peer_id})
@@ -1561,6 +1596,7 @@ async def serve_task_queue(
                             peer_id_hint=peer_ident,
                             supported_types=supported_list,
                             session_id=session_id or None,
+                            max_priority=_claim_max_priority,
                         )
                         if picked is None:
                             claimed_many = []
@@ -1578,6 +1614,7 @@ async def serve_task_queue(
                             max_tasks=int(max_tasks),
                             same_task_type=bool(same_type_bool),
                             session_id=session_id or None,
+                            max_priority=_claim_max_priority,
                         )
                 except Exception as exc:
                     await stream.write(

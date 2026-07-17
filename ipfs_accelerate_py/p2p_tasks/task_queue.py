@@ -407,7 +407,22 @@ class TaskQueue:
         worker_id: str,
         supported_task_types: Optional[Iterable[str]] = None,
         session_id: str | None = None,
+        max_priority: Optional[int] = None,
     ) -> Optional[QueuedTask]:
+        """Claim the next queued task for ``worker_id``.
+
+        Args:
+            worker_id: Identifier of the claiming worker.
+            supported_task_types: If given, only tasks of these types are eligible.
+            session_id: If given, restrict to tasks that require this session (or
+                have no session requirement).
+            max_priority: Upper bound on the ``priority`` field stored inside the
+                task payload JSON (1-10, where 10 is highest priority).  When set,
+                only tasks whose payload priority is **at most** this value are
+                eligible.  Use this to implement trust-tiered queue access: lower
+                the cap for baseline (untrusted) peers so that high-priority tasks
+                are reserved for trusted peers.  ``None`` (default) means no cap.
+        """
         if not worker_id:
             raise ValueError("worker_id is required")
 
@@ -424,6 +439,10 @@ class TaskQueue:
         )
 
         sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
+
+        priority_expr = (
+            "coalesce(TRY_CAST(json_extract_string(payload_json, '$.priority') AS INTEGER), 5)"
+        )
 
         def _is_transient_conflict(exc: Exception) -> bool:
             msg = str(exc or "")
@@ -455,6 +474,12 @@ class TaskQueue:
                 if session:
                     where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
                     params.append(str(session))
+
+                # Trust-tiered priority cap: baseline peers only see low-priority tasks.
+                if max_priority is not None:
+                    cap = max(1, min(10, int(max_priority)))
+                    where.append(f"({priority_expr} <= ?)")
+                    params.append(cap)
 
                 where_sql = " AND ".join(where)
                 row = conn.execute(
@@ -530,6 +555,7 @@ class TaskQueue:
         max_tasks: int = 1,
         same_task_type: bool = True,
         session_id: str | None = None,
+        max_priority: Optional[int] = None,
     ) -> list[QueuedTask]:
         """Atomically claim up to `max_tasks` queued tasks.
 
@@ -537,6 +563,12 @@ class TaskQueue:
         `task_type`, and the method claims additional queued tasks of that same
         type (FIFO by created_at). This is useful for batching homogeneous work
         (e.g., text-generation).
+
+        Args:
+            max_priority: Upper bound on the ``priority`` field inside the task
+                payload JSON (1-10).  When set, only tasks with payload priority
+                at most this value are eligible.  Use together with
+                ``PeerTrustLevel`` to gate high-priority tasks for trusted peers.
         """
 
         if not worker_id:
@@ -561,6 +593,10 @@ class TaskQueue:
         )
 
         sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
+
+        priority_expr = (
+            "coalesce(TRY_CAST(json_extract_string(payload_json, '$.priority') AS INTEGER), 5)"
+        )
 
         def _is_transient_conflict(exc: Exception) -> bool:
             msg = str(exc or "")
@@ -592,6 +628,11 @@ class TaskQueue:
                     if session:
                         where0.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
                         params0.append(str(session))
+                    # Trust-tiered priority cap for same_task_type probe.
+                    if max_priority is not None:
+                        cap = max(1, min(10, int(max_priority)))
+                        where0.append(f"({priority_expr} <= ?)")
+                        params0.append(cap)
                     where0_sql = " AND ".join(where0)
                     row0 = conn.execute(
                         f"SELECT task_type FROM tasks WHERE {where0_sql} ORDER BY created_at ASC LIMIT 1",
@@ -617,6 +658,11 @@ class TaskQueue:
                 if session:
                     where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
                     params.append(str(session))
+                # Trust-tiered priority cap for the main select.
+                if max_priority is not None:
+                    cap = max(1, min(10, int(max_priority)))
+                    where.append(f"({priority_expr} <= ?)")
+                    params.append(cap)
 
                 where_sql = " AND ".join(where)
                 rows = conn.execute(
