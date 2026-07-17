@@ -69,6 +69,12 @@ except ImportError as e:
     llvm = None
 
 try:
+    from .vllm import vllm
+except ImportError as e:
+    logger.debug(f"Failed to import vllm: {e}")
+    vllm = None
+
+try:
     from .opea import opea
 except ImportError as e:
     logger.debug(f"Failed to import opea: {e}")
@@ -102,5 +108,5 @@ except ImportError as e:
 __all__ = [
     "BaseAPIBackend",
     "claude", "openai_api", "groq", "gemini", "ollama", "hf_tgi", "hf_tei",
-    "llvm", "opea", "ovms", "s3_kit", "xai", "meta_ai",
+    "llvm", "vllm", "opea", "ovms", "s3_kit", "xai", "meta_ai",
 ]

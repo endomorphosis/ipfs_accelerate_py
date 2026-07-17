@@ -76,6 +76,7 @@ from .tools.vector_tools import register_native_vector_tools
 from .tools.web_archive_tools import register_native_web_archive_tools
 from .tools.web_scraping_tools import register_native_web_scraping_tools
 from .tools.workflow_tools import register_native_workflow_tools_category
+from .tools.vllm_tools import register_native_vllm_tools
 from .tools.rate_limiting import register_native_rate_limiting_tools
 from .tools.rate_limiting_tools import register_native_rate_limiting_tools_category
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
@@ -215,6 +216,20 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     }
     if artifact_store_backend == "json" and not artifact_store_path:
         artifact_store_runtime_meta["warning"] = "artifact_store_path_required"
+
+    # Audit storage: persists event_dag entries to ipfs_kit_py or disk using CIDs.
+    _audit_storage: Any = None
+    try:
+        from .ipfs_kit_bridge import get_audit_storage
+        _audit_storage = get_audit_storage()
+    except Exception:
+        pass
+    if _audit_storage is None:
+        try:
+            from ..ipfs_kit_integration import IPFSKitStorage
+            _audit_storage = IPFSKitStorage(enable_ipfs_kit=True)
+        except Exception:
+            _audit_storage = None
     risk_scheduler = None
     risk_scorer = RiskScorer()
     policy_audit = PolicyAuditLog(enabled=config.enable_policy_audit)
@@ -519,6 +534,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_rate_limiting_tools_category(mgr),
     )
     manager.register_category_loader(
+        "vllm_tools",
+        lambda mgr: register_native_vllm_tools(mgr),
+    )
+    manager.register_category_loader(
         "idl",
         lambda mgr: load_idl_tools(mgr, supported_capabilities=get_unified_supported_profiles()),
     )
@@ -710,6 +729,93 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             return meta
 
         dispatch_intent_cid = compute_dispatch_intent_cid(category, tool_name, payload)
+
+        def _persist_to_audit_storage(cid: str, payload_obj: dict[str, Any]) -> dict[str, Any]:
+            """Persist a single artifact blob to audit storage (ipfs_kit / disk) by CID."""
+            meta: dict[str, Any] = {"cid": cid, "persisted": False, "backend": "none", "error": ""}
+            if _audit_storage is None:
+                meta["error"] = "audit_storage_unavailable"
+                return meta
+            try:
+                import json as _json
+                blob = _json.dumps(payload_obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                store_fn = getattr(_audit_storage, "store", None)
+                if callable(store_fn):
+                    stored_cid = store_fn(blob, cid)
+                    meta["persisted"] = True
+                    meta["backend"] = "ipfs_kit"
+                    meta["stored_cid"] = str(stored_cid or cid)
+                    return meta
+                # Fallback: write to cache directory on disk
+                write_fn = getattr(_audit_storage, "_write_bytes_to_cache", None)
+                if callable(write_fn):
+                    path = write_fn(cid, blob)
+                    meta["persisted"] = True
+                    meta["backend"] = "disk"
+                    meta["path"] = str(path)
+                    return meta
+                meta["error"] = "no_suitable_store_method"
+            except Exception as exc:
+                meta["error"] = str(exc)
+            return meta
+
+        def _record_event_dag_always(
+            input_payload: dict[str, Any],
+            output_payload: dict[str, Any],
+            parent_cids: list[str],
+        ) -> dict[str, Any]:
+            """Compute CIDs, add to in-memory event_store, and persist to audit storage.
+
+            This runs unconditionally on every successful tool invocation so that
+            inputs and outputs are always auditable regardless of the emit_artifacts flag.
+            """
+            dag_meta: dict[str, Any] = {
+                "persisted": False,
+                "input_cid": "",
+                "output_cid": "",
+                "event_cid": "",
+                "lineage": [],
+                "storage": {},
+                "error": "",
+            }
+            try:
+                input_cid = compute_artifact_cid(input_payload)
+                output_cid = compute_artifact_cid(output_payload)
+                minimal_event: dict[str, Any] = {
+                    "input_cid": input_cid,
+                    "output_cid": output_cid,
+                    "intent_cid": dispatch_intent_cid,
+                    "category": category,
+                    "tool_name": tool_name,
+                    "parents": list(parent_cids or []),
+                }
+                event_cid = compute_artifact_cid(minimal_event)
+                minimal_event["event_cid"] = event_cid
+
+                dag_meta["input_cid"] = input_cid
+                dag_meta["output_cid"] = output_cid
+                dag_meta["event_cid"] = event_cid
+
+                # Add to in-memory event DAG (best-effort; parent validation may fail)
+                try:
+                    event_store.add_event(event_cid, minimal_event)
+                    dag_meta["persisted"] = True
+                    dag_meta["lineage"] = event_store.get_lineage(event_cid)
+                except Exception as dag_exc:
+                    dag_meta["error"] = str(dag_exc)
+
+                # Persist input, output, event to audit storage
+                storage_results: dict[str, Any] = {}
+                for label, cid_key, obj in (
+                    ("input", input_cid, input_payload),
+                    ("output", output_cid, output_payload),
+                    ("event", event_cid, minimal_event),
+                ):
+                    storage_results[label] = _persist_to_audit_storage(cid_key, obj)
+                dag_meta["storage"] = storage_results
+            except Exception as exc:
+                dag_meta["error"] = dag_meta.get("error") or str(exc)
+            return dag_meta
 
         try:
             emit_artifacts = coerce_dispatch_bool(
@@ -1217,6 +1323,23 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
         peer_registry_meta = await _probe_peer_registry()
         peer_bootstrap_meta = await _probe_peer_bootstrap()
+
+        # Always record inputs and outputs to the event DAG and audit storage,
+        # regardless of the emit_artifacts flag.  This ensures every tool
+        # invocation is auditable by its content ID.
+        _input_payload_for_dag = dict(payload) if isinstance(payload, dict) else {"input": payload}
+        _output_payload_for_dag = result if isinstance(result, dict) else {"result": result}
+        _always_dag_meta = _record_event_dag_always(
+            input_payload={
+                "category": category,
+                "tool_name": tool_name,
+                "intent_cid": dispatch_intent_cid,
+                "payload": _input_payload_for_dag,
+            },
+            output_payload=_output_payload_for_dag,
+            parent_cids=parent_event_cids,
+        )
+
         if not emit_artifacts:
             obligations = len(policy_decision.obligations) if policy_decision is not None else 0
             record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
@@ -1246,6 +1369,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     passthrough_result_fields=isinstance(result, dict),
                     extra_fields={
                         **_authorization_success_fields(),
+                        "event_dag": _always_dag_meta,
                         **({"cache": dict(cache_meta)} if use_result_cache else {}),
                         **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                         **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
@@ -1260,6 +1384,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 policy_decision_obj=policy_decision_binding,
                 extra_fields={
                     **_authorization_success_fields(),
+                    "event_dag": _always_dag_meta,
                     **({"cache": dict(cache_meta)} if use_result_cache else {}),
                     **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                     **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
@@ -1342,10 +1467,22 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     "enable_consensus_signal": enable_frontier_consensus_signal,
                 },
             )
+            # Persist all artifact blobs to audit storage using their CIDs.
+            _artifact_storage_results: dict[str, Any] = {}
+            for _label, _cid_key in (
+                ("input", envelope["input_cid"]),
+                ("output", envelope["output_cid"]),
+                ("event", envelope["event_cid"]),
+                ("receipt", envelope["receipt_cid"]),
+            ):
+                _artifact_storage_results[_label] = _persist_to_audit_storage(
+                    _cid_key, envelope[_label if _label != "receipt" else "receipt"]
+                )
             event_dag_meta = {
                 "persisted": True,
                 "lineage": event_store.get_lineage(envelope["event_cid"]),
                 "stats": event_store.stats(),
+                "storage": _artifact_storage_results,
             }
         except Exception as exc:
             event_dag_meta = {
@@ -1525,6 +1662,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_audit_metrics_status", audit_metrics_status)
     setattr(server, "_unified_secrets_vault", secrets_vault)
     setattr(server, "_unified_secrets_status", secrets_status)
+    setattr(server, "_unified_audit_storage", _audit_storage)
     setattr(server, "_unified_supported_profiles", list(unified_context.supported_profiles))
     from .mcplusplus.profile_g_transport import get_profile_g_dispatcher, profile_metadata
     setattr(server, "_unified_profile_g_dispatcher", get_profile_g_dispatcher())
