@@ -7,6 +7,7 @@ Uses shared operations for consistency with CLI.
 
 import os
 import time
+import anyio
 import logging
 import random
 import traceback
@@ -203,7 +204,7 @@ def register_tools(mcp):
     """Register inference-related tools with the MCP server"""
     
     @mcp.tool()
-    def run_inference(model: str,
+    async def run_inference(model: str,
                       inputs: List[str],
                       device: str = "auto",
                       max_length: int = 1024,
@@ -377,7 +378,7 @@ def register_tools(mcp):
                     processing_delay *= 2  # CPU is slower
                 elif "cuda" in device:
                     processing_delay *= 0.5  # GPU is faster
-                time.sleep(processing_delay)
+                await anyio.sleep(processing_delay)
                 
                 # Generate random embeddings of the correct size
                 embeddings = []
@@ -436,7 +437,7 @@ def register_tools(mcp):
                     processing_delay *= 2  # CPU is slower
                 elif "cuda" in device:
                     processing_delay *= 0.5  # GPU is faster
-                time.sleep(processing_delay)
+                await anyio.sleep(processing_delay)
                 
                 # Generate simulated text outputs
                 outputs = []

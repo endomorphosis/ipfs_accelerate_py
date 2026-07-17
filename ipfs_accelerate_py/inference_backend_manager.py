@@ -20,6 +20,7 @@ Key Features:
 """
 
 import asyncio
+import anyio
 import logging
 import time
 import threading
@@ -316,7 +317,7 @@ class InferenceBackendManager:
             if inspect.iscoroutinefunction(method):
                 raw_result = await method(**call_kwargs)
             else:
-                raw_result = method(**call_kwargs)
+                raw_result = await anyio.to_thread.run_sync(lambda: method(**call_kwargs))
             latency_ms = (time.time() - started) * 1000.0
             success = True
             self.record_request(backend.backend_id, success=True, latency_ms=latency_ms)
