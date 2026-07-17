@@ -442,6 +442,39 @@ else:
     TTSProvider = None
     tts_router_available = False
 
+# Add Voice router functionality
+if not SKIP_CORE:
+    try:
+        from .voice_router import (
+            text_to_speech as voice_text_to_speech,
+            speech_to_text,
+            get_voice_provider,
+            register_voice_provider,
+            clear_voice_router_caches,
+            VoiceProvider,
+        )
+
+        export["speech_to_text"] = speech_to_text
+        export["get_voice_provider"] = get_voice_provider
+        export["register_voice_provider"] = register_voice_provider
+        export["clear_voice_router_caches"] = clear_voice_router_caches
+        export["VoiceProvider"] = VoiceProvider
+        voice_router_available = True
+    except ImportError:
+        speech_to_text = None
+        get_voice_provider = None
+        register_voice_provider = None
+        clear_voice_router_caches = None
+        VoiceProvider = None
+        voice_router_available = False
+else:
+    speech_to_text = None
+    get_voice_provider = None
+    register_voice_provider = None
+    clear_voice_router_caches = None
+    VoiceProvider = None
+    voice_router_available = False
+
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config',
     'install_depends', 'worker', 'ipfs_multiformats_py',
@@ -461,6 +494,8 @@ __all__ = [
     'clear_multimodal_router_caches', 'MultimodalProvider', 'multimodal_router_available',
     'text_to_speech', 'get_tts_provider', 'register_tts_provider',
     'clear_tts_router_caches', 'TTSProvider', 'tts_router_available',
+    'speech_to_text', 'get_voice_provider', 'register_voice_provider',
+    'clear_voice_router_caches', 'VoiceProvider', 'voice_router_available',
 ]
 
 # Package version
