@@ -410,11 +410,19 @@ else:
     MultimodalProvider = None
     multimodal_router_available = False
 
-# Add TTS router functionality
+# Add Voice router functionality (TTS + STT); also provides backward-compat
+# aliases for the former tts_router (get_tts_provider, register_tts_provider,
+# clear_tts_router_caches, TTSProvider).
 if not SKIP_CORE:
     try:
-        from .tts_router import (
+        from .voice_router import (
             text_to_speech,
+            speech_to_text,
+            get_voice_provider,
+            register_voice_provider,
+            clear_voice_router_caches,
+            VoiceProvider,
+            # backward-compat TTS aliases
             get_tts_provider,
             register_tts_provider,
             clear_tts_router_caches,
@@ -422,58 +430,43 @@ if not SKIP_CORE:
         )
 
         export["text_to_speech"] = text_to_speech
-        export["get_tts_provider"] = get_tts_provider
-        export["register_tts_provider"] = register_tts_provider
-        export["clear_tts_router_caches"] = clear_tts_router_caches
-        export["TTSProvider"] = TTSProvider
-        tts_router_available = True
-    except ImportError:
-        text_to_speech = None
-        get_tts_provider = None
-        register_tts_provider = None
-        clear_tts_router_caches = None
-        TTSProvider = None
-        tts_router_available = False
-else:
-    text_to_speech = None
-    get_tts_provider = None
-    register_tts_provider = None
-    clear_tts_router_caches = None
-    TTSProvider = None
-    tts_router_available = False
-
-# Add Voice router functionality
-if not SKIP_CORE:
-    try:
-        from .voice_router import (
-            text_to_speech as voice_text_to_speech,
-            speech_to_text,
-            get_voice_provider,
-            register_voice_provider,
-            clear_voice_router_caches,
-            VoiceProvider,
-        )
-
         export["speech_to_text"] = speech_to_text
         export["get_voice_provider"] = get_voice_provider
         export["register_voice_provider"] = register_voice_provider
         export["clear_voice_router_caches"] = clear_voice_router_caches
         export["VoiceProvider"] = VoiceProvider
+        export["get_tts_provider"] = get_tts_provider
+        export["register_tts_provider"] = register_tts_provider
+        export["clear_tts_router_caches"] = clear_tts_router_caches
+        export["TTSProvider"] = TTSProvider
         voice_router_available = True
+        tts_router_available = True
     except ImportError:
+        text_to_speech = None
         speech_to_text = None
         get_voice_provider = None
         register_voice_provider = None
         clear_voice_router_caches = None
         VoiceProvider = None
+        get_tts_provider = None
+        register_tts_provider = None
+        clear_tts_router_caches = None
+        TTSProvider = None
         voice_router_available = False
+        tts_router_available = False
 else:
+    text_to_speech = None
     speech_to_text = None
     get_voice_provider = None
     register_voice_provider = None
     clear_voice_router_caches = None
     VoiceProvider = None
+    get_tts_provider = None
+    register_tts_provider = None
+    clear_tts_router_caches = None
+    TTSProvider = None
     voice_router_available = False
+    tts_router_available = False
 
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config',

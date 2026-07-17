@@ -1101,3 +1101,20 @@ def speech_to_text(
 def clear_voice_router_caches() -> None:
     """Clear internal provider caches (useful for tests)."""
     _resolve_provider_cached.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility aliases (formerly in tts_router)
+# ---------------------------------------------------------------------------
+#: Alias for :class:`VoiceProvider` – kept for code that imported TTSProvider
+#: from the old ``tts_router`` module.
+TTSProvider = VoiceProvider
+
+#: Alias for :func:`get_voice_provider`.
+get_tts_provider = get_voice_provider
+
+#: Alias for :func:`register_voice_provider`.
+register_tts_provider = register_voice_provider
+
+#: Alias for :func:`clear_voice_router_caches`.
+clear_tts_router_caches = clear_voice_router_caches

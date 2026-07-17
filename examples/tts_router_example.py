@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
-Example: Using the TTS Router
+Example: Using the TTS Router (now part of voice_router)
 
-This example demonstrates the tts_router functionality that integrates
-multiple text-to-speech providers (OpenAI TTS, ElevenLabs, HuggingFace Bark)
-with the existing endpoint multiplexing capabilities.
+This example demonstrates the text-to-speech functionality that integrates
+multiple providers (OpenAI TTS, ElevenLabs, HuggingFace Bark) with the
+existing endpoint multiplexing capabilities.
+
+The TTS router has been merged into voice_router, which now handles both
+text-to-speech (TTS) synthesis and speech-to-text (STT) transcription.
+The legacy ``tts_router`` module re-exports everything from ``voice_router``
+for backward compatibility.
 
 The router automatically selects the best available provider based on:
 - Environment configuration
