@@ -21,7 +21,7 @@ def test_cli_endpoint_adapters():
     
     try:
         # Import the CLI endpoint adapters
-        from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import (
+        from ipfs_accelerate_py.mcp_server.tools.cli_endpoint_adapters import (
             ClaudeCodeAdapter,
             OpenAICodexAdapter,
             GeminiCLIAdapter,
@@ -111,7 +111,7 @@ def test_cli_endpoint_adapters():
         print("\n📋 Test 7: Testing integration with enhanced_inference...")
         
         try:
-            from ipfs_accelerate_py.mcp.tools.enhanced_inference import (
+            from ipfs_accelerate_py.mcp_server.tools.enhanced_inference import (
                 CLI_PROVIDERS,
                 HAVE_CLI_ADAPTERS
             )
@@ -151,7 +151,7 @@ def test_enhanced_inference_integration():
     print("=" * 60)
     
     try:
-        from ipfs_accelerate_py.mcp.tools.enhanced_inference import (
+        from ipfs_accelerate_py.mcp_server.tools.enhanced_inference import (
             CLI_PROVIDERS,
             HAVE_CLI_ADAPTERS,
             CLI_ADAPTER_REGISTRY

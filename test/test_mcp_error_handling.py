@@ -12,7 +12,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ipfs_accelerate_py.mcp.server import StandaloneMCP
+from ipfs_accelerate_py.mcp_server.server import StandaloneMCP
 
 
 class TestMCPErrorHandling:

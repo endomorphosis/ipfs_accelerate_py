@@ -2006,7 +2006,7 @@ async def serve_task_queue(
                     # Back-compat: fall back to the ipfs_accelerate_py MCP wrapper.
                     if mcp_like is None and accelerate_instance is None:
                         try:
-                            from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+                            from ipfs_accelerate_py.mcp_server.server import get_mcp_server_instance
 
                             mcp_like = get_mcp_server_instance()
                         except Exception:

@@ -65,16 +65,7 @@ def _load_heavy_imports():
         return  # Already loaded
     
     try:
-        from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
-        from ipfs_accelerate_py.shared import (
-            FileOperations,
-            InferenceOperations,
-            ModelOperations,
-            NetworkOperations,
-            QueueOperations,
-            SharedCore,
-            TestOperations,
-        )
+        from ipfs_accelerate_py.mcp_server.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
         
         IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
         HAVE_CORE = True
@@ -104,7 +95,7 @@ def _load_heavy_imports():
                 SharedCore,
                 TestOperations,
             )
-            from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
+            from ipfs_accelerate_py.mcp_server.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
             
             IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
             HAVE_CORE = True
@@ -138,7 +129,7 @@ def _load_heavy_imports():
                 SharedCore,
                 TestOperations,
             )
-            from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
+            from ipfs_accelerate_py.mcp_server.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
             
             IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
             HAVE_CORE = True
@@ -657,8 +648,8 @@ class IPFSAccelerateCLI:
         # the FastAPI MCP wrapper (e.g. Flask dashboard) so the libp2p tool
         # bridge can resolve tools.
         try:
-            from ipfs_accelerate_py.mcp.server import StandaloneMCP, set_mcp_like_instance
-            from ipfs_accelerate_py.mcp.tools import register_all_tools
+            from ipfs_accelerate_py.mcp_server.server import StandaloneMCP, set_mcp_like_instance
+            from ipfs_accelerate_py.mcp_server.server import register_all_tools
 
             mcp_like = StandaloneMCP(name="ipfs-accelerate")
             register_all_tools(mcp_like)
@@ -673,7 +664,7 @@ class IPFSAccelerateCLI:
             accelerate_instance = ipfs_accelerate_py()
             try:
                 if isinstance(getattr(accelerate_instance, "resources", None), dict):
-                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+                    from ipfs_accelerate_py.mcp_server.server import get_mcp_server_instance
 
                     accelerate_instance.resources.setdefault("mcp_server", get_mcp_server_instance())
             except Exception:
@@ -1126,8 +1117,8 @@ class IPFSAccelerateCLI:
 
         def _build_mcp_registry():
             try:
-                from ipfs_accelerate_py.mcp.unified_registry import get_global_registry
-                from ipfs_accelerate_py.mcp.tool_migration import populate_unified_registry
+                from ipfs_accelerate_py.mcp_server.tool_registry import get_global_registry
+                from ipfs_accelerate_py.mcp_server.server import populate_unified_registry
                 populate_unified_registry()
                 registry = get_global_registry()
                 # Expose the FULL tool surface, not just the ~13 kit-migrated
@@ -1140,8 +1131,8 @@ class IPFSAccelerateCLI:
                 # background thread: dashboard/health stay responsive and
                 # tools/list returns an empty-but-valid list until this is ready.
                 try:
-                    from ipfs_accelerate_py.mcp.server import StandaloneMCP
-                    from ipfs_accelerate_py.mcp.tools import register_all_tools
+                    from ipfs_accelerate_py.mcp_server.server import StandaloneMCP
+                    from ipfs_accelerate_py.mcp_server.server import register_all_tools
                     _full = StandaloneMCP(name="ipfs-accelerate-integrated")
                     register_all_tools(_full)
                     added = 0
@@ -1490,21 +1481,21 @@ class IPFSAccelerateCLI:
 
             def _handle_cache_stats_api(self):
                 try:
-                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_cache_stats
+                    from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_cache_stats
                     self._send_json(get_cache_stats(), status=200)
                 except Exception as e:
                     self._send_json({"error": str(e), "endpoint": "/api/mcp/cache/stats"}, status=500)
 
             def _handle_peers_api(self):
                 try:
-                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status
+                    from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_peer_status
                     self._send_json(get_peer_status(), status=200)
                 except Exception as e:
                     self._send_json({"error": str(e), "endpoint": "/api/mcp/peers"}, status=500)
 
             def _handle_user_api(self):
                 try:
-                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+                    from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_user_info
                     self._send_json(get_user_info(), status=200)
                 except Exception as e:
                     self._send_json({"error": str(e), "endpoint": "/api/mcp/user"}, status=500)

@@ -22,7 +22,7 @@ def test_backend_functions():
     logger.info("\n=== Testing Backend Functions ===\n")
     
     try:
-        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status, get_cache_stats
+        from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_peer_status, get_cache_stats
         
         # Test get_peer_status
         logger.info("1. Testing get_peer_status()...")
@@ -107,7 +107,7 @@ def test_api_routes():
         checks = [
             ('/api/mcp/peers route', '@self.app.route(\'/api/mcp/peers\')' in content),
             ('/api/mcp/cache/stats route', '@self.app.route(\'/api/mcp/cache/stats\')' in content),
-            ('get_peer_status import', 'from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status' in content),
+            ('get_peer_status import', 'from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_peer_status' in content),
         ]
         
         all_passed = True

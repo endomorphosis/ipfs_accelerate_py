@@ -19,7 +19,7 @@ from ipfs_accelerate_py.docker_executor import (
     build_and_execute_from_github
 )
 
-from ipfs_accelerate_py.mcp.tools.docker_tools import (
+from ipfs_accelerate_py.mcp_server.tools.docker_tools import (
     execute_docker_container,
     build_and_execute_github_repo,
     execute_with_payload,

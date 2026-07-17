@@ -271,7 +271,7 @@ class TrioMCPServer:
                 # FastMCP lacks register_tool/.tools; attach compat shims so the
                 # dict-based MCP++ dispatch paths work uniformly.
                 try:
-                    from ipfs_accelerate_py.mcp.fastmcp_compat import (
+                    from ipfs_accelerate_py.mcp_server.fastmcp_compat import (
                         ensure_register_tool_compat,
                         ensure_register_resource_compat,
                     )
@@ -283,7 +283,7 @@ class TrioMCPServer:
             except ImportError:
                 # Fallback to standalone implementation from the main mcp module
                 logger.warning("FastMCP not available, using standalone implementation")
-                from ipfs_accelerate_py.mcp.server import StandaloneMCP
+                from ipfs_accelerate_py.mcp_server.server import StandaloneMCP
 
                 self.mcp = StandaloneMCP(name=self.config.name)
 
@@ -296,7 +296,7 @@ class TrioMCPServer:
             # here to avoid duplicate registrations; MCP++ already registers
             # the dedicated P2P tool set above.
             try:
-                from ipfs_accelerate_py.mcp.tools import register_all_tools
+                from ipfs_accelerate_py.mcp_server.server import register_all_tools
 
                 register_all_tools(self.mcp, include_p2p_taskqueue_tools=False)
                 logger.info("Registered core ipfs_accelerate_py MCP tools")
@@ -305,7 +305,7 @@ class TrioMCPServer:
 
             # Register core resources for parity with the primary MCP server.
             try:
-                from ipfs_accelerate_py.mcp.resources import register_all_resources
+                from ipfs_accelerate_py.mcp_server.resources import register_all_resources
 
                 register_all_resources(self.mcp)
                 logger.info("Registered core ipfs_accelerate_py MCP resources")
@@ -318,7 +318,7 @@ class TrioMCPServer:
                     raise RuntimeError("MCP server not initialized")
 
                 try:
-                    from ipfs_accelerate_py.mcp.fastmcp_compat import ensure_register_prompt_compat
+                    from ipfs_accelerate_py.mcp_server.fastmcp_compat import ensure_register_prompt_compat
 
                     ensure_register_prompt_compat(self.mcp)
                 except Exception as e:

@@ -206,7 +206,7 @@ class MultiProtocolInferenceClient:
     def mcp_list_backends(self) -> Dict[str, Any]:
         """List inference backends via MCP tool"""
         try:
-            from ipfs_accelerate_py.mcp.tools.backend_management import (
+            from ipfs_accelerate_py.mcp_server.tools.backend_management import (
                 list_inference_backends
             )
             return list_inference_backends()
@@ -216,7 +216,7 @@ class MultiProtocolInferenceClient:
     def mcp_get_backend_status(self) -> Dict[str, Any]:
         """Get backend status via MCP tool"""
         try:
-            from ipfs_accelerate_py.mcp.tools.backend_management import (
+            from ipfs_accelerate_py.mcp_server.tools.backend_management import (
                 get_backend_status
             )
             return get_backend_status()
@@ -230,7 +230,7 @@ class MultiProtocolInferenceClient:
     ) -> Dict[str, Any]:
         """Select backend via MCP tool"""
         try:
-            from ipfs_accelerate_py.mcp.tools.backend_management import (
+            from ipfs_accelerate_py.mcp_server.tools.backend_management import (
                 select_backend_for_inference
             )
             return select_backend_for_inference(task=task, model=model)

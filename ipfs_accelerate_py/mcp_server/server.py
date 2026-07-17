@@ -1817,17 +1817,389 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             )
 
 
-def _create_base_server(*args: Any, **kwargs: Any) -> Any:
-    """Construct the underlying MCP server wrapper without routing through the facade."""
-    from ipfs_accelerate_py.mcp import server as legacy_server
+class StandaloneMCP:
+    """Canonical standalone MCP implementation for unified mcp_server.
 
+    Provides a lightweight tool/resource/prompt registry compatible with the
+    legacy ``ipfs_accelerate_py.mcp.server.StandaloneMCP`` interface so that
+    callers migrating away from the deprecated ``mcp`` package can swap the
+    import path without any further code changes.
+    """
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.tools: dict[str, Any] = {}
+        self.resources: dict[str, Any] = {}
+        self.prompts: dict[str, Any] = {}
+        self._error_handler: Any = None
+        self.lifespan_start_handler: Any = None
+        self.lifespan_stop_handler: Any = None
+        self._init_error_handler()
+        logger.info("Using standalone MCP implementation: %s", name)
+
+    def _init_error_handler(self) -> None:
+        """Initialize optional auto-healing error handler from environment."""
+        import os
+        try:
+            from ipfs_accelerate_py.error_handler import CLIErrorHandler  # type: ignore
+
+            enable_auto_issue = os.environ.get("IPFS_AUTO_ISSUE", "").lower() in ("1", "true", "yes")
+            enable_auto_pr = os.environ.get("IPFS_AUTO_PR", "").lower() in ("1", "true", "yes")
+            enable_auto_heal = os.environ.get("IPFS_AUTO_HEAL", "").lower() in ("1", "true", "yes")
+            repo = os.environ.get("IPFS_REPO", "endomorphosis/ipfs_accelerate_py")
+
+            if enable_auto_issue or enable_auto_pr or enable_auto_heal:
+                self._error_handler = CLIErrorHandler(
+                    repo=repo,
+                    enable_auto_issue=enable_auto_issue,
+                    enable_auto_pr=enable_auto_pr,
+                    enable_auto_heal=enable_auto_heal,
+                    log_context_lines=50,
+                )
+                logger.info(
+                    "MCP auto-healing enabled: issue=%s, pr=%s, heal=%s",
+                    enable_auto_issue,
+                    enable_auto_pr,
+                    enable_auto_heal,
+                )
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+    def register_tool(
+        self,
+        name: str,
+        function: Any,
+        description: str = "",
+        input_schema: Any = None,
+        execution_context: str = "server",
+        **_kwargs: Any,
+    ) -> None:
+        """Register a callable tool in the local registry."""
+        self.tools[name] = {
+            "function": function,
+            "description": description,
+            "input_schema": input_schema or {"type": "object", "properties": {}, "required": []},
+            "execution_context": execution_context,
+        }
+
+    def register_resource(
+        self,
+        uri: str,
+        function: Any,
+        description: str = "",
+        **_kwargs: Any,
+    ) -> None:
+        """Register a resource endpoint in the local registry."""
+        self.resources[uri] = {"function": function, "description": description}
+
+    def register_prompt(
+        self,
+        name: str,
+        template: str = "",
+        description: str = "",
+        input_schema: Any = None,
+        **_kwargs: Any,
+    ) -> None:
+        """Register a prompt template in the local registry."""
+        self.prompts[name] = {
+            "template": template,
+            "description": description,
+            "input_schema": input_schema or {"type": "object", "properties": {}, "required": []},
+        }
+
+    def create_fastapi_app(self, **_kwargs: Any) -> Any:
+        """Create a minimal FastAPI-compatible app backed by this registry."""
+        title = "IPFS Accelerate MCP API"
+        try:
+            from fastapi import FastAPI  # type: ignore
+            app: Any = FastAPI(
+                title=title,
+                description="IPFS Accelerate MCP",
+                version="0.1.0",
+            )
+
+            @app.get("/healthz")
+            async def _healthz():
+                return {"status": "ok", "service": self.name}
+
+        except ImportError:
+            class _MinimalApp:
+                def __init__(self, title: str) -> None:
+                    self.title = title
+            app = _MinimalApp(title=title)
+
+        app._standalone_mcp = self  # type: ignore[attr-defined]
+        return app
+
+    def _report_tool_error(self, tool_name: str, exc: Exception, params: dict) -> None:
+        if not self._error_handler:
+            return
+        try:
+            context = {
+                "mcp_server": self.name,
+                "tool_name": tool_name,
+                "tool_params": str(params),
+                "error_source": "mcp_tool",
+            }
+            self._error_handler.capture_error(exc, context=context)
+        except Exception:
+            pass
+
+    def _report_resource_error(self, resource_uri: str, exc: Exception) -> None:
+        if not self._error_handler:
+            return
+        try:
+            context = {"mcp_server": self.name, "resource_uri": resource_uri, "error_source": "mcp_resource"}
+            self._error_handler.capture_error(exc, context=context)
+        except Exception:
+            pass
+
+    def _report_client_error(self, error_data: dict) -> None:
+        if not self._error_handler:
+            return
+        try:
+            context = {"mcp_server": self.name, "error_source": "mcp_client", **dict(error_data or {})}
+            exc = RuntimeError(str(error_data.get("error_message", "client error")))
+            self._error_handler.capture_error(exc, context=context)
+        except Exception:
+            pass
+
+
+class MCPServerWrapper:
+    """Canonical MCP server wrapper for unified mcp_server.
+
+    Replaces the legacy ``ipfs_accelerate_py.mcp.server.MCPServerWrapper``
+    with an implementation that does not import from the deprecated ``mcp``
+    package.  The public interface (``name``, ``host``, ``port``, ``app``,
+    ``run()``) is preserved for compatibility.
+    """
+
+    def __init__(
+        self,
+        name: str = "ipfs-accelerate",
+        description: str = "",
+        accelerate_instance: Any = None,
+        host: str = "0.0.0.0",
+        port: int = 9000,
+        mount_path: str = "/mcp",
+        debug: bool = False,
+        **_extra: Any,
+    ) -> None:
+        self.name = name
+        self.description = description
+        self.host = host
+        self.port = port
+        self.mount_path = mount_path
+        self.debug = debug
+
+        from types import SimpleNamespace
+        self.state = SimpleNamespace(accelerate=accelerate_instance)
+
+        self.mcp = StandaloneMCP(name=self.name)
+        self.mcp.state = SimpleNamespace(accelerate=accelerate_instance)  # type: ignore[attr-defined]
+
+        # Default lifespan handlers for compatibility with callers that check them.
+        self.lifespan_start_handler: Any = lambda ctx: None
+        self.lifespan_stop_handler: Any = lambda ctx, state: None
+
+        # Build a minimal FastAPI app directly without routing through create_server()
+        # to avoid recursive construction.
+        self.app = self._build_app()
+
+        # Register canonical hardware info tools as compatibility aliases.
+        try:
+            from .tools.hardware_tools.native_hardware_tools import hardware_get_info, hardware_recommend
+
+            if "detect_hardware" not in self.mcp.tools:
+                self.mcp.register_tool(
+                    name="detect_hardware",
+                    function=hardware_get_info,
+                    description="Detect available hardware",
+                    input_schema={"type": "object", "properties": {}, "required": []},
+                    execution_context="server",
+                )
+
+            if "get_optimal_hardware" not in self.mcp.tools:
+                self.mcp.register_tool(
+                    name="get_optimal_hardware",
+                    function=hardware_recommend,
+                    description="Get optimal hardware for a model",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "model_name": {"type": "string", "description": "Model name"},
+                            "task": {
+                                "type": "string",
+                                "description": "Task type",
+                                "enum": ["inference", "training", "fine-tuning"],
+                                "default": "inference",
+                            },
+                        },
+                        "required": ["model_name"],
+                    },
+                    execution_context="server",
+                )
+        except Exception:
+            pass
+
+        # Register basic system resources.
+        try:
+            import platform
+            if "system://info" not in self.mcp.resources:
+                self.mcp.register_resource(
+                    uri="system://info",
+                    function=lambda: {
+                        "platform": platform.platform(),
+                        "python_version": platform.python_version(),
+                    },
+                    description="Basic system information",
+                )
+            if "system://capabilities" not in self.mcp.resources:
+                self.mcp.register_resource(
+                    uri="system://capabilities",
+                    function=lambda: {"accelerators": {}, "features": {}},
+                    description="System capabilities",
+                )
+        except Exception:
+            pass
+
+    def _build_app(self) -> Any:
+        """Build a minimal app without routing through create_server() (avoids recursion)."""
+        title = "IPFS Accelerate MCP API"
+        description = self.description or "IPFS Accelerate MCP"
+        try:
+            from fastapi import FastAPI  # type: ignore
+            app: Any = FastAPI(
+                title=title,
+                description=description,
+                version="0.1.0",
+                docs_url="/docs",
+                redoc_url="/redoc",
+            )
+
+            @app.get("/healthz")
+            async def _healthz():
+                return {"status": "ok", "service": self.name}
+
+        except ImportError:
+            # Fallback when FastAPI is not installed.
+            class _MinimalApp:
+                def __init__(self, title: str, description: str) -> None:
+                    self.title = title
+                    self.description = description
+
+            app = _MinimalApp(title=title, description=description)
+
+        app._standalone_mcp = self.mcp  # type: ignore[attr-defined]
+        return app
+
+    def run(
+        self,
+        host: Any = None,
+        port: Any = None,
+        reload: bool = False,
+    ) -> None:
+        """Run the MCP server via uvicorn."""
+        try:
+            import uvicorn
+            uvicorn.run(
+                self.app,
+                host=host or self.host,
+                port=int(port or self.port),
+                log_level="debug" if self.debug else "info",
+                reload=reload,
+            )
+        except ImportError:
+            raise RuntimeError(
+                "uvicorn is required to run the MCP server. Install it with: pip install uvicorn"
+            )
+
+    def stop(self) -> None:
+        """No-op stop hook for compatibility with callers that call server.stop()."""
+
+
+# Module-level MCP server instance registry (mirrors legacy mcp.server pattern).
+_MCP_SERVER_INSTANCE: Any = None
+_MCP_LIKE_INSTANCE: Any = None
+
+
+def set_mcp_like_instance(mcp_like: Any) -> None:
+    """Register an MCP-like registry instance for shared tool access."""
+    global _MCP_LIKE_INSTANCE
+    _MCP_LIKE_INSTANCE = mcp_like
+
+
+def get_mcp_server_instance() -> Any:
+    """Return the last created MCP server instance or MCP-like registry."""
+    return _MCP_SERVER_INSTANCE or _MCP_LIKE_INSTANCE
+
+
+def register_tools(mcp: Any) -> None:
+    """Register canonical tool set with an MCP-like registry instance.
+
+    Convenience wrapper used by callers that expect a ``register_tools(mcp)``
+    function analogous to the legacy ``ipfs_accelerate_py.mcp.tools.register_all_tools``.
+    """
+    try:
+        from .tools.hardware_tools.native_hardware_tools import hardware_get_info, hardware_recommend
+        mcp.register_tool(
+            name="hardware_get_info",
+            function=hardware_get_info,
+            description="Get hardware acceleration capabilities.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            execution_context="server",
+        )
+        mcp.register_tool(
+            name="hardware_recommend",
+            function=hardware_recommend,
+            description="Recommend hardware for a model type and task.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "model_type": {"type": "string", "default": "general"},
+                    "model_size": {"type": "string", "default": "medium"},
+                    "task": {"type": "string", "default": "inference"},
+                },
+                "required": [],
+            },
+            execution_context="server",
+        )
+    except Exception:
+        pass
+
+    try:
+        from .tools.inference_tools.native_inference_tools import inference_run_inference
+        mcp.register_tool(
+            name="inference_run_inference",
+            function=inference_run_inference,
+            description="Run inference on a model.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "model_cid": {"type": "string"},
+                    "input_data": {"type": "string"},
+                    "device": {"type": "string", "default": "auto"},
+                },
+                "required": ["model_cid", "input_data"],
+            },
+            execution_context="server",
+        )
+    except Exception:
+        pass
+
+
+def _create_base_server(*args: Any, **kwargs: Any) -> Any:
+    """Construct the canonical MCP server wrapper."""
     server_kwargs = dict(kwargs)
     server_kwargs.pop("_skip_unified_bridge", None)
 
-    server = legacy_server.MCPServerWrapper(*args, **server_kwargs)
-    legacy_server._MCP_SERVER_INSTANCE = server
+    server = MCPServerWrapper(*args, **server_kwargs)
+    global _MCP_SERVER_INSTANCE
+    _MCP_SERVER_INSTANCE = server
     try:
-        legacy_server.set_mcp_like_instance(getattr(server, "mcp", None) or server)
+        set_mcp_like_instance(getattr(server, "mcp", None) or server)
     except Exception:
         pass
 
@@ -1858,11 +2230,43 @@ def create_server(*args: Any, **kwargs: Any) -> Any:
     return server
 
 
+#: Alias matching the legacy ``ipfs_accelerate_py.mcp.server.create_ipfs_mcp_server`` name.
+create_ipfs_mcp_server = create_server
+
+#: Alias matching the legacy ``ipfs_accelerate_py.mcp.server.IPFSAccelerateMCPServer`` name.
+IPFSAccelerateMCPServer = MCPServerWrapper
+
+#: Alias matching the legacy ``ipfs_accelerate_py.mcp.tools.register_all_tools`` name.
+register_all_tools = register_tools
+
+
+def populate_unified_registry() -> None:
+    """Populate the global tool registry with all canonical tools.
+
+    Drop-in replacement for the legacy
+    ``ipfs_accelerate_py.mcp.tool_migration.populate_unified_registry``.
+    """
+    from ipfs_accelerate_py.mcp_server.tool_registry import get_global_registry  # noqa: PLC0415
+
+    registry = get_global_registry()
+    mcp_stub = StandaloneMCP(name="registry-seed")
+    register_tools(mcp_stub)
+    for name, func in mcp_stub.tools.items():
+        try:
+            registry.register_function(func, name=name)
+        except Exception:
+            pass
+
+
 def main() -> None:
     """Start the MCP server using the canonical standalone CLI behavior."""
     from ipfs_accelerate_py.mcp_server.standalone_server import main as standalone_main
 
     standalone_main()
+
+
+#: Alias matching ``run_server`` names used in various scripts.
+run_server = main
 
 
 if __name__ == "__main__":

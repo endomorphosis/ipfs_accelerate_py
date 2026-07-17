@@ -511,7 +511,7 @@ class TestCLIEndpointAdapterAsync(unittest.TestCase):
 
     def _make_adapter(self):
         """Create a concrete CLIEndpointAdapter for testing."""
-        from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import ClaudeCodeAdapter
+        from ipfs_accelerate_py.mcp_server.tools.cli_endpoint_adapters import ClaudeCodeAdapter
         adapter = ClaudeCodeAdapter.__new__(ClaudeCodeAdapter)
         adapter.endpoint_id = "test-claude"
         adapter.cli_path = "/usr/bin/claude"

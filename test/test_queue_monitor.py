@@ -17,7 +17,7 @@ def test_queue_monitoring_tools():
     
     try:
         # Import the enhanced inference tools
-        from ipfs_accelerate_py.mcp.tools.enhanced_inference import QUEUE_MONITOR
+        from ipfs_accelerate_py.mcp_server.tools.enhanced_inference import QUEUE_MONITOR
         
         # Create a mock MCP object for testing
         class MockMCP:
@@ -31,7 +31,7 @@ def test_queue_monitoring_tools():
                 return decorator
         
         # Register the tools
-        from ipfs_accelerate_py.mcp.tools.enhanced_inference import register_tools
+        from ipfs_accelerate_py.mcp_server.tools.enhanced_inference import register_tools
         mock_mcp = MockMCP()
         register_tools(mock_mcp)
         

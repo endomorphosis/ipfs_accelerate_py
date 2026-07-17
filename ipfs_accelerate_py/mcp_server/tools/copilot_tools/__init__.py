@@ -24,4 +24,8 @@ __all__ = [
     "copilot_sdk_list_sessions",
     "copilot_sdk_get_tools",
     "register_native_copilot_tools",
+    "register_copilot_tools",
 ]
+
+# Canonical alias expected by test_github_copilot_integration and other callers.
+register_copilot_tools = register_native_copilot_tools
