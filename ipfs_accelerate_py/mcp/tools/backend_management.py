@@ -6,6 +6,12 @@ Provides MCP tool integration with the unified inference backend manager:
 - Multi-backend inference routing
 - Real-time monitoring
 - Load balancing control
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.backend_management_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import logging

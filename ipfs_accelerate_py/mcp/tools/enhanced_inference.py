@@ -7,6 +7,12 @@ This module provides enhanced MCP tools for running inference with:
 - libp2p distributed inference
 - Endpoint handlers for load balancing
 - CLI tool integration (Claude Code, OpenAI Codex, Google Gemini)
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.enhanced_inference_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import os
@@ -102,6 +108,13 @@ QUEUE_MONITOR = {
 def register_tools(mcp):
     """Register enhanced inference tools with the MCP server"""
     
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.enhanced_inference.register_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.enhanced_inference_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp.tool()
     def multiplex_inference(
         prompt: str,

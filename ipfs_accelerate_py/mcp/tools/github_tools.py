@@ -4,6 +4,12 @@ GitHub CLI Tools for IPFS Accelerate MCP Server
 This module provides MCP tools for interacting with GitHub via the GitHub CLI,
 including workflow management, runner management, and cache operations.
 These tools use the GitHub CLI wrapper with P2P caching and minimize API calls.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.github_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import logging
@@ -64,6 +70,13 @@ def register_tools(mcp: Any) -> None:
     Args:
         mcp: MCP server instance
     """
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.github_tools.register_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.github_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     logger.debug("Registering GitHub CLI tools")
     
     @mcp.tool()
@@ -374,4 +387,11 @@ def register_tools(mcp: Any) -> None:
 
 def register_github_tools(mcp: Any) -> None:
     """Compatibility alias for registering GitHub MCP tools."""
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.github_tools.register_github_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.github_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     register_tools(mcp)

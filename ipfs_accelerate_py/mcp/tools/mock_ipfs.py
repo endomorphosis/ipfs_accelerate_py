@@ -3,6 +3,12 @@ Mock implementations of IPFS functionality for the MCP server.
 
 This module provides mock implementations that can be used when the actual
 ipfs_kit_py dependency is not available.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.ipfs``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import anyio

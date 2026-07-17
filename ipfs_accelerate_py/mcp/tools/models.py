@@ -2,6 +2,12 @@
 IPFS Accelerate MCP Model Tools
 
 This module provides MCP tools for model search, recommendation, and management.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.model_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import logging
@@ -404,6 +410,13 @@ def load_hf_inference_ipld_from_ipfs_tool(
 # Register model tools with the MCP server
 def register_model_tools(mcp) -> None:
     """Register model management tools with the MCP server"""
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.models.register_model_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.model_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     try:
         # Register tools based on MCP server type
         if hasattr(mcp, 'register_tool'):

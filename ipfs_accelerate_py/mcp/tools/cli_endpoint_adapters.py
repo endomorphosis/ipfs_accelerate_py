@@ -9,6 +9,12 @@ Supported CLI Tools:
 - OpenAI Codex CLI
 - Google Gemini CLI
 - VSCode CLI (GitHub Copilot)
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.cli_endpoint_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import os

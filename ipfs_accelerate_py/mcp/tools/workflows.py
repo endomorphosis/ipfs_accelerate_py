@@ -2,6 +2,12 @@
 Workflow Management Tools for IPFS Accelerate MCP Server
 
 This module provides MCP tools for creating, managing, and executing workflows.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.workflow_management_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import logging
@@ -30,6 +36,13 @@ def get_workflow_manager():
 def register_tools(mcp):
     """Register workflow management tools with the MCP server"""
 
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.workflows.register_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.workflow_management_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp.tool()
     def create_workflow(
         name: str,

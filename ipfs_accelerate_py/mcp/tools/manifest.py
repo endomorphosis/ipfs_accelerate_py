@@ -1,4 +1,10 @@
-"""Manifest/introspection tools for the MCP server."""
+"""Manifest/introspection tools for the MCP server.
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.monitoring_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +12,13 @@ from typing import Any, Dict
 
 
 def register_tools(mcp: Any) -> None:
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.manifest.register_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.monitoring_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp.tool()
     def get_mcp_manifest(include_schemas: bool = True) -> Dict[str, Any]:
         """Return a JSON-friendly list of registered MCP tools/resources/prompts."""
