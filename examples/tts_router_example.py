@@ -157,6 +157,10 @@ def example_custom_provider():
             )
             return header
 
+        def transcribe(self, audio, *, model_name=None, language=None,
+                       device=None, **kwargs) -> str:
+            raise NotImplementedError("SilentTTSProvider does not support STT")
+
     register_tts_provider("silent", lambda: SilentTTSProvider())
 
     try:
@@ -182,6 +186,9 @@ def example_caching():
         def synthesize(self, text: str, **kwargs) -> bytes:
             call_count[0] += 1
             return b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x22V\x00\x00\x44\xac\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00"
+
+        def transcribe(self, audio, **kwargs) -> str:
+            raise NotImplementedError("CountingTTSProvider does not support STT")
 
     register_tts_provider("counting", lambda: CountingTTSProvider())
 

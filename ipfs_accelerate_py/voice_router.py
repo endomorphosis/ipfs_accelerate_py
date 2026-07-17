@@ -10,7 +10,7 @@ Design goals:
 - Provide a reliable local fallback via HuggingFace transformers.
 - TTS: Return audio as raw bytes (wav/mp3) or write to a file path.
 - STT: Return transcription as a plain string.
-- Reuse existing patterns from llm_router, multimodal_router, and tts_router.
+- Reuse existing patterns from llm_router, multimodal_router, and embeddings_router.
 
 Environment variables:
 - `IPFS_ACCELERATE_PY_VOICE_PROVIDER`: force provider name
@@ -1118,3 +1118,22 @@ register_tts_provider = register_voice_provider
 
 #: Alias for :func:`clear_voice_router_caches`.
 clear_tts_router_caches = clear_voice_router_caches
+
+__all__ = [
+    # Core voice (TTS + STT)
+    "VoiceProvider",
+    "ProviderInfo",
+    "ProviderFactory",
+    "RouterDeps",
+    "get_default_router_deps",
+    "register_voice_provider",
+    "get_voice_provider",
+    "text_to_speech",
+    "speech_to_text",
+    "clear_voice_router_caches",
+    # Backward-compat TTS aliases (formerly in tts_router)
+    "TTSProvider",
+    "get_tts_provider",
+    "register_tts_provider",
+    "clear_tts_router_caches",
+]

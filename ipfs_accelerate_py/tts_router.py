@@ -31,10 +31,6 @@ from .voice_router import (  # noqa: F401
     VoiceProvider,
     ProviderInfo,
     ProviderFactory,
-    _get_openai_provider,
-    _get_elevenlabs_provider,
-    _get_huggingface_provider,
-    _get_backend_manager_provider,
 )
 
 __all__ = [
