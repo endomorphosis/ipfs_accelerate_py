@@ -1047,7 +1047,7 @@ class vllm(BaseAPIBackend):
         try:
             headers = {"Content-Type": "application/json"}
             if key:
-                headers["Authorization"] = f"******"
+                headers["Authorization"] = f"Bearer {key}"
             resp = requests.get(url, headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
