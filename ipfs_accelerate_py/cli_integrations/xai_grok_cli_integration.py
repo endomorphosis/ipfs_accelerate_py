@@ -20,6 +20,28 @@ Unique Grok Build capabilities surfaced by this integration
 * **Headless / CI Mode** – When ``headless=True``, plan approval is skipped
   and the integration runs fully non-interactively.
 
+Multi-user / parallel execution
+--------------------------------
+Pass ``api_keys`` to distribute load across multiple xAI keys::
+
+    grok = XAIGrokCLIIntegration(api_keys=["xai-1", "xai-2", "xai-3"])
+    result = await grok.achat("Hello", user_id="alice")
+
+Async support (Trio / Hypercorn)
+---------------------------------
+Every blocking public method has an ``a``-prefixed async twin that offloads
+the network call to a worker thread via ``anyio.to_thread.run_sync``, keeping
+the Trio / asyncio event loop free for other MCP requests::
+
+    # Async plan mode (used by MCP tool handlers)
+    plan_result = await grok.aplan_mode("Implement X", user_id="bob")
+
+    # Parallel subagents – non-blocking for the event loop
+    results = await grok.aspawn_subagents(["task A", "task B"])
+
+    # Live web search
+    docs = await grok.aweb_search("Redis SETEX syntax")
+
 Environment variables
 ---------------------
 ``XAI_API_KEY``                        – Required xAI API key.
@@ -29,6 +51,7 @@ Environment variables
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -107,6 +130,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
     def __init__(
         self,
         api_key: Optional[str] = None,
+        api_keys: Optional[List[str]] = None,
         enable_cache: bool = True,
         cache: Optional[LLMAPICache] = None,
         prefer_cli: bool = True,
@@ -123,6 +147,10 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         api_key:
             xAI API key.  Resolved from ``XAI_API_KEY`` / secrets manager
             when *None*.
+        api_keys:
+            List of xAI API keys for multi-user round-robin pool.  When
+            provided, each call that supplies a ``user_id`` is pinned to a
+            consistent key from the pool.
         enable_cache:
             Whether to use the LLM cache.
         cache:
@@ -146,6 +174,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         super().__init__(
             cli_path=None,  # auto-detected below
             api_key=api_key,
+            api_keys=api_keys,
             cache=cache,
             enable_cache=enable_cache,
             prefer_cli=prefer_cli,
@@ -196,10 +225,32 @@ class XAIGrokCLIIntegration(DualModeWrapper):
             base_url=self.base_url,
         )
 
-    def _get_openai_client(self) -> Any:
-        if self._openai_client is None:
-            self._openai_client = self._create_sdk_client()
-        return self._openai_client
+    def _get_openai_client(self, api_key: Optional[str] = None) -> Any:
+        """Get or create an OpenAI-compatible client for the given key.
+
+        When *api_key* differs from ``self.api_key`` a fresh client is created
+        (and cached) so that concurrent requests using different keys do not
+        share state.
+        """
+        effective_key = api_key or self.api_key or ""
+        if effective_key == (self.api_key or ""):
+            # Default key path – use the lazy singleton
+            if self._openai_client is None:
+                self._openai_client = self._create_sdk_client()
+            return self._openai_client
+        # Per-key cache for non-default keys
+        if not hasattr(self, "_client_cache"):
+            self._client_cache: Dict[str, Any] = {}
+        if effective_key not in self._client_cache:
+            try:
+                import openai  # type: ignore[import]
+            except ImportError:
+                raise ImportError("openai SDK not installed. Install with: pip install openai")
+            self._client_cache[effective_key] = openai.OpenAI(
+                api_key=effective_key,
+                base_url=self.base_url,
+            )
+        return self._client_cache[effective_key]
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -212,16 +263,26 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         temperature: float,
         system_prompt: Optional[str] = None,
         search_enabled: bool = False,
+        api_key: Optional[str] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """Execute a single chat completion via the xAI SDK."""
+        """
+        Execute a single chat completion via the xAI SDK.
+
+        Parameters
+        ----------
+        api_key:
+            Optional per-request key override.  When provided a per-key
+            OpenAI-compatible client is looked up (or created) so that
+            concurrent multi-user requests each use their own key.
+        """
         messages: List[Dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": message})
 
-        # Cache lookup
-        if self.enable_cache:
+        # Cache lookup (skip for live search – results are time-sensitive)
+        if self.enable_cache and not search_enabled:
             cached = self.cache.get_chat_completion(
                 messages=messages,
                 model=model,
@@ -231,7 +292,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
                 logger.info("Cache hit for xAI Grok chat")
                 return {"response": cached, "cached": True}
 
-        client = self._get_openai_client()
+        client = self._get_openai_client(api_key=api_key)
 
         create_kwargs: Dict[str, Any] = {
             "model": model,
@@ -251,7 +312,6 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         result = response.choices[0].message.content or ""
 
         if self.enable_cache and not search_enabled:
-            # Don't cache live-search results – they are time-sensitive
             self.cache.cache_chat_completion(
                 messages=messages,
                 response=result,
@@ -271,6 +331,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         model: str = _DEFAULT_MODEL,
         temperature: float = 0.2,
         auto_approve: Optional[bool] = None,
+        user_id: Optional[str] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
@@ -293,6 +354,8 @@ class XAIGrokCLIIntegration(DualModeWrapper):
             ``True``  – skip approval prompt regardless of headless setting.
             ``False`` – always prompt even in headless mode.
             ``None``  – honour ``self.headless``.
+        user_id:
+            Optional user identifier for per-user key pinning.
 
         Returns
         -------
@@ -316,15 +379,66 @@ class XAIGrokCLIIntegration(DualModeWrapper):
             model=model,
             temperature=temperature,
             system_prompt=_PLAN_MODE_SYSTEM_PROMPT,
+            api_key=self.get_api_key(user_id=user_id),
             **kwargs,
         )
 
         full_text: str = raw.get("response", "")
-
-        # Split response into plan / implementation sections
         plan_section, impl_section = self._split_plan_impl(full_text)
 
-        # Determine whether to seek approval
+        should_skip_approval = (
+            (auto_approve is True)
+            or (auto_approve is None and self.headless)
+        )
+
+        approved = should_skip_approval
+        if not should_skip_approval:
+            approved = self._prompt_plan_approval(plan_section)
+
+        return {
+            "plan": plan_section,
+            "implementation": impl_section if approved else "",
+            "approved": approved,
+            "cached": raw.get("cached", False),
+            "mode": raw.get("mode", "SDK"),
+        }
+
+    async def aplan_mode(
+        self,
+        task: str,
+        model: str = _DEFAULT_MODEL,
+        temperature: float = 0.2,
+        auto_approve: Optional[bool] = None,
+        user_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Async version of :meth:`plan_mode` – safe for Trio / Hypercorn.
+
+        The blocking xAI API call is offloaded to a worker thread via
+        ``anyio.to_thread.run_sync``.  Plan approval still runs in the
+        same thread when ``headless=False``.
+        """
+        plan_prompt = (
+            f"Task: {task}\n\n"
+            "Please first produce a detailed ## Plan (numbered steps), "
+            "then add a ## Implementation section with the actual code."
+        )
+
+        raw = await self._aexecute_with_fallback(
+            sdk_func=self._chat_sdk,
+            operation="plan_mode",
+            message=plan_prompt,
+            model=model,
+            temperature=temperature,
+            system_prompt=_PLAN_MODE_SYSTEM_PROMPT,
+            api_key=self.get_api_key(user_id=user_id),
+            **kwargs,
+        )
+
+        full_text: str = raw.get("response", "")
+        plan_section, impl_section = self._split_plan_impl(full_text)
+
         should_skip_approval = (
             (auto_approve is True)
             or (auto_approve is None and self.headless)
@@ -393,6 +507,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         subtasks: List[str],
         model: str = "grok-3-mini",
         temperature: float = 0.2,
+        user_id: Optional[str] = None,
         **kwargs: Any,
     ) -> List[Dict[str, Any]]:
         """
@@ -411,6 +526,8 @@ class XAIGrokCLIIntegration(DualModeWrapper):
             cost-efficiency at scale).
         temperature:
             Sampling temperature.
+        user_id:
+            Optional user identifier for per-user key pinning.
 
         Returns
         -------
@@ -418,6 +535,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         containing ``response``, ``cached``, ``mode``, and ``subtask``.
         """
         results: List[Optional[Dict[str, Any]]] = [None] * len(subtasks)
+        api_key = self.get_api_key(user_id=user_id)
 
         def _run_subtask(idx: int, subtask: str) -> tuple[int, Dict[str, Any]]:
             logger.debug("Subagent %d/%d: %s", idx + 1, len(subtasks), subtask[:80])
@@ -427,6 +545,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
                 message=subtask,
                 model=model,
                 temperature=temperature,
+                api_key=api_key,
                 **kwargs,
             )
             result["subtask"] = subtask
@@ -454,6 +573,36 @@ class XAIGrokCLIIntegration(DualModeWrapper):
 
         return [r for r in results if r is not None]
 
+    async def aspawn_subagents(
+        self,
+        subtasks: List[str],
+        model: str = "grok-3-mini",
+        temperature: float = 0.2,
+        user_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> List[Dict[str, Any]]:
+        """
+        Async version of :meth:`spawn_subagents` – safe for Trio / Hypercorn.
+
+        The entire subagent batch (``ThreadPoolExecutor`` + ``as_completed``
+        loop) is offloaded to a single worker thread so the event loop is
+        never blocked.
+        """
+        try:
+            import anyio
+        except ImportError:
+            return self.spawn_subagents(subtasks, model=model, temperature=temperature, user_id=user_id, **kwargs)
+
+        fn = functools.partial(
+            self.spawn_subagents,
+            subtasks,
+            model=model,
+            temperature=temperature,
+            user_id=user_id,
+            **kwargs,
+        )
+        return await anyio.to_thread.run_sync(fn)
+
     # ------------------------------------------------------------------
     # Live Web / X Search  (unique to Grok Build)
     # ------------------------------------------------------------------
@@ -463,6 +612,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         query: str,
         model: str = _DEFAULT_MODEL,
         temperature: float = 0.0,
+        user_id: Optional[str] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
@@ -481,6 +631,8 @@ class XAIGrokCLIIntegration(DualModeWrapper):
             Grok model to use.
         temperature:
             Sampling temperature (0.0 recommended for factual lookups).
+        user_id:
+            Optional user identifier for per-user key pinning.
 
         Returns
         -------
@@ -495,6 +647,27 @@ class XAIGrokCLIIntegration(DualModeWrapper):
             model=model,
             temperature=temperature,
             search_enabled=True,
+            api_key=self.get_api_key(user_id=user_id),
+            **kwargs,
+        )
+
+    async def aweb_search(
+        self,
+        query: str,
+        model: str = _DEFAULT_MODEL,
+        temperature: float = 0.0,
+        user_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Async version of :meth:`web_search` – safe for Trio / Hypercorn."""
+        return await self._aexecute_with_fallback(
+            sdk_func=self._chat_sdk,
+            operation="web_search",
+            message=query,
+            model=model,
+            temperature=temperature,
+            search_enabled=True,
+            api_key=self.get_api_key(user_id=user_id),
             **kwargs,
         )
 
@@ -502,6 +675,7 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         self,
         query: str,
         model: str = _DEFAULT_MODEL,
+        user_id: Optional[str] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
@@ -512,7 +686,18 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         Q&A around a library/API.
         """
         x_query = f"Search X (Twitter) for the latest posts about: {query}"
-        return self.web_search(x_query, model=model, **kwargs)
+        return self.web_search(x_query, model=model, user_id=user_id, **kwargs)
+
+    async def ax_search(
+        self,
+        query: str,
+        model: str = _DEFAULT_MODEL,
+        user_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Async version of :meth:`x_search` – safe for Trio / Hypercorn."""
+        x_query = f"Search X (Twitter) for the latest posts about: {query}"
+        return await self.aweb_search(x_query, model=model, user_id=user_id, **kwargs)
 
     # ------------------------------------------------------------------
     # Standard chat / code-generation  (shared with other integrations)
@@ -523,10 +708,11 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         message: str,
         model: str = _DEFAULT_MODEL,
         temperature: float = 0.7,
+        user_id: Optional[str] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
-        Send a chat message to Grok.
+        Send a chat message to Grok (synchronous).
 
         Parameters
         ----------
@@ -536,6 +722,8 @@ class XAIGrokCLIIntegration(DualModeWrapper):
             Grok model (default ``grok-3``).
         temperature:
             Sampling temperature.
+        user_id:
+            Optional user identifier for per-user key pinning.
 
         Returns
         -------
@@ -547,6 +735,31 @@ class XAIGrokCLIIntegration(DualModeWrapper):
             message=message,
             model=model,
             temperature=temperature,
+            api_key=self.get_api_key(user_id=user_id),
+            **kwargs,
+        )
+
+    async def achat(
+        self,
+        message: str,
+        model: str = _DEFAULT_MODEL,
+        temperature: float = 0.7,
+        user_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Async version of :meth:`chat` – safe for Trio / Hypercorn.
+
+        The blocking xAI OpenAI-compatible API call is offloaded to a
+        worker thread via ``anyio.to_thread.run_sync``.
+        """
+        return await self._aexecute_with_fallback(
+            sdk_func=self._chat_sdk,
+            operation="chat",
+            message=message,
+            model=model,
+            temperature=temperature,
+            api_key=self.get_api_key(user_id=user_id),
             **kwargs,
         )
 
@@ -555,10 +768,11 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         prompt: str,
         model: str = _DEFAULT_MODEL,
         use_plan_mode: bool = False,
+        user_id: Optional[str] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
-        Generate code from a natural-language prompt.
+        Generate code from a natural-language prompt (synchronous).
 
         When ``use_plan_mode=True`` the Grok Build plan-first workflow is
         engaged: a structured plan is produced and (unless headless) presented
@@ -572,6 +786,8 @@ class XAIGrokCLIIntegration(DualModeWrapper):
             Grok model.
         use_plan_mode:
             Enable Grok Build Plan Mode for this request.
+        user_id:
+            Optional user identifier for per-user key pinning.
 
         Returns
         -------
@@ -579,9 +795,25 @@ class XAIGrokCLIIntegration(DualModeWrapper):
         ``cached``, and ``mode``.
         """
         if use_plan_mode:
-            return self.plan_mode(task=prompt, model=model, **kwargs)
+            return self.plan_mode(task=prompt, model=model, user_id=user_id, **kwargs)
 
-        return self.chat(prompt, model=model, temperature=0.0, **kwargs)
+        return self.chat(prompt, model=model, temperature=0.0, user_id=user_id, **kwargs)
+
+    async def agenerate_code(
+        self,
+        prompt: str,
+        model: str = _DEFAULT_MODEL,
+        use_plan_mode: bool = False,
+        user_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Async version of :meth:`generate_code` – safe for Trio / Hypercorn.
+        """
+        if use_plan_mode:
+            return await self.aplan_mode(task=prompt, model=model, user_id=user_id, **kwargs)
+
+        return await self.achat(prompt, model=model, temperature=0.0, user_id=user_id, **kwargs)
 
     def list_models(self) -> List[str]:
         """Return the list of known Grok model identifiers."""

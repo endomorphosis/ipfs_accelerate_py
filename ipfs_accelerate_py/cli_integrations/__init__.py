@@ -55,6 +55,7 @@ Cache Benefits:
 
 from .base_cli_wrapper import BaseCLIWrapper
 from .dual_mode_wrapper import DualModeWrapper, detect_cli_tool
+from .api_key_pool import ApiKeyPool
 from .github_cli_integration import GitHubCLIIntegration, get_github_cli_integration
 from .copilot_cli_integration import CopilotCLIIntegration, get_copilot_cli_integration
 from .vscode_cli_integration import VSCodeCLIIntegration, get_vscode_cli_integration
@@ -70,6 +71,7 @@ __all__ = [
     # Base classes
     'BaseCLIWrapper',
     'DualModeWrapper',
+    'ApiKeyPool',
     
     # Utilities
     'detect_cli_tool',
