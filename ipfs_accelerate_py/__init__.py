@@ -107,7 +107,7 @@ if os.environ.get("IPFS_ACCEL_IMPORT_EAGER", "0") == "1":
     try:
         from .model_manager import (
             ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
-            create_model_from_huggingface, get_default_model_manager
+            ServingConfig, create_model_from_huggingface, get_default_model_manager
         )
         model_manager_available = True
     except Exception:
@@ -128,6 +128,7 @@ else:
                 IOSpec as _RealIOSpec,
                 ModelType as _RealModelType,
                 DataType as _RealDataType,
+                ServingConfig as _RealServingConfig,
                 create_model_from_huggingface as _create_model_from_huggingface,
                 get_default_model_manager as _real_get_default_model_manager,
             )
@@ -137,6 +138,7 @@ else:
                 "IOSpec": _RealIOSpec,
                 "ModelType": _RealModelType,
                 "DataType": _RealDataType,
+                "ServingConfig": _RealServingConfig,
                 "create_model_from_huggingface": _create_model_from_huggingface,
                 "get_default_model_manager": _real_get_default_model_manager,
             }

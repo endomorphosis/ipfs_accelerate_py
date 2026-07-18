@@ -86,6 +86,10 @@ class StorageBackendConfig:
     enable_local: bool = True
     cache_dir: str = "~/.cache/ipfs_accelerate"
     ipfs_kit_available: bool = False
+    # Tiered cache configuration
+    cache_memory_mb: int = 100
+    cache_disk_mb: int = 1024
+    cache_eviction_policy: str = "lru"  # "lru", "lfu", "arc"
     
 
 class IPFSKitStorage:
@@ -647,6 +651,182 @@ class IPFSKitStorage:
         hash_value = hashlib.sha256(data).hexdigest()
         return f"bafy{hash_value[:56]}"  # Mimic IPFS CIDv1 format
     
+    def configure_cache(
+        self,
+        memory_mb: int = 100,
+        disk_mb: int = 1024,
+        eviction_policy: str = "lru",
+    ) -> Dict[str, Any]:
+        """
+        Configure the tiered cache parameters.
+
+        When ipfs_kit_py is available its multi-tier cache (memory → disk →
+        IPFS → cloud) is configured with these values.  In fallback mode the
+        disk quota is enforced by evicting the oldest local-cache files when
+        the directory exceeds ``disk_mb`` megabytes.
+
+        Parameters
+        ----------
+        memory_mb:
+            Maximum in-memory cache size in megabytes (default: 100).
+        disk_mb:
+            Maximum local disk cache size in megabytes (default: 1024).
+        eviction_policy:
+            Cache eviction algorithm: ``"lru"``, ``"lfu"``, or ``"arc"``
+            (default: ``"lru"``).
+
+        Returns
+        -------
+        dict with the applied configuration.
+        """
+        self._cache_memory_mb = memory_mb
+        self._cache_disk_mb = disk_mb
+        self._cache_eviction_policy = eviction_policy
+
+        if self.is_available() and self.ipfs_kit_client:
+            # Propagate to ipfs_kit_py when a real client exists
+            client = self.ipfs_kit_client
+            _configure_fn = client.get("configure_cache") if isinstance(client, dict) else \
+                            getattr(client, "configure_cache", None)
+            if callable(_configure_fn):
+                try:
+                    _configure_fn(
+                        memory_mb=memory_mb,
+                        disk_mb=disk_mb,
+                        eviction_policy=eviction_policy,
+                    )
+                except Exception as e:
+                    logger.debug("ipfs_kit_py configure_cache failed: %s", e)
+
+        # Enforce disk quota on local fallback cache
+        self._evict_local_cache_if_needed()
+
+        config = {
+            "memory_mb": memory_mb,
+            "disk_mb": disk_mb,
+            "eviction_policy": eviction_policy,
+            "using_fallback": self.using_fallback,
+        }
+        logger.info("Cache configured: memory=%dMB disk=%dMB policy=%s",
+                    memory_mb, disk_mb, eviction_policy)
+        return config
+
+    def _evict_local_cache_if_needed(self) -> None:
+        """Remove oldest local-cache files if disk quota is exceeded."""
+        disk_mb = getattr(self, "_cache_disk_mb", 1024)
+        try:
+            entries = []
+            for p in self.cache_dir.iterdir():
+                if p.is_file() and not p.name.endswith(".meta"):
+                    entries.append((p.stat().st_mtime, p))
+            total_bytes = sum(p.stat().st_size for _, p in entries)
+            limit_bytes = disk_mb * 1024 * 1024
+            if total_bytes <= limit_bytes:
+                return
+            # Sort oldest first
+            entries.sort(key=lambda x: x[0])
+            for _, p in entries:
+                if total_bytes <= limit_bytes:
+                    break
+                size = p.stat().st_size
+                meta = self.cache_dir / f"{p.name}.meta"
+                p.unlink(missing_ok=True)
+                meta.unlink(missing_ok=True)
+                total_bytes -= size
+                logger.debug("Evicted cache entry: %s", p.name)
+        except Exception as e:
+            logger.debug("Local cache eviction skipped: %s", e)
+
+    def register_model_service(
+        self,
+        model_id: str,
+        serving_config: Dict[str, Any],
+    ) -> bool:
+        """
+        Register a model as a named service in the ipfs_kit_py ServiceRegistry.
+
+        This makes the model's serving configuration (launch args, engine,
+        generation defaults, etc.) discoverable by other cluster nodes via the
+        IPFS-backed service registry.
+
+        Parameters
+        ----------
+        model_id:
+            Unique model identifier.
+        serving_config:
+            Dict produced by ``ServingConfig`` or ``ModelManager.get_serving_config``.
+
+        Returns
+        -------
+        True on success (or if service registry is not available).
+        """
+        service_name = model_id.replace("/", "_")
+        service_data = {"model_id": model_id, "serving_config": serving_config}
+
+        if self.is_available() and self.ipfs_kit_client:
+            client = self.ipfs_kit_client
+            registry_fn = client.get("register_service") if isinstance(client, dict) else \
+                          getattr(client, "register_service", None)
+            if callable(registry_fn):
+                try:
+                    registry_fn(service_name, service_data)
+                    logger.info("Registered model service '%s' in ipfs_kit_py ServiceRegistry",
+                                service_name)
+                    return True
+                except Exception as e:
+                    logger.debug("ipfs_kit_py register_service failed: %s", e)
+
+        # Fallback: persist to a local YAML/JSON file inside the cache dir
+        try:
+            import json as _json
+            svc_path = self.cache_dir / f"service_{service_name}.json"
+            with open(svc_path, "w") as fh:
+                _json.dump(service_data, fh, indent=2, default=str)
+            logger.debug("Saved model service config locally: %s", svc_path)
+            return True
+        except Exception as e:
+            logger.warning("Failed to persist model service config locally: %s", e)
+            return False
+
+    def get_model_service_config(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve the serving configuration for a registered model service.
+
+        Parameters
+        ----------
+        model_id:
+            Unique model identifier.
+
+        Returns
+        -------
+        Service config dict, or None if not found.
+        """
+        service_name = model_id.replace("/", "_")
+
+        if self.is_available() and self.ipfs_kit_client:
+            client = self.ipfs_kit_client
+            get_fn = client.get("get_service_config") if isinstance(client, dict) else \
+                     getattr(client, "get_service_config", None)
+            if callable(get_fn):
+                try:
+                    data = get_fn(service_name)
+                    if data:
+                        return data
+                except Exception as e:
+                    logger.debug("ipfs_kit_py get_service_config failed: %s", e)
+
+        # Fallback: read local JSON file
+        try:
+            import json as _json
+            svc_path = self.cache_dir / f"service_{service_name}.json"
+            if svc_path.exists():
+                with open(svc_path) as fh:
+                    return _json.load(fh)
+        except Exception as e:
+            logger.debug("Failed to read local service config: %s", e)
+
+        return None
+
     def pin(self, cid: str) -> bool:
         """
         Pin content to prevent garbage collection.
