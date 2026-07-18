@@ -2675,6 +2675,15 @@ class PortalImplementationDaemon:
         return paths
 
     def _link_shared_worktree_paths(self, worktree_path: Path) -> None:
+        try:
+            worktree_path.resolve().relative_to(self.worktree_root.resolve())
+        except (OSError, RuntimeError, ValueError):
+            logger.warning(
+                "Refusing to link shared dependencies outside managed worktree root: %s",
+                worktree_path,
+            )
+            return
+
         for relative in SHARED_WORKTREE_PATHS:
             source_path = self.repo_root / relative
             try:
@@ -2682,6 +2691,18 @@ class PortalImplementationDaemon:
             except (OSError, RuntimeError):
                 continue
             target = worktree_path / relative
+            try:
+                target_parent = target.parent.resolve()
+                target_resolved = target.resolve(strict=False)
+            except (OSError, RuntimeError):
+                logger.warning("Cannot resolve shared dependency link parent: %s", target.parent)
+                continue
+            if target_resolved == source or target_parent == source:
+                logger.warning(
+                    "Refusing to link shared dependency onto or inside its source: %s",
+                    target,
+                )
+                continue
             if target.is_symlink():
                 try:
                     if target.resolve(strict=True) == source:

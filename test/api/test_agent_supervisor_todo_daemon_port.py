@@ -1181,6 +1181,57 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     assert command[7:] == ["", "200000", "high", "10", "2", "", "high", "long_context", "30"]
 
 
+def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktrees(tmp_path):
+    repo = tmp_path / "repo"
+    source = repo / "swissknife" / "node_modules"
+    source.mkdir(parents=True)
+    worktree_root = tmp_path / "worktrees"
+    worktree = worktree_root / "task-attempt"
+    (worktree / "swissknife").mkdir(parents=True)
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=worktree_root,
+    )
+
+    daemon._link_shared_worktree_paths(worktree)
+
+    target = worktree / "swissknife" / "node_modules"
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+
+    outside = tmp_path / "outside-worktree"
+    outside.mkdir()
+    daemon._link_shared_worktree_paths(outside)
+    assert not (outside / "swissknife" / "node_modules").exists()
+
+
+def test_implementation_daemon_never_nests_shared_dependency_links_inside_their_source(tmp_path):
+    repo = tmp_path / "repo"
+    source = repo / "swissknife" / "node_modules"
+    source.mkdir(parents=True)
+    worktree_root = tmp_path / "worktrees"
+    worktree = worktree_root / "task-attempt"
+    worktree.mkdir(parents=True)
+    (worktree / "swissknife").symlink_to(source, target_is_directory=True)
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=worktree_root,
+    )
+
+    daemon._link_shared_worktree_paths(worktree)
+
+    assert source.is_dir()
+    assert not (source / "node_modules").exists()
+
+
 def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     objective_path = repo / "objective.md"
