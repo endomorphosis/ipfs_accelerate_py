@@ -360,5 +360,222 @@ class TestMetaAICLIImport(unittest.TestCase):
         self.assertIn("get_meta_ai_cli_integration", pkg.__all__)
 
 
+# ---------------------------------------------------------------------------
+# api_backends/meta_ai.py unit tests
+# ---------------------------------------------------------------------------
+
+class TestMetaAIBackend(unittest.TestCase):
+    """Unit tests for the meta_ai API backend class."""
+
+    def test_import(self):
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai, ALL_MODELS, CHAT_MODELS
+        self.assertIn("meta-llama/Llama-3.3-70B-Instruct", CHAT_MODELS)
+        self.assertIn("meta-llama/Llama-3.2-90B-Vision-Instruct", CHAT_MODELS)
+        self.assertIn("meta-spark/Spark-1.1", CHAT_MODELS)
+        self.assertIsInstance(ALL_MODELS, dict)
+
+    def test_init_no_key(self):
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+        saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+        try:
+            client = meta_cls(resources={}, metadata={})
+            self.assertIsNone(client.api_key)
+            self.assertEqual(client.default_model, "meta-llama/Llama-3.3-70B-Instruct")
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
+    def test_init_with_metadata(self):
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+        client = meta_cls(
+            resources={},
+            metadata={
+                "api_key": "test-key",
+                "model": "meta-llama/Llama-3.1-8B-Instruct",
+                "max_retries": "5",
+                "timeout": "45.0",
+            },
+        )
+        self.assertEqual(client.api_key, "test-key")
+        self.assertEqual(client.default_model, "meta-llama/Llama-3.1-8B-Instruct")
+        self.assertEqual(client.max_retries, 5)
+        self.assertEqual(client.timeout, 45.0)
+
+    def test_list_models(self):
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+        client = meta_cls()
+        models = client.list_models()
+        self.assertIsInstance(models, list)
+        self.assertIn("meta-llama/Llama-3.3-70B-Instruct", models)
+        self.assertIn("meta-spark/Spark-1.1", models)
+
+    def test_get_model_info_known(self):
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+        client = meta_cls()
+        info = client.get_model_info("meta-llama/Llama-3.3-70B-Instruct")
+        self.assertIsInstance(info, dict)
+        self.assertIn("context_window", info)
+
+    def test_get_model_info_unknown(self):
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+        client = meta_cls()
+        self.assertIsNone(client.get_model_info("nonexistent-model"))
+
+    def test_generate_returns_string_on_successful_response(self):
+        from unittest.mock import patch
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+        client = meta_cls(metadata={"api_key": "dummy"})
+        fake_response = {
+            "choices": [{"message": {"content": "Hello from Llama!"}}]
+        }
+        with patch.object(client, "_make_request", return_value=fake_response):
+            result = client.generate("Hello")
+        self.assertEqual(result, "Hello from Llama!")
+
+    def test_generate_returns_empty_on_empty_choices(self):
+        from unittest.mock import patch
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+        client = meta_cls(metadata={"api_key": "dummy"})
+        with patch.object(client, "_make_request", return_value={"choices": []}):
+            self.assertEqual(client.generate("Hello"), "")
+
+    def test_embed_returns_list_of_vectors(self):
+        from unittest.mock import patch
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+        client = meta_cls(metadata={"api_key": "dummy"})
+        fake_response = {"data": [{"embedding": [0.4, 0.5, 0.6]}]}
+        with patch.object(client, "_make_request", return_value=fake_response):
+            vecs = client.embed(["hello"])
+        self.assertEqual(vecs, [[0.4, 0.5, 0.6]])
+
+    def test_make_request_raises_without_key(self):
+        from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+        saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+        try:
+            client = meta_cls()
+            with self.assertRaises(RuntimeError, msg="should raise without API key"):
+                client._make_request("chat/completions", {})
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
+
+# ---------------------------------------------------------------------------
+# api_models_registry prefix-mapping tests
+# ---------------------------------------------------------------------------
+
+class TestApiModelsRegistryMetaPrefixes(unittest.TestCase):
+    """Verify meta-llama/ and meta-spark/ are mapped to the meta_ai backend."""
+
+    def setUp(self):
+        from ipfs_accelerate_py.api_backends.api_models_registry import api_models
+        self.registry = api_models()
+
+    def test_meta_llama_prefix(self):
+        backend = self.registry.get_backend_for_model("meta-llama/Llama-3.3-70B-Instruct")
+        self.assertEqual(backend, "meta_ai")
+
+    def test_meta_spark_prefix(self):
+        backend = self.registry.get_backend_for_model("meta-spark/Spark-1.1")
+        self.assertEqual(backend, "meta_ai")
+
+    def test_openai_prefix_unchanged(self):
+        backend = self.registry.get_backend_for_model("openai/gpt-4")
+        self.assertEqual(backend, "openai_api")
+
+    def test_unknown_prefix_returns_none(self):
+        backend = self.registry.get_backend_for_model("unknownprovider/some-model")
+        self.assertIsNone(backend)
+
+
+# ---------------------------------------------------------------------------
+# embeddings_router integration tests for Meta AI
+# ---------------------------------------------------------------------------
+
+class TestMetaAIEmbeddingsRouter(unittest.TestCase):
+    """Verify the Meta AI provider is wired into the embeddings router."""
+
+    def test_builtin_provider_by_name_meta_ai(self):
+        from ipfs_accelerate_py.embeddings_router import _builtin_provider_by_name
+        from ipfs_accelerate_py.router_deps import get_default_router_deps
+        os.environ["META_AI_API_KEY"] = "dummy"
+        try:
+            provider = _builtin_provider_by_name("meta_ai", get_default_router_deps())
+            self.assertIsNotNone(provider)
+            self.assertTrue(hasattr(provider, "embed_texts"))
+        finally:
+            del os.environ["META_AI_API_KEY"]
+
+    def test_aliases_meta_and_spark(self):
+        from ipfs_accelerate_py.embeddings_router import _builtin_provider_by_name
+        from ipfs_accelerate_py.router_deps import get_default_router_deps
+        os.environ["META_AI_API_KEY"] = "dummy"
+        try:
+            for alias in ("meta", "spark", "meta_llama", "meta_spark"):
+                with self.subTest(alias=alias):
+                    self.assertIsNotNone(_builtin_provider_by_name(alias, get_default_router_deps()))
+        finally:
+            del os.environ["META_AI_API_KEY"]
+
+    def test_no_provider_without_key(self):
+        from ipfs_accelerate_py.embeddings_router import _get_meta_ai_embeddings_provider
+        saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+        try:
+            self.assertIsNone(_get_meta_ai_embeddings_provider())
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
+    def test_cache_key_includes_meta_ai_vars(self):
+        from ipfs_accelerate_py.embeddings_router import _provider_cache_key
+        os.environ["META_AI_API_KEY"] = "key-a"
+        k1 = _provider_cache_key()
+        os.environ["META_AI_API_KEY"] = "key-b"
+        k2 = _provider_cache_key()
+        self.assertNotEqual(k1, k2)
+        del os.environ["META_AI_API_KEY"]
+
+
+# ---------------------------------------------------------------------------
+# multimodal_router integration tests for Meta AI
+# ---------------------------------------------------------------------------
+
+class TestMetaAIMultimodalRouter(unittest.TestCase):
+    """Verify the Meta AI provider is wired into the multimodal router."""
+
+    def test_builtin_provider_by_name_meta_ai(self):
+        from ipfs_accelerate_py.multimodal_router import _builtin_provider_by_name
+        from ipfs_accelerate_py.router_deps import get_default_router_deps
+        os.environ["META_AI_API_KEY"] = "dummy"
+        try:
+            provider = _builtin_provider_by_name("meta_ai", get_default_router_deps())
+            self.assertIsNotNone(provider)
+            self.assertTrue(hasattr(provider, "generate"))
+        finally:
+            del os.environ["META_AI_API_KEY"]
+
+    def test_no_provider_without_key(self):
+        from ipfs_accelerate_py.multimodal_router import _get_meta_ai_multimodal_provider
+        saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+        try:
+            self.assertIsNone(_get_meta_ai_multimodal_provider())
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
+    def test_cache_key_includes_meta_ai_vars(self):
+        from ipfs_accelerate_py.multimodal_router import _provider_cache_key
+        os.environ["META_AI_API_KEY"] = "key-a"
+        k1 = _provider_cache_key()
+        os.environ["META_AI_API_KEY"] = "key-b"
+        k2 = _provider_cache_key()
+        self.assertNotEqual(k1, k2)
+        del os.environ["META_AI_API_KEY"]
+
+
 if __name__ == "__main__":
     unittest.main()

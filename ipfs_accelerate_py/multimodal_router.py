@@ -26,6 +26,14 @@ Additional optional providers (opt-in by selecting provider):
     - `OPENAI_API_KEY` or `IPFS_ACCELERATE_PY_OPENAI_API_KEY`
     - `IPFS_ACCELERATE_PY_OPENAI_MULTIMODAL_MODEL` (default: gpt-4o)
     - `IPFS_ACCELERATE_PY_OPENAI_BASE_URL`
+- `xai`: xAI Grok vision (grok-2-vision-1212) via OpenAI-compatible endpoint
+    - `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY`
+    - `ipfs_accelerate_py_XAI_MULTIMODAL_MODEL` (default: grok-2-vision-1212)
+    - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
+- `meta_ai`: Meta Llama vision (Llama-3.2-90B-Vision-Instruct) via OpenAI-compatible endpoint
+    - `META_AI_API_KEY` or `ipfs_accelerate_py_META_AI_API_KEY`
+    - `ipfs_accelerate_py_META_AI_MULTIMODAL_MODEL` (default: meta-llama/Llama-3.2-90B-Vision-Instruct)
+    - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.llamameta.net/v1)
 - `huggingface`: HuggingFace transformers (LLaVA, InstructBLIP, etc.)
 - `backend_manager`: Use InferenceBackendManager for distributed inference
 """
@@ -331,6 +339,162 @@ def _get_openai_provider() -> Optional[MultimodalProvider]:
     return _OpenAIMultimodalProvider()
 
 
+def _get_xai_multimodal_provider() -> Optional[MultimodalProvider]:
+    """Get xAI Grok vision provider (grok-2-vision-1212) via OpenAI-compatible endpoint."""
+    api_key = (
+        os.environ.get("XAI_API_KEY", "").strip()
+        or os.environ.get("ipfs_accelerate_py_XAI_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+
+    base_url = os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "https://api.x.ai/v1").rstrip("/")
+
+    class _XAIMultimodalProvider:
+        def generate(
+            self,
+            prompt: str,
+            *,
+            image: Optional[Union[str, bytes]] = None,
+            model_name: Optional[str] = None,
+            device: Optional[str] = None,
+            **kwargs: object,
+        ) -> str:
+            _ = device
+            model = (
+                model_name
+                or os.getenv("ipfs_accelerate_py_XAI_MULTIMODAL_MODEL")
+                or os.getenv("ipfs_accelerate_py_MULTIMODAL_MODEL")
+                or "grok-2-vision-1212"
+            )
+
+            content: list = []
+            if image is not None:
+                img_src, _ = _encode_image_for_api(image)
+                content.append({"type": "image_url", "image_url": {"url": img_src}})
+            content.append({"type": "text", "text": str(prompt)})
+
+            messages = [{"role": "user", "content": content}]
+            payload: Dict[str, object] = {
+                "model": model,
+                "messages": messages,
+            }
+            if "max_tokens" in kwargs:
+                payload["max_tokens"] = kwargs["max_tokens"]
+            if "temperature" in kwargs:
+                payload["temperature"] = kwargs["temperature"]
+
+            req = urllib.request.Request(
+                f"{base_url}/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": "Bearer " + api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+            )
+
+            try:
+                with urllib.request.urlopen(req, timeout=float(kwargs.get("timeout", 120))) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+                raise RuntimeError(f"xAI HTTP {exc.code}: {detail or exc.reason}") from exc
+            except Exception as exc:
+                raise RuntimeError(f"xAI request failed: {exc}") from exc
+
+            try:
+                data = json.loads(raw)
+            except Exception as exc:
+                raise RuntimeError("xAI returned invalid JSON") from exc
+
+            choices = data.get("choices")
+            if not isinstance(choices, list) or not choices:
+                raise RuntimeError("xAI multimodal response missing choices")
+            return str(choices[0].get("message", {}).get("content", "") or "")
+
+    return _XAIMultimodalProvider()
+
+
+def _get_meta_ai_multimodal_provider() -> Optional[MultimodalProvider]:
+    """Get Meta AI vision provider (Llama-3.2-90B-Vision-Instruct) via OpenAI-compatible endpoint."""
+    api_key = (
+        os.environ.get("META_AI_API_KEY", "").strip()
+        or os.environ.get("ipfs_accelerate_py_META_AI_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+
+    base_url = os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "https://api.llamameta.net/v1").rstrip("/")
+
+    class _MetaAIMultimodalProvider:
+        def generate(
+            self,
+            prompt: str,
+            *,
+            image: Optional[Union[str, bytes]] = None,
+            model_name: Optional[str] = None,
+            device: Optional[str] = None,
+            **kwargs: object,
+        ) -> str:
+            _ = device
+            model = (
+                model_name
+                or os.getenv("ipfs_accelerate_py_META_AI_MULTIMODAL_MODEL")
+                or os.getenv("ipfs_accelerate_py_MULTIMODAL_MODEL")
+                or "meta-llama/Llama-3.2-90B-Vision-Instruct"
+            )
+
+            content: list = []
+            if image is not None:
+                img_src, _ = _encode_image_for_api(image)
+                content.append({"type": "image_url", "image_url": {"url": img_src}})
+            content.append({"type": "text", "text": str(prompt)})
+
+            messages = [{"role": "user", "content": content}]
+            payload: Dict[str, object] = {
+                "model": model,
+                "messages": messages,
+            }
+            if "max_tokens" in kwargs:
+                payload["max_tokens"] = kwargs["max_tokens"]
+            if "temperature" in kwargs:
+                payload["temperature"] = kwargs["temperature"]
+
+            req = urllib.request.Request(
+                f"{base_url}/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": "Bearer " + api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+            )
+
+            try:
+                with urllib.request.urlopen(req, timeout=float(kwargs.get("timeout", 120))) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+                raise RuntimeError(f"Meta AI HTTP {exc.code}: {detail or exc.reason}") from exc
+            except Exception as exc:
+                raise RuntimeError(f"Meta AI request failed: {exc}") from exc
+
+            try:
+                data = json.loads(raw)
+            except Exception as exc:
+                raise RuntimeError("Meta AI returned invalid JSON") from exc
+
+            choices = data.get("choices")
+            if not isinstance(choices, list) or not choices:
+                raise RuntimeError("Meta AI multimodal response missing choices")
+            return str(choices[0].get("message", {}).get("content", "") or "")
+
+    return _MetaAIMultimodalProvider()
+
+
 def _get_huggingface_provider() -> Optional[MultimodalProvider]:
     """Get HuggingFace multimodal provider using transformers."""
     try:
@@ -484,6 +648,14 @@ def _provider_cache_key() -> tuple:
         os.getenv("OPENROUTER_API_KEY", "").strip(),
         os.getenv("OPENAI_API_KEY", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_OPENAI_API_KEY", "").strip(),
+        os.getenv("XAI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_XAI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_XAI_MULTIMODAL_MODEL", "").strip(),
+        os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "").strip(),
+        os.getenv("META_AI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_META_AI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_META_AI_MULTIMODAL_MODEL", "").strip(),
+        os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_MULTIMODAL_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_MULTIMODAL_DEVICE", "").strip(),
     )
@@ -497,6 +669,10 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[Multimoda
         return _get_openrouter_provider()
     if key in {"openai", "gpt4v", "gpt-4v", "gpt4o", "gpt-4o"}:
         return _get_openai_provider()
+    if key in {"xai", "grok", "xai_grok"}:
+        return _get_xai_multimodal_provider()
+    if key in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
+        return _get_meta_ai_multimodal_provider()
     if key in {"hf", "huggingface", "local_hf"}:
         return _get_huggingface_provider()
     if key in {"backend_manager", "accelerate"}:
@@ -527,7 +703,7 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
     if backend_manager_provider is not None:
         return backend_manager_provider
 
-    for name in ["openrouter", "openai"]:
+    for name in ["openrouter", "xai", "meta_ai", "openai"]:
         candidate = _builtin_provider_by_name(name, deps=deps)
         if candidate is not None:
             return candidate
