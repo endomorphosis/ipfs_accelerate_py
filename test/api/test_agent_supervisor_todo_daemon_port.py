@@ -7096,6 +7096,54 @@ def test_implementation_supervisor_recovers_missing_inflight_before_worktree_rec
     assert any(event["type"] == "stale_active_execution_state_repaired" for event in events)
 
 
+def test_implementation_supervisor_ignores_task_local_service_processes_when_repairing_stale_state(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    active_worktree = repo / "worktrees" / "accel-999-attempt-1"
+    TodoTaskState(
+        active_task_id="ACCEL-999",
+        active_task_title="Stale implementation task",
+        active_task_track="ops",
+        active_attempt=1,
+        active_phase="validating",
+        active_worktree_path=str(active_worktree),
+        active_branch="implementation/accel-999-attempt-1",
+        implementation_in_progress=True,
+    ).save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+        )
+    )
+    monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: 0)
+    monkeypatch.setattr(
+        supervisor,
+        "_list_process_commands",
+        lambda: [
+            f"node {active_worktree}/swissknife/scripts/start-ipfs-accelerate-mcp-compat.cjs --port 3003",
+            f"python {active_worktree}/swissknife/scripts/ipfs_mcp_libp2p_bridge.py --port 9114",
+        ],
+    )
+
+    result = supervisor.repair_stale_active_execution_state()
+
+    assert result["repaired"] is True
+    recovered = TodoTaskState.load(state_path)
+    assert recovered.implementation_in_progress is False
+    assert recovered.active_worktree_path == ""
+
+
 def test_implementation_daemon_limits_merge_reconciliation_per_pass(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

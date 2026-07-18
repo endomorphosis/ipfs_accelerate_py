@@ -27,6 +27,7 @@ from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
 from .core import ManagedDaemonSpec
 from .implementation_daemon import (
     DEFAULT_TRACKS,
+    IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
     TASK_HEADER_PREFIX,
     PortalImplementationDaemon,
     PortalTask,
@@ -930,7 +931,14 @@ class PortalImplementationSupervisor:
 
         process_lines = self._list_process_commands()
         active_worktree = state.active_worktree_path.strip()
-        if active_worktree and any(active_worktree in line for line in process_lines):
+        # Validation can leave an MCP compatibility adapter in a task worktree
+        # after the implementation runner exits.  Only Codex/Copilot proves
+        # that an implementation attempt is still live; a local service must
+        # not prevent stale-state recovery indefinitely.
+        if active_worktree and any(
+            active_worktree in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+            for line in process_lines
+        ):
             return {
                 "repaired": False,
                 "reason": "active_worktree_process_running",
@@ -938,7 +946,10 @@ class PortalImplementationSupervisor:
                 "active_task_id": state.active_task_id,
             }
         active_branch = state.active_branch.strip()
-        if active_branch and any(active_branch in line for line in process_lines):
+        if active_branch and any(
+            active_branch in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+            for line in process_lines
+        ):
             return {
                 "repaired": False,
                 "reason": "active_branch_process_running",
