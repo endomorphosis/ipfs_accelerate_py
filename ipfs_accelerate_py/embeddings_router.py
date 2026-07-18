@@ -21,6 +21,14 @@ Additional optional providers (opt-in by selecting provider):
     - `OPENROUTER_API_KEY` or `IPFS_ACCELERATE_PY_OPENROUTER_API_KEY`
     - `IPFS_ACCELERATE_PY_OPENROUTER_EMBEDDINGS_MODEL`
     - `IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL` (default: https://openrouter.ai/api/v1)
+- `xai`: xAI Grok embeddings via OpenAI-compatible endpoint
+    - `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY`
+    - `ipfs_accelerate_py_XAI_EMBEDDINGS_MODEL` (default: v1)
+    - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
+- `meta_ai`: Meta AI / Llama embeddings via OpenAI-compatible endpoint
+    - `META_AI_API_KEY` or `ipfs_accelerate_py_META_AI_API_KEY`
+    - `ipfs_accelerate_py_META_AI_EMBEDDINGS_MODEL` (default: meta-llama/Llama-3.3-70B-Instruct)
+    - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.llamameta.net/v1)
 - `gemini_cli`: Gemini CLI embeddings via existing integration
 - `huggingface`: HuggingFace embeddings via existing integration
 - `backend_manager`: Use InferenceBackendManager for distributed/multiplexed inference
@@ -271,6 +279,152 @@ def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
     return _OpenRouterEmbeddingsProvider()
 
 
+def _get_xai_embeddings_provider() -> Optional[EmbeddingsProvider]:
+    """Get xAI Grok embeddings provider via OpenAI-compatible endpoint."""
+    api_key = (
+        os.environ.get("XAI_API_KEY", "").strip()
+        or os.environ.get("ipfs_accelerate_py_XAI_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+
+    base_url = os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "https://api.x.ai/v1").rstrip("/")
+
+    class _XAIEmbeddingsProvider:
+        def embed_texts(
+            self,
+            texts: Iterable[str],
+            *,
+            model_name: Optional[str] = None,
+            device: Optional[str] = None,
+            **kwargs: object,
+        ) -> List[List[float]]:
+            _ = device
+            model = (
+                model_name
+                or os.getenv("ipfs_accelerate_py_XAI_EMBEDDINGS_MODEL")
+                or os.getenv("ipfs_accelerate_py_EMBEDDINGS_MODEL")
+                or "v1"
+            )
+            inputs = list(texts)
+            payload = {"model": model, "input": inputs}
+
+            req = urllib.request.Request(
+                f"{base_url}/embeddings",
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": "Bearer " + api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+            )
+
+            try:
+                with urllib.request.urlopen(req, timeout=float(kwargs.get("timeout", 120))) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+                raise RuntimeError(f"xAI HTTP {exc.code}: {detail or exc.reason}") from exc
+            except Exception as exc:
+                raise RuntimeError(f"xAI embeddings request failed: {exc}") from exc
+
+            try:
+                data = json.loads(raw)
+            except Exception as exc:
+                raise RuntimeError("xAI returned invalid JSON") from exc
+
+            items = data.get("data")
+            if not isinstance(items, list):
+                raise RuntimeError("xAI embeddings response missing data")
+            embeddings: List[List[float]] = []
+            for item in items:
+                if not isinstance(item, dict) or "embedding" not in item:
+                    raise RuntimeError("xAI embeddings item missing embedding")
+                vec = item["embedding"]
+                if not isinstance(vec, list):
+                    raise RuntimeError("xAI embedding must be a list")
+                embeddings.append([float(x) for x in vec])
+            if not embeddings:
+                raise RuntimeError("xAI returned no embeddings")
+            return embeddings
+
+    return _XAIEmbeddingsProvider()
+
+
+def _get_meta_ai_embeddings_provider() -> Optional[EmbeddingsProvider]:
+    """Get Meta AI (Llama) embeddings provider via OpenAI-compatible endpoint."""
+    api_key = (
+        os.environ.get("META_AI_API_KEY", "").strip()
+        or os.environ.get("ipfs_accelerate_py_META_AI_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+
+    base_url = os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "https://api.llamameta.net/v1").rstrip("/")
+
+    class _MetaAIEmbeddingsProvider:
+        def embed_texts(
+            self,
+            texts: Iterable[str],
+            *,
+            model_name: Optional[str] = None,
+            device: Optional[str] = None,
+            **kwargs: object,
+        ) -> List[List[float]]:
+            _ = device
+            model = (
+                model_name
+                or os.getenv("ipfs_accelerate_py_META_AI_EMBEDDINGS_MODEL")
+                or os.getenv("ipfs_accelerate_py_EMBEDDINGS_MODEL")
+                or "meta-llama/Llama-3.3-70B-Instruct"
+            )
+            inputs = list(texts)
+            payload = {"model": model, "input": inputs}
+
+            req = urllib.request.Request(
+                f"{base_url}/embeddings",
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": "Bearer " + api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+            )
+
+            try:
+                with urllib.request.urlopen(req, timeout=float(kwargs.get("timeout", 120))) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+                raise RuntimeError(f"Meta AI HTTP {exc.code}: {detail or exc.reason}") from exc
+            except Exception as exc:
+                raise RuntimeError(f"Meta AI embeddings request failed: {exc}") from exc
+
+            try:
+                data = json.loads(raw)
+            except Exception as exc:
+                raise RuntimeError("Meta AI returned invalid JSON") from exc
+
+            items = data.get("data")
+            if not isinstance(items, list):
+                raise RuntimeError("Meta AI embeddings response missing data")
+            embeddings: List[List[float]] = []
+            for item in items:
+                if not isinstance(item, dict) or "embedding" not in item:
+                    raise RuntimeError("Meta AI embeddings item missing embedding")
+                vec = item["embedding"]
+                if not isinstance(vec, list):
+                    raise RuntimeError("Meta AI embedding must be a list")
+                embeddings.append([float(x) for x in vec])
+            if not embeddings:
+                raise RuntimeError("Meta AI returned no embeddings")
+            return embeddings
+
+    return _MetaAIEmbeddingsProvider()
+
+
 def _get_gemini_cli_provider() -> Optional[EmbeddingsProvider]:
     """Get Gemini CLI embeddings provider using existing integration."""
     try:
@@ -457,6 +611,14 @@ def _provider_cache_key() -> tuple:
         os.getenv("OPENROUTER_API_KEY", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_EMBEDDINGS_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL", "").strip(),
+        os.getenv("XAI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_XAI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_XAI_EMBEDDINGS_MODEL", "").strip(),
+        os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "").strip(),
+        os.getenv("META_AI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_META_AI_API_KEY", "").strip(),
+        os.getenv("ipfs_accelerate_py_META_AI_EMBEDDINGS_MODEL", "").strip(),
+        os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_BACKEND", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_DEVICE", "").strip(),
@@ -480,6 +642,10 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[Embedding
         return None
     if key == "openrouter":
         return _get_openrouter_provider()
+    if key in {"xai", "grok", "xai_grok"}:
+        return _get_xai_embeddings_provider()
+    if key in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
+        return _get_meta_ai_embeddings_provider()
     if key in {"gemini", "gemini_cli"}:
         return _get_gemini_cli_provider()
     if key in {"hf", "huggingface", "local_hf"}:
@@ -515,7 +681,7 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         return backend_manager_provider
 
     # Try optional providers if available.
-    for name in ["openrouter", "gemini_cli"]:
+    for name in ["openrouter", "xai", "meta_ai", "gemini_cli"]:
         candidate = _builtin_provider_by_name(name, deps=deps)
         if candidate is not None:
             return candidate

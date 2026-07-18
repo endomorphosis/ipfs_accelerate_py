@@ -24,7 +24,7 @@ def example_register_cli_endpoints():
     print("Example 1: Registering CLI Endpoints")
     print("=" * 70)
     
-    from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import (
+    from ipfs_accelerate_py.mcp_server.tools.cli_endpoint_adapters import (
         ClaudeCodeAdapter,
         OpenAICodexAdapter,
         GeminiCLIAdapter,
@@ -80,7 +80,7 @@ def example_list_cli_endpoints():
     print("Example 2: Listing All CLI Endpoints")
     print("=" * 70)
     
-    from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import list_cli_endpoints
+    from ipfs_accelerate_py.mcp_server.tools.cli_endpoint_adapters import list_cli_endpoints
     
     endpoints = list_cli_endpoints()
     
@@ -102,7 +102,7 @@ def example_cli_inference():
     print("Example 3: Running Inference with CLI Endpoints")
     print("=" * 70)
     
-    from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import execute_cli_inference
+    from ipfs_accelerate_py.mcp_server.tools.cli_endpoint_adapters import execute_cli_inference
     
     prompt = "What are the key benefits of using IPFS for distributed model storage?"
     
@@ -150,7 +150,7 @@ def example_multiplexed_inference():
     print("=" * 70)
     
     try:
-        from ipfs_accelerate_py.mcp.tools.enhanced_inference import (
+        from ipfs_accelerate_py.mcp_server.tools.enhanced_inference import (
             HAVE_CLI_ADAPTERS,
             CLI_PROVIDERS
         )
@@ -195,7 +195,7 @@ def example_queue_monitoring():
     print("=" * 70)
     
     try:
-        from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import CLI_ADAPTER_REGISTRY
+        from ipfs_accelerate_py.mcp_server.tools.cli_endpoint_adapters import CLI_ADAPTER_REGISTRY
         
         print(f"\n📊 CLI Endpoint Registry Status:")
         print(f"   Total Registered: {len(CLI_ADAPTER_REGISTRY)}")

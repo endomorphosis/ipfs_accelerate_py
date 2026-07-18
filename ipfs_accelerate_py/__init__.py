@@ -107,7 +107,7 @@ if os.environ.get("IPFS_ACCEL_IMPORT_EAGER", "0") == "1":
     try:
         from .model_manager import (
             ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
-            create_model_from_huggingface, get_default_model_manager
+            ServingConfig, create_model_from_huggingface, get_default_model_manager
         )
         model_manager_available = True
     except Exception:
@@ -128,6 +128,7 @@ else:
                 IOSpec as _RealIOSpec,
                 ModelType as _RealModelType,
                 DataType as _RealDataType,
+                ServingConfig as _RealServingConfig,
                 create_model_from_huggingface as _create_model_from_huggingface,
                 get_default_model_manager as _real_get_default_model_manager,
             )
@@ -137,6 +138,7 @@ else:
                 "IOSpec": _RealIOSpec,
                 "ModelType": _RealModelType,
                 "DataType": _RealDataType,
+                "ServingConfig": _RealServingConfig,
                 "create_model_from_huggingface": _create_model_from_huggingface,
                 "get_default_model_manager": _real_get_default_model_manager,
             }
@@ -285,6 +287,30 @@ else:
     reset_storage = None
     StorageBackendConfig = None
 
+# Add inference backend manager
+if not SKIP_CORE:
+    try:
+        from .inference_backend_manager import (
+            InferenceBackendManager,
+            get_backend_manager,
+            register_backend_from_config,
+        )
+
+        export["InferenceBackendManager"] = InferenceBackendManager
+        export["get_backend_manager"] = get_backend_manager
+        export["register_backend_from_config"] = register_backend_from_config
+        inference_backend_manager_available = True
+    except ImportError:
+        InferenceBackendManager = None
+        get_backend_manager = None
+        register_backend_from_config = None
+        inference_backend_manager_available = False
+else:
+    InferenceBackendManager = None
+    get_backend_manager = None
+    register_backend_from_config = None
+    inference_backend_manager_available = False
+
 # Add auto-patching for transformers (applies automatically on import if enabled)
 if not SKIP_CORE:
     try:
@@ -378,8 +404,98 @@ else:
     EmbeddingsProvider = None
     embeddings_router_available = False
 
+# Add Multimodal router functionality
+if not SKIP_CORE:
+    try:
+        from .multimodal_router import (
+            generate_multimodal,
+            get_multimodal_provider,
+            register_multimodal_provider,
+            clear_multimodal_router_caches,
+            MultimodalProvider,
+        )
+
+        export["generate_multimodal"] = generate_multimodal
+        export["get_multimodal_provider"] = get_multimodal_provider
+        export["register_multimodal_provider"] = register_multimodal_provider
+        export["clear_multimodal_router_caches"] = clear_multimodal_router_caches
+        export["MultimodalProvider"] = MultimodalProvider
+        multimodal_router_available = True
+    except ImportError:
+        generate_multimodal = None
+        get_multimodal_provider = None
+        register_multimodal_provider = None
+        clear_multimodal_router_caches = None
+        MultimodalProvider = None
+        multimodal_router_available = False
+else:
+    generate_multimodal = None
+    get_multimodal_provider = None
+    register_multimodal_provider = None
+    clear_multimodal_router_caches = None
+    MultimodalProvider = None
+    multimodal_router_available = False
+
+# Add Voice router functionality (TTS + STT); also provides backward-compat
+# aliases for the former tts_router (get_tts_provider, register_tts_provider,
+# clear_tts_router_caches, TTSProvider).
+if not SKIP_CORE:
+    try:
+        from .voice_router import (
+            text_to_speech,
+            speech_to_text,
+            get_voice_provider,
+            register_voice_provider,
+            clear_voice_router_caches,
+            VoiceProvider,
+            # backward-compat TTS aliases
+            get_tts_provider,
+            register_tts_provider,
+            clear_tts_router_caches,
+            TTSProvider,
+        )
+
+        export["text_to_speech"] = text_to_speech
+        export["speech_to_text"] = speech_to_text
+        export["get_voice_provider"] = get_voice_provider
+        export["register_voice_provider"] = register_voice_provider
+        export["clear_voice_router_caches"] = clear_voice_router_caches
+        export["VoiceProvider"] = VoiceProvider
+        export["get_tts_provider"] = get_tts_provider
+        export["register_tts_provider"] = register_tts_provider
+        export["clear_tts_router_caches"] = clear_tts_router_caches
+        export["TTSProvider"] = TTSProvider
+        voice_router_available = True
+        tts_router_available = True
+    except ImportError:
+        text_to_speech = None
+        speech_to_text = None
+        get_voice_provider = None
+        register_voice_provider = None
+        clear_voice_router_caches = None
+        VoiceProvider = None
+        get_tts_provider = None
+        register_tts_provider = None
+        clear_tts_router_caches = None
+        TTSProvider = None
+        voice_router_available = False
+        tts_router_available = False
+else:
+    text_to_speech = None
+    speech_to_text = None
+    get_voice_provider = None
+    register_voice_provider = None
+    clear_voice_router_caches = None
+    VoiceProvider = None
+    get_tts_provider = None
+    register_tts_provider = None
+    clear_tts_router_caches = None
+    TTSProvider = None
+    voice_router_available = False
+    tts_router_available = False
+
 __all__ = [
-    'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
+    'ipfs_accelerate_py', 'get_instance', 'backends', 'config',
     'install_depends', 'worker', 'ipfs_multiformats_py',
     'accelerate_with_browser', 'WebNNWebGPUAccelerator', 'get_accelerator',
     'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
@@ -387,12 +503,20 @@ __all__ = [
     'P2PWorkflowScheduler', 'P2PTask', 'WorkflowTag', 'MerkleClock',
     'FibonacciHeap', 'calculate_hamming_distance',
     'IPFSKitStorage', 'get_storage', 'reset_storage', 'StorageBackendConfig',
+    'InferenceBackendManager', 'get_backend_manager', 'register_backend_from_config',
+    'inference_backend_manager_available',
     'auto_patch_transformers',
     'generate_text', 'get_llm_provider', 'register_llm_provider',
     'clear_llm_router_caches', 'LLMProvider', 'RouterDeps',
     'get_default_router_deps', 'set_default_router_deps', 'llm_router_available',
     'embed_texts', 'embed_text', 'get_embeddings_provider', 'register_embeddings_provider',
-    'clear_embeddings_router_caches', 'EmbeddingsProvider', 'embeddings_router_available'
+    'clear_embeddings_router_caches', 'EmbeddingsProvider', 'embeddings_router_available',
+    'generate_multimodal', 'get_multimodal_provider', 'register_multimodal_provider',
+    'clear_multimodal_router_caches', 'MultimodalProvider', 'multimodal_router_available',
+    'text_to_speech', 'get_tts_provider', 'register_tts_provider',
+    'clear_tts_router_caches', 'TTSProvider', 'tts_router_available',
+    'speech_to_text', 'get_voice_provider', 'register_voice_provider',
+    'clear_voice_router_caches', 'VoiceProvider', 'voice_router_available',
 ]
 
 # Package version

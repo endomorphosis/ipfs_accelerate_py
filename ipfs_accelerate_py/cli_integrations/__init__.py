@@ -22,6 +22,8 @@ Available CLI Wrappers:
 - HuggingFaceCLIIntegration: HuggingFace CLI with caching
 - VastAICLIIntegration: Vast AI CLI with caching
 - GroqCLIIntegration: Groq with dual-mode support
+- XAIGrokCLIIntegration: xAI Grok Build with Plan Mode, Subagents, and live Web/X Search
+- MetaAICLIIntegration: Meta AI / Spark with Creative Mode and Vision Chat support
 
 Usage Example:
     from ipfs_accelerate_py.cli_integrations import GitHubCLIIntegration
@@ -54,6 +56,7 @@ Cache Benefits:
 
 from .base_cli_wrapper import BaseCLIWrapper
 from .dual_mode_wrapper import DualModeWrapper, detect_cli_tool
+from .api_key_pool import ApiKeyPool
 from .github_cli_integration import GitHubCLIIntegration, get_github_cli_integration
 from .copilot_cli_integration import CopilotCLIIntegration, get_copilot_cli_integration
 from .vscode_cli_integration import VSCodeCLIIntegration, get_vscode_cli_integration
@@ -63,11 +66,14 @@ from .gemini_cli_integration import GeminiCLIIntegration, get_gemini_cli_integra
 from .huggingface_cli_integration import HuggingFaceCLIIntegration, get_huggingface_cli_integration
 from .vastai_cli_integration import VastAICLIIntegration, get_vastai_cli_integration
 from .groq_cli_integration import GroqCLIIntegration, get_groq_cli_integration
+from .xai_grok_cli_integration import XAIGrokCLIIntegration, get_xai_grok_cli_integration
+from .meta_ai_cli_integration import MetaAICLIIntegration, get_meta_ai_cli_integration
 
 __all__ = [
     # Base classes
     'BaseCLIWrapper',
     'DualModeWrapper',
+    'ApiKeyPool',
     
     # Utilities
     'detect_cli_tool',
@@ -82,6 +88,8 @@ __all__ = [
     'HuggingFaceCLIIntegration',
     'VastAICLIIntegration',
     'GroqCLIIntegration',
+    'XAIGrokCLIIntegration',
+    'MetaAICLIIntegration',
     
     # Global instance getters
     'get_github_cli_integration',
@@ -93,6 +101,8 @@ __all__ = [
     'get_huggingface_cli_integration',
     'get_vastai_cli_integration',
     'get_groq_cli_integration',
+    'get_xai_grok_cli_integration',
+    'get_meta_ai_cli_integration',
 ]
 
 
@@ -113,4 +123,6 @@ def get_all_cli_integrations():
         'huggingface': get_huggingface_cli_integration(),
         'vastai': get_vastai_cli_integration(),
         'groq': get_groq_cli_integration(),
+        'xai_grok': get_xai_grok_cli_integration(),
+        'meta_ai': get_meta_ai_cli_integration(),
     }

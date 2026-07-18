@@ -427,6 +427,93 @@ async def reset_tdfol_metrics() -> Dict[str, Any]:
     return payload
 
 
+# ---------------------------------------------------------------------------
+# Dashboard data tools (migrated from legacy mcp/tools/dashboard_data.py)
+# ---------------------------------------------------------------------------
+
+
+def _load_dashboard_data_api() -> Dict[str, Any]:
+    """Resolve legacy dashboard_data tool implementations with fallback."""
+    try:
+        from ipfs_accelerate_py.mcp.tools.dashboard_data import (  # type: ignore
+            get_user_info as _get_user_info,
+            get_cache_stats as _get_cache_stats,
+            get_peer_status as _get_peer_status,
+            get_system_metrics as _get_system_metrics,
+        )
+
+        return {
+            "get_user_info": _get_user_info,
+            "get_cache_stats": _get_cache_stats,
+            "get_peer_status": _get_peer_status,
+            "get_system_metrics": _get_system_metrics,
+        }
+    except Exception:
+        logger.warning("Source dashboard_data import unavailable, using fallback stubs")
+
+        def _user_info_fallback() -> Dict[str, Any]:
+            return {"status": "success", "user": {}, "backend_available": False}
+
+        def _cache_stats_fallback() -> Dict[str, Any]:
+            return {"status": "success", "cache": {}, "backend_available": False}
+
+        def _peer_status_fallback() -> Dict[str, Any]:
+            return {"status": "success", "peers": [], "backend_available": False}
+
+        def _system_metrics_fallback(
+            start_time: Optional[float] = None,
+        ) -> Dict[str, Any]:
+            return {"status": "success", "metrics": {}, "backend_available": False}
+
+        return {
+            "get_user_info": _user_info_fallback,
+            "get_cache_stats": _cache_stats_fallback,
+            "get_peer_status": _peer_status_fallback,
+            "get_system_metrics": _system_metrics_fallback,
+        }
+
+
+_DASHBOARD_DATA_API = _load_dashboard_data_api()
+
+
+async def get_dashboard_user_info() -> Dict[str, Any]:
+    """Get user information for the dashboard."""
+    try:
+        result = _DASHBOARD_DATA_API["get_user_info"]()
+        return _normalize_payload(result)
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
+async def get_dashboard_cache_stats() -> Dict[str, Any]:
+    """Get cache statistics for the dashboard."""
+    try:
+        result = _DASHBOARD_DATA_API["get_cache_stats"]()
+        return _normalize_payload(result)
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
+async def get_dashboard_peer_status() -> Dict[str, Any]:
+    """Get P2P peer status for the dashboard."""
+    try:
+        result = _DASHBOARD_DATA_API["get_peer_status"]()
+        return _normalize_payload(result)
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
+async def get_dashboard_system_metrics(
+    start_time: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Get system metrics for the dashboard."""
+    try:
+        result = _DASHBOARD_DATA_API["get_system_metrics"](start_time=start_time)
+        return _normalize_payload(result)
+    except Exception as exc:
+        return _normalize_payload({"status": "error", "error": str(exc)})
+
+
 def register_native_dashboard_tools(manager: Any) -> None:
     """Register native dashboard tools in unified hierarchical manager."""
     manager.register_tool(
@@ -560,4 +647,51 @@ def register_native_dashboard_tools(manager: Any) -> None:
         input_schema={"type": "object", "properties": {}, "required": []},
         runtime="fastapi",
         tags=["native", "mcpp", "dashboard"],
+    )
+
+    # --- Dashboard data tools (migrated from legacy mcp/tools/dashboard_data.py) ---
+    manager.register_tool(
+        category="dashboard_tools",
+        name="get_dashboard_user_info",
+        func=get_dashboard_user_info,
+        description="Get user information for the IPFS Accelerate dashboard.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "dashboard", "data"],
+    )
+    manager.register_tool(
+        category="dashboard_tools",
+        name="get_dashboard_cache_stats",
+        func=get_dashboard_cache_stats,
+        description="Get cache statistics for the IPFS Accelerate dashboard.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "dashboard", "data"],
+    )
+    manager.register_tool(
+        category="dashboard_tools",
+        name="get_dashboard_peer_status",
+        func=get_dashboard_peer_status,
+        description="Get P2P peer connection status for the dashboard.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "dashboard", "data"],
+    )
+    manager.register_tool(
+        category="dashboard_tools",
+        name="get_dashboard_system_metrics",
+        func=get_dashboard_system_metrics,
+        description="Get system resource metrics for the dashboard.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "start_time": {
+                    "type": "number",
+                    "description": "Optional Unix timestamp to filter metrics from.",
+                }
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "dashboard", "data"],
     )

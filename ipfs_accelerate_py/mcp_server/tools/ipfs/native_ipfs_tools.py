@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+import logging
+from typing import Any, Dict, Optional
 
 from ipfs_accelerate_py.kit.ipfs_files_kit import get_ipfs_files_kit
+
+logger = logging.getLogger(__name__)
 
 
 def _error_result(message: str) -> Dict[str, Any]:
@@ -167,6 +170,86 @@ def ipfs_files_cat(cid: str) -> Dict[str, Any]:
         return _error_result(str(exc))
 
 
+# ---------------------------------------------------------------------------
+# Additional IPFS file operations (migrated from legacy mcp/tools/ipfs_files.py)
+# ---------------------------------------------------------------------------
+
+
+def _load_ipfs_legacy_api() -> Dict[str, Any]:
+    """Resolve legacy ipfs_files tool implementations with fallback."""
+    try:
+        import ipfs_accelerate_py.mcp.tools.ipfs_files as _ipfs_mod  # type: ignore
+
+        return {"_module": _ipfs_mod}
+    except Exception:
+        return {}
+
+
+_IPFS_LEGACY_API = _load_ipfs_legacy_api()
+
+
+async def ipfs_mkdir(path: str) -> Dict[str, Any]:
+    """Create a directory in IPFS MFS."""
+    mod = _IPFS_LEGACY_API.get("_module")
+    if mod is None:
+        return {"status": "error", "error": "IPFS module unavailable", "path": path}
+    kit = get_ipfs_files_kit()
+    try:
+        result = kit.mkdir(path=path)
+        return _normalize_kit_result(result)
+    except Exception as exc:
+        return _error_result(str(exc))
+
+
+async def ipfs_pin_add(cid: str, recursive: bool = True) -> Dict[str, Any]:
+    """Pin a CID in IPFS."""
+    kit = get_ipfs_files_kit()
+    try:
+        result = kit.pin(cid=cid, recursive=recursive)
+        return _normalize_kit_result(result)
+    except Exception as exc:
+        return _error_result(str(exc))
+
+
+async def ipfs_pin_rm(cid: str, recursive: bool = True) -> Dict[str, Any]:
+    """Remove a pin from IPFS."""
+    kit = get_ipfs_files_kit()
+    try:
+        result = kit.unpin(cid=cid, recursive=recursive)
+        return _normalize_kit_result(result)
+    except Exception as exc:
+        return _error_result(str(exc))
+
+
+async def ipfs_files_write(
+    path: str,
+    content: str,
+    create: bool = True,
+    truncate: bool = True,
+) -> Dict[str, Any]:
+    """Write content to an IPFS MFS file path."""
+    kit = get_ipfs_files_kit()
+    try:
+        result = kit.write(path=path, content=content, create=create, truncate=truncate)
+        return _normalize_kit_result(result)
+    except Exception as exc:
+        return _error_result(str(exc))
+
+
+async def ipfs_files_read(
+    path: str,
+    offset: int = 0,
+    count: int = -1,
+) -> Dict[str, Any]:
+    """Read content from an IPFS MFS file path."""
+    kit = get_ipfs_files_kit()
+    try:
+        result = kit.read(path=path, offset=offset, count=count)
+        return _normalize_kit_result(result)
+    except Exception as exc:
+        return _error_result(str(exc))
+
+
 def register_native_ipfs_tools(manager: Any) -> None:
     """Register native IPFS tools in the unified hierarchical manager."""
     manager.register_tool(
@@ -278,6 +361,114 @@ def register_native_ipfs_tools(manager: Any) -> None:
                 "cid": {"type": "string", "minLength": 1},
             },
             "required": ["cid"],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "ipfs"],
+    )
+
+    # --- Additional IPFS file operations from legacy mcp/tools/ipfs_files.py ---
+    manager.register_tool(
+        category="ipfs",
+        name="ipfs_mkdir",
+        func=ipfs_mkdir,
+        description="Create a directory in IPFS MFS.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "MFS directory path to create."}
+            },
+            "required": ["path"],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "ipfs"],
+    )
+    manager.register_tool(
+        category="ipfs",
+        name="ipfs_pin_add",
+        func=ipfs_pin_add,
+        description="Pin a CID in IPFS.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cid": {"type": "string", "description": "Content identifier to pin."},
+                "recursive": {
+                    "type": "boolean",
+                    "description": "Pin recursively.",
+                    "default": True,
+                },
+            },
+            "required": ["cid"],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "ipfs"],
+    )
+    manager.register_tool(
+        category="ipfs",
+        name="ipfs_pin_rm",
+        func=ipfs_pin_rm,
+        description="Remove a pin from IPFS.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cid": {"type": "string", "description": "Content identifier to unpin."},
+                "recursive": {
+                    "type": "boolean",
+                    "description": "Unpin recursively.",
+                    "default": True,
+                },
+            },
+            "required": ["cid"],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "ipfs"],
+    )
+    manager.register_tool(
+        category="ipfs",
+        name="ipfs_files_write",
+        func=ipfs_files_write,
+        description="Write content to an IPFS MFS file path.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "MFS file path."},
+                "content": {"type": "string", "description": "Content to write."},
+                "create": {
+                    "type": "boolean",
+                    "description": "Create file if it does not exist.",
+                    "default": True,
+                },
+                "truncate": {
+                    "type": "boolean",
+                    "description": "Truncate file before writing.",
+                    "default": True,
+                },
+            },
+            "required": ["path", "content"],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "ipfs"],
+    )
+    manager.register_tool(
+        category="ipfs",
+        name="ipfs_files_read",
+        func=ipfs_files_read,
+        description="Read content from an IPFS MFS file path.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "MFS file path."},
+                "offset": {
+                    "type": "integer",
+                    "description": "Byte offset to start reading.",
+                    "default": 0,
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "Number of bytes to read (-1 for all).",
+                    "default": -1,
+                },
+            },
+            "required": ["path"],
         },
         runtime="fastapi",
         tags=["native", "wave-a", "ipfs"],

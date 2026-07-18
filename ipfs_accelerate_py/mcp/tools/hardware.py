@@ -2,6 +2,12 @@
 IPFS Accelerate MCP Hardware Tools
 
 This module provides hardware-related tools for the IPFS Accelerate MCP server.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.hardware_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import os
@@ -37,6 +43,13 @@ def register_hardware_tools(mcp: Any) -> None:
     Args:
         mcp: MCP server instance
     """
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.hardware.register_hardware_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.hardware_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     logger.debug("Registering hardware tools")
     
     try:

@@ -1,5 +1,11 @@
 """
 Simple wrapper to expose MCP model tools for the dashboard JSON-RPC endpoint.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.model_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner

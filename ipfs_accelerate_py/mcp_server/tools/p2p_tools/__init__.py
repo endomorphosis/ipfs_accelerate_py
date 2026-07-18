@@ -16,6 +16,14 @@ from .native_p2p_tools import (
 	p2p_task_delete,
 	p2p_task_get,
 	p2p_task_submit,
+	p2p_taskqueue_call_tool,
+	p2p_taskqueue_claim_next,
+	p2p_taskqueue_complete_task,
+	p2p_taskqueue_get_task,
+	p2p_taskqueue_list_peers,
+	p2p_taskqueue_list_tasks,
+	p2p_taskqueue_status,
+	p2p_taskqueue_submit,
 	register_native_p2p_tools_category,
 )
 
@@ -35,5 +43,13 @@ __all__ = [
 	"p2p_remote_cache_has",
 	"p2p_remote_cache_delete",
 	"p2p_remote_submit_task",
+	"p2p_taskqueue_status",
+	"p2p_taskqueue_submit",
+	"p2p_taskqueue_claim_next",
+	"p2p_taskqueue_call_tool",
+	"p2p_taskqueue_list_tasks",
+	"p2p_taskqueue_get_task",
+	"p2p_taskqueue_complete_task",
+	"p2p_taskqueue_list_peers",
 	"register_native_p2p_tools_category",
 ]

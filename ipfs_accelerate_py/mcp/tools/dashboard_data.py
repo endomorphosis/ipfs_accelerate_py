@@ -8,6 +8,12 @@ These functions can be used as:
 1. Package imports: `from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info`
 2. CLI tools: via ipfs-accelerate CLI
 3. MCP server tools: via MCP server JavaScript SDK
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.dashboard_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import os
@@ -492,6 +498,13 @@ def register_tools(mcp):
         mcp: MCP server instance
     """
 
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.dashboard_data.register_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.dashboard_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp.tool()
     def get_dashboard_user_info() -> Dict[str, Any]:
         """

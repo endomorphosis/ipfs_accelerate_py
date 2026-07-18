@@ -728,7 +728,7 @@ class TestMCPTools:
     def test_mcp_tools_import(self):
         """Test that MCP tools can be imported"""
         try:
-            from ipfs_accelerate_py.mcp.tools.backend_management import (
+            from ipfs_accelerate_py.mcp_server.tools.backend_management import (
                 list_inference_backends,
                 get_backend_status,
                 select_backend_for_inference
@@ -741,7 +741,7 @@ class TestMCPTools:
     
     def test_list_backends_no_manager(self):
         """Test listing backends when manager not available"""
-        from ipfs_accelerate_py.mcp.tools.backend_management import list_inference_backends
+        from ipfs_accelerate_py.mcp_server.tools.backend_management import list_inference_backends
         
         # Should handle case where manager doesn't exist yet
         result = list_inference_backends()

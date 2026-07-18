@@ -28,6 +28,11 @@ from ipfs_accelerate_py.mcp_server.mcplusplus.p2p_framing import (
 )
 
 from ipfs_accelerate_py.p2p_tasks.mcp_p2p_protocol import PROTOCOL_MCP_P2P_V1
+from ipfs_accelerate_py.p2p_tasks.peer_trust import (
+    PeerTrustLevel,
+    resolve_peer_trust_level,
+    trust_tiers_enabled,
+)
 
 
 _MCP_P2P_STATS_LOCK = threading.RLock()
@@ -471,6 +476,25 @@ async def handle_mcp_p2p_stream(
                     isinstance(requested_profiles, list)
                     and "mcp++/risk-scheduling" in requested_profiles
                 ) or init_params.get("profile") == "mcp++/risk-scheduling"
+
+                # Resolve peer trust level from initialize params and scale rate
+                # limits accordingly: trusted peers receive a 2x capacity/refill
+                # multiplier; elevated peers receive 1.5x; baseline is unchanged.
+                if trust_tiers_enabled():
+                    _event_dag = getattr(registry, "_event_dag", None) if registry is not None else None
+                    peer_trust = resolve_peer_trust_level(init_params, event_dag=_event_dag)
+                    if peer_trust == PeerTrustLevel.TRUSTED:
+                        trust_multiplier = 2.0
+                    elif peer_trust == PeerTrustLevel.ELEVATED:
+                        trust_multiplier = 1.5
+                    else:
+                        trust_multiplier = 1.0
+                    limiter = TokenBucketLimiter(
+                        capacity=float(rate_capacity) * trust_multiplier,
+                        refill_rate_per_sec=float(rate_refill_per_sec) * trust_multiplier,
+                    )
+                    max_frames = max(max_frames, int(float(max_frames) * trust_multiplier))
+
                 _inc_stat("initialized_sessions")
                 await write_u32_framed_json(
                     stream,

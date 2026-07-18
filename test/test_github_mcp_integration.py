@@ -17,7 +17,7 @@ def test_github_tools_registration():
     print("=" * 60)
     
     try:
-        from ipfs_accelerate_py.mcp.tools.github_tools import register_tools
+        from ipfs_accelerate_py.mcp_server.tools.github_tools import register_tools
         
         # Create mock MCP instance
         class MockMCP:
@@ -61,7 +61,7 @@ def test_user_info_function():
     print("=" * 60)
     
     try:
-        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+        from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_user_info
         
         print("Calling get_user_info()...")
         user_info = get_user_info()
@@ -143,7 +143,7 @@ def test_mcp_server_initialization():
     print("=" * 60)
     
     try:
-        from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
+        from ipfs_accelerate_py.mcp_server.server import IPFSAccelerateMCPServer
         
         print("Creating MCP server instance...")
         server = IPFSAccelerateMCPServer(

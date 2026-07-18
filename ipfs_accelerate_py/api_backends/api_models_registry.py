@@ -94,7 +94,9 @@ class api_models:
                 'huggingface': 'hf_tgi',  # Default to TGI unless it's an embedding model
                 'openvino': 'ovms',
                 'groq': 'groq',
-                'ollama': 'ollama'
+                'ollama': 'ollama',
+                'meta-llama': 'meta_ai',
+                'meta-spark': 'meta_ai',
             }
             if provider in provider_map:
                 # Special case for Huggingface models

@@ -5,6 +5,12 @@ import os
 import logging
 logger = logging.getLogger(__name__)
 
+try:
+    from .base import BaseAPIBackend
+except ImportError as e:
+    logger.debug(f"Failed to import BaseAPIBackend: {e}")
+    BaseAPIBackend = None
+
 # Make sure model_list directory exists
 model_list_dir = os.path.join(os.path.dirname(__file__), "model_list")
 if not os.path.exists(model_list_dir):
@@ -63,6 +69,12 @@ except ImportError as e:
     llvm = None
 
 try:
+    from .vllm import vllm
+except ImportError as e:
+    logger.debug(f"Failed to import vllm: {e}")
+    vllm = None
+
+try:
     from .opea import opea
 except ImportError as e:
     logger.debug(f"Failed to import opea: {e}")
@@ -80,7 +92,21 @@ except ImportError as e:
     logger.debug(f"Failed to import s3_kit: {e}")
     s3_kit = None
 
+try:
+    from .xai import xai
+except ImportError as e:
+    logger.debug(f"Failed to import xai: {e}")
+    xai = None
+
+try:
+    from .meta_ai import meta_ai
+except ImportError as e:
+    logger.debug(f"Failed to import meta_ai: {e}")
+    meta_ai = None
+
 # List of all backend classes
 __all__ = [
-    "claude", "openai_api", "groq", "gemini", "ollama", "hf_tgi", "hf_tei", "llvm", "opea", "ovms", "s3_kit"
+    "BaseAPIBackend",
+    "claude", "openai_api", "groq", "gemini", "ollama", "hf_tgi", "hf_tei",
+    "llvm", "vllm", "opea", "ovms", "s3_kit", "xai", "meta_ai",
 ]

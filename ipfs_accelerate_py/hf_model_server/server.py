@@ -2,6 +2,7 @@
 Main FastAPI server application for unified HF model server
 """
 
+import anyio
 import time
 import uuid
 import hashlib
@@ -21,6 +22,7 @@ from .auth.api_keys import APIKeyManager, APIKey
 from .auth.middleware import AuthMiddleware
 from .auth.rate_limiter import RateLimiter
 from .middleware.request_queue import QueueManager, RequestPriority
+from .middleware.batching import BatchingMiddleware, BatchResult
 from .api.schemas import (
     CompletionRequest, CompletionResponse, CompletionChoice, CompletionUsage,
     ChatCompletionRequest, ChatCompletionResponse, ChatCompletionChoice,
@@ -149,6 +151,18 @@ class HFModelServer:
                 default_timeout=self.config.queue_timeout_seconds
             )
             logger.info("Request queuing enabled")
+        
+        # Pending results dict for queue-based request/response correlation
+        self._pending_results: Dict[str, BatchResult] = {}
+        
+        # Phase 5: Request Batching
+        self.batching_middleware: Optional[BatchingMiddleware] = None
+        if self.config.enable_batching:
+            self.batching_middleware = BatchingMiddleware(
+                max_batch_size=self.config.batch_max_size,
+                max_wait_ms=self.config.batch_timeout_ms,
+            )
+            logger.info("Request batching enabled")
         
         # WebSocket components
         self.connection_manager = None
@@ -412,7 +426,13 @@ class HFModelServer:
         """Lifespan context manager for startup/shutdown"""
         # Startup
         await self.startup()
-        yield
+        if self.queue_manager is not None:
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(self._queue_worker)
+                yield
+                tg.cancel_scope.cancel()
+        else:
+            yield
         # Shutdown
         await self.shutdown()
     
@@ -453,6 +473,42 @@ class HFModelServer:
         # Cleanup resources here
         logger.info("HF Model Server shutdown complete")
     
+    async def _queue_worker(self):
+        """Background worker that dequeues requests and dispatches them to the backend manager."""
+        logger.info("Queue worker started")
+        try:
+            while True:
+                queued_request = await self.queue_manager.dequeue(timeout=1.0)
+                if queued_request is None:
+                    continue
+
+                request_id = queued_request.request_id
+                pending = self._pending_results.pop(request_id, None)
+                if pending is None:
+                    # Request already expired or was cancelled by the caller
+                    logger.debug(f"Queue worker: no pending result for request {request_id}; skipping")
+                    continue
+
+                data = queued_request.data
+                try:
+                    result = await self.backend_manager.execute_task(
+                        task=data["task"],
+                        model=data["model"],
+                        inputs=data["inputs"],
+                        parameters=data.get("parameters", {}),
+                    )
+                    pending.set_result(result)
+                except Exception as exc:
+                    logger.warning(f"Queue worker: inference failed for {request_id}: {exc}")
+                    pending.set_exception(exc)
+        except BaseException:
+            # Graceful shutdown: notify all callers that are still waiting
+            for pending in self._pending_results.values():
+                if not pending.event.is_set():
+                    pending.set_exception(RuntimeError("Server is shutting down"))
+            self._pending_results.clear()
+            raise
+    
     def _setup_middleware(self):
         """Setup middleware"""
         # CORS
@@ -464,6 +520,89 @@ class HFModelServer:
                 allow_methods=["*"],
                 allow_headers=["*"],
             )
+    
+    async def _execute_inference(
+        self,
+        *,
+        task: str,
+        model: str,
+        inputs: List[Any],
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Route an inference request through queue, batching middleware, or direct execution.
+
+        Priority order:
+        1. RequestQueue (when enabled) — enqueues the request and awaits the result.
+        2. BatchingMiddleware (when enabled and backend supports batching) — accumulates
+           requests into a batch and flushes together for higher throughput.
+        3. Direct call to backend_manager.execute_task.
+        """
+        parameters = parameters or {}
+
+        # --- Priority 1: request queue ---
+        if self.queue_manager is not None:
+            request_id = str(uuid.uuid4())
+            pending = BatchResult()
+            self._pending_results[request_id] = pending
+            queued = await self.queue_manager.enqueue(
+                request_id=request_id,
+                model_id=model,
+                data={"task": task, "model": model, "inputs": inputs, "parameters": parameters},
+            )
+            if not queued:
+                self._pending_results.pop(request_id, None)
+                raise HTTPException(status_code=503, detail="Request queue is full")
+            return await pending.get()
+
+        # --- Priority 2: batching middleware ---
+        if self.batching_middleware is not None and self.backend_manager is not None:
+            backend = self.backend_manager.select_backend_for_task(task=task, model=model)
+            if backend is not None and backend.capabilities.supports_batching:
+                async def _batch_inference_fn(batch_requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+                    # Combine all inputs from every request in the batch into a single backend call
+                    all_inputs: List[Any] = []
+                    input_counts: List[int] = []
+                    batch_task = batch_requests[0]["task"]
+                    batch_model = batch_requests[0]["model"]
+                    batch_params = batch_requests[0].get("parameters", {})
+                    for req in batch_requests:
+                        req_inputs = req["inputs"]
+                        all_inputs.extend(req_inputs)
+                        input_counts.append(len(req_inputs))
+
+                    combined = await self.backend_manager.execute_task(
+                        task=batch_task,
+                        model=batch_model,
+                        inputs=all_inputs,
+                        parameters=batch_params,
+                    )
+
+                    # Split the combined result back into per-request results
+                    results: List[Dict[str, Any]] = []
+                    start = 0
+                    for count in input_counts:
+                        per = dict(combined)
+                        if isinstance(combined.get("embeddings"), list):
+                            per["embeddings"] = combined["embeddings"][start:start + count]
+                        if isinstance(combined.get("outputs"), list):
+                            per["outputs"] = combined["outputs"][start:start + count]
+                        results.append(per)
+                        start += count
+                    return results
+
+                return await self.batching_middleware.add_request(
+                    model_id=model,
+                    request_data={"task": task, "model": model, "inputs": inputs, "parameters": parameters},
+                    inference_fn=_batch_inference_fn,
+                )
+
+        # --- Priority 3: direct execution ---
+        return await self.backend_manager.execute_task(
+            task=task,
+            model=model,
+            inputs=inputs,
+            parameters=parameters,
+        )
     
     async def _verify_auth(
         self,
@@ -654,7 +793,7 @@ class HFModelServer:
 
             prompt_value = request.prompt[0] if isinstance(request.prompt, list) else request.prompt
             try:
-                backend_result = await self.backend_manager.execute_task(
+                backend_result = await self._execute_inference(
                     task="text-generation",
                     model=request.model,
                     inputs=[str(prompt_value)],
@@ -667,6 +806,8 @@ class HFModelServer:
                         "stream": request.stream,
                     },
                 )
+            except HTTPException:
+                raise
             except Exception as exc:
                 self._record_inference_failure(
                     model=request.model,
@@ -708,7 +849,7 @@ class HFModelServer:
 
             prompt = "\n".join([f"{message.role}: {message.content}" for message in request.messages])
             try:
-                backend_result = await self.backend_manager.execute_task(
+                backend_result = await self._execute_inference(
                     task="text-generation",
                     model=request.model,
                     inputs=[prompt],
@@ -721,6 +862,8 @@ class HFModelServer:
                         "stream": request.stream,
                     },
                 )
+            except HTTPException:
+                raise
             except Exception as exc:
                 self._record_inference_failure(
                     model=request.model,
@@ -766,12 +909,14 @@ class HFModelServer:
             inputs = [request.input] if isinstance(request.input, str) else request.input
 
             try:
-                backend_result = await self.backend_manager.execute_task(
+                backend_result = await self._execute_inference(
                     task="text-embedding",
                     model=request.model,
                     inputs=[str(x) for x in inputs],
                     parameters={},
                 )
+            except HTTPException:
+                raise
             except Exception as exc:
                 self._record_inference_failure(
                     model=request.model,

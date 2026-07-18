@@ -210,25 +210,25 @@ class MCPDashboard:
         @self.app.route('/api/mcp/user')
         def user_info():
             """Get current user information."""
-            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+            from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_user_info
             return jsonify(get_user_info())
         
         @self.app.route('/api/mcp/cache/stats')
         def cache_stats():
             """Get cache statistics."""
-            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_cache_stats
+            from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_cache_stats
             return jsonify(get_cache_stats())
         
         @self.app.route('/api/mcp/peers')
         def peer_status():
             """Get P2P peer system status."""
-            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status
+            from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_peer_status
             return jsonify(get_peer_status())
         
         @self.app.route('/api/mcp/metrics')
         def system_metrics():
             """Get real system metrics."""
-            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_system_metrics
+            from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_system_metrics
             return jsonify(get_system_metrics(start_time=self._start_time))
         
         @self.app.route('/api/copilot-sdk/status')
@@ -857,8 +857,8 @@ class MCPDashboard:
             else:
                 # Fall back to creating a mock MCP server to get registered tools
                 try:
-                    from ipfs_accelerate_py.mcp.server import StandaloneMCP
-                    from ipfs_accelerate_py.mcp.tools import register_all_tools
+                    from ipfs_accelerate_py.mcp_server.server import StandaloneMCP
+                    from ipfs_accelerate_py.mcp_server.server import register_all_tools
                     
                     # Create a temporary MCP instance to get tool list
                     temp_mcp = StandaloneMCP('temp')
@@ -1473,7 +1473,7 @@ class MCPDashboard:
                 # Legacy direct method calls for model tools
                 # Lazy import MCP tools wrapper
                 try:
-                    from ipfs_accelerate_py.mcp.tools.model_tools_wrapper import (
+                    from ipfs_accelerate_py.mcp_server.tools.model_tools_wrapper import (
                         search_models_tool,
                         recommend_models_tool,
                         get_model_details_tool,
@@ -2029,7 +2029,7 @@ class MCPDashboard:
         elif tool_name == 'get_queue_status':
             # Get comprehensive queue status for all endpoints
             try:
-                from ipfs_accelerate_py.mcp.tools.enhanced_inference import get_queue_status
+                from ipfs_accelerate_py.mcp_server.tools.enhanced_inference_tools.native_enhanced_inference_tools import get_queue_status
                 result = get_queue_status()
                 result["tool"] = tool_name
                 return result
@@ -2045,7 +2045,7 @@ class MCPDashboard:
         elif tool_name == 'get_queue_history':
             # Get queue performance history and trends
             try:
-                from ipfs_accelerate_py.mcp.tools.enhanced_inference import get_queue_history
+                from ipfs_accelerate_py.mcp_server.tools.enhanced_inference_tools.native_enhanced_inference_tools import get_queue_history
                 result = get_queue_history()
                 result["tool"] = tool_name
                 return result

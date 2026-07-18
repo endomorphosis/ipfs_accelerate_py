@@ -27,6 +27,15 @@ except ImportError:
 
 # Configure logger
 logger = logging.getLogger("s3_kit")
+
+try:
+    from .base import BaseAPIBackend
+except ImportError:
+    try:
+        from base import BaseAPIBackend
+    except ImportError:
+        BaseAPIBackend = object
+
 if not logger.handlers:
     handler = logging.StreamHandler()
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -34,7 +43,7 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
 
-class s3_kit:
+class s3_kit(BaseAPIBackend):
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
@@ -43,20 +52,8 @@ class s3_kit:
         self.s3cfg = self._get_s3_config()
         
         # Initialize queue and backoff systems
-        self.max_concurrent_requests = 5
-        self.queue_size = 100
-        self.active_requests = 0
-        self.queue_lock = threading.RLock()
-        self.queue_processing = False
-        
-        # Priority levels
-        self.PRIORITY_HIGH = 0
-        self.PRIORITY_NORMAL = 1
-        self.PRIORITY_LOW = 2
-        
-        # Use priority-based list queue instead of Queue
-        self.request_queue = []  # Will store (priority, request_info) tuples
-        
+        self._init_queue(queue_size=100, max_concurrent_requests=5)
+
         # Batching settings
         self.batching_enabled = True
         self.max_batch_size = 10
@@ -70,18 +67,7 @@ class s3_kit:
         self.completion_models = []  # Models supporting batched completions
         self.supported_batch_models = []  # All models supporting batching
 
-        # Circuit breaker settings
-        self.circuit_state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
-        self.failure_threshold = 5  # Number of failures before opening circuit
-        self.reset_timeout = 30  # Seconds to wait before trying half-open
-        self.failure_count = 0
-        self.last_failure_time = 0
-        self.circuit_lock = threading.RLock()
-        
-        # Start queue processor
-        self.queue_processor = threading.Thread(target=self._process_queue)
-        self.queue_processor.daemon = True
-        self.queue_processor.start()
+        self._init_circuit_breaker()
         
         # Retry and backoff settings
         self.max_retries = 5
@@ -158,165 +144,9 @@ class s3_kit:
         
     
     def _process_queue(self):
-        """Process requests in the queue with standard pattern"""
-        with self.queue_lock:
-            if self.queue_processing:
-                return  # Another thread is already processing
-            self.queue_processing = True
-        
-        try:
-            while True:
-                # Get the next request from the queue
-                priority_and_request = None
-                
-                with self.queue_lock:
-                    if not self.request_queue:
-                        self.queue_processing = False
-                        break
-                        
-                    # Check if we're at capacity
-                    if self.active_requests >= self.max_concurrent_requests:
-                        time.sleep(0.1)  # Brief pause
-                        continue
-                        
-                    # Get next request and increment counter
-                    priority_and_request = self.request_queue.pop(0)
-                    self.active_requests += 1
-                
-                # Process the request outside the lock
-                if priority_and_request:
-                    # Extract priority and request info
-                    priority, request_info = priority_and_request
-                    
-                    try:
-                        # Check if circuit breaker allows this request
-                        if not self.check_circuit_breaker():
-                            error = Exception("Circuit breaker is open - service unavailable")
-                            future = request_info.get("future")
-                            if future:
-                                future.set_exception(error)
-                            logger.warning(f"Request blocked by circuit breaker: {request_info.get('request_id')}")
-                            continue
-                        
-                        # Extract operation and parameters
-                        operation = request_info.get("operation")
-                        kwargs = request_info.get("kwargs", {})
-                        future = request_info.get("future")
-                        retry_count = request_info.get("retry_count", 0)
-                        
-                        # Execute S3 operation
-                        start_time = time.time()
-                        try:
-                            s3_client = self._get_s3_client()
-                            method = getattr(s3_client, operation)
-                            result = method(**kwargs)
-                            
-                            # Calculate latency
-                            latency = time.time() - start_time
-                            
-                            # Set result in future
-                            if future:
-                                future.set_result(result)
-                                
-                            # Track successful request with metrics
-                            self.track_request_result(
-                                success=True,
-                                operation=operation,
-                                latency=latency
-                            )
-                            
-                        except Exception as e:
-                            # Calculate latency even for errors
-                            latency = time.time() - start_time
-                            
-                            logger.error(f"Error executing S3 operation {operation}: {e}")
-                            
-                            # Track failed request with metrics
-                            self.track_request_result(
-                                success=False,
-                                error_type=type(e).__name__,
-                                operation=operation,
-                                latency=latency
-                            )
-                            
-                            # Check if we should retry
-                            if retry_count < self.max_retries:
-                                # Calculate backoff delay
-                                delay = min(
-                                    self.initial_retry_delay * (self.backoff_factor ** retry_count),
-                                    self.max_retry_delay
-                                )
-                                
-                                # Re-queue with increased retry count
-                                request_info["retry_count"] = retry_count + 1
-                                
-                                logger.info(f"Retrying request {request_info.get('request_id')} after {delay}s delay (retry {retry_count + 1}/{self.max_retries})")
-                                
-                                # Wait for backoff delay
-                                time.sleep(delay)
-                                
-                                # Re-queue with same priority
-                                with self.queue_lock:
-                                    self.request_queue.append((priority, request_info))
-                                    self.request_queue.sort(key=lambda x: x[0])
-                            else:
-                                # Max retries exceeded
-                                if future:
-                                    future.set_exception(e)
-                                logger.error(f"Max retries exceeded for request {request_info.get('request_id')}")
-                    
-                    except Exception as e:
-                        logger.error(f"Unexpected error processing queued request: {e}")
-                        future = request_info.get("future")
-                        if future and not future.done():
-                            future.set_exception(e)
-                    
-                    finally:
-                        # Decrement counter
-                        with self.queue_lock:
-                            self.active_requests = max(0, self.active_requests - 1)
-                
-                # Brief pause to prevent CPU hogging
-                time.sleep(0.01)
-                
-        except Exception as e:
-            logger.error(f"Error in queue processing thread: {e}")
-            
-        finally:
-            # Reset queue processing flag
-            with self.queue_lock:
-                self.queue_processing = False
+        """Delegate to the shared BaseAPIBackend implementation."""
+        return super()._process_queue()
 
-    def queue_with_priority(self, request_info, priority=None):
-        # Queue a request with a specific priority level
-        if priority is None:
-            priority = self.PRIORITY_NORMAL
-            
-        with self.queue_lock:
-            # Check if queue is full
-            if len(self.request_queue) >= self.queue_size:
-                raise ValueError(f"Request queue is full ({self.queue_size} items). Try again later.")
-            
-            # Record queue entry time for metrics
-            request_info["queue_entry_time"] = time.time()
-            
-            # Add to queue with priority
-            self.request_queue.append((priority, request_info))
-            
-            # Sort queue by priority (lower numbers = higher priority)
-            self.request_queue.sort(key=lambda x: x[0])
-            
-            logger.info(f"Request queued with priority {priority}. Queue size: {len(self.request_queue)}")
-            
-            # Start queue processing if not already running
-            if not self.queue_processing:
-                threading.Thread(target=self._process_queue).start()
-                
-            # Create future to track result
-            future = {"result": None, "error": None, "completed": False}
-            request_info["future"] = future
-            return future
-    
     def _get_s3_client(self):
         """Create an S3 client"""
         return boto3.client(
@@ -327,51 +157,59 @@ class s3_kit:
         )
     
     def _queue_operation(self, operation, **kwargs):
-        """Queue an S3 operation with backoff retry"""
-        # Generate unique request ID
+        """Queue an S3 operation with backoff retry."""
         request_id = str(uuid.uuid4())
-        
+
+        def _execute_operation():
+            if not self.check_circuit_breaker():
+                raise RuntimeError("Circuit breaker is OPEN. Service unavailable.")
+
+            retry_count = 0
+            while True:
+                start_time = time.time()
+                try:
+                    s3_client = self._get_s3_client()
+                    method = getattr(s3_client, operation)
+                    result = method(**kwargs)
+                    latency = time.time() - start_time
+                    self.track_request_result(True, operation=operation, latency=latency)
+                    return result
+                except Exception as e:
+                    latency = time.time() - start_time
+                    self.track_request_result(False, error_type=type(e).__name__, operation=operation, latency=latency)
+                    if retry_count >= self.max_retries:
+                        logger.error(f"Max retries exceeded for request {request_id}")
+                        raise
+                    delay = min(self.initial_retry_delay * (self.backoff_factor ** retry_count), self.max_retry_delay)
+                    retry_count += 1
+                    logger.info(f"Retrying request {request_id} after {delay}s delay (retry {retry_count}/{self.max_retries})")
+                    time.sleep(delay)
+
         if not self.queue_enabled:
-            # Direct execution if queue is disabled
-            try:
-                s3_client = self._get_s3_client()
-                method = getattr(s3_client, operation)
-                return method(**kwargs)
-            except Exception as e:
-                logger.error(f"Error executing S3 operation {operation}: {e}")
-                raise
-        
-        # Queue system with proper concurrency management
-        future = Future()
-        
-        # Create request info
-        request_info = {
-            "future": future,
-            "operation": operation,
-            "kwargs": kwargs,
-            "request_id": request_id,
-            "retry_count": 0,
-            "start_time": time.time()
-        }
-        
-        # Add to queue with normal priority
+            return _execute_operation()
+
         with self.queue_lock:
-            # Check if queue is full
-            if len(self.request_queue) >= self.queue_size:
-                raise ValueError(f"Request queue is full ({self.queue_size} items). Try again later.")
-                
-            self.request_queue.append((self.PRIORITY_NORMAL, request_info))
-            
-            # Sort queue by priority
-            self.request_queue.sort(key=lambda x: x[0])
-            
-            # Start queue processing if not already running
-            if not self.queue_processing:
-                threading.Thread(target=self._process_queue).start()
-        
-        # Get result (blocks until request is processed)
-        return future.result()
-            
+            at_capacity = self.active_requests >= self.max_concurrent_requests
+            if not at_capacity:
+                self.active_requests += 1
+
+        if at_capacity:
+            result_future = self.queue_with_priority({"func": _execute_operation, "request_id": request_id}, self.PRIORITY_NORMAL)
+            wait_start = time.time()
+            while not result_future["completed"] and (time.time() - wait_start) < 300:
+                time.sleep(0.05)
+            if not result_future["completed"]:
+                raise TimeoutError("Request timed out waiting in queue")
+            if result_future["error"]:
+                raise result_future["error"]
+            return result_future["result"]
+
+        try:
+            return _execute_operation()
+        finally:
+            with self.queue_lock:
+                self.active_requests = max(0, self.active_requests - 1)
+
     def upload_file(self, file_path, bucket, key):
         """Upload a file to S3"""
         return self._queue_operation(
@@ -812,29 +650,6 @@ class s3_kit:
             if latency:
                 current_total = self.request_stats["average_latency"] * (self.request_stats["total_requests"] - 1)
                 self.request_stats["average_latency"] = (current_total + latency) / self.request_stats["total_requests"]
-
-    def check_circuit_breaker(self):
-        """Check if circuit breaker allows requests to proceed"""
-        with self.circuit_lock:
-            now = time.time()
-            
-            if self.circuit_state == "OPEN":
-                # Check if enough time has passed to try again
-                if now - self.last_failure_time > self.reset_timeout:
-                    logger.info("Circuit breaker transitioning from OPEN to HALF-OPEN")
-                    self.circuit_state = "HALF_OPEN"
-                    return True
-                else:
-                    # Circuit is open, fail fast
-                    return False
-                    
-            elif self.circuit_state == "HALF_OPEN":
-                # In half-open state, we allow a single request to test the service
-                return True
-                
-            else:  # CLOSED
-                # Normal operation, allow requests
-                return True
 
     def track_request_result(self, success, error_type=None, operation=None, latency=None):
         """Track the result of a request for circuit breaker logic and metrics"""

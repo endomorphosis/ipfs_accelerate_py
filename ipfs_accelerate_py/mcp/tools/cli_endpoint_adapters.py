@@ -9,6 +9,12 @@ Supported CLI Tools:
 - OpenAI Codex CLI
 - Google Gemini CLI
 - VSCode CLI (GitHub Copilot)
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.cli_endpoint_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import os
@@ -367,6 +373,58 @@ class CLIEndpointAdapter(ABC):
             "config_fields": getattr(self, 'config_fields', {}),
             "version_info": self.check_version()
         }
+
+    async def async_execute(
+        self,
+        prompt: str,
+        task_type: str = "text_generation",
+        timeout: int = 30,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Async version of :meth:`execute` safe for Trio / Hypercorn.
+
+        The blocking ``subprocess.run()`` call is offloaded to a worker
+        thread via ``anyio.to_thread.run_sync`` so the event loop is never
+        stalled by a slow CLI subprocess.  Falls back to the synchronous
+        path when ``anyio`` is not installed.
+
+        Parameters
+        ----------
+        prompt:
+            Input prompt to pass to the CLI tool.
+        task_type:
+            Task type string forwarded to :meth:`execute`.
+        timeout:
+            Maximum subprocess execution time in seconds.
+        **kwargs:
+            Additional keyword arguments forwarded to :meth:`execute`.
+
+        Returns
+        -------
+        dict
+            Same structure as :meth:`execute`.
+        """
+        try:
+            import anyio
+        except ImportError:
+            # Fall back to sync (blocks event loop – should be avoided in Trio)
+            logger.warning(
+                "anyio not installed; async_execute for %s will block the event loop. "
+                "Install anyio to enable true async execution.",
+                self.endpoint_id,
+            )
+            return self.execute(prompt, task_type=task_type, timeout=timeout, **kwargs)
+
+        import functools
+        fn = functools.partial(
+            self.execute,
+            prompt,
+            task_type=task_type,
+            timeout=timeout,
+            **kwargs,
+        )
+        return await anyio.to_thread.run_sync(fn)
 
 
 class ClaudeCodeAdapter(CLIEndpointAdapter):

@@ -1823,7 +1823,7 @@ class ipfs_accelerate_py:
                 # Best-effort: if an MCP server was created via the package wrapper,
                 # it may be available via the module-level singleton.
                 try:
-                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+                    from ipfs_accelerate_py.mcp_server.server import get_mcp_server_instance
 
                     mcp_like = get_mcp_server_instance()
                 except Exception:
@@ -1858,7 +1858,7 @@ class ipfs_accelerate_py:
 
             if mcp_like is None:
                 try:
-                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+                    from ipfs_accelerate_py.mcp_server.server import get_mcp_server_instance
 
                     mcp_like = get_mcp_server_instance()
                 except Exception:
@@ -1882,7 +1882,7 @@ class ipfs_accelerate_py:
 
         if mcp_like is None:
             try:
-                from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+                from ipfs_accelerate_py.mcp_server.server import get_mcp_server_instance
 
                 mcp_like = get_mcp_server_instance()
             except Exception:

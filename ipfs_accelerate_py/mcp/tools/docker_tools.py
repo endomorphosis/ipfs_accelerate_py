@@ -8,6 +8,12 @@ Following the architecture:
   mcp/tools/docker_tools.py (MCP tool wrapper)
       ↓
   MCP server JavaScript SDK
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.docker_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import logging
@@ -490,6 +496,13 @@ def register_docker_tools(mcp_server):
     Args:
         mcp_server: MCP server instance
     """
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.docker_tools.register_docker_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.docker_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if not HAVE_DOCKER_EXECUTOR:
         logger.warning("Docker executor not available - Docker tools not registered")
         return

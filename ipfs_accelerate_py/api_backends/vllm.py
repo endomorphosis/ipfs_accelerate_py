@@ -1,9 +1,18 @@
-from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
-import anyio
 import os
 import requests
 import json
+import logging
 from typing import Dict, List, Optional, Union, Any, Callable
+
+logger = logging.getLogger(__name__)
+
+try:
+    from .base import BaseAPIBackend
+except ImportError:
+    try:
+        from base import BaseAPIBackend
+    except ImportError:
+        BaseAPIBackend = object
 
 # Try to import storage wrapper
 try:
@@ -38,93 +47,69 @@ except ImportError:
         ProvenanceLogger = None
         DatasetsManager = None
 
+class vllm(BaseAPIBackend):
+    """vLLM API Backend Integration
 
-class _AnyioQueue:
-    def __init__(self, max_items: int = 0):
-        self._send, self._recv = anyio.create_memory_object_stream(max_items)
+    Provides a standard endpoint-handler interface for vLLM inference servers,
+    sharing the same code path as all other API backends (ollama, hf_tgi, …).
 
-    async def put(self, item: Any) -> None:
-        await self._send.send(item)
+    Supports:
+    - Standard text completion  (/v1/completions)
+    - Chat completions          (/v1/chat/completions)
+    - Streaming responses       (SSE / server-sent events)
+    - Model listing             (/v1/models)
 
-    async def get(self) -> Any:
-        return await self._recv.receive()
-
-    def task_done(self) -> None:
-        return
-
-    async def aclose(self) -> None:
-        await self._send.aclose()
-        await self._recv.aclose()
-
-class llvm:
-    """LLVM API Backend Integration
-    
-    This class provides a comprehensive interface for interacting with LLVM-based model endpoints.
-    It supports multiple types of interactions including:
-    - Standard completion (text generation)
-    - Chat completions
-    - Streaming responses
-    - Model management
-    
-    Features:
-    - Dynamic endpoint management and status tracking
-    - Batched request handling
-    - Multiple response formats (completion, chat, streaming)
-    - Async and sync request options
-    - Request queueing
-    
-    The handler methods follow these patterns:
-    - completion: Takes a prompt string, returns generated text
-    - chat: Takes a list of message dictionaries, returns response
-    - streaming: Takes a prompt or messages, yields response chunks
+    Handler methods follow the shared pattern:
+    - completion: (prompt, parameters=None) → str
+    - chat:       (messages, parameters=None) → str
+    - streaming:  (prompt_or_messages, parameters=None) → generator[dict]
     """
 
     def __init__(self, resources=None, metadata=None):
-        """Initialize LLVM backend interface
-        
+        """Initialize vLLM backend interface.
+
         Args:
             resources: Resources configuration dictionary
-            metadata: Additional metadata dictionary
+            metadata: Additional metadata dictionary; recognised keys:
+                vllm_api_key, vllm_api_url, queue_size, max_concurrent_requests
         """
-        self.resources = resources
-        self.metadata = metadata
-        # Register method references
-        self.create_remote_llvm_endpoint_handler = self.create_remote_llvm_endpoint_handler
-        self.create_remote_llvm_chat_endpoint_handler = self.create_remote_llvm_chat_endpoint_handler
-        self.create_remote_llvm_streaming_endpoint_handler = self.create_remote_llvm_streaming_endpoint_handler
-        self.request_llvm_endpoint = self.request_llvm_endpoint
-        self.test_llvm_endpoint = self.test_llvm_endpoint
-        self.make_post_request_llvm = self.make_post_request_llvm
-        self.make_async_post_request_llvm = self.make_async_post_request_llvm
-        self.create_llvm_endpoint_handler = self.create_llvm_endpoint_handler
-        self.create_llvm_chat_endpoint_handler = self.create_llvm_chat_endpoint_handler
-        self.create_llvm_streaming_endpoint_handler = self.create_llvm_streaming_endpoint_handler
-        self.list_available_llvm_models = self.list_available_llvm_models
-        self.init = self.init
-        self.__test__ = self.__test__
-        # Add endpoints tracking
-        self.endpoints = {}
-        self.endpoint_status = {}
-        self.registered_models = {}
-        # Add queue for managing requests
-        self.request_queue: _AnyioQueue = _AnyioQueue(max_items=64)
-        
-        # Initialize distributed storage
+        self.resources = resources if resources else {}
+        self.metadata = metadata if metadata else {}
+
+        # Endpoint registry
+        self.endpoints: Dict[str, List[str]] = {}
+        self.endpoint_status: Dict[str, int] = {}
+        self.registered_models: Dict[str, Any] = {}
+
+        # Base URL / API key (can be overridden per-call)
+        self.default_api_url = self.metadata.get(
+            "vllm_api_url",
+            os.environ.get("VLLM_API_URL", "http://localhost:8000"),
+        )
+        self.default_api_key = self.metadata.get(
+            "vllm_api_key",
+            os.environ.get("VLLM_API_KEY", ""),
+        )
+
+        # Shared queue + circuit-breaker from BaseAPIBackend
+        self._init_queue(
+            queue_size=int(self.metadata.get("queue_size", 100)),
+            max_concurrent_requests=int(self.metadata.get("max_concurrent_requests", 5)),
+        )
+        self._init_circuit_breaker()
+
+        # Distributed storage (optional)
         self._storage = None
         if HAVE_STORAGE_WRAPPER:
             try:
                 self._storage = get_storage_wrapper()
                 if self._storage:
-                    import logging
-                    logging.getLogger(__name__).info("vLLM: Distributed storage initialized")
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).debug(f"vLLM: Could not initialize storage: {e}")
-        
-        return None
-    
+                    logger.info("vLLM: Distributed storage initialized")
+            except Exception as exc:
+                logger.debug("vLLM: Could not initialize storage: %s", exc)
+
     def init(self, endpoint_url=None, api_key=None, model_name=None, endpoint_type="completion"):
-        """Initialize a connection to a remote LLVM endpoint
+        """Initialize a connection to a remote vLLM endpoint
         
         Supported endpoint_types:
         - "completion": Standard text completion
@@ -142,11 +127,11 @@ class llvm:
         """
         # Create the appropriate endpoint handler based on type
         if endpoint_type == "chat":
-            endpoint_handler = self.create_remote_llvm_chat_endpoint_handler(endpoint_url, api_key, model_name)
+            endpoint_handler = self.create_remote_vllm_chat_endpoint_handler(endpoint_url, api_key, model_name)
         elif endpoint_type == "streaming":
-            endpoint_handler = self.create_remote_llvm_streaming_endpoint_handler(endpoint_url, api_key, model_name)
+            endpoint_handler = self.create_remote_vllm_streaming_endpoint_handler(endpoint_url, api_key, model_name)
         else:
-            endpoint_handler = self.create_remote_llvm_endpoint_handler(endpoint_url, api_key, model_name)
+            endpoint_handler = self.create_remote_vllm_endpoint_handler(endpoint_url, api_key, model_name)
         
         # Register the endpoint
         if model_name not in self.endpoints:
@@ -170,8 +155,8 @@ class llvm:
         
         return endpoint_url, api_key, endpoint_handler, self.request_queue, self.endpoint_status[endpoint_url]
     
-    def list_available_llvm_models(self, endpoint_url=None, api_key=None):
-        """List available models from an LLVM endpoint
+    def list_available_vllm_models(self, endpoint_url=None, api_key=None):
+        """List available models from an vLLM endpoint
         
         The endpoint should implement the /models API endpoint that returns
         available models in one of these formats:
@@ -179,7 +164,7 @@ class llvm:
         - {"data": [...]}
         
         Args:
-            endpoint_url: URL of the LLVM endpoint
+            endpoint_url: URL of the vLLM endpoint
             api_key: API key for authentication, if required
             
         Returns:
@@ -211,11 +196,11 @@ class llvm:
             else:
                 return result
         except Exception as e:
-            print(f"Failed to list LLVM models: {e}")
+            print(f"Failed to list vLLM models: {e}")
             return None
     
     def __test__(self, endpoint_url, endpoint_handler, endpoint_label, api_key=None, endpoint_type="completion"):
-        """Test the remote LLVM endpoint
+        """Test the remote vLLM endpoint
         
         Args:
             endpoint_url: URL of the endpoint
@@ -232,13 +217,13 @@ class llvm:
             try:
                 result = endpoint_handler(test_messages)
                 if result is not None:
-                    print(f"Remote LLVM chat test passed for {endpoint_label}")
+                    print(f"Remote vLLM chat test passed for {endpoint_label}")
                     return True
                 else:
-                    print(f"Remote LLVM chat test failed for {endpoint_label}: No result")
+                    print(f"Remote vLLM chat test failed for {endpoint_label}: No result")
                     return False
             except Exception as e:
-                print(f"Remote LLVM chat test failed for {endpoint_label}: {e}")
+                print(f"Remote vLLM chat test failed for {endpoint_label}: {e}")
                 return False
         elif endpoint_type == "streaming":
             test_prompt = "Complete this sentence: The quick brown fox"
@@ -247,16 +232,16 @@ class llvm:
                 # Check if we can get at least one chunk
                 first_chunk = next(response_stream, None)
                 if first_chunk is not None:
-                    print(f"Remote LLVM streaming test passed for {endpoint_label}")
+                    print(f"Remote vLLM streaming test passed for {endpoint_label}")
                     # Consume the rest of the stream to clean up
                     for _ in response_stream:
                         pass
                     return True
                 else:
-                    print(f"Remote LLVM streaming test failed for {endpoint_label}: No response chunks")
+                    print(f"Remote vLLM streaming test failed for {endpoint_label}: No response chunks")
                     return False
             except Exception as e:
-                print(f"Remote LLVM streaming test failed for {endpoint_label}: {e}")
+                print(f"Remote vLLM streaming test failed for {endpoint_label}: {e}")
                 return False
         else:
             # Standard completion test
@@ -264,17 +249,17 @@ class llvm:
             try:
                 result = endpoint_handler(test_prompt)
                 if result is not None:
-                    print(f"Remote LLVM completion test passed for {endpoint_label}")
+                    print(f"Remote vLLM completion test passed for {endpoint_label}")
                     return True
                 else:
-                    print(f"Remote LLVM completion test failed for {endpoint_label}: No result")
+                    print(f"Remote vLLM completion test failed for {endpoint_label}: No result")
                     return False
             except Exception as e:
-                print(f"Remote LLVM completion test failed for {endpoint_label}: {e}")
+                print(f"Remote vLLM completion test failed for {endpoint_label}: {e}")
                 return False
     
-    def make_post_request_llvm(self, endpoint_url, data, api_key=None):
-        """Make a POST request to a remote LLVM endpoint
+    def make_post_request_vllm(self, endpoint_url, data, api_key=None):
+        """Make a POST request to a remote vLLM endpoint
         
         Args:
             endpoint_url: URL of the endpoint
@@ -297,12 +282,12 @@ class llvm:
             try:
                 response = requests.post(endpoint_url, headers=headers, json=data)
             except requests.ConnectionError as e:
-                print(f"Connection error to LLVM endpoint: {e}")
-                raise ConnectionError(f"Failed to connect to LLVM endpoint: {e}")
+                print(f"Connection error to vLLM endpoint: {e}")
+                raise ConnectionError(f"Failed to connect to vLLM endpoint: {e}")
             
             # Handle specific error status codes
             if response.status_code >= 400:
-                error_msg = f"LLVM API error: HTTP {response.status_code}"
+                error_msg = f"vLLM API error: HTTP {response.status_code}"
                 try:
                     error_data = response.json()
                     if "error" in error_data:
@@ -322,11 +307,11 @@ class llvm:
             # Re-raise these specific exceptions
             raise
         except Exception as e:
-            print(f"Error making request to LLVM endpoint: {e}")
-            raise ValueError(f"LLVM API request failed: {str(e)}")
+            print(f"Error making request to vLLM endpoint: {e}")
+            raise ValueError(f"vLLM API request failed: {str(e)}")
     
-    async def make_async_post_request_llvm(self, endpoint_url, data, api_key=None):
-        """Make an asynchronous POST request to a remote LLVM endpoint
+    async def make_async_post_request_vllm(self, endpoint_url, data, api_key=None):
+        """Make an asynchronous POST request to a remote vLLM endpoint
         
         Args:
             endpoint_url: URL of the endpoint
@@ -354,11 +339,11 @@ class llvm:
                     return await response.json()
                     
         except Exception as e:
-            print(f"Error in async request to LLVM endpoint: {e}")
+            print(f"Error in async request to vLLM endpoint: {e}")
             raise e
     
-    def make_streaming_request_llvm(self, endpoint_url, data, api_key=None):
-        """Make a streaming request to a remote LLVM endpoint
+    def make_streaming_request_vllm(self, endpoint_url, data, api_key=None):
+        """Make a streaming request to a remote vLLM endpoint
         
         Args:
             endpoint_url: URL of the endpoint
@@ -396,11 +381,11 @@ class llvm:
                         yield {"text": line.decode("utf-8")}
         
         except Exception as e:
-            print(f"Error in streaming request to LLVM endpoint: {e}")
+            print(f"Error in streaming request to vLLM endpoint: {e}")
             yield {"error": str(e)}
     
-    def test_llvm_endpoint(self, endpoint_url=None, api_key=None, model_name=None, endpoint_type="completion"):
-        """Test an LLVM endpoint
+    def test_vllm_endpoint(self, endpoint_url=None, api_key=None, model_name=None, endpoint_type="completion"):
+        """Test an vLLM endpoint
         
         Args:
             endpoint_url: URL of the endpoint to test
@@ -422,7 +407,7 @@ class llvm:
                     "temperature": 0.7
                 }
                     
-                result = self.make_post_request_llvm(endpoint_url, data, api_key)
+                result = self.make_post_request_vllm(endpoint_url, data, api_key)
                 
                 if result and ("choices" in result or "message" in result or "response" in result):
                     return True
@@ -444,7 +429,7 @@ class llvm:
                 }
                 
                 # Just try to get the first chunk to validate
-                first_chunk = next(self.make_streaming_request_llvm(endpoint_url, data, api_key), None)
+                first_chunk = next(self.make_streaming_request_vllm(endpoint_url, data, api_key), None)
                 if first_chunk is not None and not "error" in first_chunk:
                     return True
                 else:
@@ -463,7 +448,7 @@ class llvm:
                     "temperature": 0.7
                 }
                     
-                result = self.make_post_request_llvm(endpoint_url, data, api_key)
+                result = self.make_post_request_vllm(endpoint_url, data, api_key)
                 
                 if result and ("text" in result or "choices" in result or "response" in result):
                     return True
@@ -475,8 +460,8 @@ class llvm:
                 print(f"Completion test failed for endpoint {endpoint_url}: {e}")
                 return False
     
-    def create_llvm_endpoint_handler(self, model=None, endpoint=None, endpoint_type="completion", batch=None):
-        """Create an endpoint handler for LLVM
+    def create_vllm_endpoint_handler(self, model=None, endpoint=None, endpoint_type="completion", batch=None):
+        """Create an endpoint handler for vLLM
         
         Args:
             model: Name of the model
@@ -488,14 +473,14 @@ class llvm:
             function: Handler for the endpoint
         """
         if endpoint_type == "chat":
-            return self.create_remote_llvm_chat_endpoint_handler(endpoint, None, model)
+            return self.create_remote_vllm_chat_endpoint_handler(endpoint, None, model)
         elif endpoint_type == "streaming":
-            return self.create_remote_llvm_streaming_endpoint_handler(endpoint, None, model)
+            return self.create_remote_vllm_streaming_endpoint_handler(endpoint, None, model)
         else:
-            return self.create_remote_llvm_endpoint_handler(endpoint, None, model)
+            return self.create_remote_vllm_endpoint_handler(endpoint, None, model)
     
-    def create_llvm_chat_endpoint_handler(self, model=None, endpoint=None, batch=None):
-        """Create a chat endpoint handler for LLVM
+    def create_vllm_chat_endpoint_handler(self, model=None, endpoint=None, batch=None):
+        """Create a chat endpoint handler for vLLM
         
         Args:
             model: Name of the model
@@ -505,10 +490,10 @@ class llvm:
         Returns:
             function: Handler for the chat endpoint
         """
-        return self.create_remote_llvm_chat_endpoint_handler(endpoint, None, model)
+        return self.create_remote_vllm_chat_endpoint_handler(endpoint, None, model)
     
-    def create_llvm_streaming_endpoint_handler(self, model=None, endpoint=None, batch=None):
-        """Create a streaming endpoint handler for LLVM
+    def create_vllm_streaming_endpoint_handler(self, model=None, endpoint=None, batch=None):
+        """Create a streaming endpoint handler for vLLM
         
         Args:
             model: Name of the model
@@ -518,10 +503,10 @@ class llvm:
         Returns:
             function: Handler for the streaming endpoint
         """
-        return self.create_remote_llvm_streaming_endpoint_handler(endpoint, None, model)
+        return self.create_remote_vllm_streaming_endpoint_handler(endpoint, None, model)
     
-    def request_llvm_endpoint(self, model, endpoint=None, endpoint_type="completion", batch=None):
-        """Request an LLVM endpoint
+    def request_vllm_endpoint(self, model, endpoint=None, endpoint_type="completion", batch=None):
+        """Request an vLLM endpoint
         
         Args:
             model: Name of the model
@@ -557,12 +542,12 @@ class llvm:
         # No suitable endpoint found
         return None
     
-    def create_remote_llvm_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
-        """Create a handler for a remote LLVM completion endpoint
+    def create_remote_vllm_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
+        """Create a handler for a remote vLLM completion endpoint
         
         Example:
             ```python
-            handler = llvm.create_remote_llvm_endpoint_handler(
+            handler = vllm.create_remote_vllm_endpoint_handler(
                 endpoint_url="http://localhost:8080",
                 model_name="my-model"
             )
@@ -615,7 +600,7 @@ class llvm:
                 data.update(default_params)
                 
                 # Make the request
-                response = self.make_post_request_llvm(endpoint_url, data, api_key)
+                response = self.make_post_request_vllm(endpoint_url, data, api_key)
                 
                 if response:
                     # Handle different possible response formats
@@ -634,17 +619,17 @@ class llvm:
                 return None
             
             except Exception as e:
-                print(f"Error in LLVM completion handler: {e}")
+                print(f"Error in vLLM completion handler: {e}")
                 return None
         
         return handler
     
-    def create_remote_llvm_chat_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
+    def create_remote_vllm_chat_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
         """Create a handler for chat completion with structured messages
         
         Example:
             ```python
-            handler = llvm.create_remote_llvm_chat_endpoint_handler(
+            handler = vllm.create_remote_vllm_chat_endpoint_handler(
                 endpoint_url="http://localhost:8080", 
                 model_name="my-chat-model"
             )
@@ -702,7 +687,7 @@ class llvm:
                     data[key] = value
                 
                 # Make the request
-                response = self.make_post_request_llvm(endpoint_url, data, api_key)
+                response = self.make_post_request_vllm(endpoint_url, data, api_key)
                 
                 if response:
                     # Handle different possible response formats
@@ -721,7 +706,7 @@ class llvm:
                 return None
             
             except Exception as e:
-                print(f"Error in LLVM chat handler: {e}")
+                print(f"Error in vLLM chat handler: {e}")
                 return None
         
         return handler
@@ -804,9 +789,9 @@ class llvm:
         """
         try:
             # Get the endpoint URL
-            endpoint_url = self.request_llvm_endpoint(model, endpoint, "completion", inputs)
+            endpoint_url = self.request_vllm_endpoint(model, endpoint, "completion", inputs)
             if not endpoint_url:
-                raise ValueError(f"No LLVM endpoint available for batch processing")
+                raise ValueError(f"No vLLM endpoint available for batch processing")
                 
             # Prepare the request data
             data = {
@@ -820,7 +805,7 @@ class llvm:
                 data["parameters"] = parameters
                 
             # Make the batch request
-            response = self.make_post_request_llvm(endpoint_url, data)
+            response = self.make_post_request_vllm(endpoint_url, data)
             
             # Extract results from the response
             if isinstance(response, dict):
@@ -882,12 +867,12 @@ class llvm:
             print(f"Error getting model info: {e}")
             return None
             
-    def create_remote_llvm_streaming_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
+    def create_remote_vllm_streaming_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
         """Create a handler for streaming responses
         
         Example:
             ```python
-            handler = llvm.create_remote_llvm_streaming_endpoint_handler(
+            handler = vllm.create_remote_vllm_streaming_endpoint_handler(
                 endpoint_url="http://localhost:8080",
                 model_name="my-model"
             )
@@ -949,10 +934,128 @@ class llvm:
                         data[key] = value
                 
                 # Make the streaming request
-                return self.make_streaming_request_llvm(endpoint_url, data, api_key)
+                return self.make_streaming_request_vllm(endpoint_url, data, api_key)
             
             except Exception as e:
-                print(f"Error in LLVM streaming handler: {e}")
+                print(f"Error in vLLM streaming handler: {e}")
                 yield {"error": str(e)}
         
         return handler
+    # ------------------------------------------------------------------
+    # Standard inference interface (shared code path with other backends)
+    # ------------------------------------------------------------------
+
+    def generate_text(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        endpoint_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        max_tokens: int = 256,
+        temperature: float = 0.7,
+        **kwargs: Any,
+    ) -> Optional[str]:
+        """Generate text from a prompt via vLLM /v1/completions.
+
+        Args:
+            prompt: Input text prompt.
+            model: Model name served by the vLLM server.
+            endpoint_url: Base URL of the vLLM server (defaults to VLLM_API_URL).
+            api_key: Optional bearer token.
+            max_tokens: Maximum tokens to generate.
+            temperature: Sampling temperature.
+            **kwargs: Additional parameters forwarded to the endpoint.
+
+        Returns:
+            Generated text string, or None on failure.
+        """
+        url = (endpoint_url or self.default_api_url).rstrip("/") + "/v1/completions"
+        key = api_key or self.default_api_key
+        data: Dict[str, Any] = {
+            "model": model or "default",
+            "prompt": prompt,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        data.update(kwargs)
+        try:
+            response = self.make_post_request_vllm(url, data, key)
+            if response and "choices" in response and response["choices"]:
+                choice = response["choices"][0]
+                return choice.get("text") or (choice.get("message") or {}).get("content")
+            if response and "text" in response:
+                return response["text"]
+        except Exception as exc:
+            logger.error("vLLM generate_text failed: %s", exc)
+        return None
+
+    def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        endpoint_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        max_tokens: int = 256,
+        temperature: float = 0.7,
+        **kwargs: Any,
+    ) -> Optional[str]:
+        """Chat completion via vLLM /v1/chat/completions.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'.
+            model: Model name served by the vLLM server.
+            endpoint_url: Base URL of the vLLM server.
+            api_key: Optional bearer token.
+            max_tokens: Maximum tokens to generate.
+            temperature: Sampling temperature.
+            **kwargs: Additional parameters forwarded to the endpoint.
+
+        Returns:
+            Assistant reply text, or None on failure.
+        """
+        url = (endpoint_url or self.default_api_url).rstrip("/") + "/v1/chat/completions"
+        key = api_key or self.default_api_key
+        data: Dict[str, Any] = {
+            "model": model or "default",
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        data.update(kwargs)
+        try:
+            response = self.make_post_request_vllm(url, data, key)
+            if response and "choices" in response and response["choices"]:
+                choice = response["choices"][0]
+                msg = choice.get("message") or {}
+                return msg.get("content") or choice.get("text")
+        except Exception as exc:
+            logger.error("vLLM chat_completion failed: %s", exc)
+        return None
+
+    def list_models(
+        self,
+        endpoint_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List models available on the vLLM server via /v1/models.
+
+        Returns:
+            List of model info dicts, or empty list on failure.
+        """
+        url = (endpoint_url or self.default_api_url).rstrip("/") + "/v1/models"
+        key = api_key or self.default_api_key
+        try:
+            headers = {"Content-Type": "application/json"}
+            if key:
+                headers["Authorization"] = f"Bearer {key}"
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            if "data" in data:
+                return data["data"]
+            if "models" in data:
+                return data["models"]
+            return [data]
+        except Exception as exc:
+            logger.error("vLLM list_models failed: %s", exc)
+            return []

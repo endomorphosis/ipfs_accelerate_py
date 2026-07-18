@@ -3,6 +3,12 @@ IPFS network operations tools for the MCP server.
 
 This module provides tools that expose IPFS network operations to LLM clients,
 including peer discovery, pubsub, and DHT operations.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.ipfs_network_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import os
@@ -40,6 +46,13 @@ def register_network_tools(mcp: FastMCP) -> None:
         mcp: The FastMCP server instance to register tools with
     """
     
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.ipfs_network.register_network_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.ipfs_network_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp.tool()
     async def ipfs_id(ctx: Context) -> Dict[str, Any]:
         """Get information about the local IPFS node.

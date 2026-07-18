@@ -70,14 +70,30 @@ from .tools.security_tools import register_native_security_tools
 from .tools.session_tools import register_native_session_tools
 from .tools.sparse_embedding_tools import register_native_sparse_embedding_tools
 from .tools.software_engineering_tools import register_native_software_engineering_tools
+from .tools.docker_tools import register_native_docker_tools
 from .tools.storage_tools import register_native_storage_tools
 from .tools.vector_store_tools import register_native_vector_store_tools
 from .tools.vector_tools import register_native_vector_tools
 from .tools.web_archive_tools import register_native_web_archive_tools
 from .tools.web_scraping_tools import register_native_web_scraping_tools
 from .tools.workflow_tools import register_native_workflow_tools_category
+from .tools.vllm_tools import register_native_vllm_tools
 from .tools.rate_limiting import register_native_rate_limiting_tools
 from .tools.rate_limiting_tools import register_native_rate_limiting_tools_category
+# Migrated legacy mcp/tools categories
+from .tools.hardware_tools import register_native_hardware_tools
+from .tools.inference_tools import register_native_inference_tools
+from .tools.model_tools import register_native_model_tools
+from .tools.acceleration_tools import register_native_acceleration_tools
+from .tools.backend_management_tools import register_native_backend_management_tools
+from .tools.endpoint_tools import register_native_endpoint_tools
+from .tools.github_tools import register_native_github_tools
+from .tools.copilot_tools import register_native_copilot_tools
+from .tools.cli_endpoint_tools import register_native_cli_endpoint_tools
+from .tools.ipfs_network_tools import register_native_ipfs_network_tools
+from .tools.enhanced_inference_tools import register_native_enhanced_inference_tools
+from .tools.workflow_management_tools import register_native_workflow_management_tools
+from .tools.shared_tools import register_native_shared_tools
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
 from .mcplusplus.policy_engine import evaluate_with_ipfs_datasets_policy
@@ -215,6 +231,20 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     }
     if artifact_store_backend == "json" and not artifact_store_path:
         artifact_store_runtime_meta["warning"] = "artifact_store_path_required"
+
+    # Audit storage: persists event_dag entries to ipfs_kit_py or disk using CIDs.
+    _audit_storage: Any = None
+    try:
+        from .ipfs_kit_bridge import get_audit_storage
+        _audit_storage = get_audit_storage()
+    except Exception:
+        pass
+    if _audit_storage is None:
+        try:
+            from ..ipfs_kit_integration import IPFSKitStorage
+            _audit_storage = IPFSKitStorage(enable_ipfs_kit=True)
+        except Exception:
+            _audit_storage = None
     risk_scheduler = None
     risk_scorer = RiskScorer()
     policy_audit = PolicyAuditLog(enabled=config.enable_policy_audit)
@@ -491,6 +521,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_software_engineering_tools(mgr),
     )
     manager.register_category_loader(
+        "docker_tools",
+        lambda mgr: register_native_docker_tools(mgr),
+    )
+    manager.register_category_loader(
         "session_tools",
         lambda mgr: register_native_session_tools(mgr),
     )
@@ -517,6 +551,63 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "rate_limiting_tools",
         lambda mgr: register_native_rate_limiting_tools_category(mgr),
+    )
+    manager.register_category_loader(
+        "vllm_tools",
+        lambda mgr: register_native_vllm_tools(mgr),
+    )
+    # Migrated legacy mcp/tools categories
+    manager.register_category_loader(
+        "hardware_tools",
+        lambda mgr: register_native_hardware_tools(mgr),
+    )
+    manager.register_category_loader(
+        "inference_tools",
+        lambda mgr: register_native_inference_tools(mgr),
+    )
+    manager.register_category_loader(
+        "model_tools",
+        lambda mgr: register_native_model_tools(mgr),
+    )
+    manager.register_category_loader(
+        "acceleration_tools",
+        lambda mgr: register_native_acceleration_tools(mgr),
+    )
+    manager.register_category_loader(
+        "backend_management_tools",
+        lambda mgr: register_native_backend_management_tools(mgr),
+    )
+    manager.register_category_loader(
+        "endpoint_tools",
+        lambda mgr: register_native_endpoint_tools(mgr),
+    )
+    manager.register_category_loader(
+        "github_tools",
+        lambda mgr: register_native_github_tools(mgr),
+    )
+    manager.register_category_loader(
+        "copilot_tools",
+        lambda mgr: register_native_copilot_tools(mgr),
+    )
+    manager.register_category_loader(
+        "cli_endpoint_tools",
+        lambda mgr: register_native_cli_endpoint_tools(mgr),
+    )
+    manager.register_category_loader(
+        "ipfs_network_tools",
+        lambda mgr: register_native_ipfs_network_tools(mgr),
+    )
+    manager.register_category_loader(
+        "enhanced_inference_tools",
+        lambda mgr: register_native_enhanced_inference_tools(mgr),
+    )
+    manager.register_category_loader(
+        "workflow_management_tools",
+        lambda mgr: register_native_workflow_management_tools(mgr),
+    )
+    manager.register_category_loader(
+        "shared_tools",
+        lambda mgr: register_native_shared_tools(mgr),
     )
     manager.register_category_loader(
         "idl",
@@ -710,6 +801,93 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             return meta
 
         dispatch_intent_cid = compute_dispatch_intent_cid(category, tool_name, payload)
+
+        def _persist_to_audit_storage(cid: str, payload_obj: dict[str, Any]) -> dict[str, Any]:
+            """Persist a single artifact blob to audit storage (ipfs_kit / disk) by CID."""
+            meta: dict[str, Any] = {"cid": cid, "persisted": False, "backend": "none", "error": ""}
+            if _audit_storage is None:
+                meta["error"] = "audit_storage_unavailable"
+                return meta
+            try:
+                import json as _json
+                blob = _json.dumps(payload_obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                store_fn = getattr(_audit_storage, "store", None)
+                if callable(store_fn):
+                    stored_cid = store_fn(blob, cid)
+                    meta["persisted"] = True
+                    meta["backend"] = "ipfs_kit"
+                    meta["stored_cid"] = str(stored_cid or cid)
+                    return meta
+                # Fallback: write to cache directory on disk
+                write_fn = getattr(_audit_storage, "_write_bytes_to_cache", None)
+                if callable(write_fn):
+                    path = write_fn(cid, blob)
+                    meta["persisted"] = True
+                    meta["backend"] = "disk"
+                    meta["path"] = str(path)
+                    return meta
+                meta["error"] = "no_suitable_store_method"
+            except Exception as exc:
+                meta["error"] = str(exc)
+            return meta
+
+        def _record_event_dag_always(
+            input_payload: dict[str, Any],
+            output_payload: dict[str, Any],
+            parent_cids: list[str],
+        ) -> dict[str, Any]:
+            """Compute CIDs, add to in-memory event_store, and persist to audit storage.
+
+            This runs unconditionally on every successful tool invocation so that
+            inputs and outputs are always auditable regardless of the emit_artifacts flag.
+            """
+            dag_meta: dict[str, Any] = {
+                "persisted": False,
+                "input_cid": "",
+                "output_cid": "",
+                "event_cid": "",
+                "lineage": [],
+                "storage": {},
+                "error": "",
+            }
+            try:
+                input_cid = compute_artifact_cid(input_payload)
+                output_cid = compute_artifact_cid(output_payload)
+                minimal_event: dict[str, Any] = {
+                    "input_cid": input_cid,
+                    "output_cid": output_cid,
+                    "intent_cid": dispatch_intent_cid,
+                    "category": category,
+                    "tool_name": tool_name,
+                    "parents": list(parent_cids or []),
+                }
+                event_cid = compute_artifact_cid(minimal_event)
+                minimal_event["event_cid"] = event_cid
+
+                dag_meta["input_cid"] = input_cid
+                dag_meta["output_cid"] = output_cid
+                dag_meta["event_cid"] = event_cid
+
+                # Add to in-memory event DAG (best-effort; parent validation may fail)
+                try:
+                    event_store.add_event(event_cid, minimal_event)
+                    dag_meta["persisted"] = True
+                    dag_meta["lineage"] = event_store.get_lineage(event_cid)
+                except Exception as dag_exc:
+                    dag_meta["error"] = str(dag_exc)
+
+                # Persist input, output, event to audit storage
+                storage_results: dict[str, Any] = {}
+                for label, cid_key, obj in (
+                    ("input", input_cid, input_payload),
+                    ("output", output_cid, output_payload),
+                    ("event", event_cid, minimal_event),
+                ):
+                    storage_results[label] = _persist_to_audit_storage(cid_key, obj)
+                dag_meta["storage"] = storage_results
+            except Exception as exc:
+                dag_meta["error"] = dag_meta.get("error") or str(exc)
+            return dag_meta
 
         try:
             emit_artifacts = coerce_dispatch_bool(
@@ -1217,6 +1395,23 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
         peer_registry_meta = await _probe_peer_registry()
         peer_bootstrap_meta = await _probe_peer_bootstrap()
+
+        # Always record inputs and outputs to the event DAG and audit storage,
+        # regardless of the emit_artifacts flag.  This ensures every tool
+        # invocation is auditable by its content ID.
+        _input_payload_for_dag = dict(payload) if isinstance(payload, dict) else {"input": payload}
+        _output_payload_for_dag = result if isinstance(result, dict) else {"result": result}
+        _always_dag_meta = _record_event_dag_always(
+            input_payload={
+                "category": category,
+                "tool_name": tool_name,
+                "intent_cid": dispatch_intent_cid,
+                "payload": _input_payload_for_dag,
+            },
+            output_payload=_output_payload_for_dag,
+            parent_cids=parent_event_cids,
+        )
+
         if not emit_artifacts:
             obligations = len(policy_decision.obligations) if policy_decision is not None else 0
             record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
@@ -1246,6 +1441,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     passthrough_result_fields=isinstance(result, dict),
                     extra_fields={
                         **_authorization_success_fields(),
+                        "event_dag": _always_dag_meta,
                         **({"cache": dict(cache_meta)} if use_result_cache else {}),
                         **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                         **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
@@ -1260,6 +1456,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 policy_decision_obj=policy_decision_binding,
                 extra_fields={
                     **_authorization_success_fields(),
+                    "event_dag": _always_dag_meta,
                     **({"cache": dict(cache_meta)} if use_result_cache else {}),
                     **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                     **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
@@ -1342,10 +1539,22 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     "enable_consensus_signal": enable_frontier_consensus_signal,
                 },
             )
+            # Persist all artifact blobs to audit storage using their CIDs.
+            _artifact_storage_results: dict[str, Any] = {}
+            for _label, _cid_key in (
+                ("input", envelope["input_cid"]),
+                ("output", envelope["output_cid"]),
+                ("event", envelope["event_cid"]),
+                ("receipt", envelope["receipt_cid"]),
+            ):
+                _artifact_storage_results[_label] = _persist_to_audit_storage(
+                    _cid_key, envelope[_label if _label != "receipt" else "receipt"]
+                )
             event_dag_meta = {
                 "persisted": True,
                 "lineage": event_store.get_lineage(envelope["event_cid"]),
                 "stats": event_store.stats(),
+                "storage": _artifact_storage_results,
             }
         except Exception as exc:
             event_dag_meta = {
@@ -1525,6 +1734,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_audit_metrics_status", audit_metrics_status)
     setattr(server, "_unified_secrets_vault", secrets_vault)
     setattr(server, "_unified_secrets_status", secrets_status)
+    setattr(server, "_unified_audit_storage", _audit_storage)
     setattr(server, "_unified_supported_profiles", list(unified_context.supported_profiles))
     from .mcplusplus.profile_g_transport import get_profile_g_dispatcher, profile_metadata
     setattr(server, "_unified_profile_g_dispatcher", get_profile_g_dispatcher())
@@ -1607,17 +1817,389 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             )
 
 
-def _create_base_server(*args: Any, **kwargs: Any) -> Any:
-    """Construct the underlying MCP server wrapper without routing through the facade."""
-    from ipfs_accelerate_py.mcp import server as legacy_server
+class StandaloneMCP:
+    """Canonical standalone MCP implementation for unified mcp_server.
 
+    Provides a lightweight tool/resource/prompt registry compatible with the
+    legacy ``ipfs_accelerate_py.mcp.server.StandaloneMCP`` interface so that
+    callers migrating away from the deprecated ``mcp`` package can swap the
+    import path without any further code changes.
+    """
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.tools: dict[str, Any] = {}
+        self.resources: dict[str, Any] = {}
+        self.prompts: dict[str, Any] = {}
+        self._error_handler: Any = None
+        self.lifespan_start_handler: Any = None
+        self.lifespan_stop_handler: Any = None
+        self._init_error_handler()
+        logger.info("Using standalone MCP implementation: %s", name)
+
+    def _init_error_handler(self) -> None:
+        """Initialize optional auto-healing error handler from environment."""
+        import os
+        try:
+            from ipfs_accelerate_py.error_handler import CLIErrorHandler  # type: ignore
+
+            enable_auto_issue = os.environ.get("IPFS_AUTO_ISSUE", "").lower() in ("1", "true", "yes")
+            enable_auto_pr = os.environ.get("IPFS_AUTO_PR", "").lower() in ("1", "true", "yes")
+            enable_auto_heal = os.environ.get("IPFS_AUTO_HEAL", "").lower() in ("1", "true", "yes")
+            repo = os.environ.get("IPFS_REPO", "endomorphosis/ipfs_accelerate_py")
+
+            if enable_auto_issue or enable_auto_pr or enable_auto_heal:
+                self._error_handler = CLIErrorHandler(
+                    repo=repo,
+                    enable_auto_issue=enable_auto_issue,
+                    enable_auto_pr=enable_auto_pr,
+                    enable_auto_heal=enable_auto_heal,
+                    log_context_lines=50,
+                )
+                logger.info(
+                    "MCP auto-healing enabled: issue=%s, pr=%s, heal=%s",
+                    enable_auto_issue,
+                    enable_auto_pr,
+                    enable_auto_heal,
+                )
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+    def register_tool(
+        self,
+        name: str,
+        function: Any,
+        description: str = "",
+        input_schema: Any = None,
+        execution_context: str = "server",
+        **_kwargs: Any,
+    ) -> None:
+        """Register a callable tool in the local registry."""
+        self.tools[name] = {
+            "function": function,
+            "description": description,
+            "input_schema": input_schema or {"type": "object", "properties": {}, "required": []},
+            "execution_context": execution_context,
+        }
+
+    def register_resource(
+        self,
+        uri: str,
+        function: Any,
+        description: str = "",
+        **_kwargs: Any,
+    ) -> None:
+        """Register a resource endpoint in the local registry."""
+        self.resources[uri] = {"function": function, "description": description}
+
+    def register_prompt(
+        self,
+        name: str,
+        template: str = "",
+        description: str = "",
+        input_schema: Any = None,
+        **_kwargs: Any,
+    ) -> None:
+        """Register a prompt template in the local registry."""
+        self.prompts[name] = {
+            "template": template,
+            "description": description,
+            "input_schema": input_schema or {"type": "object", "properties": {}, "required": []},
+        }
+
+    def create_fastapi_app(self, **_kwargs: Any) -> Any:
+        """Create a minimal FastAPI-compatible app backed by this registry."""
+        title = "IPFS Accelerate MCP API"
+        try:
+            from fastapi import FastAPI  # type: ignore
+            app: Any = FastAPI(
+                title=title,
+                description="IPFS Accelerate MCP",
+                version="0.1.0",
+            )
+
+            @app.get("/healthz")
+            async def _healthz():
+                return {"status": "ok", "service": self.name}
+
+        except ImportError:
+            class _MinimalApp:
+                def __init__(self, title: str) -> None:
+                    self.title = title
+            app = _MinimalApp(title=title)
+
+        app._standalone_mcp = self  # type: ignore[attr-defined]
+        return app
+
+    def _report_tool_error(self, tool_name: str, exc: Exception, params: dict) -> None:
+        if not self._error_handler:
+            return
+        try:
+            context = {
+                "mcp_server": self.name,
+                "tool_name": tool_name,
+                "tool_params": str(params),
+                "error_source": "mcp_tool",
+            }
+            self._error_handler.capture_error(exc, context=context)
+        except Exception:
+            pass
+
+    def _report_resource_error(self, resource_uri: str, exc: Exception) -> None:
+        if not self._error_handler:
+            return
+        try:
+            context = {"mcp_server": self.name, "resource_uri": resource_uri, "error_source": "mcp_resource"}
+            self._error_handler.capture_error(exc, context=context)
+        except Exception:
+            pass
+
+    def _report_client_error(self, error_data: dict) -> None:
+        if not self._error_handler:
+            return
+        try:
+            context = {"mcp_server": self.name, "error_source": "mcp_client", **dict(error_data or {})}
+            exc = RuntimeError(str(error_data.get("error_message", "client error")))
+            self._error_handler.capture_error(exc, context=context)
+        except Exception:
+            pass
+
+
+class MCPServerWrapper:
+    """Canonical MCP server wrapper for unified mcp_server.
+
+    Replaces the legacy ``ipfs_accelerate_py.mcp.server.MCPServerWrapper``
+    with an implementation that does not import from the deprecated ``mcp``
+    package.  The public interface (``name``, ``host``, ``port``, ``app``,
+    ``run()``) is preserved for compatibility.
+    """
+
+    def __init__(
+        self,
+        name: str = "ipfs-accelerate",
+        description: str = "",
+        accelerate_instance: Any = None,
+        host: str = "0.0.0.0",
+        port: int = 9000,
+        mount_path: str = "/mcp",
+        debug: bool = False,
+        **_extra: Any,
+    ) -> None:
+        self.name = name
+        self.description = description
+        self.host = host
+        self.port = port
+        self.mount_path = mount_path
+        self.debug = debug
+
+        from types import SimpleNamespace
+        self.state = SimpleNamespace(accelerate=accelerate_instance)
+
+        self.mcp = StandaloneMCP(name=self.name)
+        self.mcp.state = SimpleNamespace(accelerate=accelerate_instance)  # type: ignore[attr-defined]
+
+        # Default lifespan handlers for compatibility with callers that check them.
+        self.lifespan_start_handler: Any = lambda ctx: None
+        self.lifespan_stop_handler: Any = lambda ctx, state: None
+
+        # Build a minimal FastAPI app directly without routing through create_server()
+        # to avoid recursive construction.
+        self.app = self._build_app()
+
+        # Register canonical hardware info tools as compatibility aliases.
+        try:
+            from .tools.hardware_tools.native_hardware_tools import hardware_get_info, hardware_recommend
+
+            if "detect_hardware" not in self.mcp.tools:
+                self.mcp.register_tool(
+                    name="detect_hardware",
+                    function=hardware_get_info,
+                    description="Detect available hardware",
+                    input_schema={"type": "object", "properties": {}, "required": []},
+                    execution_context="server",
+                )
+
+            if "get_optimal_hardware" not in self.mcp.tools:
+                self.mcp.register_tool(
+                    name="get_optimal_hardware",
+                    function=hardware_recommend,
+                    description="Get optimal hardware for a model",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "model_name": {"type": "string", "description": "Model name"},
+                            "task": {
+                                "type": "string",
+                                "description": "Task type",
+                                "enum": ["inference", "training", "fine-tuning"],
+                                "default": "inference",
+                            },
+                        },
+                        "required": ["model_name"],
+                    },
+                    execution_context="server",
+                )
+        except Exception:
+            pass
+
+        # Register basic system resources.
+        try:
+            import platform
+            if "system://info" not in self.mcp.resources:
+                self.mcp.register_resource(
+                    uri="system://info",
+                    function=lambda: {
+                        "platform": platform.platform(),
+                        "python_version": platform.python_version(),
+                    },
+                    description="Basic system information",
+                )
+            if "system://capabilities" not in self.mcp.resources:
+                self.mcp.register_resource(
+                    uri="system://capabilities",
+                    function=lambda: {"accelerators": {}, "features": {}},
+                    description="System capabilities",
+                )
+        except Exception:
+            pass
+
+    def _build_app(self) -> Any:
+        """Build a minimal app without routing through create_server() (avoids recursion)."""
+        title = "IPFS Accelerate MCP API"
+        description = self.description or "IPFS Accelerate MCP"
+        try:
+            from fastapi import FastAPI  # type: ignore
+            app: Any = FastAPI(
+                title=title,
+                description=description,
+                version="0.1.0",
+                docs_url="/docs",
+                redoc_url="/redoc",
+            )
+
+            @app.get("/healthz")
+            async def _healthz():
+                return {"status": "ok", "service": self.name}
+
+        except ImportError:
+            # Fallback when FastAPI is not installed.
+            class _MinimalApp:
+                def __init__(self, title: str, description: str) -> None:
+                    self.title = title
+                    self.description = description
+
+            app = _MinimalApp(title=title, description=description)
+
+        app._standalone_mcp = self.mcp  # type: ignore[attr-defined]
+        return app
+
+    def run(
+        self,
+        host: Any = None,
+        port: Any = None,
+        reload: bool = False,
+    ) -> None:
+        """Run the MCP server via uvicorn."""
+        try:
+            import uvicorn
+            uvicorn.run(
+                self.app,
+                host=host or self.host,
+                port=int(port or self.port),
+                log_level="debug" if self.debug else "info",
+                reload=reload,
+            )
+        except ImportError:
+            raise RuntimeError(
+                "uvicorn is required to run the MCP server. Install it with: pip install uvicorn"
+            )
+
+    def stop(self) -> None:
+        """No-op stop hook for compatibility with callers that call server.stop()."""
+
+
+# Module-level MCP server instance registry (mirrors legacy mcp.server pattern).
+_MCP_SERVER_INSTANCE: Any = None
+_MCP_LIKE_INSTANCE: Any = None
+
+
+def set_mcp_like_instance(mcp_like: Any) -> None:
+    """Register an MCP-like registry instance for shared tool access."""
+    global _MCP_LIKE_INSTANCE
+    _MCP_LIKE_INSTANCE = mcp_like
+
+
+def get_mcp_server_instance() -> Any:
+    """Return the last created MCP server instance or MCP-like registry."""
+    return _MCP_SERVER_INSTANCE or _MCP_LIKE_INSTANCE
+
+
+def register_tools(mcp: Any) -> None:
+    """Register canonical tool set with an MCP-like registry instance.
+
+    Convenience wrapper used by callers that expect a ``register_tools(mcp)``
+    function analogous to the legacy ``ipfs_accelerate_py.mcp.tools.register_all_tools``.
+    """
+    try:
+        from .tools.hardware_tools.native_hardware_tools import hardware_get_info, hardware_recommend
+        mcp.register_tool(
+            name="hardware_get_info",
+            function=hardware_get_info,
+            description="Get hardware acceleration capabilities.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            execution_context="server",
+        )
+        mcp.register_tool(
+            name="hardware_recommend",
+            function=hardware_recommend,
+            description="Recommend hardware for a model type and task.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "model_type": {"type": "string", "default": "general"},
+                    "model_size": {"type": "string", "default": "medium"},
+                    "task": {"type": "string", "default": "inference"},
+                },
+                "required": [],
+            },
+            execution_context="server",
+        )
+    except Exception:
+        pass
+
+    try:
+        from .tools.inference_tools.native_inference_tools import inference_run_inference
+        mcp.register_tool(
+            name="inference_run_inference",
+            function=inference_run_inference,
+            description="Run inference on a model.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "model_cid": {"type": "string"},
+                    "input_data": {"type": "string"},
+                    "device": {"type": "string", "default": "auto"},
+                },
+                "required": ["model_cid", "input_data"],
+            },
+            execution_context="server",
+        )
+    except Exception:
+        pass
+
+
+def _create_base_server(*args: Any, **kwargs: Any) -> Any:
+    """Construct the canonical MCP server wrapper."""
     server_kwargs = dict(kwargs)
     server_kwargs.pop("_skip_unified_bridge", None)
 
-    server = legacy_server.MCPServerWrapper(*args, **server_kwargs)
-    legacy_server._MCP_SERVER_INSTANCE = server
+    server = MCPServerWrapper(*args, **server_kwargs)
+    global _MCP_SERVER_INSTANCE
+    _MCP_SERVER_INSTANCE = server
     try:
-        legacy_server.set_mcp_like_instance(getattr(server, "mcp", None) or server)
+        set_mcp_like_instance(getattr(server, "mcp", None) or server)
     except Exception:
         pass
 
@@ -1648,11 +2230,43 @@ def create_server(*args: Any, **kwargs: Any) -> Any:
     return server
 
 
+#: Alias matching the legacy ``ipfs_accelerate_py.mcp.server.create_ipfs_mcp_server`` name.
+create_ipfs_mcp_server = create_server
+
+#: Alias matching the legacy ``ipfs_accelerate_py.mcp.server.IPFSAccelerateMCPServer`` name.
+IPFSAccelerateMCPServer = MCPServerWrapper
+
+#: Alias matching the legacy ``ipfs_accelerate_py.mcp.tools.register_all_tools`` name.
+register_all_tools = register_tools
+
+
+def populate_unified_registry() -> None:
+    """Populate the global tool registry with all canonical tools.
+
+    Drop-in replacement for the legacy
+    ``ipfs_accelerate_py.mcp.tool_migration.populate_unified_registry``.
+    """
+    from ipfs_accelerate_py.mcp_server.tool_registry import get_global_registry  # noqa: PLC0415
+
+    registry = get_global_registry()
+    mcp_stub = StandaloneMCP(name="registry-seed")
+    register_tools(mcp_stub)
+    for name, func in mcp_stub.tools.items():
+        try:
+            registry.register_function(func, name=name)
+        except Exception:
+            pass
+
+
 def main() -> None:
     """Start the MCP server using the canonical standalone CLI behavior."""
     from ipfs_accelerate_py.mcp_server.standalone_server import main as standalone_main
 
     standalone_main()
+
+
+#: Alias matching ``run_server`` names used in various scripts.
+run_server = main
 
 
 if __name__ == "__main__":

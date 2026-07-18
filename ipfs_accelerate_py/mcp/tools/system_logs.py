@@ -1,5 +1,11 @@
 """
 MCP tool for accessing system logs.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.monitoring_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import logging
@@ -11,6 +17,13 @@ logger = logging.getLogger(__name__)
 def register_tools(mcp_server):
     """Register system logs tools with the MCP server."""
     
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.system_logs.register_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.monitoring_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp_server.tool()
     def get_system_logs(
         lines: int = 100,

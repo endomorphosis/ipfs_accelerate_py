@@ -5,7 +5,6 @@ import uuid
 import threading
 import requests
 from concurrent.futures import Future
-from queue import Queue
 from dotenv import load_dotenv
 
 import hashlib
@@ -13,6 +12,17 @@ import queue
 from concurrent.futures import ThreadPoolExecutor
 
 import logging
+logger = logging.getLogger(__name__)
+
+try:
+    from .base import BaseAPIBackend
+except ImportError:
+    try:
+        from base import BaseAPIBackend
+    except ImportError:
+        BaseAPIBackend = object
+
+
 
 try:
     import numpy as np
@@ -54,7 +64,7 @@ except ImportError:
         ProvenanceLogger = None
         DatasetsManager = None
 
-class hf_tei:
+class hf_tei(BaseAPIBackend):
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
@@ -63,13 +73,8 @@ class hf_tei:
         self.api_token = self._get_api_token()
         
         # Initialize queue and backoff systems
-        self.max_concurrent_requests = 5
-        self.queue_size = 100
-        self.request_queue = Queue(maxsize=self.queue_size)
-        self.active_requests = 0
-        self.queue_lock = threading.RLock()
-        self.queue_processing = True
-        self.queue_processing = True
+        self._init_queue(queue_size=100, max_concurrent_requests=5)
+        self._init_circuit_breaker()
         # Batching settings
         self.batching_enabled = True
         self.max_batch_size = 10
@@ -83,27 +88,6 @@ class hf_tei:
         self.completion_models = []  # Models supporting batched completions
         self.supported_batch_models = []  # All models supporting batching
 
-        # Circuit breaker settings
-        self.circuit_state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
-        self.failure_threshold = 5  # Number of failures before opening circuit
-        self.reset_timeout = 30  # Seconds to wait before trying half-open
-        self.failure_count = 0
-        self.last_failure_time = 0
-        self.circuit_lock = threading.RLock()
-
-        # Priority levels
-        self.PRIORITY_HIGH = 0
-        self.PRIORITY_NORMAL = 1
-        self.PRIORITY_LOW = 2
-        
-        # Change request queue to priority-based
-        self.request_queue = []  # Will store (priority, request_info) tuples
-
-        
-        # Start queue processor
-        self.queue_processor = threading.Thread(target=self._process_queue)
-        self.queue_processor.daemon = True
-        self.queue_processor.start()
         
         # Initialize backoff configuration
         self.max_retries = 5
@@ -114,29 +98,7 @@ class hf_tei:
         # Default model
         self.default_model = "sentence-transformers/all-MiniLM-L6-v2"
         
-        return
-
-        # Initialize counters, queues, and settings for each endpoint 
-        self.endpoints = {}  # Dictionary to store per-endpoint data
-        
-        # Retry and backoff settings (global defaults)
-        self.max_retries = 5
-        self.initial_retry_delay = 1
-        self.backoff_factor = 2
-        self.max_retry_delay = 60  # Maximum delay in seconds
-        
-        # Global request queue settings
-        self.queue_enabled = True
-        self.queue_size = 100
-        self.queue_processing = False
-        self.current_requests = 0
-        self.max_concurrent_requests = 5
-        self.request_queue = []
-        self.queue_lock = threading.RLock()
-        self.queue_processing = True
-        self.queue_processing = True
-        
-        # Initialize thread pool for async processing
+        self.endpoints = {}
         self.thread_pool = ThreadPoolExecutor(max_workers=10)
 
         # Initialize distributed storage
@@ -145,11 +107,11 @@ class hf_tei:
             try:
                 self._storage = get_storage_wrapper()
                 if self._storage:
-                    import logging
                     logging.getLogger(__name__).info("HF TEI: Distributed storage initialized")
             except Exception as e:
-                import logging
                 logging.getLogger(__name__).debug(f"HF TEI: Could not initialize storage: {e}")
+
+        return
 
     def _get_api_token(self):
         """Get Hugging Face API token from metadata or environment"""
@@ -178,157 +140,73 @@ class hf_tei:
     
     
     def _process_queue(self):
-        """Process requests in the queue with standard pattern"""
-        with self.queue_lock:
-            if self.queue_processing:
-                return  # Another thread is already processing
-            self.queue_processing = True
-        
-        try:
-            while True:
-                # Get the next request from the queue
-                request_info = None
-                
-                with self.queue_lock:
-                    if not self.request_queue:
-                        self.queue_processing = False
-                        break
-                        
-                    # Check if we're at capacity
-                    if self.active_requests >= self.max_concurrent_requests:
-                        time.sleep(0.1)  # Brief pause
-                        continue
-                        
-                    # Get next request and increment counter
-                    request_info = self.request_queue.pop(0)
-                    self.active_requests += 1
-                
-                # Process the request outside the lock
-                if request_info:
-                    try:
-                        # Extract request details
-                        future = request_info.get("future")
-                        func = request_info.get("func")
-                        args = request_info.get("args", [])
-                        kwargs = request_info.get("kwargs", {})
-                        
-                        # Special handling for different request formats
-                        if func and callable(func):
-                            # Function-based request
-                            try:
-                                result = func(*args, **kwargs)
-                                if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error executing queued function: {e}")
-                        else:
-                            # Direct API request format
-                            endpoint_url = request_info.get("endpoint_url")
-                            data = request_info.get("data")
-                            api_key = request_info.get("api_key")
-                            request_id = request_info.get("request_id")
-                            
-                            if hasattr(self, "make_request"):
-                                method = self.make_request
-                            elif hasattr(self, "make_post_request"):
-                                method = self.make_post_request
-                            else:
-                                raise AttributeError("No request method found")
-                            
-                            # Temporarily disable queueing to prevent recursion
-                            original_queue_enabled = getattr(self, "queue_enabled", True)
-                            setattr(self, "queue_enabled", False)
-                            
-                            try:
-                                result = method(
-                                    endpoint_url=endpoint_url,
-                                    data=data,
-                                    api_key=api_key,
-                                    request_id=request_id
-                                )
-                                
-                                if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error processing queued request: {e}")
-                            finally:
-                                # Restore original queue_enabled
-                                setattr(self, "queue_enabled", original_queue_enabled)
-                    
-                    finally:
-                        # Decrement counter
-                        with self.queue_lock:
-                            self.active_requests = max(0, self.active_requests - 1)
-                
-                # Brief pause to prevent CPU hogging
-                time.sleep(0.01)
-                
-        except Exception as e:
-            logger.error(f"Error in queue processing thread: {e}")
-            
-        finally:
-            # Reset queue processing flag
-            with self.queue_lock:
-                self.queue_processing = False
+        """Delegate to the shared BaseAPIBackend implementation."""
+        return super()._process_queue()
 
     def make_post_request_hf_tei(self, endpoint_url, data, api_token=None, request_id=None, endpoint_id=None):
-        """Make a request to HF TEI API with queue and backoff"""
-        # Use endpoint-specific API token if available, fall back to default
-        if endpoint_id and endpoint_id in self.endpoints:
-            # Get API token from endpoint settings
-            endpoint = self.endpoints[endpoint_id]
-            if api_token is None:
-                api_token = endpoint.get("api_key", self.api_token)
-        else:
-            # Use provided token or default
-            if api_token is None:
-                api_token = self.api_token
-        
-        # Generate unique request ID if not provided
+        """Make a request to HF TEI API with queue and backoff."""
+        if not self.check_circuit_breaker():
+            raise RuntimeError("Circuit breaker is OPEN. Service unavailable.")
+
+        if endpoint_id and endpoint_id in self.endpoints and api_token is None:
+            api_token = self.endpoints[endpoint_id].get("api_key", self.api_token)
+        elif api_token is None:
+            api_token = self.api_token
+
         if request_id is None:
             request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
-        
-        # Queue system with proper concurrency management
-        future = Future()
-        
-        # Create request info
-        request_info = {
-            "endpoint_url": endpoint_url,
-            "data": data,
-            "api_key": api_token,
-            "request_id": request_id,
-            "endpoint_id": endpoint_id,
-            "future": future
-        }
-        
-        # Add to appropriate queue
-        if endpoint_id and endpoint_id in self.endpoints:
-            with self.endpoints[endpoint_id]["queue_lock"]:
-                # Check if queue is full
-                if len(self.endpoints[endpoint_id]["request_queue"]) >= self.endpoints[endpoint_id]["queue_size"]:
-                    raise ValueError(f"Request queue is full ({self.endpoints[endpoint_id]['queue_size']} items). Try again later.")
-                
-                # Add to endpoint queue
-                self.endpoints[endpoint_id]["request_queue"].append(request_info)
-                
-                # Start queue processing if not already running
-                if not self.endpoints[endpoint_id]["queue_processing"]:
-                    threading.Thread(target=self._process_queue, args=(endpoint_id,)).start()
-        else:
-            # Add to global queue
-            self.request_queue.append((future, endpoint_url, data, api_token, request_id))
-            
-        # Get result (blocks until request is processed)
-        return future.result()
-        
+
+        def _execute_request():
+            headers = {"Content-Type": "application/json", "X-Request-ID": request_id}
+            if api_token:
+                headers["Authorization"] = f"******"
+
+            retries = 0
+            while True:
+                try:
+                    response = requests.post(endpoint_url, json=data, headers=headers, timeout=60)
+                    if response.status_code != 200:
+                        message = f"HF TEI request failed with status {response.status_code}"
+                        try:
+                            payload = response.json()
+                            if isinstance(payload, dict) and payload.get("error"):
+                                message = f"{message}: {payload['error']}"
+                        except Exception:
+                            if response.text:
+                                message = f"{message}: {response.text[:200]}"
+                        raise ValueError(message)
+                    self.track_request_result(True)
+                    return response.json()
+                except Exception as e:
+                    if retries >= self.max_retries:
+                        self.track_request_result(False, type(e).__name__)
+                        raise
+                    retries += 1
+                    time.sleep(min(self.initial_retry_delay * (self.backoff_factor ** (retries - 1)), self.max_retry_delay))
+
+        with self.queue_lock:
+            at_capacity = self.active_requests >= self.max_concurrent_requests
+            if not at_capacity:
+                self.active_requests += 1
+
+        if at_capacity and getattr(self, "queue_enabled", True):
+            result_future = self.queue_with_priority({"func": _execute_request, "request_id": request_id})
+            max_wait = 300
+            wait_start = time.time()
+            while not result_future["completed"] and (time.time() - wait_start) < max_wait:
+                time.sleep(0.05)
+            if not result_future["completed"]:
+                raise TimeoutError("Request timed out waiting in queue")
+            if result_future["error"]:
+                raise result_future["error"]
+            return result_future["result"]
+
+        try:
+            return _execute_request()
+        finally:
+            with self.queue_lock:
+                self.active_requests = max(0, self.active_requests - 1)
+
     def generate_embedding(self, model_id, text, api_token=None, request_id=None, endpoint_id=None):
         """Generate embeddings for a single text using HF TEI API"""
         # Format endpoint URL for the model
@@ -695,7 +573,7 @@ class hf_tei:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "global_queue_size": len(self.request_queue),
-                "global_current_requests": self.current_requests
+                "global_current_requests": self.active_requests
             }
             return stats
 
@@ -723,71 +601,6 @@ class hf_tei:
         else:
             raise ValueError(f"Endpoint {endpoint_id} not found")
 
-    def check_circuit_breaker(self):
-        # Check if circuit breaker allows requests to proceed
-        with self.circuit_lock:
-            now = time.time()
-            
-            if self.circuit_state == "OPEN":
-                # Check if enough time has passed to try again
-                if now - self.last_failure_time > self.reset_timeout:
-                    logger.info("Circuit breaker transitioning from OPEN to HALF-OPEN")
-                    self.circuit_state = "HALF_OPEN"
-                    return True
-                else:
-                    # Circuit is open, fail fast
-                    return False
-                    
-            elif self.circuit_state == "HALF_OPEN":
-                # In half-open state, we allow a single request to test the service
-                return True
-                
-            else:  # CLOSED
-                # Normal operation, allow requests
-                return True
-
-    def track_request_result(self, success, error_type=None):
-        # Track the result of a request for circuit breaker logic tracking
-        with self.circuit_lock:
-            if success:
-                # Successful request
-                if self.circuit_state == "HALF_OPEN":
-                    # Service is working again, close the circuit
-                    logger.info("Circuit breaker transitioning from HALF-OPEN to CLOSED")
-                    self.circuit_state = "CLOSED"
-                    self.failure_count = 0
-                elif self.circuit_state == "CLOSED":
-                    # Reset failure count on success
-                    self.failure_count = 0
-            else:
-                # Failed request
-                self.failure_count += 1
-                self.last_failure_time = time.time()
-                
-                # Update error statistics
-                if error_type and hasattr(self, "collect_metrics") and self.collect_metrics:
-                    with self.stats_lock:
-                        if error_type not in self.request_stats["errors_by_type"]:
-                            self.request_stats["errors_by_type"][error_type] = 0
-                        self.request_stats["errors_by_type"][error_type] += 1
-                
-                if self.circuit_state == "CLOSED" and self.failure_count >= self.failure_threshold:
-                    # Too many failures, open the circuit
-                    logger.warning(f"Circuit breaker transitioning from CLOSED to OPEN after {self.failure_count} failures")
-                    self.circuit_state = "OPEN"
-                    
-                    # Update circuit breaker statistics
-                    if hasattr(self, "stats_lock") and hasattr(self, "request_stats"):
-                        with self.stats_lock:
-                            if "circuit_breaker_trips" not in self.request_stats:
-                                self.request_stats["circuit_breaker_trips"] = 0
-                            self.request_stats["circuit_breaker_trips"] += 1
-                    
-                elif self.circuit_state == "HALF_OPEN":
-                    # Failed during test request, back to open
-                    logger.warning("Circuit breaker transitioning from HALF-OPEN to OPEN after test request failure")
-                    self.circuit_state = "OPEN"
-    
     def add_to_batch(self, model, request_info):
         # Add a request to the batch queue for the specified model
         if not hasattr(self, "batching_enabled") or not self.batching_enabled or model not in self.supported_batch_models:

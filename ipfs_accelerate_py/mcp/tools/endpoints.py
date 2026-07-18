@@ -2,6 +2,12 @@
 Endpoint Management Tools for IPFS Accelerate MCP Server
 
 This module provides MCP tools for managing model inference endpoints.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.endpoint_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import os
@@ -33,6 +39,13 @@ def set_ipfs_instance(ipfs_instance) -> None:
 def register_tools(mcp):
     """Register endpoint-related tools with the MCP server"""
     
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.endpoints.register_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.endpoint_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp.tool()
     def get_endpoints() -> Dict[str, Any]:
         """

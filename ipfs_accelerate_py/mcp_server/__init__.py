@@ -98,6 +98,13 @@ _EXPORT_MAP: dict[str, tuple[str, str]] = {
     "get_logger": (".logger", "get_logger"),
     "logger": (".logger", "logger"),
     "mcp_logger": (".logger", "mcp_logger"),
+    # Canonical equivalents for deprecated mcp.server symbols.
+    "StandaloneMCP": (".server", "StandaloneMCP"),
+    "MCPServerWrapper": (".server", "MCPServerWrapper"),
+    "create_ipfs_mcp_server": (".server", "create_ipfs_mcp_server"),
+    "register_tools": (".server", "register_tools"),
+    "get_mcp_server_instance": (".server", "get_mcp_server_instance"),
+    "set_mcp_like_instance": (".server", "set_mcp_like_instance"),
 }
 
 __all__ = list(_EXPORT_MAP)

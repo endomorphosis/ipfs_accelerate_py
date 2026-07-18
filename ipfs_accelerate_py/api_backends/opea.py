@@ -6,8 +6,19 @@ import hashlib
 import uuid
 import requests
 from concurrent.futures import Future
-from queue import Queue
 from dotenv import load_dotenv
+import logging
+logger = logging.getLogger(__name__)
+
+try:
+    from .base import BaseAPIBackend
+except ImportError:
+    try:
+        from base import BaseAPIBackend
+    except ImportError:
+        BaseAPIBackend = object
+
+
 
 # Try to import datasets integration for API tracking
 try:
@@ -31,7 +42,7 @@ except ImportError:
         ProvenanceLogger = None
         DatasetsManager = None
 
-class opea:
+class opea(BaseAPIBackend):
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
@@ -40,11 +51,7 @@ class opea:
         self.api_endpoint = self._get_api_endpoint()
         
         # Initialize queue and backoff systems
-        self.max_concurrent_requests = 5
-        self.queue_size = 100
-        self.request_queue = Queue(maxsize=self.queue_size)
-        self.active_requests = 0
-        self.queue_lock = threading.RLock()
+        self._init_queue(queue_size=100, max_concurrent_requests=5)
         # Batching settings
         self.batching_enabled = True
         self.max_batch_size = 10
@@ -58,27 +65,7 @@ class opea:
         self.completion_models = []  # Models supporting batched completions
         self.supported_batch_models = []  # All models supporting batching
 
-        # Circuit breaker settings
-        self.circuit_state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
-        self.failure_threshold = 5  # Number of failures before opening circuit
-        self.reset_timeout = 30  # Seconds to wait before trying half-open
-        self.failure_count = 0
-        self.last_failure_time = 0
-        self.circuit_lock = threading.RLock()
-
-        # Priority levels
-        self.PRIORITY_HIGH = 0
-        self.PRIORITY_NORMAL = 1
-        self.PRIORITY_LOW = 2
-        
-        # Change request queue to priority-based
-        self.request_queue = []  # Will store (priority, request_info) tuples
-
-        
-        # Start queue processor
-        self.queue_processor = threading.Thread(target=self._process_queue)
-        self.queue_processor.daemon = True
-        self.queue_processor.start()
+        self._init_circuit_breaker()
         
         # Initialize backoff configuration
         self.max_retries = 5
@@ -97,14 +84,6 @@ class opea:
         self.backoff_factor = 2
         self.max_retry_delay = 60  # Maximum delay in seconds
         
-        # Request queue settings
-        self.queue_enabled = True
-        self.queue_size = 100
-        self.queue_processing = False
-        self.current_requests = 0
-        self.max_concurrent_requests = 5
-        self.request_queue = []
-        self.queue_lock = threading.RLock()
         return None
 
     def _get_api_endpoint(self):
@@ -133,152 +112,65 @@ class opea:
         
     
     def _process_queue(self):
-        """Process requests in the queue with standard pattern"""
-        with self.queue_lock:
-            if self.queue_processing:
-                return  # Another thread is already processing
-            self.queue_processing = True
-        
-        try:
-            while True:
-                # Get the next request from the queue
-                request_info = None
-                
-                with self.queue_lock:
-                    if not self.request_queue:
-                        self.queue_processing = False
-                        break
-                        
-                    # Check if we're at capacity
-                    if self.active_requests >= self.max_concurrent_requests:
-                        time.sleep(0.1)  # Brief pause
-                        continue
-                        
-                    # Get next request and increment counter
-                    request_info = self.request_queue.pop(0)
-                    self.active_requests += 1
-                
-                # Process the request outside the lock
-                if request_info:
-                    try:
-                        # Extract request details
-                        future = request_info.get("future")
-                        func = request_info.get("func")
-                        args = request_info.get("args", [])
-                        kwargs = request_info.get("kwargs", {})
-                        
-                        # Special handling for different request formats
-                        if func and callable(func):
-                            # Function-based request
-                            try:
-                                result = func(*args, **kwargs)
-                                if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error executing queued function: {e}")
-                        else:
-                            # Direct API request format
-                            endpoint_url = request_info.get("endpoint_url")
-                            data = request_info.get("data")
-                            api_key = request_info.get("api_key")
-                            request_id = request_info.get("request_id")
-                            
-                            if hasattr(self, "make_request"):
-                                method = self.make_request
-                            elif hasattr(self, "make_post_request"):
-                                method = self.make_post_request
-                            else:
-                                raise AttributeError("No request method found")
-                            
-                            # Temporarily disable queueing to prevent recursion
-                            original_queue_enabled = getattr(self, "queue_enabled", True)
-                            setattr(self, "queue_enabled", False)
-                            
-                            try:
-                                result = method(
-                                    endpoint_url=endpoint_url,
-                                    data=data,
-                                    api_key=api_key,
-                                    request_id=request_id
-                                )
-                                
-                                if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error processing queued request: {e}")
-                            finally:
-                                # Restore original queue_enabled
-                                setattr(self, "queue_enabled", original_queue_enabled)
-                    
-                    finally:
-                        # Decrement counter
-                        with self.queue_lock:
-                            self.active_requests = max(0, self.active_requests - 1)
-                
-                # Brief pause to prevent CPU hogging
-                time.sleep(0.01)
-                
-        except Exception as e:
-            logger.error(f"Error in queue processing thread: {e}")
-            
-        finally:
-            # Reset queue processing flag
-            with self.queue_lock:
-                self.queue_processing = False
+        """Delegate to the shared BaseAPIBackend implementation."""
+        return super()._process_queue()
 
-    def queue_with_priority(self, request_info, priority=None):
-        # Queue a request with a specific priority level
-        if priority is None:
-            priority = self.PRIORITY_NORMAL
-            
-        with self.queue_lock:
-            # Check if queue is full
-            if len(self.request_queue) >= self.queue_size:
-                raise ValueError(f"Request queue is full ({self.queue_size} items). Try again later.")
-            
-            # Record queue entry time for metrics
-            request_info["queue_entry_time"] = time.time()
-            
-            # Add to queue with priority
-            self.request_queue.append((priority, request_info))
-            
-            # Sort queue by priority (lower numbers = higher priority)
-            self.request_queue.sort(key=lambda x: x[0])
-            
-            logger.info(f"Request queued with priority {priority}. Queue size: {len(self.request_queue)}")
-            
-            # Start queue processing if not already running
-            if not self.queue_processing:
-                threading.Thread(target=self._process_queue).start()
-                
-            # Create future to track result
-            future = {"result": None, "error": None, "completed": False}
-            request_info["future"] = future
-            return future
-    
     def make_post_request_opea(self, endpoint_url, data, request_id=None):
-        """Make a request to OPEA API with queue and backoff"""
-        # Generate unique request ID if not provided
+        """Make a request to OPEA API with queue and backoff."""
+        if not self.check_circuit_breaker():
+            raise RuntimeError("Circuit breaker is OPEN. Service unavailable.")
+
         if request_id is None:
             request_id = str(uuid.uuid4())
-        
-        # Queue system with proper concurrency management
-        future = Future()
-        
-        # Add to queue
-        self.request_queue.append((future, endpoint_url, data, request_id))
-        
-        # Get result (blocks until request is processed)
-        return future.result()
-        
+
+        def _execute_request():
+            headers = {"Content-Type": "application/json", "X-Request-ID": request_id}
+            retries = 0
+            while True:
+                try:
+                    response = requests.post(endpoint_url, json=data, headers=headers, timeout=60)
+                    if response.status_code != 200:
+                        message = f"OPEA request failed with status {response.status_code}"
+                        try:
+                            payload = response.json()
+                            if isinstance(payload, dict) and payload.get("error"):
+                                message = f"{message}: {payload['error']}"
+                        except Exception:
+                            if response.text:
+                                message = f"{message}: {response.text[:200]}"
+                        raise ValueError(message)
+                    self.track_request_result(True)
+                    return response.json()
+                except Exception as e:
+                    if retries >= self.max_retries:
+                        self.track_request_result(False, type(e).__name__)
+                        raise
+                    retries += 1
+                    time.sleep(min(self.initial_retry_delay * (self.backoff_factor ** (retries - 1)), self.max_retry_delay))
+
+        with self.queue_lock:
+            at_capacity = self.active_requests >= self.max_concurrent_requests
+            if not at_capacity:
+                self.active_requests += 1
+
+        if at_capacity and getattr(self, "queue_enabled", True):
+            result_future = self.queue_with_priority({"func": _execute_request, "request_id": request_id})
+            max_wait = 300
+            wait_start = time.time()
+            while not result_future["completed"] and (time.time() - wait_start) < max_wait:
+                time.sleep(0.05)
+            if not result_future["completed"]:
+                raise TimeoutError("Request timed out waiting in queue")
+            if result_future["error"]:
+                raise result_future["error"]
+            return result_future["result"]
+
+        try:
+            return _execute_request()
+        finally:
+            with self.queue_lock:
+                self.active_requests = max(0, self.active_requests - 1)
+
     def chat(self, messages, model=None, **kwargs):
         """Send a chat request to OPEA API"""
         # Construct the proper endpoint URL
@@ -375,71 +267,6 @@ class opea:
         except Exception as e:
             print(f"Error testing OPEA endpoint: {e}")
             return False
-    def check_circuit_breaker(self):
-        # Check if circuit breaker allows requests to proceed
-        with self.circuit_lock:
-            now = time.time()
-            
-            if self.circuit_state == "OPEN":
-                # Check if enough time has passed to try again
-                if now - self.last_failure_time > self.reset_timeout:
-                    logger.info("Circuit breaker transitioning from OPEN to HALF-OPEN")
-                    self.circuit_state = "HALF_OPEN"
-                    return True
-                else:
-                    # Circuit is open, fail fast
-                    return False
-                    
-            elif self.circuit_state == "HALF_OPEN":
-                # In half-open state, we allow a single request to test the service
-                return True
-                
-            else:  # CLOSED
-                # Normal operation, allow requests
-                return True
-
-    def track_request_result(self, success, error_type=None):
-        # Track the result of a request for circuit breaker logic tracking
-        with self.circuit_lock:
-            if success:
-                # Successful request
-                if self.circuit_state == "HALF_OPEN":
-                    # Service is working again, close the circuit
-                    logger.info("Circuit breaker transitioning from HALF-OPEN to CLOSED")
-                    self.circuit_state = "CLOSED"
-                    self.failure_count = 0
-                elif self.circuit_state == "CLOSED":
-                    # Reset failure count on success
-                    self.failure_count = 0
-            else:
-                # Failed request
-                self.failure_count += 1
-                self.last_failure_time = time.time()
-                
-                # Update error statistics
-                if error_type and hasattr(self, "collect_metrics") and self.collect_metrics:
-                    with self.stats_lock:
-                        if error_type not in self.request_stats["errors_by_type"]:
-                            self.request_stats["errors_by_type"][error_type] = 0
-                        self.request_stats["errors_by_type"][error_type] += 1
-                
-                if self.circuit_state == "CLOSED" and self.failure_count >= self.failure_threshold:
-                    # Too many failures, open the circuit
-                    logger.warning(f"Circuit breaker transitioning from CLOSED to OPEN after {self.failure_count} failures")
-                    self.circuit_state = "OPEN"
-                    
-                    # Update circuit breaker statistics
-                    if hasattr(self, "stats_lock") and hasattr(self, "request_stats"):
-                        with self.stats_lock:
-                            if "circuit_breaker_trips" not in self.request_stats:
-                                self.request_stats["circuit_breaker_trips"] = 0
-                            self.request_stats["circuit_breaker_trips"] += 1
-                    
-                elif self.circuit_state == "HALF_OPEN":
-                    # Failed during test request, back to open
-                    logger.warning("Circuit breaker transitioning from HALF-OPEN to OPEN after test request failure")
-                    self.circuit_state = "OPEN"
-    
     def add_to_batch(self, model, request_info):
         # Add a request to the batch queue for the specified model
         if not hasattr(self, "batching_enabled") or not self.batching_enabled or model not in self.supported_batch_models:

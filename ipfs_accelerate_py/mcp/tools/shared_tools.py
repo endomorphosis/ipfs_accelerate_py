@@ -2,6 +2,12 @@
 Shared Tools for IPFS Accelerate MCP Server
 
 This module provides MCP tools that use the shared operations for consistency with CLI.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.shared_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import logging
@@ -84,6 +90,13 @@ except ImportError:
 
 def register_shared_tools(mcp: FastMCP) -> None:
     """Register tools that use shared operations with the MCP server."""
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.shared_tools.register_shared_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.shared_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     logger.info("Registering shared operation tools")
     
     if not HAVE_SHARED:

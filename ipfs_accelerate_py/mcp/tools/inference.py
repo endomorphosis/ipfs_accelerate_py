@@ -3,10 +3,17 @@ Inference Tools for IPFS Accelerate MCP Server
 
 This module provides MCP tools for running inference with machine learning models.
 Uses shared operations for consistency with CLI.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.inference_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import os
 import time
+import anyio
 import logging
 import random
 import traceback
@@ -202,8 +209,15 @@ except ImportError:
 def register_tools(mcp):
     """Register inference-related tools with the MCP server"""
     
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.inference.register_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.inference_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp.tool()
-    def run_inference(model: str,
+    async def run_inference(model: str,
                       inputs: List[str],
                       device: str = "auto",
                       max_length: int = 1024,
@@ -377,7 +391,7 @@ def register_tools(mcp):
                     processing_delay *= 2  # CPU is slower
                 elif "cuda" in device:
                     processing_delay *= 0.5  # GPU is faster
-                time.sleep(processing_delay)
+                await anyio.sleep(processing_delay)
                 
                 # Generate random embeddings of the correct size
                 embeddings = []
@@ -436,7 +450,7 @@ def register_tools(mcp):
                     processing_delay *= 2  # CPU is slower
                 elif "cuda" in device:
                     processing_delay *= 0.5  # GPU is faster
-                time.sleep(processing_delay)
+                await anyio.sleep(processing_delay)
                 
                 # Generate simulated text outputs
                 outputs = []

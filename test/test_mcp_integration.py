@@ -15,11 +15,11 @@ from unittest.mock import patch, MagicMock
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Import MCP components
-from ipfs_accelerate_py.mcp.mock_mcp import FastMCP, Context
-from ipfs_accelerate_py.mcp.types import IPFSAccelerateContext
-from ipfs_accelerate_py.mcp.tools.mock_ipfs import MockIPFSClient
-from ipfs_accelerate_py.mcp.server import create_ipfs_mcp_server, register_tools
+# Import MCP components from canonical mcp_server package.
+from ipfs_accelerate_py.mcp_server.mock_mcp import FastMCP, Context
+from ipfs_accelerate_py.mcp_server.types import IPFSAccelerateContext
+from ipfs_accelerate_py.mcp_server.tools.ipfs import MockIPFSClient
+from ipfs_accelerate_py.mcp_server.server import create_ipfs_mcp_server, register_tools
 
 
 class TestMCPIntegration(unittest.TestCase):
@@ -61,7 +61,7 @@ class TestMCPIntegration(unittest.TestCase):
         mock_get_client.return_value = mock_client
         
         # Import the tool registration function
-        from ipfs_accelerate_py.mcp.tools.ipfs_files import register_files_tools
+        from ipfs_accelerate_py.mcp_server.tools.ipfs import register_native_ipfs_tools as register_files_tools
         
         # Register the file tools
         register_files_tools(self.mcp_server)
@@ -94,7 +94,7 @@ class TestMCPIntegration(unittest.TestCase):
         mock_get_client.return_value = mock_client
         
         # Import the tool registration function
-        from ipfs_accelerate_py.mcp.tools.ipfs_files import register_files_tools
+        from ipfs_accelerate_py.mcp_server.tools.ipfs import register_native_ipfs_tools as register_files_tools
         
         # Register the file tools
         register_files_tools(self.mcp_server)
@@ -117,7 +117,7 @@ class TestMCPIntegration(unittest.TestCase):
         mock_get_client.return_value = mock_client
         
         # Import the tool registration function
-        from ipfs_accelerate_py.mcp.tools.ipfs_files import register_files_tools
+        from ipfs_accelerate_py.mcp_server.tools.ipfs import register_native_ipfs_tools as register_files_tools
         
         # Register the file tools
         register_files_tools(self.mcp_server)

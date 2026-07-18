@@ -7,6 +7,7 @@ can use a compact meta-tool interface instead of loading all tool schemas.
 from __future__ import annotations
 
 import inspect
+import anyio
 import logging
 import time
 from dataclasses import dataclass
@@ -231,7 +232,9 @@ class HierarchicalToolManager:
                 full_name = f"{category}.{tool_name}"
                 return await self.runtime_router.route_tool_call(full_name, tool.func, **parameters)
 
-            result = tool.func(**parameters)
+            if inspect.iscoroutinefunction(tool.func):
+                return await tool.func(**parameters)
+            result = await anyio.to_thread.run_sync(lambda: tool.func(**parameters))
             if inspect.isawaitable(result):
                 return await result
             return result

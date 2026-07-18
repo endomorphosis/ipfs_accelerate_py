@@ -3,6 +3,12 @@
 These tools provide a thin MCP surface over the libp2p TaskQueue client.
 They intentionally return structured `{ok, error, ...}` dicts rather than
 raising, so MCP callers can handle partial connectivity/discovery.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.p2p_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 from __future__ import annotations
@@ -55,6 +61,13 @@ def _remote_queue(*, peer_id: str = "", multiaddr: str = ""):
 def register_tools(mcp: Any) -> None:
     """Register p2p TaskQueue tools with the MCP server."""
 
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.p2p_taskqueue.register_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.p2p_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp.tool()
     async def p2p_taskqueue_status(
         remote_multiaddr: str = "",

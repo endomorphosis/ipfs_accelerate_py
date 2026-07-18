@@ -3,6 +3,12 @@ IPFS file operations tools for the MCP server.
 
 This module provides tools that expose IPFS file operations to LLM clients,
 including adding, reading, listing, and pinning files.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.ipfs``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import os
@@ -92,6 +98,13 @@ def register_files_tools(mcp: FastMCP) -> None:
         mcp: The FastMCP server instance to register tools with
     """
     
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.ipfs_files.register_files_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.ipfs instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     @mcp.tool()
     async def add_file_shared(path: str, ctx: Context, pin: bool = True) -> Dict[str, Any]:
         """Add a file to IPFS using shared operations.

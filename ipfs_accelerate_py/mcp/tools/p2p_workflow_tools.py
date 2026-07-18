@@ -4,6 +4,12 @@ P2P Workflow Scheduler Tools for MCP Server
 This module provides MCP tools for P2P workflow scheduling,
 allowing workflows to bypass GitHub API and execute across
 the peer-to-peer network.
+
+
+.. deprecated::
+    This module has been migrated to the canonical runtime at
+    ``ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools``.  Import from the canonical module instead.
+    This file is preserved as a compatibility shim only.
 """
 
 import logging
@@ -65,6 +71,13 @@ def get_scheduler() -> Optional[P2PWorkflowScheduler]:
 
 def register_p2p_workflow_tools(mcp: FastMCP) -> None:
     """Register P2P workflow scheduler tools with the MCP server."""
+    import warnings
+    warnings.warn(
+        "ipfs_accelerate_py.mcp.tools.p2p_workflow_tools.register_p2p_workflow_tools is deprecated. "
+        "Use ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     logger.info("Registering P2P workflow scheduler tools")
     
     if not HAVE_P2P_SCHEDULER:

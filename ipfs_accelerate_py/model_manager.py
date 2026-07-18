@@ -76,6 +76,15 @@ except ImportError:
     ProvenanceLogger = None
     logger.debug("Datasets integration not available for model manager")
 
+# Try to import ModelKnowledgeGraph for GraphRAG support
+try:
+    from .model_manager_graphrag import ModelKnowledgeGraph
+    HAVE_GRAPHRAG = True
+except ImportError:
+    HAVE_GRAPHRAG = False
+    ModelKnowledgeGraph = None
+    logger.debug("ModelKnowledgeGraph not available for model manager")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -283,6 +292,69 @@ class DataType(Enum):
 
 
 @dataclass
+class ServingConfig:
+    """
+    Per-model configuration for hosting and traffic routing.
+
+    This dataclass captures everything a serving layer needs to launch,
+    configure, and route traffic to a model.  It is stored as a JSON blob
+    alongside ``ModelMetadata`` so that any cluster node can discover the
+    correct launch args without manual configuration.
+
+    Fields
+    ------
+    engine:
+        Serving backend identifier.  One of: ``"vllm"``, ``"tgi"``,
+        ``"triton"``, ``"onnxruntime"``, ``"llama.cpp"``, ``"hf_pipeline"``.
+    launch_args:
+        Free-form engine-specific CLI flags, e.g.
+        ``{"--tensor-parallel-size": 2, "--quantization": "awq"}``.
+    default_generation_params:
+        Default parameters passed to the inference API, e.g.
+        ``{"temperature": 0.7, "max_new_tokens": 512}``.
+    endpoint_schema:
+        JSON schema describing the model's HTTP input / output contract,
+        used by the traffic router for validation.
+    routing_weight:
+        Relative weight for weighted load balancing across replicas
+        (default: 1.0).
+    min_replicas:
+        Minimum number of replicas for autoscaling (default: 1).
+    max_replicas:
+        Maximum number of replicas for autoscaling (default: 1).
+    hardware_affinity:
+        Ordered list of hardware types this model is optimised for,
+        e.g. ``["cuda", "rocm", "cpu"]``.
+    """
+    engine: str = "hf_pipeline"
+    launch_args: Optional[Dict[str, Any]] = None
+    default_generation_params: Optional[Dict[str, Any]] = None
+    endpoint_schema: Optional[Dict[str, Any]] = None
+    routing_weight: float = 1.0
+    min_replicas: int = 1
+    max_replicas: int = 1
+    hardware_affinity: Optional[List[str]] = None
+
+    def __post_init__(self) -> None:
+        if self.launch_args is None:
+            self.launch_args = {}
+        if self.default_generation_params is None:
+            self.default_generation_params = {}
+        if self.hardware_affinity is None:
+            self.hardware_affinity = []
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialise to a plain dict (JSON-compatible)."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ServingConfig":
+        """Deserialise from a plain dict."""
+        known = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@dataclass
 @dataclass
 @dataclass
 class IOSpec:
@@ -330,6 +402,8 @@ class ModelMetadata:
     inference_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Serving configuration: engine, launch args, routing, autoscaling
+    serving_config: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         """Initialize defaults after object creation."""
@@ -357,9 +431,21 @@ class ModelManager:
     - Manage HuggingFace configuration data
     - Track inference code locations
     - Query models by various criteria
+    - Cache model weights via ipfs_kit_py multi-tier cache
+    - Build and query a knowledge graph over registered models (GraphRAG)
+    - Store and resolve per-model serving configurations (launch args, engine, etc.)
     """
     
-    def __init__(self, storage_path: str = None, use_database: bool = None, enable_ipfs: bool = None):
+    def __init__(
+        self,
+        storage_path: str = None,
+        use_database: bool = None,
+        enable_ipfs: bool = None,
+        # --- Gap 1: tiered cache settings ---
+        cache_memory_mb: int = 100,
+        cache_disk_mb: int = 1024,
+        cache_eviction_policy: str = "lru",
+    ):
         """
         Initialize the model manager.
         
@@ -367,6 +453,9 @@ class ModelManager:
             storage_path: Path for storage backend (JSON file or DuckDB database)
             use_database: Whether to use DuckDB backend. If None, auto-detect.
             enable_ipfs: Whether to enable IPFS backend for model storage. If None, auto-detect.
+            cache_memory_mb: In-memory cache size in MB for ipfs_kit_py tiered cache (default: 100).
+            cache_disk_mb: Disk cache quota in MB for ipfs_kit_py tiered cache (default: 1024).
+            cache_eviction_policy: Cache eviction policy – "lru", "lfu", or "arc" (default: "lru").
         """
         # Determine storage backend
         if use_database is None:
@@ -383,6 +472,13 @@ class ModelManager:
         
         self.storage_path = storage_path
         self.models: Dict[str, ModelMetadata] = {}
+
+        # Derive a per-instance cache directory co-located with storage when not
+        # explicitly set, so different ModelManager instances don't share a cache.
+        _default_cache_dir = os.path.join(
+            os.path.dirname(os.path.abspath(storage_path)),
+            ".ipfs_kit_cache",
+        )
         
         # Initialize IPFS backend router for distributed model storage
         self._ipfs_backend = None
@@ -411,7 +507,17 @@ class ModelManager:
         self._artifact_storage = None
         if HAVE_IPFS_KIT_STORAGE:
             try:
-                self._artifact_storage = IPFSKitStorage(enable_ipfs_kit=self.enable_ipfs, deps=self._datasets_manager)
+                self._artifact_storage = IPFSKitStorage(
+                    enable_ipfs_kit=self.enable_ipfs,
+                    cache_dir=_default_cache_dir,
+                    deps=self._datasets_manager,
+                )
+                # Apply tiered cache configuration
+                self._artifact_storage.configure_cache(
+                    memory_mb=cache_memory_mb,
+                    disk_mb=cache_disk_mb,
+                    eviction_policy=cache_eviction_policy,
+                )
             except Exception as e:
                 logger.debug(f"IPFS Kit storage initialization skipped: {e}")
         
@@ -426,6 +532,18 @@ class ModelManager:
                     logger.debug("Model manager using local filesystem (distributed storage disabled)")
             except Exception as e:
                 logger.debug(f"Storage wrapper initialization skipped: {e}")
+
+        # Initialize knowledge graph for GraphRAG (Gap 2)
+        self._knowledge_graph: Optional["ModelKnowledgeGraph"] = None
+        if HAVE_GRAPHRAG:
+            try:
+                self._knowledge_graph = ModelKnowledgeGraph(
+                    datasets_manager=self._datasets_manager,
+                    storage=self._artifact_storage,
+                )
+                logger.info("Model knowledge graph initialized")
+            except Exception as e:
+                logger.debug(f"ModelKnowledgeGraph initialization skipped: {e}")
         
         # Initialize storage backend
         if self.use_database:
@@ -509,10 +627,16 @@ class ModelManager:
                 )
             """)
 
-            for column_name in ["model_cid", "config_cid", "tokenizer_cid", "artifact_cid", "model_revision", "revision_id", "revision_created_at", "parent_model_id", "parent_model_cid", "last_used_at", "last_inference_cid", "last_run_id", "inference_count"]:
+            for column_name in ["model_cid", "config_cid", "tokenizer_cid", "artifact_cid", "model_revision", "revision_id", "revision_created_at", "parent_model_id", "parent_model_cid", "last_used_at", "last_inference_cid", "last_run_id", "inference_count", "serving_config"]:
                 try:
+                    col_type = (
+                        'TIMESTAMP' if column_name in {'last_used_at', 'revision_created_at'} else
+                        'BIGINT' if column_name == 'inference_count' else
+                        'JSON' if column_name == 'serving_config' else
+                        'VARCHAR'
+                    )
                     self.con.execute(
-                        f"ALTER TABLE model_metadata ADD COLUMN IF NOT EXISTS {column_name} {'TIMESTAMP' if column_name in {'last_used_at', 'revision_created_at'} else ('BIGINT' if column_name == 'inference_count' else 'VARCHAR')}"
+                        f"ALTER TABLE model_metadata ADD COLUMN IF NOT EXISTS {column_name} {col_type}"
                     )
                 except Exception:
                     pass
@@ -551,8 +675,9 @@ class ModelManager:
                 
                 # Parse JSON fields
                 for json_field in ['inputs', 'outputs', 'huggingface_config', 'supported_backends', 
-                                 'hardware_requirements', 'performance_metrics', 'tags', 'repository_structure']:
-                    if row_dict[json_field]:
+                                 'hardware_requirements', 'performance_metrics', 'tags',
+                                 'repository_structure', 'serving_config']:
+                    if row_dict.get(json_field):
                         row_dict[json_field] = json.loads(row_dict[json_field])
 
                 for datetime_field in ['created_at', 'updated_at', 'last_used_at', 'revision_created_at']:
@@ -567,6 +692,10 @@ class ModelManager:
                 
                 # Convert enum fields
                 row_dict['model_type'] = ModelType(row_dict['model_type'])
+
+                # Strip unknown keys that may come from older schema versions
+                known_fields = {f.name for f in ModelMetadata.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+                row_dict = {k: v for k, v in row_dict.items() if k in known_fields}
                 
                 self.models[model_id] = ModelMetadata(**row_dict)
                 
@@ -660,6 +789,7 @@ class ModelManager:
                 "inference_count",
                 "created_at",
                 "updated_at",
+                "serving_config",
             ]
 
             for model_id, metadata in self.models.items():
@@ -679,8 +809,9 @@ class ModelManager:
                 
                 # Convert other complex fields to JSON
                 for json_field in ['huggingface_config', 'supported_backends', 
-                                 'hardware_requirements', 'performance_metrics', 'tags', 'repository_structure']:
-                    if data[json_field] is not None:
+                                 'hardware_requirements', 'performance_metrics', 'tags',
+                                 'repository_structure', 'serving_config']:
+                    if data.get(json_field) is not None:
                         data[json_field] = json.dumps(data[json_field])
                 
                 # Convert enum to string
@@ -690,19 +821,12 @@ class ModelManager:
                 data['updated_at'] = datetime.now()
                 
                 # Insert or update
-                self.con.execute("""
-                    INSERT OR REPLACE INTO model_metadata (
-                        model_id, model_name, model_type, architecture, inputs, outputs,
-                        huggingface_config, inference_code_location, supported_backends,
-                        hardware_requirements, performance_metrics, tags, source_url,
-                        license, description, model_card, repository_structure,
-                        model_cid, config_cid, tokenizer_cid, artifact_cid,
-                        model_revision, revision_id, revision_created_at, parent_model_id,
-                        parent_model_cid, last_used_at, last_inference_cid,
-                        last_run_id, inference_count,
-                        created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, tuple(data.get(column) for column in columns))
+                placeholders = ", ".join(["?"] * len(columns))
+                col_list = ", ".join(columns)
+                self.con.execute(
+                    f"INSERT OR REPLACE INTO model_metadata ({col_list}) VALUES ({placeholders})",
+                    tuple(data.get(column) for column in columns),
+                )
             
             logger.info(f"Saved {len(self.models)} models to database")
         except Exception as e:
@@ -785,6 +909,18 @@ class ModelManager:
             logger.info(f"Added/updated model: {metadata.model_id}")
 
             self._record_model_registration(metadata)
+
+            # Update knowledge graph node (Gap 2)
+            self._update_knowledge_graph_for_model(metadata)
+
+            # Register serving config in service registry (Gap 3)
+            if metadata.serving_config and self._artifact_storage:
+                try:
+                    self._artifact_storage.register_model_service(
+                        metadata.model_id, metadata.serving_config
+                    )
+                except Exception as e:
+                    logger.debug("Service registry update skipped: %s", e)
             
             return True
         except Exception as e:
@@ -960,6 +1096,13 @@ class ModelManager:
                 # Also remove from database if using database backend
                 if self.use_database:
                     self.con.execute("DELETE FROM model_metadata WHERE model_id = ?", (model_id,))
+
+                # Remove from knowledge graph (Gap 2)
+                if self._knowledge_graph:
+                    try:
+                        self._knowledge_graph.remove_model_node(model_id)
+                    except Exception as e:
+                        logger.debug("Knowledge graph node removal skipped: %s", e)
                 
                 logger.info(f"Removed model: {model_id}")
                 return True
@@ -1300,7 +1443,9 @@ class ModelManager:
             "models_with_hf_config": 0,
             "models_with_inference_code": 0,
             "models_with_repo_structure": 0,
-            "total_tracked_files": 0
+            "total_tracked_files": 0,
+            "models_with_serving_config": 0,
+            "knowledge_graph_cid": self._knowledge_graph.graph_cid if self._knowledge_graph else None,
         }
         
         # Count by type and architecture
@@ -1330,8 +1475,392 @@ class ModelManager:
             if metadata.repository_structure:
                 stats["models_with_repo_structure"] += 1
                 stats["total_tracked_files"] += metadata.repository_structure.get("total_files", 0)
+            if metadata.serving_config:
+                stats["models_with_serving_config"] += 1
         
         return stats
+
+    # ------------------------------------------------------------------
+    # Gap 1 – Model Weights Caching
+    # ------------------------------------------------------------------
+
+    def warm_cache(self, model_ids: List[str]) -> Dict[str, bool]:
+        """
+        Proactively warm the ipfs_kit_py disk-tier cache for a set of models.
+
+        For each model in ``model_ids`` that has stored artifact CIDs, this
+        method retrieves the weights, config, and tokenizer from IPFS into the
+        local disk cache so that subsequent calls to ``get_cached_weight_path``
+        can be served without a network round-trip.
+
+        Parameters
+        ----------
+        model_ids:
+            List of model identifiers to warm.
+
+        Returns
+        -------
+        Dict mapping model_id → True (warmed) / False (failed or skipped).
+        """
+        results: Dict[str, bool] = {}
+        if not self._artifact_storage:
+            logger.warning("warm_cache: no artifact storage available")
+            return {mid: False for mid in model_ids}
+
+        for model_id in model_ids:
+            metadata = self.models.get(model_id)
+            if not metadata:
+                logger.warning("warm_cache: model not found: %s", model_id)
+                results[model_id] = False
+                continue
+
+            warmed = False
+            for cid_attr in ("model_cid", "config_cid", "tokenizer_cid"):
+                cid = getattr(metadata, cid_attr, None)
+                if not cid:
+                    continue
+                # Check if already cached
+                if self._artifact_storage.exists(cid):
+                    warmed = True
+                    continue
+                # Fetch from IPFS into disk cache
+                try:
+                    data = self._artifact_storage.retrieve(cid)
+                    if data is not None:
+                        warmed = True
+                        logger.debug("warm_cache: fetched %s for %s", cid_attr, model_id)
+                except Exception as e:
+                    logger.debug("warm_cache: failed for %s/%s: %s", model_id, cid_attr, e)
+
+            results[model_id] = warmed
+            logger.info("warm_cache: model=%s warmed=%s", model_id, warmed)
+
+        return results
+
+    def get_cached_weight_path(
+        self,
+        model_id: str,
+        file: str = "model.safetensors",
+    ) -> Optional[str]:
+        """
+        Return a local filesystem path for a model weight file.
+
+        If the weight file is already in the local disk cache it is returned
+        immediately.  Otherwise, the method attempts to pull it from IPFS
+        (using the CID stored on the model's ``ModelMetadata``) and saves it
+        to the cache directory before returning the path.
+
+        Parameters
+        ----------
+        model_id:
+            Unique model identifier.
+        file:
+            Weight filename to look up (default: ``"model.safetensors"``).
+
+        Returns
+        -------
+        Absolute path to the cached file, or None if unavailable.
+        """
+        if not self._artifact_storage:
+            return None
+
+        metadata = self.models.get(model_id)
+        if not metadata:
+            return None
+
+        # Map canonical filenames to the CID attributes stored on ModelMetadata
+        cid_map = {
+            "model.safetensors": metadata.model_cid,
+            "pytorch_model.bin": metadata.model_cid,
+            "model.bin": metadata.model_cid,
+            "config.json": metadata.config_cid,
+            "tokenizer.json": metadata.tokenizer_cid,
+            "tokenizer_config.json": metadata.tokenizer_cid,
+        }
+
+        # Determine which CID to use
+        cid = cid_map.get(file)
+        if not cid:
+            # Fall back to the per-file CIDs stored in repository_structure
+            if metadata.repository_structure:
+                file_info = metadata.repository_structure.get("files", {}).get(file, {})
+                cid = file_info.get("ipfs_cid") or file_info.get("oid")
+
+        if not cid:
+            logger.warning("get_cached_weight_path: no CID for %s/%s", model_id, file)
+            return None
+
+        # Check local cache first
+        cache_path = self._artifact_storage.cache_dir / cid
+        if cache_path.exists():
+            return str(cache_path)
+
+        # Fetch from IPFS / fallback storage
+        try:
+            data = self._artifact_storage.retrieve(cid)
+            if data is None:
+                return None
+            cache_path.write_bytes(data)
+            logger.info("get_cached_weight_path: cached %s for %s", file, model_id)
+            return str(cache_path)
+        except Exception as e:
+            logger.warning("get_cached_weight_path: retrieve failed for %s: %s", cid, e)
+            return None
+
+    # ------------------------------------------------------------------
+    # Gap 2 – Knowledge Graph / GraphRAG
+    # ------------------------------------------------------------------
+
+    def _update_knowledge_graph_for_model(self, metadata: "ModelMetadata") -> None:
+        """Internal: sync a model into the knowledge graph."""
+        if not self._knowledge_graph:
+            return
+        try:
+            model_data = {
+                "model_name": metadata.model_name,
+                "model_type": metadata.model_type.value if hasattr(metadata.model_type, "value") else str(metadata.model_type),
+                "architecture": metadata.architecture,
+                "description": metadata.description,
+                "model_card": metadata.model_card or "",
+                "tags": metadata.tags or [],
+                "source_url": metadata.source_url or "",
+            }
+            self._knowledge_graph.add_model_node(metadata.model_id, model_data)
+
+            # Lineage edge
+            if metadata.parent_model_id:
+                self._knowledge_graph.add_lineage_edge(metadata.model_id, metadata.parent_model_id)
+
+            # Backend compatibility edges
+            if metadata.supported_backends:
+                self._knowledge_graph.add_compatibility_edges(
+                    metadata.model_id, metadata.supported_backends
+                )
+
+            # Hardware requirement edges
+            if metadata.hardware_requirements:
+                self._knowledge_graph.add_hardware_requirement_edges(
+                    metadata.model_id, metadata.hardware_requirements
+                )
+
+            # Pipeline / task edges derived from serving_config or HF config
+            pipeline_types: List[str] = []
+            if metadata.serving_config:
+                pt = metadata.serving_config.get("pipeline_types")
+                if pt and isinstance(pt, list):
+                    pipeline_types = pt
+            if not pipeline_types and metadata.huggingface_config:
+                pt = metadata.huggingface_config.get("pipeline_tag")
+                if pt:
+                    pipeline_types = [pt]
+            if pipeline_types:
+                self._knowledge_graph.add_pipeline_edges(metadata.model_id, pipeline_types)
+
+        except Exception as e:
+            logger.debug("Knowledge graph update failed for %s: %s", metadata.model_id, e)
+
+    def build_model_graph(self) -> bool:
+        """
+        Build (or rebuild) the knowledge graph from all registered models.
+
+        Iterates over every model in the registry, adds its node and
+        relationships to the graph, and optionally persists the result to
+        IPFS.
+
+        Returns
+        -------
+        True on success, False if the knowledge graph is not available.
+        """
+        if not self._knowledge_graph:
+            logger.warning("build_model_graph: knowledge graph not available")
+            return False
+
+        for metadata in self.models.values():
+            self._update_knowledge_graph_for_model(metadata)
+
+        # Persist to IPFS if storage is available
+        cid = self._knowledge_graph.persist_to_ipfs()
+        if cid:
+            logger.info("build_model_graph: graph persisted to IPFS CID: %s", cid)
+
+        logger.info("build_model_graph: built graph with %d models", len(self.models))
+        return True
+
+    def query_model_graph(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Query the knowledge graph for models and related entities.
+
+        Uses ipfs_datasets_py's graph query layer when available, otherwise
+        performs keyword search across entity IDs and properties.
+
+        Example queries::
+
+            "models fine-tuned from llama"
+            "cuda compatible"
+            "text-generation"
+
+        Parameters
+        ----------
+        query:
+            Natural-language or keyword query string.
+
+        Returns
+        -------
+        List of result dicts, each containing at minimum ``entity_id`` and
+        ``type`` fields.
+        """
+        if not self._knowledge_graph:
+            logger.warning("query_model_graph: knowledge graph not available")
+            return []
+        return self._knowledge_graph.query(query)
+
+    # ------------------------------------------------------------------
+    # Gap 3 – Serving Configuration
+    # ------------------------------------------------------------------
+
+    def get_serving_config(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve the serving configuration for a model.
+
+        Checks the in-memory registry first, then falls back to the
+        ipfs_kit_py service registry.
+
+        Parameters
+        ----------
+        model_id:
+            Unique model identifier.
+
+        Returns
+        -------
+        Serving config dict, or None if not set.
+        """
+        metadata = self.models.get(model_id)
+        if metadata and metadata.serving_config:
+            return metadata.serving_config
+
+        # Fallback: service registry
+        if self._artifact_storage:
+            try:
+                svc = self._artifact_storage.get_model_service_config(model_id)
+                if svc:
+                    return svc.get("serving_config")
+            except Exception as e:
+                logger.debug("Service registry lookup failed: %s", e)
+
+        return None
+
+    def update_serving_config(
+        self,
+        model_id: str,
+        config: Union[Dict[str, Any], "ServingConfig"],
+    ) -> bool:
+        """
+        Update the serving configuration for a registered model.
+
+        Persists the config to the model metadata store and the
+        ipfs_kit_py service registry.
+
+        Parameters
+        ----------
+        model_id:
+            Unique model identifier.
+        config:
+            Either a ``ServingConfig`` instance or a plain dict.
+
+        Returns
+        -------
+        True on success, False if the model is not registered.
+        """
+        metadata = self.models.get(model_id)
+        if not metadata:
+            logger.warning("update_serving_config: model not found: %s", model_id)
+            return False
+
+        cfg_dict = config.to_dict() if isinstance(config, ServingConfig) else config
+        metadata.serving_config = cfg_dict
+        metadata.updated_at = datetime.now()
+        self._save_data()
+
+        # Propagate to service registry
+        if self._artifact_storage:
+            try:
+                self._artifact_storage.register_model_service(model_id, cfg_dict)
+            except Exception as e:
+                logger.debug("Service registry update skipped: %s", e)
+
+        logger.info("Updated serving config for model: %s", model_id)
+        return True
+
+    def resolve_launch_command(self, model_id: str) -> Optional[List[str]]:
+        """
+        Build a ready-to-execute subprocess command from a model's serving config.
+
+        The command is constructed for the engine specified in ``ServingConfig``
+        (``engine`` field).  Supported engines and their command templates:
+
+        - ``vllm``:         ``python -m vllm.entrypoints.openai.api_server --model <id> <flags>``
+        - ``tgi``:          ``text-generation-launcher --model-id <id> <flags>``
+        - ``triton``:       ``tritonserver --model-repository <path> <flags>``
+        - ``onnxruntime``:  ``python -m onnxruntime_server --model_path <path> <flags>``
+        - ``llama.cpp``:    ``./server -m <model_path> <flags>``
+        - ``hf_pipeline``:  ``python -m ipfs_accelerate_py.hf_model_server.server --model-id <id> <flags>``
+
+        ``launch_args`` keys prefixed with ``--`` are forwarded directly;
+        plain keys are prefixed automatically.
+
+        Parameters
+        ----------
+        model_id:
+            Unique model identifier.
+
+        Returns
+        -------
+        List of command tokens suitable for ``subprocess.Popen``, or None if
+        the model has no serving config.
+        """
+        cfg = self.get_serving_config(model_id)
+        if not cfg:
+            logger.warning("resolve_launch_command: no serving config for %s", model_id)
+            return None
+
+        engine = cfg.get("engine", "hf_pipeline")
+        launch_args: Dict[str, Any] = cfg.get("launch_args") or {}
+
+        def _flatten_args(args: Dict[str, Any]) -> List[str]:
+            tokens: List[str] = []
+            for k, v in args.items():
+                # Accept keys already starting with - or --; otherwise prefix with --
+                if k.startswith("-"):
+                    flag = k
+                else:
+                    flag = f"--{k}"
+                if isinstance(v, bool):
+                    if v:
+                        tokens.append(flag)
+                elif v is not None:
+                    tokens.extend([flag, str(v)])
+            return tokens
+
+        extra = _flatten_args(launch_args)
+
+        ENGINE_TEMPLATES: Dict[str, List[str]] = {
+            "vllm": ["python", "-m", "vllm.entrypoints.openai.api_server", "--model", model_id],
+            "tgi": ["text-generation-launcher", "--model-id", model_id],
+            "triton": ["tritonserver"],
+            "onnxruntime": ["python", "-m", "onnxruntime_server", "--model_id", model_id],
+            "llama.cpp": ["./server", "-m", model_id],
+            "hf_pipeline": [
+                "python", "-m", "ipfs_accelerate_py.hf_model_server.server",
+                "--model-id", model_id,
+            ],
+        }
+
+        base = ENGINE_TEMPLATES.get(engine, ENGINE_TEMPLATES["hf_pipeline"])
+        cmd = base + extra
+        logger.info("resolve_launch_command: %s -> %s", model_id, " ".join(cmd))
+        return cmd
+
+
     
     def get_models_with_file(self, file_pattern: str) -> List[ModelMetadata]:
         """
@@ -1591,6 +2120,7 @@ class ModelManager:
                         'model_type': metadata.model_type.value,
                         'supported_backends': metadata.supported_backends,
                         'source_url': metadata.source_url,
+                        'serving_config': metadata.serving_config,
                         'metadata': metadata
                     })
         
@@ -1726,6 +2256,270 @@ class ModelManager:
         
         return filtered
     
+    # ------------------------------------------------------------------
+    # Well-known model seeding
+    # ------------------------------------------------------------------
+
+    def seed_well_known_models(self, overwrite: bool = False) -> int:
+        """Register a curated set of well-known API-hosted models.
+
+        Seeds the registry with commonly used models from xAI Grok, Meta AI
+        (Llama / Spark), OpenAI, Anthropic, and Google.  Each entry includes
+        a :class:`ServingConfig` with ``engine="api"`` so that serving-layer
+        code can route requests correctly without manual configuration.
+
+        Args:
+            overwrite: When *True*, existing entries are replaced with the
+                       canonical defaults.  Defaults to *False* (skip if
+                       already present).
+
+        Returns:
+            Number of models that were newly registered.
+        """
+        added = 0
+
+        def _reg(meta: ModelMetadata) -> None:
+            nonlocal added
+            exists = self.get_model(meta.model_id) is not None
+            if exists and not overwrite:
+                return
+            if self.add_model(meta):
+                added += 1
+
+        text_in = [IOSpec("prompt", DataType.TEXT)]
+        text_out = [IOSpec("response", DataType.TEXT)]
+        embed_in = [IOSpec("text", DataType.TEXT)]
+        embed_out = [IOSpec("embedding", DataType.EMBEDDINGS)]
+        image_in = [IOSpec("image", DataType.IMAGE), IOSpec("prompt", DataType.TEXT)]
+
+        # ----------------------------------------------------------------
+        # xAI Grok
+        # ----------------------------------------------------------------
+        _xai_api_sc = ServingConfig(
+            engine="api",
+            launch_args={"provider": "xai"},
+            default_generation_params={"temperature": 0.7, "max_tokens": 4096},
+            routing_weight=1.0,
+            hardware_affinity=["api"],
+        ).to_dict()
+
+        for mid, arch, ctx, tags, desc in [
+            ("xai/grok-3", "GrokForCausalLM", 131072,
+             ["xai", "grok", "chat", "reasoning"],
+             "xAI Grok 3 — flagship reasoning model"),
+            ("xai/grok-3-fast", "GrokForCausalLM", 131072,
+             ["xai", "grok", "chat", "fast"],
+             "xAI Grok 3 Fast — low-latency variant"),
+            ("xai/grok-3-mini", "GrokForCausalLM", 131072,
+             ["xai", "grok", "chat", "mini"],
+             "xAI Grok 3 Mini — efficient compact model"),
+            ("xai/grok-2-1212", "GrokForCausalLM", 131072,
+             ["xai", "grok", "chat"],
+             "xAI Grok 2 (Dec 2024)"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args={"provider": "xai"},
+                default_generation_params={"temperature": 0.7, "max_tokens": 4096},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=ModelType.LANGUAGE_MODEL, architecture=arch,
+                inputs=text_in, outputs=text_out,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://console.x.ai",
+                license="Proprietary",
+                serving_config=sc,
+            ))
+
+        # grok-2-vision (multimodal)
+        _reg(ModelMetadata(
+            model_id="xai/grok-2-vision-1212",
+            model_name="grok-2-vision-1212",
+            model_type=ModelType.MULTIMODAL,
+            architecture="GrokForVisionCausalLM",
+            inputs=image_in, outputs=text_out,
+            supported_backends=["api"],
+            hardware_requirements={"api": True},
+            tags=["xai", "grok", "vision", "multimodal"],
+            description="xAI Grok 2 Vision — multimodal image+text model",
+            source_url="https://console.x.ai",
+            license="Proprietary",
+            serving_config=ServingConfig(
+                engine="api",
+                launch_args={"provider": "xai"},
+                default_generation_params={"temperature": 0.7, "max_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict(),
+        ))
+
+        # ----------------------------------------------------------------
+        # Meta AI — Llama 3.x / Spark 1.1
+        # ----------------------------------------------------------------
+        _meta_api_base = {"provider": "meta_ai"}
+
+        for mid, arch, ctx, mtype, ins, outs, tags, desc in [
+            ("meta-llama/Llama-3.3-70B-Instruct",
+             "LlamaForCausalLM", 128000, ModelType.LANGUAGE_MODEL,
+             text_in, text_out,
+             ["meta", "llama", "llama-3", "chat", "instruct"],
+             "Meta Llama 3.3 70B Instruct"),
+            ("meta-llama/Llama-3.1-405B-Instruct",
+             "LlamaForCausalLM", 128000, ModelType.LANGUAGE_MODEL,
+             text_in, text_out,
+             ["meta", "llama", "llama-3", "chat", "instruct", "flagship"],
+             "Meta Llama 3.1 405B Instruct — largest open model"),
+            ("meta-llama/Llama-3.1-8B-Instruct",
+             "LlamaForCausalLM", 128000, ModelType.LANGUAGE_MODEL,
+             text_in, text_out,
+             ["meta", "llama", "llama-3", "chat", "instruct", "small"],
+             "Meta Llama 3.1 8B Instruct — efficient small model"),
+            ("meta-llama/Llama-3.2-90B-Vision-Instruct",
+             "MllamaForConditionalGeneration", 128000, ModelType.MULTIMODAL,
+             image_in, text_out,
+             ["meta", "llama", "llama-3", "vision", "multimodal"],
+             "Meta Llama 3.2 90B Vision Instruct — multimodal"),
+            ("meta-spark/Spark-1.1",
+             "SparkForCausalLM", 32768, ModelType.LANGUAGE_MODEL,
+             text_in, text_out,
+             ["meta", "spark", "meta-spark", "creative"],
+             "Meta Spark 1.1 — creative writing and storytelling model"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args=dict(_meta_api_base),
+                default_generation_params={"temperature": 0.7, "max_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=mtype, architecture=arch,
+                inputs=ins, outputs=outs,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://developer.meta.com/ai",
+                license="Meta Llama Community License",
+                serving_config=sc,
+            ))
+
+        # ----------------------------------------------------------------
+        # OpenAI
+        # ----------------------------------------------------------------
+        for mid, arch, ctx, mtype, ins, outs, tags, desc in [
+            ("openai/gpt-4o", "GPT4ForCausalLM", 128000,
+             ModelType.MULTIMODAL, image_in, text_out,
+             ["openai", "gpt", "vision", "multimodal", "flagship"],
+             "OpenAI GPT-4o — multimodal flagship"),
+            ("openai/gpt-4o-mini", "GPT4ForCausalLM", 128000,
+             ModelType.LANGUAGE_MODEL, text_in, text_out,
+             ["openai", "gpt", "fast", "efficient"],
+             "OpenAI GPT-4o Mini — fast and affordable"),
+            ("openai/o1", "O1ForCausalLM", 200000,
+             ModelType.LANGUAGE_MODEL, text_in, text_out,
+             ["openai", "reasoning", "o1"],
+             "OpenAI o1 — advanced reasoning"),
+            ("openai/text-embedding-3-large", "OpenAIEmbeddingModel", 8192,
+             ModelType.EMBEDDING_MODEL, embed_in, embed_out,
+             ["openai", "embeddings", "3-large"],
+             "OpenAI text-embedding-3-large — high-quality embeddings"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args={"provider": "openai"},
+                default_generation_params={"temperature": 0.7, "max_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=mtype, architecture=arch,
+                inputs=ins, outputs=outs,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://platform.openai.com",
+                license="Proprietary",
+                serving_config=sc,
+            ))
+
+        # ----------------------------------------------------------------
+        # Anthropic Claude
+        # ----------------------------------------------------------------
+        for mid, arch, ctx, tags, desc in [
+            ("anthropic/claude-opus-4-5", "ClaudeForCausalLM", 200000,
+             ["anthropic", "claude", "flagship", "reasoning"],
+             "Anthropic Claude Opus 4.5 — most capable Claude model"),
+            ("anthropic/claude-sonnet-4-5", "ClaudeForCausalLM", 200000,
+             ["anthropic", "claude", "balanced"],
+             "Anthropic Claude Sonnet 4.5 — balanced performance"),
+            ("anthropic/claude-haiku-4-5", "ClaudeForCausalLM", 200000,
+             ["anthropic", "claude", "fast"],
+             "Anthropic Claude Haiku 4.5 — fastest Claude model"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args={"provider": "claude"},
+                default_generation_params={"temperature": 0.7, "max_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=ModelType.LANGUAGE_MODEL,
+                architecture=arch, inputs=text_in, outputs=text_out,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://console.anthropic.com",
+                license="Proprietary",
+                serving_config=sc,
+            ))
+
+        # ----------------------------------------------------------------
+        # Google Gemini
+        # ----------------------------------------------------------------
+        for mid, arch, ctx, mtype, ins, outs, tags, desc in [
+            ("google/gemini-2.5-pro", "GeminiForCausalLM", 1000000,
+             ModelType.MULTIMODAL, image_in, text_out,
+             ["google", "gemini", "flagship", "vision"],
+             "Google Gemini 2.5 Pro — long-context multimodal flagship"),
+            ("google/gemini-2.5-flash", "GeminiForCausalLM", 1000000,
+             ModelType.MULTIMODAL, image_in, text_out,
+             ["google", "gemini", "fast", "vision"],
+             "Google Gemini 2.5 Flash — fast multimodal model"),
+            ("google/gemini-embedding-exp-03-07", "GeminiEmbeddingModel", 2048,
+             ModelType.EMBEDDING_MODEL, embed_in, embed_out,
+             ["google", "gemini", "embeddings"],
+             "Google Gemini Embedding — high-quality embeddings"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args={"provider": "gemini"},
+                default_generation_params={"temperature": 0.7, "max_output_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=mtype, architecture=arch,
+                inputs=ins, outputs=outs,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://ai.google.dev",
+                license="Proprietary",
+                serving_config=sc,
+            ))
+
+        logger.info("seed_well_known_models: added %d models", added)
+        return added
+
     def close(self):
         """Close the model manager and save any pending changes."""
         try:

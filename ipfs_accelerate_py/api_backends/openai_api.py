@@ -12,7 +12,6 @@ import time
 import base64
 import random
 import logging
-import threading
 import concurrent.futures
 from typing import List, Dict, Any, Optional, Union, Callable, BinaryIO, Tuple
 from enum import Enum
@@ -69,6 +68,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("OpenAIAPI")
 
+try:
+    from .base import BaseAPIBackend
+except ImportError:
+    try:
+        from base import BaseAPIBackend
+    except ImportError:
+        BaseAPIBackend = object
+
 class VoiceType(str, Enum):
     """Voice options for text-to-speech"""
     ALLOY = "alloy"
@@ -86,7 +93,7 @@ class AudioFormat(str, Enum):
     FLAC = "flac"
     WAV = "wav"
 
-class openai_api:
+class openai_api(BaseAPIBackend):
     """
     OpenAI API client with retry, backoff, and streaming support.
     Enhanced with:
@@ -140,10 +147,8 @@ class openai_api:
         self.metrics_collector = self._init_metrics_collector() if metrics_enabled else None
         
         # Request tracking for rate limiting and backoff
-        self.current_requests = 0
-        self.max_concurrent_requests = 5
-        self.request_queue = []
-        self.queue_lock = threading.Lock()
+        self._init_queue(queue_size=100, max_concurrent_requests=5)
+        self._init_circuit_breaker()
         self.max_retries = 5
         self.base_wait_time = 1.0  # in seconds
         
@@ -466,6 +471,9 @@ class openai_api:
         error_msg = None
         token_usage = None
         
+        if not self.check_circuit_breaker():
+            raise RuntimeError("Circuit breaker is OPEN – service temporarily unavailable.")
+
         try:
             if not self.client:
                 raise ValueError("OpenAI client not initialized")
@@ -501,15 +509,14 @@ class openai_api:
             }
             
             success = True
+            self.track_request_result(True)
             return result
             
         except Exception as e:
+            self.track_request_result(False)
             error_msg = str(e)
             logger.error(f"Embedding error: {error_msg}")
-            return {
-                "error": error_msg,
-                "success": False
-            }
+            raise
         finally:
             # Record metrics
             latency_ms = (time.time() - start_time) * 1000
@@ -953,6 +960,9 @@ class openai_api:
         error_msg = None
         token_usage = None
         
+        if not self.check_circuit_breaker():
+            raise RuntimeError("Circuit breaker is OPEN – service temporarily unavailable.")
+
         try:
             if not self.client:
                 raise ValueError("OpenAI client not initialized")
@@ -981,6 +991,8 @@ class openai_api:
             
             if stream:
                 # Return stream iterator
+                success = True
+                self.track_request_result(True)
                 return {
                     "text": "[STREAM]",
                     "stream": response,
@@ -1010,15 +1022,14 @@ class openai_api:
             }
             
             success = True
+            self.track_request_result(True)
             return result
             
         except Exception as e:
+            self.track_request_result(False)
             error_msg = str(e)
             logger.error(f"Chat Completion error: {error_msg}")
-            return {
-                "error": error_msg,
-                "success": False
-            }
+            raise
         finally:
             # Record metrics
             latency_ms = (time.time() - start_time) * 1000
@@ -1081,80 +1092,32 @@ class openai_api:
         
         return should_retry, delay
     
-    def _add_to_queue(self, future: Dict[str, Any]) -> None:
-        """
-        Add a request to the queue
-        
-        Args:
-            future: The future request dictionary
-        """
-        with self.queue_lock:
-            self.request_queue.append({
-                "future": future,
-                "added_time": time.time()
-            })
-            
-            # Start processing queue if not already running
-            if not hasattr(self, '_queue_thread') or not getattr(self, '_queue_thread').is_alive():
-                self._queue_thread = threading.Thread(target=self._process_queue)
-                self._queue_thread.daemon = True
-                self._queue_thread.start()
-    
-    def _process_queue(self) -> None:
-        """Process queued requests when capacity becomes available"""
-        while True:
-            with self.queue_lock:
-                # Check if there are items in the queue
-                if not self.request_queue:
-                    return
-                
-                # Check if we can process more requests
-                if self.current_requests >= self.max_concurrent_requests:
-                    time.sleep(0.1)  # Small sleep to avoid busy waiting
-                    continue
-                
-                # Get the next request
-                request = self.request_queue.pop(0)
-                self.current_requests += 1
-            
-            # Process the request
-            try:
-                future = request["future"]
-                
-                # Set up the request based on the method
-                method = future.get("method")
-                if method == "chat":
-                    result = self.chat_completion(
-                        model=future.get("model"),
-                        messages=future.get("messages"),
-                        temperature=future.get("temperature"),
-                        max_tokens=future.get("max_tokens"),
-                        tools=future.get("tools"),
-                        tool_choice=future.get("tool_choice")
-                    )
-                elif method == "embedding":
-                    result = self.embedding(
-                        model=future.get("model"),
-                        text=future.get("text"),
-                        encoding_format=future.get("encoding_format")
-                    )
-                else:
-                    result = {"error": f"Unsupported method: {method}"}
-                
-                # Update the future with the result
-                future["result"] = result
-                future["completed"] = True
-                future["error"] = result.get("error")
-                
-            except Exception as e:
-                logger.error(f"Error processing queued request: {e}")
-                # Update the future with the error
-                future["error"] = str(e)
-                future["completed"] = True
-            finally:
-                # Decrement counter
-                with self.queue_lock:
-                    self.current_requests -= 1
+    def _add_to_queue(self, future: Dict[str, Any], priority: int = None) -> None:
+        """Queue a deferred request using the shared priority queue."""
+        if priority is None:
+            priority = self.PRIORITY_NORMAL
+        method = future.get("method")
+        model = future.get("model")
+        messages = future.get("messages")
+        temperature = future.get("temperature")
+        max_tokens = future.get("max_tokens")
+        text = future.get("text")
+        encoding_format = future.get("encoding_format", "float")
+
+        def execute():
+            if method == "chat":
+                return self.chat_completion(
+                    model=model, messages=messages,
+                    temperature=temperature, max_tokens=max_tokens,
+                )
+            elif method == "embedding":
+                return self.embedding(
+                    model=model, text=text, encoding_format=encoding_format,
+                )
+            return {"error": f"Unsupported method: {method}"}
+
+        request_info = {"future": future, "func": execute}
+        self.queue_with_priority(request_info, priority=priority)
     
     def request_complete(self, 
                         method: Optional[str] = None, 
@@ -1200,7 +1163,7 @@ class openai_api:
             future["encoding_format"] = "float"
         
         # Check if we need to queue the request
-        if self.current_requests >= self.max_concurrent_requests:
+        if self.active_requests >= self.max_concurrent_requests:
             # Queue the request
             self._add_to_queue(future)
             
@@ -1220,7 +1183,7 @@ class openai_api:
         
         # We have capacity, process the request directly
         try:
-            self.current_requests += 1
+            self.active_requests += 1
             
             # Retry logic
             for attempt in range(self.max_retries):
@@ -1266,7 +1229,7 @@ class openai_api:
         except Exception as e:
             return {"error": str(e), "success": False}
         finally:
-            self.current_requests -= 1
+            self.active_requests -= 1
     
     # === Voice Agents Support ===
     
@@ -1427,7 +1390,7 @@ class openai_api:
                 "api_key_configured": bool(self.api_key),
                 "organization_configured": bool(self.organization),
                 "metrics": metrics,
-                "current_requests": self.current_requests,
+                "current_requests": self.active_requests,
                 "max_concurrent_requests": self.max_concurrent_requests,
                 "queue_size": len(self.request_queue),
                 "timestamp": datetime.now().isoformat()
