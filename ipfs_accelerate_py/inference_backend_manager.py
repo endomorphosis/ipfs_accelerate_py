@@ -22,6 +22,7 @@ Key Features:
 import asyncio
 import anyio
 import logging
+import os
 import time
 import threading
 import inspect
@@ -908,6 +909,204 @@ class InferenceBackendManager:
             logger.info("Stopping health monitoring")
             self._health_check_task.cancel()
             self._health_check_task = None
+
+    # ------------------------------------------------------------------
+    # API provider configuration helpers
+    # ------------------------------------------------------------------
+
+    #: Maps canonical provider names (and aliases) to a tuple of
+    #: (backend_module_path, class_name, env_key_primary, env_key_secondary,
+    #:  base_url, display_name, supported_tasks).
+    _PROVIDER_REGISTRY: Dict[str, Any] = {
+        "xai": (
+            "ipfs_accelerate_py.api_backends.xai", "xai",
+            "XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY",
+            "https://api.x.ai/v1", "xAI Grok",
+            {"text-generation", "embeddings", "vision"},
+        ),
+        "meta_ai": (
+            "ipfs_accelerate_py.api_backends.meta_ai", "meta_ai",
+            "META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY",
+            "https://api.llamameta.net/v1", "Meta AI (Llama / Spark)",
+            {"text-generation", "embeddings", "vision"},
+        ),
+        "openai": (
+            "ipfs_accelerate_py.api_backends.openai_api", "openai_api",
+            "OPENAI_API_KEY", "ipfs_accelerate_py_OPENAI_API_KEY",
+            "https://api.openai.com/v1", "OpenAI",
+            {"text-generation", "embeddings", "vision", "audio"},
+        ),
+        "claude": (
+            "ipfs_accelerate_py.api_backends.claude", "claude",
+            "ANTHROPIC_API_KEY", "ipfs_accelerate_py_ANTHROPIC_API_KEY",
+            "https://api.anthropic.com", "Anthropic Claude",
+            {"text-generation", "vision"},
+        ),
+        "gemini": (
+            "ipfs_accelerate_py.api_backends.gemini", "gemini",
+            "GEMINI_API_KEY", "ipfs_accelerate_py_GEMINI_API_KEY",
+            "https://generativelanguage.googleapis.com", "Google Gemini",
+            {"text-generation", "embeddings", "vision", "audio"},
+        ),
+        "groq": (
+            "ipfs_accelerate_py.api_backends.groq", "groq",
+            "GROQ_API_KEY", "ipfs_accelerate_py_GROQ_API_KEY",
+            "https://api.groq.com/openai/v1", "Groq",
+            {"text-generation", "audio"},
+        ),
+        "hf_tei": (
+            "ipfs_accelerate_py.api_backends.hf_tei", "hf_tei",
+            "HF_API_KEY", "ipfs_accelerate_py_HF_API_KEY",
+            None, "HuggingFace TEI",
+            {"embeddings"},
+        ),
+        "hf_tgi": (
+            "ipfs_accelerate_py.api_backends.hf_tgi", "hf_tgi",
+            "HF_API_KEY", "ipfs_accelerate_py_HF_API_KEY",
+            None, "HuggingFace TGI",
+            {"text-generation"},
+        ),
+        "ollama": (
+            "ipfs_accelerate_py.api_backends.ollama", "ollama",
+            None, None,
+            "http://localhost:11434", "Ollama",
+            {"text-generation", "embeddings", "vision"},
+        ),
+        "vllm": (
+            "ipfs_accelerate_py.api_backends.vllm", "vllm",
+            None, None,
+            "http://localhost:8000/v1", "vLLM",
+            {"text-generation", "embeddings"},
+        ),
+    }
+
+    # Alias → canonical name
+    _PROVIDER_ALIASES: Dict[str, str] = {
+        "grok": "xai",
+        "xai_grok": "xai",
+        "meta": "meta_ai",
+        "spark": "meta_ai",
+        "meta_spark": "meta_ai",
+        "meta_llama": "meta_ai",
+        "anthropic": "claude",
+        "openai_api": "openai",
+    }
+
+    def _resolve_provider_name(self, provider: str) -> str:
+        """Normalise a provider alias to the canonical name."""
+        return self._PROVIDER_ALIASES.get(provider, provider)
+
+    def configure_provider(
+        self,
+        provider: str,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Instantiate and register an external API inference provider.
+
+        This method looks up the correct backend class for *provider*, creates
+        an instance with the given credentials, and registers it with the
+        manager so that :py:meth:`execute_task` can route requests to it.
+
+        Alias resolution is applied so callers can pass e.g. ``"grok"`` and
+        the xAI backend will be selected.
+
+        Args:
+            provider:  Provider name or alias (e.g. ``"xai"``, ``"grok"``,
+                       ``"meta_ai"``, ``"openai"``, ``"claude"``).
+            api_key:   API key.  When *None* the relevant environment variable
+                       is checked automatically.
+            base_url:  Optional override for the provider's API base URL.
+            **kwargs:  Additional keyword arguments forwarded to the backend
+                       constructor via its ``metadata`` dict.
+
+        Returns:
+            A status dict with keys ``provider``, ``configured`` (bool), and
+            ``backend_id``.
+        """
+        import importlib
+
+        canonical = self._resolve_provider_name(provider)
+        spec = self._PROVIDER_REGISTRY.get(canonical)
+        if spec is None:
+            logger.warning("configure_provider: unknown provider '%s'", provider)
+            return {"provider": provider, "configured": False,
+                    "error": f"Unknown provider '{provider}'"}
+
+        (mod_path, cls_name, env_primary, env_secondary,
+         default_base_url, display_name, supported_tasks) = spec
+
+        # Resolve API key from env if not supplied
+        resolved_key = api_key
+        if not resolved_key and env_primary:
+            resolved_key = (
+                os.environ.get(env_primary)
+                or os.environ.get(env_secondary or "")
+                or ""
+            )
+
+        # Resolve base URL
+        resolved_url = base_url or default_base_url
+
+        # Import and instantiate the backend
+        try:
+            module = importlib.import_module(mod_path)
+            cls = getattr(module, cls_name)
+            metadata: Dict[str, Any] = {"api_key": resolved_key}
+            if resolved_url:
+                metadata["api_base"] = resolved_url
+            metadata.update(kwargs)
+            instance = cls(resources={}, metadata=metadata)
+        except Exception as exc:
+            logger.warning(
+                "configure_provider: failed to instantiate '%s': %s",
+                canonical, exc,
+            )
+            return {"provider": provider, "configured": False, "error": str(exc)}
+
+        backend_id = f"api_{canonical}"
+        caps = BackendCapabilities(
+            supported_tasks=supported_tasks,
+            supports_streaming=True,
+            protocols={"http"},
+        )
+        ok = self.register_backend(
+            backend_id=backend_id,
+            backend_type=BackendType.API,
+            name=display_name,
+            instance=instance,
+            capabilities=caps,
+            endpoint=resolved_url,
+            metadata={"provider": canonical, "api_key_set": bool(resolved_key)},
+        )
+        logger.info(
+            "configure_provider: registered '%s' (backend_id=%s, key_set=%s)",
+            canonical, backend_id, bool(resolved_key),
+        )
+        return {"provider": canonical, "configured": ok, "backend_id": backend_id}
+
+    def auto_discover_api_providers(self) -> List[str]:
+        """Scan well-known environment variables and register any API provider
+        whose key is present.
+
+        Returns:
+            List of canonical provider names that were registered.
+        """
+        registered: List[str] = []
+        for canonical, spec in self._PROVIDER_REGISTRY.items():
+            (_mod, _cls, env_primary, env_secondary,
+             _url, _name, _tasks) = spec
+            if env_primary is None:
+                continue
+            key = os.environ.get(env_primary) or os.environ.get(env_secondary or "")
+            if key:
+                result = self.configure_provider(canonical, api_key=key)
+                if result.get("configured"):
+                    registered.append(canonical)
+        if registered:
+            logger.info("auto_discover_api_providers: registered %s", registered)
+        return registered
 
 
 # Global singleton instance

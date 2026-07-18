@@ -195,7 +195,23 @@ async def inference_configure_api_provider(
     base_url: Optional[str] = None,
     **kwargs: Any,
 ) -> Dict[str, Any]:
-    """Configure an external API inference provider."""
+    """Configure an external API inference provider.
+
+    Instantiates the appropriate backend class and registers it with the
+    InferenceBackendManager so subsequent inference_run calls can route to it.
+
+    Supported providers (and aliases):
+      - ``xai`` / ``grok`` / ``xai_grok``  — xAI Grok
+      - ``meta_ai`` / ``meta`` / ``spark`` / ``meta_spark`` / ``meta_llama`` — Meta AI (Llama/Spark)
+      - ``openai`` / ``openai_api``
+      - ``claude`` / ``anthropic``
+      - ``gemini``
+      - ``groq``
+      - ``hf_tei``, ``hf_tgi``, ``ollama``, ``vllm``
+
+    When *api_key* is omitted the relevant environment variable is checked
+    automatically (e.g. ``XAI_API_KEY``, ``META_AI_API_KEY``, ``OPENAI_API_KEY``).
+    """
     try:
         manager_factory = _BACKEND_API.get("get_backend_manager")
         if manager_factory is not None:
@@ -339,13 +355,34 @@ def register_native_inference_tools(manager: Any) -> None:
         category="inference_tools",
         name="inference_configure_api_provider",
         func=inference_configure_api_provider,
-        description="Configure an external API inference provider (OpenAI, Anthropic, etc.).",
+        description=(
+            "Configure an external API inference provider. "
+            "Supported: xai/grok, meta_ai/spark/meta_llama, openai, claude/anthropic, "
+            "gemini, groq, hf_tei, hf_tgi, ollama, vllm. "
+            "When api_key is omitted the relevant environment variable is used automatically."
+        ),
         input_schema={
             "type": "object",
             "properties": {
-                "provider": {"type": "string", "description": "Provider name (e.g., 'openai')."},
-                "api_key": {"type": "string", "description": "API key for the provider."},
-                "base_url": {"type": "string", "description": "Optional custom base URL."},
+                "provider": {
+                    "type": "string",
+                    "description": (
+                        "Provider name or alias. Examples: 'xai', 'grok', 'meta_ai', "
+                        "'spark', 'meta_llama', 'openai', 'claude', 'gemini', 'groq'."
+                    ),
+                },
+                "api_key": {
+                    "type": "string",
+                    "description": (
+                        "API key for the provider. "
+                        "If omitted, the environment variable is checked automatically "
+                        "(e.g. XAI_API_KEY, META_AI_API_KEY, OPENAI_API_KEY)."
+                    ),
+                },
+                "base_url": {
+                    "type": "string",
+                    "description": "Optional custom base URL override.",
+                },
             },
             "required": ["provider"],
         },

@@ -2256,6 +2256,270 @@ class ModelManager:
         
         return filtered
     
+    # ------------------------------------------------------------------
+    # Well-known model seeding
+    # ------------------------------------------------------------------
+
+    def seed_well_known_models(self, overwrite: bool = False) -> int:
+        """Register a curated set of well-known API-hosted models.
+
+        Seeds the registry with commonly used models from xAI Grok, Meta AI
+        (Llama / Spark), OpenAI, Anthropic, and Google.  Each entry includes
+        a :class:`ServingConfig` with ``engine="api"`` so that serving-layer
+        code can route requests correctly without manual configuration.
+
+        Args:
+            overwrite: When *True*, existing entries are replaced with the
+                       canonical defaults.  Defaults to *False* (skip if
+                       already present).
+
+        Returns:
+            Number of models that were newly registered.
+        """
+        added = 0
+
+        def _reg(meta: ModelMetadata) -> None:
+            nonlocal added
+            exists = self.get_model(meta.model_id) is not None
+            if exists and not overwrite:
+                return
+            if self.add_model(meta):
+                added += 1
+
+        text_in = [IOSpec("prompt", DataType.TEXT)]
+        text_out = [IOSpec("response", DataType.TEXT)]
+        embed_in = [IOSpec("text", DataType.TEXT)]
+        embed_out = [IOSpec("embedding", DataType.EMBEDDINGS)]
+        image_in = [IOSpec("image", DataType.IMAGE), IOSpec("prompt", DataType.TEXT)]
+
+        # ----------------------------------------------------------------
+        # xAI Grok
+        # ----------------------------------------------------------------
+        _xai_api_sc = ServingConfig(
+            engine="api",
+            launch_args={"provider": "xai"},
+            default_generation_params={"temperature": 0.7, "max_tokens": 4096},
+            routing_weight=1.0,
+            hardware_affinity=["api"],
+        ).to_dict()
+
+        for mid, arch, ctx, tags, desc in [
+            ("xai/grok-3", "GrokForCausalLM", 131072,
+             ["xai", "grok", "chat", "reasoning"],
+             "xAI Grok 3 — flagship reasoning model"),
+            ("xai/grok-3-fast", "GrokForCausalLM", 131072,
+             ["xai", "grok", "chat", "fast"],
+             "xAI Grok 3 Fast — low-latency variant"),
+            ("xai/grok-3-mini", "GrokForCausalLM", 131072,
+             ["xai", "grok", "chat", "mini"],
+             "xAI Grok 3 Mini — efficient compact model"),
+            ("xai/grok-2-1212", "GrokForCausalLM", 131072,
+             ["xai", "grok", "chat"],
+             "xAI Grok 2 (Dec 2024)"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args={"provider": "xai"},
+                default_generation_params={"temperature": 0.7, "max_tokens": 4096},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=ModelType.LANGUAGE_MODEL, architecture=arch,
+                inputs=text_in, outputs=text_out,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://console.x.ai",
+                license="Proprietary",
+                serving_config=sc,
+            ))
+
+        # grok-2-vision (multimodal)
+        _reg(ModelMetadata(
+            model_id="xai/grok-2-vision-1212",
+            model_name="grok-2-vision-1212",
+            model_type=ModelType.MULTIMODAL,
+            architecture="GrokForVisionCausalLM",
+            inputs=image_in, outputs=text_out,
+            supported_backends=["api"],
+            hardware_requirements={"api": True},
+            tags=["xai", "grok", "vision", "multimodal"],
+            description="xAI Grok 2 Vision — multimodal image+text model",
+            source_url="https://console.x.ai",
+            license="Proprietary",
+            serving_config=ServingConfig(
+                engine="api",
+                launch_args={"provider": "xai"},
+                default_generation_params={"temperature": 0.7, "max_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict(),
+        ))
+
+        # ----------------------------------------------------------------
+        # Meta AI — Llama 3.x / Spark 1.1
+        # ----------------------------------------------------------------
+        _meta_api_base = {"provider": "meta_ai"}
+
+        for mid, arch, ctx, mtype, ins, outs, tags, desc in [
+            ("meta-llama/Llama-3.3-70B-Instruct",
+             "LlamaForCausalLM", 128000, ModelType.LANGUAGE_MODEL,
+             text_in, text_out,
+             ["meta", "llama", "llama-3", "chat", "instruct"],
+             "Meta Llama 3.3 70B Instruct"),
+            ("meta-llama/Llama-3.1-405B-Instruct",
+             "LlamaForCausalLM", 128000, ModelType.LANGUAGE_MODEL,
+             text_in, text_out,
+             ["meta", "llama", "llama-3", "chat", "instruct", "flagship"],
+             "Meta Llama 3.1 405B Instruct — largest open model"),
+            ("meta-llama/Llama-3.1-8B-Instruct",
+             "LlamaForCausalLM", 128000, ModelType.LANGUAGE_MODEL,
+             text_in, text_out,
+             ["meta", "llama", "llama-3", "chat", "instruct", "small"],
+             "Meta Llama 3.1 8B Instruct — efficient small model"),
+            ("meta-llama/Llama-3.2-90B-Vision-Instruct",
+             "MllamaForConditionalGeneration", 128000, ModelType.MULTIMODAL,
+             image_in, text_out,
+             ["meta", "llama", "llama-3", "vision", "multimodal"],
+             "Meta Llama 3.2 90B Vision Instruct — multimodal"),
+            ("meta-spark/Spark-1.1",
+             "SparkForCausalLM", 32768, ModelType.LANGUAGE_MODEL,
+             text_in, text_out,
+             ["meta", "spark", "meta-spark", "creative"],
+             "Meta Spark 1.1 — creative writing and storytelling model"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args=dict(_meta_api_base),
+                default_generation_params={"temperature": 0.7, "max_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=mtype, architecture=arch,
+                inputs=ins, outputs=outs,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://developer.meta.com/ai",
+                license="Meta Llama Community License",
+                serving_config=sc,
+            ))
+
+        # ----------------------------------------------------------------
+        # OpenAI
+        # ----------------------------------------------------------------
+        for mid, arch, ctx, mtype, ins, outs, tags, desc in [
+            ("openai/gpt-4o", "GPT4ForCausalLM", 128000,
+             ModelType.MULTIMODAL, image_in, text_out,
+             ["openai", "gpt", "vision", "multimodal", "flagship"],
+             "OpenAI GPT-4o — multimodal flagship"),
+            ("openai/gpt-4o-mini", "GPT4ForCausalLM", 128000,
+             ModelType.LANGUAGE_MODEL, text_in, text_out,
+             ["openai", "gpt", "fast", "efficient"],
+             "OpenAI GPT-4o Mini — fast and affordable"),
+            ("openai/o1", "O1ForCausalLM", 200000,
+             ModelType.LANGUAGE_MODEL, text_in, text_out,
+             ["openai", "reasoning", "o1"],
+             "OpenAI o1 — advanced reasoning"),
+            ("openai/text-embedding-3-large", "OpenAIEmbeddingModel", 8192,
+             ModelType.EMBEDDING_MODEL, embed_in, embed_out,
+             ["openai", "embeddings", "3-large"],
+             "OpenAI text-embedding-3-large — high-quality embeddings"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args={"provider": "openai"},
+                default_generation_params={"temperature": 0.7, "max_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=mtype, architecture=arch,
+                inputs=ins, outputs=outs,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://platform.openai.com",
+                license="Proprietary",
+                serving_config=sc,
+            ))
+
+        # ----------------------------------------------------------------
+        # Anthropic Claude
+        # ----------------------------------------------------------------
+        for mid, arch, ctx, tags, desc in [
+            ("anthropic/claude-opus-4-5", "ClaudeForCausalLM", 200000,
+             ["anthropic", "claude", "flagship", "reasoning"],
+             "Anthropic Claude Opus 4.5 — most capable Claude model"),
+            ("anthropic/claude-sonnet-4-5", "ClaudeForCausalLM", 200000,
+             ["anthropic", "claude", "balanced"],
+             "Anthropic Claude Sonnet 4.5 — balanced performance"),
+            ("anthropic/claude-haiku-4-5", "ClaudeForCausalLM", 200000,
+             ["anthropic", "claude", "fast"],
+             "Anthropic Claude Haiku 4.5 — fastest Claude model"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args={"provider": "claude"},
+                default_generation_params={"temperature": 0.7, "max_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=ModelType.LANGUAGE_MODEL,
+                architecture=arch, inputs=text_in, outputs=text_out,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://console.anthropic.com",
+                license="Proprietary",
+                serving_config=sc,
+            ))
+
+        # ----------------------------------------------------------------
+        # Google Gemini
+        # ----------------------------------------------------------------
+        for mid, arch, ctx, mtype, ins, outs, tags, desc in [
+            ("google/gemini-2.5-pro", "GeminiForCausalLM", 1000000,
+             ModelType.MULTIMODAL, image_in, text_out,
+             ["google", "gemini", "flagship", "vision"],
+             "Google Gemini 2.5 Pro — long-context multimodal flagship"),
+            ("google/gemini-2.5-flash", "GeminiForCausalLM", 1000000,
+             ModelType.MULTIMODAL, image_in, text_out,
+             ["google", "gemini", "fast", "vision"],
+             "Google Gemini 2.5 Flash — fast multimodal model"),
+            ("google/gemini-embedding-exp-03-07", "GeminiEmbeddingModel", 2048,
+             ModelType.EMBEDDING_MODEL, embed_in, embed_out,
+             ["google", "gemini", "embeddings"],
+             "Google Gemini Embedding — high-quality embeddings"),
+        ]:
+            sc = ServingConfig(
+                engine="api",
+                launch_args={"provider": "gemini"},
+                default_generation_params={"temperature": 0.7, "max_output_tokens": 2048},
+                hardware_affinity=["api"],
+            ).to_dict()
+            sc["context_window"] = ctx
+            _reg(ModelMetadata(
+                model_id=mid, model_name=mid.split("/")[-1],
+                model_type=mtype, architecture=arch,
+                inputs=ins, outputs=outs,
+                supported_backends=["api"],
+                hardware_requirements={"api": True},
+                tags=tags, description=desc,
+                source_url="https://ai.google.dev",
+                license="Proprietary",
+                serving_config=sc,
+            ))
+
+        logger.info("seed_well_known_models: added %d models", added)
+        return added
+
     def close(self):
         """Close the model manager and save any pending changes."""
         try:

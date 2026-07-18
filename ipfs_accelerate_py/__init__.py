@@ -287,6 +287,30 @@ else:
     reset_storage = None
     StorageBackendConfig = None
 
+# Add inference backend manager
+if not SKIP_CORE:
+    try:
+        from .inference_backend_manager import (
+            InferenceBackendManager,
+            get_backend_manager,
+            register_backend_from_config,
+        )
+
+        export["InferenceBackendManager"] = InferenceBackendManager
+        export["get_backend_manager"] = get_backend_manager
+        export["register_backend_from_config"] = register_backend_from_config
+        inference_backend_manager_available = True
+    except ImportError:
+        InferenceBackendManager = None
+        get_backend_manager = None
+        register_backend_from_config = None
+        inference_backend_manager_available = False
+else:
+    InferenceBackendManager = None
+    get_backend_manager = None
+    register_backend_from_config = None
+    inference_backend_manager_available = False
+
 # Add auto-patching for transformers (applies automatically on import if enabled)
 if not SKIP_CORE:
     try:
@@ -479,6 +503,8 @@ __all__ = [
     'P2PWorkflowScheduler', 'P2PTask', 'WorkflowTag', 'MerkleClock',
     'FibonacciHeap', 'calculate_hamming_distance',
     'IPFSKitStorage', 'get_storage', 'reset_storage', 'StorageBackendConfig',
+    'InferenceBackendManager', 'get_backend_manager', 'register_backend_from_config',
+    'inference_backend_manager_available',
     'auto_patch_transformers',
     'generate_text', 'get_llm_provider', 'register_llm_provider',
     'clear_llm_router_caches', 'LLMProvider', 'RouterDeps',
