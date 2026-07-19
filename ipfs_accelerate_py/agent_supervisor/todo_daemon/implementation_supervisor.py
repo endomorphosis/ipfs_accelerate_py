@@ -43,7 +43,7 @@ from .implementation_daemon import (
     write_json_atomic,
     write_text_atomic,
 )
-from .supervisor import worktree_phase_worker_status
+from .supervisor import descendant_processes, worktree_phase_worker_status
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
 
@@ -3906,6 +3906,14 @@ class PortalImplementationSupervisor:
     def _implementation_log_stall_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id or not state.implementation_in_progress:
             return ""
+        # Validation commands such as the canonical desktop Playwright replay
+        # can remain quiet while their child processes make progress. Their
+        # declared implementation timeout, not missing agent-log output, is
+        # the authoritative liveness bound.
+        if self._implementation_attempt_is_active(state, now_ts=now_ts) and (
+            state.active_phase == "validating" or self._active_validation_subprocess_exists()
+        ):
+            return ""
         threshold = max(0.0, float(self.config.implementation_log_stall_seconds))
         if threshold <= 0.0:
             return ""
@@ -3925,6 +3933,29 @@ class PortalImplementationSupervisor:
         return (
             f"implementation log stalled for active task {state.active_task_id}: "
             f"{age_seconds:.0f}s without output in {log_path}"
+        )
+
+    def _active_validation_subprocess_exists(self) -> bool:
+        """Return whether a managed agent is currently running a bounded test command."""
+
+        daemon_pid = self._read_managed_daemon_pid()
+        if not daemon_pid:
+            return False
+        markers = (
+            "playwright",
+            "run_playwright_test.mjs",
+            "pytest",
+            "vitest",
+            "npm run test",
+            "npm run evidence",
+            "release-readiness-gate",
+            "audit-release-evidence-freshness",
+            "build-virtual-desktop-release-evidence",
+            "tsc --noemit",
+        )
+        return any(
+            any(marker in " ".join(item.get("cmdline") or ()).lower() for marker in markers)
+            for item in descendant_processes(daemon_pid)
         )
 
     def is_stuck(
