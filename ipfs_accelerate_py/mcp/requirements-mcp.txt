@@ -7,13 +7,15 @@ typing_extensions>=4.5.0
 ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py@main
 
 # Ensure protobuf is available for google.protobuf imports
-protobuf>=4.25.0
+protobuf>=5.27.0
 
 # Runtime deps for ipfs_kit_py/libp2p integration
 # websockets 10.x exposes WebSocketServerProtocol used by ipfs_kit_py
 websockets==10.4
 semver>=2.13.0
 # libp2p Python package (enables p2p features) - track upstream main
+pymultihash>=0.8.2
+dnspython>=2.2.1
 libp2p @ git+https://github.com/libp2p/py-libp2p.git@main
 
 # Optional dependencies

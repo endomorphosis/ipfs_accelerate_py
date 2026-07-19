@@ -4,7 +4,7 @@
 
 GitHub Actions runners in Docker containers cannot connect to the P2P cache, causing:
 - ❌ Redundant GitHub API calls
-- ❌ Increased risk of rate limiting  
+- ❌ Increased risk of rate limiting
 - ❌ Slower workflow execution
 - ❌ No cache sharing between runners
 
@@ -34,7 +34,7 @@ python test_docker_runner_cache_connectivity.py
 
 ```bash
 # Install P2P dependencies
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
 
 # Configure environment
 export CACHE_ENABLE_P2P=true
@@ -95,7 +95,7 @@ jobs:
             your-image
 ```
 
-**Pros:** Simplest, no configuration  
+**Pros:** Simplest, no configuration
 **Cons:** Less secure
 
 ### Solution 2: Bridge Network + Host IP (More Secure)
@@ -111,7 +111,7 @@ docker run -p 9000:9000 \
   your-image
 ```
 
-**Pros:** Maintains isolation  
+**Pros:** Maintains isolation
 **Cons:** Requires host IP
 
 ### Solution 3: Docker Compose (Best for Services)
@@ -125,7 +125,7 @@ services:
     ports: ["9100:9100"]
     environment:
       CACHE_LISTEN_PORT: "9100"
-  
+
   runner:
     environment:
       CACHE_LISTEN_PORT: "9000"
@@ -133,7 +133,7 @@ services:
     depends_on: [mcp-server]
 ```
 
-**Pros:** Clean, scalable  
+**Pros:** Clean, scalable
 **Cons:** Requires docker-compose
 
 ### Solution 4: IPFS/Kubo (Alternative Backend)
@@ -150,7 +150,7 @@ export CACHE_BACKEND=ipfs
 export IPFS_API=/ip4/127.0.0.1/tcp/5001
 ```
 
-**Pros:** Mature, battle-tested  
+**Pros:** Mature, battle-tested
 **Cons:** Additional dependency
 
 ### Solution 5: Storacha/S3 (Cloud Storage)
@@ -167,7 +167,7 @@ export CACHE_BACKEND=s3
 export AWS_S3_BUCKET=github-api-cache
 ```
 
-**Pros:** No self-hosting  
+**Pros:** No self-hosting
 **Cons:** External dependency
 
 ## 📊 Expected Results
@@ -193,7 +193,7 @@ pip3 install --upgrade pip
 sudo apt-get install build-essential python3-dev
 
 # Retry with verbose output
-pip3 install -v "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+pip3 install -v "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
 ```
 
 ### Issue: Cannot Connect to Bootstrap Peer

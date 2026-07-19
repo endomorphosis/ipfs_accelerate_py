@@ -278,7 +278,7 @@ class UnifiedInferenceService:
         
         # Start libp2p node
         if self.config.enable_libp2p and HAVE_LIBP2P:
-            logger.info("Starting libp2p node...")
+            logger.info("Starting MCP++ p2p inference node...")
             self.p2p_node = LibP2PInferenceNode({
                 'bootstrap_peers': self.config.libp2p_bootstrap_peers,
                 'enable_mdns': self.config.libp2p_enable_mdns,
@@ -292,13 +292,13 @@ class UnifiedInferenceService:
                 self.backend_manager.register_backend(
                     backend_id="libp2p_node",
                     backend_type=BackendType.P2P,
-                    name="libp2p Distributed Network",
+                    name="MCP++ P2P Distributed Network",
                     instance=self.p2p_node,
                     capabilities=BackendCapabilities(
                         supported_tasks={"text-generation", "text-embedding", "image-generation"},
                         supports_streaming=False,
                         supports_batching=False,
-                        protocols={"libp2p"}
+                        protocols={"mcpplusplus-p2p"}
                     )
                 )
         
@@ -526,7 +526,7 @@ class UnifiedInferenceService:
             print(f"  Endpoint: ws://{self.config.hf_server_host}:{self.config.hf_server_port}/ws/{{client_id}}")
         
         if self.p2p_node:
-            print(f"\n🌐 libp2p Node:")
+            print(f"\nMCP++ P2P Node:")
             print(f"  Peer ID: {self.p2p_node.peer_id}")
             print(f"  Capabilities: {', '.join(c.value for c in self.p2p_node.local_capabilities)}")
         

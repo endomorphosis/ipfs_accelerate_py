@@ -31,7 +31,6 @@ from ipfs_accelerate_py import ipfs_accelerate_py
 # Now we can import modules from the external directory
 import ipfs_kit_py
 import ipfs_model_manager_py
-#import libp2p_kit_py  # Commented out to avoid dependency issues
 
 
 # Initialize with the correct parameter names (resources and metadata)

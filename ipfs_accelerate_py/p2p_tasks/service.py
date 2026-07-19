@@ -48,10 +48,19 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from .protocol import PROTOCOL_V1, auth_ok, get_shared_token, read_ndjson_message
+from .protocol import (
+    PROTOCOL_V1,
+    TASK_QUEUE_MCP_RPC_TOOL,
+    auth_ok,
+    get_shared_token,
+    legacy_task_protocol_enabled,
+    read_ndjson_message,
+    task_p2p_protocol_order,
+)
 
 # Optional MCP++ transport binding skeleton (length-prefixed JSON-RPC over libp2p)
 from .mcp_p2p import PROTOCOL_MCP_P2P_V1, get_mcp_p2p_stats, handle_mcp_p2p_stream
+from .mcp_p2p_client import MCPP2PClient
 from .peer_trust import PeerTrustLevel, baseline_max_claim_priority, resolve_peer_trust_level, trust_tiers_enabled
 from .task_queue import TaskQueue
 from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
@@ -341,9 +350,9 @@ async def _maybe_make_relay_v2(*, host) -> object | None:
     )
 
     try:
-        from libp2p.relay.circuit_v2.protocol import CircuitV2Protocol
+        from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import make_circuit_relay_v2
 
-        svc = CircuitV2Protocol(host, allow_hop=bool(allow_hop))
+        svc = make_circuit_relay_v2(host, allow_hop=bool(allow_hop))
         msg = f"ipfs_accelerate_py task queue p2p service: Circuit Relay v2 enabled (allow_hop={bool(allow_hop)})"
         print(msg, file=sys.stderr, flush=True)
         return svc
@@ -365,9 +374,9 @@ async def _maybe_make_dcutr(*, host) -> object | None:
         return None
 
     try:
-        from libp2p.relay.circuit_v2.dcutr import DCUtRProtocol
+        from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import make_dcutr_protocol
 
-        svc = DCUtRProtocol(host)
+        svc = make_dcutr_protocol(host)
         print(
             "ipfs_accelerate_py task queue p2p service: DCUtR (hole punching) enabled",
             file=sys.stderr,
@@ -388,49 +397,40 @@ async def _maybe_start_dht(*, host, bootstrap_peers: list[str]) -> object | None
     ):
         return None
 
-    candidates = [
-        ("libp2p.kad_dht.kad_dht", "KadDHT"),
-        ("libp2p.kad_dht", "KadDHT"),
-    ]
-    for module_name, symbol in candidates:
-        try:
-            mod = __import__(module_name, fromlist=[symbol])
-            cls = getattr(mod, symbol)
-            # KadDHT requires a DHTMode in this libp2p build.
-            try:
-                from libp2p.kad_dht.kad_dht import DHTMode  # type: ignore
+    try:
+        from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import make_kad_dht
 
-                dht = cls(host, DHTMode.SERVER)
-            except Exception:
-                dht = cls(host)
+        dht = make_kad_dht(host, mode="server")
+        if dht is None:
+            raise RuntimeError("KadDHT unavailable")
 
-            # Newer py-libp2p uses a background `run()` coroutine (started by the caller).
-            # Older versions may expose `start()` / `bootstrap()`.
-            start = getattr(dht, "start", None)
-            if callable(start):
-                maybe = start()
-                if hasattr(maybe, "__await__"):
-                    await maybe
-            bootstrap = getattr(dht, "bootstrap", None)
-            if callable(bootstrap):
-                maybe = bootstrap()
-                if hasattr(maybe, "__await__"):
-                    await maybe
+        # Newer py-libp2p uses a background `run()` coroutine (started by the caller).
+        # Older versions may expose `start()` / `bootstrap()`.
+        start = getattr(dht, "start", None)
+        if callable(start):
+            maybe = start()
+            if hasattr(maybe, "__await__"):
+                await maybe
+        bootstrap = getattr(dht, "bootstrap", None)
+        if callable(bootstrap):
+            maybe = bootstrap()
+            if hasattr(maybe, "__await__"):
+                await maybe
 
+        print(
+            f"ipfs_accelerate_py task queue p2p service: DHT enabled ({type(dht).__module__}.{type(dht).__name__})",
+            file=sys.stderr,
+            flush=True,
+        )
+        if bootstrap_peers:
             print(
-                f"ipfs_accelerate_py task queue p2p service: DHT enabled ({module_name}.{symbol})",
+                "ipfs_accelerate_py task queue p2p service: DHT bootstrap peers configured",
                 file=sys.stderr,
                 flush=True,
             )
-            if bootstrap_peers:
-                print(
-                    "ipfs_accelerate_py task queue p2p service: DHT bootstrap peers configured",
-                    file=sys.stderr,
-                    flush=True,
-                )
-            return dht
-        except Exception:
-            continue
+        return dht
+    except Exception:
+        pass
 
     print(
         "ipfs_accelerate_py task queue p2p service: DHT unavailable in installed libp2p; skipping",
@@ -452,16 +452,11 @@ async def _maybe_start_rendezvous(*, host, namespace: str) -> object | None:
 
     # Best-effort: rendezvous support varies by py-libp2p version.
     # Prefer client-side `register()` when a server-side service is not available.
-    service_candidates = [
-        ("libp2p.discovery.rendezvous.rendezvous", "RendezvousService"),
-        ("libp2p.discovery.rendezvous", "RendezvousService"),
-        ("libp2p.rendezvous", "RendezvousService"),
-    ]
-    for module_name, symbol in service_candidates:
-        try:
-            mod = __import__(module_name, fromlist=[symbol])
-            cls = getattr(mod, symbol)
-            svc = cls(host)
+    try:
+        from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import make_rendezvous_service
+
+        svc = make_rendezvous_service(host)
+        if svc is not None:
             start = getattr(svc, "start", None)
             if callable(start):
                 maybe = start()
@@ -478,19 +473,14 @@ async def _maybe_start_rendezvous(*, host, namespace: str) -> object | None:
                 flush=True,
             )
             return svc
-        except Exception:
-            continue
+    except Exception:
+        pass
 
-    client_candidates = [
-        ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
-        ("libp2p.discovery.rendezvous", "RendezvousClient"),
-        ("libp2p.rendezvous", "RendezvousClient"),
-    ]
-    for module_name, symbol in client_candidates:
-        try:
-            mod = __import__(module_name, fromlist=[symbol])
-            cls = getattr(mod, symbol)
-            cli = cls(host)
+    try:
+        from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import make_rendezvous_client
+
+        cli = make_rendezvous_client(host)
+        if cli is not None:
             register = getattr(cli, "register", None)
             if callable(register):
                 await register(ns, ttl=7200)
@@ -500,8 +490,8 @@ async def _maybe_start_rendezvous(*, host, namespace: str) -> object | None:
                     flush=True,
                 )
                 return cli
-        except Exception:
-            continue
+    except Exception:
+        pass
 
     print(
         "ipfs_accelerate_py task queue p2p service: rendezvous unavailable in installed libp2p; skipping",
@@ -512,11 +502,9 @@ async def _maybe_start_rendezvous(*, host, namespace: str) -> object | None:
 
 
 def _have_libp2p() -> bool:
-    try:
-        import libp2p  # noqa: F401
-        return True
-    except Exception:
-        return False
+    from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import have_libp2p_runtime
+
+    return bool(have_libp2p_runtime())
 
 
 @dataclass
@@ -862,10 +850,17 @@ async def serve_task_queue(
         raise RuntimeError("libp2p is not installed")
 
     import anyio
-    import inspect
-    from libp2p import new_host
-    from multiaddr import Multiaddr
-    from libp2p.tools.async_service import background_trio_service
+    from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
+        get_background_trio_service,
+        get_stream_eof_exceptions,
+        make_libp2p_resource_manager,
+        make_mdns_discovery,
+        make_multiaddr,
+        new_libp2p_host,
+        peer_id_text,
+        peerinfo_from_multiaddr,
+        require_libp2p_runtime,
+    )
 
     cfg = _load_config()
     if listen_port is not None:
@@ -942,17 +937,12 @@ async def serve_task_queue(
         if not cache_replicate_targets:
             _cache_replicate_target_peerinfos = out
             return out
-        try:
-            from libp2p.peer.peerinfo import info_from_p2p_addr
-        except Exception:
-            _cache_replicate_target_peerinfos = out
-            return out
         for entry in cache_replicate_targets:
             text = str(entry or "").strip()
             if not text or "/p2p/" not in text:
                 continue
             try:
-                pi = info_from_p2p_addr(Multiaddr(text))
+                pi = peerinfo_from_multiaddr(text)
                 pid = getattr(pi, "peer_id", None)
                 key = _peer_id_text(pid)
                 if key:
@@ -1090,19 +1080,44 @@ async def serve_task_queue(
                             await host.connect(pi)
                     except Exception:
                         pass
-                    stream2 = await host.new_stream(pid, [PROTOCOL_V1])
-                    try:
-                        await stream2.write(payload)
-                        # Drain one line best-effort so the remote handler can finish.
+                    for protocol_name in task_p2p_protocol_order():
                         try:
-                            await stream2.read(4096)
+                            if protocol_name == "mcp":
+                                protocol_id = PROTOCOL_MCP_P2P_V1
+                            elif protocol_name == "legacy":
+                                protocol_id = PROTOCOL_V1
+                            else:
+                                continue
+
+                            stream2 = await host.new_stream(pid, [protocol_id])
+                            try:
+                                if protocol_name == "mcp":
+                                    client = MCPP2PClient(stream2)
+                                    await client.initialize(
+                                        {
+                                            "clientInfo": {
+                                                "name": "ipfs-accelerate-taskqueue-service",
+                                                "version": "1.0.0",
+                                            },
+                                            "profiles": ["mcp++/p2p-transport"],
+                                        }
+                                    )
+                                    await client.tools_call(TASK_QUEUE_MCP_RPC_TOOL, fwd)
+                                else:
+                                    await stream2.write(payload)
+                                    # Drain one line best-effort so the remote handler can finish.
+                                    try:
+                                        await stream2.read(4096)
+                                    except Exception:
+                                        pass
+                                break
+                            finally:
+                                try:
+                                    await stream2.close()
+                                except Exception:
+                                    pass
                         except Exception:
-                            pass
-                    finally:
-                        try:
-                            await stream2.close()
-                        except Exception:
-                            pass
+                            continue
             except Exception:
                 continue
 
@@ -1292,13 +1307,7 @@ async def serve_task_queue(
                 continue
         return None
 
-    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
-
-    if not ensure_libp2p_compatible():
-        raise RuntimeError(
-            "libp2p is installed but dependency compatibility patches could not be applied. "
-            "This environment likely has an incompatible `multihash` module."
-        )
+    require_libp2p_runtime()
 
     print("ipfs_accelerate_py task queue p2p service: creating host...", file=sys.stderr, flush=True)
 
@@ -1309,33 +1318,20 @@ async def serve_task_queue(
     #
     # For the TaskQueue service we prefer availability over aggressive
     # self-throttling, and we keep limits comfortably high for LAN workloads.
-    try:
-        from libp2p.rcmgr import ResourceLimits, new_resource_manager
+    max_conns = int(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_CONNECTIONS") or 100_000)
+    max_streams = int(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_STREAMS") or 100_000)
+    max_mem_mb = int(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_MEMORY_MB") or 1024)
+    rm = make_libp2p_resource_manager(
+        max_connections=max_conns,
+        max_streams=max_streams,
+        max_memory_mb=max_mem_mb,
+    )
 
-        max_conns = int(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_CONNECTIONS") or 100_000)
-        max_streams = int(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_STREAMS") or 100_000)
-        max_mem_mb = int(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_MEMORY_MB") or 1024)
-
-        rm = new_resource_manager(
-            limits=ResourceLimits(
-                max_connections=max(64, max_conns),
-                max_memory_mb=max(128, max_mem_mb),
-                max_streams=max(1024, max_streams),
-            ),
-            enable_metrics=False,
-            enable_connection_pooling=False,
-            enable_memory_pooling=False,
-            enable_circuit_breaker=False,
-            enable_graceful_degradation=False,
-        )
-    except Exception:
-        rm = None
-
-    host_obj = new_host(resource_manager=rm)
-    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
-    peer_id = host.get_id().pretty()
+    host = await new_libp2p_host(resource_manager=rm)
+    peer_id = peer_id_text(host.get_id())
     _service_mark_running(peer_id=peer_id, listen_port=cfg.listen_port)
     print("ipfs_accelerate_py task queue p2p service: host created", file=sys.stderr, flush=True)
+    stream_eof_exceptions = get_stream_eof_exceptions()
 
     # Initialized early so the stream handler can safely reference these even
     # if requests arrive before auxiliary services finish starting.
@@ -1352,9 +1348,6 @@ async def serve_task_queue(
         swarm service can fail and stop listening.
         """
         try:
-            from libp2p.network.stream.exceptions import StreamEOF
-            from libp2p.stream_muxer.exceptions import MuxedStreamEOF
-
             async def _safe_write_json(obj: dict[str, Any]) -> None:
                 try:
                     await stream.write(json.dumps(obj).encode("utf-8") + b"\n")
@@ -1363,7 +1356,7 @@ async def serve_task_queue(
 
             try:
                 msg, err = await read_ndjson_message(stream, max_message_bytes=1024 * 1024, chunk_size=1024)
-            except (StreamEOF, MuxedStreamEOF):
+            except stream_eof_exceptions:
                 return
 
             if msg is None:
@@ -2285,7 +2278,115 @@ async def serve_task_queue(
             except Exception:
                 pass
 
-    host.set_stream_handler(PROTOCOL_V1, _handle)
+    class _TaskQueueMCPRegistry:
+        def __init__(self, *, remote_peer_id: str = "") -> None:
+            self._remote_peer_id = str(remote_peer_id or "").strip()
+
+        def __getattr__(self, name: str) -> Any:
+            if accelerate_instance is None:
+                raise AttributeError(name)
+            return getattr(accelerate_instance, name)
+
+        @property
+        def tools(self) -> dict[str, dict[str, Any]]:
+            tools: dict[str, dict[str, Any]] = {}
+            try:
+                raw = getattr(accelerate_instance, "tools", None) if accelerate_instance is not None else None
+                if isinstance(raw, dict):
+                    tools.update(raw)
+            except Exception:
+                pass
+            tools[TASK_QUEUE_MCP_RPC_TOOL] = {
+                "function": self._task_queue_rpc,
+                "description": "Invoke a TaskQueue RPC operation over MCP++.",
+                "input_schema": {
+                    "type": "object",
+                    "additionalProperties": True,
+                },
+            }
+            return tools
+
+        async def validate_p2p_message(self, msg: dict[str, Any]) -> bool:
+            method = str((msg or {}).get("method") or "")
+            params = (msg or {}).get("params")
+            if method in {"tools/call", "tools.call"} and isinstance(params, dict):
+                if str(params.get("name") or "") == TASK_QUEUE_MCP_RPC_TOOL:
+                    # The wrapped TaskQueue request is validated by `_handle`,
+                    # preserving shared-token and host-validator behavior.
+                    return True
+
+            fn = getattr(accelerate_instance, "validate_p2p_message", None) if accelerate_instance is not None else None
+            if not callable(fn):
+                return True
+            try:
+                allowed = fn(msg)
+                if hasattr(allowed, "__await__"):
+                    allowed = await allowed
+                return bool(allowed)
+            except Exception:
+                return False
+
+        async def _task_queue_rpc(self, **kwargs: Any) -> dict[str, Any]:
+            message: dict[str, Any]
+            if len(kwargs) == 1:
+                only_value = next(iter(kwargs.values()))
+                if isinstance(only_value, dict):
+                    message = dict(only_value)
+                else:
+                    message = dict(kwargs)
+            else:
+                message = dict(kwargs)
+
+            remote_peer_id = (
+                self._remote_peer_id
+                or str(message.get("_remote_peer_id") or "").strip()
+                or str(message.get("peer") or message.get("peer_id") or "").strip()
+            )
+
+            class _Conn:
+                def __init__(self, peer_id_value: str) -> None:
+                    self.peer_id = str(peer_id_value or "")
+
+            class _InMemoryStream:
+                def __init__(self, request: dict[str, Any], peer_id_value: str) -> None:
+                    self._request = (json.dumps(request).encode("utf-8") + b"\n")
+                    self._offset = 0
+                    self.written = bytearray()
+                    self.closed = False
+                    self.muxed_conn = _Conn(peer_id_value)
+                    self.conn = _Conn(peer_id_value)
+
+                async def read(self, n: int = -1) -> bytes:
+                    if self._offset >= len(self._request):
+                        return b""
+                    if n is None or int(n) < 0:
+                        end = len(self._request)
+                    else:
+                        end = min(len(self._request), self._offset + max(1, int(n)))
+                    chunk = self._request[self._offset : end]
+                    self._offset = end
+                    return bytes(chunk)
+
+                async def write(self, data: bytes) -> None:
+                    self.written.extend(bytes(data or b""))
+
+                async def close(self) -> None:
+                    self.closed = True
+
+            synthetic_stream = _InMemoryStream(message, remote_peer_id)
+            await _handle(synthetic_stream)
+
+            line = bytes(synthetic_stream.written).splitlines()[0:1]
+            if not line:
+                return {"ok": False, "error": "empty_task_queue_response", "peer_id": peer_id}
+            try:
+                parsed = json.loads(line[0].decode("utf-8"))
+            except Exception:
+                return {"ok": False, "error": "invalid_task_queue_response", "peer_id": peer_id}
+            return parsed if isinstance(parsed, dict) else {"ok": False, "error": "invalid_task_queue_response", "peer_id": peer_id}
+
+    if legacy_task_protocol_enabled():
+        host.set_stream_handler(PROTOCOL_V1, _handle)
 
     async def _handle_mcp_p2p(stream) -> None:
         max_frame_bytes = _env_int(
@@ -2298,13 +2399,13 @@ async def serve_task_queue(
         await handle_mcp_p2p_stream(
             stream,
             local_peer_id=peer_id,
-            registry=accelerate_instance,
+            registry=_TaskQueueMCPRegistry(remote_peer_id=_remote_peer_id_from_stream(stream)),
             max_frame_bytes=max_frame_bytes,
         )
 
     host.set_stream_handler(PROTOCOL_MCP_P2P_V1, _handle_mcp_p2p)
 
-    listen_addr = Multiaddr(f"/ip4/{cfg.listen_host}/tcp/{cfg.listen_port}")
+    listen_addr = make_multiaddr(f"/ip4/{cfg.listen_host}/tcp/{cfg.listen_port}")
     print(
         f"ipfs_accelerate_py task queue p2p service: listening on {listen_addr}",
         file=sys.stderr,
@@ -2322,16 +2423,15 @@ async def serve_task_queue(
         default="ipfs-accelerate-task-queue",
     )
 
+    background_trio_service = get_background_trio_service()
     async with background_trio_service(host.get_network()):
         await host.get_network().listen(listen_addr)
 
         # Bootstrap connections (best-effort)
         try:
-            from libp2p.peer.peerinfo import info_from_p2p_addr
-
             for peer_addr in _parse_bootstrap_peers():
                 try:
-                    peer_info = info_from_p2p_addr(Multiaddr(peer_addr))
+                    peer_info = peerinfo_from_multiaddr(peer_addr)
                     await host.connect(peer_info)
                     print(
                         f"ipfs_accelerate_py task queue p2p service: connected bootstrap {peer_addr}",
@@ -2350,9 +2450,7 @@ async def serve_task_queue(
         mdns = None
         if mdns_enabled:
             try:
-                from libp2p.discovery.mdns.mdns import MDNSDiscovery
-
-                mdns = MDNSDiscovery(host.get_network(), port=int(cfg.listen_port))
+                mdns = make_mdns_discovery(host.get_network(), port=int(cfg.listen_port))
                 mdns.start()
                 print("ipfs_accelerate_py task queue p2p service: mDNS enabled", file=sys.stderr, flush=True)
             except Exception as exc:
@@ -2477,7 +2575,7 @@ async def serve_task_queue(
 
                 # Start relay / holepunch protocol services when present.
                 try:
-                    from libp2p.tools.async_service.trio_service import background_trio_service
+                    background_trio_service = get_background_trio_service()
 
                     async def _sleep_forever() -> None:
                         if trio_mod is not None:
@@ -2500,7 +2598,7 @@ async def serve_task_queue(
                 # Start DHT background loop when present.
                 try:
                     if dht is not None:
-                        from libp2p.tools.async_service.trio_service import background_trio_service
+                        background_trio_service = get_background_trio_service()
 
                         async def _run_dht_service() -> None:
                             async with background_trio_service(dht):

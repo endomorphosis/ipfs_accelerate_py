@@ -39,6 +39,7 @@ ipfs-accelerate-agent-implementation-daemon = "ipfs_accelerate_py.agent_supervis
 ipfs-accelerate-agent-implementation-supervisor = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main"
 ipfs-accelerate-agent-merge-resolver = "ipfs_accelerate_py.agent_supervisor.merge_resolver:main"
 ipfs-accelerate-agent-llm-merge-resolver-fallback = "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback:main"
+ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
 
 [tool.setuptools]
 package-dir = {"" = "."}
@@ -148,11 +149,13 @@ mcp = [
 ]
 mcp-p2p = [
   "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
+  "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
 ]
 libp2p = [
   "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
+  "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
 ]
@@ -160,6 +163,10 @@ webnn = [
   "playwright>=1.31.0",
   "aiohttp>=3.8.1",
   "websockets>=10.1",
+]
+llama_cpp = [
+  "llama-cpp-python[server]>=0.3.10",
+  "huggingface_hub>=0.24.0",
 ]
 all = [
   # aggregate without native P2P by default
@@ -187,6 +194,8 @@ all = [
   "plotly>=5.22.0",
   "fastmcp>=0.1.0",
   "async-timeout>=4.0.0",
+  "llama-cpp-python[server]>=0.3.10",
+  "huggingface_hub>=0.24.0",
 ]
 
 [tool.setuptools.packages.find]

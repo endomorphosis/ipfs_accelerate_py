@@ -20,7 +20,7 @@ pip install ipfs_accelerate_py
 
 Or install manually:
 ```bash
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
 ```
 
 ## Quick Start
@@ -195,17 +195,20 @@ python test_universal_connectivity.py
 
 ```python
 import anyio
-from libp2p import new_host
-from multiaddr import Multiaddr
+from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
+    make_multiaddr,
+    new_libp2p_host,
+    peer_id_text,
+)
 
 async def test_connection():
     # Create host
-    addr = Multiaddr('/ip4/0.0.0.0/tcp/9200')
-    host = new_host(listen_addrs=[addr])
-    
-    print(f"Peer ID: {host.get_id().pretty()}")
+    addr = make_multiaddr('/ip4/0.0.0.0/tcp/9200')
+    host = await new_libp2p_host(listen_addrs=[addr])
+
+    print(f"Peer ID: {peer_id_text(host.get_id())}")
     print(f"Listening on: {addr}")
-    
+
     # Keep running
     await anyio.Event().wait()
 
@@ -217,7 +220,7 @@ anyio.run(test_connection)
 ### libp2p not found
 
 ```bash
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
 ```
 
 ### Port already in use

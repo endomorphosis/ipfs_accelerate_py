@@ -187,6 +187,9 @@ class DependencyInstaller:
             "pynvml": "pynvml",
             "psutil": "psutil",
             "py-cpuinfo": "cpuinfo",
+            "protobuf>=5.27.0": "google.protobuf",
+            "pymultihash>=0.8.2": "multihash",
+            "dnspython>=2.2.1": "dns",
             "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main": "libp2p",
             
             # Audio processing

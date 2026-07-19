@@ -109,7 +109,7 @@ if python3 -c "import libp2p" 2>/dev/null; then
     print_success "libp2p installed (version ${LIBP2P_VERSION})"
 else
     print_error "libp2p not installed"
-    print_info "Run: pip install \"libp2p @ git+https://github.com/libp2p/py-libp2p@main\""
+    print_info "Run: pip install \"protobuf>=5.27.0\" \"pymultihash>=0.8.2\" \"dnspython>=2.2.1\" \"libp2p @ git+https://github.com/libp2p/py-libp2p.git@main\""
 fi
 
 # Check pymultihash
@@ -228,7 +228,7 @@ print_section "5. Docker Configuration Check"
 # Check if Docker daemon is running
 if docker info &> /dev/null; then
     print_success "Docker daemon is running"
-    
+
     # Check Docker networks
     if docker network inspect bridge &> /dev/null; then
         GATEWAY=$(docker network inspect bridge 2>/dev/null | grep -oP '"Gateway": "\K[^"]+' | head -1)
@@ -257,9 +257,9 @@ if [ -n "$CACHE_BOOTSTRAP_PEERS" ]; then
     if [[ $CACHE_BOOTSTRAP_PEERS =~ /ip4/([0-9.]+)/tcp/([0-9]+) ]]; then
         MCP_IP="${BASH_REMATCH[1]}"
         MCP_PORT="${BASH_REMATCH[2]}"
-        
+
         print_info "Testing connectivity to MCP server at ${MCP_IP}:${MCP_PORT}..."
-        
+
         if command_exists nc; then
             if timeout 5 nc -zv ${MCP_IP} ${MCP_PORT} 2>/dev/null; then
                 print_success "Can connect to MCP server at ${MCP_IP}:${MCP_PORT}"
@@ -281,7 +281,7 @@ print_section "7. Cache Module Check"
 # Try to import cache module
 if python3 -c "from ipfs_accelerate_py.github_cli.cache import GitHubAPICache" 2>/dev/null; then
     print_success "Cache module can be imported"
-    
+
     # Check if P2P is available in cache module
     P2P_AVAILABLE=$(python3 -c "from ipfs_accelerate_py.github_cli import cache; print(cache.HAVE_LIBP2P)" 2>/dev/null)
     if [ "$P2P_AVAILABLE" = "True" ]; then
@@ -301,7 +301,7 @@ print_section "8. Diagnostic Test"
 if file_exists "test_docker_runner_cache_connectivity.py"; then
     print_info "Running diagnostic test..."
     echo ""
-    
+
     if python3 test_docker_runner_cache_connectivity.py 2>&1 | tail -20; then
         print_success "Diagnostic test completed"
     else

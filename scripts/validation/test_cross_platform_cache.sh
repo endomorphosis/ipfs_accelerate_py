@@ -52,10 +52,10 @@ if ! python -c "import cryptography" &> /dev/null; then
     echo ""
     pip install --upgrade pip
     pip install cryptography py-multiformats-cid
-    
+
     # Try to install libp2p
     echo -e "${YELLOW}[INFO]${NC} Installing libp2p..."
-    if pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2; then
+    if pip install "protobuf>=5.27.0" "pymultihash>=0.8.2" "dnspython>=2.2.1" "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"; then
         echo -e "${GREEN}[OK]${NC} libp2p installed successfully"
     else
         echo -e "${YELLOW}[WARN]${NC} libp2p installation failed"

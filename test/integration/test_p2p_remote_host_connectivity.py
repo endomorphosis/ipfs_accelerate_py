@@ -99,13 +99,12 @@ async def run_probe_server(
     import trio
 
     try:
-        from libp2p import new_host
-        from multiaddr import Multiaddr
+        from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import make_multiaddr, new_libp2p_host
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"libp2p deps missing: {e}")
 
-    listen_ma = Multiaddr(f"/ip4/0.0.0.0/tcp/{port}")
-    host = await _maybe_await(new_host(listen_addrs=[listen_ma]))
+    listen_ma = make_multiaddr(f"/ip4/0.0.0.0/tcp/{port}")
+    host = await new_libp2p_host(listen_addrs=[listen_ma])
 
     local_peer_id = _peer_id_pretty(host.get_id())
     advertise_ip = advertise_ip or os.environ.get("P2P_ADVERTISE_IP") or _guess_advertise_ip()
@@ -201,24 +200,26 @@ async def probe_remote(remote_multiaddr: str, timeout_s: float = 10.0) -> Tuple[
     import trio
 
     try:
-        from libp2p import new_host
-        from libp2p.peer.peerinfo import info_from_p2p_addr
-        from multiaddr import Multiaddr
+        from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
+            make_multiaddr,
+            new_libp2p_host,
+            peerinfo_from_multiaddr,
+        )
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"libp2p deps missing: {e}")
 
-    host = await _maybe_await(new_host())
+    host = await new_libp2p_host()
     local_peer_id = _peer_id_pretty(host.get_id())
 
-    ma = Multiaddr(remote_multiaddr)
+    ma = make_multiaddr(remote_multiaddr)
     expected_remote_peer_id = ma.value_for_protocol("p2p")
     if not expected_remote_peer_id:
         raise ValueError("Remote multiaddr must include /p2p/<peer_id>")
 
-    peer_info = info_from_p2p_addr(ma)
+    peer_info = peerinfo_from_multiaddr(remote_multiaddr)
 
     # The host must be "running" (background swarm service) for dialing to work.
-    async with host.run([Multiaddr("/ip4/0.0.0.0/tcp/0")]):
+    async with host.run([make_multiaddr("/ip4/0.0.0.0/tcp/0")]):
         with trio.fail_after(timeout_s):
             await host.connect(peer_info)
 

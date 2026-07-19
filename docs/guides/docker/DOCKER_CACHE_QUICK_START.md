@@ -4,7 +4,7 @@
 
 ```bash
 # 1. Install dependencies
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
 
 # 2. Run diagnostic
 python test_docker_runner_cache_connectivity.py
@@ -46,7 +46,7 @@ jobs:
             your-image
 ```
 
-**Pros:** Simple, no configuration needed  
+**Pros:** Simple, no configuration needed
 **Cons:** Less secure (shares host network)
 
 ### Fix 2: Configure Host IP (More Secure)
@@ -70,7 +70,7 @@ docker run --rm \
   your-image
 ```
 
-**Pros:** Maintains isolation, more secure  
+**Pros:** Maintains isolation, more secure
 **Cons:** Requires knowing host IP
 
 ### Fix 3: Use Docker Compose (Best for Multiple Services)
@@ -109,7 +109,7 @@ networks:
     driver: bridge
 ```
 
-**Pros:** Clean, scalable, service discovery  
+**Pros:** Clean, scalable, service discovery
 **Cons:** Requires docker-compose
 
 ## Alternative: Use IPFS Instead
@@ -161,7 +161,7 @@ export AWS_S3_REGION=us-east-1
 
 ```bash
 # Install P2P dependencies
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
 ```
 
 ### Issue: "Cannot connect to bootstrap peer"
@@ -192,7 +192,7 @@ sudo ufw allow 9100/tcp
    ```bash
    # Correct format:
    /ip4/192.168.1.100/tcp/9100/p2p/QmYourPeerID...
-   
+
    # Wrong:
    192.168.1.100:9100  # ❌ Not a multiaddr
    /ip4/127.0.0.1/tcp/9100  # ❌ Missing peer ID
@@ -202,7 +202,7 @@ sudo ufw allow 9100/tcp
    ```bash
    # If using default bridge network, use host IP
    export CACHE_BOOTSTRAP_PEERS=/ip4/172.17.0.1/tcp/9100/p2p/QmPeer...
-   
+
    # If using host network, use localhost
    export CACHE_BOOTSTRAP_PEERS=/ip4/127.0.0.1/tcp/9100/p2p/QmPeer...
    ```
@@ -221,10 +221,10 @@ sudo ufw allow 9100/tcp
    ```python
    # First call
    repos1 = gh.list_repos(owner="test", limit=10)
-   
+
    # Second call (should hit cache)
    repos2 = gh.list_repos(owner="test", limit=10)
-   
+
    # Check stats
    stats = cache.get_stats()
    print(f"Hit rate: {stats['hit_rate']:.1%}")
@@ -247,7 +247,7 @@ python test_docker_runner_cache_connectivity.py
 # ✅ Encryption Setup
 # ✅ Environment Variables
 # ✅ Docker Network Mode
-# 
+#
 # 🎉 All tests passed!
 ```
 
@@ -287,18 +287,18 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install P2P dependencies
       run: |
-        pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 \
+        pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" pymultihash>=0.8.2 \
                     py-multiformats-cid cryptography
-    
+
     - name: Run diagnostic
       run: python test_docker_runner_cache_connectivity.py
-    
+
     - name: Run tests with cache
       run: |
         python -c "
@@ -307,7 +307,7 @@ jobs:
         repos = gh.list_repos(owner='test', limit=10)
         print(f'Found {len(repos)} repos')
         "
-    
+
     - name: Show cache stats
       run: |
         python -c "

@@ -1822,6 +1822,9 @@ class ModelManager:
         if not cfg:
             logger.warning("resolve_launch_command: no serving config for %s", model_id)
             return None
+        resolved_command = cfg.get("resolved_command")
+        if isinstance(resolved_command, list) and resolved_command:
+            return [str(part) for part in resolved_command if str(part).strip()]
 
         engine = cfg.get("engine", "hf_pipeline")
         launch_args: Dict[str, Any] = cfg.get("launch_args") or {}

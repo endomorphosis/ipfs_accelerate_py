@@ -95,7 +95,7 @@ fi
 
 # Keep py-libp2p synced to upstream main (latest commit)
 # NOTE: VCS installs can be slow; avoid forcing a full reinstall on every restart.
-LIBP2P_VCS_SPEC="libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+LIBP2P_VCS_SPEC="libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
 LIBP2P_STATE_DIR="${IPFS_ACCELERATE_STATE_DIR:-/tmp/ipfs_accelerate_state}"
 LIBP2P_STAMP_FILE="${LIBP2P_STATE_DIR}/last_libp2p_reinstall.epoch"
 LIBP2P_REINSTALL_INTERVAL_SECONDS="${IPFS_ACCELERATE_LIBP2P_REINSTALL_INTERVAL_SECONDS:-86400}"
@@ -120,11 +120,11 @@ fi
 
 if [ "${should_force_reinstall}" -eq 1 ]; then
     log "Ensuring py-libp2p is installed from GitHub main (forced refresh)..."
-    pip install --upgrade --force-reinstall "${LIBP2P_VCS_SPEC}"
+    pip install --upgrade --force-reinstall "protobuf>=5.27.0" "pymultihash>=0.8.2" "dnspython>=2.2.1" "${LIBP2P_VCS_SPEC}"
     echo "${now_epoch}" > "${LIBP2P_STAMP_FILE}" || true
 else
     log "Ensuring py-libp2p is installed from GitHub main (no force-reinstall)..."
-    pip install --upgrade "${LIBP2P_VCS_SPEC}"
+    pip install --upgrade "protobuf>=5.27.0" "pymultihash>=0.8.2" "dnspython>=2.2.1" "${LIBP2P_VCS_SPEC}"
 fi
 
 # Install package in editable mode

@@ -58,7 +58,7 @@ def test_automatic_provider_discovery_does_not_install_vibe(monkeypatch):
     assert llm_router._builtin_provider_by_name("mistral_vibe") is None
 
 
-def test_mistral_vibe_provider_lets_lean_agent_select_model_and_reads_stdin(monkeypatch):
+def test_mistral_vibe_provider_lets_lean_agent_select_model_and_passes_prompt_argument(monkeypatch):
     _clear_vibe_env(monkeypatch)
     captured = {}
     monkeypatch.setattr(llm_router, "_cli_available", lambda _command: True)
@@ -79,8 +79,7 @@ def test_mistral_vibe_provider_lets_lean_agent_select_model_and_reads_stdin(monk
     )
 
     assert response == '{"classification":"compiler_rule_gap"}'
-    assert captured["command"].startswith("vibe --prompt --output text")
-    assert "{prompt}" not in captured["command"]
+    assert captured["command"].startswith("vibe --prompt {prompt} --output text")
     assert "--agent {agent}" in captured["command"]
     assert captured["prompt"] == "audit this"
     assert captured["kwargs"]["template_vars"] == {

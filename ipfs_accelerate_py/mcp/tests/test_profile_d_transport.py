@@ -79,7 +79,7 @@ def test_profile_d_p2p_endpoint_uses_canonical_datasets_evaluator() -> None:
     responses = _responses(bytes(stream.written))
 
     assert stream.closed is True
-    assert responses[0]["result"]["capabilities"]["mcpPlusPlusProfiles"] == [
+    canonical_profiles = [
         "mcp++/idl",
         "mcp++/cid-envelope",
         "mcp++/ucan",
@@ -87,6 +87,10 @@ def test_profile_d_p2p_endpoint_uses_canonical_datasets_evaluator() -> None:
         "mcp++/p2p-transport",
         "mcp++/risk-scheduling",
     ]
+    profiles = responses[0]["result"]["capabilities"]["mcpPlusPlusProfiles"]
+    assert profiles[: len(canonical_profiles)] == canonical_profiles
+    assert "mcp++/profile-a-idl" in profiles
+    assert "mcp++/profile-e-mcp-p2p" in profiles
     assert responses[1]["result"]["decision"] == "allow"
     assert responses[1]["result"]["zkp_certificate"]["status"] == "statement_ready"
 

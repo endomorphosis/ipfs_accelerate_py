@@ -224,6 +224,7 @@ setup(
             "ipfs-accelerate-agent-implementation-supervisor=ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main",
             "ipfs-accelerate-agent-merge-resolver=ipfs_accelerate_py.agent_supervisor.merge_resolver:main",
             "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback:main",
+            "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
         ]
     },
 )

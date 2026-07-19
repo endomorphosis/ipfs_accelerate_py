@@ -505,15 +505,80 @@ class IPFSKitStorage:
     def _retrieve_with_ipfs_kit(self, cid: str) -> Optional[bytes]:
         """Retrieve data using ipfs_kit_py (when available)."""
         try:
-            # This would use the actual ipfs_kit_py retrieval
             logger.debug(f"Retrieving via ipfs_kit_py: {cid}")
-            
-            # For now, try local first then would try IPFS network
-            return self._retrieve_local(cid)
-            
+
+            local_data = self._retrieve_local(cid)
+            if local_data is not None:
+                return local_data
+
+            for target in self._ipfs_kit_targets():
+                for method_name in ("retrieve", "cat", "get", "get_file", "download", "ipfs_cat"):
+                    method = self._ipfs_kit_method(target, method_name)
+                    if method is None:
+                        continue
+                    for candidate in (cid, f"/ipfs/{cid}"):
+                        try:
+                            data = self._extract_retrieved_bytes(method(candidate))
+                        except TypeError:
+                            continue
+                        except Exception:
+                            continue
+                        if data is not None:
+                            self._write_bytes_to_cache(cid, data)
+                            return data
+            return None
+
         except Exception as e:
             logger.error(f"Error retrieving with ipfs_kit_py: {e}", exc_info=True)
             return self._retrieve_local(cid)
+
+    def _ipfs_kit_targets(self) -> List[Any]:
+        """Return concrete objects that may expose IPFS retrieval methods."""
+        targets: List[Any] = []
+        for value in (self.ipfs_kit_client, self.storage):
+            if value is None:
+                continue
+            if value not in targets:
+                targets.append(value)
+            if isinstance(value, dict):
+                for nested in value.values():
+                    if nested is not None and nested not in targets and not isinstance(nested, type):
+                        targets.append(nested)
+        return targets
+
+    def _ipfs_kit_method(self, target: Any, name: str):
+        if isinstance(target, dict):
+            method = target.get(name)
+        else:
+            method = getattr(target, name, None)
+        return method if callable(method) else None
+
+    def _extract_retrieved_bytes(self, value: Any) -> Optional[bytes]:
+        if value is None or value is False:
+            return None
+        if isinstance(value, bytes):
+            return value
+        if isinstance(value, bytearray):
+            return bytes(value)
+        if isinstance(value, memoryview):
+            return bytes(value)
+        if isinstance(value, str):
+            candidate = Path(value).expanduser()
+            if candidate.exists() and candidate.is_file():
+                return candidate.read_bytes()
+            return value.encode("utf-8")
+        if isinstance(value, dict):
+            for key in ("bytes", "data", "content", "payload"):
+                if key in value:
+                    data = self._extract_retrieved_bytes(value.get(key))
+                    if data is not None:
+                        return data
+            for key in ("path", "file_path", "local_path"):
+                if key in value:
+                    candidate = Path(str(value.get(key))).expanduser()
+                    if candidate.exists() and candidate.is_file():
+                        return candidate.read_bytes()
+        return None
     
     def _retrieve_local(self, cid: str) -> Optional[bytes]:
         """Retrieve data from local cache."""

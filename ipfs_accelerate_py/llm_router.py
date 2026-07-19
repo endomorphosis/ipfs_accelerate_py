@@ -49,6 +49,21 @@ Additional optional providers (opt-in by selecting provider):
     - `META_AI_API_KEY` or `ipfs_accelerate_py_META_AI_API_KEY`
     - `ipfs_accelerate_py_META_AI_MODEL` (default model, e.g. meta-llama/Llama-3.3-70B-Instruct)
     - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.llamameta.net/v1)
+- `llama_cpp`: local llama.cpp OpenAI-compatible server
+    - `IPFS_ACCELERATE_LLAMA_CPP_BASE_URL` (default from host/port: http://127.0.0.1:8080/v1)
+    - `IPFS_ACCELERATE_LLAMA_CPP_MODEL` (chat-completions model id; defaults to Leanstral NVFP4 ref)
+    - `IPFS_ACCELERATE_LLAMA_CPP_MODEL_REF` (server `-hf` model ref; defaults to Frosty40 Leanstral NVFP4)
+    - `IPFS_ACCELERATE_LLAMA_CPP_HF_FILE` (optional exact GGUF file for `--hf-file`)
+    - `IPFS_ACCELERATE_LLAMA_CPP_AUTOSTART=1` starts `llama serve`/`llama-server` when absent
+    - `IPFS_ACCELERATE_LLAMA_CPP_PREFETCH_MODEL=1` downloads the configured GGUF before serving
+    - `IPFS_ACCELERATE_LLAMA_CPP_AUTO_INSTALL=1` allows the configured installer when CLI is missing
+    - `IPFS_ACCELERATE_LLAMA_CPP_AUTO_UPDATE=1` allows the configured updater before serving
+- `llama_cpp_native`: local Python `llama_cpp.Llama` binding
+    - `IPFS_ACCELERATE_LLAMA_CPP_NATIVE_MODEL_PATH` uses a local GGUF directly
+    - `IPFS_ACCELERATE_LLAMA_CPP_NATIVE_MODEL_REF` / `IPFS_ACCELERATE_LLAMA_CPP_NATIVE_HF_FILE`
+      select a Hugging Face-hosted GGUF for `Llama.from_pretrained`
+    - `IPFS_ACCELERATE_LLAMA_CPP_NATIVE_AUTO_INSTALL=1` permits pip installing
+      `llama-cpp-python[server]` when the binding is missing
 """
 
 from __future__ import annotations
@@ -59,10 +74,12 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -90,6 +107,53 @@ class LLMRouterError(RuntimeError):
 
 
 _P2P_TASK_PREFIX = "p2p://"
+
+_LLM_GENERATE_PROVIDER_FORWARD_KEYS = (
+    "max_new_tokens",
+    "max_tokens",
+    "temperature",
+    "top_p",
+    "stop",
+    "seed",
+    "logprobs",
+    "top_logprobs",
+    "response_format",
+    "timeout",
+)
+_LLM_GENERATE_TRACE_FORWARD_KEYS = (
+    "trace",
+    "trace_jsonl_path",
+    "trace_dir",
+)
+_LLM_GENERATE_COPILOT_FORWARD_KEYS = (
+    "copilot_config_dir",
+    "copilot_log_dir",
+)
+_LLM_GENERATE_SESSION_FORWARD_KEYS = (
+    "resume_session_id",
+    "continue_session",
+    "chat_session_id",
+    "history_cid",
+    "sticky_worker_id",
+)
+_LLM_GENERATE_SAFE_FORWARD_KEYS = (
+    *_LLM_GENERATE_PROVIDER_FORWARD_KEYS,
+    *_LLM_GENERATE_TRACE_FORWARD_KEYS,
+    *_LLM_GENERATE_COPILOT_FORWARD_KEYS,
+)
+_LLM_GENERATE_TASK_FORWARD_KEYS = (
+    *_LLM_GENERATE_SAFE_FORWARD_KEYS,
+    *_LLM_GENERATE_SESSION_FORWARD_KEYS,
+)
+
+
+def _llm_generate_forwarded_kwargs(
+    kwargs: Dict[str, object] | dict,
+    *,
+    include_session: bool = False,
+) -> Dict[str, object]:
+    keys = _LLM_GENERATE_TASK_FORWARD_KEYS if include_session else _LLM_GENERATE_SAFE_FORWARD_KEYS
+    return {str(k): kwargs[k] for k in keys if k in kwargs}
 
 
 def _truthy_env(name: str, *, default: bool) -> bool:
@@ -223,9 +287,7 @@ def submit_task(
         raise LLMRouterError("Task delegation helpers not available") from exc
 
     payload: Dict[str, object] = {"prompt": str(prompt or "")}
-    for k in ("max_new_tokens", "max_tokens", "temperature"):
-        if k in kwargs:
-            payload[k] = kwargs[k]
+    payload.update(_llm_generate_forwarded_kwargs(kwargs))
 
     # Session-affinity + provider routing for interactive LLM tasks.
     # This is primarily intended for mesh execution of copilot_cli prompts.
@@ -246,21 +308,7 @@ def submit_task(
         except Exception:
             pass
 
-        for k in (
-            "timeout",
-            "trace",
-            "trace_jsonl_path",
-            "trace_dir",
-            "copilot_config_dir",
-            "copilot_log_dir",
-            "resume_session_id",
-            "continue_session",
-            "chat_session_id",
-            "history_cid",
-            "sticky_worker_id",
-        ):
-            if k in kwargs:
-                payload[k] = kwargs[k]
+        payload.update(_llm_generate_forwarded_kwargs(kwargs, include_session=True))
 
         sid = kwargs.get("session_id")
         if not (isinstance(sid, str) and sid.strip()):
@@ -646,19 +694,9 @@ def generate_text_mesh(
     if continue_session:
         forwarded["continue_session"] = True
 
-    # Forward a minimal allowlist of provider args.
-    # Intentionally does NOT allow provider-specific command overrides (e.g.
-    # gemini_cmd) to avoid remote peers executing arbitrary commands.
-    for k in (
-        "timeout",
-        "trace",
-        "trace_jsonl_path",
-        "trace_dir",
-        "copilot_config_dir",
-        "copilot_log_dir",
-    ):
-        if k in kwargs:
-            forwarded[k] = kwargs[k]  # type: ignore[literal-required]
+    # Forward a known-safe allowlist of provider args. This intentionally does
+    # not allow provider-specific command overrides such as gemini_cmd.
+    forwarded.update(_llm_generate_forwarded_kwargs(kwargs))
 
     def _sticky_key() -> str:
         if isinstance(chat_session_id, str) and chat_session_id.strip():
@@ -724,7 +762,7 @@ def generate_text_mesh(
                     except Exception:
                         pass
                 return text
-            return ""
+            raise LLMRouterError("mesh llm.generate completed without generated text")
 
         # Timeout / not completed: cancel this queued work and retry.
         try:
@@ -825,9 +863,12 @@ def generate_text_mesh(
             if not isinstance(task2, dict):
                 raise LLMRouterError("mesh llm.generate failed (no response)")
             result2 = task2.get("result") if isinstance(task2.get("result"), dict) else {}
-            if str(task2.get("status") or "") == "failed":
+            status2 = str(task2.get("status") or "").strip().lower()
+            if status2 == "failed":
                 err2 = str(task2.get("error") or "") or str((result2 or {}).get("error") or "")
                 raise LLMRouterError(err2 or "mesh llm.generate failed")
+            if status2 != "completed":
+                raise LLMRouterError(f"mesh llm.generate did not complete after failover: {status2 or 'unknown'}")
             if isinstance(result2, dict) and "text" in result2:
                 text2 = str(result2.get("text") or "")
                 if isinstance(chat_session_id, str) and chat_session_id.strip():
@@ -842,7 +883,7 @@ def generate_text_mesh(
                     except Exception:
                         pass
                 return text2
-            return ""
+            raise LLMRouterError("mesh llm.generate completed without generated text")
 
     raise LLMRouterError("mesh llm.generate failed")
 
@@ -1681,6 +1722,384 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
     return _OpenRouterProvider()
 
 
+def _get_llama_cpp_provider(*, auto_install: bool = False) -> Optional[LLMProvider]:
+    """Return a local llama.cpp OpenAI-compatible provider."""
+
+    try:
+        from ipfs_accelerate_py.utils.llama_cpp import (
+            DEFAULT_LEANSTRAL_MODEL_REF,
+            config_from_env,
+            ensure_llama_cpp_server,
+            llama_cpp_server_ready,
+        )
+    except Exception:
+        return None
+
+    configured_base_url = _coalesce_env(
+        "IPFS_ACCELERATE_LLAMA_CPP_BASE_URL",
+        "IPFS_ACCELERATE_PY_LLAMA_CPP_BASE_URL",
+        "ipfs_accelerate_py_LLAMA_CPP_BASE_URL",
+    ).rstrip("/")
+    server_config = config_from_env()
+    base_url = configured_base_url or server_config.base_url
+    model_default = _coalesce_env(
+        "IPFS_ACCELERATE_LLAMA_CPP_MODEL",
+        "IPFS_ACCELERATE_PY_LLAMA_CPP_MODEL",
+        "ipfs_accelerate_py_LLAMA_CPP_MODEL",
+    ) or server_config.model_ref or DEFAULT_LEANSTRAL_MODEL_REF
+    api_key = _coalesce_env(
+        "IPFS_ACCELERATE_LLAMA_CPP_API_KEY",
+        "IPFS_ACCELERATE_PY_LLAMA_CPP_API_KEY",
+        "ipfs_accelerate_py_LLAMA_CPP_API_KEY",
+    )
+
+    def _request(payload: dict, *, timeout: float) -> dict:
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        req = urllib.request.Request(
+            f"{base_url.rstrip('/')}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            raise RuntimeError(f"llama.cpp HTTP {exc.code}: {detail or exc.reason}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"llama.cpp request failed: {exc}") from exc
+
+        try:
+            data = json.loads(raw)
+        except Exception as exc:
+            raise RuntimeError("llama.cpp returned invalid JSON") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("llama.cpp returned invalid JSON")
+        return data
+
+    class _LlamaCppProvider:
+        def __init__(self) -> None:
+            self._ready_checked = False
+
+        def _ensure_ready(self) -> None:
+            if self._ready_checked and llama_cpp_server_ready(base_url):
+                return
+            if llama_cpp_server_ready(base_url):
+                self._ready_checked = True
+                return
+
+            autostart = _truthy_env("IPFS_ACCELERATE_LLAMA_CPP_AUTOSTART", default=False)
+            allow_install = bool(auto_install) and _truthy_env(
+                "IPFS_ACCELERATE_LLAMA_CPP_AUTO_INSTALL",
+                default=False,
+            )
+            allow_update = _truthy_env("IPFS_ACCELERATE_LLAMA_CPP_AUTO_UPDATE", default=False)
+            prefetch_model = _truthy_env("IPFS_ACCELERATE_LLAMA_CPP_PREFETCH_MODEL", default=False)
+            startup_timeout = float(
+                _coalesce_env(
+                    "IPFS_ACCELERATE_LLAMA_CPP_STARTUP_TIMEOUT_SECONDS",
+                    "IPFS_ACCELERATE_PY_LLAMA_CPP_STARTUP_TIMEOUT_SECONDS",
+                    "ipfs_accelerate_py_LLAMA_CPP_STARTUP_TIMEOUT_SECONDS",
+                )
+                or "60"
+            )
+            if not autostart:
+                raise LLMRouterError(
+                    "llama.cpp server is not reachable at "
+                    f"{base_url}. Start it with `ipfs-accelerate-llama-cpp-serve --serve` "
+                    "or set IPFS_ACCELERATE_LLAMA_CPP_AUTOSTART=1."
+                )
+
+            result = ensure_llama_cpp_server(
+                server_config,
+                autostart=True,
+                auto_install=allow_install,
+                auto_update=allow_update,
+                prefetch_model=prefetch_model,
+                startup_timeout_seconds=startup_timeout,
+            )
+            if not result.running:
+                cache = result.model_cache.to_dict()
+                raise LLMRouterError(
+                    "llama.cpp server did not become ready: "
+                    f"{result.message}; base_url={result.base_url}; log={result.log_path}; "
+                    f"model_cache={cache.get('message')}; "
+                    f"partial_size_bytes={cache.get('partial_size_bytes', 0)}"
+                )
+            self._ready_checked = True
+
+        def chat_completions(
+            self,
+            messages: Sequence[ChatMessage],
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> dict:
+            self._ensure_ready()
+            model = model_name or str(kwargs.pop("model", "") or "").strip() or model_default
+            max_tokens = kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))
+            temperature = kwargs.get("temperature", 0.2)
+            payload: dict = {
+                "model": model,
+                "messages": list(messages),
+                "max_tokens": int(max_tokens),
+                "temperature": float(temperature),
+            }
+            if "top_p" in kwargs and kwargs.get("top_p") is not None:
+                payload["top_p"] = float(kwargs.get("top_p"))
+            if "seed" in kwargs and kwargs.get("seed") is not None:
+                payload["seed"] = int(kwargs.get("seed"))
+            if "stop" in kwargs and kwargs.get("stop") is not None:
+                payload["stop"] = kwargs.get("stop")
+            if "logprobs" in kwargs:
+                payload["logprobs"] = bool(kwargs.get("logprobs"))
+            if "top_logprobs" in kwargs and kwargs.get("top_logprobs") is not None:
+                payload["top_logprobs"] = int(kwargs.get("top_logprobs"))
+            if "response_format" in kwargs and kwargs.get("response_format") is not None:
+                payload["response_format"] = kwargs.get("response_format")
+            timeout = float(kwargs.get("timeout", 300))
+            return _request(payload, timeout=timeout)
+
+        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+            data = self.chat_completions(
+                [{"role": "user", "content": prompt}],
+                model_name=model_name,
+                **kwargs,
+            )
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                first = choices[0]
+                if isinstance(first, dict):
+                    msg = first.get("message")
+                    if isinstance(msg, dict) and isinstance(msg.get("content"), str):
+                        return msg["content"].strip()
+                    text = first.get("text")
+                    if isinstance(text, str):
+                        return text.strip()
+            raise RuntimeError("llama.cpp response missing choices")
+
+    return _LlamaCppProvider()
+
+
+_LLAMA_CPP_SERVER_PROVIDER_ALIASES = {
+    "llama_cpp",
+    "llamacpp",
+    "llama.cpp",
+    "openai_compatible",
+    "local_openai",
+    "leanstral_local",
+}
+
+_LLAMA_CPP_NATIVE_PROVIDER_ALIASES = {
+    "llama_cpp_native",
+    "llamacpp_native",
+    "native_llama_cpp",
+    "llama.cpp_native",
+}
+
+
+def _get_llama_cpp_native_provider(*, auto_install: bool = False) -> Optional[LLMProvider]:
+    """Return a local in-process llama-cpp-python provider when available."""
+
+    try:
+        from llama_cpp import Llama  # type: ignore
+    except Exception as import_exc:
+        allow_install = bool(auto_install) and _truthy_env(
+            "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_AUTO_INSTALL",
+            default=False,
+        )
+        if not allow_install:
+            return None
+        package = (
+            _coalesce_env(
+                "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_PACKAGE",
+                "IPFS_ACCELERATE_PY_LLAMA_CPP_NATIVE_PACKAGE",
+            )
+            or "llama-cpp-python[server]"
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", package],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=float(
+                _coalesce_env("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_INSTALL_TIMEOUT_SECONDS")
+                or "1800"
+            ),
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or str(import_exc)).strip()
+            raise LLMRouterError(f"llama-cpp-python install failed: {detail}") from import_exc
+        try:
+            from llama_cpp import Llama  # type: ignore
+        except Exception as exc:
+            raise LLMRouterError("llama-cpp-python installed but could not be imported") from exc
+
+    try:
+        from ipfs_accelerate_py.utils.llama_cpp import (
+            DEFAULT_LEANSTRAL_FILENAME,
+            DEFAULT_LEANSTRAL_MODEL_REF,
+            config_from_env,
+            llama_cpp_model_cache_status,
+        )
+    except Exception:
+        DEFAULT_LEANSTRAL_FILENAME = "Leanstral-1.5-119B-A6B-NVFP4.gguf"
+        DEFAULT_LEANSTRAL_MODEL_REF = "Frosty40/Leanstral-1.5-119B-A6B-GGUF-NVFP4:NVFP4"
+        config_from_env = None  # type: ignore[assignment]
+        llama_cpp_model_cache_status = None  # type: ignore[assignment]
+
+    server_config = config_from_env() if callable(config_from_env) else None
+    default_model_ref = getattr(server_config, "model_ref", "") or DEFAULT_LEANSTRAL_MODEL_REF
+    default_hf_file = getattr(server_config, "hf_file", "") or DEFAULT_LEANSTRAL_FILENAME
+    model_path = _coalesce_env(
+        "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_MODEL_PATH",
+        "IPFS_ACCELERATE_LLAMA_CPP_MODEL_PATH",
+    )
+    if not model_path and server_config is not None and callable(llama_cpp_model_cache_status):
+        try:
+            cache_status = llama_cpp_model_cache_status(server_config)
+        except Exception:
+            cache_status = None
+        if (
+            cache_status is not None
+            and getattr(cache_status, "complete", False)
+            and (
+                getattr(cache_status, "cache_backend", "")
+                in {"content_addressed_disk", "ipfs_kit", "model_path"}
+                or str(getattr(cache_status, "cache_backend", "")).endswith("_hash_pending")
+            )
+        ):
+            model_path = str(getattr(cache_status, "local_path", "") or "")
+    model_ref = (
+        _coalesce_env(
+            "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_MODEL_REF",
+            "IPFS_ACCELERATE_LLAMA_CPP_MODEL_REF",
+        )
+        or default_model_ref
+    )
+    repo_id = str(model_ref or "").split(":", 1)[0]
+    hf_file = (
+        _coalesce_env(
+            "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_HF_FILE",
+            "IPFS_ACCELERATE_LLAMA_CPP_HF_FILE",
+        )
+        or default_hf_file
+    )
+
+    def _int_env(*names: str, default: Optional[int] = None) -> Optional[int]:
+        raw = _coalesce_env(*names)
+        if not raw:
+            return default
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return default
+
+    context_size = _int_env(
+        "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_CONTEXT_SIZE",
+        "IPFS_ACCELERATE_LLAMA_CPP_CONTEXT_SIZE",
+        default=int(getattr(server_config, "context_size", 2048) or 2048),
+    )
+    threads = _int_env(
+        "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_THREADS",
+        "IPFS_ACCELERATE_LLAMA_CPP_THREADS",
+        default=int(getattr(server_config, "threads", 0) or 0),
+    )
+    gpu_layers = _int_env(
+        "IPFS_ACCELERATE_LLAMA_CPP_NATIVE_GPU_LAYERS",
+        "IPFS_ACCELERATE_LLAMA_CPP_GPU_LAYERS",
+        default=getattr(server_config, "gpu_layers", None),
+    )
+    verbose = _truthy_env("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_VERBOSE", default=False)
+
+    class _NativeLlamaCppProvider:
+        def __init__(self) -> None:
+            self._llm: object | None = None
+
+        def _load(self) -> object:
+            if self._llm is not None:
+                return self._llm
+            load_kwargs: dict[str, object] = {"verbose": verbose}
+            if context_size and context_size > 0:
+                load_kwargs["n_ctx"] = int(context_size)
+            if threads and threads > 0:
+                load_kwargs["n_threads"] = int(threads)
+            if gpu_layers is not None:
+                load_kwargs["n_gpu_layers"] = int(gpu_layers)
+            if model_path:
+                self._llm = Llama(model_path=model_path, **load_kwargs)
+                return self._llm
+            if not repo_id or not hf_file:
+                raise LLMRouterError(
+                    "llama_cpp_native requires IPFS_ACCELERATE_LLAMA_CPP_NATIVE_MODEL_PATH "
+                    "or a Hugging Face repo/file pair."
+                )
+            from_pretrained = getattr(Llama, "from_pretrained", None)
+            if not callable(from_pretrained):
+                raise LLMRouterError("Installed llama-cpp-python lacks Llama.from_pretrained")
+            self._llm = from_pretrained(repo_id=repo_id, filename=hf_file, **load_kwargs)
+            return self._llm
+
+        def chat_completions(
+            self,
+            messages: Sequence[ChatMessage],
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> dict:
+            _ = model_name
+            llm = self._load()
+            max_tokens = kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))
+            native_kwargs: dict[str, object] = {
+                "messages": [dict(message) for message in messages],
+                "max_tokens": int(max_tokens),
+                "temperature": float(kwargs.get("temperature", 0.2)),
+            }
+            for key in ("top_p", "stop", "seed", "logprobs", "top_logprobs", "response_format"):
+                if key in kwargs and kwargs.get(key) is not None:
+                    native_kwargs[key] = kwargs.get(key)
+            create_chat_completion = getattr(llm, "create_chat_completion", None)
+            if not callable(create_chat_completion):
+                raise LLMRouterError("llama_cpp_native model lacks create_chat_completion")
+            try:
+                result = create_chat_completion(**native_kwargs)
+            except TypeError:
+                stable_kwargs = {
+                    key: value
+                    for key, value in native_kwargs.items()
+                    if key in {"messages", "max_tokens", "temperature", "top_p", "stop"}
+                }
+                if stable_kwargs == native_kwargs:
+                    raise
+                result = create_chat_completion(**stable_kwargs)
+            if not isinstance(result, dict):
+                raise RuntimeError("llama_cpp_native returned invalid chat completion")
+            return result
+
+        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+            data = self.chat_completions(
+                [{"role": "user", "content": prompt}],
+                model_name=model_name,
+                **kwargs,
+            )
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                first = choices[0]
+                if isinstance(first, dict):
+                    msg = first.get("message")
+                    if isinstance(msg, dict) and isinstance(msg.get("content"), str):
+                        return msg["content"].strip()
+                    text = first.get("text")
+                    if isinstance(text, str):
+                        return text.strip()
+            raise RuntimeError("llama_cpp_native response missing choices")
+
+    return _NativeLlamaCppProvider()
+
+
 def _get_codex_cli_provider() -> Optional[LLMProvider]:
     if not shutil.which("codex"):
         return None
@@ -2086,7 +2505,7 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
         "IPFS_ACCELERATE_PY_MISTRAL_VIBE_CLI_CMD",
         "ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD",
     )
-    command = configured_command or "vibe --prompt --output text --max-turns 1"
+    command = configured_command or "vibe --prompt {prompt} --output text --max-turns 1"
     if not _cli_available(command):
         # A custom command is operator-owned; do not install a different CLI to
         # compensate for a misspelled or unavailable override.
@@ -2100,7 +2519,7 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
             raise LLMRouterError(f"Mistral Vibe provider unavailable: {detail}")
         command = (
             f"{shlex.quote(install_result.executable)} "
-            "--prompt --output text --max-turns 1"
+            "--prompt {prompt} --output text --max-turns 1"
         )
 
     def _mistral_auth_available() -> bool:
@@ -2434,6 +2853,28 @@ def _provider_cache_key() -> tuple:
         os.getenv("ipfs_accelerate_py_META_AI_API_KEY", "").strip(),
         os.getenv("ipfs_accelerate_py_META_AI_MODEL", "").strip(),
         os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_BASE_URL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_MODEL_REF", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_HF_FILE", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_AUTOSTART", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_PREFETCH_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_AUTO_INSTALL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_AUTO_UPDATE", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_HOST", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_PORT", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_CONTEXT_SIZE", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_THREADS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_GPU_LAYERS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_MODEL_PATH", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_MODEL_PATH", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_MODEL_REF", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_HF_FILE", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_CONTEXT_SIZE", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_THREADS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_GPU_LAYERS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_AUTO_INSTALL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_PACKAGE", "").strip(),
     )
 
 
@@ -2488,6 +2929,10 @@ def _builtin_provider_by_name(name: str, *, auto_install: bool = False) -> Optio
         return _get_mock_provider()
     if key == "openrouter":
         return _get_openrouter_provider()
+    if key in _LLAMA_CPP_SERVER_PROVIDER_ALIASES:
+        return _get_llama_cpp_provider(auto_install=auto_install)
+    if key in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
+        return _get_llama_cpp_native_provider(auto_install=auto_install)
     if key in {"codex", "codex_cli"}:
         return _get_codex_cli_provider()
     if key in {"copilot_cli"}:
@@ -2672,11 +3117,16 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
                 raise LLMRouterError("Copilot Python SDK not installed (optional dependency).")
             return builtin
 
-        builtin = (
-            _get_mistral_vibe_provider(auto_install=True)
-            if name in {"mistral_vibe", "mistral-vibe", "vibe"}
-            else _builtin_provider_by_name(name)
-        )
+        if name in {"mistral_vibe", "mistral-vibe", "vibe"}:
+            builtin = _get_mistral_vibe_provider(auto_install=True)
+        elif name in _LLAMA_CPP_SERVER_PROVIDER_ALIASES:
+            builtin = _get_llama_cpp_provider(auto_install=True)
+        elif name in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
+            builtin = _get_llama_cpp_native_provider(auto_install=True)
+            if builtin is None:
+                raise LLMRouterError("llama-cpp-python not installed for llama_cpp_native provider.")
+        else:
+            builtin = _builtin_provider_by_name(name)
         if builtin is not None:
             return builtin
         raise ValueError(f"Unknown LLM provider: {preferred_value}")
@@ -2702,11 +3152,16 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
                 raise LLMRouterError("Copilot Python SDK not installed (optional dependency).")
             return builtin
 
-        builtin = (
-            _get_mistral_vibe_provider(auto_install=True)
-            if forced_name in {"mistral_vibe", "mistral-vibe", "vibe"}
-            else _builtin_provider_by_name(forced_name)
-        )
+        if forced_name in {"mistral_vibe", "mistral-vibe", "vibe"}:
+            builtin = _get_mistral_vibe_provider(auto_install=True)
+        elif forced_name in _LLAMA_CPP_SERVER_PROVIDER_ALIASES:
+            builtin = _get_llama_cpp_provider(auto_install=True)
+        elif forced_name in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
+            builtin = _get_llama_cpp_native_provider(auto_install=True)
+            if builtin is None:
+                raise LLMRouterError("llama-cpp-python not installed for llama_cpp_native provider.")
+        else:
+            builtin = _builtin_provider_by_name(forced_name)
         if builtin is not None:
             return builtin
         raise ValueError(f"Unknown LLM provider: {forced}")
@@ -2864,6 +3319,212 @@ def generate_text(
                                 pass
                         return result
         raise
+
+
+def _batch_worker_count(
+    *,
+    size: int,
+    max_workers: Optional[int],
+    provider: Optional[str],
+    default_cap: int = 4,
+) -> int:
+    if size <= 1:
+        return 1
+    if max_workers is not None:
+        try:
+            return max(1, min(int(max_workers), size))
+        except (TypeError, ValueError):
+            return 1
+
+    raw = _coalesce_env(
+        "IPFS_ACCELERATE_LLM_ROUTER_BATCH_WORKERS",
+        "IPFS_ACCELERATE_PY_LLM_ROUTER_BATCH_WORKERS",
+        "ipfs_accelerate_py_LLM_ROUTER_BATCH_WORKERS",
+    )
+    if raw:
+        try:
+            return max(1, min(int(raw), size))
+        except (TypeError, ValueError):
+            pass
+
+    provider_key = str(provider or "").strip().lower()
+    if provider_key in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
+        return 1
+    return max(1, min(int(default_cap), size))
+
+
+def generate_text_batch(
+    prompts: Sequence[str],
+    *,
+    model_name: Optional[str] = None,
+    provider: Optional[str] = None,
+    provider_instance: Optional[LLMProvider] = None,
+    deps: Optional[RouterDeps] = None,
+    max_workers: Optional[int] = None,
+    use_mesh: bool = False,
+    timeout_s: float = 90.0,
+    max_route_attempts: int = 3,
+    queue_path: Optional[str] = None,
+    **kwargs: object,
+) -> list[str]:
+    """Generate a prompt batch while preserving input order.
+
+    Set ``use_mesh=True`` to submit the batch as ``llm.generate`` tasks so P2P
+    workers can run prompts concurrently. For local in-process providers,
+    ``max_workers`` controls thread-level concurrency.
+    """
+
+    prompt_list = [str(prompt or "") for prompt in list(prompts or [])]
+    if not prompt_list:
+        return []
+    if use_mesh:
+        return generate_text_mesh_batch(
+            prompt_list,
+            model_name=model_name,
+            provider=str(provider or "copilot_cli"),
+            timeout_s=timeout_s,
+            max_route_attempts=max_route_attempts,
+            queue_path=queue_path,
+            max_workers=max_workers,
+            **kwargs,
+        )
+
+    resolved_deps = deps or get_default_router_deps()
+    backend = provider_instance or get_llm_provider(provider, deps=resolved_deps)
+
+    def _generate_one(prompt: str) -> str:
+        return str(
+            generate_text(
+                prompt,
+                model_name=model_name,
+                provider=provider,
+                provider_instance=backend,
+                deps=resolved_deps,
+                **kwargs,
+            )
+        )
+
+    workers = _batch_worker_count(
+        size=len(prompt_list),
+        max_workers=max_workers,
+        provider=provider,
+        default_cap=4,
+    )
+    if workers <= 1:
+        return [_generate_one(prompt) for prompt in prompt_list]
+
+    results: list[Optional[str]] = [None] * len(prompt_list)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(_generate_one, prompt): idx
+            for idx, prompt in enumerate(prompt_list)
+        }
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+    return [str(result or "") for result in results]
+
+
+def generate_text_mesh_batch(
+    prompts: Sequence[str],
+    *,
+    model_name: Optional[str] = None,
+    provider: str = "copilot_cli",
+    timeout_s: float = 90.0,
+    max_route_attempts: int = 3,
+    queue_path: Optional[str] = None,
+    max_workers: Optional[int] = None,
+    **kwargs: object,
+) -> list[str]:
+    """Generate a prompt batch through the P2P ``llm.generate`` mesh.
+
+    This is intentionally a thin ordered wrapper around ``generate_text_mesh``
+    so existing retry, sticky-session, and failover behavior stays centralized.
+    """
+
+    prompt_list = [str(prompt or "") for prompt in list(prompts or [])]
+    if not prompt_list:
+        return []
+
+    provider_norm = str(provider or "").strip().lower() or "copilot_cli"
+
+    def _generate_one(prompt: str) -> str:
+        return generate_text_mesh(
+            prompt,
+            model_name=model_name,
+            provider=provider_norm,
+            timeout_s=timeout_s,
+            max_route_attempts=max_route_attempts,
+            queue_path=queue_path,
+            **kwargs,
+        )
+
+    workers = _batch_worker_count(
+        size=len(prompt_list),
+        max_workers=max_workers,
+        provider=provider_norm,
+        default_cap=16,
+    )
+    if workers <= 1:
+        return [_generate_one(prompt) for prompt in prompt_list]
+
+    results: list[Optional[str]] = [None] * len(prompt_list)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(_generate_one, prompt): idx
+            for idx, prompt in enumerate(prompt_list)
+        }
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+    return [str(result or "") for result in results]
+
+
+def chat_completions_batch_create(
+    message_batches: Sequence[Sequence[ChatMessage]],
+    *,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    provider_instance: Optional[LLMProvider] = None,
+    deps: Optional[RouterDeps] = None,
+    max_workers: Optional[int] = None,
+    **kwargs: object,
+) -> list[OpenAICompatResponse]:
+    """Run OpenAI-compatible chat completion requests in an ordered batch."""
+
+    batches = [list(messages or []) for messages in list(message_batches or [])]
+    if not batches:
+        return []
+
+    resolved_deps = deps or get_default_router_deps()
+    backend = provider_instance or get_llm_provider(provider, deps=resolved_deps)
+
+    def _create_one(messages: Sequence[ChatMessage]) -> OpenAICompatResponse:
+        return chat_completions_create(
+            messages=messages,
+            model=model,
+            provider=provider,
+            provider_instance=backend,
+            deps=resolved_deps,
+            **kwargs,
+        )
+
+    workers = _batch_worker_count(
+        size=len(batches),
+        max_workers=max_workers,
+        provider=provider,
+        default_cap=4,
+    )
+    if workers <= 1:
+        return [_create_one(messages) for messages in batches]
+
+    results: list[Optional[OpenAICompatResponse]] = [None] * len(batches)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(_create_one, messages): idx
+            for idx, messages in enumerate(batches)
+        }
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+    return [result for result in results if result is not None]
 
 
 def clear_llm_router_caches() -> None:

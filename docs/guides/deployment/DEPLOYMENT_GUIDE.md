@@ -92,7 +92,7 @@ Select the best solution for your use case:
 - Testing and development
 - Simple setups
 
-**Pros:** Simplest, no configuration needed  
+**Pros:** Simplest, no configuration needed
 **Cons:** Less secure (container shares host network)
 
 **Configuration:**
@@ -117,7 +117,7 @@ docker run --network host \
 - Security-conscious deployments
 - Container isolation required
 
-**Pros:** Maintains isolation, more secure  
+**Pros:** Maintains isolation, more secure
 **Cons:** Requires host IP configuration
 
 **Configuration:**
@@ -149,7 +149,7 @@ docker run --rm \
 - Orchestrated deployments
 - Development environments
 
-**Pros:** Service discovery, scalable, clean  
+**Pros:** Service discovery, scalable, clean
 **Cons:** Requires docker-compose
 
 **Configuration:**
@@ -160,7 +160,7 @@ services:
     ports: ["9100:9100"]
     environment:
       CACHE_LISTEN_PORT: "9100"
-  
+
   runner:
     environment:
       CACHE_BOOTSTRAP_PEERS: "/dns4/mcp-server/tcp/9100/p2p/${MCP_PEER_ID}"
@@ -205,13 +205,13 @@ jobs:
   test:
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install P2P Dependencies
         run: ./install_p2p_cache_deps.sh
-      
+
       - name: Validate Setup
         run: ./validate_docker_cache_setup.sh
-      
+
       - name: Run Tests with Cache
         run: |
           docker run --network host \
@@ -219,7 +219,7 @@ jobs:
             -e CACHE_LISTEN_PORT=9000 \
             -e CACHE_BOOTSTRAP_PEERS \
             your-image python -m pytest
-      
+
       - name: Report Cache Statistics
         run: |
           docker run --rm --network host \
@@ -334,7 +334,7 @@ pip3 install --upgrade pip
 sudo apt-get install build-essential python3-dev
 
 # Try installing with verbose output
-pip3 install -v "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+pip3 install -v "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
 ```
 
 ### Issue: Cannot Connect to MCP Server
@@ -487,7 +487,7 @@ After successful deployment:
 
 ## Conclusion
 
-You've successfully deployed the Docker runner cache solution! 
+You've successfully deployed the Docker runner cache solution!
 
 **Key Achievements:**
 - ✅ Reduced API calls by 50-80%

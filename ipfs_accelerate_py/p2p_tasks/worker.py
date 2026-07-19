@@ -2574,6 +2574,26 @@ def _allowed_llm_providers() -> set[str]:
             "claude_code",
             "claude_py",
             "openrouter",
+            "mistral_vibe",
+            "mistral-vibe",
+            "vibe",
+            "xai",
+            "grok",
+            "xai_grok",
+            "meta_ai",
+            "meta-ai",
+            "meta_llama",
+            "meta",
+            "meta_spark",
+            "spark",
+            "llama_cpp",
+            "llama-cpp",
+            "llamacpp",
+            "llama_cpp_server",
+            "local_llama_cpp",
+            "llama_cpp_native",
+            "llamacpp_native",
+            "native_llama_cpp",
         }
 
     return set(parts)
@@ -2734,7 +2754,21 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         "on",
     }
 
-    forwarded_keys = ["timeout", "trace", "trace_jsonl_path", "trace_dir"]
+    forwarded_keys = [
+        "max_new_tokens",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "stop",
+        "seed",
+        "logprobs",
+        "top_logprobs",
+        "response_format",
+        "timeout",
+        "trace",
+        "trace_jsonl_path",
+        "trace_dir",
+    ]
     if provider == "copilot_cli":
         forwarded_keys.extend(
             [

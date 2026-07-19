@@ -44,24 +44,24 @@ def _run_dht_bootstrap_node(ready_file: str, listen_port: int) -> None:
 	os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = "0"
 	os.environ["IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT"] = "0"
 
-	from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
+	from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
+		get_background_trio_service,
+		make_multiaddr,
+		new_libp2p_host,
+		require_libp2p_runtime,
+	)
 
-	if not ensure_libp2p_compatible():
-		raise RuntimeError("libp2p compatibility patches failed")
+	require_libp2p_runtime()
 
 	import anyio
-	import inspect
 
-	from libp2p import new_host
-	from libp2p.tools.async_service import background_trio_service
-	from multiaddr import Multiaddr
+	background_trio_service = get_background_trio_service()
 
 	async def _main() -> None:
-		host_obj = new_host()
-		host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+		host = await new_libp2p_host()
 
 		async with background_trio_service(host.get_network()):
-			await host.get_network().listen(Multiaddr(f"/ip4/127.0.0.1/tcp/{int(listen_port)}"))
+			await host.get_network().listen(make_multiaddr(f"/ip4/127.0.0.1/tcp/{int(listen_port)}"))
 
 			# Start a KadDHT server so other nodes can bootstrap.
 			dht = None
@@ -99,7 +99,7 @@ def _run_dht_bootstrap_node(ready_file: str, listen_port: int) -> None:
 
 			try:
 				import trio
-				from libp2p.tools.async_service.trio_service import background_trio_service as bg_trio
+				bg_trio = get_background_trio_service()
 
 				async def _run_dht() -> None:
 					async with bg_trio(dht):

@@ -146,8 +146,8 @@ When workflows run, they:
 1. **Initialize P2P cache** (via workflow step)
    ```yaml
    - name: Install P2P dependencies
-    run: pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid
-   
+    run: pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" cryptography py-multiformats-cid
+
    - name: Initialize P2P Cache
      run: |
        echo "CACHE_ENABLE_P2P=true" >> $GITHUB_ENV
@@ -157,7 +157,7 @@ When workflows run, they:
 2. **Use GitHubCLI for API calls**
    ```python
    from ipfs_accelerate_py.github_cli import GitHubCLI
-   
+
    gh = GitHubCLI(enable_cache=True)  # Automatically uses global cache with P2P
    repos = gh.list_repos(owner="myorg")  # Checks cache first, then API if needed
    ```
@@ -240,7 +240,7 @@ Expected results:
 **Check:**
 1. Is `CACHE_ENABLE_P2P=true` set in workflows?
 2. Is `MCP_P2P_BOOTSTRAP_PEERS` secret configured?
-3. Are P2P dependencies installed? (`pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" ...`)
+3. Are P2P dependencies installed? (`pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" ...`)
 4. Is MCP server reachable on port 9100?
 
 ### Tests Fail

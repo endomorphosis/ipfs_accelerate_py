@@ -110,6 +110,27 @@ class ComprehensiveDependencyInstaller:
                 "category": "core",
                 "critical": True
             },
+            "protobuf": {
+                "pip_name": "protobuf>=5.27.0",
+                "import_name": "google.protobuf",
+                "description": "Protocol buffers runtime required by py-libp2p main",
+                "category": "networking",
+                "critical": False
+            },
+            "pymultihash": {
+                "pip_name": "pymultihash>=0.8.2",
+                "import_name": "multihash",
+                "description": "Multihash compatibility package required by py-libp2p",
+                "category": "networking",
+                "critical": False
+            },
+            "dnspython": {
+                "pip_name": "dnspython>=2.2.1",
+                "import_name": "dns",
+                "description": "DNS resolver package used by libp2p discovery/address handling",
+                "category": "networking",
+                "critical": False
+            },
             "libp2p": {
                 "pip_name": "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
                 "import_name": "libp2p",

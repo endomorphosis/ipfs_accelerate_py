@@ -304,8 +304,22 @@ def _load_datasets_profile_d_evaluator():
         module = importlib.import_module("ipfs_datasets_py.logic.profile_d_policy")
         return module.evaluate_execution_policy
     except ModuleNotFoundError:
-        canonical_root = Path(__file__).resolve().parents[4] / "ipfs_datasets"
-        if not (canonical_root / "ipfs_datasets_py" / "logic" / "profile_d_policy.py").is_file():
+        workspace_root = Path(__file__).resolve().parents[4]
+        candidates = [
+            workspace_root / "ipfs_datasets_py",
+            workspace_root / "ipfs_datasets",
+            workspace_root.parent / "ipfs_datasets_py",
+            workspace_root.parent / "ipfs_datasets",
+        ]
+        canonical_root = next(
+            (
+                root
+                for root in candidates
+                if (root / "ipfs_datasets_py" / "logic" / "profile_d_policy.py").is_file()
+            ),
+            None,
+        )
+        if canonical_root is None:
             raise
         for name in list(sys.modules):
             if name == "ipfs_datasets_py" or name.startswith("ipfs_datasets_py."):

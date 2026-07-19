@@ -125,7 +125,7 @@ sudo usermod -aG docker $USER
 # Install build dependencies
 sudo apt install build-essential python3-dev libssl-dev libffi-dev
 pip install --upgrade pip setuptools wheel
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
 ```
 
 **Issue 3: Port already in use**
@@ -172,7 +172,7 @@ python -m venv venv
 python -m pip install --upgrade pip
 
 # 4. Install dependencies
-python -m pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
+python -m pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
 
 # 5. Run cross-platform test
 python test_cross_platform_cache.py

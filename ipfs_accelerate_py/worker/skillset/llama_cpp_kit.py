@@ -1,108 +1,220 @@
-import requests
-from PIL import Image
-from io import BytesIO
-from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-from ipfs_transformers_py import AutoModel
-import torch
-from torch import Tensor as T
-import torchvision 
-from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
-import torch 
-import anyio
-from ..anyio_queue import AnyioQueue
-import openvino as ov
-from pathlib import Path
-import numpy as np
-import torch
-import json
-import time
+"""Compatibility skillset wrapper for llama.cpp.
+
+Older worker code expected a ``llama_cpp_kit`` class with chat/completion
+methods.  The runtime implementation now delegates to the centralized
+``ipfs_accelerate_py.llm_router`` llama.cpp provider so install, update,
+server probing, and HTTP request behavior do not drift across call sites.
+"""
+
+from __future__ import annotations
+
+import re
 import os
-import tempfile
-import openvino_genai as ov_genai
-from transformers import TextStreamer
+from typing import Any, Mapping, Optional, Sequence
 
-class fish_speech:
-    def __init__(self, resources=None, metadata=None):
-        self.resources = resources
-        self.metadata = metadata    
-        self.create_openvino_fish_speech_endpoint_handler = self.create_fish_speech_embedding_endpoint_handler
-        self.create_cuda_fish_speech_endpoint_handler = self.create_fish_speech_embedding_endpoint_handler
-        self.create_cpu_fish_speech_endpoint_handler = self.create_fish_speech_embedding_endpoint_handler
-        self.init_cpu = self.init_cpu
-        self.init_cuda = self.init_cuda
-        self.init_openvino = self.init_openvino
-        self.init = self.init
-        self.__test__ = self.__test__
-        pass
-    
-    def init_cpu (self, model, device, cpu_label):
-        return None
-    
-    def init_cuda(self, model, device, cuda_label):
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = AutoProcessor.from_pretrained(model)
-        endpoint = None
+from ipfs_accelerate_py.utils.llama_cpp import (
+    config_from_env,
+    ensure_llama_cpp_server,
+)
+
+
+class _TaskAbortion(RuntimeError):
+    pass
+
+
+class llama_cpp_kit:
+    def __init__(self, resources: Optional[Mapping[str, Any]] = None, meta: Optional[Mapping[str, Any]] = None):
+        self.resources = dict(resources or {})
+        self.meta = dict(meta or {})
+        self.chat_template = str(self.meta.get("chat_template") or self.resources.get("chat_template") or "openai")
+        self.model_name = str(
+            self.resources.get("model")
+            or self.resources.get("model_name")
+            or self.resources.get("checkpoint")
+            or ""
+        ).replace("@gguf", "")
+        self.provider_name = self._configured_provider_name()
+        self.TaskAbortion = _TaskAbortion
+        self.should_abort = lambda: False
+
+    def __call__(self, method: str, **kwargs: Any):
+        if method in {"llm_chat", "llama_cpp", "llama_cpp_chat"}:
+            return self.chat(**kwargs)
+        if method == "llm_chat_logits":
+            return self.chat_logits(**kwargs)
+        if method in {"llm_complete", "text_complete"}:
+            return self.llm_complete(**kwargs)
+        if method == "llm_logits":
+            return self.logits(**kwargs)
+        if method == "instruct":
+            return self.instruct(**kwargs)
+        raise ValueError(f"unknown method: {method}")
+
+    def ensure_server(self, *, autostart: bool = False, auto_install: bool = False, auto_update: bool = False):
+        config = config_from_env(
+            **{
+                key: value
+                for key, value in {
+                    "model_ref": self.resources.get("model_ref"),
+                    "host": self.resources.get("host"),
+                    "port": self.resources.get("port"),
+                    "context_size": self.resources.get("context_size") or self.resources.get("contextSize"),
+                    "threads": self.resources.get("threads"),
+                    "gpu_layers": self.resources.get("gpu_layers"),
+                    "extra_args": self.resources.get("extra_args"),
+                    "log_dir": self.resources.get("log_dir"),
+                }.items()
+                if value is not None
+            }
+        )
+        return ensure_llama_cpp_server(
+            config,
+            autostart=autostart,
+            auto_install=auto_install,
+            auto_update=auto_update,
+        )
+
+    def chat(self, messages: Sequence[Mapping[str, Any]], system: Optional[str] = None, **kwargs: Any):
+        normalized = self._normalize_messages(messages, system=system)
+        prompt = "\n".join(f"{msg['role']}: {msg['content']}" for msg in normalized)
+        return self.llm_complete(prompt=prompt, **kwargs)
+
+    def llama_cpp_chat(self, messages: Sequence[Mapping[str, Any]], system: Optional[str] = None, **kwargs: Any):
+        return self.chat(messages, system=system, **kwargs)
+
+    def chat_logits(
+        self,
+        messages: Sequence[Mapping[str, Any]],
+        logits_for: Sequence[str],
+        chat_template: Optional[str] = None,
+        system: Optional[str] = None,
+        **kwargs: Any,
+    ) -> dict[str, dict[str, float]]:
+        prompt = "\n".join(
+            f"{msg['role']}: {msg['content']}"
+            for msg in self._normalize_messages(messages, system=system)
+        )
+        return self.logits(prompt=prompt, logits_for=logits_for, **kwargs)
+
+    def llm_complete(
+        self,
+        prompt: str,
+        max_tokens: int = 256,
+        temperature: float = 0.0,
+        stream: bool = True,
+        stopping_regex: Optional[str] = None,
+        logit_bias: Optional[Mapping[str, float]] = None,
+        stop: Optional[Sequence[str] | str] = None,
+        **kwargs: Any,
+    ):
+        text = self._generate(
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stop=stop,
+            logit_bias=logit_bias,
+            **kwargs,
+        )
+        if stopping_regex:
+            match = re.search(stopping_regex, text)
+            if match:
+                text = text[: match.start()]
+        if stream:
+            yield {"text": text, "done": False}
+            yield {"text": "", "done": True}
+        else:
+            yield {"text": text, "done": True}
+
+    def text_complete(self, prompt: str, **kwargs: Any):
+        return self.llm_complete(prompt=prompt, **kwargs)
+
+    def logits(self, prompt: str, logits_for: Sequence[str], **kwargs: Any) -> dict[str, dict[str, float]]:
+        from ipfs_accelerate_py import llm_router
+
+        top_logprobs = max(1, min(len(tuple(logits_for or ())), 20))
+        response = llm_router.chat_completions_create(
+            messages=[{"role": "user", "content": prompt}],
+            provider=self.provider_name,
+            model=self.model_name or None,
+            logprobs=True,
+            top_logprobs=top_logprobs,
+            max_tokens=1,
+            temperature=0.0,
+            **kwargs,
+        )
+        observed: dict[str, float] = {}
         try:
-            endpoint = AutoModelForImageTextToText.from_pretrained(model, trust_remote_code=True).to(device)
-        except Exception as e:
-            print(e)
-            pass
-        endpoint_handler = self.create_image_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
-        torch.cuda.empty_cache()
-        # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(64), 0
-    
-    def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
-        endpoint = None
-        tokenizer = None
-        endpoint_handler = None
-        batch_size = 0                
-        tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-        endpoint = get_openvino_model(model, model_type, openvino_label)
-        endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(endpoint,tokenizer, model, openvino_label)
-        batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(64), batch_size
+            top = response.choices[0].logprobs.content[0].top_logprobs
+            observed = {entry.token: float(entry.logprob) for entry in top}
+        except Exception:
+            observed = {}
+        return {"logits": {str(token): float(observed.get(str(token), float("-inf"))) for token in logits_for}}
 
-    def create_cpu_fish_speech_endpoint_handler(self, local_cpu_endpoint, local_cpu_processor, endpoint_model, cpu_label):
-        def handler(x, y=None, local_cpu_endpoint=local_cpu_endpoint, local_cpu_processor=local_cpu_processor, endpoint_model=endpoint_model, cpu_label=cpu_label):
-            if "infer" in dir(local_cpu_endpoint):
-                return local_cpu_endpoint.infer(x)
-            else:
-                return None
-        return handler
+    def instruct(self, context: Sequence[Mapping[str, Any]], instruction: str, **kwargs: Any):
+        context_text = "\n\n".join(
+            str(item.get("data") or item.get("text") or item.get("content") or "")
+            for item in context or ()
+            if isinstance(item, Mapping)
+        )
+        prompt = f"{context_text}\n\nInstruction:\n{instruction}".strip()
+        return self.llm_complete(prompt=prompt, **kwargs)
 
-    def create_cuda_fish_speech_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cuda_label):
-        def handler(x, y=None, local_cuda_endpoint=local_cuda_endpoint, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
-            # if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
-            #       self.local_endpoints[endpoint_model][cuda_label].eval()
-            if "eval" in dir(local_cuda_endpoint):
-                local_cuda_endpoint.eval()
-            else:
-                pass
-            with torch.no_grad():
-                try:
-                    torch.cuda.empty_cache()
-                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
-                    if "generate" in dir(local_cuda_endpoint):
-                        if y is not None:
-                            return local_cuda_endpoint.generate(x, y)
-                        else:
-                            return local_cuda_endpoint.generate(x)
-                    else:
-                        return local_cuda_endpoint(x)
-                except Exception as e:
-                    print(e)
-                    return None
-        
-        return handler
-
-    def create_openvino_fish_speech_endpoint_handler(self, local_openvino_endpoint, local_openvino_processor, endpoint_model, openvino_label):
-        def handler(x, y=None, local_openvino_endpoint=local_openvino_endpoint, local_openvino_processor=local_openvino_processor, endpoint_model=endpoint_model, openvino_label=openvino_label):
-            if "infer" in dir(local_openvino_endpoint):
-                return local_openvino_endpoint.infer(x)
-            else:
-                return None
-        return handler
-    
-    def __test__(self, model, device, label):
+    def unload(self) -> None:
         return None
+
+    def test(self, **kwargs: Any):
+        if self.provider_name != "llama_cpp":
+            from ipfs_accelerate_py import llm_router
+
+            provider = llm_router._builtin_provider_by_name(self.provider_name)
+            return {"provider": self.provider_name, "available": provider is not None}
+        return self.ensure_server(**kwargs).to_dict()
+
+    def _generate(self, prompt: str, **kwargs: Any) -> str:
+        from ipfs_accelerate_py import llm_router
+
+        return llm_router.generate_text(
+            str(prompt or ""),
+            provider=self.provider_name,
+            model_name=self.model_name or None,
+            **kwargs,
+        )
+
+    def _configured_provider_name(self) -> str:
+        provider = str(
+            self.meta.get("provider")
+            or self.meta.get("provider_name")
+            or self.resources.get("provider")
+            or self.resources.get("provider_name")
+            or os.getenv("IPFS_ACCELERATE_LLAMA_CPP_KIT_PROVIDER")
+            or os.getenv("IPFS_ACCELERATE_LLAMA_CPP_PROVIDER")
+            or "llama_cpp"
+        ).strip().lower()
+        if os.getenv("IPFS_ACCELERATE_LLAMA_CPP_USE_NATIVE", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            return "llama_cpp_native"
+        return provider or "llama_cpp"
+
+    @staticmethod
+    def _normalize_messages(
+        messages: Sequence[Mapping[str, Any]],
+        *,
+        system: Optional[str] = None,
+    ) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        if system:
+            normalized.append({"role": "system", "content": str(system)})
+        for message in messages or ():
+            if not isinstance(message, Mapping):
+                continue
+            role = str(message.get("role") or "user")
+            content = str(message.get("content") or message.get("text") or "")
+            normalized.append({"role": role, "content": content})
+        return normalized
+
+
+export = llama_cpp_kit

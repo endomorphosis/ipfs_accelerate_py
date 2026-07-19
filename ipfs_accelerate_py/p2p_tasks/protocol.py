@@ -20,6 +20,82 @@ from cryptography.fernet import Fernet, InvalidToken
 # Keep the protocol id stable for interop with existing nodes.
 PROTOCOL_V1 = "/ipfs-datasets/task-queue/1.0.0"
 
+# MCP++ tool name used to carry TaskQueue RPC messages over `/mcp+p2p/1.0.0`.
+TASK_QUEUE_MCP_RPC_TOOL = "task_queue.rpc"
+
+
+def _truthy(text: str | None, *, default: bool = False) -> bool:
+    if text is None:
+        return bool(default)
+    return str(text).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _protocol_env_value() -> str:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_PROTOCOL")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_PROTOCOL")
+    return str(raw or "").strip()
+
+
+def task_p2p_protocol_order() -> list[str]:
+    """Return the TaskQueue transport preference order.
+
+    Defaults to MCP++ only. Operators can set
+    `IPFS_ACCELERATE_PY_TASK_P2P_PROTOCOL=auto` for MCP++ then legacy fallback,
+    or `legacy` for old NDJSON-only interoperability.
+    """
+
+    raw = _protocol_env_value() or "mcp"
+    tokens = [
+        p.strip().lower()
+        for p in raw.replace("|", ",").replace(";", ",").replace(" ", ",").split(",")
+        if p.strip()
+    ]
+
+    out: list[str] = []
+
+    def _append(value: str) -> None:
+        if value not in out:
+            out.append(value)
+
+    for token in tokens:
+        normalized = token.replace("_", "-")
+        if normalized in {"auto", "mcp-then-legacy", "mcp+legacy", "mcp/legacy"}:
+            _append("mcp")
+            _append("legacy")
+        elif normalized in {"mcp", "mcp++", "mcp+p2p", "mcpp", "mcpp2p"}:
+            _append("mcp")
+        elif normalized in {"legacy", "ndjson", "v1", "task-queue", "taskqueue"}:
+            _append("legacy")
+
+    if not out:
+        out.append("mcp")
+
+    allow_legacy_fallback = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ALLOW_LEGACY_FALLBACK")
+    if allow_legacy_fallback is None:
+        allow_legacy_fallback = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ALLOW_LEGACY_FALLBACK")
+    if _truthy(allow_legacy_fallback, default=False):
+        _append("legacy")
+
+    return out
+
+
+def legacy_task_protocol_enabled(*, default: bool = False) -> bool:
+    """Return whether the service should register the legacy NDJSON handler."""
+
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_LEGACY_PROTOCOL")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ENABLE_LEGACY_PROTOCOL")
+    if raw is not None:
+        return _truthy(raw, default=default)
+
+    # Treat an explicit server/client protocol choice that includes legacy as
+    # operator intent to expose the old handler.
+    if _protocol_env_value():
+        return "legacy" in task_p2p_protocol_order()
+
+    return bool(default)
+
 
 async def read_ndjson_message(
     stream: Any,

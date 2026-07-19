@@ -10,11 +10,11 @@ For an end-to-end validation on two machines, use the runbook and smoke tool:
 
 ## Key Points
 
-✅ **No separate service** - integrated into `ipfs_accelerate_py.github_cli`  
-✅ **Zero configuration** - works automatically with sensible defaults  
-✅ **Transparent** - no code changes needed in existing scripts  
-✅ **Optional** - gracefully falls back if P2P libraries unavailable  
-✅ **Secure** - encrypted messages using `CACHE_P2P_SHARED_SECRET` (recommended) or GitHub token-derived key  
+✅ **No separate service** - integrated into `ipfs_accelerate_py.github_cli`
+✅ **Zero configuration** - works automatically with sensible defaults
+✅ **Transparent** - no code changes needed in existing scripts
+✅ **Optional** - gracefully falls back if P2P libraries unavailable
+✅ **Secure** - encrypted messages using `CACHE_P2P_SHARED_SECRET` (recommended) or GitHub token-derived key
 
 ## Quick Start
 
@@ -29,7 +29,7 @@ python tools/github_p2p_cache_smoke.py --read --local-two-node --target octocat/
 ### 1. Install P2P Dependencies (Optional)
 
 ```bash
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" cryptography py-multiformats-cid
 ```
 
 **Note:** `cryptography` is required for encrypted P2P messages.

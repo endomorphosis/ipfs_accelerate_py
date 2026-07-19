@@ -58,8 +58,10 @@ echo ""
 
 # Core dependencies
 DEPENDENCIES=(
-    "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+    "protobuf>=5.27.0"
     "pymultihash>=0.8.2"
+    "dnspython>=2.2.1"
+    "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
     "py-multiformats-cid"
     "cryptography"
 )

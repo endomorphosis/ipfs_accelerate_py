@@ -34,6 +34,13 @@ from ipfs_accelerate_py.p2p_tasks.peer_trust import (
     trust_tiers_enabled,
 )
 
+_MCP_P2P_PROFILE_ALIASES: dict[str, tuple[str, ...]] = {
+    "mcp++/idl": ("mcp++/profile-a-idl",),
+    "mcp++/cid-envelope": ("mcp++/profile-b-cid-artifacts",),
+    "mcp++/ucan": ("mcp++/profile-c-ucan",),
+    "mcp++/p2p-transport": ("mcp++/profile-e-mcp-p2p",),
+}
+
 
 _MCP_P2P_STATS_LOCK = threading.RLock()
 _MCP_P2P_STATS: dict[str, int] = {
@@ -74,6 +81,19 @@ def _normalize_profiles(raw_profiles: Any) -> list[str]:
     return profiles
 
 
+def _with_profile_aliases(profiles: list[str]) -> list[str]:
+    """Append backward-compatible MCP++ profile aliases without changing order."""
+
+    out = list(profiles)
+    seen = set(out)
+    for profile in list(profiles):
+        for alias in _MCP_P2P_PROFILE_ALIASES.get(profile, ()):
+            if alias and alias not in seen:
+                seen.add(alias)
+                out.append(alias)
+    return out
+
+
 def _normalize_profile_negotiation(raw_negotiation: Any, profiles: list[str]) -> dict[str, Any]:
     payload = dict(raw_negotiation) if isinstance(raw_negotiation, dict) else {}
     mode = str(payload.get("mode") or "").strip() or "optional_additive"
@@ -110,6 +130,7 @@ def _resolve_profile_negotiation(registry: Any | None) -> tuple[list[str], dict[
         except Exception:
             profiles = []
 
+    profiles = _with_profile_aliases(profiles)
     negotiation = _normalize_profile_negotiation(raw_negotiation, profiles)
     return profiles, negotiation
 

@@ -91,7 +91,20 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
-from .protocol import PROTOCOL_V1, get_shared_token
+from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
+    get_background_trio_service,
+    have_libp2p_runtime,
+    make_kad_dht,
+    make_mdns_discovery,
+    make_multiaddr,
+    make_rendezvous_client,
+    new_libp2p_host,
+    peerinfo_from_multiaddr,
+    require_libp2p_runtime,
+)
+from .mcp_p2p_client import MCPP2PClient
+from .mcp_p2p_protocol import PROTOCOL_MCP_P2P_V1
+from .protocol import PROTOCOL_V1, TASK_QUEUE_MCP_RPC_TOOL, get_shared_token, task_p2p_protocol_order
 
 
 def _truthy(text: str | None, *, default: bool = False) -> bool:
@@ -118,11 +131,7 @@ def _env_str(*, primary: str, compat: str, default: str) -> str:
 
 
 def _have_libp2p() -> bool:
-    try:
-        import libp2p  # noqa: F401
-        return True
-    except Exception:
-        return False
+    return bool(have_libp2p_runtime())
 
 
 def _dial_debug_enabled() -> bool:
@@ -1236,15 +1245,19 @@ def _best_effort_peerinfo_multiaddrs(peer_info: Any) -> list[str]:
 async def _try_peer_info(*, host, peer_info: Any, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     try:
         await host.connect(peer_info)
-        stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
         try:
-            resp = await _request_over_stream(stream=stream, message=message)
-            return resp if isinstance(resp, dict) else None
-        finally:
-            try:
-                await stream.close()
-            except Exception:
-                pass
+            pid = getattr(peer_info, "peer_id", None)
+            peer_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+        except Exception:
+            peer_text = ""
+        resp = await _request_over_selected_protocols(
+            host=host,
+            peer_info=peer_info,
+            message=message,
+            peer_text=peer_text,
+            peer_multiaddr="",
+        )
+        return resp if isinstance(resp, dict) else None
     except Exception:
         return None
 
@@ -1414,11 +1427,6 @@ def _bootstrap_dial_enabled() -> bool:
 async def _best_effort_connect_multiaddrs(*, host, addrs: list[str]) -> None:
     if not addrs:
         return
-    try:
-        from multiaddr import Multiaddr
-        from libp2p.peer.peerinfo import info_from_p2p_addr
-    except Exception:
-        return
 
     max_connects = _bootstrap_seed_max_connects()
     connect_attempts = 0
@@ -1427,7 +1435,7 @@ async def _best_effort_connect_multiaddrs(*, host, addrs: list[str]) -> None:
             _retry_metric_inc("dial.bootstrap_seed_attempt_limit")
             break
         try:
-            peer_info = info_from_p2p_addr(Multiaddr(addr))
+            peer_info = peerinfo_from_multiaddr(addr)
             connect_attempts += 1
             await host.connect(peer_info)
         except Exception:
@@ -1668,12 +1676,87 @@ async def _request_over_stream(*, stream, message: Dict[str, Any]) -> Dict[str, 
     return await _read_one_json_line(stream)
 
 
-async def _try_peer_multiaddr(*, host, peer_multiaddr: str, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    from multiaddr import Multiaddr
-    from libp2p.peer.peerinfo import info_from_p2p_addr
+def _task_p2p_protocol_order() -> list[str]:
+    return task_p2p_protocol_order()
 
+
+async def _request_over_mcp_stream(*, stream, message: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(message)
+    token = get_shared_token()
+    if token and "token" not in payload:
+        payload["token"] = token
+
+    client = MCPP2PClient(stream)
+    await client.initialize(
+        {
+            "clientInfo": {
+                "name": "ipfs-accelerate-taskqueue-client",
+                "version": "1.0.0",
+            },
+            "profiles": ["mcp++/p2p-transport"],
+        }
+    )
+    resp = await client.tools_call(TASK_QUEUE_MCP_RPC_TOOL, payload)
+    return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_mcp_response"}
+
+
+async def _request_over_selected_protocols(
+    *,
+    host,
+    peer_info: Any,
+    message: Dict[str, Any],
+    peer_text: str = "",
+    peer_multiaddr: str = "",
+) -> Dict[str, Any]:
+    last_error: Exception | None = None
+    op = str(message.get("op") or "").strip() or "unknown"
+    for protocol_name in _task_p2p_protocol_order():
+        if protocol_name == "mcp":
+            protocol_id = PROTOCOL_MCP_P2P_V1
+        elif protocol_name == "legacy":
+            protocol_id = PROTOCOL_V1
+        else:
+            continue
+
+        try:
+            stream = await host.new_stream(peer_info.peer_id, [protocol_id])
+        except Exception as exc:
+            last_error = exc
+            _dial_debug(
+                f"new_stream failed peer={peer_text} multiaddr={peer_multiaddr} "
+                f"protocol={protocol_id} op={op} exc={type(exc).__name__}: {exc}"
+            )
+            continue
+
+        _dial_debug(
+            f"new_stream ok peer={peer_text} multiaddr={peer_multiaddr} "
+            f"protocol={protocol_id} op={op}"
+        )
+        try:
+            if protocol_name == "mcp":
+                return await _request_over_mcp_stream(stream=stream, message=message)
+            return await _request_over_stream(stream=stream, message=message)
+        except Exception as exc:
+            last_error = exc
+            _dial_debug(
+                f"request failed peer={peer_text} multiaddr={peer_multiaddr} "
+                f"protocol={protocol_id} op={op} exc={type(exc).__name__}: {exc}"
+            )
+            continue
+        finally:
+            try:
+                await stream.close()
+            except Exception:
+                pass
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("no TaskQueue p2p protocols configured")
+
+
+async def _try_peer_multiaddr(*, host, peer_multiaddr: str, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     peer_multiaddr = _normalize_peer_multiaddr_port(peer_multiaddr)
-    peer_info = info_from_p2p_addr(Multiaddr(peer_multiaddr))
+    peer_info = peerinfo_from_multiaddr(peer_multiaddr)
     peer_text = ""
     try:
         peer_text = peer_info.peer_id.pretty() if hasattr(peer_info.peer_id, "pretty") else str(peer_info.peer_id)
@@ -1693,22 +1776,13 @@ async def _try_peer_multiaddr(*, host, peer_multiaddr: str, message: Dict[str, A
         raise
 
     _dial_debug(f"connect ok peer={peer_text} multiaddr={peer_multiaddr}")
-    try:
-        stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
-    except Exception as exc:
-        _dial_debug(
-            f"new_stream failed peer={peer_text} protocol={PROTOCOL_V1} exc={type(exc).__name__}: {exc}"
-        )
-        raise
-
-    _dial_debug(f"new_stream ok peer={peer_text} protocol={PROTOCOL_V1}")
-    try:
-        return await _request_over_stream(stream=stream, message=message)
-    finally:
-        try:
-            await stream.close()
-        except Exception:
-            pass
+    return await _request_over_selected_protocols(
+        host=host,
+        peer_info=peer_info,
+        message=message,
+        peer_text=peer_text,
+        peer_multiaddr=peer_multiaddr,
+    )
 
 
 async def _dial_via_bootstrap(*, host, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1799,18 +1873,16 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
     ):
         return {"ok": False, "error": "mdns_disabled"}
 
-    try:
-        from libp2p.discovery.mdns.mdns import MDNSDiscovery
-        from libp2p.abc import PeerInfo
-    except Exception as exc:
-        return {"ok": False, "error": f"mdns_unavailable: {exc}"}
-
     discover_timeout_s = float(
         os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DISCOVERY_TIMEOUT_S")
         or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DISCOVERY_TIMEOUT_S", "5.0")
     )
 
-    mdns = MDNSDiscovery(host.get_network(), port=_mdns_port())
+    try:
+        mdns = make_mdns_discovery(host.get_network(), port=_mdns_port())
+    except Exception as exc:
+        return {"ok": False, "error": f"mdns_unavailable: {exc}"}
+
     try:
         mdns.start()
     except Exception as exc:
@@ -1865,10 +1937,9 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
                         continue
                     dial_addrs.append(a)
 
-                if not dial_addrs:
+                if not dial_addrs or not dial_ma:
                     continue
 
-                peer_info = PeerInfo(peer_id=pid, addrs=dial_addrs)
                 remote_ref = RemoteQueue(peer_id=pid_text, multiaddr=(dial_ma or ""))
                 remote_wait_s = _remote_cooldown_wait_s(remote_ref)
                 if remote_wait_s > 0:
@@ -1876,20 +1947,12 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
                     continue
                 attempts_this_poll += 1
                 try:
-                    await host.connect(peer_info)
-                    stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
-                    try:
-                        resp = await _request_over_stream(stream=stream, message=message)
-                        _remote_cooldown_mark_success(remote_ref)
-                        _mark_last_success_peer(pid_text)
-                        if dial_ma:
-                            _cache_set_multiaddr(pid_text, dial_ma)
-                        return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
-                    finally:
-                        try:
-                            await stream.close()
-                        except Exception:
-                            pass
+                    resp = await _try_peer_multiaddr(host=host, peer_multiaddr=dial_ma, message=message)
+                    _remote_cooldown_mark_success(remote_ref)
+                    _mark_last_success_peer(pid_text)
+                    if dial_ma:
+                        _cache_set_multiaddr(pid_text, dial_ma)
+                    return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
                 except Exception:
                     _remote_cooldown_mark_failure(remote_ref)
                     continue
@@ -1924,16 +1987,8 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
 
     exclude_peer_id = "" if require_peer_id else _read_announce_peer_id_hint()
 
-    candidates = [
-        ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
-        ("libp2p.discovery.rendezvous", "RendezvousClient"),
-        ("libp2p.rendezvous", "RendezvousClient"),
-    ]
-    for module_name, symbol in candidates:
+    for cli in [candidate for candidate in (make_rendezvous_client(host),) if candidate is not None]:
         try:
-            mod = __import__(module_name, fromlist=[symbol])
-            cls = getattr(mod, symbol)
-            cli = cls(host)
             discover = getattr(cli, "discover", None)
             if not callable(discover):
                 continue
@@ -1990,18 +2045,12 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
                         continue
 
                     attempts += 1
-                    await host.connect(peer_info)
-                    stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
-                    try:
-                        resp = await _request_over_stream(stream=stream, message=message)
+                    resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                    if isinstance(resp, dict):
                         _remote_cooldown_mark_success(remote_ref)
                         _mark_last_success_peer(pid_text)
-                        return resp if isinstance(resp, dict) else None
-                    finally:
-                        try:
-                            await stream.close()
-                        except Exception:
-                            pass
+                        return resp
+                    return None
                 except Exception:
                     try:
                         _remote_cooldown_mark_failure(RemoteQueue(peer_id=pid_text, multiaddr=""))
@@ -2031,24 +2080,9 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
 
     exclude_peer_id = "" if require_peer_id else _read_announce_peer_id_hint()
 
-    candidates = [
-        ("libp2p.kad_dht.kad_dht", "KadDHT"),
-        ("libp2p.kad_dht", "KadDHT"),
-    ]
-    for module_name, symbol in candidates:
+    for dht in [candidate for candidate in (make_kad_dht(host, mode="client"),) if candidate is not None]:
         try:
-            mod = __import__(module_name, fromlist=[symbol])
-            cls = getattr(mod, symbol)
-
-            # KadDHT requires a DHTMode in some builds.
-            try:
-                from libp2p.kad_dht.kad_dht import DHTMode  # type: ignore
-
-                dht = cls(host, DHTMode.CLIENT)
-            except Exception:
-                dht = cls(host)
-
-            from libp2p.tools.async_service.trio_service import background_trio_service
+            background_trio_service = get_background_trio_service()
 
             async with background_trio_service(dht):
                 # Seed routing table: connect to bootstrap peers.
@@ -2213,25 +2247,15 @@ async def _dial_and_request(
         raise RuntimeError("libp2p is not installed")
 
     import anyio
-    import inspect
-    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
-    from libp2p import new_host
-    from multiaddr import Multiaddr
-    from libp2p.tools.async_service import background_trio_service
 
-    if not ensure_libp2p_compatible():
-        raise RuntimeError(
-            "libp2p is installed but dependency compatibility patches could not be applied. "
-            "This environment likely has an incompatible `multihash` module."
-        )
-
-    host_obj = new_host()
-    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+    require_libp2p_runtime()
+    host = await new_libp2p_host()
+    background_trio_service = get_background_trio_service()
 
     resp: Optional[Dict[str, Any]] = None
     try:
         async with background_trio_service(host.get_network()):
-            await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+            await host.get_network().listen(make_multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
             with anyio.fail_after(float(dial_timeout_s)):
                 require_peer_id = (remote.peer_id or "").strip()
@@ -2373,19 +2397,9 @@ async def discover_status(
         raise RuntimeError("libp2p is not installed")
 
     import anyio
-    import inspect
     import time
 
-    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
-    from libp2p import new_host
-    from libp2p.tools.async_service import background_trio_service
-    from multiaddr import Multiaddr
-
-    if not ensure_libp2p_compatible():
-        raise RuntimeError(
-            "libp2p is installed but dependency compatibility patches could not be applied. "
-            "This environment likely has an incompatible `multihash` module."
-        )
+    require_libp2p_runtime()
 
     message: Dict[str, Any] = {"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)}
     require_peer_id = (remote.peer_id or "").strip()
@@ -2397,11 +2411,11 @@ async def discover_status(
         nat = resp.get("nat")
         return nat if isinstance(nat, dict) else None
 
-    host_obj = new_host()
-    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+    host = await new_libp2p_host()
+    background_trio_service = get_background_trio_service()
 
     async with background_trio_service(host.get_network()):
-        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+        await host.get_network().listen(make_multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
         deadline = time.time() + max(0.1, float(timeout_s))
 
@@ -2532,17 +2546,9 @@ async def discover_status(
                 compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
                 default="ipfs-accelerate-task-queue",
             )
-            candidates = [
-                ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
-                ("libp2p.discovery.rendezvous", "RendezvousClient"),
-                ("libp2p.rendezvous", "RendezvousClient"),
-            ]
             rendezvous_attempted = False
-            for module_name, symbol in candidates:
+            for cli in [candidate for candidate in (make_rendezvous_client(host),) if candidate is not None]:
                 try:
-                    mod = __import__(module_name, fromlist=[symbol])
-                    cls = getattr(mod, symbol)
-                    cli = cls(host)
                     discover = getattr(cli, "discover", None)
                     if not callable(discover):
                         continue
@@ -2657,27 +2663,14 @@ async def discover_status(
                 default="ipfs-accelerate-task-queue",
             )
             ns_key = _dht_key_for_namespace(ns)
-            candidates = [
-                ("libp2p.kad_dht.kad_dht", "KadDHT"),
-                ("libp2p.kad_dht", "KadDHT"),
-            ]
 
             dht_attempted = False
-            for module_name, symbol in candidates:
+            for dht in [candidate for candidate in (make_kad_dht(host, mode="client"),) if candidate is not None]:
                 try:
-                    mod = __import__(module_name, fromlist=[symbol])
-                    cls = getattr(mod, symbol)
                     dht_attempted = True
 
-                    try:
-                        from libp2p.kad_dht.kad_dht import DHTMode  # type: ignore
-
-                        dht = cls(host, DHTMode.CLIENT)
-                    except Exception:
-                        dht = cls(host)
-
                     import trio
-                    from libp2p.tools.async_service.trio_service import background_trio_service as bg_trio
+                    bg_trio = get_background_trio_service()
 
                     async def _run_dht_service() -> None:
                         async with bg_trio(dht):
@@ -2977,35 +2970,23 @@ async def discover_multiaddr_via_mdns(*, peer_id: str, timeout_s: float = 10.0) 
         raise RuntimeError("libp2p is not installed")
 
     import anyio
-    import inspect
 
-    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
-    from libp2p import new_host
-    from libp2p.tools.async_service import background_trio_service
-    from multiaddr import Multiaddr
-
-    if not ensure_libp2p_compatible():
-        raise RuntimeError(
-            "libp2p is installed but dependency compatibility patches could not be applied. "
-            "This environment likely has an incompatible `multihash` module."
-        )
+    require_libp2p_runtime()
 
     require_peer_id = str(peer_id or "").strip()
     if not require_peer_id:
         raise ValueError("peer_id is required")
 
-    try:
-        from libp2p.discovery.mdns.mdns import MDNSDiscovery
-    except Exception as exc:
-        raise RuntimeError(f"mdns_unavailable: {exc}")
-
-    host_obj = new_host()
-    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+    host = await new_libp2p_host()
+    background_trio_service = get_background_trio_service()
 
     async with background_trio_service(host.get_network()):
-        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+        await host.get_network().listen(make_multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
-        mdns = MDNSDiscovery(host.get_network(), port=_mdns_port())
+        try:
+            mdns = make_mdns_discovery(host.get_network(), port=_mdns_port())
+        except Exception as exc:
+            raise RuntimeError(f"mdns_unavailable: {exc}")
         try:
             mdns.start()
         except Exception as exc:
@@ -3067,36 +3048,24 @@ async def discover_peers_via_mdns(*, timeout_s: float = 10.0, limit: int = 10, e
         raise RuntimeError("libp2p is not installed")
 
     import anyio
-    import inspect
 
-    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
-    from libp2p import new_host
-    from libp2p.tools.async_service import background_trio_service
-    from multiaddr import Multiaddr
-
-    if not ensure_libp2p_compatible():
-        raise RuntimeError(
-            "libp2p is installed but dependency compatibility patches could not be applied. "
-            "This environment likely has an incompatible `multihash` module."
-        )
-
-    try:
-        from libp2p.discovery.mdns.mdns import MDNSDiscovery
-    except Exception as exc:
-        raise RuntimeError(f"mdns_unavailable: {exc}")
+    require_libp2p_runtime()
 
     limit = max(1, int(limit))
     exclude_peer_id = _read_announce_peer_id_hint() if bool(exclude_self) else ""
 
-    host_obj = new_host()
-    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+    host = await new_libp2p_host()
 
     found: dict[str, str] = {}
+    background_trio_service = get_background_trio_service()
 
     async with background_trio_service(host.get_network()):
-        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+        await host.get_network().listen(make_multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
-        mdns = MDNSDiscovery(host.get_network(), port=_mdns_port())
+        try:
+            mdns = make_mdns_discovery(host.get_network(), port=_mdns_port())
+        except Exception as exc:
+            raise RuntimeError(f"mdns_unavailable: {exc}")
         try:
             mdns.start()
         except Exception as exc:
@@ -3157,18 +3126,8 @@ async def discover_peers_via_rendezvous(
         raise RuntimeError("libp2p is not installed")
 
     import anyio
-    import inspect
 
-    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
-    from libp2p import new_host
-    from libp2p.tools.async_service import background_trio_service
-    from multiaddr import Multiaddr
-
-    if not ensure_libp2p_compatible():
-        raise RuntimeError(
-            "libp2p is installed but dependency compatibility patches could not be applied. "
-            "This environment likely has an incompatible `multihash` module."
-        )
+    require_libp2p_runtime()
 
     ns = (namespace or "").strip() or _env_str(
         primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS",
@@ -3176,41 +3135,30 @@ async def discover_peers_via_rendezvous(
         default="ipfs-accelerate-task-queue",
     )
 
-    candidates = [
-        ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
-        ("libp2p.discovery.rendezvous", "RendezvousClient"),
-        ("libp2p.rendezvous", "RendezvousClient"),
-    ]
-    cli = None
-    for module_name, symbol in candidates:
-        try:
-            mod = __import__(module_name, fromlist=[symbol])
-            cls = getattr(mod, symbol)
-            cli = cls
-            break
-        except Exception:
-            continue
-    if cli is None:
-        return []
-
     limit = max(1, int(limit))
     exclude_peer_id = _read_announce_peer_id_hint() if bool(exclude_self) else ""
 
-    host_obj = new_host()
-    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+    host = await new_libp2p_host()
+    cli = make_rendezvous_client(host)
+    if cli is None:
+        try:
+            await host.close()
+        except Exception:
+            pass
+        return []
 
     found: dict[str, str] = {}
+    background_trio_service = get_background_trio_service()
 
     async with background_trio_service(host.get_network()):
-        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+        await host.get_network().listen(make_multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
         deadline = anyio.current_time() + max(0.1, float(timeout_s))
         cookie: bytes = b""
 
         while anyio.current_time() < deadline and len(found) < limit:
             try:
-                inst = cli(host)
-                discover = getattr(inst, "discover", None)
+                discover = getattr(cli, "discover", None)
                 if not callable(discover):
                     break
                 try:
@@ -3303,18 +3251,8 @@ async def discover_peers_via_dht(
         raise RuntimeError("libp2p is not installed")
 
     import anyio
-    import inspect
 
-    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
-    from libp2p import new_host
-    from libp2p.tools.async_service import background_trio_service
-    from multiaddr import Multiaddr
-
-    if not ensure_libp2p_compatible():
-        raise RuntimeError(
-            "libp2p is installed but dependency compatibility patches could not be applied. "
-            "This environment likely has an incompatible `multihash` module."
-        )
+    require_libp2p_runtime()
 
     ns = (namespace or "").strip() or _env_str(
         primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS",
@@ -3327,36 +3265,21 @@ async def discover_peers_via_dht(
     exclude_peer_id = _read_announce_peer_id_hint() if bool(exclude_self) else ""
     limit = max(1, int(limit))
 
-    candidates = [
-        ("libp2p.kad_dht.kad_dht", "KadDHT"),
-        ("libp2p.kad_dht", "KadDHT"),
-    ]
-
-    host_obj = new_host()
-    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+    host = await new_libp2p_host()
 
     found: dict[str, str] = {}
+    background_trio_service = get_background_trio_service()
 
     async with background_trio_service(host.get_network()):
-        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+        await host.get_network().listen(make_multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
         deadline = anyio.current_time() + max(0.1, float(timeout_s))
 
-        for module_name, symbol in candidates:
+        for dht in [candidate for candidate in (make_kad_dht(host, mode="client"),) if candidate is not None]:
             if anyio.current_time() >= deadline or len(found) >= limit:
                 break
             try:
-                mod = __import__(module_name, fromlist=[symbol])
-                cls = getattr(mod, symbol)
-
-                try:
-                    from libp2p.kad_dht.kad_dht import DHTMode  # type: ignore
-
-                    dht = cls(host, DHTMode.CLIENT)
-                except Exception:
-                    dht = cls(host)
-
-                from libp2p.tools.async_service.trio_service import background_trio_service as background_trio_service2
+                background_trio_service2 = get_background_trio_service()
 
                 async with background_trio_service2(dht):
                     try:

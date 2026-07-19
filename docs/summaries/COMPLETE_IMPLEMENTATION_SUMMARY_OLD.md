@@ -2,8 +2,8 @@
 
 ## Status: ✅ ALL TESTS PASSING - SYSTEM OPERATIONAL
 
-**Date:** November 8, 2025  
-**Final Test Results:** 16/16 tests passed (100%)  
+**Date:** November 8, 2025
+**Final Test Results:** 16/16 tests passed (100%)
 **System Status:** Production Ready ✅
 
 ---
@@ -113,7 +113,7 @@ sudo apt-get install libgmp-dev  # Required by fastecdsa (libp2p dependency)
 ```bash
 cryptography==46.0.1              # Encryption
 py-multiformats-cid==0.4.4       # Content addressing
-libp2p @ git+https://github.com/libp2p/py-libp2p@main  # P2P networking
+libp2p @ git+https://github.com/libp2p/py-libp2p.git@main  # P2P networking
 multiaddr==0.0.11                # P2P addressing
 trio==0.31.0                     # Async framework
 ```
@@ -224,23 +224,23 @@ print(f"Connected peers: {stats.get('connected_peers', 0)}")
 ## Key Design Decisions
 
 ### 1. Integrated Design (Not Separate Service)
-**Decision:** Integrate P2P cache directly into GitHub CLI wrapper  
-**Rationale:** Simpler deployment, no separate service to manage  
+**Decision:** Integrate P2P cache directly into GitHub CLI wrapper
+**Rationale:** Simpler deployment, no separate service to manage
 **Result:** ✅ Zero-configuration for most use cases
 
 ### 2. GitHub Token as Shared Secret
-**Decision:** Use GitHub token for encryption key derivation  
-**Rationale:** Natural trust boundary - runners with same access share cache  
+**Decision:** Use GitHub token for encryption key derivation
+**Rationale:** Natural trust boundary - runners with same access share cache
 **Result:** ✅ Secure, automatic authorization
 
 ### 3. Graceful Degradation
-**Decision:** Cache works without P2P, P2P works without libp2p installed  
-**Rationale:** Robust operation in all environments  
+**Decision:** Cache works without P2P, P2P works without libp2p installed
+**Rationale:** Robust operation in all environments
 **Result:** ✅ Works everywhere, optimal with P2P
 
 ### 4. Content-Addressable Hashing
-**Decision:** Use IPFS CID for cache validation beyond simple TTL  
-**Rationale:** Detect stale cache even within TTL window  
+**Decision:** Use IPFS CID for cache validation beyond simple TTL
+**Rationale:** Detect stale cache even within TTL window
 **Result:** ✅ More intelligent cache invalidation
 
 ---
@@ -305,7 +305,7 @@ print(f"Connected peers: {stats.get('connected_peers', 0)}")
 
 ## Conclusion
 
-The P2P cache system with encryption is **fully implemented, comprehensively tested, and production-ready**. 
+The P2P cache system with encryption is **fully implemented, comprehensively tested, and production-ready**.
 
 ### System Status: ✅ OPERATIONAL
 
@@ -333,7 +333,7 @@ python test_p2p_cache_encryption.py  # 10/10 passing ✅
 python test_p2p_networking.py         # 6/6 passing ✅
 
 # Verify libp2p
-python -c "from libp2p import new_host; host = new_host(); print('✅ libp2p:', host.get_id())"
+python -c "from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import ensure_libp2p_runtime; assert ensure_libp2p_runtime(); print('libp2p runtime available')"
 ```
 
 **Deploy Command:**

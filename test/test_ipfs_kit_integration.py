@@ -86,8 +86,11 @@ class TestIPFSKitStorageInitialization:
         assert cache_path.exists()
         assert cache_path.is_dir()
     
-    def test_default_cache_dir(self):
+    def test_default_cache_dir(self, monkeypatch):
         """Test that default cache directory is used when none provided."""
+        monkeypatch.delenv("IPFS_ACCELERATE_CACHE_DIR", raising=False)
+        monkeypatch.delenv("IPFS_KIT_CACHE_DIR", raising=False)
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
         reset_storage()
         storage = IPFSKitStorage(force_fallback=True)
         
@@ -136,6 +139,19 @@ class TestStorageOperations:
         """Test retrieving non-existent CID."""
         result = storage.retrieve("bafynonexistent")
         assert result is None
+
+    def test_retrieve_uses_ipfs_kit_client_after_local_miss(self, temp_cache_dir):
+        """Test remote client retrieval when the local content cache misses."""
+        storage = IPFSKitStorage(
+            enable_ipfs_kit=True,
+            cache_dir=temp_cache_dir,
+            ipfs_kit_client={"cat": lambda cid: b"remote-data" if cid == "bafyremote" else None},
+        )
+
+        retrieved = storage.retrieve("bafyremote")
+
+        assert retrieved == b"remote-data"
+        assert (Path(temp_cache_dir) / "bafyremote").read_bytes() == b"remote-data"
     
     def test_store_with_metadata(self, storage):
         """Test that metadata is stored correctly."""

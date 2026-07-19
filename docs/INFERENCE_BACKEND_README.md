@@ -156,7 +156,7 @@ pip install -r requirements-hf-server.txt
 
 ### With libp2p Support
 ```bash
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
 pip install pymultihash>=0.8.2
 ```
 
@@ -184,16 +184,16 @@ config = InferenceServiceConfig(
     backend_health_checks=True,
     backend_health_check_interval=60,
     load_balancing_strategy="best_performance",
-    
+
     # HF Server
     enable_hf_server=True,
     hf_server_host="0.0.0.0",
     hf_server_port=8000,
-    
+
     # Protocols
     enable_websocket=True,
     enable_libp2p=True,
-    
+
     # Backends
     enable_api_backends=True,
     api_backends=["hf_tgi", "ollama", "openai_api"],
@@ -251,7 +251,7 @@ python -m pytest test/test_unified_inference.py -v
 - **Backend Selection:** O(n) where n = backends for task
 - **Health Checks:** Configurable interval (default 60s)
 - **WebSocket:** Low-latency bidirectional streaming
-- **Load Balancing:** 
+- **Load Balancing:**
   - Round-robin: O(1)
   - Least-loaded: O(n log n)
   - Best-performance: O(n log n)

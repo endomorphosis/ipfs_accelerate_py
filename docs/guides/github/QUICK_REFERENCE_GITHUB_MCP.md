@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-✅ **Implementation Complete** - All GitHub CLI tools integrated with MCP dashboard  
+✅ **Implementation Complete** - All GitHub CLI tools integrated with MCP dashboard
 ⚠️ **Action Required** - Refresh GitHub authentication: `gh auth refresh`
 
 ## Quick Start
@@ -119,19 +119,19 @@ python3 -c "from ipfs_accelerate_py.github_cli import RunnerManager; m=RunnerMan
 ## Troubleshooting
 
 ### Dashboard shows "Loading..."
-**Problem:** GitHub authentication expired  
+**Problem:** GitHub authentication expired
 **Solution:** `gh auth refresh -h github.com -s repo,workflow,read:org,gist`
 
 ### "Rate limit exceeded"
-**Problem:** Too many GitHub API calls  
+**Problem:** Too many GitHub API calls
 **Solution:** Cache automatically handles this with stale data fallback
 
 ### P2P not working
-**Problem:** libp2p not installed  
-**Solution:** `pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"` (optional)
+**Problem:** libp2p not installed
+**Solution:** `pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"` (optional)
 
 ### Tests fail
-**Problem:** Missing dependencies or authentication  
+**Problem:** Missing dependencies or authentication
 **Solution:** Check error message, install deps or refresh auth
 
 ## Cache Behavior
@@ -186,10 +186,10 @@ P2P Enabled: Yes / No
 
 ## Success Indicators
 
-✅ **All 5 tests pass**  
-✅ **Dashboard shows username**  
-✅ **Cache hit rate increases**  
-✅ **P2P peers connect** (if libp2p installed)  
+✅ **All 5 tests pass**
+✅ **Dashboard shows username**
+✅ **Cache hit rate increases**
+✅ **P2P peers connect** (if libp2p installed)
 ✅ **API calls minimized**
 
 ## Getting Help

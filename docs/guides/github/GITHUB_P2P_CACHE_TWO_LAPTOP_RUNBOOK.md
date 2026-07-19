@@ -16,7 +16,7 @@ It is designed to be copy/paste-friendly for a second laptop (or a second ChatGP
 
 ```bash
 pip install -U pip
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" cryptography
 ```
 
 Optional (only if you want content-hash validation features):

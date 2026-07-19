@@ -67,7 +67,7 @@ pip install torch torchvision  # For CPU/MPS (Apple Silicon)
 
 ```bash
 # Install libp2p for P2P networking
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
 pip install pymultihash>=0.8.2
 ```
 
@@ -93,16 +93,16 @@ config = InferenceServiceConfig(
     enable_hf_server=True,
     enable_websocket=True,
     enable_libp2p=False,  # Enable if using P2P
-    
+
     # Server settings
     hf_server_host="0.0.0.0",
     hf_server_port=8000,
-    
+
     # Backend manager
     backend_health_checks=True,
     backend_health_check_interval=60,
     load_balancing_strategy="round_robin",
-    
+
     # Logging
     log_level="INFO"
 )
@@ -156,9 +156,9 @@ async def main():
         hf_server_host="127.0.0.1",
         hf_server_port=8000
     )
-    
+
     service = await start_unified_service(config)
-    
+
     # Run server
     import uvicorn
     uvicorn.run(
@@ -202,9 +202,9 @@ async def main():
         hf_server_host="0.0.0.0",
         hf_server_port=8000
     )
-    
+
     service = await start_unified_service(config)
-    
+
     import uvicorn
     uvicorn.run(
         service.get_hf_server().app,
@@ -273,9 +273,9 @@ async def main():
         load_balancing_strategy="best_performance",
         backend_health_checks=True
     )
-    
+
     service = await start_unified_service(config)
-    
+
     import uvicorn
     uvicorn.run(
         service.get_hf_server().app,
@@ -310,16 +310,16 @@ async def main():
         libp2p_enable_mdns=True,
         libp2p_discovery_interval=60
     )
-    
+
     service = await start_unified_service(config)
-    
+
     # Register capabilities on P2P node
     p2p_node = service.get_p2p_node()
     if p2p_node:
         from ipfs_accelerate_py.libp2p_inference import PeerCapability
         p2p_node.register_capability(PeerCapability.TEXT_GENERATION)
         p2p_node.register_model("gpt2")
-    
+
     import uvicorn
     uvicorn.run(
         service.get_hf_server().app,
@@ -381,7 +381,7 @@ class InferenceWebSocketClient {
     constructor(url) {
         this.ws = new WebSocket(url);
         this.handlers = {};
-        
+
         this.ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (this.handlers[data.type]) {
@@ -389,19 +389,19 @@ class InferenceWebSocketClient {
             }
         };
     }
-    
+
     on(type, handler) {
         this.handlers[type] = handler;
     }
-    
+
     send(message) {
         this.ws.send(JSON.stringify(message));
     }
-    
+
     subscribe(topics) {
         this.send({ type: 'subscribe', topics });
     }
-    
+
     inference(model, inputs, options = {}) {
         this.send({
             type: 'inference',
@@ -437,14 +437,14 @@ import json
 
 async def websocket_client():
     uri = "ws://localhost:8000/ws/my_client"
-    
+
     async with websockets.connect(uri) as websocket:
         # Subscribe to topics
         await websocket.send(json.dumps({
             "type": "subscribe",
             "topics": ["inference"]
         }))
-        
+
         # Send inference request
         await websocket.send(json.dumps({
             "type": "inference",
@@ -454,12 +454,12 @@ async def websocket_client():
             "inputs": "Hello, world!",
             "stream": True
         }))
-        
+
         # Receive responses
         async for message in websocket:
             data = json.loads(message)
             print(f"Received: {data}")
-            
+
             if data["type"] == "inference_complete":
                 break
 

@@ -60,10 +60,9 @@ async def open_libp2p_stream_by_multiaddr(
     rest of the module stays importable without libp2p installed.
     """
 
-    from multiaddr import Multiaddr
-    from libp2p.peer.peerinfo import info_from_p2p_addr
+    from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import peerinfo_from_multiaddr
 
-    peer_info = info_from_p2p_addr(Multiaddr(str(peer_multiaddr)))
+    peer_info = peerinfo_from_multiaddr(str(peer_multiaddr))
     await host.connect(peer_info)
     return await host.new_stream(peer_info.peer_id, list(protocols))
 
@@ -79,24 +78,10 @@ async def trio_libp2p_host_listen(*, listen_multiaddr: str = "/ip4/127.0.0.1/tcp
     without libp2p installed.
     """
 
-    import inspect
+    from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import running_libp2p_host
 
-    import libp2p
-    from libp2p.tools.async_service import background_trio_service
-    from multiaddr import Multiaddr
-
-    host_obj = libp2p.new_host()
-    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
-
-    try:
-        async with background_trio_service(host.get_network()):
-            await host.get_network().listen(Multiaddr(str(listen_multiaddr)))
-            yield host
-    finally:
-        try:
-            await host.close()
-        except Exception:
-            pass
+    async with running_libp2p_host(listen_multiaddr=str(listen_multiaddr)) as host:
+        yield host
 
 
 class MCPP2PClient:

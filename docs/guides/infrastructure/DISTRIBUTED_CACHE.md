@@ -58,7 +58,7 @@ The Distributed GitHub API Cache is a peer-to-peer (P2P) cache system built **di
 pip install requests PyGithub
 
 # P2P features (optional but recommended)
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main"
 
 # Encryption (required for P2P)
 pip install cryptography
@@ -67,7 +67,7 @@ pip install cryptography
 pip install py-multiformats-cid
 
 # Or install all at once
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid requests PyGithub
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" cryptography py-multiformats-cid requests PyGithub
 ```
 
 ## Two-Laptop Quickstart (Smoke Test)

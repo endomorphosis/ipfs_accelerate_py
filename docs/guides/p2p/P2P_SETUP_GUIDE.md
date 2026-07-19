@@ -26,7 +26,7 @@ https://github.com/libp2p/py-libp2p
 Install using pip:
 
 ```bash
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" pymultihash>=0.8.2
 ```
 
 ### 2. Install System Dependencies
@@ -63,7 +63,7 @@ pip install -r requirements.txt
 ```
 
 The requirements.txt includes:
-- `libp2p @ git+https://github.com/libp2p/py-libp2p@main` - P2P networking (tracks upstream main)
+- `libp2p @ git+https://github.com/libp2p/py-libp2p.git@main` - P2P networking (tracks upstream main)
 - `pymultihash>=0.8.2` - Required by libp2p for peer IDs
 - `multiformats>=0.3.0` - Content addressing
 
@@ -72,7 +72,7 @@ The requirements.txt includes:
 ### 1. Check libp2p Installation
 
 ```bash
-python3 -c "from libp2p import new_host; print('✅ libp2p installed successfully')"
+python3 -c "from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import ensure_libp2p_runtime; assert ensure_libp2p_runtime(); print('libp2p runtime available')"
 ```
 
 ### 2. Check multihash Installation
@@ -160,7 +160,7 @@ cache = GitHubAPICache(
 
 **Solution**:
 ```bash
-pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main" pymultihash>=0.8.2
 ```
 
 ### ImportError: No module named 'multihash'

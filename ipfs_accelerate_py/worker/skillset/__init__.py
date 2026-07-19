@@ -13,6 +13,6 @@ from .hf_xclip import *
 from .hf_bert import *
 from .hf_llama import *
 from .hf_llava_next import *
-# from .llama_cpp_kit import *
+from .llama_cpp_kit import *
 # from .openai_api import *
 # from .s3_kit import *

@@ -2095,6 +2095,67 @@ class MCPServerWrapper:
         app._standalone_mcp = self.mcp  # type: ignore[attr-defined]
         return app
 
+    @property
+    def tools(self) -> dict[str, Any]:
+        """Expose the underlying MCP tool registry for compatibility."""
+
+        return self.mcp.tools
+
+    @property
+    def resources(self) -> dict[str, Any]:
+        """Expose the underlying MCP resource registry for compatibility."""
+
+        return self.mcp.resources
+
+    @property
+    def prompts(self) -> dict[str, Any]:
+        """Expose the underlying MCP prompt registry for compatibility."""
+
+        return self.mcp.prompts
+
+    def register_tool(
+        self,
+        name: str,
+        function: Any,
+        description: str = "",
+        input_schema: Any = None,
+        execution_context: str = "server",
+        **kwargs: Any,
+    ) -> None:
+        """Register a tool on the underlying standalone MCP registry."""
+
+        self.mcp.register_tool(
+            name=name,
+            function=function,
+            description=description,
+            input_schema=input_schema,
+            execution_context=execution_context,
+            **kwargs,
+        )
+
+    def register_resource(self, uri: str, function: Any, description: str = "", **kwargs: Any) -> None:
+        """Register a resource on the underlying standalone MCP registry."""
+
+        self.mcp.register_resource(uri=uri, function=function, description=description, **kwargs)
+
+    def register_prompt(
+        self,
+        name: str,
+        template: str = "",
+        description: str = "",
+        input_schema: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        """Register a prompt on the underlying standalone MCP registry."""
+
+        self.mcp.register_prompt(
+            name=name,
+            template=template,
+            description=description,
+            input_schema=input_schema,
+            **kwargs,
+        )
+
     def run(
         self,
         host: Any = None,
