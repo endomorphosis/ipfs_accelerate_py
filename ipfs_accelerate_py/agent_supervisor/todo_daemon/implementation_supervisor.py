@@ -3454,6 +3454,8 @@ class PortalImplementationSupervisor:
             return {"changed": False, "reason": "no_receipts"}
 
         reasons_by_task_id: dict[str, str] = {}
+        unblock_task_ids: list[str] = []
+        remove_task_ids: list[str] = []
         for receipt in receipts:
             if not isinstance(receipt, Mapping):
                 continue
@@ -3461,6 +3463,12 @@ class PortalImplementationSupervisor:
             action = str(receipt.get("action") or "").strip()
             retired_reason = str(receipt.get("retired_task_reason") or "").strip()
             if not task_id:
+                continue
+            if action == "unblock":
+                unblock_task_ids.append(task_id)
+                continue
+            if action == "remove":
+                remove_task_ids.append(task_id)
                 continue
             if action == "block":
                 reasons_by_task_id[task_id] = (
@@ -3475,7 +3483,7 @@ class PortalImplementationSupervisor:
                     " Hallucinate App, MCP++, Meta glasses, and Playwright launch readiness."
                 )
 
-        if not reasons_by_task_id:
+        if not reasons_by_task_id and not unblock_task_ids and not remove_task_ids:
             return {"changed": False, "reason": "no_materializable_receipts"}
         try:
             todo_text = self.config.todo_path.read_text(encoding="utf-8")
@@ -3483,8 +3491,26 @@ class PortalImplementationSupervisor:
             return {"changed": False, "reason": "todo_read_failed", "error": str(exc)}
 
         task_prefix = task_id_prefix(self.config.task_prefix)
+        updated_text = todo_text
+        updated_text, unblocked_task_ids = mark_task_statuses_in_todo_text(
+            updated_text,
+            unblock_task_ids,
+            task_prefix=task_prefix,
+            status="todo",
+        )
+        updated_text, removed_task_ids = mark_task_statuses_in_todo_text(
+            updated_text,
+            remove_task_ids,
+            task_prefix=task_prefix,
+            status="completed",
+        )
+        updated_text, removed_reason_task_ids = self._remove_blocked_reason_lines(
+            updated_text,
+            [*unblocked_task_ids, *removed_task_ids],
+            task_prefix=task_prefix,
+        )
         updated_text, blocked_task_ids = mark_task_statuses_in_todo_text(
-            todo_text,
+            updated_text,
             list(reasons_by_task_id),
             task_prefix=task_prefix,
             status="blocked",
@@ -3494,14 +3520,58 @@ class PortalImplementationSupervisor:
             reasons_by_task_id,
             task_prefix=task_prefix,
         )
-        if not blocked_task_ids and not reason_task_ids:
+        if (
+            not blocked_task_ids
+            and not reason_task_ids
+            and not unblocked_task_ids
+            and not removed_task_ids
+            and not removed_reason_task_ids
+        ):
             return {"changed": False, "reason": "todo_already_materialized"}
         write_text_atomic(self.config.todo_path, updated_text)
         return {
             "changed": True,
             "blocked_task_ids": blocked_task_ids,
             "reason_task_ids": reason_task_ids,
+            "unblocked_task_ids": unblocked_task_ids,
+            "removed_task_ids": removed_task_ids,
+            "removed_reason_task_ids": removed_reason_task_ids,
         }
+
+    @staticmethod
+    def _remove_blocked_reason_lines(
+        todo_text: str,
+        task_ids: Sequence[str],
+        *,
+        task_prefix: str,
+    ) -> tuple[str, list[str]]:
+        """Remove stale blocked reason lines from selected task blocks."""
+
+        target_task_ids = {
+            str(task_id).strip()
+            for task_id in task_ids
+            if str(task_id).strip()
+        }
+        if not target_task_ids:
+            return todo_text, []
+
+        lines = todo_text.splitlines(keepends=True)
+        output: list[str] = []
+        current_task_id = ""
+        removed: list[str] = []
+        for line in lines:
+            if line.startswith(f"## {task_prefix}"):
+                parts = line[3:].strip().split(" ", 1)
+                current_task_id = parts[0] if parts else ""
+                output.append(line)
+                continue
+            if current_task_id in target_task_ids and line.startswith("- Blocked reason:"):
+                removed.append(current_task_id)
+                continue
+            output.append(line)
+        if not removed:
+            return todo_text, []
+        return "".join(output), sorted(set(removed), key=removed.index)
 
     @staticmethod
     def _ensure_blocked_reason_lines(
