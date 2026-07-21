@@ -11335,6 +11335,68 @@ def test_implementation_supervisor_preflights_conflicting_backlogged_worktree(tm
     assert worktree_path.exists()
 
 
+def test_implementation_supervisor_escalates_preflight_conflict_to_configured_resolver(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-010-conflict-attempt-1-456"
+    _git(repo, "checkout", "-b", branch_name)
+    marker.write_text("branch change\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "checkout", "main")
+    marker.write_text("main change\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "main change")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "accel-010-conflict-attempt-1-456"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            llm_merge_resolver_command="configured-resolver",
+        )
+    )
+    merge_calls: list[str] = []
+
+    class ResolverBackedDaemon:
+        def _merge_branch_to_main(self, branch, task, attempt):
+            merge_calls.append(branch)
+            return {"attempted": True, "merged": True, "returncode": 0}
+
+        def _cleanup_merged_worktree(self, path, branch):
+            return {"cleaned": True, "path": str(path), "branch": branch}
+
+    supervisor._build_worktree_reconciliation_daemon = lambda: ResolverBackedDaemon()  # type: ignore[method-assign]
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert merge_calls == [branch_name]
+    assert result["candidate_count"] == 1
+    assert result["reconciled_count"] == 1
+    assert result["preflight_blocked_count"] == 0
+    assert result["preflight_resolver_escalation_count"] == 1
+    assert result["processed"][0]["preflight_result"]["mergeable"] is False
+    assert result["processed"][0]["preflight_resolver_escalated"] is True
+
+
 def test_implementation_supervisor_defers_worktree_reconciliation_when_main_dirty(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

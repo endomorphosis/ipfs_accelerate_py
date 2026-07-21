@@ -1909,6 +1909,7 @@ class PortalImplementationSupervisor:
                 continue
 
             preflight_result: dict[str, Any] = {}
+            preflight_resolver_escalated = False
             if self.config.worktree_reconciliation_preflight_enabled:
                 preflight_result = self._preflight_worktree_reconciliation_merge(
                     repo_root,
@@ -1916,24 +1917,27 @@ class PortalImplementationSupervisor:
                     branch=branch,
                 )
                 if not preflight_result.get("mergeable", False):
-                    processed.append(
-                        {
-                            **candidate,
-                            "merged": False,
-                            "preflight_result": preflight_result,
-                            "merge_result": {
-                                "attempted": False,
+                    if not self.config.llm_merge_resolver_command:
+                        processed.append(
+                            {
+                                **candidate,
                                 "merged": False,
-                                "returncode": preflight_result.get("returncode"),
-                                "branch": branch,
-                                "target_ref": target_ref,
-                                "reason": "preflight_merge_conflict",
-                                "stdout": preflight_result.get("stdout", ""),
-                                "stderr": preflight_result.get("stderr", ""),
-                            },
-                        }
-                    )
-                    continue
+                                "preflight_result": preflight_result,
+                                "preflight_resolver_escalated": False,
+                                "merge_result": {
+                                    "attempted": False,
+                                    "merged": False,
+                                    "returncode": preflight_result.get("returncode"),
+                                    "branch": branch,
+                                    "target_ref": target_ref,
+                                    "reason": "preflight_merge_conflict",
+                                    "stdout": preflight_result.get("stdout", ""),
+                                    "stderr": preflight_result.get("stderr", ""),
+                                },
+                            }
+                        )
+                        continue
+                    preflight_resolver_escalated = True
 
             if reconciliation_daemon is None:
                 reconciliation_daemon = self._build_worktree_reconciliation_daemon()
@@ -1946,6 +1950,8 @@ class PortalImplementationSupervisor:
                 {
                     **candidate,
                     "merged": bool(merge_result.get("merged")),
+                    "preflight_result": preflight_result,
+                    "preflight_resolver_escalated": preflight_resolver_escalated,
                     "merge_result": merge_result,
                     "cleanup_result": cleanup_result,
                 }
@@ -1972,6 +1978,10 @@ class PortalImplementationSupervisor:
                 for item in processed
                 if isinstance(item.get("preflight_result"), dict)
                 and not item["preflight_result"].get("mergeable", False)
+                and not item.get("merged", False)
+            ),
+            "preflight_resolver_escalation_count": sum(
+                1 for item in processed if item.get("preflight_resolver_escalated", False)
             ),
             "cleanup_count": sum(
                 1
