@@ -45,7 +45,7 @@ from .todo_daemon.implementation_daemon import (
     parse_task_file,
     retry_budget_repair_source,
 )
-from .validation_commands import split_validation_commands
+from .validation_commands import normalize_validation_command_text, split_validation_commands
 from .wrapper_utils import AgentSupervisorNamespacePaths
 
 
@@ -2649,6 +2649,29 @@ def reconciliation_guardrail_refresh_is_noise(block: str, record: Mapping[str, A
     return True
 
 
+def reconciliation_guardrail_discovery_needs_repair(path: Path | None) -> bool:
+    """Return whether a deduplicated guardrail's required evidence is incomplete."""
+
+    if path is None:
+        return False
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    manifest_match = re.search(
+        r"^## Machine Readable Manifest\s*\n\s*```json\s*\n(.*?)\n```",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if manifest_match is None:
+        return True
+    try:
+        manifest = json.loads(manifest_match.group(1))
+    except json.JSONDecodeError:
+        return True
+    return not isinstance(manifest, Mapping)
+
+
 def task_blocks_with_spans(todo_text: str) -> list[tuple[int, int, str]]:
     starts = [match.start() for match in re.finditer(r"^##\s+\S+", todo_text, flags=re.MULTILINE)]
     blocks: list[tuple[int, int, str]] = []
@@ -2747,7 +2770,9 @@ def refresh_existing_reconciliation_guardrails(
             if not reconciliation_record_matches_block(block, record):
                 continue
             if reconciliation_guardrail_refresh_is_noise(block, record):
-                break
+                validation_path = reconciliation_task_validation_path(block)
+                if not reconciliation_guardrail_discovery_needs_repair(validation_path):
+                    break
             refreshed_block, task_id, validation_path, changed = refresh_reconciliation_guardrail_block(block, record)
             discovery_changed = False
             if validation_path is not None and task_id:
@@ -3027,7 +3052,7 @@ def validation_retry_task_block(
 def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
     """Return a parseable validation command for a retry-budget follow-up task."""
 
-    stripped = str(command or "").strip()
+    stripped = normalize_validation_command_text(command)
     if stripped:
         commands = split_validation_commands(stripped)
         try:
@@ -3036,7 +3061,7 @@ def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
         except ValueError:
             commands = []
         if commands:
-            return stripped
+            return "; ".join(commands)
     return f"test -f {shlex.quote(str(discovery_path))}"
 
 

@@ -934,7 +934,8 @@ def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
     assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == "/usr/bin/codex exec -"
     assert (
         default_llm_merge_resolver_command()
-        == "/usr/bin/codex exec --ignore-user-config --dangerously-bypass-approvals-and-sandbox -C . -"
+        == "/usr/bin/codex exec --ignore-user-config --dangerously-bypass-approvals-and-sandbox "
+        "-c 'model_reasoning_effort=\"high\"' -C . -"
     )
 
 
@@ -4172,6 +4173,82 @@ def test_implementation_daemon_detects_changed_submodule_gitlink_without_error(t
         baseline_ref,
         "libs/child",
     ) is True
+
+
+def test_implementation_daemon_records_merged_root_submodule_gitlink(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / "merged.txt").write_text("merged child work\n", encoding="utf-8")
+    _git(submodule, "add", "merged.txt")
+    _git(submodule, "commit", "-m", "merged child work")
+    merged_commit = _git(submodule, "rev-parse", "HEAD")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    task = PortalTask(
+        task_id="AUTO-119",
+        title="Record merged child revision",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+    )
+
+    result = daemon._record_merged_submodule_gitlinks(
+        repo,
+        [{"path": "libs/child", "merged": True, "commit": merged_commit}],
+        task=task,
+    )
+
+    assert result["committed"] is True
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == merged_commit
+    assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_implementation_daemon_rolls_back_parent_when_root_submodule_merge_fails(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    base_parent = _git(repo, "rev-parse", "HEAD")
+    base_child = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "-b", "implementation/auto-120-submodule-libs-child")
+    (submodule / "conflicting.txt").write_text("task child work\n", encoding="utf-8")
+    _git(submodule, "add", "conflicting.txt")
+    _git(submodule, "commit", "-m", "AUTO-120: child task work")
+
+    _git(repo, "checkout", "-b", "implementation/auto-120")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-120: advance child gitlink")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "implementation/auto-120")
+    assert _git(repo, "status", "--porcelain").endswith("libs/child")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._rollback_parent_merge_after_submodule_failure(
+        repo,
+        pre_merge_commit=base_parent,
+        failed_submodules=[{"path": "libs/child", "merged": False}],
+    )
+
+    assert result["rolled_back"] is True
+    assert _git(repo, "rev-parse", "HEAD") == base_parent
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == base_child
+    assert _git(submodule, "rev-parse", "HEAD") == base_child
+    assert _git(repo, "status", "--porcelain") == ""
 
 
 def test_implementation_daemon_preserves_nested_tmp_and_allows_unchanged_dirty_submodule(tmp_path):
