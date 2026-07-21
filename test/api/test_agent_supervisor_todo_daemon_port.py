@@ -7167,6 +7167,31 @@ def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(
     assert daemon._implementation_process_active(event) is True
 
 
+def test_implementation_daemon_recognizes_shared_checkout_runner_without_worktree_path(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "worktree_path": "",
+        "command": ["bash", "-lc", "serialized wrapper command"],
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_list_process_commands",
+        lambda: [
+            f"node /usr/local/bin/codex exec -C {repo} -",
+            f"python {repo}/swissknife/scripts/ipfs_mcp_libp2p_bridge.py --port 9114",
+        ],
+    )
+
+    assert daemon._implementation_process_active(event) is True
+
+
 def test_implementation_supervisor_recovers_missing_inflight_before_worktree_reconciliation(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

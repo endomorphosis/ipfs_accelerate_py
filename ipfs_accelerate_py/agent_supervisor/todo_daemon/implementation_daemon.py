@@ -7672,6 +7672,17 @@ class PortalImplementationDaemon:
                 worktree_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
                 for line in process_lines
             )
+        # Shared-checkout implementations deliberately do not have a task
+        # worktree path.  Their serialized wrapper command contains a
+        # heredoc, so matching the complete command line is not reliable.
+        # The repository path plus the configured runner is the stable
+        # identity, and still excludes MCP bridge/service processes.
+        repo_path = str(self.repo_root.resolve())
+        if repo_path:
+            return any(
+                repo_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+                for line in process_lines
+            )
         if isinstance(command, list):
             command_text = " ".join(str(item) for item in command if item)
             if command_text:
