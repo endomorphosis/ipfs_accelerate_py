@@ -934,7 +934,8 @@ def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
     assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == "/usr/bin/codex exec -"
     assert (
         default_llm_merge_resolver_command()
-        == "/usr/bin/codex exec --ignore-user-config --dangerously-bypass-approvals-and-sandbox -C . -"
+        == "/usr/bin/codex exec --ignore-user-config --dangerously-bypass-approvals-and-sandbox "
+        "-c 'model_reasoning_effort=\"high\"' -C . -"
     )
 
 
@@ -10073,6 +10074,9 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         task_prefix="ACCEL-",
         implement=True,
         implementation_command="codex exec --full-auto",
+        llm_merge_resolver_command="python resolver.py",
+        generated_dirty_repair_enabled=True,
+        log_level="DEBUG",
         max_lanes=None,
     )
 
@@ -10087,6 +10091,9 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     assert "--implement" in lanes[0].command
     assert "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor" in lanes[0].command
     assert "--implementation-command" in lanes[0].command
+    assert lanes[0].command[lanes[0].command.index("--log-level") + 1] == "DEBUG"
+    assert lanes[0].command[lanes[0].command.index("--llm-merge-resolver-command") + 1] == "python resolver.py"
+    assert "--auto-commit-generated-dirty" in lanes[0].command
 
 
 def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):

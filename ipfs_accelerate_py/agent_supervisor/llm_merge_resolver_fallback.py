@@ -21,6 +21,16 @@ _MAX_INVOCATION_DEPTH = int(os.environ.get("AGENT_RESOLVER_MAX_DEPTH", "3"))
 # Lock acquisition timeout to prevent indefinite blocking
 _LOCK_TIMEOUT_ENV = "AGENT_RESOLVER_LOCK_TIMEOUT_SECONDS"
 _DEFAULT_LOCK_TIMEOUT_SECONDS = 120.0
+_ACTIVE_TOOL_PROCESS: subprocess.Popen[str] | None = None
+
+
+def _terminate_active_tool(_signum: int, _frame: object) -> None:
+    if _ACTIVE_TOOL_PROCESS is not None and _ACTIVE_TOOL_PROCESS.poll() is None:
+        try:
+            os.killpg(_ACTIVE_TOOL_PROCESS.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    raise SystemExit(143)
 
 
 def llm_merge_resolver_fallback_command(
@@ -107,12 +117,16 @@ def _run_tool(
     prompt: str,
     timeout: float | None,
 ) -> subprocess.CompletedProcess[str]:
+    global _ACTIVE_TOOL_PROCESS
     process = subprocess.Popen(
         list(command),
         stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
     )
+    _ACTIVE_TOOL_PROCESS = process
     try:
         stdout, stderr = process.communicate(prompt, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -129,6 +143,9 @@ def _run_tool(
                 pass
             stdout, stderr = process.communicate()
         raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr)
+    finally:
+        if _ACTIVE_TOOL_PROCESS is process:
+            _ACTIVE_TOOL_PROCESS = None
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
@@ -213,6 +230,9 @@ def _run_copilot(prompt: str, workspace: Path) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Read a merge prompt from stdin and run Codex with Copilot fallback."""
+
+    signal.signal(signal.SIGTERM, _terminate_active_tool)
+    signal.signal(signal.SIGINT, _terminate_active_tool)
 
     # Recursion guard: prevent infinite loops when submodules invoke each other
     current_depth = int(os.environ.get(_INVOCATION_DEPTH_ENV, "0"))

@@ -177,8 +177,11 @@ __all__ = [
     "LeaseConflictError",
     "LeaseError",
     "LeaseExpiredError",
+    "TaskIdentity",
     "StaleFencingTokenError",
     "adapt_goal_bundle",
+    "canonical_bundle_identity",
+    "canonical_task_identity",
     "invoke_llm_resolver",
     "JavaScriptActionContractConfig",
     "latest_failed_merge_event",
@@ -373,6 +376,14 @@ def __getattr__(name: str):
         from . import bundle_supervisor
 
         return getattr(bundle_supervisor, name)
+    if name in {
+        "TaskIdentity",
+        "canonical_bundle_identity",
+        "canonical_task_identity",
+    }:
+        from . import task_identity
+
+        return getattr(task_identity, name)
     if name in {
         "LeaseConflictError",
         "LeaseCoordinator",

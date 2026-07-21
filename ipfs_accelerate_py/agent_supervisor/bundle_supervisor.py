@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -77,6 +78,14 @@ def implementation_supervisor_command(
     max_restarts: int,
     implementation_timeout: float,
     implementation_command: str = "",
+    llm_merge_resolver_command: str = "",
+    llm_merge_resolver_timeout_seconds: float | None = None,
+    merge_reconciliation_max_merges: int | None = None,
+    generated_dirty_repair_enabled: bool = False,
+    generated_dirty_repair_commit_subject: str = "",
+    generated_dirty_repair_include_submodule_gitlinks: bool = False,
+    generated_dirty_repair_max_paths: int | None = None,
+    generated_dirty_repair_stale_lock_seconds: float | None = None,
     log_level: str = "INFO",
 ) -> list[str]:
     command = [
@@ -109,6 +118,22 @@ def implementation_supervisor_command(
     command.append("--implement" if implement else "--no-implement")
     if implementation_command:
         command.extend(["--implementation-command", implementation_command])
+    if llm_merge_resolver_command:
+        command.extend(["--llm-merge-resolver-command", llm_merge_resolver_command])
+    if llm_merge_resolver_timeout_seconds is not None:
+        command.extend(["--llm-merge-resolver-timeout-seconds", str(llm_merge_resolver_timeout_seconds)])
+    if merge_reconciliation_max_merges is not None:
+        command.extend(["--merge-reconciliation-max-merges", str(merge_reconciliation_max_merges)])
+    if generated_dirty_repair_enabled:
+        command.append("--auto-commit-generated-dirty")
+    if generated_dirty_repair_commit_subject:
+        command.extend(["--generated-dirty-commit-subject", generated_dirty_repair_commit_subject])
+    if not generated_dirty_repair_include_submodule_gitlinks:
+        command.append("--no-generated-dirty-submodule-gitlinks")
+    if generated_dirty_repair_max_paths is not None:
+        command.extend(["--generated-dirty-max-paths", str(generated_dirty_repair_max_paths)])
+    if generated_dirty_repair_stale_lock_seconds is not None:
+        command.extend(["--generated-dirty-stale-lock-seconds", str(generated_dirty_repair_stale_lock_seconds)])
     return command
 
 
@@ -127,6 +152,14 @@ def plan_bundle_lanes(
     max_restarts: int = 10,
     implementation_timeout: float = 1800.0,
     implementation_command: str = "",
+    llm_merge_resolver_command: str = "",
+    llm_merge_resolver_timeout_seconds: float | None = None,
+    merge_reconciliation_max_merges: int | None = None,
+    generated_dirty_repair_enabled: bool = False,
+    generated_dirty_repair_commit_subject: str = "",
+    generated_dirty_repair_include_submodule_gitlinks: bool = False,
+    generated_dirty_repair_max_paths: int | None = None,
+    generated_dirty_repair_stale_lock_seconds: float | None = None,
     log_level: str = "INFO",
     max_lanes: int | None = None,
 ) -> list[BundleLaneSpec]:
@@ -162,6 +195,14 @@ def plan_bundle_lanes(
             max_restarts=max_restarts,
             implementation_timeout=implementation_timeout,
             implementation_command=implementation_command,
+            llm_merge_resolver_command=llm_merge_resolver_command,
+            llm_merge_resolver_timeout_seconds=llm_merge_resolver_timeout_seconds,
+            merge_reconciliation_max_merges=merge_reconciliation_max_merges,
+            generated_dirty_repair_enabled=generated_dirty_repair_enabled,
+            generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
+            generated_dirty_repair_include_submodule_gitlinks=generated_dirty_repair_include_submodule_gitlinks,
+            generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
+            generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
             log_level=log_level,
         )
         lanes.append(
@@ -222,10 +263,15 @@ def launch_bundle_lanes(
             ]
             handle = lane.log_path.open("ab")
             try:
+                env = os.environ.copy()
+                package_root = repo_root / "ipfs_datasets_py" / "ipfs_accelerate_py"
+                if package_root.exists():
+                    env["PYTHONPATH"] = str(package_root) + os.pathsep + env.get("PYTHONPATH", "")
                 try:
                     process = subprocess.Popen(
                         guarded_command,
                         cwd=repo_root,
+                        env=env,
                         stdin=subprocess.DEVNULL,
                         stdout=handle,
                         stderr=subprocess.STDOUT,
@@ -347,6 +393,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-restarts", type=int, default=0)
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
+    parser.add_argument("--llm-merge-resolver-command", default="")
+    parser.add_argument("--llm-merge-resolver-timeout-seconds", type=float, default=None)
+    parser.add_argument("--merge-reconciliation-max-merges", type=int, default=None)
+    parser.add_argument("--auto-commit-generated-dirty", dest="generated_dirty_repair_enabled", action="store_true")
+    parser.set_defaults(generated_dirty_repair_enabled=False)
+    parser.add_argument("--generated-dirty-commit-subject", default="Agent: commit generated supervisor outputs")
+    parser.add_argument(
+        "--no-generated-dirty-submodule-gitlinks",
+        dest="generated_dirty_repair_include_submodule_gitlinks",
+        action="store_false",
+    )
+    parser.set_defaults(generated_dirty_repair_include_submodule_gitlinks=False)
+    parser.add_argument("--generated-dirty-max-paths", type=int, default=200)
+    parser.add_argument("--generated-dirty-stale-lock-seconds", type=float, default=300.0)
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--coordination-path", type=Path, default=None)
     parser.add_argument("--claimant-did", default="did:web:ipfs-accelerate.local")
@@ -377,6 +437,14 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         max_restarts=args.max_restarts,
         implementation_timeout=args.implementation_timeout,
         implementation_command=args.implementation_command,
+        llm_merge_resolver_command=args.llm_merge_resolver_command,
+        llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
+        merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
+        generated_dirty_repair_enabled=args.generated_dirty_repair_enabled,
+        generated_dirty_repair_commit_subject=args.generated_dirty_commit_subject,
+        generated_dirty_repair_include_submodule_gitlinks=args.generated_dirty_repair_include_submodule_gitlinks,
+        generated_dirty_repair_max_paths=args.generated_dirty_max_paths,
+        generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
         log_level=args.log_level,
         max_lanes=args.max_lanes,
     )

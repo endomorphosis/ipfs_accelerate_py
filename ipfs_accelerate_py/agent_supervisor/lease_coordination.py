@@ -20,6 +20,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from .task_identity import canonical_bundle_identity
+
 MIN_LEASE_MS = 5_000
 MAX_LEASE_MS = 300_000
 PROVIDER_VERSION = "3.2.0"
@@ -93,6 +95,7 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
     bundle_key = str(bundle.get("bundle_key") or "objective/general")
     correlation = str(bundle.get("correlation_id") or bundle_key)[:128]
     owner_did = str(bundle.get("owner_did") or "did:web:ipfs-accelerate.local")
+    canonical_identity = canonical_bundle_identity(bundle)
     objective = {
         "bundle_key": bundle_key,
         "source_todo": str(bundle.get("source_todo") or ""),
@@ -171,14 +174,16 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "input_cid": _link(dict(bundle)),
         "tool": "codex.todo_bundle",
         "dependency_task_cids": [],
-        "idempotency_key": hashlib.sha256(bundle_key.encode("utf-8")).hexdigest()[:32],
+        "idempotency_key": canonical_identity.semantic_fingerprint[:32],
+        "canonical_task_key": canonical_identity.canonical_task_key,
+        "canonical_task_cid": canonical_identity.canonical_task_cid,
         "resource_class": str(bundle.get("resource_class") or "cpu-small"),
         "deadline_ms": int(bundle.get("deadline_ms") or now + 86_400_000),
         "expected_value_millionths": int(bundle.get("expected_value_millionths") or 500_000),
         "max_attempts": int(bundle.get("max_attempts") or 3),
         "execution_mode": "idempotent",
     }
-    task_cid = profile_g_cid(task)
+    task_spec_cid = profile_g_cid(task)
     artifacts = {profile_g_cid(item): item for item in (goal, subgoal, plan, selection, task)}
     return {
         "goal": goal,
@@ -190,7 +195,10 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "selection": selection,
         "selection_cid": selection_cid,
         "task": task,
-        "task_cid": task_cid,
+        "task_cid": task_spec_cid,
+        "task_spec_cid": task_spec_cid,
+        "canonical_task_key": canonical_identity.canonical_task_key,
+        "canonical_task_cid": canonical_identity.canonical_task_cid,
         "artifacts": artifacts,
     }
 
@@ -283,6 +291,17 @@ class LeaseCoordinator:
     def register_bundle(self, bundle: Mapping[str, Any], *, created_at_ms: int | None = None) -> dict[str, Any]:
         embedded = bundle.get("profile_g")
         adapted = dict(embedded) if isinstance(embedded, Mapping) and embedded.get("task_cid") else adapt_goal_bundle(bundle, created_at_ms=created_at_ms)
+        canonical_identity = canonical_bundle_identity(bundle)
+        canonical_task_cid = str(adapted.get("canonical_task_cid") or canonical_identity.canonical_task_cid)
+        task_spec_cid = str(adapted.get("task_spec_cid") or adapted.get("task_cid") or "")
+        adapted["canonical_task_key"] = str(
+            adapted.get("canonical_task_key") or canonical_identity.canonical_task_key
+        )
+        adapted["canonical_task_cid"] = canonical_task_cid
+        adapted["task_spec_cid"] = task_spec_cid
+        # Coordination is keyed by semantic execution identity. The immutable
+        # Profile-G TaskSpec CID remains available separately for provenance.
+        adapted["task_cid"] = canonical_task_cid
         with self._lock, self._connection:
             for cid, artifact in adapted["artifacts"].items():
                 self._connection.execute(
@@ -293,8 +312,8 @@ class LeaseCoordinator:
                 str(item.get("task_id")) for item in bundle.get("tasks", []) if isinstance(item, Mapping)
             ) or str(bundle.get("bundle_key") or adapted["task_cid"])
             self._connection.execute(
-                "INSERT OR REPLACE INTO tasks VALUES(?,?,?,?,?)",
-                (adapted["task_cid"], adapted["goal_cid"], adapted["subgoal_cid"], task_id, json.dumps(dict(bundle), sort_keys=True)),
+                "INSERT OR IGNORE INTO tasks VALUES(?,?,?,?,?)",
+                (canonical_task_cid, adapted["goal_cid"], adapted["subgoal_cid"], task_id, json.dumps(dict(bundle), sort_keys=True)),
             )
         return adapted
 

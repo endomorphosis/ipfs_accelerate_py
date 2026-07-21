@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import shlex
 import subprocess
 from dataclasses import dataclass, field
@@ -492,17 +493,30 @@ def invoke_llm_resolver(
         }
     command = shlex.split(command_template)
     timeout = resolver_timeout_seconds(timeout_seconds)
+    process = subprocess.Popen(
+        command,
+        cwd=payload.get("repo_root") or None,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
     try:
-        result = subprocess.run(
-            command,
-            cwd=payload.get("repo_root") or None,
-            input=str(payload.get("prompt") or ""),
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
+        stdout, stderr = process.communicate(str(payload.get("prompt") or ""), timeout=timeout)
     except subprocess.TimeoutExpired as exc:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = process.communicate()
         return {
             **payload,
             "applied": False,
@@ -510,19 +524,19 @@ def invoke_llm_resolver(
             "llm_timeout": True,
             "llm_timeout_seconds": timeout,
             "llm_returncode": None,
-            "llm_stdout": compact_text(exc.stdout),
-            "llm_stderr": compact_text(exc.stderr),
+            "llm_stdout": compact_text(stdout or exc.stdout),
+            "llm_stderr": compact_text(stderr or exc.stderr),
             "apply_error": f"LLM merge resolver timed out after {timeout} seconds",
         }
     return {
         **payload,
-        "applied": result.returncode == 0,
+        "applied": process.returncode == 0,
         "llm_command": command,
         "llm_timeout": False,
         "llm_timeout_seconds": timeout,
-        "llm_returncode": result.returncode,
-        "llm_stdout": compact_text(result.stdout),
-        "llm_stderr": compact_text(result.stderr),
+        "llm_returncode": process.returncode,
+        "llm_stdout": compact_text(stdout),
+        "llm_stderr": compact_text(stderr),
     }
 
 

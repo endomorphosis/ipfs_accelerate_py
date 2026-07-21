@@ -30,6 +30,7 @@ from ..merge_conflict_repair import (
 )
 from ..submodule_degradation import DegradationState
 from ..persistent_task_queue import PersistentTaskQueue
+from ..task_identity import TaskIdentity, canonical_task_identity
 from ..git_gc import GitGarbageCollector
 from ..merge_checkpoint import MergeCheckpoint
 from ..validation_commands import split_validation_commands
@@ -442,6 +443,9 @@ class PortalTask:
     acceptance: str = ""
     source_line: int = 0
     metadata: dict[str, str] = field(default_factory=dict)
+    canonical_task_key: str = ""
+    canonical_task_cid: str = ""
+    board_namespace: str = "default"
 
 
 @dataclass(frozen=True)
@@ -468,6 +472,8 @@ class PortalTaskState:
     heartbeat_at: str = ""
     last_progress_at: str = ""
     active_task_id: str = ""
+    active_task_key: str = ""
+    active_task_cid: str = ""
     active_task_title: str = ""
     active_task_track: str = ""
     active_task_started_at: str = ""
@@ -491,8 +497,12 @@ class PortalTaskState:
     task_statuses: dict[str, str] = field(default_factory=dict)
     task_artifacts: dict[str, list[str]] = field(default_factory=dict)
     task_validation: dict[str, list[str]] = field(default_factory=dict)
+    task_identities: dict[str, dict[str, Any]] = field(default_factory=dict)
     implementation_attempts: dict[str, int] = field(default_factory=dict)
+    implementation_attempts_by_cid: dict[str, int] = field(default_factory=dict)
     last_implementation_task_id: str = ""
+    last_implementation_task_key: str = ""
+    last_implementation_task_cid: str = ""
     last_implementation_started_at: str = ""
     last_implementation_finished_at: str = ""
     last_implementation_returncode: int | None = None
@@ -541,6 +551,8 @@ class PortalTaskState:
                 heartbeat_at=str(payload.get("heartbeat_at") or ""),
                 last_progress_at=str(payload.get("last_progress_at") or ""),
                 active_task_id=str(payload.get("active_task_id") or ""),
+                active_task_key=str(payload.get("active_task_key") or ""),
+                active_task_cid=str(payload.get("active_task_cid") or ""),
                 active_task_title=str(payload.get("active_task_title") or ""),
                 active_task_track=str(payload.get("active_task_track") or ""),
                 active_task_started_at=str(payload.get("active_task_started_at") or ""),
@@ -576,12 +588,24 @@ class PortalTaskState:
                     for key, value in (payload.get("task_validation") or {}).items()
                     if isinstance(value, list)
                 },
+                task_identities={
+                    str(key): {str(item_key): str(item_value) for item_key, item_value in value.items()}
+                    for key, value in (payload.get("task_identities") or {}).items()
+                    if isinstance(value, dict)
+                },
                 implementation_attempts={
                     str(key): int(value)
                     for key, value in (payload.get("implementation_attempts") or {}).items()
                     if str(value).isdigit()
                 },
+                implementation_attempts_by_cid={
+                    str(key): int(value)
+                    for key, value in (payload.get("implementation_attempts_by_cid") or {}).items()
+                    if str(value).isdigit()
+                },
                 last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
+                last_implementation_task_key=str(payload.get("last_implementation_task_key") or ""),
+                last_implementation_task_cid=str(payload.get("last_implementation_task_cid") or ""),
                 last_implementation_started_at=str(payload.get("last_implementation_started_at") or ""),
                 last_implementation_finished_at=str(payload.get("last_implementation_finished_at") or ""),
                 last_implementation_returncode=(
@@ -654,7 +678,14 @@ def state_file_repair_reason(path: Path) -> str:
                 int(payload[field_name])
     except (TypeError, ValueError):
         return "malformed_state_metadata"
-    for field_name in ("task_statuses", "task_artifacts", "task_validation", "implementation_attempts"):
+    for field_name in (
+        "task_statuses",
+        "task_artifacts",
+        "task_validation",
+        "task_identities",
+        "implementation_attempts",
+        "implementation_attempts_by_cid",
+    ):
         value = payload.get(field_name)
         if value is not None and not isinstance(value, dict):
             return "malformed_state_metadata"
@@ -684,6 +715,17 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
         if not metadata:
             metadata["blocked reason"] = "empty task metadata"
         default_status = "blocked" if metadata.get("blocked reason") == "empty task metadata" else "todo"
+        identity = canonical_task_identity(
+            {
+                "task_id": current_id,
+                "title": current_title,
+                "outputs": split_csv(metadata.get("outputs", "")),
+                "acceptance": str(metadata.get("acceptance", "")).strip(),
+                "metadata": metadata,
+            },
+            board_namespace=metadata.get("board namespace", "") or path.name,
+            source_path=path,
+        )
         tasks.append(
             PortalTask(
                 task_id=current_id,
@@ -698,6 +740,9 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
                 acceptance=str(metadata.get("acceptance", "")).strip(),
                 source_line=current_line,
                 metadata=dict(metadata),
+                canonical_task_key=identity.canonical_task_key,
+                canonical_task_cid=identity.canonical_task_cid,
+                board_namespace=identity.board_namespace,
             )
         )
         current_id = ""
@@ -809,11 +854,98 @@ class PortalImplementationDaemon:
         self.task_queue = PersistentTaskQueue.load(
             self.state_path.parent / "task_queue.json"
         )
+        self._task_identity_by_display_id: dict[str, TaskIdentity] = {}
+        self._active_canonical_task_cids: set[str] = set()
         self.git_gc = GitGarbageCollector(
             repo_root=self.repo_root,
             state_path=self.state_path.parent / "gc_state.json",
             worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
         )
+
+    def _identity_for_task(self, task: PortalTask) -> TaskIdentity:
+        metadata = dict(task.metadata)
+        if task.canonical_task_key:
+            metadata["canonical task key"] = task.canonical_task_key
+        if task.canonical_task_cid:
+            metadata["canonical task cid"] = task.canonical_task_cid
+        return canonical_task_identity(
+            {
+                "task_id": task.task_id,
+                "title": task.title,
+                "outputs": task.outputs,
+                "acceptance": task.acceptance,
+                "metadata": metadata,
+            },
+            board_namespace=task.board_namespace or self.todo_path.name,
+            source_path=self.todo_path,
+        )
+
+    def _register_task_identities(self, tasks: Sequence[PortalTask]) -> dict[str, list[str]]:
+        aliases_by_cid: dict[str, list[str]] = {}
+        self._task_identity_by_display_id = {}
+        for task in tasks:
+            identity = self._identity_for_task(task)
+            self._task_identity_by_display_id[task.task_id] = identity
+            aliases_by_cid.setdefault(identity.canonical_task_cid, []).append(task.task_id)
+            self.task_queue.register_task(identity, priority=task.priority, track=task.track)
+        self._active_canonical_task_cids = set(aliases_by_cid)
+        self.task_queue.compact(self._active_canonical_task_cids)
+        if self.task_queue.dirty:
+            self.task_queue.save()
+        duplicates = {
+            canonical_task_cid: task_ids
+            for canonical_task_cid, task_ids in aliases_by_cid.items()
+            if len(task_ids) > 1
+        }
+        if duplicates:
+            self._record_event("canonical_task_aliases_coalesced", {"aliases_by_cid": duplicates})
+        return aliases_by_cid
+
+    def _canonical_ref(self, task: PortalTask) -> str:
+        return self._identity_for_task(task).canonical_task_cid
+
+    def _task_attempt(self, state: PortalTaskState, task: PortalTask) -> int:
+        canonical_task_cid = self._canonical_ref(task)
+        prior = max(
+            state.implementation_attempts.get(task.task_id, 0),
+            state.implementation_attempts_by_cid.get(canonical_task_cid, 0),
+        )
+        return prior + 1
+
+    def _record_task_attempt(self, state: PortalTaskState, task: PortalTask, attempt: int) -> None:
+        identity = self._identity_for_task(task)
+        state.implementation_attempts[task.task_id] = attempt
+        state.implementation_attempts_by_cid[identity.canonical_task_cid] = attempt
+        state.last_implementation_task_id = task.task_id
+        state.last_implementation_task_key = identity.canonical_task_key
+        state.last_implementation_task_cid = identity.canonical_task_cid
+
+    def _record_task_queue_outcome(self, task: PortalTask, returncode: int, reason: str = "") -> None:
+        canonical_task_cid = self._canonical_ref(task)
+        if returncode == 0:
+            self.task_queue.record_success(canonical_task_cid)
+        else:
+            self.task_queue.record_failure(canonical_task_cid, reason=reason)
+        self.task_queue.save()
+
+    @staticmethod
+    def _canonical_representative_task_ids(
+        tasks: Sequence[PortalTask],
+        resolved_statuses: dict[str, str],
+    ) -> set[str]:
+        status_rank = {"ready": 0, "waiting": 1, "blocked": 2, "completed": 3}
+        representative: dict[str, PortalTask] = {}
+        for task in tasks:
+            key = task.canonical_task_cid or task.canonical_task_key or task.task_id
+            current = representative.get(key)
+            if current is None:
+                representative[key] = task
+                continue
+            candidate_rank = (status_rank.get(resolved_statuses.get(task.task_id, ""), 9), task.source_line)
+            current_rank = (status_rank.get(resolved_statuses.get(current.task_id, ""), 9), current.source_line)
+            if candidate_rank < current_rank:
+                representative[key] = task
+        return {task.task_id for task in representative.values()}
 
     def _task_belongs_to_shard(self, task_id: str) -> bool:
         """Return whether this daemon lane should implement ``task_id``."""
@@ -865,6 +997,10 @@ class PortalImplementationDaemon:
         now = utc_now()
         if task_id:
             state.active_task_id = task_id
+            identity = self._task_identity_by_display_id.get(task_id)
+            if identity is not None:
+                state.active_task_key = identity.canonical_task_key
+                state.active_task_cid = identity.canonical_task_cid
         if state.active_phase != phase or state.active_phase_detail != detail:
             state.active_phase_started_at = now
         state.active_phase = phase
@@ -907,9 +1043,12 @@ class PortalImplementationDaemon:
         state.task_statuses = {}
         state.task_artifacts = {}
         state.task_validation = {}
+        state.task_identities = {}
         state.strategy_generation = int(strategy.get("generation", 0))
         if not (previous.implementation_in_progress and live_inflight_implementation is not None):
             state.active_task_id = ""
+            state.active_task_key = ""
+            state.active_task_cid = ""
             state.active_task_title = ""
             state.active_task_track = ""
             state.active_task_started_at = ""
@@ -975,6 +1114,7 @@ class PortalImplementationDaemon:
             return self._record_empty_backlog_state(reason="todo_read_failed", error=str(exc))
         if not tasks:
             return self._record_empty_backlog_state(reason="no_tasks_found")
+        aliases_by_cid = self._register_task_identities(tasks)
         previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         now = utc_now()
@@ -1057,6 +1197,17 @@ class PortalImplementationDaemon:
             if task.status == "completed" or artifact_complete or merged_complete:
                 completed_set.add(task.task_id)
 
+        completed_cids = {
+            self._canonical_ref(task)
+            for task in tasks
+            if task.task_id in completed_set
+        }
+        completed_set.update(
+            task.task_id
+            for task in tasks
+            if self._canonical_ref(task) in completed_cids
+        )
+
         for task in tasks:
             if task.task_id in completed_set:
                 resolved_statuses[task.task_id] = "completed"
@@ -1078,11 +1229,16 @@ class PortalImplementationDaemon:
                 continue
             resolved_statuses[task.task_id] = "ready"
 
-        active_task_claims = self._active_implementation_task_claims(task.task_id for task in tasks)
+        representative_task_ids = self._canonical_representative_task_ids(tasks, resolved_statuses)
+        active_task_claims = self._active_implementation_task_claims(tasks)
         selectable_tasks = [
             task
             for task in tasks
-            if self._task_belongs_to_shard(task.task_id) and task.task_id not in active_task_claims
+            if (
+                task.task_id in representative_task_ids
+                and self._task_belongs_to_shard(task.task_id)
+                and task.task_id not in active_task_claims
+            )
         ]
         if self.task_shard_count > 1 and not any(
             resolved_statuses.get(task.task_id) == "ready" for task in selectable_tasks
@@ -1090,7 +1246,11 @@ class PortalImplementationDaemon:
             fallback_tasks = [
                 task
                 for task in tasks
-                if task.task_id not in active_task_claims and resolved_statuses.get(task.task_id) == "ready"
+                if (
+                    task.task_id in representative_task_ids
+                    and task.task_id not in active_task_claims
+                    and resolved_statuses.get(task.task_id) == "ready"
+                )
             ]
             if fallback_tasks:
                 self._record_event(
@@ -1132,8 +1292,13 @@ class PortalImplementationDaemon:
         state.task_statuses = resolved_statuses
         state.task_artifacts = task_artifacts
         state.task_validation = {task.task_id: task.validation for task in tasks if task.validation}
+        state.task_identities = {
+            task.task_id: self._identity_for_task(task).to_dict()
+            for task in tasks
+        }
         state.strategy_generation = int(strategy.get("generation", 0))
         state.implementation_attempts = previous.implementation_attempts
+        state.implementation_attempts_by_cid = previous.implementation_attempts_by_cid
         state.active_attempt = previous.active_attempt
         state.active_phase = previous.active_phase
         state.active_phase_started_at = previous.active_phase_started_at
@@ -1143,6 +1308,8 @@ class PortalImplementationDaemon:
         state.active_branch = previous.active_branch
         state.implementation_in_progress = previous.implementation_in_progress
         state.last_implementation_task_id = previous.last_implementation_task_id
+        state.last_implementation_task_key = previous.last_implementation_task_key
+        state.last_implementation_task_cid = previous.last_implementation_task_cid
         state.last_implementation_started_at = previous.last_implementation_started_at
         state.last_implementation_finished_at = previous.last_implementation_finished_at
         state.last_implementation_returncode = previous.last_implementation_returncode
@@ -1170,6 +1337,9 @@ class PortalImplementationDaemon:
                     },
                 )
             state.active_task_id = selected.task_id
+            selected_identity = self._identity_for_task(selected)
+            state.active_task_key = selected_identity.canonical_task_key
+            state.active_task_cid = selected_identity.canonical_task_cid
             state.active_task_title = selected.title
             state.active_task_track = selected.track
             state.recommended_task_id = selected.task_id
@@ -1177,6 +1347,8 @@ class PortalImplementationDaemon:
             state.selection_idle_reason = ""
         else:
             state.active_task_id = ""
+            state.active_task_key = ""
+            state.active_task_cid = ""
             state.active_task_title = ""
             state.active_task_track = ""
             state.active_task_started_at = ""
@@ -1245,6 +1417,7 @@ class PortalImplementationDaemon:
             "state_file_repair": state_file_repair,
             "merged_status_repair": merged_status_repair,
             "active_task_claims": sorted(active_task_claims),
+            "canonical_task_count": len(aliases_by_cid),
         }
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
@@ -1261,8 +1434,26 @@ class PortalImplementationDaemon:
             return result
 
         started_at = utc_now()
-        attempt = state.implementation_attempts.get(task.task_id, 0) + 1
-        task_claim_path = self._implementation_task_claim_path(task.task_id)
+        attempt = self._task_attempt(state, task)
+        task_claim_path = self._implementation_task_claim_path(
+            task.task_id,
+            canonical_task_cid=self._canonical_ref(task),
+        )
+        legacy_task_claim_path = self._implementation_task_claim_path(task.task_id)
+        if legacy_task_claim_path != task_claim_path and legacy_task_claim_path.exists():
+            legacy_claim = load_json_dict(legacy_task_claim_path)
+            if legacy_claim is not None and self._implementation_task_claim_owner_is_active(legacy_claim):
+                result = {
+                    "skipped": True,
+                    "reason": "task_claim_lock_exists",
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "lock_owner_pid": int(legacy_claim.get("pid") or 0),
+                    "lock_owner_task_id": str(legacy_claim.get("task_id") or ""),
+                    "lock_owner_state_dir": str(legacy_claim.get("state_dir") or ""),
+                }
+                self._record_event("implementation_skipped", result)
+                return result
         task_claim_metadata = self._build_implementation_task_claim_metadata(task, attempt, started_at)
         lock_path = self._implementation_lock_path()
         lock_metadata = self._build_implementation_lock_metadata(task, attempt, started_at)
@@ -1380,14 +1571,14 @@ class PortalImplementationDaemon:
             if effective_returncode == 0:
                 todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
             finished_at = utc_now()
-            state.implementation_attempts[task.task_id] = attempt
-            state.last_implementation_task_id = task.task_id
+            self._record_task_attempt(state, task, attempt)
             state.last_implementation_started_at = started_at
             state.last_implementation_finished_at = finished_at
             state.last_implementation_returncode = effective_returncode
             state.last_implementation_log_path = str(log_path)
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
+            self._record_task_queue_outcome(task, effective_returncode, reason="validation_or_implementation_failed")
             result = {
                 "task_id": task.task_id,
                 "attempt": attempt,
@@ -1405,14 +1596,14 @@ class PortalImplementationDaemon:
             return result
         except subprocess.TimeoutExpired:
             finished_at = utc_now()
-            state.implementation_attempts[task.task_id] = attempt
-            state.last_implementation_task_id = task.task_id
+            self._record_task_attempt(state, task, attempt)
             state.last_implementation_started_at = started_at
             state.last_implementation_finished_at = finished_at
             state.last_implementation_returncode = 124
             state.last_implementation_log_path = str(log_path)
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
+            self._record_task_queue_outcome(task, 124, reason="implementation_timeout")
             result = {
                 "task_id": task.task_id,
                 "attempt": attempt,
@@ -1427,14 +1618,14 @@ class PortalImplementationDaemon:
         except Exception as exc:
             finished_at = utc_now()
             failed_phase = state.active_phase or "implementation_setup"
-            state.implementation_attempts[task.task_id] = attempt
-            state.last_implementation_task_id = task.task_id
+            self._record_task_attempt(state, task, attempt)
             state.last_implementation_started_at = started_at
             state.last_implementation_finished_at = finished_at
             state.last_implementation_returncode = 1
             state.last_implementation_log_path = str(log_path)
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
+            self._record_task_queue_outcome(task, 1, reason=f"{type(exc).__name__}: {exc}"[-1000:])
             exception_result = {
                 "exception_type": type(exc).__name__,
                 "message": str(exc)[-4000:],
@@ -1879,9 +2070,11 @@ class PortalImplementationDaemon:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
         safe_task_id = task.task_id.lower().replace("/", "-")
+        identity_suffix = self._identity_for_task(task).short_id
+        execution_id = f"{safe_task_id}-{identity_suffix}"
         attempt_stamp = int(time.time())
-        worktree_path = self.worktree_root / f"{safe_task_id}-attempt-{attempt}-{attempt_stamp}"
-        branch_name = f"implementation/{safe_task_id}-attempt-{attempt}-{attempt_stamp}"
+        worktree_path = self.worktree_root / f"{execution_id}-attempt-{attempt}-{attempt_stamp}"
+        branch_name = f"implementation/{execution_id}-attempt-{attempt}-{attempt_stamp}"
         baseline_ref = ""
         implementation_commit = ""
         merge_result: dict[str, Any] = {"merged": False, "reason": "not_attempted"}
@@ -2047,8 +2240,7 @@ class PortalImplementationDaemon:
                 },
             )
         finished_at = utc_now()
-        state.implementation_attempts[task.task_id] = attempt
-        state.last_implementation_task_id = task.task_id
+        self._record_task_attempt(state, task, attempt)
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = finished_at
         state.last_implementation_returncode = returncode
@@ -2068,6 +2260,11 @@ class PortalImplementationDaemon:
             todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
+        self._record_task_queue_outcome(
+            task,
+            returncode,
+            reason=str(exception_result.get("message") or merge_result.get("reason") or "implementation_failed"),
+        )
         result = {
             "task_id": task.task_id,
             "attempt": attempt,
@@ -2183,6 +2380,8 @@ class PortalImplementationDaemon:
     def _clear_active_execution_state(self, state: PortalTaskState, *, clear_task: bool = False) -> None:
         if clear_task:
             state.active_task_id = ""
+            state.active_task_key = ""
+            state.active_task_cid = ""
             state.active_task_title = ""
             state.active_task_track = ""
             state.active_task_started_at = ""
@@ -2209,6 +2408,9 @@ class PortalImplementationDaemon:
         branch_name: str = "",
     ) -> None:
         state.active_task_id = task.task_id
+        identity = self._identity_for_task(task)
+        state.active_task_key = identity.canonical_task_key
+        state.active_task_cid = identity.canonical_task_cid
         state.active_task_title = task.title
         state.active_task_track = task.track
         if not state.active_task_started_at:
@@ -2222,6 +2424,8 @@ class PortalImplementationDaemon:
         state.active_branch = branch_name
         state.implementation_in_progress = True
         state.last_implementation_task_id = task.task_id
+        state.last_implementation_task_key = identity.canonical_task_key
+        state.last_implementation_task_cid = identity.canonical_task_cid
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = ""
         state.last_implementation_returncode = None
@@ -5548,9 +5752,8 @@ class PortalImplementationDaemon:
         except Exception as exc:
             results["git_gc"] = {"error": str(exc)}
         try:
-            # Compact queue: remove entries for tasks no longer in the backlog
-            active_ids = {entry.task_id for entry in self.task_queue.entries.values()}
-            removed = self.task_queue.compact(active_ids)
+            # Compact queue by canonical work identity, not board-local display id.
+            removed = self.task_queue.compact(self._active_canonical_task_cids)
             results["queue_compact"] = {"removed": removed}
         except Exception as exc:
             results["queue_compact"] = {"error": str(exc)}
@@ -6802,9 +7005,14 @@ class PortalImplementationDaemon:
     def _implementation_lock_path(self) -> Path:
         return self.state_path.parent / "implementation.lock"
 
-    def _implementation_task_claim_path(self, task_id: str) -> Path:
-        safe_task_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", task_id).strip("._-") or "task"
-        digest = hashlib.sha1(task_id.encode("utf-8")).hexdigest()[:12]
+    def _implementation_task_claim_path(self, task_id: str, *, canonical_task_cid: str = "") -> Path:
+        lock_identity = canonical_task_cid or task_id
+        safe_task_id = (
+            "canonical-task"
+            if canonical_task_cid
+            else re.sub(r"[^A-Za-z0-9_.-]+", "_", task_id).strip("._-") or "task"
+        )
+        digest = hashlib.sha1(lock_identity.encode("utf-8")).hexdigest()[:20]
         lock_filename = f"{safe_task_id[:96]}-{digest}.lock"
         return (
             checkout_mutation_lock_path(self.repo_root, lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME)
@@ -6812,6 +7020,7 @@ class PortalImplementationDaemon:
         )
 
     def _build_implementation_lock_metadata(self, task: PortalTask, attempt: int, started_at: str) -> dict[str, Any]:
+        identity = self._identity_for_task(task)
         return {
             "kind": "implementation",
             "pid": os.getpid(),
@@ -6819,6 +7028,9 @@ class PortalImplementationDaemon:
             "repo_root": str(self.repo_root.resolve()),
             "state_dir": str(self.state_path.parent.resolve()),
             "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
             "attempt": attempt,
             "started_at": started_at,
         }
@@ -6829,6 +7041,7 @@ class PortalImplementationDaemon:
         attempt: int,
         started_at: str,
     ) -> dict[str, Any]:
+        identity = self._identity_for_task(task)
         return checkout_lock_metadata(
             kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
             repo_root=self.repo_root,
@@ -6839,6 +7052,9 @@ class PortalImplementationDaemon:
                 "state_dir": str(self.state_path.parent.resolve()),
                 "state_path": str(self.state_path.resolve()),
                 "started_at": started_at,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
                 "task_shard_count": self.task_shard_count,
                 "task_shard_index": self.task_shard_index,
             },
@@ -6851,6 +7067,7 @@ class PortalImplementationDaemon:
         attempt: int,
         started_at: str,
     ) -> dict[str, Any]:
+        identity = self._identity_for_task(task)
         return {
             "kind": "merge",
             "pid": os.getpid(),
@@ -6859,6 +7076,9 @@ class PortalImplementationDaemon:
             "state_dir": str(self.state_path.parent.resolve()),
             "state_path": str(self.state_path.resolve()),
             "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
             "attempt": attempt,
             "branch": branch_name,
             "started_at": started_at,
@@ -6880,15 +7100,42 @@ class PortalImplementationDaemon:
                 return False
         return self._lock_owner_is_active(metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
 
-    def _active_implementation_task_claims(self, task_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+    def _active_implementation_task_claims(
+        self,
+        tasks: Sequence[PortalTask | str],
+    ) -> dict[str, dict[str, Any]]:
         active_claims: dict[str, dict[str, Any]] = {}
-        for task_id in task_ids:
-            claim_path = self._implementation_task_claim_path(task_id)
-            if not claim_path.exists():
+        active_claims_by_cid: dict[str, dict[str, Any]] = {}
+        for item in tasks:
+            if isinstance(item, PortalTask):
+                task_id = item.task_id
+                canonical_task_cid = self._canonical_ref(item)
+                paths = [
+                    self._implementation_task_claim_path(
+                        task_id,
+                        canonical_task_cid=canonical_task_cid,
+                    ),
+                    self._implementation_task_claim_path(task_id),
+                ]
+            else:
+                task_id = str(item)
+                canonical_task_cid = ""
+                paths = [self._implementation_task_claim_path(task_id)]
+            for claim_path in dict.fromkeys(paths):
+                if not claim_path.exists():
+                    continue
+                metadata = load_json_dict(claim_path)
+                if metadata is not None and self._implementation_task_claim_owner_is_active(metadata):
+                    active_claims[task_id] = metadata
+                    if canonical_task_cid:
+                        active_claims_by_cid[canonical_task_cid] = metadata
+                    break
+        for item in tasks:
+            if not isinstance(item, PortalTask):
                 continue
-            metadata = load_json_dict(claim_path)
-            if metadata is not None and self._implementation_task_claim_owner_is_active(metadata):
-                active_claims[task_id] = metadata
+            metadata = active_claims_by_cid.get(self._canonical_ref(item))
+            if metadata is not None:
+                active_claims.setdefault(item.task_id, metadata)
         return active_claims
 
     def _merge_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
@@ -6919,13 +7166,17 @@ class PortalImplementationDaemon:
 
     def _lock_task_is_active(self, metadata: dict[str, Any]) -> bool:
         task_id = str(metadata.get("task_id") or "")
-        if not task_id:
+        canonical_task_cid = str(metadata.get("canonical_task_cid") or "")
+        if not task_id and not canonical_task_cid:
             return True
         try:
             state = PortalTaskState.load(self.state_path)
         except Exception:
             return True
-        if state.active_task_id != task_id:
+        if canonical_task_cid and state.active_task_cid:
+            if state.active_task_cid != canonical_task_cid:
+                return False
+        elif state.active_task_id != task_id:
             return False
         branch = str(metadata.get("branch") or "")
         return not branch or not state.active_branch or state.active_branch == branch
@@ -8098,7 +8349,7 @@ Rules:
         if not ready:
             return None
         # Filter out tasks in cooldown from persistent queue
-        cooled_ready = [t for t in ready if not self.task_queue.is_cooled_down(t.task_id)]
+        cooled_ready = [t for t in ready if not self.task_queue.is_cooled_down(self._canonical_ref(t))]
         if not cooled_ready:
             # All ready tasks are in cooldown - use the one with shortest remaining cooldown
             cooled_ready = ready
@@ -8113,7 +8364,7 @@ Rules:
         blocked_strategy_task_ids = {str(item) for item in strategy.get("blocked_tasks", [])}
 
         def sort_key(task: PortalTask) -> tuple[Any, ...]:
-            selection_penalty = self.task_queue.get_penalty(task.task_id)
+            selection_penalty = self.task_queue.get_penalty(self._canonical_ref(task))
             if task.task_id in unresolved_merge_failures:
                 selection_penalty += UNRESOLVED_MERGE_SELECTION_PENALTY
             if self._task_has_recent_no_change_outcome(task.task_id, recent_outcomes):
@@ -8135,11 +8386,18 @@ Rules:
 
         selected = sorted(ready, key=sort_key)[0]
         # Record selection in persistent queue
-        self.task_queue.record_selection(selected.task_id)
+        self.task_queue.record_selection(self._canonical_ref(selected))
         return selected
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
-        append_jsonl_event(self.events_path, event_type, payload)
+        enriched = dict(payload)
+        task_id = str(enriched.get("task_id") or "")
+        identity = self._task_identity_by_display_id.get(task_id)
+        if identity is not None:
+            enriched.setdefault("canonical_task_key", identity.canonical_task_key)
+            enriched.setdefault("canonical_task_cid", identity.canonical_task_cid)
+            enriched.setdefault("board_namespace", identity.board_namespace)
+        append_jsonl_event(self.events_path, event_type, enriched)
         self._invalidate_event_cache()
 
 

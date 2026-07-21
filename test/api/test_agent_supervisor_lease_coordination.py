@@ -46,6 +46,38 @@ def test_goal_bundle_adapter_emits_immutable_linked_profile_g_artifacts() -> Non
         assert profile_g_cid(adapted[name]) in adapted["artifacts"]
 
 
+def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -> None:
+    first = adapt_goal_bundle(_bundle(), created_at_ms=1_783_872_000_000)
+    second = adapt_goal_bundle(_bundle(), created_at_ms=1_783_872_001_000)
+
+    assert first["task_spec_cid"] != second["task_spec_cid"]
+    assert first["canonical_task_cid"] == second["canonical_task_cid"]
+    assert first["task"]["canonical_task_cid"] == first["canonical_task_cid"]
+
+    with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
+        registered_first = coordinator.register_bundle(_bundle(), created_at_ms=1_783_872_000_000)
+        grant = coordinator.claim(
+            registered_first["task_cid"],
+            "did:web:lane-a.example",
+            requested_lease_ms=10_000,
+        )
+        registered_second = coordinator.register_bundle(_bundle(), created_at_ms=1_783_872_001_000)
+
+        assert registered_first["task_spec_cid"] != registered_second["task_spec_cid"]
+        assert registered_first["task_cid"] == registered_second["task_cid"] == grant.task_cid
+        assert coordinator.claim(
+            registered_second["task_cid"],
+            "did:web:lane-a.example",
+            requested_lease_ms=10_000,
+        ).goal_cid == grant.goal_cid
+        with pytest.raises(LeaseConflictError):
+            coordinator.claim(
+                registered_second["task_cid"],
+                "did:web:lane-b.example",
+                requested_lease_ms=10_000,
+            )
+
+
 def test_claim_renew_heartbeat_release_and_receipt_are_fenced(tmp_path: Path) -> None:
     now = 1_783_872_000_000
     with LeaseCoordinator(tmp_path / "leases.sqlite3", clock_ms=lambda: now) as coordinator:

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
+from .task_identity import TaskIdentity, canonical_task_identity
 
 
 DEFAULT_EMBEDDING_DIMENSIONS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64"))
@@ -1522,6 +1523,19 @@ Conflict policy: {finding.conflict_policy}
     return path
 
 
+def objective_finding_task_identity(task_id: str, finding: ObjectiveFinding) -> TaskIdentity:
+    """Return the stable work identity for an objective finding."""
+
+    return canonical_task_identity(
+        {
+            "task_id": task_id,
+            "dedupe_key": f"objective-finding:{finding.fingerprint}",
+        },
+        board_namespace="objective-graph",
+        source_path=finding.objective_path,
+    )
+
+
 def render_task_block(
     *,
     task_id: str,
@@ -1544,6 +1558,7 @@ def render_task_block(
         if finding.goal_packet_key and packet_goals
         else ""
     )
+    identity = objective_finding_task_identity(task_id, finding)
     bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
     return f"""## {task_id} {finding.summary}
 
@@ -1562,6 +1577,8 @@ def render_task_block(
 - Parallel lane: {finding.parallel_lane}
 - Conflict policy: {finding.conflict_policy}
 - Goal id: {finding.goal_id}
+- Canonical task key: {identity.canonical_task_key}
+- Canonical task CID: {identity.canonical_task_cid}
 - Missing evidence: {missing}
 - Embedding query: {finding.embedding_query}
 - AST query: {finding.ast_query}
@@ -1642,8 +1659,11 @@ def write_bundle_shards(
                 if isinstance(item, Mapping) and str(item.get("task_id") or ""):
                     task_map[str(item["task_id"])] = dict(item)
         for record in bundle_records:
+            identity = objective_finding_task_identity(record.task_id, record.finding)
             task_map[record.task_id] = {
                 "task_id": record.task_id,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
                 "goal_id": record.finding.goal_id,
                 "graph_depth": record.finding.graph_depth,
                 "parent_goal_ids": record.finding.parent_goal_ids,
