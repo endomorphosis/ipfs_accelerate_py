@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -50,15 +51,35 @@ DEFAULT_REFLOG_EXPIRE_DAYS = 7
 
 
 def _run_git(args: list[str], *, cwd: Path, timeout: float = 300) -> subprocess.CompletedProcess:
-    """Run a git command with timeout and error capture."""
-    return subprocess.run(
-        ["git"] + args,
+    """Run Git with a timeout that also terminates descendant processes."""
+    command = ["git"] + args
+    process = subprocess.Popen(
+        command,
         cwd=cwd,
         text=True,
-        capture_output=True,
-        check=False,
-        timeout=timeout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
     )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            stdout, stderr = process.communicate(timeout=2.0)
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = process.communicate()
+        raise subprocess.TimeoutExpired(
+            command,
+            timeout,
+            output=stdout,
+            stderr=stderr,
+        ) from exc
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 def count_loose_objects(repo_root: Path) -> int:
