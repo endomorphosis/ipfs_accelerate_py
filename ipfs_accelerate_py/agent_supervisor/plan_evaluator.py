@@ -12,6 +12,7 @@ import math
 import re
 from dataclasses import asdict, dataclass
 from decimal import Decimal, ROUND_HALF_UP
+from hashlib import sha256
 from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
@@ -334,6 +335,172 @@ PLAN_BRANCH_JSON_SCHEMA: dict[str, Any] = {
 }
 
 
+ANALYSIS_PROPOSAL_JSON_SCHEMA: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Low-backlog analysis proposals",
+    "type": "object",
+    "required": ["proposals"],
+    "additionalProperties": False,
+    "properties": {
+        "proposals": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": ["branch", "confidence", "novelty", "objective_terms"],
+                "additionalProperties": False,
+                "properties": {
+                    "branch": PLAN_BRANCH_JSON_SCHEMA["properties"]["branches"]["items"],
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "novelty": {"type": "number", "minimum": 0, "maximum": 1},
+                    "objective_terms": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+        }
+    },
+}
+
+
+@dataclass(frozen=True)
+class AnalysisProposal:
+    """A plan branch with explicit semantic-analysis evidence."""
+
+    branch: PlanBranch
+    confidence: float
+    novelty: float
+    objective_terms: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        branch = self.branch if isinstance(self.branch, PlanBranch) else PlanBranch.from_dict(self.branch)
+        object.__setattr__(self, "branch", branch)
+        object.__setattr__(
+            self,
+            "confidence",
+            _number(self.confidence, "confidence", minimum=0.0, maximum=1.0),
+        )
+        object.__setattr__(
+            self,
+            "novelty",
+            _number(self.novelty, "novelty", minimum=0.0, maximum=1.0),
+        )
+        object.__setattr__(
+            self,
+            "objective_terms",
+            _string_tuple(self.objective_terms, "objective_terms"),
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AnalysisProposal":
+        if not isinstance(payload, Mapping):
+            raise PlanBranchValidationError("each analysis proposal must be a JSON object")
+        allowed = {"branch", "confidence", "novelty", "objective_terms", "proposal_id"}
+        required = {"branch", "confidence", "novelty", "objective_terms"}
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        missing = sorted(required - set(payload))
+        if missing:
+            raise PlanBranchValidationError(
+                f"analysis proposal is missing required fields: {', '.join(missing)}"
+            )
+        if unknown:
+            raise PlanBranchValidationError(
+                f"unknown analysis proposal fields: {', '.join(unknown)}"
+            )
+        branch = payload["branch"]
+        proposal = cls(
+            branch=branch if isinstance(branch, PlanBranch) else PlanBranch.from_dict(branch),
+            confidence=payload["confidence"],
+            novelty=payload["novelty"],
+            objective_terms=payload["objective_terms"],
+        )
+        supplied_id = str(payload.get("proposal_id") or "")
+        if supplied_id and supplied_id != proposal.proposal_id:
+            raise PlanBranchValidationError("analysis proposal_id does not match canonical content")
+        return proposal
+
+    @property
+    def proposal_id(self) -> str:
+        """Canonical identity independent of an LLM-chosen branch id."""
+
+        material = {
+            "summary": " ".join(self.branch.summary.lower().split()),
+            "predicted_files": sorted(self.branch.predicted_files),
+            "predicted_symbols": sorted(self.branch.predicted_symbols),
+            "objective_terms": sorted(term.lower() for term in self.objective_terms),
+        }
+        digest = sha256(
+            json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return f"sha256:{digest}"
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        return {
+            "proposal_id": self.proposal_id,
+            "branch": self.branch.to_profile_g_dict() if profile_g else self.branch.to_dict(),
+            "confidence_millionths" if profile_g else "confidence": (
+                _to_millionths(self.confidence) if profile_g else self.confidence
+            ),
+            "novelty_millionths" if profile_g else "novelty": (
+                _to_millionths(self.novelty) if profile_g else self.novelty
+            ),
+            "objective_terms": list(self.objective_terms),
+        }
+
+
+@dataclass(frozen=True)
+class RejectedAnalysisProposal:
+    proposal: AnalysisProposal
+    reason: str
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        return {
+            "proposal": self.proposal.to_dict(profile_g=profile_g),
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
+class AnalysisProposalEvaluation:
+    """Accepted and rejected router candidates after fail-closed policy checks."""
+
+    accepted: tuple[AnalysisProposal, ...]
+    rejected: tuple[RejectedAnalysisProposal, ...]
+    plan_evaluation: "PlanEvaluation | None" = None
+
+    @property
+    def selected(self) -> AnalysisProposal | None:
+        if self.plan_evaluation is None:
+            return None
+        branch_id = self.plan_evaluation.selected.branch_id
+        return next(
+            (item for item in self.accepted if item.branch.branch_id == branch_id),
+            None,
+        )
+
+    @property
+    def confidence(self) -> float:
+        return self.selected.confidence if self.selected is not None else 0.0
+
+    @property
+    def novelty(self) -> float:
+        return self.selected.novelty if self.selected is not None else 0.0
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        return {
+            "accepted": [item.to_dict(profile_g=profile_g) for item in self.accepted],
+            "rejected": [item.to_dict(profile_g=profile_g) for item in self.rejected],
+            "selected": self.selected.to_dict(profile_g=profile_g) if self.selected else None,
+            "plan_evaluation": (
+                self.plan_evaluation.to_dict(profile_g=profile_g)
+                if self.plan_evaluation is not None
+                else None
+            ),
+        }
+
+
 @dataclass(frozen=True)
 class EvaluatedPlanBranch:
     """A branch plus its reproducible score and human-readable rationale."""
@@ -507,4 +674,87 @@ def evaluate_plan_branches(
         rejected=tuple(item.branch for item in rejected),
         scores={item.branch.branch_id: item.score_millionths for item in ranked},
         rationales={item.branch.branch_id: item.rationale for item in ranked},
+    )
+
+
+def evaluate_analysis_proposals(
+    proposals: Iterable[AnalysisProposal | Mapping[str, Any]],
+    *,
+    objective_terms: Sequence[str] = (),
+    known_proposal_ids: Iterable[str] = (),
+    min_confidence: float = 0.65,
+    min_novelty: float = 0.35,
+    max_novel_proposals: int = 5,
+) -> AnalysisProposalEvaluation:
+    """Filter and rank semantic proposals under deterministic novelty limits.
+
+    Provider-supplied novelty is only used after canonical identity
+    deduplication.  A provider therefore cannot make a repeated proposal novel
+    by changing its branch id or numeric claim.
+    """
+
+    confidence_floor = _number(
+        min_confidence, "min_confidence", minimum=0.0, maximum=1.0
+    )
+    novelty_floor = _number(min_novelty, "min_novelty", minimum=0.0, maximum=1.0)
+    limit = int(max_novel_proposals)
+    if limit < 0:
+        raise ValueError("max_novel_proposals must be non-negative")
+    required_terms = tuple(
+        dict.fromkeys(str(item).strip() for item in objective_terms if str(item).strip())
+    )
+    required_keys = {" ".join(item.lower().split()) for item in required_terms}
+    known = {str(item).strip() for item in known_proposal_ids if str(item).strip()}
+    candidates = [
+        item if isinstance(item, AnalysisProposal) else AnalysisProposal.from_dict(item)
+        for item in proposals
+    ]
+    # Identity first and branch id second makes the decision independent of
+    # provider order while retaining stable output for non-identical plans.
+    candidates.sort(key=lambda item: (item.proposal_id, item.branch.branch_id))
+    accepted: list[AnalysisProposal] = []
+    rejected: list[RejectedAnalysisProposal] = []
+    observed = set(known)
+    accepted_branch_ids: set[str] = set()
+    for proposal in candidates:
+        proposal_terms = {" ".join(item.lower().split()) for item in proposal.objective_terms}
+        if proposal.proposal_id in observed:
+            rejected.append(RejectedAnalysisProposal(proposal, "duplicate_candidate"))
+            continue
+        observed.add(proposal.proposal_id)
+        if proposal.branch.branch_id in accepted_branch_ids:
+            rejected.append(RejectedAnalysisProposal(proposal, "duplicate_branch_id"))
+            continue
+        if required_keys and not (required_keys & proposal_terms):
+            rejected.append(RejectedAnalysisProposal(proposal, "no_objective_term_coverage"))
+            continue
+        if proposal.confidence < confidence_floor:
+            rejected.append(RejectedAnalysisProposal(proposal, "confidence_below_threshold"))
+            continue
+        if proposal.novelty < novelty_floor:
+            rejected.append(RejectedAnalysisProposal(proposal, "novelty_below_threshold"))
+            continue
+        if len(accepted) >= limit:
+            rejected.append(RejectedAnalysisProposal(proposal, "novelty_limit_reached"))
+            continue
+        accepted.append(proposal)
+        accepted_branch_ids.add(proposal.branch.branch_id)
+
+    accepted.sort(key=lambda item: item.branch.branch_id)
+    plan_evaluation = (
+        evaluate_plan_branches(item.branch for item in accepted) if accepted else None
+    )
+    # Preserve deterministic rejection order but make policy failures easy to
+    # compare across providers that return candidates in a different order.
+    rejected.sort(
+        key=lambda item: (
+            item.reason,
+            item.proposal.proposal_id,
+            item.proposal.branch.branch_id,
+        )
+    )
+    return AnalysisProposalEvaluation(
+        accepted=tuple(accepted),
+        rejected=tuple(rejected),
+        plan_evaluation=plan_evaluation,
     )

@@ -12,10 +12,13 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     plan_objective_records,
 )
 from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+    AnalysisProposal,
     PlanBranch,
+    evaluate_analysis_proposals,
     evaluate_plan_branches,
 )
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+    parse_analysis_proposals,
     build_structured_plan_prompt,
     generate_structured_plan_branches,
     parse_structured_plan_branches,
@@ -193,6 +196,57 @@ def test_evaluation_profile_g_payload_uses_content_safe_integer_scores() -> None
     assert isinstance(selected["risk_millionths"], int)
     assert isinstance(selected["expected_objective_delta_millionths"], int)
     assert all(isinstance(score, int) for score in evaluation.scores.values())
+
+
+def test_analysis_evaluator_rejects_duplicate_low_confidence_and_low_novelty_candidates() -> None:
+    accepted = AnalysisProposal(_branch("accepted"), 0.9, 0.8, ("term one",))
+    # Canonical identity deliberately ignores branch id.
+    duplicate = AnalysisProposal(
+        PlanBranch.from_dict({**accepted.branch.to_dict(), "branch_id": "renamed"}),
+        0.9,
+        0.8,
+        ("term one",),
+    )
+    weak = AnalysisProposal(_branch("weak"), 0.4, 0.9, ("term one",))
+    familiar = AnalysisProposal(_branch("familiar"), 0.9, 0.1, ("term one",))
+
+    evaluation = evaluate_analysis_proposals(
+        [weak, duplicate, familiar, accepted],
+        objective_terms=["term one"],
+        min_confidence=0.7,
+        min_novelty=0.5,
+        max_novel_proposals=2,
+    )
+
+    assert [item.branch.branch_id for item in evaluation.accepted] == ["accepted"]
+    assert {item.reason for item in evaluation.rejected} == {
+        "duplicate_candidate",
+        "confidence_below_threshold",
+        "novelty_below_threshold",
+    }
+    assert evaluation.selected is accepted
+
+
+def test_analysis_proposal_parser_requires_explicit_confidence_novelty_and_terms() -> None:
+    payload = {
+        "proposals": [
+            {
+                "branch": _branch_payload("semantic"),
+                "confidence": 0.9,
+                "novelty": 0.8,
+                "objective_terms": ["term one"],
+            }
+        ]
+    }
+
+    parsed = parse_analysis_proposals(json.dumps(payload))
+    assert parsed[0].confidence == 0.9
+    assert parsed[0].novelty == 0.8
+    assert parsed[0].objective_terms == ("term one",)
+
+    del payload["proposals"][0]["confidence"]
+    with pytest.raises(ValueError, match="confidence"):
+        parse_analysis_proposals(json.dumps(payload))
 
 
 def test_router_generates_multiple_validated_branches_for_an_eligible_subgoal() -> None:
