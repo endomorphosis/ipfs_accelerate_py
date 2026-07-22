@@ -3197,6 +3197,16 @@ class PortalImplementationDaemon:
                 shutil.rmtree(target)
             else:
                 target.unlink()
+        # A task may update the parent gitlink or run ``submodule update`` and
+        # remove this checkout while Git still records it as a worktree. Drop
+        # only this stale registration before recreating the managed path.
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(target)],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
         target.parent.mkdir(parents=True, exist_ok=True)
         if branch_name:
             submodule_branch = self._submodule_worktree_branch_name(branch_name, source_key)

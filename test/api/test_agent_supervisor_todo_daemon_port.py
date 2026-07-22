@@ -3719,6 +3719,43 @@ def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     return repo, submodule
 
 
+def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/auto-registered"
+    worktree = repo / "worktrees" / "auto-registered"
+    _git(repo, "worktree", "add", "-b", branch_name, str(worktree), "main")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    assert daemon._create_local_submodule_worktree(
+        worktree,
+        "libs/child",
+        branch_name=branch_name,
+    ) is True
+    target = worktree / "libs" / "child"
+    moved_target = worktree / "libs" / "orphaned-child"
+    target.rename(moved_target)
+    assert not target.exists()
+    assert str(target) in _git(submodule, "worktree", "list", "--porcelain")
+
+    assert daemon._create_local_submodule_worktree(
+        worktree,
+        "libs/child",
+        branch_name=branch_name,
+    ) is True
+    assert daemon._is_git_worktree(target)
+    worktree_listing = _git(submodule, "worktree", "list", "--porcelain")
+    assert worktree_listing.count(f"worktree {target}") == 1
+
+
 def test_implementation_daemon_creates_parent_handoff_for_submodule_only_commit(
     tmp_path: Path,
     monkeypatch,
