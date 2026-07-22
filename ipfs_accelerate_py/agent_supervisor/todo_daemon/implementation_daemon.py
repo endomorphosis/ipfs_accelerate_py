@@ -2268,11 +2268,12 @@ class PortalImplementationDaemon:
         branch_name: str,
         implementation_commit: str,
         baseline_ref: str,
-        worktree_path: Path,
+        worktree_path: Path | None,
         task: PortalTask,
         attempt: int,
         changed_submodule_paths: Sequence[str] | None = None,
         validation_result: dict[str, Any] | None = None,
+        worktree_pool_handoff: bool = False,
     ) -> tuple[Any, dict[str, Any]]:
         """Durably hand a validated implementation to the repo-wide merge train.
 
@@ -2288,7 +2289,7 @@ class PortalImplementationDaemon:
             "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@1",
             "baseline_ref": baseline_ref,
             "implementation_commit": implementation_commit,
-            "worktree_path": str(worktree_path),
+            "worktree_path": str(worktree_path or ""),
             "todo_path": str(self.todo_path),
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
@@ -2328,6 +2329,8 @@ class PortalImplementationDaemon:
             }
         if work_order is not None:
             metadata["bundle_work_order"] = work_order.to_dict()
+        if worktree_pool_handoff:
+            metadata["worktree_pool_handoff"] = True
         request = self.merge_queue.enqueue(
             branch_name=branch_name,
             task_id=task.task_id,
@@ -2359,7 +2362,7 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "baseline_ref": baseline_ref,
                 "implementation_commit": implementation_commit,
-                "worktree_path": str(worktree_path),
+                "worktree_path": str(worktree_path or ""),
                 **result,
             },
         )
@@ -2518,8 +2521,11 @@ class PortalImplementationDaemon:
         if result.get("merged"):
             worktree_path_text = str(metadata.get("worktree_path") or "")
             cleanup_result = (
-                self._cleanup_merged_worktree(Path(worktree_path_text), branch_name)
-                if worktree_path_text
+                self._cleanup_merged_worktree(
+                    Path(worktree_path_text) if worktree_path_text else None,
+                    branch_name,
+                )
+                if worktree_path_text or metadata.get("worktree_pool_handoff") is True
                 else {}
             )
             result["cleanup_result"] = cleanup_result
@@ -2829,18 +2835,27 @@ class PortalImplementationDaemon:
                             worktree_path=worktree_path,
                             branch_name=branch_name,
                         )
+                        pool_handoff = self._release_pooled_worktree_lease(
+                            worktree_path,
+                            reason="merge_queue_handoff",
+                        )
                         request, merge_result = self._enqueue_merge_candidate(
                             branch_name=branch_name,
                             implementation_commit=implementation_commit,
                             baseline_ref=baseline_ref,
-                            worktree_path=worktree_path,
+                            worktree_path=(
+                                None if pool_handoff.get("released", False) else worktree_path
+                            ),
                             task=task,
                             attempt=attempt,
                             changed_submodule_paths=self._committed_submodule_paths(
                                 commit_result.get("submodule_results") or []
                             ),
                             validation_result=validation_result,
+                            worktree_pool_handoff=bool(pool_handoff.get("released", False)),
                         )
+                        if pool_handoff.get("attempted", False):
+                            merge_result["worktree_pool_handoff"] = pool_handoff
                         try:
                             train_result = self._consume_one_merge_candidate()
                         except Exception as exc:
@@ -2895,6 +2910,18 @@ class PortalImplementationDaemon:
                         commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
                         implementation_commit = str(commit_result.get("commit", ""))
                         cleanup_result = dict(failed_preservation_result.get("cleanup_result") or cleanup_result)
+            else:
+                pool_failure_release = self._release_pooled_worktree_lease(
+                    worktree_path,
+                    reason="implementation_command_failed",
+                )
+                if pool_failure_release.get("attempted", False):
+                    cleanup_result = {
+                        "cleaned": bool(pool_failure_release.get("released", False)),
+                        "reason": "failed_implementation_pool_lease_released",
+                        "pooled": bool(pool_failure_release.get("pooled", False)),
+                        "pool_release": pool_failure_release,
+                    }
         except subprocess.TimeoutExpired:
             returncode = 124
             self._record_event(
@@ -3253,6 +3280,36 @@ class PortalImplementationDaemon:
         except OSError:
             key = requested_path
         return self._worktree_pool_effective_paths.pop(key, requested_path)
+
+    def _release_pooled_worktree_lease(
+        self,
+        worktree_path: Path,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Release a pooled checkout while retaining its durable task branch."""
+
+        try:
+            lease_key = worktree_path.resolve()
+        except OSError:
+            lease_key = worktree_path
+        lease = self._worktree_pool_leases.pop(lease_key, None)
+        if lease is None:
+            return {
+                "attempted": False,
+                "released": False,
+                "reason": "worktree_not_pooled",
+                "worktree_path": str(worktree_path),
+            }
+        release_result = lease.release(reusable=True)
+        result = {
+            "attempted": True,
+            "handoff_reason": reason,
+            "worktree_path": str(worktree_path),
+            **release_result,
+        }
+        self._record_event("worktree_pool_lease_released", result)
+        return result
 
     def _implementation_worktree_cache_key(self) -> str:
         """Return the stable dependency-setup identity for implementation leases."""

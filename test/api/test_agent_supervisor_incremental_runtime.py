@@ -10,6 +10,8 @@ from ipfs_accelerate_py.agent_supervisor import objective_graph
 from ipfs_accelerate_py.agent_supervisor.objective_graph import scan_objective_gaps
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTask,
+    PortalTaskState,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import WorktreePool
 
@@ -305,3 +307,87 @@ def test_implementation_daemon_uses_stable_pooled_path_for_populated_submodules(
     assert warm_setup["saved_duration_seconds"] >= 0
     assert _git(warm_path, "status", "--porcelain") == ""
     assert daemon._cleanup_merged_worktree(warm_path, "implementation/daemon-warm")["pooled"] is True
+
+
+def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=(
+            "python -c \"from pathlib import Path; "
+            "Path('feature.py').write_text('VALUE = 1\\\\n')\""
+        ),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+    task = PortalTask(
+        task_id="INC-001",
+        title="Release pooled merge handoff",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+        validation=["python -m py_compile feature.py"],
+    )
+
+    result = daemon._run_implementation(task, PortalTaskState())
+
+    merge_result = result["merge_result"]
+    handoff = merge_result["worktree_pool_handoff"]
+    assert merge_result["queued"] is True
+    assert handoff["released"] is True
+    assert handoff["pooled"] is True
+    assert daemon._worktree_pool_leases == {}
+    assert list((worktree_root / ".pool-state").glob("*.lock")) == []
+    queued = daemon.merge_queue.dequeue(consumer_id="merge-train:test")
+    assert queued is not None
+    assert queued.metadata["worktree_path"] == ""
+    assert queued.metadata["worktree_pool_handoff"] is True
+    assert _git(repo, "rev-parse", result["branch"]) == result["implementation_commit"]
+
+
+def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command="python -c \"raise SystemExit(7)\"",
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    task = PortalTask(
+        task_id="INC-002",
+        title="Release failed pooled implementation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+
+    result = daemon._run_implementation(task, PortalTaskState())
+
+    assert result["returncode"] == 7
+    assert result["cleanup_result"]["reason"] == "failed_implementation_pool_lease_released"
+    assert result["cleanup_result"]["pool_release"]["released"] is True
+    assert daemon._worktree_pool_leases == {}
+    assert list((worktree_root / ".pool-state").glob("*.lock")) == []
