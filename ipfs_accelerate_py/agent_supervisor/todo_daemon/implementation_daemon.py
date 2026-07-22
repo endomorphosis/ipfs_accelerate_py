@@ -38,6 +38,7 @@ from ..merge_queue import MergeQueue
 from ..validation_commands import normalize_validation_command_text, split_validation_commands
 from ..validation_scheduler import ValidationScheduler
 from .runner import TodoDaemonHooks, TodoDaemonRunner
+from .worktrees import WorktreeLease, WorktreePool
 
 REPO_ROOT = Path.cwd()
 
@@ -62,6 +63,9 @@ DEFAULT_TRACKS = [
 ]
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
+WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
+WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
+DEFAULT_WORKTREE_POOL_MAX_ENTRIES = 4
 SHARED_WORKTREE_SOURCE_ROOT_ENV = "IPFS_ACCELERATE_AGENT_SHARED_WORKTREE_SOURCE_ROOT"
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
@@ -129,6 +133,17 @@ def _env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def shared_worktree_source_roots(repo_root: Path) -> tuple[Path, ...]:
@@ -860,6 +875,9 @@ class PortalImplementationDaemon:
         validation_cache_dir: Path | None = None,
         validation_max_workers: int | None = None,
         validation_resource_budget: int | None = None,
+        worktree_pool_enabled: bool | None = None,
+        worktree_pool_max_entries: int | None = None,
+        worktree_pool: WorktreePool | None = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -880,6 +898,26 @@ class PortalImplementationDaemon:
         if not configured_worktree_root.is_absolute():
             configured_worktree_root = self.repo_root / configured_worktree_root
         self.worktree_root = configured_worktree_root.resolve()
+        self.worktree_pool_enabled = (
+            _env_bool(WORKTREE_POOL_ENABLED_ENV, True)
+            if worktree_pool_enabled is None
+            else bool(worktree_pool_enabled)
+        )
+        configured_pool_size = (
+            _env_int(WORKTREE_POOL_MAX_ENTRIES_ENV, DEFAULT_WORKTREE_POOL_MAX_ENTRIES)
+            if worktree_pool_max_entries is None
+            else int(worktree_pool_max_entries)
+        )
+        self.worktree_pool = worktree_pool
+        if self.worktree_pool is None and self.worktree_pool_enabled:
+            self.worktree_pool = WorktreePool(
+                repo_root=self.repo_root,
+                worktree_root=self.worktree_root,
+                max_entries=max(1, configured_pool_size),
+            )
+        self._worktree_pool_leases: dict[Path, WorktreeLease] = {}
+        self._worktree_pool_effective_paths: dict[Path, Path] = {}
+        self._worktree_setup_metrics: dict[Path, dict[str, Any]] = {}
         self.merge_target_branch = str(merge_target_branch or "").strip()
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
@@ -2705,6 +2743,12 @@ class PortalImplementationDaemon:
 
         try:
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
+            # A pooled checkout keeps a stable physical path so Git does not
+            # have to relocate populated submodule worktrees.  Resolve the
+            # task's provisional timestamp path before any command, state, or
+            # merge metadata is built from it.
+            worktree_path = self._effective_pooled_worktree_path(worktree_path)
+            workspace_setup = self._worktree_setup_result(worktree_path)
             command = self._build_implementation_command(worktree_path)
             self._mark_implementation_started(
                 state,
@@ -2725,6 +2769,10 @@ class PortalImplementationDaemon:
                     "worktree_path": str(worktree_path),
                     "branch": branch_name,
                     "baseline_ref": baseline_ref,
+                    "workspace_setup": workspace_setup,
+                    "cache_hit": workspace_setup["cache_hit"],
+                    "setup_duration_seconds": workspace_setup["setup_duration_seconds"],
+                    "saved_duration_seconds": workspace_setup["saved_duration_seconds"],
                 },
             )
             with log_path.open("w", encoding="utf-8") as log_fh:
@@ -2941,7 +2989,11 @@ class PortalImplementationDaemon:
             "validation_result": validation_result,
             "cleanup_result": cleanup_result,
             "failed_preservation_result": failed_preservation_result,
+            "workspace_setup": self._worktree_setup_result(worktree_path),
         }
+        result["cache_hit"] = result["workspace_setup"]["cache_hit"]
+        result["setup_duration_seconds"] = result["workspace_setup"]["setup_duration_seconds"]
+        result["saved_duration_seconds"] = result["workspace_setup"]["saved_duration_seconds"]
         termination_result = self._implementation_returncode_detail(returncode)
         if termination_result:
             result["termination_result"] = termination_result
@@ -3138,6 +3190,46 @@ class PortalImplementationDaemon:
         *,
         task: PortalTask | None = None,
     ) -> str:
+        if self.worktree_pool is not None:
+            base_ref = self._main_branch_name()
+            cache_key = self._implementation_worktree_cache_key()
+
+            def activate(candidate: Path) -> None:
+                self._initialize_worktree_submodules(candidate, branch_name=branch_name)
+
+            lease = self.worktree_pool.acquire(
+                cache_key=cache_key,
+                base_ref=base_ref,
+                branch_name=branch_name,
+                dependency_paths=self.worktree_submodule_paths,
+                activate=activate,
+            )
+            lease_path = Path(lease.path).resolve()
+            try:
+                requested_path = worktree_path.resolve()
+            except OSError:
+                requested_path = worktree_path
+            self._worktree_pool_effective_paths[requested_path] = lease_path
+            self._worktree_pool_leases[lease_path] = lease
+            setup_metrics = self._pool_lease_metrics(lease)
+            self._worktree_setup_metrics[lease_path] = setup_metrics
+            # Shared dependency links and dirty, untracked planning context are
+            # deliberately per lease.  Neither is allowed to become part of a
+            # clean pooled image or leak from one task into the next.
+            try:
+                self._link_shared_worktree_paths(lease_path)
+                self._seed_untracked_worktree_context(lease_path, task=task, overwrite_existing=True)
+            except BaseException:
+                self._worktree_pool_effective_paths.pop(requested_path, None)
+                self._worktree_pool_leases.pop(lease_path, None)
+                self._worktree_setup_metrics.pop(lease_path, None)
+                lease.release(reusable=False)
+                raise
+            baseline_ref = str(getattr(lease, "base_commit", "") or "")
+            if not baseline_ref:
+                baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=lease_path).stdout.strip()
+            return baseline_ref
+
         self._run_git(
             ["worktree", "add", "-b", branch_name, str(worktree_path), self._main_branch_name()],
             cwd=self.repo_root,
@@ -3147,6 +3239,73 @@ class PortalImplementationDaemon:
         self._link_shared_worktree_paths(worktree_path)
         self._seed_untracked_worktree_context(worktree_path, task=task, overwrite_existing=True)
         return baseline_ref
+
+    def _effective_pooled_worktree_path(self, requested_path: Path) -> Path:
+        """Return the stable leased checkout behind a provisional task path."""
+
+        try:
+            key = requested_path.resolve()
+        except OSError:
+            key = requested_path
+        return self._worktree_pool_effective_paths.pop(key, requested_path)
+
+    def _implementation_worktree_cache_key(self) -> str:
+        """Return the stable dependency-setup identity for implementation leases."""
+
+        payload = {
+            "schema": "implementation-worktree-setup-v1",
+            "submodule_paths": list(self.worktree_submodule_paths),
+            "shared_paths": list(SHARED_WORKTREE_PATHS),
+            "shared_source_roots": [str(path) for path in self.shared_worktree_source_roots],
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _pool_lease_metrics(lease: WorktreeLease) -> dict[str, Any]:
+        """Normalize pool metrics for durable events and implementation results."""
+
+        raw = getattr(lease, "metadata", None)
+        if not isinstance(raw, dict):
+            raw = getattr(lease, "metrics", None)
+        metadata = dict(raw) if isinstance(raw, dict) else {}
+        cache_hit = bool(metadata.get("cache_hit", metadata.get("reused", getattr(lease, "reused", False))))
+        setup_seconds = metadata.get("setup_duration_seconds", metadata.get("setup_seconds", 0.0))
+        saved_seconds = metadata.get(
+            "saved_duration_seconds",
+            metadata.get("saved_seconds", metadata.get("estimated_seconds_saved", 0.0)),
+        )
+        try:
+            normalized_setup = max(0.0, float(setup_seconds or 0.0))
+        except (TypeError, ValueError):
+            normalized_setup = 0.0
+        try:
+            normalized_saved = max(0.0, float(saved_seconds or 0.0))
+        except (TypeError, ValueError):
+            normalized_saved = 0.0
+        return {
+            **metadata,
+            "cache_hit": cache_hit,
+            "reused": cache_hit,
+            "setup_duration_seconds": normalized_setup,
+            "saved_duration_seconds": normalized_saved,
+        }
+
+    def _worktree_setup_result(self, worktree_path: Path) -> dict[str, Any]:
+        try:
+            key = worktree_path.resolve()
+        except OSError:
+            key = worktree_path
+        metrics = self._worktree_setup_metrics.get(key)
+        if metrics is not None:
+            return dict(metrics)
+        return {
+            "cache_hit": False,
+            "reused": False,
+            "setup_duration_seconds": 0.0,
+            "saved_duration_seconds": 0.0,
+            "pool_enabled": self.worktree_pool is not None,
+        }
 
     def _initialize_worktree_submodules(self, worktree_path: Path, *, branch_name: str = "") -> None:
         init_failures: list[dict[str, Any]] = []
@@ -3267,6 +3426,12 @@ class PortalImplementationDaemon:
                 current_branch = self._git_current_branch(target)
                 if current_branch and current_branch != expected_branch:
                     return False
+                if not current_branch:
+                    # Pooled dependencies are deliberately restored detached
+                    # at their recorded prepared revision.  Reattach the clean
+                    # checkout to this lease's task-local branch before an
+                    # implementation can commit into it.
+                    self._run_git(["switch", "-C", expected_branch, base_ref], cwd=target)
             return True
         if target.exists() or target.is_symlink():
             if target.is_symlink() or target.is_file():
@@ -6857,6 +7022,42 @@ class PortalImplementationDaemon:
 
     def _cleanup_merged_worktree(self, worktree_path: Path | None, branch_name: str) -> dict[str, Any]:
         started_at = utc_now()
+        lease: WorktreeLease | None = None
+        lease_key: Path | None = None
+        if worktree_path is not None:
+            try:
+                lease_key = worktree_path.resolve()
+            except OSError:
+                lease_key = worktree_path
+            lease = self._worktree_pool_leases.pop(lease_key, None)
+        if lease is not None:
+            pool_release = lease.release(reusable=True)
+            if pool_release.get("released", False):
+                deleted_branch = False
+                branch_error = ""
+                try:
+                    if self._git_ref_exists(branch_name):
+                        self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
+                        deleted_branch = True
+                except RuntimeError as exc:
+                    branch_error = str(exc)
+                result = {
+                    "cleaned": not branch_error,
+                    "branch": branch_name,
+                    "worktree_path": str(worktree_path or ""),
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                    "removed_worktree": not bool(pool_release.get("pooled", False)),
+                    "deleted_branch": deleted_branch,
+                    "submodule_cleanup": [],
+                    "pooled": bool(pool_release.get("pooled", False)),
+                    "pool_release": pool_release,
+                }
+                if branch_error:
+                    result["error"] = branch_error
+                self._record_event("cleanup_finished", result)
+                return result
+
         removed_worktree = False
         deleted_branch = False
         submodule_cleanup: list[dict[str, Any]] = []
