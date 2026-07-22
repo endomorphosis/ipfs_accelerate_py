@@ -27,6 +27,16 @@ from .objective_graph import (
 
 logger = logging.getLogger(__name__)
 
+_MANIFEST_REFERENCED_BUNDLE_FIELDS = frozenset(
+    {
+        "conflict_graph",
+        "conflict_planning_decisions",
+        "dependency_dag",
+        "task_conflict_graph",
+        "task_dependency_graph",
+    }
+)
+
 
 @dataclass(frozen=True)
 class BundleLaneSpec:
@@ -71,6 +81,40 @@ class BundleLaneSpec:
         return payload
 
 
+def _compact_bundle_manifest_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep live manifests bounded while retaining the planning source."""
+
+    compact = {
+        key: value
+        for key, value in payload.items()
+        if key not in _MANIFEST_REFERENCED_BUNDLE_FIELDS
+    }
+    omitted = sorted(_MANIFEST_REFERENCED_BUNDLE_FIELDS.intersection(payload))
+    if omitted:
+        compact["planning_evidence_ref"] = {
+            "bundle_index": str(payload.get("objective_bundle_index") or ""),
+            "bundle_key": str(payload.get("bundle_key") or ""),
+            "omitted_fields": omitted,
+        }
+    return compact
+
+
+def _compact_task_manifest_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    compact = dict(payload)
+    bundle = compact.get("bundle")
+    if isinstance(bundle, dict):
+        compact["bundle"] = _compact_bundle_manifest_payload(bundle)
+    return compact
+
+
+def _lane_manifest_payload(lane: BundleLaneSpec, *, repo_root: Path) -> dict[str, Any]:
+    payload = lane.to_dict(repo_root=repo_root)
+    queue_payload = payload.get("queue_payload")
+    if isinstance(queue_payload, dict):
+        payload["queue_payload"] = _compact_bundle_manifest_payload(queue_payload)
+    return payload
+
+
 @dataclass
 class RunningBundleLane:
     """Live scheduler ownership for one subprocess and its fenced lease."""
@@ -86,7 +130,7 @@ class RunningBundleLane:
         return int(value) if isinstance(value, int) else None
 
     def to_dict(self, *, repo_root: Path) -> dict[str, Any]:
-        payload = self.spec.to_dict(repo_root=repo_root)
+        payload = _lane_manifest_payload(self.spec, repo_root=repo_root)
         payload.update(
             {
                 "state": "running",
@@ -880,7 +924,7 @@ def write_bundle_lane_manifest(
         "started_count": len(started),
         "critical_path": [lane.bundle_key for lane in lanes if lane.claimable],
         "conflict_graph": _lane_conflict_manifest(lanes),
-        "lanes": [lane.to_dict(repo_root=repo_root) for lane in lanes],
+        "lanes": [_lane_manifest_payload(lane, repo_root=repo_root) for lane in lanes],
         "started": list(started),
     }
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1126,7 +1170,7 @@ class DynamicBundleScheduler:
         running_ids = set(self._running)
         normalized: list[dict[str, Any]] = []
         for raw in task_projection:
-            item = dict(raw)
+            item = _compact_task_manifest_payload(raw)
             item["state"] = self._projection_state(item)
             normalized.append(item)
         ready = [item for item in normalized if item["state"] == "ready"]

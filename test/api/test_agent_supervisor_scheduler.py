@@ -10,6 +10,14 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleS
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
 
+_MANIFEST_GRAPH_FIELDS = {
+    "conflict_graph",
+    "conflict_planning_decisions",
+    "dependency_dag",
+    "task_conflict_graph",
+    "task_dependency_graph",
+}
+
 
 def _bundle(task_id: str, *, lane: str | None = None) -> dict[str, Any]:
     key = f"objective/test/{task_id.lower()}"
@@ -348,6 +356,39 @@ def test_manifest_is_an_authoritative_live_projection(tmp_path: Path) -> None:
     assert terminal["counts"]["active"] == 0
     assert terminal["counts"]["completed"] == 1
     assert terminal["completed"][0]["task_cid"] == grant.task_cid
+
+
+def test_manifest_references_full_planning_graphs_without_embedding_them(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    index_payload = json.loads(index.read_text(encoding="utf-8"))
+    bundle = index_payload["bundles"]["objective/test/t-1"]
+    bundle.update(
+        {
+            "objective_bundle_index": str(index),
+            "task_dependency_graph": {"padding": "d" * 20_000},
+            "dependency_dag": {"padding": "d" * 20_000},
+            "task_conflict_graph": {"padding": "c" * 10_000},
+            "conflict_graph": {"padding": "c" * 10_000},
+            "conflict_planning_decisions": [{"padding": "p" * 5_000}],
+        }
+    )
+    index.write_text(json.dumps(index_payload), encoding="utf-8")
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    manifest = scheduler.reconcile_once()
+
+    task_bundle = manifest["tasks"][0]["bundle"]
+    lane_bundle = manifest["lanes"][0]["queue_payload"]
+    for projected in (task_bundle, lane_bundle):
+        assert not _MANIFEST_GRAPH_FIELDS.intersection(projected)
+        reference = projected["planning_evidence_ref"]
+        assert reference["bundle_key"] == "objective/test/t-1"
+        assert set(reference["omitted_fields"]) == _MANIFEST_GRAPH_FIELDS
+    assert len(json.dumps(index_payload)) > 65_000
+    assert len(json.dumps(manifest)) < 30_000
 
 
 def test_leased_lane_publishes_terminal_and_blocked_projection(tmp_path: Path) -> None:
