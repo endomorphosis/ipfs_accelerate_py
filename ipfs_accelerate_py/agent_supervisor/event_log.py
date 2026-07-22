@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -122,6 +123,68 @@ def read_jsonl_events(path: Path, *, repair: bool = False) -> list[dict[str, Any
         if isinstance(event, dict):
             events.append(event)
     return events
+
+
+def event_log_sources(
+    paths: Iterable[Path | str],
+    *,
+    include_rotated: bool = True,
+) -> list[Path]:
+    """Resolve active and rotated JSONL logs in deterministic archive order.
+
+    Rotation archives are part of the lifecycle history.  Metrics readers need
+    them to avoid resetting counters whenever the active log is compacted.
+    Missing paths are retained only conceptually and therefore produce no
+    source entry.
+    """
+
+    resolved: list[Path] = []
+    seen: set[Path] = set()
+    for raw_path in paths:
+        path = Path(raw_path)
+        candidates: list[Path] = []
+        if include_rotated and path.parent.exists():
+            candidates.extend(sorted(path.parent.glob(f"{path.name}.rotated-*")))
+        candidates.append(path)
+        for candidate in candidates:
+            try:
+                key = candidate.resolve()
+            except OSError:
+                key = candidate.absolute()
+            if key in seen or not candidate.exists() or candidate.is_dir():
+                continue
+            seen.add(key)
+            resolved.append(candidate)
+    return resolved
+
+
+def read_jsonl_event_sources(
+    paths: Iterable[Path | str],
+    *,
+    repair: bool = False,
+    include_rotated: bool = True,
+) -> list[dict[str, Any]]:
+    """Read and timestamp-order events from multiple supervisor logs.
+
+    File order is used as a stable tie breaker.  Invalid or missing timestamps
+    sort after timestamped events while preserving their source order.
+    """
+
+    indexed: list[tuple[int, dict[str, Any]]] = []
+    index = 0
+    for source in event_log_sources(paths, include_rotated=include_rotated):
+        source_repair = repair and ".rotated-" not in source.name
+        for event in read_jsonl_events(source, repair=source_repair):
+            indexed.append((index, event))
+            index += 1
+
+    def timestamp_key(item: tuple[int, dict[str, Any]]) -> tuple[int, str, int]:
+        position, event = item
+        timestamp = str(event.get("timestamp") or event.get("occurred_at") or "")
+        return (0 if timestamp else 1, timestamp, position)
+
+    indexed.sort(key=timestamp_key)
+    return [event for _index, event in indexed]
 
 
 def append_jsonl_event(path: Path, event_type: str, payload: Mapping[str, Any]) -> None:

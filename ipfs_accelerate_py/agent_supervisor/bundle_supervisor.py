@@ -24,6 +24,14 @@ from .objective_graph import (
     safe_bundle_key,
     utc_now,
 )
+from .event_log import event_log_sources, read_jsonl_events
+from .scheduler_metrics import (
+    SchedulerSnapshot,
+    ready_task_cids,
+    scheduler_snapshot,
+    scheduler_state_events,
+    write_scheduler_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1016,6 +1024,7 @@ class DynamicBundleScheduler:
         worktree_root: Path | None = None,
         log_dir: Path | None = None,
         manifest_path: Path | None = None,
+        metrics_path: Path | None = None,
         coordination_path: Path | None = None,
         max_lanes: int = 1,
         claimant_did: str = "did:web:ipfs-accelerate.local",
@@ -1036,6 +1045,8 @@ class DynamicBundleScheduler:
         self.worktree_root = Path(worktree_root or self.state_root / "worktrees").resolve()
         self.log_dir = Path(log_dir or self.state_root / "logs").resolve()
         self.manifest_path = Path(manifest_path or self.state_root / "bundle_lanes.json").resolve()
+        self.metrics_path = Path(metrics_path or self.state_root / "scheduler_metrics.json").resolve()
+        self.decision_metrics_path = self.metrics_path.with_name("scheduler_decision_metrics.json")
         self.coordination_path = Path(
             coordination_path or self.state_root / "coordination.sqlite3"
         ).resolve()
@@ -1054,6 +1065,8 @@ class DynamicBundleScheduler:
         self._lock = threading.RLock()
         self._cycle = 0
         self._last_discovery_error = ""
+        self._last_scheduler_snapshot: SchedulerSnapshot | None = None
+        self._event_source_cache: dict[Path, tuple[int, int, list[dict[str, Any]]]] = {}
 
     @property
     def running_count(self) -> int:
@@ -1256,6 +1269,129 @@ class DynamicBundleScheduler:
             return "completed"
         return state
 
+    @staticmethod
+    def _lane_phase_event(lane: BundleLaneSpec) -> dict[str, Any]:
+        """Read the durable lane heartbeat as one current-state event."""
+
+        state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state_observed = isinstance(state, dict)
+        except (OSError, json.JSONDecodeError):
+            state = {}
+            state_observed = False
+        if not isinstance(state, dict):
+            state = {}
+        phase = str(state.get("active_phase") or "")
+        if not phase:
+            if state.get("implementation_in_progress") or state.get("active_task_id"):
+                phase = "active"
+            elif int(state.get("blocked_count") or 0) > 0 and int(state.get("ready_count") or 0) == 0:
+                phase = "blocked"
+            elif int(state.get("ready_count") or 0) > 0:
+                phase = "ready"
+            else:
+                phase = "idle"
+        return {
+            "type": "lane_heartbeat",
+            "timestamp": str(state.get("heartbeat_at") or utc_now()),
+            "phase": phase,
+            "task_id": str(state.get("active_task_id") or ""),
+            "canonical_task_cid": str(state.get("active_task_cid") or lane.task_cid),
+            "state_observed": state_observed,
+        }
+
+    def _read_scheduler_events(self, path: Path) -> list[dict[str, Any]]:
+        """Read active/rotated lane logs once per observed file revision."""
+
+        events: list[dict[str, Any]] = []
+        for source in event_log_sources((path,), include_rotated=True):
+            try:
+                stat = source.stat()
+                revision = (stat.st_mtime_ns, stat.st_size)
+            except OSError:
+                continue
+            cached = self._event_source_cache.get(source)
+            if cached is None or cached[:2] != revision:
+                source_events = read_jsonl_events(source)
+                self._event_source_cache[source] = (*revision, source_events)
+            else:
+                source_events = cached[2]
+            events.extend(dict(event) for event in source_events)
+        return events
+
+    def _build_scheduler_snapshot(
+        self,
+        lanes: Sequence[BundleLaneSpec],
+        task_projection: Sequence[dict[str, Any]],
+    ) -> SchedulerSnapshot:
+        """Join lane logs, heartbeats, and lease events through one reducer."""
+
+        events: list[dict[str, Any]] = []
+        by_task_cid = {lane.task_cid: lane for lane in lanes if lane.task_cid}
+        for lane in lanes:
+            defaults = {
+                "goal_cid": lane.goal_cid,
+                "subgoal_cid": lane.subgoal_cid,
+                "task_cid": lane.task_cid,
+                "lane_id": lane.parallel_lane or lane.bundle_key,
+                "provider_id": self.claimant_did,
+                "bundle_key": lane.bundle_key,
+            }
+            for suffix in ("_events.jsonl", "_supervisor_events.jsonl"):
+                path = lane.state_dir / f"{lane.state_prefix}{suffix}"
+                for raw in self._read_scheduler_events(path):
+                    event = dict(raw)
+                    for key, value in defaults.items():
+                        if value:
+                            event.setdefault(key, value)
+                    events.append(event)
+            heartbeat = self._lane_phase_event(lane)
+            for key, value in defaults.items():
+                if value:
+                    heartbeat.setdefault(key, value)
+            events.append(heartbeat)
+
+        running_ids = set(self._running)
+        projected: list[dict[str, Any]] = []
+        for raw in task_projection:
+            item = dict(raw)
+            task_cid = str(item.get("task_cid") or "")
+            lane = by_task_cid.get(task_cid)
+            state = self._projection_state(item)
+            if state == "accepted" and task_cid not in running_ids:
+                state = "blocked"
+            elif state == "accepted":
+                state = "active"
+            item["state"] = state
+            if lane is not None:
+                item.setdefault("goal_cid", lane.goal_cid)
+                item.setdefault("subgoal_cid", lane.subgoal_cid)
+                item.setdefault("lane_id", lane.parallel_lane or lane.bundle_key)
+                item.setdefault("provider_id", self.claimant_did)
+            projected.append(item)
+        # Lease state is emitted last at one timestamp so it is the authority
+        # over historical lifecycle events.  A following lane heartbeat can
+        # refine active into validation/merge/resolver.
+        projection_timestamp = utc_now()
+        events.extend(scheduler_state_events(projected, timestamp=projection_timestamp))
+        for task_cid, running in sorted(self._running.items()):
+            lane_event = self._lane_phase_event(running.spec)
+            lane_event["timestamp"] = projection_timestamp
+            if not lane_event.pop("state_observed", False):
+                lane_event["phase"] = "active"
+            lane_event.update(
+                {
+                    "goal_cid": running.spec.goal_cid,
+                    "subgoal_cid": running.spec.subgoal_cid,
+                    "task_cid": task_cid,
+                    "lane_id": running.spec.parallel_lane or running.spec.bundle_key,
+                    "provider_id": self.claimant_did,
+                }
+            )
+            events.append(lane_event)
+        return scheduler_snapshot(events, now=projection_timestamp)
+
     def _write_live_manifest(
         self,
         *,
@@ -1263,6 +1399,9 @@ class DynamicBundleScheduler:
         task_projection: Sequence[dict[str, Any]],
         launched: Sequence[str],
         reaped: Sequence[str],
+        scheduler_state: SchedulerSnapshot | None = None,
+        decision_snapshot: SchedulerSnapshot | None = None,
+        decisions: Sequence[dict[str, Any]] = (),
     ) -> dict[str, Any]:
         running_ids = set(self._running)
         normalized: list[dict[str, Any]] = []
@@ -1285,6 +1424,11 @@ class DynamicBundleScheduler:
             running.to_dict(repo_root=self.repo_root)
             for _task_cid, running in sorted(self._running.items())
         ]
+        current_snapshot = scheduler_state or self._build_scheduler_snapshot(discovered, normalized)
+        decision_state = decision_snapshot or current_snapshot
+        self._last_scheduler_snapshot = current_snapshot
+        snapshot_payload = current_snapshot.to_dict()
+        decision_snapshot_payload = decision_state.to_dict()
         payload: dict[str, Any] = {
             "schema": "ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler@1",
             "generated_at": utc_now(),
@@ -1308,6 +1452,19 @@ class DynamicBundleScheduler:
                 "completed": len(completed),
                 "capacity": self.max_lanes,
             },
+            "scheduler_snapshot": snapshot_payload,
+            "scheduler_snapshot_id": current_snapshot.snapshot_id,
+            "scheduler_metrics_path": repo_relative_path(self.repo_root, self.metrics_path),
+            "scheduler_decision_snapshot_id": decision_state.snapshot_id,
+            "scheduler_decision_snapshot": {
+                "snapshot_id": decision_state.snapshot_id,
+                "schema": decision_snapshot_payload.get("schema"),
+                "generated_at": decision_snapshot_payload.get("generated_at"),
+                "phase_counts": decision_snapshot_payload.get("phase_counts", {}),
+                "source_event_count": decision_snapshot_payload.get("source_event_count", 0),
+                "metrics_path": repo_relative_path(self.repo_root, self.decision_metrics_path),
+            },
+            "scheduler_decisions": [dict(item) for item in decisions],
             "conflict_graph": _lane_conflict_manifest(discovered),
             "lanes": active_lanes,
             "ready": ready,
@@ -1325,6 +1482,8 @@ class DynamicBundleScheduler:
         )
         temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(temporary, self.manifest_path)
+        write_scheduler_snapshot(self.metrics_path, current_snapshot)
+        write_scheduler_snapshot(self.decision_metrics_path, decision_state)
         return payload
 
     def reconcile_once(self) -> dict[str, Any]:
@@ -1357,16 +1516,54 @@ class DynamicBundleScheduler:
                     )
 
                 reaped = self._reap(coordinator)
+                current_task_cids = {
+                    *(lane.task_cid for lane in registered),
+                    *self._running.keys(),
+                }
+                decision_projection = coordinator.list_tasks(task_cids=current_task_cids)
+                decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
+                snapshot_ready = set(ready_task_cids(decision_snapshot))
+                decisions: list[dict[str, Any]] = []
                 free_slots = max(0, self.max_lanes - len(self._running))
                 for lane in registered:
                     if free_slots <= 0:
-                        break
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            "reason": "capacity",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
+                        continue
                     if lane.task_cid in self._running:
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "retained",
+                            "reason": "already_active",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
+                        continue
+                    if lane.task_cid not in snapshot_ready:
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            "reason": "snapshot_not_ready",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
                         continue
                     if any(_lanes_conflict(lane, running.spec) for running in self._running.values()):
                         # A color is a reusable placement hint, not a lock.
                         # Only an actual graph edge against a live lane blocks
                         # admission, and a later reconciliation retries it.
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            "reason": "conflict",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
                         continue
                     grant = coordinator.claim_ready(
                         self.claimant_did,
@@ -1374,6 +1571,13 @@ class DynamicBundleScheduler:
                         eligible_task_cids=(lane.task_cid,),
                     )
                     if grant is None:
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            "reason": "lease_unavailable",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
                         continue
                     disposition = self._disposition(lane)
                     if disposition:
@@ -1381,6 +1585,13 @@ class DynamicBundleScheduler:
                             self._settle_grant(coordinator, grant, disposition=disposition)
                         except LeaseError:
                             pass
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "settled",
+                            "reason": disposition,
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
                         continue
                     try:
                         handle = self._launcher(lane, grant)
@@ -1390,6 +1601,13 @@ class DynamicBundleScheduler:
                         except LeaseError:
                             pass
                         logger.exception("Failed to launch bundle lane %s", lane.bundle_key)
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            "reason": "launch_failed",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
                         continue
                     self._running[lane.task_cid] = RunningBundleLane(
                         spec=lane,
@@ -1398,6 +1616,13 @@ class DynamicBundleScheduler:
                         started_at=utc_now(),
                     )
                     launched.append(lane.task_cid)
+                    decisions.append({
+                        "task_cid": lane.task_cid,
+                        "bundle_key": lane.bundle_key,
+                        "decision": "launched",
+                        "reason": "ready_capacity",
+                        "snapshot_id": decision_snapshot.snapshot_id,
+                    })
                     free_slots -= 1
 
                 current_task_cids = {
@@ -1405,11 +1630,15 @@ class DynamicBundleScheduler:
                     *self._running.keys(),
                 }
                 projection = coordinator.list_tasks(task_cids=current_task_cids)
+                current_snapshot = self._build_scheduler_snapshot(registered, projection)
             return self._write_live_manifest(
                 discovered=discovered,
                 task_projection=projection,
                 launched=launched,
                 reaped=reaped,
+                scheduler_state=current_snapshot,
+                decision_snapshot=decision_snapshot,
+                decisions=decisions,
             )
 
     def run(
@@ -1491,6 +1720,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--worktree-root", type=Path, default=None)
     parser.add_argument("--log-dir", type=Path, default=None)
     parser.add_argument("--manifest-path", type=Path, default=None)
+    parser.add_argument("--metrics-path", type=Path, default=None)
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
     parser.add_argument("--start", action="store_true", help="Launch the planned lane supervisors")
     parser.add_argument("--max-lanes", type=int, default=1, help="Maximum concurrent leased workers")
@@ -1563,6 +1793,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             worktree_root=worktree_root,
             log_dir=log_dir,
             manifest_path=manifest_path,
+            metrics_path=getattr(args, "metrics_path", None),
             coordination_path=getattr(args, "coordination_path", None),
             max_lanes=getattr(args, "max_lanes", 1) or 1,
             claimant_did=getattr(args, "claimant_did", "did:web:ipfs-accelerate.local"),

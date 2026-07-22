@@ -24,11 +24,12 @@ import json
 import logging
 import os
 import signal
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
+
+from .scheduler_metrics import scheduler_snapshot, scheduler_state_events
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,14 @@ def read_lane_manifest(manifest_path: Path) -> dict[str, Any]:
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Failed to read manifest %s: %s", manifest_path, exc)
         return {}
+
+
+def read_scheduler_snapshot(manifest_path: Path) -> dict[str, Any]:
+    """Return the exact operator snapshot embedded by the live scheduler."""
+
+    manifest = read_lane_manifest(manifest_path)
+    snapshot = manifest.get("scheduler_snapshot")
+    return dict(snapshot) if isinstance(snapshot, dict) else {}
 
 
 def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:
@@ -98,6 +107,14 @@ def check_lane_heartbeat(state_dir: Path, state_prefix: str, *, timeout_seconds:
         if age_seconds > timeout_seconds:
             result["stale"] = True
             result["reason"] = "heartbeat_timeout"
+        try:
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            status = {}
+        if isinstance(status, dict):
+            result["phase"] = str(status.get("active_phase") or status.get("phase") or "")
+            result["active_task_id"] = str(status.get("active_task_id") or "")
+            result["heartbeat_at"] = str(status.get("heartbeat_at") or "")
     except OSError as exc:
         result["stale"] = True
         result["reason"] = f"stat_error: {exc}"
@@ -299,6 +316,9 @@ class SupervisorWatchdog:
 
         lanes = manifest.get("lanes", [])
         started = manifest.get("started", [])
+        dynamic_authority = bool(manifest.get("authoritative")) and str(
+            manifest.get("schema") or ""
+        ).startswith("ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler")
 
         restarts = 0
         reports: list[dict[str, Any]] = []
@@ -335,6 +355,15 @@ class SupervisorWatchdog:
             needs_restart = not pid_check["alive"] or heartbeat_check.get("stale", False)
 
             if needs_restart:
+                if dynamic_authority:
+                    # The persistent scheduler owns the fenced lease and is
+                    # the only process allowed to replace its leased wrapper.
+                    # Starting the raw lane command here would create an
+                    # unfenced duplicate.
+                    report["action"] = "scheduler_recovery_required"
+                    report["reason"] = "dynamic_scheduler_owns_restart"
+                    reports.append(report)
+                    continue
                 # Check consecutive restart count for backoff
                 count = self._consecutive_restart_counts.get(bundle_key, 0)
                 if count >= self.max_consecutive_restarts:
@@ -371,11 +400,23 @@ class SupervisorWatchdog:
             except Exception as exc:
                 logger.debug("Log aggregation failed: %s", exc)
 
+        embedded_snapshot = manifest.get("scheduler_snapshot")
+        if isinstance(embedded_snapshot, dict):
+            operator_snapshot = dict(embedded_snapshot)
+        else:
+            events = scheduler_state_events(
+                [dict(lane) for lane in lanes if isinstance(lane, dict)],
+                timestamp=utc_now(),
+            )
+            operator_snapshot = scheduler_snapshot(events).to_dict()
+
         return {
             "timestamp": utc_now(),
             "lane_count": len(lanes),
             "restarts": restarts,
             "reports": reports,
+            "scheduler_snapshot": operator_snapshot,
+            "scheduler_snapshot_id": str(operator_snapshot.get("snapshot_id") or ""),
         }
 
 
