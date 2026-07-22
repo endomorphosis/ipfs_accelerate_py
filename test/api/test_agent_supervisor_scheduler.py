@@ -56,10 +56,27 @@ class _FakeProcess:
     pid: int
     alive: bool = True
     returncode: int | None = None
+    terminate_calls: int = 0
+    wait_calls: int = 0
+    kill_calls: int = 0
 
     def finish(self, returncode: int = 0) -> None:
         self.alive = False
         self.returncode = returncode
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        self.finish(-signal.SIGTERM)
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_calls += 1
+        if self.alive:
+            raise subprocess.TimeoutExpired(str(self.pid), timeout)
+        return int(self.returncode or 0)
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+        self.finish(-signal.SIGKILL)
 
 
 class _FakeLauncher:
@@ -77,6 +94,11 @@ class _FakeLauncher:
 
     def process_for(self, task_id: str) -> _FakeProcess:
         return next(process for lane, _grant, process in self.starts if task_id in lane.task_ids)
+
+
+class _StubbornFakeProcess(_FakeProcess):
+    def terminate(self) -> None:
+        self.terminate_calls += 1
 
 
 def _scheduler(
@@ -114,6 +136,17 @@ def _active_task_ids(manifest: dict[str, Any]) -> set[str]:
     }
 
 
+def test_terminate_handle_kills_and_reaps_an_unresponsive_wrapper() -> None:
+    process = _StubbornFakeProcess(pid=10_000)
+
+    DynamicBundleScheduler._terminate_handle(process, grace_seconds=0)
+
+    assert process.terminate_calls == 1
+    assert process.wait_calls == 2
+    assert process.kill_calls == 1
+    assert not process.alive
+
+
 def test_persistent_scheduler_discovers_new_and_refilled_work_without_restart(tmp_path: Path) -> None:
     """The same scheduler object must rescan its source after every drained lane."""
 
@@ -138,6 +171,8 @@ def test_persistent_scheduler_discovers_new_and_refilled_work_without_restart(tm
     third = scheduler.reconcile_once()
     assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [["T-1"], ["T-2"]]
     assert _active_task_ids(third) == {"T-2"}
+    assert launcher.process_for("T-1").wait_calls == 1
+    assert launcher.process_for("T-1").terminate_calls == 0
 
     # Refill again after the worker pool has already been running for multiple
     # reconciliation cycles. No new scheduler instance is constructed.
@@ -269,6 +304,9 @@ def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path:
     settled = scheduler.reconcile_once()
 
     assert settled["counts"]["active"] == 0
+    assert launcher.starts[0][2].terminate_calls == 1
+    assert launcher.starts[0][2].wait_calls == 1
+    assert launcher.starts[0][2].kill_calls == 0
     # The first release remains retryable; repeated state-aware admission
     # consumes the bounded attempt budget without spawning another worker.
     for _ in range(3):

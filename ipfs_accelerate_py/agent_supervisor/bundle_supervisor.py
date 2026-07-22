@@ -1143,13 +1143,49 @@ class DynamicBundleScheduler:
         return normalized if normalized in {"completed", "blocked"} else ""
 
     @staticmethod
-    def _terminate_handle(handle: Any) -> None:
+    def _terminate_handle(handle: Any, *, grace_seconds: float = 5.0) -> None:
+        """Stop a live child and always collect its exit status when possible."""
+
+        poll = getattr(handle, "poll", None)
+        try:
+            if callable(poll):
+                alive = poll() is None
+            elif hasattr(handle, "alive"):
+                alive = bool(handle.alive)
+            else:
+                alive = getattr(handle, "returncode", None) is None
+        except OSError:
+            alive = False
+
         terminate = getattr(handle, "terminate", None)
-        if callable(terminate):
+        if alive and callable(terminate):
             try:
                 terminate()
             except OSError:
                 pass
+
+        wait = getattr(handle, "wait", None)
+        if not callable(wait):
+            return
+        timeout = max(0.0, float(grace_seconds))
+        try:
+            wait(timeout=timeout)
+            return
+        except OSError:
+            return
+        except subprocess.TimeoutExpired:
+            pass
+
+        kill = getattr(handle, "kill", None)
+        if callable(kill):
+            try:
+                kill()
+            except OSError:
+                pass
+        try:
+            wait(timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
 
     @staticmethod
     def _settle_grant(
@@ -1198,7 +1234,7 @@ class DynamicBundleScheduler:
                     self._settle_grant(coordinator, running.grant, disposition=disposition)
                 except LeaseError:
                     pass
-                self._terminate_handle(running.handle)
+            self._terminate_handle(running.handle)
             # The leased-lane wrapper normally publishes a receipt first.  A
             # crashed wrapper does not, so explicitly release its still-current
             # grant and make the lane immediately reclaimable.
@@ -1427,20 +1463,7 @@ class DynamicBundleScheduler:
         self._stop_event.set()
         with self._lock, LeaseCoordinator(self.coordination_path) as coordinator:
             for task_cid, running in list(self._running.items()):
-                terminate = getattr(running.handle, "terminate", None)
-                if callable(terminate):
-                    try:
-                        terminate()
-                    except OSError:
-                        pass
-                wait = getattr(running.handle, "wait", None)
-                if callable(wait):
-                    try:
-                        wait(timeout=max(0.0, float(grace_seconds)))
-                    except (OSError, subprocess.TimeoutExpired):
-                        kill = getattr(running.handle, "kill", None)
-                        if callable(kill):
-                            kill()
+                self._terminate_handle(running.handle, grace_seconds=grace_seconds)
                 try:
                     if coordinator.active_lease(task_cid) is not None:
                         coordinator.release(running.grant, reason="scheduler stopped")
