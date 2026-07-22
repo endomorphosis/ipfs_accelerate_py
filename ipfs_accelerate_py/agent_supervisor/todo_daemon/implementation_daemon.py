@@ -2184,6 +2184,24 @@ class PortalImplementationDaemon:
 
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
         task = self._portal_task_from_merge_request(request)
+        branch_name = str(request.branch_name or "")
+        branch_rehydration = self._rehydrate_merge_request_branch(
+            branch_name=branch_name,
+            commit_sha=str(request.commit_sha or metadata.get("implementation_commit") or ""),
+            task=task,
+            attempt=int(request.attempt or 0),
+        )
+        if not branch_rehydration.get("ready", False):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": str(
+                    branch_rehydration.get("reason") or "merge_branch_rehydration_failed"
+                ),
+                "branch": branch_name,
+                "branch_rehydration": branch_rehydration,
+            }
         raw_changed_submodule_paths = metadata.get("changed_submodule_paths")
         changed_submodule_paths = (
             {
@@ -2195,16 +2213,18 @@ class PortalImplementationDaemon:
             else None
         )
         result = self._merge_branch_to_main(
-            str(request.branch_name),
+            branch_name,
             task,
             int(request.attempt or 0),
             baseline_ref=str(metadata.get("baseline_ref") or ""),
             changed_submodule_paths=changed_submodule_paths,
         )
+        if branch_rehydration.get("rehydrated", False):
+            result["branch_rehydration"] = branch_rehydration
         if result.get("merged"):
             worktree_path_text = str(metadata.get("worktree_path") or "")
             cleanup_result = (
-                self._cleanup_merged_worktree(Path(worktree_path_text), str(request.branch_name))
+                self._cleanup_merged_worktree(Path(worktree_path_text), branch_name)
                 if worktree_path_text
                 else {}
             )
@@ -2251,6 +2271,117 @@ class PortalImplementationDaemon:
                     todo_update_result = completion_daemon._mark_task_completed_in_todo(task.task_id)
                 completion_daemon._record_task_queue_outcome(task, 0)
                 result["todo_update_result"] = todo_update_result
+        return result
+
+    def _rehydrate_merge_request_branch(
+        self,
+        *,
+        branch_name: str,
+        commit_sha: str,
+        task: PortalTask,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Restore a cleaned-up queue branch from its immutable candidate commit."""
+
+        branch_name = str(branch_name or "").strip()
+        branch_ref = f"refs/heads/{branch_name}"
+        if not branch_name or not commit_sha:
+            return {
+                "ready": False,
+                "rehydrated": False,
+                "reason": "merge_branch_rehydration_metadata_missing",
+                "branch": branch_name,
+                "commit_sha": commit_sha,
+            }
+        check_ref = subprocess.run(
+            ["git", "check-ref-format", "--branch", branch_name],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        candidate = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{commit_sha}^{{commit}}"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if check_ref.returncode != 0 or candidate.returncode != 0:
+            return {
+                "ready": False,
+                "rehydrated": False,
+                "reason": (
+                    "merge_branch_name_invalid"
+                    if check_ref.returncode != 0
+                    else "merge_candidate_commit_missing"
+                ),
+                "branch": branch_name,
+                "commit_sha": commit_sha,
+                "stderr": (check_ref.stderr or candidate.stderr)[-2000:],
+            }
+        candidate_commit = candidate.stdout.strip()
+        current = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{branch_ref}^{{commit}}"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if current.returncode == 0:
+            current_commit = current.stdout.strip()
+            if current_commit == candidate_commit:
+                return {
+                    "ready": True,
+                    "rehydrated": False,
+                    "branch": branch_name,
+                    "commit_sha": candidate_commit,
+                }
+            return {
+                "ready": False,
+                "rehydrated": False,
+                "reason": "merge_branch_candidate_mismatch",
+                "branch": branch_name,
+                "commit_sha": candidate_commit,
+                "branch_commit": current_commit,
+            }
+        create = subprocess.run(
+            ["git", "update-ref", branch_ref, candidate_commit, "0" * 40],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        current = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{branch_ref}^{{commit}}"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if current.returncode != 0 or current.stdout.strip() != candidate_commit:
+            return {
+                "ready": False,
+                "rehydrated": False,
+                "reason": "merge_branch_rehydration_failed",
+                "branch": branch_name,
+                "commit_sha": candidate_commit,
+                "stderr": (create.stderr or current.stderr)[-2000:],
+            }
+        result = {
+            "ready": True,
+            "rehydrated": True,
+            "branch": branch_name,
+            "commit_sha": candidate_commit,
+        }
+        self._record_event(
+            "merge_branch_rehydrated",
+            {
+                **result,
+                "task_id": task.task_id,
+                "attempt": attempt,
+            },
+        )
         return result
 
     @staticmethod

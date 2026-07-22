@@ -11,6 +11,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -3754,6 +3755,87 @@ def test_implementation_daemon_creates_parent_handoff_for_submodule_only_commit(
     assert daemon._committed_submodule_paths(submodule_results) == ["outer/inner"]
     assert result["commit"] != baseline
     assert _git(repo, "diff", "--quiet", baseline, result["commit"]) == ""
+
+
+def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-040-recovery"
+
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-040 Recover merge handoff\n\n- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    observed: dict[str, object] = {}
+
+    def merge_branch(selected_branch, *_args, **_kwargs):
+        observed["branch"] = selected_branch
+        observed["commit"] = _git(repo, "rev-parse", selected_branch)
+        return {"merged": True, "returncode": 0}
+
+    monkeypatch.setattr(daemon, "_merge_branch_to_main", merge_branch)
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-040",
+        priority="P0",
+        attempt=2,
+        metadata={
+            "task": {
+                "task_id": "REF-040",
+                "title": "Recover merge handoff",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            }
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result["branch_rehydration"]["rehydrated"] is True
+    assert observed == {"branch": branch_name, "commit": candidate}
+    assert _git(repo, "rev-parse", branch_name) == candidate
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+
+    (repo / "later.txt").write_text("later\n", encoding="utf-8")
+    _git(repo, "add", "later.txt")
+    _git(repo, "commit", "-m", "later")
+    later = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "update-ref", f"refs/heads/{branch_name}", later, candidate)
+    mismatch = daemon._rehydrate_merge_request_branch(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task=daemon._portal_task_from_merge_request(request),
+        attempt=3,
+    )
+    assert mismatch["ready"] is False
+    assert mismatch["reason"] == "merge_branch_candidate_mismatch"
+    assert mismatch["branch_commit"] == later
 
 
 def _seed_parent_with_divergent_gitlinks(
