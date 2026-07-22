@@ -35,6 +35,10 @@ from .validation_commands import split_validation_commands
 
 
 DEFAULT_TODO_VECTOR_INDEX_SCHEMA = "ipfs_accelerate_py.agent_supervisor.todo_vector_index"
+DEFAULT_TODO_COVERAGE_INPUTS_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.todo_coverage_inputs/v1"
+)
+UNMAPPED_GOAL_BUCKET = "__unmapped__"
 DEFAULT_EXECUTION_PACKET_MAX_TASKS = 6
 
 
@@ -58,6 +62,10 @@ class TodoIndexRecord:
     outputs: list[str] = field(default_factory=list)
     validation: list[str] = field(default_factory=list)
     acceptance: str = ""
+    acceptance_criteria: list[str] = field(default_factory=list)
+    validation_receipts: list[dict[str, Any]] = field(default_factory=list)
+    provenance_cids: list[str] = field(default_factory=list)
+    coverage_inputs: dict[str, Any] = field(default_factory=dict)
     embedding_query: str = ""
     ast_query: str = ""
     conflict_policy: str = ""
@@ -102,6 +110,159 @@ def split_csv(value: str) -> list[str]:
         if item and item.lower() not in {"none", "n/a"} and item not in items:
             items.append(item)
     return items
+
+
+def split_acceptance_criteria(value: str | Sequence[str]) -> list[str]:
+    """Split acceptance text without splitting quoted or nested semicolons.
+
+    Todo boards traditionally encode multiple criteria in one semicolon-
+    separated metadata value.  JSON arrays are also accepted so generated
+    boards can represent criteria containing literal newlines or semicolons.
+    The original ``acceptance`` value remains available on the record.
+    """
+
+    if not isinstance(value, str):
+        return list(dict.fromkeys(" ".join(str(item).split()) for item in value if str(item).strip()))
+    text = value.strip()
+    if not text:
+        return []
+    if text.startswith("["):
+        try:
+            decoded = json.loads(text)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            decoded = None
+        if isinstance(decoded, list):
+            return list(
+                dict.fromkeys(
+                    " ".join(str(item).split()) for item in decoded if str(item).strip()
+                )
+            )
+
+    criteria: list[str] = []
+    start = 0
+    quote = ""
+    escaped = False
+    depths = {"(": 0, "[": 0, "{": 0}
+    closing = {")": "(", "]": "[", "}": "{"}
+    for position, character in enumerate(text):
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and quote:
+            escaped = True
+            continue
+        if quote:
+            if character == quote:
+                quote = ""
+            continue
+        if character in {"'", '"', "`"}:
+            quote = character
+            continue
+        if character in depths:
+            depths[character] += 1
+            continue
+        if character in closing:
+            opening = closing[character]
+            depths[opening] = max(0, depths[opening] - 1)
+            continue
+        if character in {";", "\n"} and not any(depths.values()):
+            criterion = " ".join(text[start:position].strip().split())
+            if criterion and criterion not in criteria:
+                criteria.append(criterion)
+            start = position + 1
+    criterion = " ".join(text[start:].strip().split())
+    if criterion and criterion not in criteria:
+        criteria.append(criterion)
+    return criteria
+
+
+def _json_safe(value: Any) -> Any:
+    """Return a deterministic JSON-compatible metadata value."""
+
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def parse_validation_receipts(fields: Mapping[str, str]) -> list[dict[str, Any]]:
+    """Parse receipt metadata in either structured JSON or CID-list form."""
+
+    receipts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for key in (
+        "validation_receipts",
+        "validation_receipts_json",
+        "resulting_receipts",
+        "resulting_validation_receipts",
+        "validation_receipt",
+        "receipt_cids",
+    ):
+        raw = str(fields.get(key) or "").strip()
+        if not raw:
+            continue
+        try:
+            decoded = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            decoded = None
+        candidates: list[Any]
+        if isinstance(decoded, list):
+            candidates = decoded
+        elif isinstance(decoded, Mapping):
+            candidates = [decoded]
+        else:
+            candidates = [{"receipt_cid": item} for item in split_csv(raw)]
+        for candidate in candidates:
+            if isinstance(candidate, Mapping):
+                receipt = _json_safe(candidate)
+            elif str(candidate).strip():
+                receipt = {"receipt_cid": str(candidate).strip()}
+            else:
+                continue
+            fingerprint = json.dumps(receipt, sort_keys=True, separators=(",", ":"))
+            if fingerprint not in seen:
+                seen.add(fingerprint)
+                receipts.append(receipt)
+    return sorted(receipts, key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")))
+
+
+def parse_provenance_cids(
+    fields: Mapping[str, str],
+    receipts: Sequence[Mapping[str, Any]] = (),
+) -> list[str]:
+    """Return explicit evidence provenance links associated with a task."""
+
+    values: set[str] = set()
+    for key in (
+        "provenance_cids",
+        "provenance_cid",
+        "evidence_provenance_cids",
+        "evidence_provenance_cid",
+        "validation_provenance_cids",
+        "validation_provenance_cid",
+    ):
+        raw = str(fields.get(key) or "").strip()
+        if not raw:
+            continue
+        try:
+            decoded = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            decoded = None
+        if isinstance(decoded, list):
+            values.update(str(item).strip() for item in decoded if str(item).strip())
+        elif isinstance(decoded, str) and decoded.strip():
+            values.add(decoded.strip())
+        else:
+            values.update(split_csv(raw))
+    for receipt in receipts:
+        for key in ("provenance_cid", "evidence_provenance_cid"):
+            value = str(receipt.get(key) or "").strip()
+            if value:
+                values.add(value)
+    return sorted(values)
 
 
 def normalize_metadata_key(value: str) -> str:
@@ -223,6 +384,9 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             " ".join(record.submodules),
             " ".join(record.generated_artifacts),
             record.acceptance,
+            " ".join(record.acceptance_criteria),
+            json.dumps(record.validation_receipts, sort_keys=True, separators=(",", ":")),
+            " ".join(record.provenance_cids),
         ]
     )
 
@@ -267,6 +431,206 @@ def collect_output_symbols(repo_root: Path, outputs: Sequence[str], *, max_file_
     return sorted(symbols)
 
 
+def _criterion_id(goal_id: str, criterion: str) -> str:
+    seed = json.dumps(
+        {"goal_id": goal_id or UNMAPPED_GOAL_BUCKET, "criterion": criterion},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return f"criterion/{sha1(seed.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _record_coverage_inputs(
+    record: TodoIndexRecord,
+    *,
+    goal_assignment_method: str | None = None,
+) -> dict[str, Any]:
+    """Project one todo into explainable goal-coverage evidence."""
+
+    goal_bucket = record.goal_id or UNMAPPED_GOAL_BUCKET
+    prior_assignment = record.coverage_inputs.get("goal_assignment") if record.coverage_inputs else None
+    if goal_assignment_method is None and isinstance(prior_assignment, Mapping):
+        goal_assignment_method = str(prior_assignment.get("method") or "")
+    assignment_method = goal_assignment_method or (
+        "explicit_goal_metadata" if record.goal_id else "unmapped"
+    )
+    dimensions = {
+        "predicted_files": sorted_unique(record.predicted_files),
+        "changed_files": sorted_unique(record.changed_paths),
+        "changed_paths": sorted_unique(record.changed_paths),
+        "ast_symbols": sorted_unique(record.ast_symbols),
+        "interfaces": sorted_unique(record.interfaces),
+        "validation_commands": sorted_unique(record.validation),
+        "validation_receipts": [dict(item) for item in record.validation_receipts],
+        "provenance_cids": sorted_unique(record.provenance_cids),
+    }
+    source_fields = [
+        name
+        for name, values in (
+            ("acceptance", record.acceptance_criteria),
+            ("predicted_files", dimensions["predicted_files"]),
+            ("changed_paths", dimensions["changed_paths"]),
+            ("ast_symbols", dimensions["ast_symbols"]),
+            ("interfaces", dimensions["interfaces"]),
+            ("validation", dimensions["validation_commands"]),
+            ("validation_receipts", dimensions["validation_receipts"]),
+            ("provenance_cids", dimensions["provenance_cids"]),
+        )
+        if values
+    ]
+    missing_dimensions = [
+        name
+        for name, present in (
+            ("predicted_files", bool(dimensions["predicted_files"])),
+            ("changed_files", bool(dimensions["changed_files"])),
+            (
+                "ast_symbols_or_interfaces",
+                bool(dimensions["ast_symbols"] or dimensions["interfaces"]),
+            ),
+            ("validation_commands", bool(dimensions["validation_commands"])),
+            ("validation_receipts", bool(dimensions["validation_receipts"])),
+            ("provenance_cids", bool(dimensions["provenance_cids"])),
+        )
+        if not present
+    ]
+    edges: list[dict[str, Any]] = []
+    for criterion in record.acceptance_criteria:
+        criterion_id = _criterion_id(record.goal_id, criterion)
+        edge_seed = json.dumps(
+            {"criterion_id": criterion_id, "task_id": record.task_id},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        edges.append(
+            {
+                "edge_id": f"todo-coverage/{sha1(edge_seed.encode('utf-8')).hexdigest()[:16]}",
+                "edge_kind": "acceptance_criterion_to_task_surface",
+                "criterion_id": criterion_id,
+                "acceptance_criterion": criterion,
+                "goal_id": record.goal_id,
+                "goal_bucket": goal_bucket,
+                "task_id": record.task_id,
+                "task_ids": [record.task_id],
+                **dimensions,
+                "missing_dimensions": missing_dimensions,
+                "explanation": {
+                    "method": "todo_metadata_projection",
+                    "goal_assignment_method": assignment_method,
+                    "source_line": record.source_line,
+                    "source_fields": source_fields,
+                    "evidence_counts": {
+                        name: len(values) for name, values in dimensions.items()
+                    },
+                    "deterministic": True,
+                },
+            }
+        )
+    return {
+        "task_id": record.task_id,
+        "goal_id": record.goal_id,
+        "goal_bucket": goal_bucket,
+        "goal_assignment": {
+            "method": assignment_method,
+            "declared": bool(record.goal_id),
+            "registered": None,
+            "unmapped": not bool(record.goal_id),
+        },
+        "acceptance_criteria": list(record.acceptance_criteria),
+        "criterion_ids": [edge["criterion_id"] for edge in edges],
+        **dimensions,
+        "missing_dimensions": missing_dimensions,
+        "edges": edges,
+    }
+
+
+def build_todo_coverage_inputs(records: Sequence[TodoIndexRecord]) -> dict[str, Any]:
+    """Build deterministic goal/task coverage inputs from todo index records.
+
+    This is deliberately an evidence projection, not a coverage verdict.  The
+    goal coverage graph can therefore classify edges as verified, stale,
+    contradicted, or inferred without the vector index duplicating that policy.
+    Tasks without a goal are retained in the explicit ``__unmapped__`` bucket.
+    """
+
+    by_task: dict[str, dict[str, Any]] = {}
+    by_goal_records: dict[str, list[TodoIndexRecord]] = {}
+    edges: list[dict[str, Any]] = []
+    for record in sorted(records, key=lambda item: item.task_id):
+        inputs = _record_coverage_inputs(record)
+        by_task[record.task_id] = inputs
+        by_goal_records.setdefault(str(inputs["goal_bucket"]), []).append(record)
+        edges.extend(inputs["edges"])
+
+    by_goal: dict[str, dict[str, Any]] = {}
+    for goal_bucket in sorted(by_goal_records):
+        goal_records = by_goal_records[goal_bucket]
+        goal_edges = sorted(
+            [edge for edge in edges if edge["goal_bucket"] == goal_bucket],
+            key=lambda item: (item["criterion_id"], item["task_id"], item["edge_id"]),
+        )
+        by_goal[goal_bucket] = {
+            "goal_id": "" if goal_bucket == UNMAPPED_GOAL_BUCKET else goal_bucket,
+            "goal_bucket": goal_bucket,
+            "task_ids": sorted_unique([record.task_id for record in goal_records]),
+            "criterion_ids": sorted_unique([edge["criterion_id"] for edge in goal_edges]),
+            "acceptance_criteria": sorted_unique(
+                [edge["acceptance_criterion"] for edge in goal_edges]
+            ),
+            "predicted_files": sorted_unique(
+                [path for record in goal_records for path in record.predicted_files]
+            ),
+            "changed_files": sorted_unique(
+                [path for record in goal_records for path in record.changed_paths]
+            ),
+            "changed_paths": sorted_unique(
+                [path for record in goal_records for path in record.changed_paths]
+            ),
+            "ast_symbols": sorted_unique(
+                [symbol for record in goal_records for symbol in record.ast_symbols]
+            ),
+            "interfaces": sorted_unique(
+                [interface for record in goal_records for interface in record.interfaces]
+            ),
+            "validation_commands": sorted_unique(
+                [command for record in goal_records for command in record.validation]
+            ),
+            "validation_receipts": sorted_unique_receipts(
+                [receipt for record in goal_records for receipt in record.validation_receipts]
+            ),
+            "provenance_cids": sorted_unique(
+                [cid for record in goal_records for cid in record.provenance_cids]
+            ),
+            "edge_ids": [edge["edge_id"] for edge in goal_edges],
+        }
+
+    edges.sort(key=lambda item: (item["goal_bucket"], item["criterion_id"], item["task_id"], item["edge_id"]))
+    criteria = [
+        {
+            "criterion_id": edge["criterion_id"],
+            "acceptance_criterion": edge["acceptance_criterion"],
+            "goal_id": edge["goal_id"],
+            "goal_bucket": edge["goal_bucket"],
+            "task_id": edge["task_id"],
+            "edge_id": edge["edge_id"],
+        }
+        for edge in edges
+    ]
+    canonical = {
+        "schema": DEFAULT_TODO_COVERAGE_INPUTS_SCHEMA,
+        "goal_ids": sorted(goal_id for goal_id in by_goal if goal_id != UNMAPPED_GOAL_BUCKET),
+        "unmapped_bucket": UNMAPPED_GOAL_BUCKET,
+        "unmapped_task_ids": list(by_goal.get(UNMAPPED_GOAL_BUCKET, {}).get("task_ids") or []),
+        "by_goal": by_goal,
+        "by_task": by_task,
+        "criteria": criteria,
+        "edges": edges,
+    }
+    fingerprint = sha1(
+        json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return {**canonical, "fingerprint": fingerprint}
+
+
 def parse_todo_vector_records(
     *,
     repo_root: Path,
@@ -283,8 +647,19 @@ def parse_todo_vector_records(
     for task_id, title, source_line, fields in parse_todo_blocks(todo_text, task_header_prefix=task_header_prefix):
         outputs = split_csv(fields.get("outputs", ""))
         acceptance = str(fields.get("acceptance") or "")
+        acceptance_criteria = split_acceptance_criteria(
+            fields.get("acceptance_criteria") or acceptance
+        )
+        validation_receipts = parse_validation_receipts(fields)
+        provenance_cids = parse_provenance_cids(fields, validation_receipts)
         missing_evidence = infer_missing_evidence(fields, acceptance)
         goal_id = infer_goal_id(fields, acceptance)
+        if str(fields.get("goal_id") or "").strip():
+            goal_assignment_method = "explicit_goal_metadata"
+        elif goal_id:
+            goal_assignment_method = "acceptance_text_inference"
+        else:
+            goal_assignment_method = "unmapped"
         surplus_group = str(fields.get("surplus_group") or goal_id or "").strip()
         ast_query = str(fields.get("ast_query") or "").strip()
         merge_key = str(fields.get("merge_key") or "").strip() or infer_merge_key(
@@ -318,6 +693,9 @@ def parse_todo_vector_records(
             outputs=outputs,
             validation=split_validation_commands(str(fields.get("validation") or "")),
             acceptance=acceptance,
+            acceptance_criteria=acceptance_criteria,
+            validation_receipts=validation_receipts,
+            provenance_cids=provenance_cids,
             embedding_query=str(fields.get("embedding_query") or "").strip(),
             ast_query=ast_query,
             conflict_policy=str(fields.get("conflict_policy") or "").strip(),
@@ -382,6 +760,13 @@ def parse_todo_vector_records(
                 surface_payload.get("allow_concurrent_with") or base_record.allow_concurrent_with
             ),
             conflict_surface=surface_payload,
+        )
+        base_record = replace_record(
+            base_record,
+            coverage_inputs=_record_coverage_inputs(
+                base_record,
+                goal_assignment_method=goal_assignment_method,
+            ),
         )
         text = record_embedding_text(base_record)
         records.append(
@@ -521,6 +906,16 @@ def sorted_unique(values: Sequence[str]) -> list[str]:
     return sorted({str(value) for value in values if str(value)})
 
 
+def sorted_unique_receipts(values: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Deduplicate structured receipts by their canonical JSON form."""
+
+    by_fingerprint = {
+        json.dumps(_json_safe(value), sort_keys=True, separators=(",", ":")): dict(_json_safe(value))
+        for value in values
+    }
+    return [by_fingerprint[key] for key in sorted(by_fingerprint)]
+
+
 def build_merge_candidate(
     *,
     group_type: str,
@@ -590,6 +985,16 @@ def build_merge_candidate(
         "all_outputs": all_outputs,
         "predicted_files": sorted_unique([path for record in records for path in record.predicted_files]),
         "changed_paths": sorted_unique([path for record in records for path in record.changed_paths]),
+        "acceptance_criteria": sorted_unique(
+            [criterion for record in records for criterion in record.acceptance_criteria]
+        ),
+        "validation": sorted_unique([command for record in records for command in record.validation]),
+        "validation_receipts": sorted_unique_receipts(
+            [receipt for record in records for receipt in record.validation_receipts]
+        ),
+        "provenance_cids": sorted_unique(
+            [cid for record in records for cid in record.provenance_cids]
+        ),
         "missing_evidence": missing_evidence,
         "ast_symbols": ast_symbols,
         "interfaces": sorted_unique([item for record in records for item in record.interfaces]),
@@ -764,6 +1169,15 @@ def build_bundle_context(
         "ast_symbols": sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80],
         "predicted_files": sorted_unique([path for record in records for path in record.predicted_files]),
         "changed_paths": sorted_unique([path for record in records for path in record.changed_paths]),
+        "acceptance_criteria": sorted_unique(
+            [criterion for record in records for criterion in record.acceptance_criteria]
+        ),
+        "validation_receipts": sorted_unique_receipts(
+            [receipt for record in records for receipt in record.validation_receipts]
+        ),
+        "provenance_cids": sorted_unique(
+            [cid for record in records for cid in record.provenance_cids]
+        ),
         "interfaces": sorted_unique([item for record in records for item in record.interfaces]),
         "submodules": sorted_unique([item for record in records for item in record.submodules]),
         "generated_artifacts": sorted_unique(
@@ -965,6 +1379,15 @@ def build_execution_packet(
         "shared_outputs": shared_outputs,
         "all_outputs": all_outputs,
         "validation": sorted_unique([command for record in selected_records for command in record.validation])[:8],
+        "acceptance_criteria": sorted_unique(
+            [criterion for record in selected_records for criterion in record.acceptance_criteria]
+        ),
+        "validation_receipts": sorted_unique_receipts(
+            [receipt for record in selected_records for receipt in record.validation_receipts]
+        ),
+        "provenance_cids": sorted_unique(
+            [cid for record in selected_records for cid in record.provenance_cids]
+        ),
         "missing_evidence": sorted_unique([item for record in selected_records for item in record.missing_evidence]),
         "ast_symbols": sorted_unique([symbol for record in selected_records for symbol in record.ast_symbols])[:80],
         "predicted_files": sorted_unique(
@@ -1086,6 +1509,7 @@ def write_todo_vector_index(
         task_header_prefix=task_header_prefix,
         dimensions=dimensions,
     )
+    coverage_inputs = build_todo_coverage_inputs(records)
     clusters = cluster_records(records)
     merge_candidates = build_merge_candidates(records, clusters)
     bundle_contexts = build_bundle_contexts(records, clusters, merge_candidates)
@@ -1127,6 +1551,7 @@ def write_todo_vector_index(
             int(packet.get("compact_packet_tokens") or 0) for packet in execution_packets
         ),
         "records": [record.to_dict() for record in records],
+        "coverage_inputs": coverage_inputs,
         "clusters": clusters,
         "merge_candidates": merge_candidates,
         "bundle_contexts": bundle_contexts,
@@ -1267,6 +1692,25 @@ def update_bundle_index_with_todo_vectors(
         bundle_records = by_bundle.get(str(bundle_key), [])
         bundle_payload["todo_vector_summary"] = {
             "task_count": len(bundle_records),
+            "acceptance_criteria": sorted(
+                {
+                    criterion
+                    for record in bundle_records
+                    for criterion in record.acceptance_criteria
+                }
+            ),
+            "validation_receipt_count": len(
+                sorted_unique_receipts(
+                    [
+                        receipt
+                        for record in bundle_records
+                        for receipt in record.validation_receipts
+                    ]
+                )
+            ),
+            "provenance_cids": sorted(
+                {cid for record in bundle_records for cid in record.provenance_cids}
+            ),
             "merge_keys": sorted({record.merge_key for record in bundle_records if record.merge_key}),
             "merge_families": sorted({record.merge_family for record in bundle_records if record.merge_family}),
             "goal_packet_keys": sorted({record.goal_packet_key for record in bundle_records if record.goal_packet_key}),
@@ -1358,6 +1802,10 @@ def update_bundle_index_with_todo_vectors(
             task["related_task_ids"] = record.related_task_ids
             task["predicted_files"] = record.predicted_files
             task["changed_paths"] = record.changed_paths
+            task["acceptance_criteria"] = record.acceptance_criteria
+            task["validation_receipts"] = record.validation_receipts
+            task["provenance_cids"] = record.provenance_cids
+            task["coverage_inputs"] = record.coverage_inputs
             task["interfaces"] = record.interfaces
             task["submodules"] = record.submodules
             task["generated_artifacts"] = record.generated_artifacts
@@ -1379,6 +1827,7 @@ def update_bundle_index_with_todo_vectors(
         payload["conflict_graph"] = graph_payload
         payload["task_conflict_graph"] = graph_payload
         payload["conflict_history"] = dict(graph_payload.get("history") or {})
+    payload["todo_coverage_inputs"] = build_todo_coverage_inputs(records)
     from .artifact_store import write_bundle_index_artifact
 
     write_bundle_index_artifact(bundle_index_path, payload)

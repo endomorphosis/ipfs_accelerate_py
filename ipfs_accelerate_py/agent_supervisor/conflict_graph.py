@@ -563,6 +563,503 @@ class TaskConflictGraph:
 ConflictGraph = TaskConflictGraph
 
 
+@dataclass(frozen=True)
+class SurfaceEvidenceEdge:
+    """One explainable predicted-to-observed surface relationship.
+
+    Coverage maps use these edges independently of conflict weights.  Keeping
+    the original predicted and observed values is important: a directory
+    prediction can cover a more specific changed path without pretending the
+    two strings were an exact match.
+    """
+
+    dimension: str
+    predicted: str
+    observed: str
+    relationship: str
+    explanation: str
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SurfaceEvidenceComparison:
+    """Deterministic comparison of planned and observed implementation work."""
+
+    matched_paths: list[str] = field(default_factory=list)
+    missing_paths: list[str] = field(default_factory=list)
+    unexpected_paths: list[str] = field(default_factory=list)
+    matched_symbols: list[str] = field(default_factory=list)
+    missing_symbols: list[str] = field(default_factory=list)
+    unexpected_symbols: list[str] = field(default_factory=list)
+    matched_interfaces: list[str] = field(default_factory=list)
+    missing_interfaces: list[str] = field(default_factory=list)
+    unexpected_interfaces: list[str] = field(default_factory=list)
+    evidence_edges: list[SurfaceEvidenceEdge] = field(default_factory=list)
+    explanations: list[str] = field(default_factory=list)
+
+    @property
+    def matched(self) -> dict[str, list[str]]:
+        return {
+            "paths": list(self.matched_paths),
+            "symbols": list(self.matched_symbols),
+            "interfaces": list(self.matched_interfaces),
+        }
+
+    @property
+    def missing(self) -> dict[str, list[str]]:
+        return {
+            "paths": list(self.missing_paths),
+            "symbols": list(self.missing_symbols),
+            "interfaces": list(self.missing_interfaces),
+        }
+
+    @property
+    def unexpected(self) -> dict[str, list[str]]:
+        return {
+            "paths": list(self.unexpected_paths),
+            "symbols": list(self.unexpected_symbols),
+            "interfaces": list(self.unexpected_interfaces),
+        }
+
+    @property
+    def predicted_count(self) -> int:
+        matched_predictions = {
+            (edge.dimension, edge.predicted) for edge in self.evidence_edges
+        }
+        return len(matched_predictions) + sum(len(values) for values in self.missing.values())
+
+    @property
+    def matched_count(self) -> int:
+        return len({(edge.dimension, edge.predicted) for edge in self.evidence_edges})
+
+    @property
+    def coverage_ratio(self) -> float:
+        """Return an order-independent ratio, with an empty plan fully covered."""
+
+        return self.matched_count / self.predicted_count if self.predicted_count else 1.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "matched": self.matched,
+            "missing": self.missing,
+            "unexpected": self.unexpected,
+            # Flat aliases make the record convenient for tabular/vector
+            # indexes while the grouped fields remain the canonical shape.
+            "matched_paths": list(self.matched_paths),
+            "missing_paths": list(self.missing_paths),
+            "unexpected_paths": list(self.unexpected_paths),
+            "matched_symbols": list(self.matched_symbols),
+            "missing_symbols": list(self.missing_symbols),
+            "unexpected_symbols": list(self.unexpected_symbols),
+            "matched_interfaces": list(self.matched_interfaces),
+            "missing_interfaces": list(self.missing_interfaces),
+            "unexpected_interfaces": list(self.unexpected_interfaces),
+            "predicted_count": self.predicted_count,
+            "matched_count": self.matched_count,
+            "coverage_ratio": self.coverage_ratio,
+            "evidence_edges": [edge.to_dict() for edge in self.evidence_edges],
+            "explanations": list(self.explanations),
+        }
+
+
+@dataclass(frozen=True)
+class SurfaceContradiction:
+    """Strong evidence that a planned surface and observed evidence disagree."""
+
+    dimension: str
+    kind: str
+    expected: str = ""
+    observed: str = ""
+    source: str = ""
+    provenance_cid: str = ""
+    explanation: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SurfaceContradictionReport:
+    """Serializable contradiction result retaining the underlying comparison."""
+
+    comparison: SurfaceEvidenceComparison
+    contradictions: list[SurfaceContradiction] = field(default_factory=list)
+    explanations: list[str] = field(default_factory=list)
+
+    @property
+    def contradicted(self) -> bool:
+        return bool(self.contradictions)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "contradicted": self.contradicted,
+            "contradictions": [item.to_dict() for item in self.contradictions],
+            "explanations": list(self.explanations),
+            "comparison": self.comparison.to_dict(),
+        }
+
+
+def _comparison_values(
+    value: Any,
+    *,
+    observed: bool,
+    repo_root: Path | None,
+) -> dict[str, list[str]]:
+    """Extract comparison dimensions without conflating plans with diffs."""
+
+    if isinstance(value, ConflictSurface):
+        if observed:
+            paths = list(value.changed_paths)
+            symbols = list(value.ast_symbols)
+            interfaces = list(value.interfaces)
+        else:
+            paths = [*value.files, *value.submodules, *value.generated_artifacts]
+            symbols = list(value.global_ast_symbols or value.ast_symbols)
+            interfaces = list(value.interfaces)
+        return {
+            "paths": _normalized_paths(paths, repo_root),
+            "symbols": _normalized_terms(symbols),
+            "interfaces": _normalized_terms(interfaces),
+        }
+
+    sources = _sources(value)
+    if observed:
+        paths = _field_items(
+            sources,
+            (
+                "changed_paths", "actual_paths", "observed_paths", "branch_diff", "diff_paths",
+            ),
+        )
+        # ``files`` is the neutral spelling used by scan receipts, but on task
+        # rows it commonly means a prediction.  Only use it when no
+        # observation-specific path field exists.
+        if not paths:
+            paths = _field_items(sources, ("files",))
+        symbols = _field_items(
+            sources,
+            (
+                "changed_ast_symbols", "actual_ast_symbols", "observed_ast_symbols",
+                "changed_symbols", "actual_symbols", "observed_symbols",
+            ),
+        )
+        if not symbols:
+            symbols = _field_items(sources, ("ast_symbols", "symbols"))
+        interfaces = _field_items(
+            sources,
+            (
+                "changed_interfaces", "actual_interfaces", "observed_interfaces",
+            ),
+        )
+        if not interfaces:
+            interfaces = _field_items(sources, ("interfaces", "provides_interfaces", "public_interfaces"))
+    else:
+        paths = _field_items(
+            sources,
+            (
+                "files", "predicted_files", "predicted_paths", "outputs", "requested_outputs",
+                "affected_files", "submodules", "submodule_paths", "gitlinks",
+                "generated_artifacts", "generated_paths", "generated_outputs", "derived_outputs",
+            ),
+        )
+        symbols = _field_items(
+            sources,
+            ("global_ast_symbols", "ast_symbols", "predicted_symbols", "symbols", "ast_query"),
+        )
+        interfaces = _field_items(
+            sources,
+            (
+                "interfaces", "provides_interfaces", "requires_interfaces", "required_interfaces",
+                "interface_dependencies", "public_interfaces",
+            ),
+        )
+    return {
+        "paths": _normalized_paths(paths, repo_root),
+        "symbols": _normalized_terms(symbols),
+        "interfaces": _normalized_terms(interfaces),
+    }
+
+
+def compare_surface_evidence(
+    predicted: Any,
+    observed: Any,
+    *,
+    repo_root: Path | None = None,
+) -> SurfaceEvidenceComparison:
+    """Compare predicted files/symbols/interfaces with observed evidence.
+
+    Paths use the same containment semantics as conflict planning, so a
+    predicted directory covers a changed descendant.  Symbols and interfaces
+    require exact normalized names.  The returned order depends only on the
+    values, never on mapping or input iteration order.
+    """
+
+    planned = _comparison_values(predicted, observed=False, repo_root=repo_root)
+    actual = _comparison_values(observed, observed=True, repo_root=repo_root)
+    edges: list[SurfaceEvidenceEdge] = []
+
+    matched_paths: set[str] = set()
+    covered_planned_paths: set[str] = set()
+    for planned_path in planned["paths"]:
+        for actual_path in actual["paths"]:
+            if not (_under(planned_path, actual_path) or _under(actual_path, planned_path)):
+                continue
+            relationship = "exact" if planned_path == actual_path else "path_contains"
+            matched_paths.add(actual_path)
+            covered_planned_paths.add(planned_path)
+            edges.append(
+                SurfaceEvidenceEdge(
+                    dimension="paths",
+                    predicted=planned_path,
+                    observed=actual_path,
+                    relationship=relationship,
+                    explanation=(
+                        f"Observed path {actual_path!r} exactly matches predicted path {planned_path!r}."
+                        if relationship == "exact"
+                        else f"Observed path {actual_path!r} overlaps predicted path {planned_path!r} by containment."
+                    ),
+                )
+            )
+
+    dimension_results: dict[str, tuple[list[str], list[str], list[str]]] = {}
+    for dimension in ("symbols", "interfaces"):
+        matched = sorted(set(planned[dimension]) & set(actual[dimension]))
+        missing = sorted(set(planned[dimension]) - set(actual[dimension]))
+        unexpected = sorted(set(actual[dimension]) - set(planned[dimension]))
+        dimension_results[dimension] = (matched, missing, unexpected)
+        for term in matched:
+            edges.append(
+                SurfaceEvidenceEdge(
+                    dimension=dimension,
+                    predicted=term,
+                    observed=term,
+                    relationship="exact",
+                    explanation=f"Observed {dimension[:-1]} {term!r} exactly matches the prediction.",
+                )
+            )
+
+    missing_paths = sorted(set(planned["paths"]) - covered_planned_paths)
+    unexpected_paths = sorted(
+        path
+        for path in actual["paths"]
+        if not any(_under(path, planned_path) or _under(planned_path, path) for planned_path in planned["paths"])
+    )
+    edges.sort(key=lambda edge: (edge.dimension, edge.predicted, edge.observed, edge.relationship))
+
+    results = {
+        "paths": (sorted(matched_paths), missing_paths, unexpected_paths),
+        **dimension_results,
+    }
+    explanations = [
+        (
+            f"{dimension}: {len(matched)} observed value(s) match, "
+            f"{len(missing)} predicted value(s) lack evidence, and "
+            f"{len(unexpected)} observed value(s) were not predicted."
+        )
+        for dimension, (matched, missing, unexpected) in results.items()
+    ]
+    return SurfaceEvidenceComparison(
+        matched_paths=results["paths"][0],
+        missing_paths=results["paths"][1],
+        unexpected_paths=results["paths"][2],
+        matched_symbols=results["symbols"][0],
+        missing_symbols=results["symbols"][1],
+        unexpected_symbols=results["symbols"][2],
+        matched_interfaces=results["interfaces"][0],
+        missing_interfaces=results["interfaces"][1],
+        unexpected_interfaces=results["interfaces"][2],
+        evidence_edges=edges,
+        explanations=explanations,
+    )
+
+
+def _strong_evidence_records(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if isinstance(value, bool):
+        # ``True`` is a concise assertion that the supplied observation is an
+        # exhaustive inventory.  False contributes no evidence.
+        return [{"coverage_complete": True, "source": "strong_evidence"}] if value else []
+    if isinstance(value, Mapping):
+        return [dict(value)]
+    if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+        return [dict(item) for item in value if isinstance(item, Mapping)]
+    return []
+
+
+def detect_surface_contradictions(
+    predicted: Any,
+    observed: Any | None = None,
+    *,
+    repo_root: Path | None = None,
+    unexpected_is_contradiction: bool = False,
+    missing_is_contradiction: bool = False,
+    strong_evidence: Any = None,
+    receipts: Any = None,
+) -> SurfaceContradictionReport:
+    """Promote comparison discrepancies only when policy or evidence warrants it.
+
+    By default, missing predictions are coverage gaps and extra changed files
+    are useful dynamic findings, not contradictions.  Callers may request an
+    exact contract with the two boolean flags.  Strong records/receipts can
+    also assert ``contradictory``/``contradiction`` or an exhaustive inventory
+    (``coverage_complete``/``exhaustive``), in which case missing planned
+    surfaces become contradictory.  Receipt provenance is retained verbatim.
+    """
+
+    if isinstance(predicted, SurfaceEvidenceComparison):
+        if observed is not None:
+            raise ValueError("observed must be omitted when predicted is already a comparison")
+        comparison = predicted
+    else:
+        comparison = compare_surface_evidence(predicted, observed or {}, repo_root=repo_root)
+
+    contradictions: list[SurfaceContradiction] = []
+
+    def add(
+        dimension: str,
+        kind: str,
+        *,
+        expected: str = "",
+        actual: str = "",
+        source: str = "policy",
+        provenance_cid: str = "",
+        explanation: str,
+    ) -> None:
+        contradictions.append(
+            SurfaceContradiction(
+                dimension=dimension,
+                kind=kind,
+                expected=expected,
+                observed=actual,
+                source=source,
+                provenance_cid=provenance_cid,
+                explanation=explanation,
+            )
+        )
+
+    if missing_is_contradiction:
+        for dimension, values in comparison.missing.items():
+            for value in values:
+                add(
+                    dimension,
+                    "missing_expected_surface",
+                    expected=value,
+                    explanation=f"Exact-surface policy requires predicted {dimension[:-1]} {value!r}, but it was not observed.",
+                )
+    if unexpected_is_contradiction:
+        for dimension, values in comparison.unexpected.items():
+            for value in values:
+                add(
+                    dimension,
+                    "unexpected_observed_surface",
+                    actual=value,
+                    explanation=f"Exact-surface policy rejects unpredicted observed {dimension[:-1]} {value!r}.",
+                )
+
+    records = [*_strong_evidence_records(strong_evidence), *_receipts(receipts)]
+    records.sort(key=lambda item: json.dumps(item, sort_keys=True, default=str))
+    for record in records:
+        provenance = str(
+            record.get("provenance_cid") or record.get("receipt_cid") or record.get("cid") or ""
+        ).strip()
+        source = str(record.get("source") or record.get("producer_id") or "evidence").strip()
+        exhaustive = record.get("coverage_complete") is True or record.get("exhaustive") is True
+        if exhaustive:
+            for dimension, values in comparison.missing.items():
+                for value in values:
+                    add(
+                        dimension,
+                        "missing_from_exhaustive_evidence",
+                        expected=value,
+                        source=source,
+                        provenance_cid=provenance,
+                        explanation=(
+                            f"Exhaustive evidence {provenance or source!r} does not contain predicted "
+                            f"{dimension[:-1]} {value!r}."
+                        ),
+                    )
+        exact_surface = (
+            record.get("exact_surface") is True
+            or record.get("unexpected_is_contradiction") is True
+            or record.get("reject_unexpected") is True
+        )
+        if exact_surface:
+            for dimension, values in comparison.unexpected.items():
+                for value in values:
+                    add(
+                        dimension,
+                        "unexpected_in_exact_evidence",
+                        actual=value,
+                        source=source,
+                        provenance_cid=provenance,
+                        explanation=(
+                            f"Exact-surface evidence {provenance or source!r} rejects unpredicted "
+                            f"observed {dimension[:-1]} {value!r}."
+                        ),
+                    )
+
+        reason = str(record.get("contradiction") or record.get("reason") or "").strip()
+        status = str(record.get("status") or record.get("outcome") or "").strip().lower()
+        explicit = record.get("contradictory") is True or bool(record.get("contradiction"))
+        explicit = explicit or status in {
+            "contradicted", "contradictory", "conflict", "conflicted", "failed", "failure", "invalid", "rejected",
+        }
+        specific: list[tuple[str, str]] = []
+        for dimension in ("paths", "symbols", "interfaces"):
+            singular = dimension[:-1]
+            values = _items(
+                record.get(f"contradicted_{dimension}")
+                or record.get(f"conflicting_{dimension}")
+                or record.get(f"invalid_{dimension}")
+                or record.get(f"contradicted_{singular}")
+            )
+            specific.extend((dimension, value) for value in values)
+        if explicit and specific:
+            for dimension, value in sorted(set(specific)):
+                add(
+                    dimension,
+                    "explicit_evidence_contradiction",
+                    actual=value,
+                    source=source,
+                    provenance_cid=provenance,
+                    explanation=reason or f"Evidence explicitly contradicts {dimension[:-1]} {value!r}.",
+                )
+        elif explicit:
+            add(
+                "evidence",
+                "explicit_evidence_contradiction",
+                source=source,
+                provenance_cid=provenance,
+                explanation=reason or f"Evidence status {status!r} explicitly reports a contradiction.",
+            )
+
+    # Multiple strong records may report the same fact.  Collapse them without
+    # losing different provenance, and make serialization independent of input
+    # order.
+    unique = {
+        (
+            item.dimension, item.kind, item.expected, item.observed,
+            item.source, item.provenance_cid, item.explanation,
+        ): item
+        for item in contradictions
+    }
+    ordered = [unique[key] for key in sorted(unique)]
+    explanations = (
+        [item.explanation for item in ordered]
+        if ordered
+        else [
+            "No contradiction was established; missing predictions remain coverage gaps and unexpected observations remain dynamic findings."
+        ]
+    )
+    return SurfaceContradictionReport(
+        comparison=comparison,
+        contradictions=ordered,
+        explanations=explanations,
+    )
+
+
 def _path_overlaps(left: Iterable[str], right: Iterable[str]) -> list[str]:
     overlaps: set[str] = set()
     for left_path in left:
@@ -676,7 +1173,11 @@ def _receipt_paths(receipt: Mapping[str, Any], *, repo_root: Path | None) -> lis
 def _receipts(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, Mapping):
         # A single receipt has characteristic fields; otherwise values are a receipt map.
-        if set(value) & {"left_task_cid", "source_task_cid", "task_cids", "status", "conflicting_paths"}:
+        if set(value) & {
+            "left_task_cid", "source_task_cid", "task_cids", "status", "outcome",
+            "conflicting_paths", "contradictory", "contradiction", "receipt_cid",
+            "coverage_complete", "exhaustive", "exact_surface", "reject_unexpected",
+        }:
             return [dict(value)]
         receipts: list[dict[str, Any]] = []
         for key, item in value.items():
@@ -1054,10 +1555,16 @@ __all__ = [
     "ConflictWeightHistory",
     "LaneAssignment",
     "LaneDecision",
+    "SurfaceContradiction",
+    "SurfaceContradictionReport",
+    "SurfaceEvidenceComparison",
+    "SurfaceEvidenceEdge",
     "TaskConflictGraph",
     "build_conflict_graph",
     "build_conflict_surface",
     "color_conflict_graph",
+    "compare_surface_evidence",
+    "detect_surface_contradictions",
     "materialize_task_conflict_graph",
     "normalize_repo_path",
     "update_conflict_weights",
