@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
-from .task_identity import TaskIdentity, canonical_task_identity
+from .task_identity import TaskIdentity, canonical_bundle_identity, canonical_task_identity
 
 
 DEFAULT_EMBEDDING_DIMENSIONS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64"))
@@ -223,6 +223,118 @@ class ObjectiveHeapRecord:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+DEPENDENCY_EDGE_KINDS = frozenset(
+    {"goal", "import", "interface", "output_input", "migration", "validation"}
+)
+SUCCESSFUL_MERGE_RECEIPT_STATUSES = frozenset(
+    {"complete", "completed", "merged", "passed", "success", "succeeded"}
+)
+
+
+@dataclass(frozen=True)
+class DependencyEdge:
+    """A prerequisite relationship directed from producer to consumer.
+
+    ``provenance`` intentionally remains structured instead of being collapsed
+    into a reason string.  Persisted DAGs can consequently explain which task
+    field and value produced an edge, even after task aliases are reconciled.
+    """
+
+    source_task_cid: str
+    target_task_cid: str
+    kind: str
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class TaskDependencyNode:
+    """One canonical task in a materialized dependency graph."""
+
+    task_cid: str
+    task_id: str
+    goal_id: str
+    status: str
+    objective_priority: int
+    created_at_ms: int
+    estimated_duration: int
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class DependencyRepairEvidence:
+    """Bounded, actionable evidence for malformed dependency metadata."""
+
+    kind: str
+    task_cid: str
+    task_id: str
+    reference: str
+    message: str
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class TaskScheduleRecord:
+    """Critical-path scheduling metrics for one canonical task."""
+
+    task_cid: str
+    task_id: str
+    claimable: bool
+    blocking_task_cids: list[str]
+    critical_path_length: int
+    slack: int
+    downstream_unlock_value: int
+    age_seconds: int
+    objective_priority: int
+    score: int
+    sort_key: list[Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class TaskDependencyGraph:
+    """A task DAG, its schedule, and finite repair evidence.
+
+    The type retains cyclic or incomplete nodes for diagnosis.  Such nodes are
+    simply made unclaimable; they never prevent independent acyclic components
+    from being scheduled.
+    """
+
+    nodes: dict[str, TaskDependencyNode]
+    edges: list[DependencyEdge]
+    schedule: list[TaskScheduleRecord] = field(default_factory=list)
+    repair_evidence: list[DependencyRepairEvidence] = field(default_factory=list)
+    invalid_task_cids: list[str] = field(default_factory=list)
+
+    @property
+    def claimable_task_cids(self) -> list[str]:
+        return [record.task_cid for record in self.schedule if record.claimable]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "nodes": {key: value.to_dict() for key, value in sorted(self.nodes.items())},
+            "edges": [edge.to_dict() for edge in self.edges],
+            "schedule": [record.to_dict() for record in self.schedule],
+            "repair_evidence": [item.to_dict() for item in self.repair_evidence],
+            "invalid_task_cids": sorted(self.invalid_task_cids),
+            "claimable_task_cids": self.claimable_task_cids,
+        }
+
+
+# A concise alias for callers that use the backlog task's DAG terminology.
+TaskDependencyDAG = TaskDependencyGraph
 
 
 @dataclass(frozen=True)
@@ -680,6 +792,547 @@ def priority_rank(value: str) -> int:
         except ValueError:
             pass
     return 9
+
+
+def _task_record_mapping(task: Any) -> dict[str, Any]:
+    if isinstance(task, Mapping):
+        return dict(task)
+    if hasattr(task, "to_dict"):
+        value = task.to_dict()
+        if isinstance(value, Mapping):
+            return dict(value)
+    if hasattr(task, "__dataclass_fields__"):
+        return asdict(task)
+    return {
+        name: getattr(task, name)
+        for name in dir(task)
+        if not name.startswith("_") and not callable(getattr(task, name, None))
+    }
+
+
+def _dependency_values(task: Mapping[str, Any], *names: str) -> list[str]:
+    normalized = {
+        re.sub(r"[^a-z0-9]+", "_", str(key).strip().lower()).strip("_"): value
+        for key, value in task.items()
+    }
+    values: list[str] = []
+    for name in names:
+        value = normalized.get(name)
+        if value in (None, "", [], ()):
+            continue
+        if isinstance(value, str):
+            candidates = re.split(r"[,;]", value)
+        elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+            candidates = value
+        else:
+            candidates = [value]
+        for candidate in candidates:
+            text = " ".join(str(candidate).strip().split())
+            if text and text.lower() not in {"none", "n/a"} and text not in values:
+                values.append(text)
+    return values
+
+
+def _task_created_at_ms(task: Mapping[str, Any]) -> int:
+    for name in ("created_at_ms", "queued_at_ms", "submitted_at_ms"):
+        value = task.get(name)
+        try:
+            if value not in (None, ""):
+                return max(0, int(value))
+        except (TypeError, ValueError):
+            continue
+    for name in ("created_at", "queued_at", "submitted_at"):
+        value = str(task.get(name) or "").strip()
+        if not value:
+            continue
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return max(0, int(parsed.timestamp() * 1000))
+        except ValueError:
+            continue
+    return 0
+
+
+def _task_duration(task: Mapping[str, Any]) -> int:
+    for name in ("estimated_duration", "duration", "work_item_count", "weight"):
+        try:
+            value = int(task.get(name) or 0)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return 1
+
+
+def _successful_merge_receipt_cids(
+    merge_receipts: Mapping[str, Any] | Iterable[Mapping[str, Any]],
+    aliases: Mapping[str, str],
+) -> set[str]:
+    succeeded: set[str] = set()
+    if isinstance(merge_receipts, Mapping):
+        receipt_items: list[tuple[str, Any]] = list(merge_receipts.items())
+    else:
+        receipt_items = [("", receipt) for receipt in merge_receipts]
+    for key, raw_receipt in receipt_items:
+        receipt = dict(raw_receipt) if isinstance(raw_receipt, Mapping) else {"status": raw_receipt}
+        reference = str(
+            receipt.get("canonical_task_cid")
+            or receipt.get("task_cid")
+            or receipt.get("task_id")
+            or key
+            or ""
+        ).strip()
+        status = str(
+            receipt.get("merge_status")
+            or receipt.get("status")
+            or receipt.get("outcome")
+            or receipt.get("result")
+            or ""
+        ).strip().lower()
+        successful = receipt.get("succeeded") is True or receipt.get("success") is True
+        if successful or status in SUCCESSFUL_MERGE_RECEIPT_STATUSES:
+            cid = aliases.get(reference, reference)
+            if cid:
+                succeeded.add(cid)
+    return succeeded
+
+
+def _cycle_components(nodes: Iterable[str], adjacency: Mapping[str, set[str]]) -> list[list[str]]:
+    """Return cyclic strongly-connected components in deterministic order."""
+
+    node_list = sorted(set(nodes))
+    visited: set[str] = set()
+    finish_order: list[str] = []
+    # Iterative Kosaraju traversal avoids recursion failures on malformed,
+    # machine-generated graphs with thousands of nodes.
+    for root in node_list:
+        if root in visited:
+            continue
+        visited.add(root)
+        stack: list[tuple[str, bool]] = [(root, False)]
+        while stack:
+            node, exiting = stack.pop()
+            if exiting:
+                finish_order.append(node)
+                continue
+            stack.append((node, True))
+            for child in sorted(adjacency.get(node, set()), reverse=True):
+                if child not in visited:
+                    visited.add(child)
+                    stack.append((child, False))
+
+    reverse: dict[str, set[str]] = {node: set() for node in node_list}
+    for source in node_list:
+        for target in adjacency.get(source, set()):
+            if target in reverse:
+                reverse[target].add(source)
+    assigned: set[str] = set()
+    components: list[list[str]] = []
+    for root in reversed(finish_order):
+        if root in assigned:
+            continue
+        assigned.add(root)
+        component: list[str] = []
+        stack = [(root, False)]
+        while stack:
+            node, _unused = stack.pop()
+            component.append(node)
+            for parent in sorted(reverse[node], reverse=True):
+                if parent not in assigned:
+                    assigned.add(parent)
+                    stack.append((parent, False))
+        component.sort()
+        if len(component) > 1 or (component and component[0] in adjacency.get(component[0], set())):
+            components.append(component)
+    return sorted(components, key=lambda item: tuple(item))
+
+
+def critical_path_schedule(
+    graph: TaskDependencyGraph,
+    *,
+    merge_receipts: Mapping[str, Any] | Iterable[Mapping[str, Any]] = (),
+    now: datetime | int | None = None,
+) -> list[TaskScheduleRecord]:
+    """Schedule all tasks by critical path, slack, unlock value, age, and priority.
+
+    Prerequisite completion is deliberately defined by a successful merge
+    receipt, not by mutable todo status.  Invalid components remain visible at
+    the end of the schedule but cannot be claimed.
+    """
+
+    aliases: dict[str, str] = {}
+    for cid, node in graph.nodes.items():
+        aliases[cid] = cid
+        if node.task_id:
+            aliases[node.task_id] = cid
+    succeeded = _successful_merge_receipt_cids(merge_receipts, aliases)
+    incoming: dict[str, set[str]] = {cid: set() for cid in graph.nodes}
+    outgoing: dict[str, set[str]] = {cid: set() for cid in graph.nodes}
+    for edge in graph.edges:
+        if edge.source_task_cid in graph.nodes and edge.target_task_cid in graph.nodes:
+            incoming[edge.target_task_cid].add(edge.source_task_cid)
+            outgoing[edge.source_task_cid].add(edge.target_task_cid)
+
+    invalid = set(graph.invalid_task_cids)
+    invalid.update(item.task_cid for item in graph.repair_evidence if item.task_cid in graph.nodes)
+    cycle_nodes = {cid for group in _cycle_components(graph.nodes, outgoing) for cid in group}
+    invalid.update(cycle_nodes)
+
+    indegree = {
+        cid: len([parent for parent in incoming[cid] if parent not in invalid])
+        for cid in graph.nodes
+        if cid not in invalid
+    }
+    ready = sorted(cid for cid, count in indegree.items() if count == 0)
+    topo: list[str] = []
+    while ready:
+        cid = ready.pop(0)
+        topo.append(cid)
+        for child in sorted(outgoing[cid]):
+            if child not in indegree:
+                continue
+            indegree[child] -= 1
+            if indegree[child] == 0:
+                ready.append(child)
+                ready.sort()
+
+    longest_to_finish: dict[str, int] = {}
+    descendants: dict[str, set[str]] = {}
+    for cid in reversed(topo):
+        valid_children = [child for child in outgoing[cid] if child not in invalid]
+        longest_to_finish[cid] = graph.nodes[cid].estimated_duration + max(
+            (longest_to_finish.get(child, 0) for child in valid_children), default=0
+        )
+        unlocked: set[str] = set(valid_children)
+        for child in valid_children:
+            unlocked.update(descendants.get(child, set()))
+        descendants[cid] = unlocked
+
+    earliest_start: dict[str, int] = {}
+    for cid in topo:
+        earliest_start[cid] = max(
+            (
+                earliest_start.get(parent, 0) + graph.nodes[parent].estimated_duration
+                for parent in incoming[cid]
+                if parent not in invalid
+            ),
+            default=0,
+        )
+    project_duration = max(
+        (earliest_start.get(cid, 0) + graph.nodes[cid].estimated_duration for cid in topo),
+        default=0,
+    )
+    if isinstance(now, datetime):
+        current_ms = int(now.timestamp() * 1000)
+    elif now is None:
+        current_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    else:
+        current_ms = int(now)
+
+    records: list[TaskScheduleRecord] = []
+    terminal_statuses = {"complete", "completed", "merged", "success", "succeeded"}
+    for cid, node in graph.nodes.items():
+        blockers = sorted(parent for parent in incoming[cid] if parent not in succeeded)
+        claimable = cid not in invalid and node.status not in terminal_statuses and not blockers
+        critical_length = longest_to_finish.get(cid, 0)
+        slack = max(0, project_duration - earliest_start.get(cid, 0) - critical_length)
+        unlock_value = len(descendants.get(cid, set()))
+        age_seconds = max(0, (current_ms - node.created_at_ms) // 1000) if node.created_at_ms else 0
+        # The score is informational and stable.  Ordering uses the full tuple
+        # below so no weighting can hide a critical-path distinction.
+        score = (
+            critical_length * 1_000_000
+            + unlock_value * 10_000
+            + min(age_seconds, 999_999)
+            + node.objective_priority * 100
+            - slack * 1_000
+        )
+        sort_key: list[Any] = [
+            0 if claimable else 1,
+            -critical_length,
+            slack,
+            -unlock_value,
+            -age_seconds,
+            -node.objective_priority,
+            node.task_id,
+            cid,
+        ]
+        records.append(
+            TaskScheduleRecord(
+                task_cid=cid,
+                task_id=node.task_id,
+                claimable=claimable,
+                blocking_task_cids=blockers,
+                critical_path_length=critical_length,
+                slack=slack,
+                downstream_unlock_value=unlock_value,
+                age_seconds=age_seconds,
+                objective_priority=node.objective_priority,
+                score=score,
+                sort_key=sort_key,
+            )
+        )
+    records.sort(key=lambda item: tuple(item.sort_key))
+    return records
+
+
+def materialize_task_dependency_dag(
+    tasks: Sequence[Any],
+    *,
+    merge_receipts: Mapping[str, Any] | Iterable[Mapping[str, Any]] = (),
+    now: datetime | int | None = None,
+    max_repair_evidence: int = 64,
+) -> TaskDependencyGraph:
+    """Materialize typed task prerequisites and their critical-path schedule.
+
+    Supported metadata is intentionally permissive because records arrive from
+    markdown, vector indexes, and Profile G adapters.  Direct task ids/CIDs and
+    producer/consumer artifact declarations are both accepted.
+    """
+
+    limit = max(0, int(max_repair_evidence))
+    raw_tasks = [_task_record_mapping(task) for task in tasks]
+    nodes: dict[str, TaskDependencyNode] = {}
+    records_by_cid: dict[str, dict[str, Any]] = {}
+    aliases: dict[str, str] = {}
+    repair: list[DependencyRepairEvidence] = []
+    invalid_task_cids: set[str] = set()
+
+    def add_repair(kind: str, cid: str, reference: str, message: str, provenance: Mapping[str, Any]) -> None:
+        if cid:
+            invalid_task_cids.add(cid)
+        if len(repair) >= limit:
+            return
+        node = nodes.get(cid)
+        repair.append(
+            DependencyRepairEvidence(
+                kind=kind,
+                task_cid=cid,
+                task_id=node.task_id if node else "",
+                reference=reference,
+                message=message,
+                provenance=dict(provenance),
+            )
+        )
+
+    for index, task in enumerate(raw_tasks):
+        task_id = str(task.get("task_id") or task.get("id") or "").strip()
+        provided_cid = str(task.get("canonical_task_cid") or task.get("task_cid") or "").strip()
+        if provided_cid:
+            cid = provided_cid
+        else:
+            identity_input = dict(task)
+            if not any(
+                identity_input.get(name)
+                for name in (
+                    "canonical_task_key",
+                    "dedupe_key",
+                    "title",
+                    "summary",
+                    "outputs",
+                    "acceptance",
+                    "missing_evidence",
+                    "goal_id",
+                    "semantic_key",
+                    "bundle_key",
+                    "work_scope",
+                    "fingerprint",
+                )
+            ):
+                # Legacy bundle indexes sometimes contain only a display id.
+                # Preserve support without allowing aliases from different
+                # boards to collapse onto one execution identity.
+                identity_input["dedupe_key"] = ":".join(
+                    [
+                        "legacy-task",
+                        str(task.get("board_namespace") or "objective-graph"),
+                        task_id or str(index),
+                    ]
+                )
+            identity = canonical_task_identity(
+                identity_input,
+                board_namespace=str(task.get("board_namespace") or "objective-graph"),
+                source_path=str(task.get("source_path") or ""),
+            )
+            cid = identity.canonical_task_cid
+        if cid in nodes:
+            add_repair(
+                "duplicate_task",
+                cid,
+                task_id,
+                f"multiple task records resolve to canonical task CID {cid}",
+                {"record_index": index},
+            )
+            continue
+        rank = priority_rank(str(task.get("priority") or task.get("objective_priority") or "P2"))
+        configured_priority = max(0, 9 - rank)
+        try:
+            explicit_priority = int(task.get("objective_priority"))
+            configured_priority = max(0, explicit_priority)
+        except (TypeError, ValueError):
+            pass
+        node = TaskDependencyNode(
+            task_cid=cid,
+            task_id=task_id,
+            goal_id=str(task.get("goal_id") or "").strip(),
+            status=str(task.get("status") or "todo").strip().lower(),
+            objective_priority=configured_priority,
+            created_at_ms=_task_created_at_ms(task),
+            estimated_duration=_task_duration(task),
+            metadata=dict(task),
+        )
+        nodes[cid] = node
+        records_by_cid[cid] = task
+        aliases[cid] = cid
+        if task_id:
+            if task_id in aliases and aliases[task_id] != cid:
+                add_repair(
+                    "duplicate_alias",
+                    cid,
+                    task_id,
+                    f"task alias {task_id} resolves to more than one canonical task",
+                    {"field": "task_id"},
+                )
+            else:
+                aliases[task_id] = cid
+        canonical_key = str(task.get("canonical_task_key") or "").strip()
+        if canonical_key:
+            aliases[canonical_key] = cid
+
+    goals: dict[str, list[str]] = {}
+    for cid, node in nodes.items():
+        if node.goal_id:
+            goals.setdefault(node.goal_id, []).append(cid)
+
+    provider_fields = {
+        "import": ("provides_imports", "provided_imports", "exports", "modules"),
+        "interface": ("provides_interfaces", "provided_interfaces", "interfaces"),
+        "migration": ("provides_migrations", "provided_migrations", "migrations"),
+        "validation": ("provides_validations", "validation_outputs", "validation_receipts"),
+        "output_input": ("outputs", "output_paths", "produces"),
+    }
+    requirement_fields = {
+        "import": ("import_dependencies", "required_imports", "imports"),
+        "interface": ("interface_dependencies", "required_interfaces"),
+        "migration": ("migration_dependencies", "required_migrations", "migrations_after"),
+        "validation": ("validation_dependencies", "validation_prerequisites"),
+        "output_input": ("input_dependencies", "inputs", "input_paths", "consumes"),
+    }
+    providers: dict[str, dict[str, set[str]]] = {kind: {} for kind in provider_fields}
+    for cid, task in records_by_cid.items():
+        for kind, fields_for_kind in provider_fields.items():
+            for value in _dependency_values(task, *fields_for_kind):
+                normalized = value.strip().replace("\\", "/")
+                providers[kind].setdefault(normalized, set()).add(cid)
+
+    edges: list[DependencyEdge] = []
+    edge_keys: set[tuple[str, str, str, str, str]] = set()
+
+    def add_edge(source: str, target: str, kind: str, *, field_name: str, value: str, resolution: str) -> None:
+        provenance = {
+            "field": field_name,
+            "value": value,
+            "resolution": resolution,
+            "source_task_id": nodes[source].task_id,
+            "target_task_id": nodes[target].task_id,
+        }
+        key = (source, target, kind, field_name, value)
+        if key not in edge_keys:
+            edge_keys.add(key)
+            edges.append(DependencyEdge(source, target, kind, provenance))
+
+    for target, task in records_by_cid.items():
+        parent_goals = _dependency_values(task, "parent_goal_ids", "graph_parents", "goal_parents")
+        for parent_goal in parent_goals:
+            sources = goals.get(parent_goal, [])
+            if not sources:
+                add_repair(
+                    "missing_dependency",
+                    target,
+                    parent_goal,
+                    f"parent goal {parent_goal} has no materialized prerequisite task",
+                    {"edge_kind": "goal", "field": "parent_goal_ids"},
+                )
+            for source in sources:
+                add_edge(source, target, "goal", field_name="parent_goal_ids", value=parent_goal, resolution="goal_id")
+
+        direct_fields = ("dependency_task_cids", "depends_on", "dependency_task_ids", "prerequisite_task_cids")
+        dependency_kinds = task.get("dependency_kinds") if isinstance(task.get("dependency_kinds"), Mapping) else {}
+        for field_name in direct_fields:
+            for reference in _dependency_values(task, field_name):
+                source = aliases.get(reference)
+                configured_kind = str(dependency_kinds.get(reference) or "goal").strip().lower().replace("-", "_")
+                kind = configured_kind if configured_kind in DEPENDENCY_EDGE_KINDS else "goal"
+                if source is None:
+                    add_repair(
+                        "missing_dependency",
+                        target,
+                        reference,
+                        f"{field_name} references an unknown prerequisite task",
+                        {"edge_kind": kind, "field": field_name},
+                    )
+                    continue
+                add_edge(source, target, kind, field_name=field_name, value=reference, resolution="task_alias")
+
+        for kind, fields_for_kind in requirement_fields.items():
+            for field_name in fields_for_kind:
+                for requirement in _dependency_values(task, field_name):
+                    direct_source = aliases.get(requirement)
+                    matched_sources = set(providers[kind].get(requirement.replace("\\", "/"), set()))
+                    if direct_source:
+                        matched_sources.add(direct_source)
+                    for source in sorted(matched_sources):
+                        if source != target:
+                            add_edge(
+                                source,
+                                target,
+                                kind,
+                                field_name=field_name,
+                                value=requirement,
+                                resolution="task_alias" if source == direct_source else "producer_consumer_match",
+                            )
+                    # Explicit dependency/prerequisite fields promise an
+                    # in-graph producer. Plain imports/inputs may be external.
+                    if not matched_sources and ("dependencies" in field_name or "prerequisites" in field_name):
+                        add_repair(
+                            "missing_dependency",
+                            target,
+                            requirement,
+                            f"{kind} prerequisite {requirement} has no materialized producer",
+                            {"edge_kind": kind, "field": field_name},
+                        )
+
+    edges.sort(key=lambda edge: (edge.source_task_cid, edge.target_task_cid, edge.kind, json.dumps(edge.provenance, sort_keys=True)))
+    adjacency: dict[str, set[str]] = {cid: set() for cid in nodes}
+    for edge in edges:
+        adjacency[edge.source_task_cid].add(edge.target_task_cid)
+    for component in _cycle_components(nodes, adjacency):
+        cycle = " -> ".join([*(nodes[cid].task_id or cid for cid in component), nodes[component[0]].task_id or component[0]])
+        for cid in component:
+            add_repair(
+                "dependency_cycle",
+                cid,
+                cycle,
+                f"task participates in dependency cycle: {cycle}",
+                {"component_task_cids": component},
+            )
+
+    graph = TaskDependencyGraph(
+        nodes=nodes,
+        edges=edges,
+        repair_evidence=repair[:limit],
+        invalid_task_cids=sorted(invalid_task_cids),
+    )
+    schedule = critical_path_schedule(graph, merge_receipts=merge_receipts, now=now)
+    return replace(graph, schedule=schedule)
+
+
+# Verbose aliases make the API discoverable to callers that say graph rather
+# than DAG, without creating separate implementations.
+materialize_task_dependency_graph = materialize_task_dependency_dag
+schedule_critical_path = critical_path_schedule
 
 
 def objective_goal_work_surface(goal: ObjectiveGoal) -> int:
@@ -1614,6 +2267,26 @@ def write_bundle_shards(
     for record in records:
         groups.setdefault(record.finding.bundle_key, []).append(record)
 
+    generated_graph = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": record.task_id,
+                "canonical_task_cid": objective_finding_task_identity(record.task_id, record.finding).canonical_task_cid,
+                "goal_id": record.finding.goal_id,
+                "parent_goal_ids": record.finding.parent_goal_ids,
+                "priority": record.finding.priority,
+                "outputs": record.finding.outputs,
+                "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
+                "status": "todo",
+            }
+            for record in records
+        ]
+    )
+    generated_incoming: dict[str, set[str]] = {cid: set() for cid in generated_graph.nodes}
+    for edge in generated_graph.edges:
+        generated_incoming.setdefault(edge.target_task_cid, set()).add(edge.source_task_cid)
+    generated_schedule = {item.task_cid: item for item in generated_graph.schedule}
+
     for key, bundle_records in sorted(groups.items()):
         shard_path = bundle_path(bundle_dir, key)
         bundle_paths[key] = shard_path
@@ -1660,6 +2333,7 @@ def write_bundle_shards(
                     task_map[str(item["task_id"])] = dict(item)
         for record in bundle_records:
             identity = objective_finding_task_identity(record.task_id, record.finding)
+            schedule_record = generated_schedule.get(identity.canonical_task_cid)
             task_map[record.task_id] = {
                 "task_id": record.task_id,
                 "canonical_task_key": identity.canonical_task_key,
@@ -1683,6 +2357,11 @@ def write_bundle_shards(
                 "goal_packet_work_item_count": record.finding.goal_packet_work_item_count,
                 "candidate_kind": record.finding.candidate_kind,
                 "todo_vector_key": record.finding.todo_vector_key,
+                "dependency_task_cids": sorted(generated_incoming.get(identity.canonical_task_cid, set())),
+                "critical_path_length": schedule_record.critical_path_length if schedule_record else 1,
+                "slack": schedule_record.slack if schedule_record else 0,
+                "downstream_unlock_value": schedule_record.downstream_unlock_value if schedule_record else 0,
+                "objective_priority": schedule_record.objective_priority if schedule_record else 0,
             }
         bundles[key] = {
             "bundle_key": key,
@@ -1693,9 +2372,48 @@ def write_bundle_shards(
             "tasks": [task_map[task_id] for task_id in sorted(task_map)],
         }
 
+    all_index_tasks = [
+        dict(item)
+        for info in bundles.values()
+        if isinstance(info, Mapping)
+        for item in (info.get("tasks") or [])
+        if isinstance(item, Mapping)
+    ]
+    index_graph = materialize_task_dependency_dag(all_index_tasks)
+    index_incoming: dict[str, set[str]] = {cid: set() for cid in index_graph.nodes}
+    for edge in index_graph.edges:
+        index_incoming.setdefault(edge.target_task_cid, set()).add(edge.source_task_cid)
+    index_schedule = {item.task_cid: item for item in index_graph.schedule}
+    for info in bundles.values():
+        if not isinstance(info, dict):
+            continue
+        annotated: list[dict[str, Any]] = []
+        for raw_task in info.get("tasks") or []:
+            if not isinstance(raw_task, Mapping):
+                continue
+            item = dict(raw_task)
+            cid = str(item.get("canonical_task_cid") or item.get("task_cid") or "")
+            scheduled = index_schedule.get(cid)
+            item["dependency_task_cids"] = sorted(index_incoming.get(cid, set()))
+            if scheduled:
+                item.update(
+                    {
+                        "critical_path_length": scheduled.critical_path_length,
+                        "slack": scheduled.slack,
+                        "downstream_unlock_value": scheduled.downstream_unlock_value,
+                        "age_seconds": scheduled.age_seconds,
+                        "objective_priority": scheduled.objective_priority,
+                        "schedule_score": scheduled.score,
+                    }
+                )
+            annotated.append(item)
+        info["tasks"] = annotated
+
     index_payload["generated_at"] = utc_now()
     index_payload["source_todo"] = source_todo
     index_payload["bundles"] = bundles
+    index_payload["task_dependency_graph"] = index_graph.to_dict()
+    index_payload["dependency_dag"] = index_graph.to_dict()
     index_path.write_text(json.dumps(index_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     generated_paths.append(index_path)
     return BundleWriteResult(generated_paths=generated_paths, index_path=index_path, bundle_paths=bundle_paths)
@@ -1790,7 +2508,7 @@ def generate_objective_todos(
 
 
 def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
-    """Build task-queue payloads and their canonical Profile G task adapters."""
+    """Build dependency-aware task-queue payloads and Profile G adapters."""
 
     # Local import avoids making objective scanning depend on coordination
     # initialization while ensuring queue consumers receive immutable links.
@@ -1800,7 +2518,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
     bundles = payload.get("bundles") if isinstance(payload, Mapping) else {}
     if not isinstance(bundles, Mapping):
         return []
-    tasks: list[dict[str, Any]] = []
+    task_payloads: list[dict[str, Any]] = []
     for key, info in sorted(bundles.items()):
         if not isinstance(info, Mapping):
             continue
@@ -1813,9 +2531,148 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
             "source_todo": payload.get("source_todo", ""),
             "objective_bundle_index": str(bundle_index_path),
         }
+        task_payloads.append(task_payload)
+
+    flat_tasks = [
+        {**dict(item), "bundle_key": str(bundle_payload.get("bundle_key") or "objective/general")}
+        for bundle_payload in task_payloads
+        for item in bundle_payload.get("tasks", [])
+        if isinstance(item, Mapping)
+    ]
+    graph = materialize_task_dependency_dag(flat_tasks)
+    graph_dict = graph.to_dict()
+    invalid_task_cids = set(graph.invalid_task_cids)
+    schedule_by_cid = {item.task_cid: item for item in graph.schedule}
+    member_cids_by_bundle_and_id = {
+        (str(node.metadata.get("bundle_key") or ""), node.task_id): cid
+        for cid, node in graph.nodes.items()
+    }
+    incoming: dict[str, set[str]] = {cid: set() for cid in graph.nodes}
+    for edge in graph.edges:
+        incoming.setdefault(edge.target_task_cid, set()).add(edge.source_task_cid)
+
+    member_bundle: dict[str, str] = {}
+    bundle_identity_cids: dict[str, str] = {}
+    for bundle_payload in task_payloads:
+        bundle_key = str(bundle_payload["bundle_key"])
+        bundle_identity_cids[bundle_key] = canonical_bundle_identity(bundle_payload).canonical_task_cid
+        annotated_tasks: list[dict[str, Any]] = []
+        for raw_task in bundle_payload.get("tasks", []):
+            if not isinstance(raw_task, Mapping):
+                continue
+            item = dict(raw_task)
+            cid = str(item.get("canonical_task_cid") or item.get("task_cid") or "")
+            if not cid:
+                cid = member_cids_by_bundle_and_id.get((bundle_key, str(item.get("task_id") or "")), "")
+            if not cid:
+                cid = canonical_task_identity(
+                    {
+                        **item,
+                        "semantic_key": f"{bundle_key}:{item.get('task_id') or len(annotated_tasks)}",
+                    }
+                ).canonical_task_cid
+            item["canonical_task_cid"] = cid
+            member_bundle[cid] = bundle_key
+            item["dependency_task_cids"] = sorted(incoming.get(cid, set()))
+            scheduled = schedule_by_cid.get(cid)
+            if scheduled:
+                item.update(
+                    {
+                        "claimable": scheduled.claimable,
+                        "blocking_task_cids": scheduled.blocking_task_cids,
+                        "critical_path_length": scheduled.critical_path_length,
+                        "slack": scheduled.slack,
+                        "downstream_unlock_value": scheduled.downstream_unlock_value,
+                        "age_seconds": scheduled.age_seconds,
+                        "objective_priority": scheduled.objective_priority,
+                        "schedule_score": scheduled.score,
+                    }
+                )
+            annotated_tasks.append(item)
+        bundle_payload["tasks"] = annotated_tasks
+
+    for bundle_payload in task_payloads:
+        bundle_key = str(bundle_payload["bundle_key"])
+        member_cids = {
+            str(item.get("canonical_task_cid") or item.get("task_cid") or "")
+            for item in bundle_payload.get("tasks", [])
+            if isinstance(item, Mapping)
+        }
+        dependency_bundle_keys = {
+            member_bundle[source]
+            for target in member_cids
+            for source in incoming.get(target, set())
+            if source in member_bundle and member_bundle[source] != bundle_key
+        }
+        dependency_task_cids = sorted(bundle_identity_cids[key] for key in dependency_bundle_keys)
+        member_schedule = [schedule_by_cid[cid] for cid in member_cids if cid in schedule_by_cid]
+        repair_evidence = [
+            item.to_dict()
+            for item in graph.repair_evidence
+            if item.task_cid in member_cids
+        ]
+        invalid_member_cids = sorted(member_cids & invalid_task_cids)
+        if invalid_member_cids and not repair_evidence:
+            # The graph keeps the complete invalid-CID set even when detailed
+            # repair evidence reaches its global bound. Preserve one compact
+            # bundle-local marker so truncation can never make invalid work
+            # appear claimable at the lease boundary.
+            repair_evidence.append(
+                {
+                    "kind": "missing_dependency",
+                    "task_cid": invalid_member_cids[0],
+                    "task_id": "",
+                    "reference": "bounded_dependency_repair_evidence",
+                    "message": "dependency repair details were truncated; regenerate or repair the task DAG",
+                    "provenance": {
+                        "invalid_task_cids": invalid_member_cids[:16],
+                        "evidence_truncated": True,
+                    },
+                }
+            )
+        external_blockers = sorted(
+            {
+                bundle_identity_cids[member_bundle[source]]
+                for target in member_cids
+                for source in incoming.get(target, set())
+                if source in member_bundle and member_bundle[source] != bundle_key
+            }
+        )
+        bundle_payload.update(
+            {
+                "canonical_task_cid": bundle_identity_cids[bundle_key],
+                "dependency_task_cids": dependency_task_cids,
+                "blocking_task_cids": external_blockers,
+                "claimable": not external_blockers and not invalid_member_cids,
+                "critical_path_length": max((item.critical_path_length for item in member_schedule), default=1),
+                "slack": min((item.slack for item in member_schedule), default=0),
+                "downstream_unlock_value": max(
+                    (item.downstream_unlock_value for item in member_schedule), default=0
+                ),
+                "age_seconds": max((item.age_seconds for item in member_schedule), default=0),
+                "objective_priority": max((item.objective_priority for item in member_schedule), default=0),
+                "schedule_score": max((item.score for item in member_schedule), default=0),
+                "dependency_repair_evidence": repair_evidence,
+                "task_dependency_graph": graph_dict,
+                "dependency_dag": graph_dict,
+            }
+        )
+
+    task_payloads.sort(
+        key=lambda item: (
+            0 if item["claimable"] else 1,
+            -int(item["critical_path_length"]),
+            int(item["slack"]),
+            -int(item["downstream_unlock_value"]),
+            -int(item["age_seconds"]),
+            -int(item["objective_priority"]),
+            str(item["bundle_key"]),
+        )
+    )
+    for rank, task_payload in enumerate(task_payloads):
+        task_payload["schedule_rank"] = rank
         task_payload["profile_g"] = adapt_goal_bundle(task_payload)
-        tasks.append(task_payload)
-    return tasks
+    return task_payloads
 
 
 def submit_bundle_tasks(

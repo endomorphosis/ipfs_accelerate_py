@@ -25,6 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     main as merge_resolver_main,
     run_configured_merge_resolver_cli,
 )
+from ipfs_accelerate_py.agent_supervisor.objective_graph import materialize_task_dependency_dag
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -695,3 +696,106 @@ def test_merge_resolver_cli_prints_payload(tmp_path, capsys):
     assert output["found"] is True
     assert output["task_id"] == "ACCEL-010"
     assert "Resolve the autonomous-agent supervisor merge conflict" in output["prompt"]
+
+
+def test_task_dependency_dag_materializes_all_prerequisite_kinds_with_provenance():
+    graph = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "TASK-A",
+                "task_cid": "cid-a",
+                "goal_id": "G0",
+                "outputs": ["pkg/runtime.py"],
+                "provides_imports": ["pkg.runtime"],
+                "provides_interfaces": ["Runtime@1"],
+                "provides_migrations": ["schema-2"],
+                "provides_validations": ["runtime-green"],
+            },
+            {
+                "task_id": "TASK-B",
+                "task_cid": "cid-b",
+                "goal_id": "G1",
+                "parent_goal_ids": ["G0"],
+                "inputs": ["pkg/runtime.py"],
+                "required_imports": ["pkg.runtime"],
+                "required_interfaces": ["Runtime@1"],
+                "required_migrations": ["schema-2"],
+                "validation_prerequisites": ["runtime-green"],
+            },
+        ],
+        now=10_000,
+    )
+
+    assert {edge.kind for edge in graph.edges} == {
+        "goal",
+        "import",
+        "interface",
+        "output_input",
+        "migration",
+        "validation",
+    }
+    assert all(edge.provenance["field"] and edge.provenance["value"] for edge in graph.edges)
+    assert graph.schedule[0].task_cid == "cid-a"
+    assert graph.schedule[0].claimable is True
+    assert graph.schedule[1].blocking_task_cids == ["cid-a"]
+
+
+def test_task_dependency_dag_requires_successful_merge_receipts_and_scores_critical_path():
+    tasks = [
+        {"task_id": "A", "task_cid": "cid-a", "depends_on": [], "priority": "P2", "created_at_ms": 1_000},
+        {"task_id": "B", "task_cid": "cid-b", "depends_on": ["A"], "priority": "P0", "created_at_ms": 2_000},
+        {"task_id": "C", "task_cid": "cid-c", "depends_on": ["B"], "priority": "P1", "created_at_ms": 3_000},
+        {"task_id": "D", "task_cid": "cid-d", "priority": "P0", "created_at_ms": 4_000},
+    ]
+
+    blocked = materialize_task_dependency_dag(tasks, now=10_000)
+    scheduled = {item.task_cid: item for item in blocked.schedule}
+    assert scheduled["cid-a"].critical_path_length == 3
+    assert scheduled["cid-a"].downstream_unlock_value == 2
+    assert scheduled["cid-d"].slack == 2
+    assert scheduled["cid-b"].claimable is False
+
+    unblocked = materialize_task_dependency_dag(
+        tasks,
+        merge_receipts={"cid-a": {"status": "succeeded", "receipt_cid": "receipt-a"}},
+        now=10_000,
+    )
+    assert next(item for item in unblocked.schedule if item.task_cid == "cid-b").claimable is True
+
+
+def test_task_dependency_dag_bounds_cycle_and_missing_dependency_repairs_without_deadlock():
+    graph = materialize_task_dependency_dag(
+        [
+            {"task_id": "A", "task_cid": "cid-a", "depends_on": ["B"]},
+            {"task_id": "B", "task_cid": "cid-b", "depends_on": ["A"]},
+            {"task_id": "C", "task_cid": "cid-c", "depends_on": ["not-present"]},
+            {"task_id": "D", "task_cid": "cid-d"},
+        ],
+        max_repair_evidence=2,
+    )
+
+    assert len(graph.repair_evidence) == 2
+    assert {"cid-a", "cid-b", "cid-c"}.issubset(graph.invalid_task_cids)
+    schedule = {item.task_cid: item for item in graph.schedule}
+    assert schedule["cid-d"].claimable is True
+    assert schedule["cid-a"].claimable is False
+    assert schedule["cid-b"].claimable is False
+    assert schedule["cid-c"].claimable is False
+
+
+def test_task_dependency_dag_handles_long_generated_chains_without_recursion():
+    tasks = [
+        {
+            "task_id": f"TASK-{index}",
+            "task_cid": f"cid-{index}",
+            "depends_on": [f"TASK-{index - 1}"] if index else [],
+        }
+        for index in range(1_250)
+    ]
+
+    graph = materialize_task_dependency_dag(tasks, max_repair_evidence=4)
+
+    assert graph.repair_evidence == []
+    assert len(graph.schedule) == 1_250
+    assert graph.schedule[0].task_cid == "cid-0"
+    assert graph.schedule[0].critical_path_length == 1_250

@@ -11,7 +11,7 @@ import subprocess
 import sys
 import threading
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -46,6 +46,17 @@ class BundleLaneSpec:
     goal_cid: str = ""
     subgoal_cid: str = ""
     queue_payload: dict[str, Any] | None = None
+    schedule_rank: int | None = None
+    claimable: bool = True
+    dependency_task_cids: list[str] = field(default_factory=list)
+    blocking_task_cids: list[str] = field(default_factory=list)
+    critical_path_length: int = 0
+    slack: int = 0
+    downstream_unlock_value: int = 0
+    age_seconds: int = 0
+    objective_priority: int = 0
+    schedule_score: int = 0
+    dependency_repair_evidence: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
         payload = asdict(self)
@@ -91,6 +102,45 @@ def resolve_repo_path(repo_root: Path, value: str) -> Path:
 
 def lane_state_prefix(bundle_key: str) -> str:
     return f"agent_{safe_bundle_key(bundle_key).replace('-', '_')}"
+
+
+def _schedule_int(payload: dict[str, Any], key: str, default: int = 0) -> int:
+    """Read integer scheduler metadata without trusting generated JSON types."""
+
+    value = payload.get(key, default)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _schedule_bool(payload: dict[str, Any], key: str, default: bool = True) -> bool:
+    value = payload.get(key, default)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"false", "no", "0", "blocked"}:
+            return False
+        if normalized in {"true", "yes", "1", "ready"}:
+            return True
+    return bool(value)
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple, set, frozenset)):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
+def _lane_schedule_key(lane: BundleLaneSpec) -> tuple[int, int, str]:
+    """Put ready lanes in critical-path order while retaining blocked lanes.
+
+    ``claimable`` in an index is a planning snapshot.  It controls only the
+    ordering here; :class:`LeaseCoordinator` remains the authority at claim
+    time because prerequisite receipts can arrive after the index is written.
+    """
+
+    rank = lane.schedule_rank if lane.schedule_rank is not None else sys.maxsize
+    return (0 if lane.claimable else 1, rank, lane.bundle_key)
 
 
 def implementation_supervisor_command(
@@ -196,8 +246,6 @@ def plan_bundle_lanes(
 
     lanes: list[BundleLaneSpec] = []
     for payload in build_bundle_task_payloads(bundle_index_path):
-        if max_lanes is not None and len(lanes) >= max_lanes:
-            break
         bundle_key = str(payload.get("bundle_key") or "objective/general")
         safe_key = safe_bundle_key(bundle_key)
         todo_path = resolve_repo_path(repo_root, str(payload.get("todo_path") or ""))
@@ -251,9 +299,21 @@ def plan_bundle_lanes(
                 goal_cid=str(profile_g.get("goal_cid") or ""),
                 subgoal_cid=str(profile_g.get("subgoal_cid") or ""),
                 queue_payload=dict(payload),
+                schedule_rank=(_schedule_int(payload, "schedule_rank") if payload.get("schedule_rank") is not None else None),
+                claimable=_schedule_bool(payload, "claimable"),
+                dependency_task_cids=_string_list(payload.get("dependency_task_cids")),
+                blocking_task_cids=_string_list(payload.get("blocking_task_cids")),
+                critical_path_length=_schedule_int(payload, "critical_path_length"),
+                slack=_schedule_int(payload, "slack"),
+                downstream_unlock_value=_schedule_int(payload, "downstream_unlock_value"),
+                age_seconds=_schedule_int(payload, "age_seconds"),
+                objective_priority=_schedule_int(payload, "objective_priority"),
+                schedule_score=_schedule_int(payload, "schedule_score"),
+                dependency_repair_evidence=[dict(item) for item in (payload.get("dependency_repair_evidence") or []) if isinstance(item, dict)],
             )
         )
-    return lanes
+    lanes.sort(key=_lane_schedule_key)
+    return lanes[:max_lanes] if max_lanes is not None else lanes
 
 
 def launch_bundle_lanes(
@@ -279,7 +339,16 @@ def launch_bundle_lanes(
             try:
                 grant = coordinator.claim(adapted["task_cid"], claimant_did, requested_lease_ms=lease_ms)
             except LeaseError as exc:
-                results.append({"bundle_key": lane.bundle_key, "accepted": False, "error": str(exc), "code": exc.code})
+                rejected: dict[str, Any] = {
+                    "bundle_key": lane.bundle_key,
+                    "accepted": False,
+                    "error": str(exc),
+                    "code": exc.code,
+                }
+                evidence = getattr(exc, "evidence", None)
+                if isinstance(evidence, dict):
+                    rejected["dependency_evidence"] = dict(evidence)
+                results.append(rejected)
                 continue
             try:
                 process, guarded_command, pid_path = _spawn_accepted_lane(
@@ -423,7 +492,10 @@ def write_bundle_lane_manifest(
         "repo_root": str(repo_root),
         "bundle_index_path": repo_relative_path(repo_root, bundle_index_path),
         "planned_count": len(lanes),
+        "claimable_count": sum(lane.claimable for lane in lanes),
+        "blocked_count": sum(not lane.claimable for lane in lanes),
         "started_count": len(started),
+        "critical_path": [lane.bundle_key for lane in lanes if lane.claimable],
         "lanes": [lane.to_dict(repo_root=repo_root) for lane in lanes],
         "started": list(started),
     }
