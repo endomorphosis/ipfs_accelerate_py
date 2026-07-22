@@ -443,6 +443,30 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert submitted[0]["payload"]["bundle_key"] == "objective/ops/root"
 
 
+def test_generate_objective_todos_reserves_ids_from_discovery_artifacts(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    discovery_dir.mkdir(parents=True)
+    (discovery_dir / "2026-07-22-accel-009-codebase-scan-deadbeef.md").write_text(
+        "# Prior durable finding\n",
+        encoding="utf-8",
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+    )
+
+    assert [record.task_id for record in records] == ["ACCEL-010"]
+    assert "## ACCEL-010 Close objective gap" in todo_path.read_text(encoding="utf-8")
+
+
 def test_persist_objective_ast_dataset_uses_ipfs_datasets_bridge(tmp_path, monkeypatch):
     repo, objective_path, _todo_path = _seed_repo(tmp_path)
     saved: dict[str, object] = {}

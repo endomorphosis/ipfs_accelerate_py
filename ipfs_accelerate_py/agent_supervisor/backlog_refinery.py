@@ -45,6 +45,11 @@ from .todo_daemon.implementation_daemon import (
     parse_task_file,
     retry_budget_repair_source,
 )
+from .taskboard_store import (
+    locked_taskboard,
+    replace_locked_taskboard,
+    task_ids_from_artifact_names,
+)
 from .validation_commands import normalize_validation_command_text, split_validation_commands
 from .wrapper_utils import AgentSupervisorNamespacePaths
 
@@ -252,12 +257,24 @@ def build_task_blocks_ensurer(
     return ensurer
 
 
-def next_task_id(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> str:
+def next_task_id(
+    todo_text: str,
+    *,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+    reserved_task_ids: Iterable[str] = (),
+) -> str:
     prefix = task_id_prefix(task_prefix)
     highest = 0
-    for current in task_ids_from_todo_text(todo_text, task_prefix=prefix):
+    task_ids = [
+        *task_ids_from_todo_text(todo_text, task_prefix=prefix),
+        *(str(item) for item in reserved_task_ids),
+    ]
+    for current in task_ids:
         try:
-            highest = max(highest, int(current.rsplit("-", 1)[1]))
+            current_prefix, number = current.rsplit("-", 1)
+            if f"{current_prefix}-" != prefix:
+                continue
+            highest = max(highest, int(number))
         except (IndexError, ValueError):
             continue
     return f"{prefix}{highest + 1:03d}"
@@ -3948,33 +3965,44 @@ def record_codebase_scan_findings(
 
     appended: list[dict[str, Any]] = []
     generated_paths: list[Path] = []
-    for finding in findings:
-        follow_up_task_id = next_task_id(todo_text, task_prefix=task_prefix)
-        discovery_path = write_codebase_scan_discovery(
-            discovery_dir=discovery_dir,
-            task_id=follow_up_task_id,
-            finding=finding,
+    with locked_taskboard(todo_path) as taskboard:
+        todo_text = taskboard.read()
+        reserved_task_ids = task_ids_from_artifact_names(
+            discovery_dir,
+            task_prefix=task_prefix,
         )
-        generated_paths.append(discovery_path)
-        task_block = codebase_scan_task_block(
-            task_id=follow_up_task_id,
-            finding=finding,
-            discovery_path=discovery_path,
-            depends_on=depends_on,
-            discovery_output_path=discovery_output_path,
-        )
-        todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
-        appended.append(
-            {
-                "follow_up_task_id": follow_up_task_id,
-                "fingerprint": finding.fingerprint,
-                "kind": finding.kind,
-                "source": f"{finding.root_relative_path}:{finding.line_number}",
-                "discovery_path": str(discovery_path),
-            }
-        )
+        for finding in findings:
+            follow_up_task_id = next_task_id(
+                todo_text,
+                task_prefix=task_prefix,
+                reserved_task_ids=reserved_task_ids,
+            )
+            reserved_task_ids.add(follow_up_task_id)
+            discovery_path = write_codebase_scan_discovery(
+                discovery_dir=discovery_dir,
+                task_id=follow_up_task_id,
+                finding=finding,
+            )
+            generated_paths.append(discovery_path)
+            task_block = codebase_scan_task_block(
+                task_id=follow_up_task_id,
+                finding=finding,
+                discovery_path=discovery_path,
+                depends_on=depends_on,
+                discovery_output_path=discovery_output_path,
+            )
+            todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
+            appended.append(
+                {
+                    "follow_up_task_id": follow_up_task_id,
+                    "fingerprint": finding.fingerprint,
+                    "kind": finding.kind,
+                    "source": f"{finding.root_relative_path}:{finding.line_number}",
+                    "discovery_path": str(discovery_path),
+                }
+            )
 
-    todo_path.write_text(todo_text, encoding="utf-8")
+        replace_locked_taskboard(taskboard, todo_text)
     strategy["last_codebase_scan_findings"] = appended
     write_json(strategy_path, strategy)
     if commit_outputs:

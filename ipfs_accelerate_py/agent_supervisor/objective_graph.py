@@ -25,6 +25,11 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
 from .task_identity import TaskIdentity, canonical_bundle_identity, canonical_task_identity
+from .taskboard_store import (
+    locked_taskboard,
+    replace_locked_taskboard,
+    task_ids_from_artifact_names,
+)
 
 
 DEFAULT_EMBEDDING_DIMENSIONS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64"))
@@ -2272,12 +2277,24 @@ def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX
     return ids
 
 
-def next_task_id(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX) -> str:
+def next_task_id(
+    todo_text: str,
+    *,
+    task_prefix: str = DEFAULT_TASK_PREFIX,
+    reserved_task_ids: Iterable[str] = (),
+) -> str:
     highest = 0
     normalized = task_prefix.rstrip("-")
-    for task_id in task_ids_from_todo(todo_text, task_prefix=f"{normalized}-"):
+    task_ids = [
+        *task_ids_from_todo(todo_text, task_prefix=f"{normalized}-"),
+        *(str(item) for item in reserved_task_ids),
+    ]
+    for task_id in task_ids:
         try:
-            highest = max(highest, int(task_id.split("-", 1)[1]))
+            prefix, number = task_id.rsplit("-", 1)
+            if prefix != normalized:
+                continue
+            highest = max(highest, int(number))
         except (IndexError, ValueError):
             continue
     return f"{normalized}-{highest + 1:03d}"
@@ -2655,9 +2672,8 @@ def generate_objective_todos(
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
-    todo_text = todo_path.read_text(encoding="utf-8") if todo_path.exists() else "# Objective Todo\n"
     records: list[ObjectiveTaskRecord] = []
-    for finding in scan_objective_gaps(
+    findings = scan_objective_gaps(
         repo_root,
         objective_path=objective_path,
         max_findings=max_findings,
@@ -2666,32 +2682,51 @@ def generate_objective_todos(
         summary_prefix=summary_prefix,
         surplus_findings_per_goal=surplus_findings_per_goal,
         surplus_min_terms_per_todo=surplus_min_terms_per_todo,
-    ):
-        task_id = next_task_id(todo_text, task_prefix=task_prefix)
-        shard_relative = repo_relative_path(repo_root, bundle_path(bundle_dir, finding.bundle_key))
-        discovery_path = write_discovery(discovery_dir=discovery_dir, task_id=task_id, finding=finding)
-        task_block = render_task_block(
-            task_id=task_id,
-            finding=finding,
-            discovery_path=discovery_path,
-            depends_on=depends_on,
-            bundle_shard=shard_relative,
-            discovery_output_path=discovery_output_path,
+    )
+    with locked_taskboard(todo_path) as taskboard:
+        todo_text = taskboard.read() or "# Objective Todo\n"
+        reserved_task_ids = task_ids_from_artifact_names(
+            discovery_dir,
+            task_prefix=task_prefix,
         )
-        todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
-        records.append(
-            ObjectiveTaskRecord(
+        for finding in findings:
+            task_id = next_task_id(
+                todo_text,
+                task_prefix=task_prefix,
+                reserved_task_ids=reserved_task_ids,
+            )
+            reserved_task_ids.add(task_id)
+            shard_relative = repo_relative_path(
+                repo_root, bundle_path(bundle_dir, finding.bundle_key)
+            )
+            discovery_path = write_discovery(
+                discovery_dir=discovery_dir,
                 task_id=task_id,
-                task_block=task_block,
+                finding=finding,
+            )
+            task_block = render_task_block(
+                task_id=task_id,
                 finding=finding,
                 discovery_path=discovery_path,
+                depends_on=depends_on,
+                bundle_shard=shard_relative,
+                discovery_output_path=discovery_output_path,
             )
-        )
+            todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
+            records.append(
+                ObjectiveTaskRecord(
+                    task_id=task_id,
+                    task_block=task_block,
+                    finding=finding,
+                    discovery_path=discovery_path,
+                )
+            )
+
+        if records:
+            replace_locked_taskboard(taskboard, todo_text)
 
     if not records:
         return []
-    todo_path.parent.mkdir(parents=True, exist_ok=True)
-    todo_path.write_text(todo_text, encoding="utf-8")
     bundle_result = write_bundle_shards(bundle_dir=bundle_dir, repo_root=repo_root, todo_path=todo_path, records=records)
     if write_todo_vector_index:
         from .todo_vector_index import write_todo_vector_index as write_index

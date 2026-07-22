@@ -487,6 +487,38 @@ def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):
     assert Path(findings[0]["discovery_path"]).exists()
 
 
+def test_codebase_scan_reserves_ids_from_discovery_artifacts(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text("# TODO: prove durable task id allocation\n", encoding="utf-8")
+    _write_todo(todo_path)
+    discovery_dir.mkdir(parents=True)
+    (discovery_dir / "2026-07-22-auto-009-objective-gap-deadbeef.md").write_text(
+        "# Prior durable finding\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed repo")
+
+    findings = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        repo_root=repo,
+        task_prefix="AUTO-",
+        max_findings=1,
+        force=True,
+    )
+
+    assert findings[0]["follow_up_task_id"] == "AUTO-010"
+    assert "## AUTO-010" in todo_path.read_text(encoding="utf-8")
+
+
 def test_backlog_refinery_annotation_scan_ignores_literal_status_strings(tmp_path):
     repo = _seed_repo(tmp_path)
     source = repo / "src" / "runtime.py"
