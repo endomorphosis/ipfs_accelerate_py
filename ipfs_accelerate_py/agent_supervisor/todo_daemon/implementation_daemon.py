@@ -862,6 +862,7 @@ class PortalImplementationDaemon:
         worktree_submodule_paths: Any = None,
         objective_path: Path | None = None,
         objective_bundle_dir: Path | None = None,
+        generated_status_paths: Sequence[Path | str] = (),
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
         merge_reconciliation_max_merges: int | None = None,
@@ -921,6 +922,7 @@ class PortalImplementationDaemon:
         self.merge_target_branch = str(merge_target_branch or "").strip()
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
+        self.generated_status_paths = tuple(Path(path) for path in generated_status_paths)
         self.llm_merge_resolver_command = (
             default_llm_merge_resolver_command()
             if llm_merge_resolver_command is None
@@ -1300,9 +1302,10 @@ class PortalImplementationDaemon:
         previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         now = utc_now()
-        status_completed_task_ids = {
+        board_completed_task_ids = {
             task.task_id for task in tasks if task.status == "completed"
-        } | shared_completed_task_ids
+        }
+        status_completed_task_ids = board_completed_task_ids | shared_completed_task_ids
         strategy_blocked_task_ids = {str(task_id) for task_id in strategy.get("blocked_tasks", [])}
         # A historical deprioritization is only a scheduling hint.  Failed
         # implementation merges must still be reconciled unless the janitor
@@ -1339,11 +1342,12 @@ class PortalImplementationDaemon:
         queued_merge_task_ids = self._pending_queued_merge_task_ids(recent_outcomes)
         quarantined_merge_task_ids = self._quarantined_queued_merge_task_ids(recent_outcomes)
         successfully_merged_task_ids = self._successfully_merged_task_ids()
+        completion_receipt_task_ids = successfully_merged_task_ids | shared_completed_task_ids
         merged_status_repair: dict[str, Any] = {}
         stale_merged_completed_task_ids = [
             task.task_id
             for task in tasks
-            if task.task_id in successfully_merged_task_ids and task.task_id not in status_completed_task_ids
+            if task.task_id in completion_receipt_task_ids and task.task_id not in board_completed_task_ids
         ]
         if stale_merged_completed_task_ids:
             merged_status_repair = self._mark_tasks_completed_in_todo(
@@ -1353,6 +1357,7 @@ class PortalImplementationDaemon:
             )
             repaired_task_ids = set(merged_status_repair.get("updated_task_ids") or [])
             repaired_task_ids.update(merged_status_repair.get("already_completed_task_ids") or [])
+            board_completed_task_ids.update(repaired_task_ids)
             status_completed_task_ids.update(repaired_task_ids)
 
         previous_completed = set(previous.completed_task_ids)
@@ -7711,7 +7716,14 @@ class PortalImplementationDaemon:
         )
 
         discovery_dir = self.state_path.parent.parent / "discovery"
-        additional_paths = [path for path in (self.objective_path,) if path is not None]
+        additional_paths = [
+            path
+            for path in (
+                self.objective_path,
+                *self.generated_status_paths,
+            )
+            if path is not None
+        ]
         additional_prefixes = [
             path
             for path in (
@@ -10337,6 +10349,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Directory of generated objective bundle markdown files that may be deterministically repaired.",
     )
     parser.add_argument(
+        "--generated-status-path",
+        type=Path,
+        action="append",
+        default=[],
+        help="Repeatable generated file path that may be reconciled without blocking the checkout.",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -10376,6 +10395,7 @@ def main(argv: list[str] | None = None) -> None:
         worktree_submodule_paths=args.worktree_submodule_path or None,
         objective_path=args.objective_path,
         objective_bundle_dir=args.objective_bundle_dir,
+        generated_status_paths=args.generated_status_path,
         llm_merge_resolver_command=args.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,

@@ -2932,6 +2932,10 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
             "2",
             "--reconciliation-guardrail-discovery-output-path",
             "data/reconciliation",
+            "--generated-dirty-path",
+            str(tmp_path / "generated-taskboard.md"),
+            "--generated-dirty-path",
+            "data/generated-summary.json",
         ]
     )
     config = supervisor_config_from_args(
@@ -2960,6 +2964,10 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
     assert config.reconciliation_guardrail_enabled is False
     assert config.reconciliation_guardrail_max_findings == 2
     assert config.reconciliation_guardrail_discovery_output_path == "data/reconciliation"
+    assert config.generated_dirty_repair_paths == (
+        tmp_path / "generated-taskboard.md",
+        Path("data/generated-summary.json"),
+    )
     assert config.objective_interoperability_focus == ("hallucinate_app", "swissknife")
     assert config.objective_interoperability_component_paths == (
         "hallucinate_app",
@@ -5820,6 +5828,7 @@ def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path)
     assert result["active_task_id"] == "ACCEL-003"
     assert result["shared_completed_task_ids"] == ["ACCEL-001"]
     assert result["shared_active_merge_task_ids"] == ["ACCEL-002"]
+    assert parse_task_file(todo_path, "## ACCEL-")[0].status == "completed"
     assert state.task_statuses["ACCEL-001"] == "completed"
     assert state.task_statuses["ACCEL-002"] == "waiting"
     assert state.task_statuses["ACCEL-003"] == "ready"
@@ -10949,6 +10958,7 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         implementation_command="codex exec --full-auto",
         llm_merge_resolver_command="python resolver.py",
         generated_dirty_repair_enabled=True,
+        generated_dirty_repair_paths=(repo / "docs" / "generated-taskboard.md",),
         worktree_submodule_paths=("ipfs_datasets_py/ipfs_accelerate_py",),
         log_level="DEBUG",
         max_lanes=None,
@@ -10968,6 +10978,10 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     assert lanes[0].command[lanes[0].command.index("--log-level") + 1] == "DEBUG"
     assert lanes[0].command[lanes[0].command.index("--llm-merge-resolver-command") + 1] == "python resolver.py"
     assert "--auto-commit-generated-dirty" in lanes[0].command
+    assert lanes[0].command.count("--generated-dirty-path") == 1
+    assert lanes[0].command[lanes[0].command.index("--generated-dirty-path") + 1] == str(
+        repo / "docs" / "generated-taskboard.md"
+    )
     assert lanes[0].command.count("--worktree-submodule-path") == 1
     assert "ipfs_datasets_py/ipfs_accelerate_py" in lanes[0].command
 
@@ -12437,6 +12451,32 @@ def test_implementation_daemon_recognizes_configured_state_directory_as_generate
     assert daemon._path_is_generated_status_output("tmp/supervisor/state/submodule-merge-diagnostics.json") is True
     assert daemon._path_is_generated_status_output("tmp/supervisor/state/submodule-merge-recovery-worktrees/attempt") is True
     assert daemon._path_is_generated_status_output("tmp/supervisor/unrelated.json") is False
+
+
+def test_supervisor_propagates_configured_generated_status_path_to_daemon(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    generated_path = repo / "docs" / "generated-taskboard.md"
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            generated_dirty_repair_paths=(generated_path,),
+        )
+    )
+
+    command = supervisor._build_daemon_command()
+    daemon = supervisor._build_worktree_reconciliation_daemon()
+
+    assert command.count("--generated-status-path") == 1
+    assert command[command.index("--generated-status-path") + 1] == str(generated_path)
+    assert daemon.generated_status_paths == (generated_path,)
+    assert daemon._path_is_generated_status_output("docs/generated-taskboard.md") is True
 
 
 def test_implementation_supervisor_reuses_reconciliation_scan_cache_when_main_dirty(tmp_path, monkeypatch):

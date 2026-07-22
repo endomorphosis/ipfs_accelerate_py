@@ -139,6 +139,7 @@ class PortalSupervisorConfig:
     generated_dirty_repair_include_submodule_gitlinks: bool = False
     generated_dirty_repair_max_paths: int = 200
     generated_dirty_repair_stale_lock_seconds: float = 300.0
+    generated_dirty_repair_paths: tuple[Path, ...] = field(default_factory=tuple)
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -2135,6 +2136,7 @@ class PortalImplementationSupervisor:
                 self.config.objective_path,
                 self.config.objective_graph_path,
                 self.config.objective_todo_vector_index_path,
+                *self.config.generated_dirty_repair_paths,
             )
             if path is not None
         ]
@@ -2345,6 +2347,7 @@ class PortalImplementationSupervisor:
             worktree_submodule_paths=self.config.worktree_submodule_paths,
             objective_path=self.config.objective_path,
             objective_bundle_dir=self.config.objective_bundle_dir,
+            generated_status_paths=self.config.generated_dirty_repair_paths,
             llm_merge_resolver_command=self.config.llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
         )
@@ -4342,6 +4345,8 @@ class PortalImplementationSupervisor:
                 self.config.state_prefix,
             ]
         )
+        for path in self.config.generated_dirty_repair_paths:
+            command.extend(["--generated-status-path", str(path)])
         if self.config.implement:
             command.append("--implement")
             command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
@@ -4970,6 +4975,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--generated-dirty-path",
+        dest="generated_dirty_repair_paths",
+        type=Path,
+        action="append",
+        default=[],
+        help="Repeatable generated file path that dirty-checkout repair may safely manage.",
+    )
+    parser.add_argument(
         "--codebase-refill-scan",
         action="store_true",
         help="Append codebase-scan follow-up tasks when the supervised backlog is low or drained.",
@@ -5279,6 +5292,7 @@ def supervisor_config_from_args(
         ),
         generated_dirty_repair_max_paths=args.generated_dirty_max_paths,
         generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
+        generated_dirty_repair_paths=tuple(args.generated_dirty_repair_paths),
         codebase_refill_enabled=args.codebase_refill_scan and not reconciliation_only,
         codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
         codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,

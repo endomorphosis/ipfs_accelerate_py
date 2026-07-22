@@ -493,13 +493,17 @@ class WorktreePool:
         self.max_entries = max(1, int(max_entries))
         self.command_timeout_seconds = max(1, int(command_timeout_seconds))
         self.state_root = self.worktree_root / state_dirname
-        common_dir_result = _run_command_with_timeout(
-            run_command_fn,
-            ("git", "rev-parse", "--git-common-dir"),
-            cwd=self.repo_root,
-            timeout_seconds=self.command_timeout_seconds,
-        )
-        common_dir_text = common_dir_result.stdout.strip() if common_dir_result.ok else ""
+        try:
+            common_dir_result = _run_command_with_timeout(
+                run_command_fn,
+                ("git", "rev-parse", "--git-common-dir"),
+                cwd=self.repo_root,
+                timeout_seconds=self.command_timeout_seconds,
+            )
+        except OSError:
+            common_dir_text = ""
+        else:
+            common_dir_text = common_dir_result.stdout.strip() if common_dir_result.ok else ""
         common_dir = Path(common_dir_text) if common_dir_text else self.repo_root / ".git"
         self.repo_common_dir = (common_dir if common_dir.is_absolute() else self.repo_root / common_dir).resolve()
         self._metrics: dict[str, Any] = {
