@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -12,6 +13,7 @@ import sqlite3
 import subprocess
 import tempfile
 import time
+import tokenize
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -803,6 +805,223 @@ def merge_in_progress(repo_root: Path) -> bool:
     return merge_head.exists()
 
 
+def active_merge_heads(repo_root: Path) -> tuple[str, ...]:
+    """Return the commit identities currently recorded in ``MERGE_HEAD``."""
+
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-path", "MERGE_HEAD"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return ()
+    merge_head_path = Path(result.stdout.strip())
+    if not merge_head_path.is_absolute():
+        merge_head_path = repo_root / merge_head_path
+    try:
+        values = merge_head_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ()
+    return tuple(value.strip().lower() for value in values if value.strip())
+
+
+def _resolve_commit(repo_root: Path, value: Any) -> str:
+    ref = str(value or "").strip()
+    if not ref:
+        return ""
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{ref}^{{commit}}"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result.stdout.strip().lower() if result.returncode == 0 else ""
+
+
+def active_merge_matches_payload(payload: Mapping[str, Any], repo_root: Path) -> dict[str, Any]:
+    """Verify that a resolver payload describes the merge active in ``repo_root``.
+
+    Event logs from independent lanes can contain old failures.  A live merge is
+    eligible only when its ``MERGE_HEAD`` matches the recorded source branch or
+    implementation commit; merely observing unmerged paths is not sufficient.
+    """
+
+    active_heads = set(active_merge_heads(repo_root))
+    if not active_heads:
+        return {
+            "matches": False,
+            "reason": "merge_not_active",
+            "active_merge_heads": [],
+            "expected_merge_heads": {},
+        }
+
+    nested = payload.get("merge_result")
+    merge_result = nested if isinstance(nested, Mapping) else payload
+    references: dict[str, Any] = {
+        "branch": merge_result.get("branch") or payload.get("branch"),
+        "implementation_commit": (
+            merge_result.get("implementation_commit")
+            or payload.get("implementation_commit")
+        ),
+        "source_commit": merge_result.get("source_commit") or payload.get("source_commit"),
+        "commit_sha": merge_result.get("commit_sha") or payload.get("commit_sha"),
+    }
+    command = merge_result.get("command") or payload.get("command")
+    if isinstance(command, Sequence) and not isinstance(command, (str, bytes)):
+        command_parts = [str(item) for item in command]
+        if "merge" in command_parts:
+            merge_index = command_parts.index("merge")
+            merge_operands = [
+                item
+                for item in command_parts[merge_index + 1 :]
+                if item and not item.startswith("-")
+            ]
+            if merge_operands:
+                references["command_source"] = merge_operands[-1]
+
+    expected_heads = {
+        label: commit
+        for label, value in references.items()
+        if (commit := _resolve_commit(repo_root, value))
+    }
+    matched = sorted(active_heads.intersection(expected_heads.values()))
+    return {
+        "matches": bool(matched),
+        "reason": "matched" if matched else "active_merge_identity_mismatch",
+        "active_merge_heads": sorted(active_heads),
+        "expected_merge_heads": expected_heads,
+        "matched_merge_heads": matched,
+    }
+
+
+def validate_resolved_paths(repo_root: Path, paths: Sequence[str]) -> dict[str, Any]:
+    """Reject conflict markers and invalid Python in resolver-touched paths."""
+
+    checked_paths: list[str] = []
+    expanded_paths: list[str] = []
+    invalid_paths: list[str] = []
+    marker_findings: list[dict[str, Any]] = []
+    syntax_errors: list[dict[str, Any]] = []
+    root = repo_root.resolve()
+    pending = list(dict.fromkeys(str(item).strip() for item in paths if str(item).strip()))
+    visited: set[str] = set()
+
+    while pending:
+        raw_path = pending.pop(0)
+        if raw_path in visited:
+            continue
+        visited.add(raw_path)
+        relative = Path(raw_path)
+        candidate = (root / relative).resolve()
+        try:
+            normalized = candidate.relative_to(root).as_posix()
+        except ValueError:
+            invalid_paths.append(raw_path)
+            continue
+        if relative.is_absolute() or not candidate.exists() or not candidate.is_file():
+            if relative.is_absolute():
+                invalid_paths.append(raw_path)
+            elif candidate.is_dir():
+                top_level_result = subprocess.run(
+                    ["git", "rev-parse", "--show-toplevel"],
+                    cwd=candidate,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                nested_repo_root = (
+                    Path(top_level_result.stdout.strip()).resolve()
+                    if top_level_result.returncode == 0 and top_level_result.stdout.strip()
+                    else None
+                )
+                nested_paths: set[str] = set()
+                for command in (
+                    [
+                        "git",
+                        "diff-tree",
+                        "--root",
+                        "--no-commit-id",
+                        "--name-only",
+                        "-r",
+                        "-m",
+                        "HEAD",
+                    ],
+                    ["git", "diff", "--name-only", "HEAD"],
+                    ["git", "ls-files", "--others", "--exclude-standard"],
+                ):
+                    result = subprocess.run(
+                        command,
+                        cwd=candidate,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if result.returncode == 0:
+                        nested_paths.update(
+                            line.strip()
+                            for line in result.stdout.splitlines()
+                            if line.strip()
+                        )
+                for nested_path in sorted(nested_paths)[:1000]:
+                    if nested_repo_root == candidate:
+                        expanded = (Path(normalized) / nested_path).as_posix()
+                    else:
+                        expanded = Path(nested_path).as_posix()
+                        normalized_prefix = normalized.rstrip("/") + "/"
+                        if normalized not in {"", "."} and not expanded.startswith(normalized_prefix):
+                            continue
+                    expanded_paths.append(expanded)
+                    pending.append(expanded)
+            continue
+        checked_paths.append(normalized)
+        try:
+            content = candidate.read_bytes()
+        except OSError as exc:
+            syntax_errors.append({"path": normalized, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        for line_number, line in enumerate(content.splitlines(), start=1):
+            stripped = line.lstrip()
+            if (
+                stripped == b"======="
+                or stripped == b"<<<<<<<"
+                or stripped.startswith(b"<<<<<<< ")
+                or stripped == b">>>>>>>"
+                or stripped.startswith(b">>>>>>> ")
+            ):
+                marker_findings.append(
+                    {
+                        "path": normalized,
+                        "line": line_number,
+                        "marker": stripped[:80].decode("utf-8", errors="replace"),
+                    }
+                )
+        if candidate.suffix == ".py":
+            try:
+                with tokenize.open(candidate) as stream:
+                    source = stream.read()
+                ast.parse(source, filename=str(candidate))
+            except (OSError, SyntaxError, UnicodeError) as exc:
+                syntax_errors.append(
+                    {
+                        "path": normalized,
+                        "line": int(getattr(exc, "lineno", 0) or 0),
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+
+    return {
+        "valid": not invalid_paths and not marker_findings and not syntax_errors,
+        "checked_paths": checked_paths,
+        "expanded_paths": expanded_paths,
+        "invalid_paths": invalid_paths,
+        "marker_findings": marker_findings,
+        "syntax_errors": syntax_errors,
+    }
+
+
 def merge_event_workspace(event: Mapping[str, Any], repo_root: Path) -> Path:
     """Resolve the checkout in which the recorded merge was attempted."""
 
@@ -956,6 +1175,11 @@ def resolver_payload(
         "conflict_fingerprint": conflict_fingerprint(event),
         "event_timestamp": str(event.get("timestamp") or ""),
         "branch": str(merge_result.get("branch") or ""),
+        "implementation_commit": str(
+            merge_result.get("implementation_commit")
+            or event.get("implementation_commit")
+            or ""
+        ),
         "target_branch": str(merge_result.get("target_branch") or ""),
         "command": merge_result.get("command") or [],
         "reason": str(merge_result.get("reason") or ""),
