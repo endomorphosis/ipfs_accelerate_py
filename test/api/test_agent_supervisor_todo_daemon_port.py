@@ -40,6 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     record_reconciliation_guardrail_findings,
 )
 from ipfs_accelerate_py.agent_supervisor import merge_resolver
+from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue
 from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     ConfiguredMergeResolverRunner,
     MergeResolverNamespaceSpec,
@@ -5296,6 +5297,75 @@ def test_implementation_daemon_filters_repo_wide_task_claims(tmp_path):
     assert result["active_task_claims"] == ["ACCEL-001"]
     assert state.recommended_task_id == "ACCEL-003"
     assert state.ready_count == 2
+
+
+def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Completed in another lane
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Waiting for another lane merge
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-003 Locally ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    queue = MergeQueue(repo / "merge-queue")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        merge_queue=queue,
+    )
+    tasks = {task.task_id: task for task in parse_task_file(todo_path, "## ACCEL-")}
+    completed_request = queue.enqueue(
+        branch_name="implementation/accel-001",
+        task_id="OTHER-001",
+        canonical_task_id=daemon._canonical_ref(tasks["ACCEL-001"]),
+        commit_sha="a" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == completed_request.request_id
+    queue.complete(claimed)
+    queue.enqueue(
+        branch_name="implementation/accel-002",
+        task_id="OTHER-002",
+        canonical_task_id=daemon._canonical_ref(tasks["ACCEL-002"]),
+        commit_sha="b" * 40,
+    )
+    daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(daemon.state_path)
+
+    assert result["active_task_id"] == "ACCEL-003"
+    assert result["shared_completed_task_ids"] == ["ACCEL-001"]
+    assert result["shared_active_merge_task_ids"] == ["ACCEL-002"]
+    assert state.task_statuses["ACCEL-001"] == "completed"
+    assert state.task_statuses["ACCEL-002"] == "waiting"
+    assert state.task_statuses["ACCEL-003"] == "ready"
 
 
 def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):

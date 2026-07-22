@@ -60,6 +60,31 @@ def test_queue_deduplicates_canonical_task_and_commit_across_lanes(tmp_path: Pat
     assert claimed.request_id == first.request_id
 
 
+def test_queue_projects_active_and_completed_canonical_task_ids(tmp_path: Path) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    completed = queue.enqueue(
+        branch_name="implementation/completed",
+        task_id="LANE-001",
+        canonical_task_id="canonical-completed",
+        commit_sha="a" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == completed.request_id
+    queue.complete(claimed)
+    queue.enqueue(
+        branch_name="implementation/pending",
+        task_id="LANE-002",
+        canonical_task_id="canonical-pending",
+        commit_sha="b" * 40,
+    )
+
+    assert queue.completed_canonical_task_ids() == {"canonical-completed"}
+    assert queue.active_canonical_task_ids() == {"canonical-pending"}
+    processing = queue.dequeue(consumer_id="merge-train:other")
+    assert processing is not None
+    assert queue.active_canonical_task_ids() == {"canonical-pending"}
+
+
 def test_queue_combines_priority_with_age_fairness(tmp_path: Path) -> None:
     now = [0.0]
     queue = MergeQueue(

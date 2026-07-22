@@ -937,6 +937,23 @@ class PortalImplementationDaemon:
             self.task_queue.record_failure(canonical_task_cid, reason=reason)
         self.task_queue.save()
 
+    def _shared_merge_queue_task_cids(self, method_name: str) -> set[str]:
+        method = getattr(self.merge_queue, method_name, None)
+        if not callable(method):
+            return set()
+        try:
+            return {str(item) for item in method() if str(item)}
+        except Exception as exc:
+            self._record_event(
+                "shared_merge_receipts_unavailable",
+                {
+                    "query": method_name,
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                },
+            )
+            return set()
+
     @staticmethod
     def _canonical_representative_task_ids(
         tasks: Sequence[PortalTask],
@@ -1136,10 +1153,29 @@ class PortalImplementationDaemon:
                     "error": str(exc)[-4000:],
                 },
             )
+        shared_active_merge_cids = self._shared_merge_queue_task_cids(
+            "active_canonical_task_ids"
+        )
+        shared_completed_merge_cids = self._shared_merge_queue_task_cids(
+            "completed_canonical_task_ids"
+        )
+        shared_active_merge_cids.difference_update(shared_completed_merge_cids)
+        shared_completed_task_ids = {
+            task.task_id
+            for task in tasks
+            if self._canonical_ref(task) in shared_completed_merge_cids
+        }
+        shared_active_merge_task_ids = {
+            task.task_id
+            for task in tasks
+            if self._canonical_ref(task) in shared_active_merge_cids
+        }
         previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         now = utc_now()
-        status_completed_task_ids = {task.task_id for task in tasks if task.status == "completed"}
+        status_completed_task_ids = {
+            task.task_id for task in tasks if task.status == "completed"
+        } | shared_completed_task_ids
         strategy_blocked_task_ids = {str(task_id) for task_id in strategy.get("blocked_tasks", [])}
         # A historical deprioritization is only a scheduling hint.  Failed
         # implementation merges must still be reconciled unless the janitor
@@ -1217,7 +1253,7 @@ class PortalImplementationDaemon:
                 and not unresolved_merge_failure
                 and not transient_merge_deferral
             )
-            if task.status == "completed" or artifact_complete or merged_complete:
+            if task.task_id in status_completed_task_ids or artifact_complete or merged_complete:
                 completed_set.add(task.task_id)
 
         completed_cids = {
@@ -1239,6 +1275,9 @@ class PortalImplementationDaemon:
                 continue
             if task.task_id in strategy.get("blocked_tasks", []) or task.status == "blocked":
                 resolved_statuses[task.task_id] = "blocked"
+                continue
+            if task.task_id in shared_active_merge_task_ids:
+                resolved_statuses[task.task_id] = "waiting"
                 continue
             if task.task_id in transient_merge_deferral_task_ids:
                 resolved_statuses[task.task_id] = "waiting"
@@ -1423,6 +1462,8 @@ class PortalImplementationDaemon:
                 "eligible_ready_count": state.eligible_ready_count,
                 "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
                 "selection_idle_reason": state.selection_idle_reason,
+                "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
+                "shared_completed_task_ids": sorted(shared_completed_task_ids),
             },
         )
         return {
@@ -1446,6 +1487,8 @@ class PortalImplementationDaemon:
             "state_file_repair": state_file_repair,
             "merged_status_repair": merged_status_repair,
             "active_task_claims": sorted(active_task_claims),
+            "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
+            "shared_completed_task_ids": sorted(shared_completed_task_ids),
             "canonical_task_count": len(aliases_by_cid),
             "merge_train_progress": merge_train_progress,
         }

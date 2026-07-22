@@ -617,6 +617,34 @@ class MergeQueue:
             ).fetchone()
         return self._request_from_row(row) if row is not None else None
 
+    def active_canonical_task_ids(self) -> set[str]:
+        """Return content identities currently waiting for merge or being merged."""
+
+        return self._canonical_task_ids_for_statuses(_ACTIVE_STATES)
+
+    def completed_canonical_task_ids(self) -> set[str]:
+        """Return content identities with a successful terminal merge receipt."""
+
+        return self._canonical_task_ids_for_statuses(("completed",))
+
+    def _canonical_task_ids_for_statuses(self, statuses: tuple[str, ...]) -> set[str]:
+        normalized = tuple(
+            dict.fromkeys(
+                str(status).strip() for status in statuses if str(status).strip()
+            )
+        )
+        if not normalized:
+            return set()
+        placeholders = ",".join("?" for _ in normalized)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""SELECT DISTINCT canonical_task_id
+                    FROM merge_requests
+                    WHERE status IN ({placeholders}) AND canonical_task_id != ''""",
+                normalized,
+            ).fetchall()
+        return {str(row["canonical_task_id"]) for row in rows}
+
     def pending_count(self) -> int:
         return self._count("pending")
 
