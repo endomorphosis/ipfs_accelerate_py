@@ -728,6 +728,12 @@ def implementation_supervisor_command(
         str(implementation_timeout),
         "--log-level",
         log_level,
+        # Bundle boards are projections of the canonical taskboard. Keep lane
+        # workers execution-only so they cannot create shard-local task IDs or
+        # mistake valid cross-bundle dependencies for missing prerequisites.
+        "--no-retry-budget-guardrail",
+        "--no-dependency-guardrail",
+        "--no-reconciliation-guardrail",
     ]
     for relative in dict.fromkeys(str(path).strip().strip("/") for path in worktree_submodule_paths):
         if relative:

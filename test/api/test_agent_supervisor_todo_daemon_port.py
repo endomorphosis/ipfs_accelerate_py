@@ -11020,6 +11020,9 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     assert "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor" in lanes[0].command
     assert "--implementation-command" in lanes[0].command
     assert lanes[0].command[lanes[0].command.index("--log-level") + 1] == "DEBUG"
+    assert "--no-retry-budget-guardrail" in lanes[0].command
+    assert "--no-dependency-guardrail" in lanes[0].command
+    assert "--no-reconciliation-guardrail" in lanes[0].command
     assert lanes[0].command[lanes[0].command.index("--llm-merge-resolver-command") + 1] == "python resolver.py"
     assert "--auto-commit-generated-dirty" in lanes[0].command
     assert lanes[0].command.count("--generated-dirty-path") == 1
