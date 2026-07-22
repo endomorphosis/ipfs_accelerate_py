@@ -96,6 +96,14 @@ VALIDATION_RESOURCE_BUDGET_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_RESOURCE_BUDG
 DEFAULT_VALIDATION_MAX_WORKERS = 2
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
 IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(r"(?:^|[\s/])(codex|copilot)(?:\s|$)")
+PROVIDER_CAPACITY_BACKOFF_ENV = "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS"
+DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS = 300.0
+PROVIDER_CAPACITY_LOG_TAIL_BYTES = 128 * 1024
+PROVIDER_CAPACITY_PATTERNS = (
+    ("codex", re.compile(r"you(?:'|\u2019)?ve hit your usage limit", re.IGNORECASE)),
+    ("copilot", re.compile(r"you(?:'|\u2019)?ve reached your additional usage limit", re.IGNORECASE)),
+    ("provider", re.compile(r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded)", re.IGNORECASE)),
+)
 SHARED_WORKTREE_PATHS = (
     "wallet_interface/ui/node_modules",
     "mobile/node_modules",
@@ -496,6 +504,18 @@ def parse_timestamp(value: str) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed
+
+
+def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
+    """Classify provider quota/capacity failures without treating them as code failures."""
+
+    providers = [provider for provider, pattern in PROVIDER_CAPACITY_PATTERNS if pattern.search(text)]
+    unique_providers = list(dict.fromkeys(providers))
+    return {
+        "exhausted": bool(unique_providers),
+        "providers": unique_providers,
+        "reason": "provider_capacity_exhausted" if unique_providers else "",
+    }
 
 
 @dataclass(frozen=True)
@@ -1625,7 +1645,116 @@ class PortalImplementationDaemon:
             "merge_train_progress": merge_train_progress,
         }
 
+    @staticmethod
+    def _provider_capacity_backoff_seconds() -> float:
+        raw = os.environ.get(
+            PROVIDER_CAPACITY_BACKOFF_ENV,
+            str(DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS),
+        ).strip()
+        try:
+            return max(10.0, float(raw))
+        except ValueError:
+            return DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS
+
+    def _provider_capacity_failure_from_log(self, log_path: Path) -> dict[str, Any]:
+        try:
+            with log_path.open("rb") as handle:
+                handle.seek(0, os.SEEK_END)
+                size = handle.tell()
+                handle.seek(max(0, size - PROVIDER_CAPACITY_LOG_TAIL_BYTES))
+                text = handle.read().decode("utf-8", errors="replace")
+        except OSError:
+            return {"exhausted": False, "providers": [], "reason": ""}
+        classified = classify_provider_capacity_failure(text)
+        if not classified["exhausted"]:
+            return classified
+        evidence = [
+            line.strip()
+            for line in text.splitlines()
+            if any(pattern.search(line) for _provider, pattern in PROVIDER_CAPACITY_PATTERNS)
+        ]
+        classified["evidence"] = evidence[-4:]
+        return classified
+
+    def _active_provider_capacity_backoff(self) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        for event in reversed(self._iter_events()):
+            event_type = str(event.get("type") or "")
+            if event_type == "implementation_provider_exhausted":
+                retry_at = parse_timestamp(str(event.get("retry_at") or ""))
+                if retry_at is not None and retry_at > now:
+                    return {
+                        "active": True,
+                        "retry_at": retry_at.isoformat(),
+                        "retry_after_seconds": max(0.0, (retry_at - now).total_seconds()),
+                        "providers": list(event.get("providers") or []),
+                    }
+                return {}
+            if event_type == "implementation_finished" and int(event.get("returncode") or 0) == 0:
+                return {}
+        return {}
+
+    def _record_provider_capacity_deferral(
+        self,
+        *,
+        task: PortalTask,
+        state: PortalTaskState,
+        attempt: int,
+        started_at: str,
+        returncode: int,
+        log_path: Path,
+        failure: dict[str, Any],
+        worktree_path: Path | None = None,
+        branch_name: str = "",
+        cleanup_result: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        finished_at = utc_now()
+        retry_at = datetime.fromtimestamp(
+            time.time() + self._provider_capacity_backoff_seconds(),
+            tz=timezone.utc,
+        ).isoformat()
+        state.last_implementation_started_at = started_at
+        state.last_implementation_finished_at = finished_at
+        state.last_implementation_returncode = returncode
+        state.last_implementation_log_path = str(log_path)
+        if worktree_path is not None:
+            state.last_implementation_worktree_path = str(worktree_path)
+        state.last_implementation_branch = branch_name
+        self._mark_implementation_finished(state, finished_at=finished_at)
+        state.save(self.state_path)
+        result = {
+            "task_id": task.task_id,
+            "attempt": attempt,
+            "returncode": returncode,
+            "log_path": str(log_path),
+            "deferred": True,
+            "reason": "provider_capacity_exhausted",
+            "providers": list(failure.get("providers") or []),
+            "evidence": list(failure.get("evidence") or []),
+            "retry_at": retry_at,
+            "attempt_consumed": False,
+        }
+        if worktree_path is not None:
+            result["worktree_path"] = str(worktree_path)
+        if branch_name:
+            result["branch"] = branch_name
+        if cleanup_result:
+            result["cleanup_result"] = cleanup_result
+        self._record_event("implementation_provider_exhausted", result)
+        return result
+
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
+        provider_backoff = self._active_provider_capacity_backoff()
+        if provider_backoff:
+            result = {
+                "skipped": True,
+                "reason": "provider_capacity_backoff",
+                "task_id": task.task_id,
+                "attempt": self._task_attempt(state, task),
+                **provider_backoff,
+            }
+            self._record_event("implementation_skipped", result)
+            return result
         inflight = self._find_live_inflight_implementation()
         if inflight is not None:
             result = {
@@ -1764,6 +1893,18 @@ class PortalImplementationDaemon:
                     check=False,
                 )
             effective_returncode = completed.returncode
+            if completed.returncode != 0:
+                provider_failure = self._provider_capacity_failure_from_log(log_path)
+                if provider_failure.get("exhausted", False):
+                    return self._record_provider_capacity_deferral(
+                        task=task,
+                        state=state,
+                        attempt=attempt,
+                        started_at=started_at,
+                        returncode=completed.returncode,
+                        log_path=log_path,
+                        failure=provider_failure,
+                    )
             if completed.returncode == 0:
                 self._mark_active_phase(
                     state,
@@ -1916,7 +2057,15 @@ class PortalImplementationDaemon:
         current_task_id = ""
         header_indices: dict[str, int] = {}
         status_indices: dict[str, int] = {}
+        checkbox_indices: dict[str, int] = {}
+        checkbox_pattern = re.compile(
+            r"^(?P<prefix>\s*[-*]\s+\[)(?P<mark>[^\]])"
+            r"(?P<suffix>\]\s+Task checkbox-\d+:\s+(?P<task_id>\S+)\b.*)$"
+        )
         for index, line in enumerate(lines):
+            checkbox = checkbox_pattern.match(line.rstrip("\r\n"))
+            if checkbox and checkbox.group("task_id") in target_set:
+                checkbox_indices[checkbox.group("task_id")] = index
             if line.startswith(self.task_header_prefix):
                 header = line[3:].strip()
                 current_task_id = header.split(" ", 1)[0] if header else ""
@@ -1950,17 +2099,32 @@ class PortalImplementationDaemon:
 
         updated_task_ids: list[str] = []
         already_completed_task_ids: list[str] = []
+        updated_checkbox_task_ids: list[str] = []
         for task_id in target_task_ids:
             status_index = status_indices.get(task_id)
             if status_index is None:
                 continue
             current = lines[status_index].split(":", 1)[1].strip()
-            if normalize_status(current) == "completed":
+            task_updated = False
+            if normalize_status(current) != "completed":
+                newline = "\n" if lines[status_index].endswith("\n") else ""
+                lines[status_index] = "- Status: completed" + newline
+                task_updated = True
+            checkbox_index = checkbox_indices.get(task_id)
+            if checkbox_index is not None:
+                raw_checkbox = lines[checkbox_index]
+                newline = "\n" if raw_checkbox.endswith("\n") else ""
+                checkbox = checkbox_pattern.match(raw_checkbox.rstrip("\r\n"))
+                if checkbox and checkbox.group("mark").lower() != "x":
+                    lines[checkbox_index] = (
+                        f"{checkbox.group('prefix')}x{checkbox.group('suffix')}{newline}"
+                    )
+                    updated_checkbox_task_ids.append(task_id)
+                    task_updated = True
+            if task_updated:
+                updated_task_ids.append(task_id)
+            else:
                 already_completed_task_ids.append(task_id)
-                continue
-            newline = "\n" if lines[status_index].endswith("\n") else ""
-            lines[status_index] = "- Status: completed" + newline
-            updated_task_ids.append(task_id)
 
         inserted_status_task_ids: list[str] = []
         for task_id in sorted(missing_status_task_ids, key=lambda value: header_indices[value], reverse=True):
@@ -1991,6 +2155,7 @@ class PortalImplementationDaemon:
                 "missing_task_ids": missing_task_ids,
                 "missing_status_task_ids": missing_status_task_ids,
                 "inserted_status_task_ids": inserted_status_task_ids,
+                "updated_checkbox_task_ids": updated_checkbox_task_ids,
             }
             if bundle_work_order is not None:
                 result["bundle_work_order"] = bundle_work_order
@@ -2031,6 +2196,7 @@ class PortalImplementationDaemon:
             "missing_task_ids": missing_task_ids,
             "missing_status_task_ids": missing_status_task_ids,
             "inserted_status_task_ids": inserted_status_task_ids,
+            "updated_checkbox_task_ids": updated_checkbox_task_ids,
         }
         if bundle_work_order is not None:
             result["bundle_work_order"] = bundle_work_order
@@ -2751,6 +2917,7 @@ class PortalImplementationDaemon:
         failed_preservation_result: dict[str, Any] = {}
         todo_update_result: dict[str, Any] = {}
         exception_result: dict[str, Any] = {}
+        provider_failure: dict[str, Any] = {}
 
         try:
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
@@ -2805,6 +2972,8 @@ class PortalImplementationDaemon:
                     check=False,
             )
             returncode = completed.returncode
+            if returncode != 0:
+                provider_failure = self._provider_capacity_failure_from_log(log_path)
             if returncode == 0:
                 self._mark_active_phase(
                     state,
@@ -2970,6 +3139,20 @@ class PortalImplementationDaemon:
                     **exception_result,
                 },
             )
+        if provider_failure.get("exhausted", False):
+            return self._record_provider_capacity_deferral(
+                task=task,
+                state=state,
+                attempt=attempt,
+                started_at=started_at,
+                returncode=returncode,
+                log_path=log_path,
+                failure=provider_failure,
+                worktree_path=worktree_path,
+                branch_name=branch_name,
+                cleanup_result=cleanup_result,
+            )
+
         finished_at = utc_now()
         self._record_task_attempt(state, task, attempt)
         state.last_implementation_started_at = started_at
@@ -9043,7 +9226,7 @@ class PortalImplementationDaemon:
             key = (task_id, attempt)
             if event_type == "implementation_started":
                 inflight[key] = event
-            elif event_type == "implementation_finished":
+            elif event_type in {"implementation_finished", "implementation_provider_exhausted"}:
                 inflight.pop(key, None)
 
         return list(inflight.values())

@@ -5923,6 +5923,58 @@ def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
     assert result["lock_owner_state_dir"] == str((repo / "other-lane").resolve())
 
 
+def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    quota_script = repo / "quota.sh"
+    quota_script.write_text(
+        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
+        "printf \"You've reached your additional usage limit.\\n\"\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    state_path = repo / "state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="bash quota.sh",
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Wait for provider capacity",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+
+    first = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(state_path)
+    second = daemon._run_implementation(task, persisted)
+
+    assert first["deferred"] is True
+    assert first["reason"] == "provider_capacity_exhausted"
+    assert first["providers"] == ["codex", "copilot"]
+    assert first["attempt_consumed"] is False
+    assert persisted.implementation_attempts == {}
+    assert daemon._find_live_inflight_implementation() is None
+    assert second["skipped"] is True
+    assert second["reason"] == "provider_capacity_backoff"
+    events = [
+        json.loads(line)
+        for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "implementation_provider_exhausted" for event in events)
+    assert not any(event["type"] == "implementation_finished" for event in events)
+
+
 def test_validation_command_splitter_preserves_quoted_semicolons():
     inline_python = (
         "python3 -c 'import pathlib, sys; "
@@ -10185,6 +10237,43 @@ def test_implementation_daemon_commits_dirty_already_completed_todo_status(tmp_p
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "todo_status_reconciled"
     assert events[-1]["commit_result"]["committed"] is True
+
+
+def test_implementation_daemon_updates_checkbox_with_completed_status(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+- [ ] Task checkbox-1: ACCEL-001 Close generated status
+
+## ACCEL-001 Close generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    result = daemon._mark_task_completed_in_todo("ACCEL-001")
+    rendered = todo_path.read_text(encoding="utf-8")
+
+    assert result["updated"] is True
+    assert result["updated_task_ids"] == ["ACCEL-001"]
+    assert result["updated_checkbox_task_ids"] == ["ACCEL-001"]
+    assert "- [x] Task checkbox-1: ACCEL-001" in rendered
+    assert "- Status: completed" in rendered
 
 
 def test_implementation_daemon_prefers_goal_packet_aggregate_as_primary_work(tmp_path):
