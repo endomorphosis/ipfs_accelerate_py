@@ -735,17 +735,38 @@ def iter_jsonl(path: Path) -> list[dict[str, Any]]:
 def latest_failed_merge_event(events: list[dict[str, Any]], *, task_id: str | None = None) -> dict[str, Any] | None:
     """Return the newest merge failure event, optionally filtered by task id."""
 
+    resolved_task_ids: set[str] = set()
+    resolved_branches: set[str] = set()
     for event in reversed(events):
         if str(event.get("type") or "") not in {"implementation_finished", "merge_finished", "merge_reconciled"}:
-            continue
-        if task_id and str(event.get("task_id") or "") != task_id:
             continue
         merge_result = event.get("merge_result") if isinstance(event.get("merge_result"), dict) else event
         if not isinstance(merge_result, dict):
             continue
+        event_task_id = str(event.get("task_id") or merge_result.get("task_id") or "")
+        branch = str(
+            merge_result.get("branch")
+            or event.get("branch")
+            or event.get("implementation_branch")
+            or ""
+        )
+        if task_id and event_task_id != task_id:
+            continue
+        if merge_result.get("merged") or event.get("resolved") is True:
+            if task_id:
+                return None
+            if event_task_id:
+                resolved_task_ids.add(event_task_id)
+            if branch:
+                resolved_branches.add(branch)
+            continue
         if not merge_result.get("attempted") or merge_result.get("merged"):
             continue
         if str(merge_result.get("reason") or "") == "not_attempted":
+            continue
+        if event_task_id and event_task_id in resolved_task_ids:
+            continue
+        if branch and branch in resolved_branches:
             continue
         return event
     return None
@@ -762,6 +783,41 @@ def unmerged_paths(repo_root: Path) -> list[str]:
     if result.returncode != 0:
         return []
     return sorted(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+
+def merge_in_progress(repo_root: Path) -> bool:
+    """Return whether ``repo_root`` currently owns an unfinished Git merge."""
+
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-path", "MERGE_HEAD"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return False
+    merge_head = Path(result.stdout.strip())
+    if not merge_head.is_absolute():
+        merge_head = repo_root / merge_head
+    return merge_head.exists()
+
+
+def merge_event_workspace(event: Mapping[str, Any], repo_root: Path) -> Path:
+    """Resolve the checkout in which the recorded merge was attempted."""
+
+    nested = event.get("merge_result")
+    merge_result = nested if isinstance(nested, Mapping) else event
+    for key in ("main_worktree_path", "merge_workspace_path", "workspace_path"):
+        value = merge_result.get(key) or event.get(key)
+        if not value:
+            continue
+        candidate = Path(str(value)).expanduser()
+        if not candidate.is_absolute():
+            candidate = repo_root / candidate
+        if candidate.is_dir():
+            return candidate.resolve()
+    return repo_root.resolve()
 
 
 def compact_text(value: Any, *, limit: int = 2000) -> str:
@@ -889,22 +945,26 @@ def resolver_payload(
             "repo_root": str(repo_root),
             "prompt": "",
         }
+    resolution_root = merge_event_workspace(event, repo_root)
     merge_result = _merge_result(event)
     return {
         "found": True,
         "task_id": str(event.get("task_id") or merge_result.get("task_id") or ""),
         "attempt": event.get("attempt") or merge_result.get("attempt"),
         "events_path": str(events_path),
-        "repo_root": str(repo_root),
+        "repo_root": str(resolution_root),
+        "conflict_fingerprint": conflict_fingerprint(event),
+        "event_timestamp": str(event.get("timestamp") or ""),
         "branch": str(merge_result.get("branch") or ""),
         "target_branch": str(merge_result.get("target_branch") or ""),
         "command": merge_result.get("command") or [],
         "reason": str(merge_result.get("reason") or ""),
         "dirty_paths": merge_result.get("dirty_paths") or [],
-        "unmerged_paths": unmerged_paths(repo_root),
+        "unmerged_paths": unmerged_paths(resolution_root),
+        "merge_in_progress": merge_in_progress(resolution_root),
         "prompt": build_merge_prompt(
             event=event,
-            repo_root=repo_root,
+            repo_root=resolution_root,
             prompt_heading=prompt_heading,
             completion_rule=completion_rule,
             extra_rules=extra_rules,
