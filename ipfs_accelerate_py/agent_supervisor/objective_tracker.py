@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import asdict, dataclass, field
 from hashlib import sha1, sha256
 from pathlib import Path
@@ -13,8 +14,12 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .goal_completion import (
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    GOAL_COMPLETION_SCHEMA_VERSION,
+    GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION,
     CompletionEvidence,
     GoalState,
+    is_legacy_completed_goal_state,
+    migrate_legacy_goal_completion,
     evaluate_goal_completion,
     normalize_goal_state,
 )
@@ -93,10 +98,40 @@ class ObjectiveCompletionResult:
     blocked_goal_ids: list[str] = field(default_factory=list)
     state_counts: dict[str, int] = field(default_factory=dict)
     decisions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    migration: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["objective_path"] = str(self.objective_path)
+        return payload
+
+
+@dataclass(frozen=True)
+class ObjectiveGoalMigrationResult:
+    """Previewable and resumable migration of legacy completion claims."""
+
+    objective_path: Path
+    preview: bool
+    scanned_goal_count: int
+    candidate_goal_ids: list[str]
+    migrated_goal_ids: list[str]
+    provisional_goal_ids: list[str]
+    verified_goal_ids: list[str]
+    remaining_goal_ids: list[str]
+    records: list[dict[str, Any]]
+    schema_version: int = GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.migrated_goal_ids) and not self.preview
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload.update({
+            "schema": "ipfs_accelerate_py.agent_supervisor.objective_goal_migration@1",
+            "objective_path": str(self.objective_path),
+            "changed": self.changed,
+        })
         return payload
 
 
@@ -461,6 +496,241 @@ def completion_tree_identity(repo_root: Path, *, objective_path: Path) -> Reposi
     )
 
 
+def _goal_completion_records(
+    goal: ObjectiveGoal,
+    supplied_records: Mapping[str, Sequence[CompletionEvidence | Mapping[str, Any]]],
+) -> list[CompletionEvidence]:
+    """Read typed and legacy persisted evidence spellings without data loss."""
+
+    records = [
+        item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item)
+        for item in supplied_records.get(goal.goal_id, ())
+    ]
+    if records:
+        return records
+    raw_records = str(
+        goal.fields.get("completion_evidence_records")
+        or goal.fields.get("completion_evidence_json")
+        or goal.fields.get("completion_receipts")
+        or ""
+    ).strip()
+    if not raw_records:
+        return []
+    try:
+        decoded = json.loads(raw_records)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if isinstance(decoded, Mapping):
+        decoded = [decoded]
+    if not isinstance(decoded, list):
+        return []
+    result: list[CompletionEvidence] = []
+    for item in decoded:
+        if not isinstance(item, Mapping):
+            continue
+        try:
+            result.append(CompletionEvidence.from_dict(item))
+        except (TypeError, ValueError):
+            # A malformed historical record is not evidence for verification;
+            # migration still proceeds provisionally instead of aborting the
+            # rest of the board.
+            continue
+    return result
+
+
+def _goal_completion_gate_record(
+    goal: ObjectiveGoal,
+    supplied_records: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    supplied = supplied_records.get(goal.goal_id)
+    if isinstance(supplied, Mapping):
+        return dict(supplied)
+    raw = str(
+        goal.fields.get("completion_gate_record")
+        or goal.fields.get("completion_gate_json")
+        or ""
+    ).strip()
+    if not raw:
+        return {}
+    try:
+        decoded = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return dict(decoded) if isinstance(decoded, Mapping) else {}
+
+
+def _atomic_rewrite(path: Path, text: str) -> None:
+    """Replace a tracker document atomically, preserving its file mode."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.migration-", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, mode)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def migrate_legacy_objective_goals(
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    todo_path: Path | None = None,
+    task_header_prefix: str = "",
+    todo_boards: Sequence[tuple[Path, str]] | None = None,
+    completion_evidence_records: Mapping[
+        str, Sequence[CompletionEvidence | Mapping[str, Any]]
+    ] | None = None,
+    completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
+    goal_ids: Iterable[str] | None = None,
+    preview: bool = False,
+    max_goals: int | None = None,
+    now: str | None = None,
+    evidence_freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+) -> ObjectiveGoalMigrationResult:
+    """Migrate ambiguous legacy completed goals in an atomic, bounded batch.
+
+    The objective document is its own durable checkpoint.  Each migrated goal
+    receives a canonical lifecycle state and deterministic migration ID, so a
+    rerun naturally skips committed work and resumes the remaining legacy
+    labels.  ``preview`` performs the same classification without writing.
+    """
+
+    if max_goals is not None and (
+        isinstance(max_goals, bool) or not isinstance(max_goals, int) or max_goals < 0
+    ):
+        raise ValueError("max_goals must be a non-negative integer or None")
+    if not objective_path.exists():
+        return ObjectiveGoalMigrationResult(
+            objective_path, bool(preview), 0, [], [], [], [], [], []
+        )
+    text = objective_path.read_text(encoding="utf-8")
+    goals = parse_goal_heap(text)
+    selected_ids = {str(item).strip() for item in goal_ids or () if str(item).strip()}
+    candidates = [
+        goal for goal in goals
+        if is_legacy_completed_goal_state(goal.status)
+        and (not selected_ids or goal.goal_id in selected_ids)
+    ]
+    limit = len(candidates) if max_goals is None else max_goals
+    batch = candidates[:limit]
+    remaining = candidates[limit:]
+    supplied_records = completion_evidence_records or {}
+    gate_records = completion_gate_records or {}
+    boards: list[tuple[Path, str]] = []
+    if todo_path is not None:
+        boards.append((todo_path, task_header_prefix))
+    boards.extend(todo_boards or ())
+    open_goals = open_goal_ids_from_todo_boards(boards)
+    identity = completion_tree_identity(repo_root, objective_path=objective_path)
+    hierarchy = goal_graph(goals)
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+    updates: dict[str, dict[str, str]] = {}
+    records_out: list[dict[str, Any]] = []
+    provisional: list[str] = []
+    verified: list[str] = []
+    migrated_at = now or utc_now()
+
+    def descendants(goal_id: str) -> list[dict[str, Any]]:
+        pending = list(hierarchy.get("children", {}).get(goal_id, ()))
+        seen: set[str] = set()
+        result: list[dict[str, Any]] = []
+        while pending:
+            child_id = str(pending.pop(0))
+            if not child_id or child_id in seen:
+                continue
+            seen.add(child_id)
+            child = goals_by_id.get(child_id)
+            if child is not None:
+                child_state = (
+                    GoalState.PROVISIONALLY_COMPLETE
+                    if is_legacy_completed_goal_state(child.status)
+                    else normalize_goal_state(child.status)
+                )
+                result.append({
+                    "goal_id": child_id,
+                    "state": child_state.value,
+                    "verified": child_state is GoalState.VERIFIED_COMPLETE,
+                })
+            pending.extend(hierarchy.get("children", {}).get(child_id, ()))
+        return result
+
+    for goal in batch:
+        evidence = _goal_completion_records(goal, supplied_records)
+        gate = _goal_completion_gate_record(goal, gate_records)
+        criteria = str(
+            goal.fields.get("acceptance_criteria")
+            or goal.fields.get("acceptance")
+            or ""
+        ).strip() or goal.required_evidence
+        migration = migrate_legacy_goal_completion(
+            goal_id=goal.goal_id,
+            legacy_state=goal.status,
+            acceptance_criteria=criteria,
+            evidence=evidence,
+            tasks_complete=goal.goal_id not in open_goals,
+            coverage=gate.get("coverage"),
+            analyzer_health=gate.get("analyzer_health"),
+            exhaustion_quorum=gate.get("exhaustion_quorum"),
+            child_goals=[*descendants(goal.goal_id), *gate.get("child_goals", ())],
+            analysis_result=gate.get("analysis_result"),
+            analysis_inconclusive=bool(gate.get("analysis_inconclusive", False)),
+            repository_tree=identity.tree_id,
+            repository_id=identity.repository_id,
+            now=now,
+            freshness_seconds=evidence_freshness_seconds,
+        )
+        payload = migration.to_dict()
+        diagnostics = payload["diagnostics"]
+        records_out.append(payload)
+        target = migration.state.value
+        (verified if migration.verified else provisional).append(goal.goal_id)
+        updates[goal.goal_id] = {
+            "Status": target,
+            "Goal completion schema version": str(GOAL_COMPLETION_SCHEMA_VERSION),
+            "Legacy completion state": goal.status,
+            "Completion migration id": migration.migration_id,
+            "Completion migrated at": migrated_at,
+            "Completion migration reason": "; ".join(migration.reason_codes),
+            "Completion confidence": str(diagnostics["confidence"]),
+            "Uncovered criteria": json.dumps(diagnostics["uncovered_criteria"], separators=(",", ":")),
+            "Stale evidence": json.dumps(diagnostics["stale_evidence"], sort_keys=True, separators=(",", ":")),
+            "Analyzer health": json.dumps(diagnostics["analyzer_health"], sort_keys=True, separators=(",", ":")),
+            "Exhaustion quorum": json.dumps(diagnostics["exhaustion_quorum"], sort_keys=True, separators=(",", ":")),
+            "Reopen reasons": json.dumps(diagnostics["reopen_reasons"], separators=(",", ":")),
+        }
+        if evidence:
+            updates[goal.goal_id]["Completion evidence records"] = json.dumps(
+                [record.to_dict() for record in evidence], sort_keys=True, separators=(",", ":")
+            )
+        if gate:
+            updates[goal.goal_id]["Completion gate record"] = json.dumps(
+                gate, sort_keys=True, separators=(",", ":"), default=str
+            )
+
+    if updates and not preview:
+        _atomic_rewrite(objective_path, rewrite_goal_fields(text, updates))
+    migrated_ids = [goal.goal_id for goal in batch]
+    return ObjectiveGoalMigrationResult(
+        objective_path=objective_path,
+        preview=bool(preview),
+        scanned_goal_count=len(goals),
+        candidate_goal_ids=[goal.goal_id for goal in candidates],
+        migrated_goal_ids=migrated_ids,
+        provisional_goal_ids=provisional,
+        verified_goal_ids=verified,
+        remaining_goal_ids=[goal.goal_id for goal in remaining],
+        records=records_out,
+    )
+
+
 def reconcile_objective_goal_completion(
     *,
     repo_root: Path,
@@ -494,35 +764,25 @@ def reconcile_objective_goal_completion(
             validation_results={},
         )
 
-    text = objective_path.read_text(encoding="utf-8")
-    goals = parse_goal_heap(text)
     supplied_records = completion_evidence_records or {}
     supplied_gate_records = completion_gate_records or {}
+    migration_result = migrate_legacy_objective_goals(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        task_header_prefix=task_header_prefix,
+        todo_boards=todo_boards,
+        completion_evidence_records=supplied_records,
+        completion_gate_records=supplied_gate_records,
+        now=now,
+        evidence_freshness_seconds=evidence_freshness_seconds,
+    )
+    text = objective_path.read_text(encoding="utf-8")
+    goals = parse_goal_heap(text)
     candidate_goals = []
     persisted_records: dict[str, list[CompletionEvidence]] = {}
     for goal in goals:
-        records: list[CompletionEvidence] = []
-        for item in supplied_records.get(goal.goal_id, ()):
-            records.append(item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item))
-        if not records:
-            raw_records = str(
-                goal.fields.get("completion_evidence_records")
-                or goal.fields.get("completion_evidence_json")
-                or ""
-            ).strip()
-            if raw_records:
-                try:
-                    decoded = json.loads(raw_records)
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    decoded = []
-                if isinstance(decoded, Mapping):
-                    decoded = [decoded]
-                if isinstance(decoded, list):
-                    records.extend(
-                        CompletionEvidence.from_dict(item)
-                        for item in decoded
-                        if isinstance(item, Mapping)
-                    )
+        records = _goal_completion_records(goal, supplied_records)
         persisted_records[goal.goal_id] = records
         state = normalize_goal_state(goal.status)
         if state in {
@@ -586,6 +846,7 @@ def reconcile_objective_goal_completion(
         current_state = normalize_goal_state(goal.status)
         tasks_complete = goal.goal_id not in open_goal_ids
         records = persisted_records.get(goal.goal_id, [])
+        gate_record = _goal_completion_gate_record(goal, supplied_gate_records)
         criteria_text = str(
             goal.fields.get("acceptance_criteria")
             or goal.fields.get("acceptance")
@@ -632,19 +893,20 @@ def reconcile_objective_goal_completion(
             repository_id=repository_identity.repository_id,
             now=now,
             freshness_seconds=evidence_freshness_seconds,
-            coverage=supplied_gate_records.get(goal.goal_id, {}).get("coverage"),
-            analyzer_health=supplied_gate_records.get(goal.goal_id, {}).get("analyzer_health"),
-            exhaustion_quorum=supplied_gate_records.get(goal.goal_id, {}).get("exhaustion_quorum"),
+            coverage=gate_record.get("coverage"),
+            analyzer_health=gate_record.get("analyzer_health"),
+            exhaustion_quorum=gate_record.get("exhaustion_quorum"),
             child_goals=[
                 *descendant_states(goal.goal_id),
-                *supplied_gate_records.get(goal.goal_id, {}).get("child_goals", ()),
+                *gate_record.get("child_goals", ()),
             ],
-            analysis_result=supplied_gate_records.get(goal.goal_id, {}).get("analysis_result"),
+            analysis_result=gate_record.get("analysis_result"),
             analysis_inconclusive=bool(
-                supplied_gate_records.get(goal.goal_id, {}).get("analysis_inconclusive", False)
+                gate_record.get("analysis_inconclusive", False)
             ),
         )
         decisions[goal.goal_id] = decision.to_dict()
+        diagnostics = decisions[goal.goal_id]["diagnostics"]
         goal_evidence = {
             term: list(discovered_evidence.get(term, []))
             for term in goal.required_evidence
@@ -652,14 +914,24 @@ def reconcile_objective_goal_completion(
         if any(goal_evidence.values()):
             completion_evidence[goal.goal_id] = goal_evidence
 
+        goal_updates = {
+            "Goal completion schema version": str(GOAL_COMPLETION_SCHEMA_VERSION),
+            "Completion confidence": str(diagnostics["confidence"]),
+            "Uncovered criteria": json.dumps(diagnostics["uncovered_criteria"], separators=(",", ":")),
+            "Stale evidence": json.dumps(diagnostics["stale_evidence"], sort_keys=True, separators=(",", ":")),
+            "Analyzer health": json.dumps(diagnostics["analyzer_health"], sort_keys=True, separators=(",", ":")),
+            "Exhaustion quorum": json.dumps(diagnostics["exhaustion_quorum"], sort_keys=True, separators=(",", ":")),
+            "Reopen reasons": json.dumps(diagnostics["reopen_reasons"], separators=(",", ":")),
+        }
         if decision.state is current_state:
+            updates[goal.goal_id] = goal_updates
             continue
         reason = "; ".join(decision.actionable_reasons) or "all completion evidence gates passed"
-        goal_updates = {
+        goal_updates.update({
             "Status": decision.state.value,
             "State transitioned at": transitioned_at,
             "State transition reason": reason,
-        }
+        })
         if records:
             goal_updates["Completion evidence records"] = json.dumps(
                 [record.to_dict() for record in records],
@@ -685,7 +957,9 @@ def reconcile_objective_goal_completion(
         updates[goal.goal_id] = goal_updates
 
     if updates:
-        objective_path.write_text(rewrite_goal_fields(text, updates), encoding="utf-8")
+        rewritten = rewrite_goal_fields(text, updates)
+        if rewritten != text:
+            _atomic_rewrite(objective_path, rewritten)
         goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
 
     state_counts = {state.value: 0 for state in GoalState}
@@ -706,6 +980,7 @@ def reconcile_objective_goal_completion(
         blocked_goal_ids=blocked_goal_ids,
         state_counts=state_counts,
         decisions=decisions,
+        migration=migration_result.to_dict(),
     )
 
 
@@ -739,6 +1014,7 @@ def ensure_objective_tracking_document(
                 title=root_goal_title,
                 fields={
                     "Status": "active",
+                    "Goal completion schema version": str(GOAL_COMPLETION_SCHEMA_VERSION),
                     "Parent": "",
                     "Fib priority": str(fibonacci_priority(0)),
                     "Track": "ops",

@@ -11,7 +11,7 @@ they can also be used by daemons, APIs, and persisted graph consumers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from hashlib import sha256
@@ -20,6 +20,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 
 GOAL_COMPLETION_SCHEMA_VERSION = 1
+GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION = 1
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS = 3600.0
 DEFAULT_CLOCK_SKEW_SECONDS = 300.0
 
@@ -49,11 +50,29 @@ _GOAL_STATE_ALIASES = {
     # always persist the more precise verified_complete spelling.
     "complete": GoalState.VERIFIED_COMPLETE,
     "completed": GoalState.VERIFIED_COMPLETE,
+    "done": GoalState.VERIFIED_COMPLETE,
     "analysis_inconclusive": GoalState.ANALYSIS_INCONCLUSIVE,
     "inconclusive": GoalState.ANALYSIS_INCONCLUSIVE,
     "blocked": GoalState.BLOCKED,
     "reopened": GoalState.REOPENED,
 }
+
+LEGACY_COMPLETED_GOAL_STATES = frozenset({"complete", "completed", "done"})
+
+
+def is_legacy_completed_goal_state(value: GoalState | str | None) -> bool:
+    """Return whether *value* is an ambiguous pre-lifecycle completion label.
+
+    This check intentionally happens before :func:`normalize_goal_state`.
+    Normalization retains the historical ``completed -> verified_complete``
+    alias for compatibility readers, while migration must not interpret that
+    alias as proof that the modern completion gate passed.
+    """
+
+    if isinstance(value, GoalState):
+        return False
+    normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return normalized in LEGACY_COMPLETED_GOAL_STATES
 
 
 def normalize_goal_state(value: GoalState | str | None) -> GoalState:
@@ -432,9 +451,25 @@ class CompletionEvidence:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CompletionEvidence":
         values = dict(payload)
+        source_schema = values.get("schema_version", values.get("version"))
+        if source_schema in (0, "0"):
+            metadata = dict(values.get("metadata") or {})
+            metadata.setdefault("source_schema_version", 0)
+            values["metadata"] = metadata
+            values["schema_version"] = GOAL_COMPLETION_SCHEMA_VERSION
         # Common persisted receipt spellings.
-        values.setdefault("producing_task_or_scan", values.get("producer_id", values.get("producer", "")))
-        values.setdefault("repository_tree", values.get("tree_id", values.get("tree_identity", "")))
+        values.setdefault(
+            "acceptance_criterion",
+            values.get("criterion", values.get("acceptance", values.get("acceptance_criteria", ""))),
+        )
+        values.setdefault(
+            "producing_task_or_scan",
+            values.get("producer_id", values.get("producer", values.get("task_id", values.get("scan_id", "")))),
+        )
+        values.setdefault(
+            "repository_tree",
+            values.get("tree_id", values.get("tree_identity", values.get("repository_tree_id", ""))),
+        )
         values.setdefault("provenance_cid", values.get("receipt_cid", values.get("cid", "")))
         values.setdefault("validation_receipt", values.get("validation", values.get("receipt", None)))
         values.setdefault("freshness", values.get("fresh", values.get("freshness_status", None)))
@@ -690,9 +725,14 @@ class GoalTransition:
     def from_dict(cls, payload: Mapping[str, Any]) -> "GoalTransition":
         return cls(
             previous_state=normalize_goal_state(payload.get("previous_state", payload.get("from_state"))),
-            state=normalize_goal_state(payload.get("state", payload.get("to_state"))),
+            state=normalize_goal_state(
+                payload.get("state", payload.get("to_state", payload.get("next_state")))
+            ),
             reason=str(payload.get("reason", "")),
-            transitioned_at=_utc_datetime(payload.get("transitioned_at"), field_name="transitioned_at") or datetime.now(timezone.utc),
+            transitioned_at=_utc_datetime(
+                payload.get("transitioned_at", payload.get("timestamp", payload.get("created_at"))),
+                field_name="transitioned_at",
+            ) or datetime.now(timezone.utc),
             evidence_cids=tuple(str(item) for item in payload.get("evidence_cids", ()) if str(item)),
             evidence=tuple(CompletionEvidence.from_dict(item) for item in payload.get("evidence", ()) if isinstance(item, Mapping)),
         )
@@ -761,12 +801,15 @@ class GoalLifecycle:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "GoalLifecycle":
+        history = payload.get("history", payload.get("transitions", payload.get("events", ()))) or ()
         return cls(
             goal_id=str(payload.get("goal_id", "")),
-            state=normalize_goal_state(payload.get("state")),
+            state=normalize_goal_state(
+                payload.get("state", payload.get("status", payload.get("lifecycle_state")))
+            ),
             history=[
                 GoalTransition.from_dict(item)
-                for item in payload.get("history", ())
+                for item in history
                 if isinstance(item, Mapping)
             ],
         )
@@ -1170,7 +1213,7 @@ class GoalCompletionDecision:
         return [result.evidence for result in self.evidence_results]
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema_version": self.schema_version,
             "previous_state": self.previous_state.value,
             "state": self.state.value,
@@ -1187,6 +1230,117 @@ class GoalCompletionDecision:
             "evidence_results": [result.to_dict() for result in self.evidence_results],
             "completion_gate": self.gate.to_dict() if self.gate is not None else None,
         }
+        diagnostics = completion_diagnostics(self)
+        payload["diagnostics"] = diagnostics
+        # Frequently queried dimensions are also top-level during the rollout
+        # so older status consumers need not understand the nested projection.
+        for key in (
+            "confidence",
+            "uncovered_criteria",
+            "stale_evidence",
+            "analyzer_health",
+            "exhaustion_quorum",
+            "reopen_reasons",
+        ):
+            payload[key] = diagnostics[key]
+        return payload
+
+
+def completion_diagnostics(decision: GoalCompletionDecision) -> dict[str, Any]:
+    """Project a compact, truthful operator view of a completion decision.
+
+    Confidence is an explainable proof-completeness ratio, not a probability.
+    A verified goal is the only state reported at ``1.0``.  Missing inputs
+    remain explicit rather than being converted to optimistic defaults.
+    """
+
+    criteria = tuple(decision.acceptance_criteria)
+    covered_keys = {
+        _criterion_key(result.evidence.acceptance_criterion)
+        for result in decision.evidence_results
+        if result.valid
+    }
+    uncovered = list(dict.fromkeys((*decision.missing_criteria, *decision.invalid_criteria)))
+    valid_criteria = sum(1 for criterion in criteria if _criterion_key(criterion) in covered_keys)
+    criterion_ratio = valid_criteria / len(criteria) if criteria else 0.0
+    gate_checks = tuple(decision.gate.checks) if decision.gate is not None else ()
+    gate_ratio = (
+        sum(1 for check in gate_checks if check.passed) / len(gate_checks)
+        if gate_checks
+        else 0.0
+    )
+    confidence = 1.0 if decision.verified else round((criterion_ratio + gate_ratio) / 2.0, 6)
+
+    stale_evidence: list[dict[str, Any]] = []
+    for result in decision.evidence_results:
+        stale_codes = [code for code in result.reason_codes if "stale" in code or "future" in code]
+        if stale_codes:
+            stale_evidence.append({
+                "provenance_cid": result.evidence.provenance_cid,
+                "acceptance_criterion": result.evidence.acceptance_criterion,
+                "reason_codes": stale_codes,
+            })
+
+    checks = {check.name: check for check in gate_checks}
+    coverage_check = checks.get("mandatory_coverage")
+    if coverage_check and not coverage_check.passed:
+        coverage_evidence = dict(coverage_check.evidence)
+        for criterion in coverage_evidence.get("missing_criteria", ()):
+            if criterion not in uncovered:
+                uncovered.append(str(criterion))
+        if coverage_evidence.get("freshness_error") in {"stale", "future"}:
+            stale_evidence.append({
+                "kind": "coverage",
+                "reason": str(coverage_evidence["freshness_error"]),
+            })
+
+    health_check = checks.get("analyzer_health")
+    health_payload = dict(health_check.evidence) if health_check else {}
+    health_status = str(
+        health_payload.get("status")
+        or health_payload.get("health")
+        or ("healthy" if health_check and health_check.passed else "missing")
+    )
+    quorum_check = checks.get("exhaustion_quorum")
+    quorum_payload = dict(quorum_check.evidence) if quorum_check else {}
+    raw_quorum = quorum_payload.get("quorum")
+    raw_quorum = dict(raw_quorum) if isinstance(raw_quorum, Mapping) else {}
+    for member_id in quorum_payload.get("stale_members", ()):
+        stale_evidence.append({"kind": "exhaustion_quorum_member", "member_id": str(member_id)})
+    reopen_reasons = list(decision.reason_codes) if decision.state is GoalState.REOPENED else []
+
+    return {
+        "schema": "ipfs_accelerate_py.agent_supervisor.goal_completion_diagnostics@1",
+        "schema_version": GOAL_COMPLETION_SCHEMA_VERSION,
+        "lifecycle_state": decision.state.value,
+        "confidence": confidence,
+        "confidence_basis": {
+            "meaning": "proof_completeness_ratio",
+            "valid_criteria": valid_criteria,
+            "criterion_count": len(criteria),
+            "passed_gate_checks": sum(1 for check in gate_checks if check.passed),
+            "gate_check_count": len(gate_checks),
+        },
+        "uncovered_criteria": uncovered,
+        "stale_evidence": stale_evidence,
+        "analyzer_health": {
+            "status": health_status,
+            "passed": bool(health_check and health_check.passed),
+            "reason_code": health_check.reason_code if health_check else "analyzer_health_missing",
+            "evidence": health_payload,
+        },
+        "exhaustion_quorum": {
+            "satisfied": bool(quorum_check and quorum_check.passed),
+            "reason_code": quorum_check.reason_code if quorum_check else "exhaustion_quorum_missing",
+            "required_members": raw_quorum.get("required_members", raw_quorum.get("required")),
+            "member_count": raw_quorum.get("member_count", raw_quorum.get("count")),
+            "stale_members": list(quorum_payload.get("stale_members", ())),
+            "evidence": raw_quorum,
+        },
+        "reopen_reasons": reopen_reasons,
+        "reason_codes": list(decision.reason_codes),
+        "actionable_reasons": list(decision.actionable_reasons),
+    }
 
 
 def _mapping_value(value: Any) -> dict[str, Any]:
@@ -1874,6 +2028,145 @@ def evaluate_goal_completion(
     )
 
 
+@dataclass(frozen=True)
+class LegacyGoalMigrationDecision:
+    """Auditable, replay-stable classification of one legacy completed goal."""
+
+    goal_id: str
+    legacy_state: str
+    state: GoalState
+    verified: bool
+    migration_id: str
+    reason_codes: tuple[str, ...]
+    actionable_reasons: tuple[str, ...]
+    completion_decision: GoalCompletionDecision
+    schema_version: int = GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION
+
+    @property
+    def changed(self) -> bool:
+        return is_legacy_completed_goal_state(self.legacy_state)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "ipfs_accelerate_py.agent_supervisor.goal_completion_migration@1",
+            "schema_version": self.schema_version,
+            "migration_id": self.migration_id,
+            "goal_id": self.goal_id,
+            "legacy_state": self.legacy_state,
+            "state": self.state.value,
+            "verified": self.verified,
+            "changed": self.changed,
+            "reason_codes": list(self.reason_codes),
+            "actionable_reasons": list(self.actionable_reasons),
+            "diagnostics": completion_diagnostics(self.completion_decision),
+            "completion_decision": self.completion_decision.to_dict(),
+        }
+
+
+def migrate_legacy_goal_completion(
+    *,
+    goal_id: str,
+    legacy_state: GoalState | str,
+    acceptance_criteria: Sequence[str] | str | None,
+    evidence: Sequence[CompletionEvidence | Mapping[str, Any]] = (),
+    tasks_complete: bool = True,
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    child_goals: Sequence[Any] = (),
+    analysis_result: Any = None,
+    analysis_inconclusive: bool = False,
+    repository_tree: str = "",
+    repository_id: str = "",
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
+) -> LegacyGoalMigrationDecision:
+    """Classify an old ``completed`` claim using today's completion proof.
+
+    The function is pure and idempotent: its migration identity excludes wall
+    clock time and repeated calls with equivalent inputs return the same ID.
+    Missing or malformed proof fails closed to provisional completion.  A
+    legacy claim may become verified only when the same full gate used for new
+    goals passes.
+    """
+
+    raw_state = str(getattr(legacy_state, "value", legacy_state) or "").strip().lower()
+    if not is_legacy_completed_goal_state(raw_state):
+        raise ValueError(f"goal {goal_id!r} is not in a legacy completed state: {raw_state!r}")
+    records = tuple(
+        item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item)
+        for item in evidence
+    )
+    decision = evaluate_goal_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        acceptance_criteria=acceptance_criteria,
+        evidence=records,
+        tasks_complete=tasks_complete,
+        repository_tree=repository_tree,
+        repository_id=repository_id,
+        now=now,
+        freshness_seconds=freshness_seconds,
+        clock_skew_seconds=clock_skew_seconds,
+        coverage=coverage,
+        analyzer_health=analyzer_health,
+        exhaustion_quorum=exhaustion_quorum,
+        child_goals=child_goals,
+        analysis_result=analysis_result,
+        analysis_inconclusive=analysis_inconclusive,
+    )
+    # Migration never turns an ambiguous historical claim into reopened or
+    # inconclusive.  Those transitions presuppose a trustworthy modern claim;
+    # until one exists the faithful classification is provisional.
+    migrated_state = GoalState.VERIFIED_COMPLETE if decision.verified else GoalState.PROVISIONALLY_COMPLETE
+    reason_codes = decision.reason_codes
+    reasons = decision.actionable_reasons
+    if not decision.verified:
+        reason_codes = tuple(dict.fromkeys(("legacy_completion_unverified", *reason_codes)))
+        reasons = tuple(dict.fromkeys((
+            "Legacy completion lacked sufficient modern proof and was migrated provisionally.",
+            *reasons,
+        )))
+    decision = replace(
+        decision,
+        state=migrated_state,
+        verified=migrated_state is GoalState.VERIFIED_COMPLETE,
+        reason_codes=reason_codes,
+        actionable_reasons=reasons,
+    )
+    identity_payload = {
+        "schema_version": GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION,
+        "goal_id": str(goal_id or "").strip(),
+        "legacy_state": raw_state,
+        "state": migrated_state.value,
+        "tasks_complete": bool(tasks_complete),
+        "acceptance_criteria": list(_acceptance_criteria(acceptance_criteria)),
+        "evidence": [record.to_dict() for record in records],
+        "repository_tree": str(repository_tree or ""),
+        "repository_id": str(repository_id or ""),
+        "freshness_seconds": max(0.0, float(freshness_seconds)),
+        "clock_skew_seconds": max(0.0, float(clock_skew_seconds)),
+        "analysis_inconclusive": bool(analysis_inconclusive),
+        "gate": {
+            "coverage": _mapping_value(coverage),
+            "analyzer_health": _mapping_value(analyzer_health),
+            "exhaustion_quorum": _mapping_value(exhaustion_quorum),
+            "child_goals": [_mapping_value(item) for item in child_goals],
+            "analysis_result": _mapping_value(analysis_result),
+        },
+    }
+    return LegacyGoalMigrationDecision(
+        goal_id=str(goal_id or "").strip(),
+        legacy_state=raw_state,
+        state=migrated_state,
+        verified=decision.verified,
+        migration_id=_stable_fingerprint("goal-migration", identity_payload),
+        reason_codes=reason_codes,
+        actionable_reasons=reasons,
+        completion_decision=decision,
+    )
+
+
 # Names used by older prototypes and external consumers.
 GoalLifecycleState = GoalState
 CompletionDecision = GoalCompletionDecision
@@ -1891,9 +2184,12 @@ __all__ = [
     "DEFAULT_EVIDENCE_FRESHNESS_SECONDS",
     "EvidenceValidationResult",
     "GOAL_COMPLETION_SCHEMA_VERSION",
+    "GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION",
     "GoalCompletionDecision",
     "GoalLifecycle",
     "GoalLifecycleState",
+    "LegacyGoalMigrationDecision",
+    "LEGACY_COMPLETED_GOAL_STATES",
     "GoalReopenDecision",
     "GoalState",
     "GoalTransition",
@@ -1905,10 +2201,13 @@ __all__ = [
     "discover_goal_contradictions",
     "evaluate_goal_completion",
     "evaluate_completion_gate",
+    "completion_diagnostics",
+    "is_legacy_completed_goal_state",
     "is_schedulable_goal_state",
     "is_terminal_goal_state",
     "legal_goal_transitions",
     "normalize_goal_state",
+    "migrate_legacy_goal_completion",
     "reconcile_goal_reopenings",
     "reopen_goal_for_contradictions",
     "validate_completion_evidence",

@@ -15,11 +15,14 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     discover_goal_contradictions,
     evaluate_goal_completion,
     evaluate_completion_gate,
+    completion_diagnostics,
+    migrate_legacy_goal_completion,
     reconcile_goal_reopenings,
     reopen_goal_for_contradictions,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     completion_tree_identity,
+    migrate_legacy_objective_goals,
     reconcile_objective_goal_completion,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
@@ -1115,3 +1118,170 @@ def test_objective_tracker_automatically_aggregates_descendant_state(tmp_path) -
     assert parent["completion_gate"]["evaluated_evidence"]["child_goals"] == [
         {"goal_id": "G1.S1", "state": "reopened", "verified": False}
     ]
+
+
+def test_legacy_completed_goal_migration_fails_closed_and_is_replay_stable() -> None:
+    first = migrate_legacy_goal_completion(
+        goal_id="G-legacy",
+        legacy_state="completed",
+        acceptance_criteria="criterion one",
+        now=NOW,
+        repository_tree=CURRENT_TREE,
+    )
+    replay = migrate_legacy_goal_completion(
+        goal_id="G-legacy",
+        legacy_state="completed",
+        acceptance_criteria="criterion one",
+        now=NOW + timedelta(minutes=1),
+        repository_tree=CURRENT_TREE,
+    )
+
+    assert first.state is GoalState.PROVISIONALLY_COMPLETE
+    assert first.verified is False
+    assert first.migration_id == replay.migration_id
+    assert "legacy_completion_unverified" in first.reason_codes
+    assert first.to_dict()["schema"].endswith("goal_completion_migration@1")
+
+
+def test_completion_compatibility_readers_accept_legacy_event_and_evidence_shapes() -> None:
+    lifecycle = GoalLifecycle.from_dict({"goal_id": "G-old", "status": "completed", "events": []})
+    evidence = CompletionEvidence.from_dict({
+        "version": 0,
+        "criterion": "criterion one",
+        "task_id": "REF-old",
+        "tree_identity": CURRENT_TREE,
+        "receipt_cid": "bafy-old",
+    })
+
+    assert lifecycle.state is GoalState.VERIFIED_COMPLETE
+    assert evidence.acceptance_criterion == "criterion one"
+    assert evidence.producing_task_or_scan == "REF-old"
+    assert evidence.repository_tree == CURRENT_TREE
+    assert evidence.schema_version == 1
+    assert evidence.metadata["source_schema_version"] == 0
+
+
+def test_legacy_completed_goal_only_migrates_verified_with_full_gate() -> None:
+    evidence = _complete_evidence()
+    migration = migrate_legacy_goal_completion(
+        goal_id="G-legacy",
+        legacy_state="complete",
+        acceptance_criteria="The public API returns a verified result.",
+        evidence=[evidence],
+        repository_tree=CURRENT_TREE,
+        now=NOW,
+        coverage={
+            "verified": True,
+            "repository_tree": CURRENT_TREE,
+            "evaluated_at": NOW.isoformat(),
+            "criteria": [{
+                "criterion": "The public API returns a verified result.",
+                "status": "verified",
+            }],
+        },
+        analyzer_health={"status": "healthy"},
+        exhaustion_quorum={
+            "satisfied": True,
+            "required_members": 2,
+            "member_count": 2,
+            "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+            "members": [
+                {
+                    "member_id": "normal",
+                    "evidence_channel": "exhaustive",
+                    "receipt_cid": "bafy-normal",
+                    "finished_at": NOW.isoformat(),
+                    "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+                },
+                {
+                    "member_id": "audit",
+                    "evidence_channel": "audit",
+                    "receipt_cid": "bafy-audit",
+                    "finished_at": NOW.isoformat(),
+                    "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+                },
+            ],
+        },
+    )
+
+    assert migration.state is GoalState.VERIFIED_COMPLETE
+    assert migration.verified is True
+    assert migration.to_dict()["diagnostics"]["confidence"] == 1.0
+
+
+def test_completion_diagnostics_exposes_stale_health_quorum_and_uncovered_proof() -> None:
+    decision = _evaluate([
+        _complete_evidence(observed_at=NOW - timedelta(hours=2))
+    ], current_state=GoalState.PROVISIONALLY_COMPLETE)
+    diagnostics = completion_diagnostics(decision)
+
+    assert diagnostics["lifecycle_state"] == "provisionally_complete"
+    assert diagnostics["confidence"] < 1.0
+    assert diagnostics["uncovered_criteria"]
+    assert diagnostics["stale_evidence"][0]["reason_codes"] == ["stale_evidence"]
+    assert diagnostics["analyzer_health"]["status"] == "healthy"
+    assert diagnostics["exhaustion_quorum"]["satisfied"] is True
+    assert diagnostics["reopen_reasons"] == []
+
+
+def test_objective_goal_migration_can_preview_resume_and_replay(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    original = """# Goals
+
+## G1 Old completion one
+
+- Status: completed
+- Acceptance: criterion one
+
+## G2 Old completion two
+
+- Status: complete
+- Acceptance: criterion two
+"""
+    objective_path.write_text(original, encoding="utf-8")
+
+    preview = migrate_legacy_objective_goals(
+        repo_root=repo,
+        objective_path=objective_path,
+        preview=True,
+        max_goals=1,
+        now=NOW.isoformat(),
+    )
+    assert preview.changed is False
+    assert preview.migrated_goal_ids == ["G1"]
+    assert preview.remaining_goal_ids == ["G2"]
+    assert objective_path.read_text(encoding="utf-8") == original
+
+    first = migrate_legacy_objective_goals(
+        repo_root=repo,
+        objective_path=objective_path,
+        max_goals=1,
+        now=NOW.isoformat(),
+    )
+    assert first.changed is True
+    assert first.provisional_goal_ids == ["G1"]
+    after_first = objective_path.read_text(encoding="utf-8")
+    assert "- Status: provisionally_complete" in after_first
+    assert "- Status: complete" in after_first
+    assert "- Completion migration id: goal-migration-" in after_first
+
+    resumed = migrate_legacy_objective_goals(
+        repo_root=repo,
+        objective_path=objective_path,
+        max_goals=1,
+        now=NOW.isoformat(),
+    )
+    assert resumed.migrated_goal_ids == ["G2"]
+    completed_text = objective_path.read_text(encoding="utf-8")
+    assert completed_text.count("- Status: provisionally_complete") == 2
+
+    replay = migrate_legacy_objective_goals(
+        repo_root=repo,
+        objective_path=objective_path,
+        now=NOW.isoformat(),
+    )
+    assert replay.changed is False
+    assert replay.candidate_goal_ids == []
+    assert objective_path.read_text(encoding="utf-8") == completed_text

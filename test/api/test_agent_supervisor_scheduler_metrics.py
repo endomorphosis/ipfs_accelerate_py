@@ -11,10 +11,16 @@ from ipfs_accelerate_py.agent_supervisor.event_log import (
     read_jsonl_event_sources,
 )
 from ipfs_accelerate_py.agent_supervisor.scheduler_metrics import (
+    GOAL_COMPLETION_DIAGNOSTICS_SCHEMA,
+    LEGACY_SCHEDULER_SNAPSHOT_SCHEMAS,
     SCHEDULER_PHASES,
+    SCHEDULER_SNAPSHOT_SCHEMA,
+    SCHEDULER_SNAPSHOT_SCHEMA_VERSION,
     build_scheduler_snapshot,
     build_scheduler_snapshot_from_paths,
     normalize_metric_identity,
+    project_goal_completion_diagnostics,
+    read_scheduler_snapshot,
     write_scheduler_snapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.supervisor_watchdog import SupervisorWatchdog
@@ -415,3 +421,176 @@ def test_watchdog_returns_same_snapshot_and_defers_dynamic_lane_recovery(tmp_pat
     assert report["scheduler_snapshot_id"] == snapshot.snapshot_id
     assert report["reports"][0]["action"] == "scheduler_recovery_required"
     assert report["restarts"] == 0
+
+
+def test_completion_diagnostics_expose_all_fail_closed_operator_dimensions() -> None:
+    decision = {
+        "type": "objective_goal_completion_evaluated",
+        "timestamp": "2026-01-01T00:01:00Z",
+        "goal_id": "G10.S4",
+        "state": "reopened",
+        "confidence": "0.42",
+        "missing_criteria": ["Manifest exposes missing proof"],
+        "invalid_criteria": ["Evidence is bound to the current tree"],
+        "reason_codes": ["stale_evidence", "verification_invalidated"],
+        "actionable_reasons": ["Regenerate validation proof."],
+        "completion_gate": {
+            "passed": False,
+            "checks": [
+                {
+                    "name": "mandatory_coverage",
+                    "passed": False,
+                    "evidence": {
+                        "missing_criteria": ["Manifest exposes missing proof"],
+                        "unverified_criteria": ["Analyzer result is trustworthy"],
+                    },
+                }
+            ],
+            "evaluated_evidence": {
+                "evaluated_at": "2026-01-01T00:00:59Z",
+                "analyzer_health": {
+                    "status": "unhealthy",
+                    "reasons": ["parser_failure"],
+                },
+                "exhaustion_quorum": {
+                    "satisfied": False,
+                    "member_count": 1,
+                    "required_members": 2,
+                },
+            },
+        },
+    }
+
+    projection = project_goal_completion_diagnostics([decision], now="2026-01-01T00:02:00Z")
+    snapshot = build_scheduler_snapshot([decision], now="2026-01-01T00:02:00Z")
+
+    assert projection["schema"] == GOAL_COMPLETION_DIAGNOSTICS_SCHEMA
+    assert projection["goal_count"] == 1
+    row = projection["by_goal_id"]["G10.S4"]
+    assert row["lifecycle_state"] == "reopened"
+    assert row["confidence"] == 0.42
+    assert row["uncovered_criteria"] == [
+        "Manifest exposes missing proof",
+        "Evidence is bound to the current tree",
+        "Analyzer result is trustworthy",
+    ]
+    assert row["stale_evidence"] == ["stale_evidence"]
+    assert row["analyzer_health"]["status"] == "unhealthy"
+    assert row["exhaustion_quorum"]["satisfied"] is False
+    assert row["reopen_reasons"] == ["Regenerate validation proof."]
+    assert projection["unhealthy_analyzer_goal_count"] == 1
+    assert projection["stale_evidence_goal_count"] == 1
+    assert projection["reopened_goal_count"] == 1
+    assert snapshot["goal_completion"] == snapshot["goal_completion_diagnostics"]
+    assert snapshot["goal_completion_diagnostics"]["by_goal_id"]["G10.S4"] == row
+    # A goal-only event is not an anonymous scheduler task.
+    assert snapshot["task_states"] == []
+
+
+def test_legacy_completed_diagnostic_is_provisional_and_never_gains_implicit_proof() -> None:
+    projection = project_goal_completion_diagnostics(
+        {
+            "objective_completion_decisions": {
+                "G1": {
+                    "previous_state": "active",
+                    "state": "completed",
+                    "tasks_complete": True,
+                    "acceptance_criteria": ["Ship the feature"],
+                }
+            }
+        },
+        now="2026-01-01T00:00:00Z",
+    )
+
+    row = projection["by_goal_id"]["G1"]
+    assert row["lifecycle_state"] == "provisionally_complete"
+    assert row["confidence"] is None
+    assert row["confidence_reported"] is False
+    assert row["analyzer_health"] == {}
+    assert row["exhaustion_quorum"] == {}
+    assert row["completion_gate_passed"] is None
+    assert projection["unknown_confidence_goal_count"] == 1
+
+
+def test_migration_and_runner_diagnostic_shapes_retain_nested_structured_proof() -> None:
+    projection = project_goal_completion_diagnostics(
+        [
+            {
+                "schema": "objective_goal_migration@1",
+                "type": "objective_goal_migration",
+                "goal_id": "G1",
+                "legacy_state": "completed",
+                "state": "provisionally_complete",
+                "reason_codes": ["legacy_evidence_stale"],
+                "completion_decision": {
+                    "state": "active",
+                    "missing_criteria": ["Current validation"],
+                },
+                "diagnostics": {
+                    "confidence": 0.25,
+                    "stale_evidence": [
+                        {"receipt_cid": "bafy-old", "reason": "tree_changed"}
+                    ],
+                    "analyzer_health": {"status": "unknown"},
+                },
+            },
+            {
+                "goal_completion_diagnostics": {
+                    "G2": {
+                        "lifecycle_state": "verified_complete",
+                        "confidence": 0.98,
+                        "uncovered_criteria": [],
+                        "analyzer_health": {"status": "healthy"},
+                        "exhaustion_quorum": {"satisfied": True},
+                    }
+                }
+            },
+        ]
+    )
+
+    migrated = projection["by_goal_id"]["G1"]
+    assert migrated["lifecycle_state"] == "provisionally_complete"
+    assert migrated["confidence"] == 0.25
+    assert migrated["uncovered_criteria"] == ["Current validation"]
+    assert migrated["stale_evidence"] == [
+        {"receipt_cid": "bafy-old", "reason": "tree_changed"}
+    ]
+    assert projection["by_goal_id"]["G2"]["lifecycle_state"] == "verified_complete"
+    assert projection["by_goal_id"]["G2"]["exhaustion_quorum"]["satisfied"] is True
+
+
+def test_snapshot_reader_accepts_v1_and_adds_diagnostics_without_rewriting_schema(
+    tmp_path: Path,
+) -> None:
+    legacy_schema = next(iter(LEGACY_SCHEDULER_SNAPSHOT_SCHEMAS))
+    path = tmp_path / "scheduler-v1.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": legacy_schema,
+                "generated_at": "2026-01-01T00:00:00+00:00",
+                "snapshot_id": "legacy-id",
+                "authoritative": True,
+                "phases": {},
+                "metrics": [],
+                "task_states": [{"goal_cid": "goal:legacy", "task_cid": "task:1"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    restored = read_scheduler_snapshot(path)
+
+    assert restored is not None
+    assert restored["schema"] == legacy_schema
+    assert restored["schema_version"] == 1
+    assert restored["goal_completion_diagnostics"]["goal_count"] == 1
+    legacy = restored["goal_completion_diagnostics"]["by_goal_id"]["goal:legacy"]
+    assert legacy["lifecycle_state"] == "unknown"
+    assert legacy["confidence"] is None
+    assert legacy["reason_codes"] == ["legacy_diagnostics_unavailable"]
+    assert restored["goal_completion_diagnostics"]["diagnostics_available"] is False
+    assert restored["goal_completion"] == restored["goal_completion_diagnostics"]
+    current = build_scheduler_snapshot([])
+    assert current["schema"] == SCHEDULER_SNAPSHOT_SCHEMA
+    assert current["schema_version"] == SCHEDULER_SNAPSHOT_SCHEMA_VERSION

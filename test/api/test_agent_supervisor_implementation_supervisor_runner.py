@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     ImplementationSupervisorDefaults,
     ObjectiveRefillDefaults,
     SupervisorRunHook,
+    apply_goal_completion_projection,
     apply_portal_implementation_supervisor_defaults,
     build_codebase_refill_defaults_factory,
     build_configured_supervisor_bootstrap_runner,
@@ -33,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_supervisor_refill_hooks_from_recorders,
     build_supervisor_retry_budget_refill_callback,
     build_supervisor_runtime_callbacks,
+    persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
     run_configured_portal_implementation_supervisor,
     run_portal_implementation_supervisor,
@@ -41,7 +43,11 @@ from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
     RefillScanResult,
     ScanTerminalReason,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import parse_args
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
+    parse_args,
+)
 
 
 def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(tmp_path: Path):
@@ -76,6 +82,8 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
             objective_surplus_findings_per_goal=4,
             objective_surplus_min_terms_per_todo=2,
             objective_interoperability_focus=("hallucinate_app",),
+            objective_goal_migration_preview=True,
+            objective_goal_migration_batch_size=7,
             seed_interoperability_goals=True,
         ),
         codebase=CodebaseRefillDefaults(
@@ -94,12 +102,15 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert args.count("--codebase-scan-skip-prefix") == 2
     assert "--objective-refill-scan" in args
     assert "--objective-seed-interoperability-goals" in args
+    assert "--objective-goal-migration-preview" in args
     assert "--codebase-refill-scan" in args
     assert "--auto-commit-generated-dirty" in args
     parsed = parse_args(args)
     assert parsed.todo_path == tmp_path / "tasks.todo.md"
     assert parsed.state_prefix == "custom"
     assert parsed.objective_scan_max_findings == 99
+    assert parsed.objective_goal_migration_preview is True
+    assert parsed.objective_goal_migration_batch_size == 7
     assert parsed.codebase_scan_cooldown_seconds == 120
     assert parsed.generated_dirty_repair_enabled is True
     assert parsed.generated_dirty_commit_subject == "EX: commit generated outputs"
@@ -313,6 +324,126 @@ def test_persist_supervisor_scan_receipt_keeps_strategy_projection_compact(tmp_p
     assert marker not in strategy_path.read_text(encoding="utf-8")
     assert marker not in events_path.read_text(encoding="utf-8")
     assert marker in Path(state_dir / generated_projection["artifact_path"]).read_text(encoding="utf-8")
+
+
+def test_goal_completion_projection_updates_strategy_and_live_status(tmp_path: Path):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "example_strategy.json"
+    status_path = state_dir / "example_supervisor_status.json"
+    strategy_path.write_text('{"generation": 3}\n', encoding="utf-8")
+    status_path.write_text('{"status": "running"}\n', encoding="utf-8")
+
+    projection = persist_goal_completion_projection(
+        {
+            "G1": {
+                "state": "provisionally_complete",
+                "confidence": 0.4,
+                "missing_criteria": ["fresh validation"],
+                "stale_evidence": ["receipt-old"],
+                "analyzer_health": {"healthy": False, "status": "failed"},
+                "exhaustion_quorum": {"satisfied": False, "required": 2, "observed": 1},
+                "reopen_reasons": ["validation regressed"],
+            }
+        },
+        state_dir=state_dir,
+        state_prefix="example",
+        strategy_path=strategy_path,
+        migration={"preview": True, "remaining_goal_ids": ["G2"]},
+    )
+
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert strategy["generation"] == 3
+    assert status["status"] == "running"
+    assert strategy["goal_completion"] == projection == status["goal_completion"]
+    assert strategy["goal_completion_diagnostics"] == projection
+    diagnostic = strategy["goal_completion_by_goal_id"]["G1"]
+    assert diagnostic["lifecycle_state"] == "provisionally_complete"
+    assert diagnostic["confidence"] == 0.4
+    assert diagnostic["uncovered_criteria"] == ["fresh validation"]
+    assert diagnostic["stale_evidence"] == ["receipt-old"]
+    assert diagnostic["analyzer_health"]["healthy"] is False
+    assert diagnostic["exhaustion_quorum"]["satisfied"] is False
+    assert diagnostic["reopen_reasons"] == ["validation regressed"]
+    assert strategy["goal_completion_migration"]["preview"] is True
+
+
+def test_apply_goal_completion_projection_preserves_legacy_keys():
+    projected = apply_goal_completion_projection(
+        {"status": "running", "schema": "legacy-supervisor@1"},
+        {
+            "schema": "goal-diagnostics@1",
+            "schema_version": 1,
+            "goals": [{"goal_id": "G1", "lifecycle_state": "verified_complete"}],
+            "state_counts": {"verified_complete": 1},
+            "migration": {},
+        },
+    )
+    assert projected["status"] == "running"
+    assert projected["schema"] == "legacy-supervisor@1"
+    assert projected["goal_completion_diagnostics"] == projected["goal_completion"]
+    assert projected["goal_completion_by_goal_id"]["G1"]["lifecycle_state"] == "verified_complete"
+
+
+def test_supervisor_legacy_goal_migration_previews_and_resumes(tmp_path: Path):
+    objective_path = tmp_path / "objective.md"
+    todo_path = tmp_path / "todo.md"
+    state_dir = tmp_path / "state"
+    objective_path.write_text(
+        """# Goals
+
+## G1 Legacy one
+
+- Status: completed
+- Acceptance: criterion one
+
+## G2 Legacy two
+
+- Status: complete
+- Acceptance: criterion two
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Todo\n", encoding="utf-8")
+    original = objective_path.read_text(encoding="utf-8")
+    config = PortalSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "example_strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        state_prefix="example",
+        objective_path=objective_path,
+        objective_goal_migration_preview=True,
+        objective_goal_migration_batch_size=1,
+        repo_root=tmp_path,
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    supervisor.ensure_strategy_file()
+
+    preview = supervisor.migrate_legacy_objective_goal_completion()
+    assert preview["preview"] is True
+    assert preview["migrated_goal_ids"] == ["G1"]
+    assert preview["remaining_goal_ids"] == ["G2"]
+    assert objective_path.read_text(encoding="utf-8") == original
+    strategy = json.loads(config.strategy_path.read_text(encoding="utf-8"))
+    assert strategy["goal_completion_migration"]["preview"] is True
+    assert strategy["goal_completion_by_goal_id"]["G1"]["lifecycle_state"] == (
+        "provisionally_complete"
+    )
+
+    config.objective_goal_migration_preview = False
+    first = supervisor.migrate_legacy_objective_goal_completion()
+    second = supervisor.migrate_legacy_objective_goal_completion()
+    replay = supervisor.migrate_legacy_objective_goal_completion()
+    assert first["migrated_goal_ids"] == ["G1"]
+    assert second["migrated_goal_ids"] == ["G2"]
+    assert replay["migrated_goal_ids"] == []
+    assert replay["changed"] is False
+    assert objective_path.read_text(encoding="utf-8").count(
+        "- Status: provisionally_complete"
+    ) == 2
 
 
 def test_typed_runner_refill_hook_persists_one_canonical_receipt(tmp_path: Path):

@@ -59,6 +59,245 @@ SupervisorMergeResolverCommand = str | Callable[[], str]
 
 
 _SUCCESSFUL_SCAN_REASONS = {"generated", "exhausted", "duplicate_only"}
+GOAL_COMPLETION_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.goal_completion_projection.v1"
+)
+GOAL_COMPLETION_PROJECTION_SCHEMA_VERSION = 1
+
+
+def _diagnostic_list(value: Any) -> list[str]:
+    """Return a deterministic list for one operator-facing diagnostic field."""
+
+    if value is None:
+        return []
+    if isinstance(value, str):
+        values: Sequence[Any] = (value,)
+    elif isinstance(value, Mapping):
+        values = tuple(value)
+    elif isinstance(value, Sequence):
+        values = value
+    else:
+        values = (value,)
+    return sorted(
+        {
+            " ".join(str(item or "").strip().split())
+            for item in values
+            if str(item or "").strip()
+        },
+        key=lambda item: (item.casefold(), item),
+    )
+
+
+def normalize_goal_completion_diagnostic(
+    goal_id: str,
+    value: Mapping[str, Any] | Any,
+) -> dict[str, Any]:
+    """Normalize current and rollout-era completion decision shapes.
+
+    The completion gate and migration use typed decisions, but supervisor
+    state is a long-lived compatibility surface.  This reader accepts typed
+    objects and legacy mappings, then always writes all trust dimensions so a
+    missing field cannot be mistaken for a healthy/default value.
+    """
+
+    if hasattr(value, "to_dict"):
+        value = value.to_dict()
+    raw = dict(value) if isinstance(value, Mapping) else {}
+    diagnostics = raw.get("diagnostics")
+    if isinstance(diagnostics, Mapping):
+        raw = {**raw, **diagnostics}
+
+    lifecycle_state = str(
+        raw.get("lifecycle_state")
+        or raw.get("next_state")
+        or raw.get("state")
+        or raw.get("target_state")
+        or "analysis_inconclusive"
+    ).strip()
+    confidence_value = raw.get("confidence", raw.get("completion_confidence"))
+    try:
+        confidence: float | None = (
+            max(0.0, min(1.0, float(confidence_value)))
+            if confidence_value is not None and confidence_value != ""
+            else None
+        )
+    except (TypeError, ValueError):
+        confidence = None
+
+    uncovered = _diagnostic_list(
+        raw.get("uncovered_criteria")
+        or raw.get("missing_criteria")
+        or raw.get("uncovered_acceptance_criteria")
+    )
+    stale = _diagnostic_list(
+        raw.get("stale_evidence")
+        or raw.get("stale_evidence_ids")
+        or raw.get("expired_evidence")
+    )
+    reopen_reasons = _diagnostic_list(
+        raw.get("reopen_reasons")
+        or raw.get("reopening_reasons")
+        or raw.get("contradictions")
+    )
+    analyzer_health = raw.get("analyzer_health")
+    if analyzer_health is None:
+        analyzer_health = {"status": "unknown", "healthy": None}
+    exhaustion_quorum = raw.get("exhaustion_quorum")
+    if exhaustion_quorum is None:
+        exhaustion_quorum = {"status": "unknown", "satisfied": None}
+
+    return {
+        "goal_id": str(goal_id or raw.get("goal_id") or "").strip(),
+        "lifecycle_state": lifecycle_state,
+        "confidence": confidence,
+        "uncovered_criteria": uncovered,
+        "stale_evidence": stale,
+        "analyzer_health": analyzer_health,
+        "exhaustion_quorum": exhaustion_quorum,
+        "reopen_reasons": reopen_reasons,
+        "reasons": _diagnostic_list(raw.get("reasons") or raw.get("reason_codes")),
+    }
+
+
+def build_goal_completion_projection(
+    diagnostics: Mapping[str, Any] | Sequence[Any] | None,
+    *,
+    migration: Mapping[str, Any] | Any | None = None,
+) -> dict[str, Any]:
+    """Build a bounded, versioned completion projection for operators.
+
+    The projection is safe to embed in status and scheduler manifests.  It
+    intentionally contains diagnostic summaries rather than raw evidence or
+    validation logs, which remain in their content-addressed artifacts.
+    """
+
+    # Keep status/runner output byte-for-byte compatible with the scheduler
+    # manifest projection when the shared reducer is available.  The local
+    # normalizer below remains useful to older deployments during a rolling
+    # package upgrade.
+    try:
+        from .scheduler_metrics import project_goal_completion_diagnostics
+    except ImportError:  # pragma: no cover - compatibility with partial rollout
+        project_goal_completion_diagnostics = None
+    if project_goal_completion_diagnostics is not None:
+        metric_input: Any = diagnostics or {}
+        if isinstance(metric_input, Mapping) and not any(
+            key in metric_input
+            for key in (
+                "objective_completion_decisions",
+                "completion_decisions",
+                "goal_completion_decisions",
+                "goal_completion",
+                "goal_id",
+            )
+        ):
+            metric_input = {"objective_completion_decisions": metric_input}
+        compact = dict(project_goal_completion_diagnostics(metric_input))
+        if migration is not None:
+            if hasattr(migration, "to_dict"):
+                migration = migration.to_dict()
+            compact["migration"] = dict(migration) if isinstance(migration, Mapping) else {}
+        else:
+            compact.setdefault("migration", {})
+        return compact
+
+    goals: dict[str, dict[str, Any]] = {}
+    if isinstance(diagnostics, Mapping):
+        entries = diagnostics.items()
+    elif isinstance(diagnostics, Sequence) and not isinstance(diagnostics, (str, bytes)):
+        entries = (
+            (
+                str(
+                    (item.to_dict() if hasattr(item, "to_dict") else item).get("goal_id", "")
+                ),
+                item,
+            )
+            for item in diagnostics
+            if hasattr(item, "to_dict") or isinstance(item, Mapping)
+        )
+    else:
+        entries = ()
+    for key, value in entries:
+        item = normalize_goal_completion_diagnostic(str(key), value)
+        goal_id = item["goal_id"] or str(key).strip()
+        if goal_id:
+            item["goal_id"] = goal_id
+            goals[goal_id] = item
+
+    state_counts: dict[str, int] = {}
+    for item in goals.values():
+        state = str(item["lifecycle_state"] or "analysis_inconclusive")
+        state_counts[state] = state_counts.get(state, 0) + 1
+
+    migration_payload: dict[str, Any] = {}
+    if migration is not None:
+        if hasattr(migration, "to_dict"):
+            migration = migration.to_dict()
+        if isinstance(migration, Mapping):
+            migration_payload = dict(migration)
+
+    return {
+        "schema": GOAL_COMPLETION_PROJECTION_SCHEMA,
+        "schema_version": GOAL_COMPLETION_PROJECTION_SCHEMA_VERSION,
+        "goals": {goal_id: goals[goal_id] for goal_id in sorted(goals)},
+        "goal_count": len(goals),
+        "state_counts": dict(sorted(state_counts.items())),
+        "uncovered_goal_ids": sorted(
+            goal_id for goal_id, item in goals.items() if item["uncovered_criteria"]
+        ),
+        "stale_evidence_goal_ids": sorted(
+            goal_id for goal_id, item in goals.items() if item["stale_evidence"]
+        ),
+        "unhealthy_analyzer_goal_ids": sorted(
+            goal_id
+            for goal_id, item in goals.items()
+            if isinstance(item["analyzer_health"], Mapping)
+            and item["analyzer_health"].get("healthy") is False
+        ),
+        "unsatisfied_exhaustion_quorum_goal_ids": sorted(
+            goal_id
+            for goal_id, item in goals.items()
+            if isinstance(item["exhaustion_quorum"], Mapping)
+            and item["exhaustion_quorum"].get("satisfied") is False
+        ),
+        "reopened_goal_ids": sorted(
+            goal_id
+            for goal_id, item in goals.items()
+            if item["lifecycle_state"] == "reopened" or item["reopen_reasons"]
+        ),
+        "migration": migration_payload,
+    }
+
+
+def apply_goal_completion_projection(
+    payload: Mapping[str, Any] | None,
+    projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merge completion diagnostics without disturbing legacy state keys."""
+
+    updated = dict(payload or {})
+    compact = dict(projection)
+    updated["goal_completion"] = compact
+    # Named aliases keep rollout consumers simple and make the trust
+    # dimensions discoverable without changing the existing status schema.
+    by_goal_id = compact.get("by_goal_id")
+    if not isinstance(by_goal_id, Mapping):
+        goals = compact.get("goals") or {}
+        if isinstance(goals, Mapping):
+            by_goal_id = goals
+        elif isinstance(goals, Sequence) and not isinstance(goals, (str, bytes)):
+            by_goal_id = {
+                str(item.get("goal_id") or ""): dict(item)
+                for item in goals
+                if isinstance(item, Mapping) and str(item.get("goal_id") or "").strip()
+            }
+        else:
+            by_goal_id = {}
+    updated["goal_completion_diagnostics"] = compact
+    updated["goal_completion_by_goal_id"] = dict(by_goal_id)
+    updated["goal_lifecycle_state_counts"] = dict(compact.get("state_counts") or {})
+    updated["goal_completion_migration"] = dict(compact.get("migration") or {})
+    return updated
 
 
 def apply_scan_receipt_projection(
@@ -140,6 +379,48 @@ def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
             temporary_path.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def persist_goal_completion_projection(
+    diagnostics: Mapping[str, Any] | Sequence[Any] | None,
+    *,
+    state_dir: Path,
+    state_prefix: str,
+    strategy_path: Path,
+    migration: Mapping[str, Any] | Any | None = None,
+) -> dict[str, Any]:
+    """Publish trustworthy goal diagnostics to strategy and live status.
+
+    Both files are updated atomically.  A missing status file is intentionally
+    not created because the supervisor loop owns its liveness contract; the
+    next heartbeat copies the projection from strategy.
+    """
+
+    projection = build_goal_completion_projection(diagnostics, migration=migration)
+    try:
+        strategy_payload = json.loads(strategy_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        strategy_payload = {}
+    if not isinstance(strategy_payload, dict):
+        strategy_payload = {}
+    _write_json_atomic(
+        strategy_path,
+        apply_goal_completion_projection(strategy_payload, projection),
+    )
+
+    status_path = state_dir / f"{state_prefix}_supervisor_status.json"
+    if status_path.is_file():
+        try:
+            status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            status_payload = {}
+        if not isinstance(status_payload, dict):
+            status_payload = {}
+        _write_json_atomic(
+            status_path,
+            apply_goal_completion_projection(status_payload, projection),
+        )
+    return projection
 
 
 def persist_supervisor_scan_receipt(
@@ -875,6 +1156,9 @@ class ObjectiveRefillDefaults:
     objective_surplus_findings_per_goal: int | None = None
     objective_surplus_min_terms_per_todo: int | None = None
     objective_goal_completion_todo_boards: Sequence[str] = ()
+    objective_goal_migration_enabled: bool = True
+    objective_goal_migration_preview: bool = False
+    objective_goal_migration_batch_size: int | None = None
     objective_interoperability_focus: Sequence[str] = ()
     objective_interoperability_component_paths: Sequence[str] = ()
     objective_max_interoperability_goals: int | None = None
@@ -921,6 +1205,9 @@ def build_objective_refill_defaults_from_paths(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_goal_completion_todo_boards: Sequence[str] = (),
+    objective_goal_migration_enabled: bool = True,
+    objective_goal_migration_preview: bool = False,
+    objective_goal_migration_batch_size: int | None = None,
     objective_interoperability_focus: Sequence[str] = (),
     objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
@@ -966,6 +1253,9 @@ def build_objective_refill_defaults_from_paths(
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
         objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
+        objective_goal_migration_enabled=objective_goal_migration_enabled,
+        objective_goal_migration_preview=objective_goal_migration_preview,
+        objective_goal_migration_batch_size=objective_goal_migration_batch_size,
         objective_interoperability_focus=objective_interoperability_focus,
         objective_interoperability_component_paths=objective_interoperability_component_paths,
         objective_max_interoperability_goals=objective_max_interoperability_goals,
@@ -1053,6 +1343,9 @@ def build_objective_refill_defaults_factory(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_goal_completion_todo_boards: Sequence[str] = (),
+    objective_goal_migration_enabled: bool = True,
+    objective_goal_migration_preview: bool = False,
+    objective_goal_migration_batch_size: int | None = None,
     objective_interoperability_focus: Sequence[str] = (),
     objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
@@ -1090,6 +1383,9 @@ def build_objective_refill_defaults_factory(
             objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
             objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
             objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
+            objective_goal_migration_enabled=objective_goal_migration_enabled,
+            objective_goal_migration_preview=objective_goal_migration_preview,
+            objective_goal_migration_batch_size=objective_goal_migration_batch_size,
             objective_interoperability_focus=objective_interoperability_focus,
             objective_interoperability_component_paths=objective_interoperability_component_paths,
             objective_max_interoperability_goals=objective_max_interoperability_goals,
@@ -1153,6 +1449,9 @@ def build_namespace_objective_refill_defaults_factory(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_goal_completion_todo_boards: Sequence[str] = (),
+    objective_goal_migration_enabled: bool = True,
+    objective_goal_migration_preview: bool = False,
+    objective_goal_migration_batch_size: int | None = None,
     objective_interoperability_focus: Sequence[str] = (),
     objective_interoperability_component_paths: Sequence[str] = (),
     objective_max_interoperability_goals: int | None = None,
@@ -1192,6 +1491,9 @@ def build_namespace_objective_refill_defaults_factory(
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
         objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
+        objective_goal_migration_enabled=objective_goal_migration_enabled,
+        objective_goal_migration_preview=objective_goal_migration_preview,
+        objective_goal_migration_batch_size=objective_goal_migration_batch_size,
         objective_interoperability_focus=objective_interoperability_focus,
         objective_interoperability_component_paths=objective_interoperability_component_paths,
         objective_max_interoperability_goals=objective_max_interoperability_goals,
@@ -1361,6 +1663,15 @@ def apply_portal_implementation_supervisor_defaults(
                 "--objective-goal-completion-todo-board",
                 objective.objective_goal_completion_todo_boards,
             )
+        if not objective.objective_goal_migration_enabled:
+            args = with_flag_default(args, "--no-objective-goal-migration")
+        if objective.objective_goal_migration_preview:
+            args = with_flag_default(args, "--objective-goal-migration-preview")
+        args = _with_optional_default(
+            args,
+            "--objective-goal-migration-batch-size",
+            objective.objective_goal_migration_batch_size,
+        )
 
     if codebase is not None:
         if codebase.refill_scan:

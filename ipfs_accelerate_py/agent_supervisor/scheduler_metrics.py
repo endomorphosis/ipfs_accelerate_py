@@ -24,7 +24,15 @@ from typing import Any
 from .event_log import read_jsonl_event_sources
 
 
-SCHEDULER_SNAPSHOT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.scheduler-snapshot@1"
+SCHEDULER_SNAPSHOT_SCHEMA_VERSION = 2
+SCHEDULER_SNAPSHOT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.scheduler-snapshot@2"
+LEGACY_SCHEDULER_SNAPSHOT_SCHEMAS = frozenset(
+    {"ipfs_accelerate_py.agent_supervisor.scheduler-snapshot@1"}
+)
+GOAL_COMPLETION_DIAGNOSTICS_SCHEMA_VERSION = 1
+GOAL_COMPLETION_DIAGNOSTICS_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.goal-completion-diagnostics@1"
+)
 SCHEDULER_PHASES = (
     "ready",
     "active",
@@ -325,6 +333,479 @@ def _event_type(event: Mapping[str, Any]) -> str:
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _string_list(value: Any) -> list[str]:
+    """Return unique, non-empty strings from a compatibility field."""
+
+    if value in (None, ""):
+        return []
+    values = value if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ) else [value]
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        if isinstance(item, Mapping):
+            text = str(
+                item.get("acceptance_criterion")
+                or item.get("criterion")
+                or item.get("receipt_cid")
+                or item.get("reason_code")
+                or item.get("reason")
+                or json.dumps(dict(item), sort_keys=True, default=str)
+            ).strip()
+        else:
+            text = str(item or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
+
+
+def _diagnostic_list(value: Any) -> list[Any]:
+    """Preserve structured diagnostics while deduplicating JSON values."""
+
+    if value in (None, ""):
+        return []
+    values = value if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ) else [value]
+    result: list[Any] = []
+    seen: set[str] = set()
+    for item in values:
+        if item in (None, ""):
+            continue
+        try:
+            normalized = json.loads(json.dumps(item, sort_keys=True, default=str))
+        except (TypeError, ValueError):
+            normalized = str(item)
+        key = json.dumps(normalized, sort_keys=True, default=str, separators=(",", ":"))
+        if key not in seen:
+            seen.add(key)
+            result.append(normalized)
+    return result
+
+
+def _goal_lifecycle_state(value: Any) -> str:
+    """Normalize lifecycle spelling without upgrading legacy completion.
+
+    In particular, the historical ``completed`` label is only provisional:
+    old task/board status did not prove that the completion gate passed.
+    """
+
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    raw = raw.replace("-", "_").replace(" ", "_")
+    aliases = {
+        "": "active",
+        "open": "active",
+        "ready": "active",
+        "in_progress": "active",
+        "complete": "provisionally_complete",
+        "completed": "provisionally_complete",
+        "done": "provisionally_complete",
+        "provisional": "provisionally_complete",
+        "verified": "verified_complete",
+        "reopen": "reopened",
+        "inconclusive": "analysis_inconclusive",
+    }
+    return aliases.get(raw, raw)
+
+
+def _completion_candidates(
+    value: Any,
+    *,
+    fallback_goal_id: str = "",
+) -> Iterator[tuple[str, Mapping[str, Any]]]:
+    """Yield completion decisions from current and rollout-era containers."""
+
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        for item in value:
+            yield from _completion_candidates(item, fallback_goal_id=fallback_goal_id)
+        return
+    if not isinstance(value, Mapping):
+        return
+
+    goal_id = str(
+        value.get("goal_id")
+        or value.get("objective_goal_id")
+        or value.get("goal_cid")
+        or fallback_goal_id
+        or ""
+    ).strip()
+
+    # Objective daemon and supervisor manifests use a goal-id keyed mapping.
+    for key in (
+        "objective_completion_decisions",
+        "goal_completion_decisions",
+        "completion_decisions",
+    ):
+        decisions = value.get(key)
+        if isinstance(decisions, Mapping):
+            for decision_goal_id, decision in decisions.items():
+                yield from _completion_candidates(
+                    decision, fallback_goal_id=str(decision_goal_id or "")
+                )
+
+    for key in (
+        "objective_goal_migrations",
+        "goal_migrations",
+        "migration_records",
+    ):
+        migrations = value.get(key)
+        if isinstance(migrations, Mapping):
+            for migration_goal_id, record in migrations.items():
+                yield from _completion_candidates(
+                    record, fallback_goal_id=str(migration_goal_id or "")
+                )
+        elif isinstance(migrations, Sequence) and not isinstance(
+            migrations, (str, bytes, bytearray)
+        ):
+            yield from _completion_candidates(migrations)
+
+    # Migration records intentionally retain both the original decision and
+    # a compact diagnostics view.  Merge those layers once, with the outer
+    # lifecycle state authoritative, so recursion cannot later overwrite rich
+    # evidence with a sparse wrapper event.
+    nested_decision = value.get("completion_decision")
+    nested_diagnostics = value.get("diagnostics")
+    if goal_id and (
+        isinstance(nested_decision, Mapping)
+        or isinstance(nested_diagnostics, Mapping)
+    ):
+        merged: dict[str, Any] = {}
+        if isinstance(nested_decision, Mapping):
+            merged.update(nested_decision)
+        if isinstance(nested_diagnostics, Mapping):
+            merged.update(nested_diagnostics)
+        for key in (
+            "goal_id", "goal_cid", "legacy_state", "lifecycle_state",
+            "state", "next_state", "status", "verified", "confidence",
+            "reason_codes", "actionable_reasons", "reopen_reasons",
+            "reopening_reasons", "stale_evidence", "observed_at",
+            "evaluated_at", "timestamp",
+        ):
+            if key in value:
+                merged[key] = value[key]
+        yield goal_id, merged
+        return
+
+    # A previously projected diagnostics artifact is also a supported reader
+    # input, which makes status/manifest republishing idempotent.
+    for key in ("goal_completion_diagnostics", "goal_completion"):
+        nested = value.get(key)
+        if isinstance(nested, Mapping):
+            goals = nested.get("goals")
+            if isinstance(goals, Sequence) and not isinstance(
+                goals, (str, bytes, bytearray)
+            ):
+                yield from _completion_candidates(goals)
+            elif nested is not value:
+                is_single_diagnostic = any(
+                    marker in nested
+                    for marker in (
+                        "goal_id", "lifecycle_state", "state", "next_state",
+                        "completion_gate", "uncovered_criteria", "missing_criteria",
+                    )
+                )
+                if is_single_diagnostic:
+                    yield from _completion_candidates(
+                        nested, fallback_goal_id=goal_id
+                    )
+                else:
+                    # Runner status payloads use a compact goal-id keyed map.
+                    for diagnostic_goal_id, diagnostic in nested.items():
+                        if isinstance(diagnostic, Mapping):
+                            yield from _completion_candidates(
+                                diagnostic,
+                                fallback_goal_id=str(diagnostic_goal_id or ""),
+                            )
+        elif isinstance(nested, Sequence) and not isinstance(
+            nested, (str, bytes, bytearray)
+        ):
+            yield from _completion_candidates(nested)
+
+    for key in ("completion_decision", "decision"):
+        nested = value.get(key)
+        if isinstance(nested, Mapping):
+            yield from _completion_candidates(
+                nested, fallback_goal_id=fallback_goal_id
+            )
+
+    # Refill receipts retain daemon output under metadata during rollout.
+    for key in ("metadata", "payload", "result", "scan_receipt", "receipt"):
+        nested = value.get(key)
+        if isinstance(nested, Mapping) and nested is not value:
+            yield from _completion_candidates(
+                nested, fallback_goal_id=fallback_goal_id
+            )
+
+    kind = _event_type(value)
+    has_completion_shape = any(
+        key in value
+        for key in (
+            "lifecycle_state",
+            "next_state",
+            "previous_state",
+            "completion_gate",
+            "missing_criteria",
+            "invalid_criteria",
+            "uncovered_criteria",
+            "reopen_reasons",
+        )
+    )
+    has_inline_state = any(
+        key in value for key in ("lifecycle_state", "state", "next_state", "status")
+    )
+    has_goal_event_shape = bool(
+        goal_id
+        and has_inline_state
+        and "goal" in kind
+        and any(term in kind for term in ("completion", "state", "reopen", "migration"))
+    )
+    if goal_id and (has_completion_shape or has_goal_event_shape):
+        yield goal_id, value
+
+
+def _completion_diagnostic(
+    goal_id: str,
+    decision: Mapping[str, Any],
+    *,
+    observed_at: str = "",
+) -> dict[str, Any]:
+    gate = _mapping(decision.get("completion_gate", decision.get("gate")))
+    evaluated = _mapping(gate.get("evaluated_evidence"))
+    coverage = _mapping(
+        decision.get("coverage") or evaluated.get("coverage")
+    )
+
+    lifecycle_state = _goal_lifecycle_state(
+        decision.get("lifecycle_state")
+        or decision.get("state")
+        or decision.get("next_state")
+        or decision.get("status")
+    )
+    uncovered = _string_list(
+        decision.get("uncovered_criteria")
+        or decision.get("missing_criteria")
+    )
+    for criterion in _string_list(decision.get("invalid_criteria")):
+        if criterion not in uncovered:
+            uncovered.append(criterion)
+    for check in gate.get("checks", ()) if isinstance(gate.get("checks"), Sequence) else ():
+        if not isinstance(check, Mapping) or str(check.get("name") or "") != "mandatory_coverage":
+            continue
+        evidence = _mapping(check.get("evidence"))
+        for criterion in _string_list(evidence.get("missing_criteria")) + _string_list(
+            evidence.get("unverified_criteria")
+        ):
+            if criterion not in uncovered:
+                uncovered.append(criterion)
+
+    reason_codes = _string_list(
+        decision.get("reason_codes")
+        or gate.get("reason_codes")
+        or gate.get("fail_reason_codes")
+    )
+    actionable = _string_list(
+        decision.get("actionable_reasons") or gate.get("actionable_reasons")
+    )
+    stale_evidence = _diagnostic_list(decision.get("stale_evidence"))
+    if not stale_evidence:
+        for code in reason_codes:
+            if "stale" in code.lower() or "freshness" in code.lower():
+                stale_evidence.append(code)
+        results = decision.get("evidence_results")
+        if isinstance(results, Sequence) and not isinstance(results, (str, bytes, bytearray)):
+            for result in results:
+                if not isinstance(result, Mapping):
+                    continue
+                codes = _string_list(result.get("reason_codes"))
+                if any("stale" in code.lower() or "freshness" in code.lower() for code in codes):
+                    evidence = _mapping(result.get("evidence"))
+                    identity = str(
+                        evidence.get("receipt_cid")
+                        or evidence.get("provenance_cid")
+                        or evidence.get("acceptance_criterion")
+                        or next((code for code in codes if "stale" in code.lower()), "stale_evidence")
+                    ).strip()
+                    if identity and identity not in stale_evidence:
+                        stale_evidence.append(identity)
+
+    analyzer_health = _mapping(
+        decision.get("analyzer_health") or evaluated.get("analyzer_health")
+    )
+    exhaustion_quorum = _mapping(
+        decision.get("exhaustion_quorum") or evaluated.get("exhaustion_quorum")
+    )
+    reopen_reasons = _string_list(
+        decision.get("reopen_reasons")
+        or decision.get("reopening_reasons")
+        or decision.get("contradictions")
+    )
+    if lifecycle_state == "reopened" and not reopen_reasons:
+        reopen_reasons = actionable or reason_codes or ["verification_invalidated"]
+
+    confidence_value = decision.get("confidence")
+    if confidence_value in (None, ""):
+        confidence_value = coverage.get("confidence")
+    confidence: float | None = None
+    if confidence_value not in (None, "") and not isinstance(confidence_value, bool):
+        try:
+            confidence = min(1.0, max(0.0, float(confidence_value)))
+        except (TypeError, ValueError):
+            confidence = None
+
+    return {
+        "schema_version": GOAL_COMPLETION_DIAGNOSTICS_SCHEMA_VERSION,
+        "goal_id": goal_id,
+        "goal_cid": str(decision.get("goal_cid") or goal_id),
+        "lifecycle_state": lifecycle_state,
+        "status": lifecycle_state,
+        "confidence": confidence,
+        "confidence_reported": confidence is not None,
+        "uncovered_criteria": uncovered,
+        "stale_evidence": stale_evidence,
+        "evidence_stale": bool(stale_evidence),
+        "analyzer_health": dict(analyzer_health),
+        "exhaustion_quorum": dict(exhaustion_quorum),
+        "reopen_reasons": reopen_reasons,
+        "reason_codes": reason_codes,
+        "actionable_reasons": actionable,
+        "completion_gate_passed": gate.get("passed") if "passed" in gate else None,
+        "observed_at": str(
+            decision.get("observed_at")
+            or decision.get("evaluated_at")
+            or evaluated.get("evaluated_at")
+            or observed_at
+            or ""
+        ),
+    }
+
+
+def project_goal_completion_diagnostics(
+    records: Iterable[Mapping[str, Any]] | Mapping[str, Any],
+    *,
+    now: datetime | str | None = None,
+) -> dict[str, Any]:
+    """Build a compact, fail-closed operator view of goal completion.
+
+    The function is intentionally a projection, not another completion
+    evaluator.  Missing confidence, health, quorum, or evidence stays missing
+    and can therefore never be mistaken for positive proof.
+    """
+
+    values: Any = [records] if isinstance(records, Mapping) else records
+    by_goal: dict[str, dict[str, Any]] = {}
+    for raw in values:
+        if not isinstance(raw, Mapping):
+            continue
+        event_at = _event_time(raw)
+        observed_at = event_at.isoformat() if event_at is not None else ""
+        for goal_id, decision in _completion_candidates(raw):
+            by_goal[goal_id] = _completion_diagnostic(
+                goal_id, decision, observed_at=observed_at
+            )
+
+    goals = [by_goal[goal_id] for goal_id in sorted(by_goal)]
+    state_counts: dict[str, int] = {}
+    for goal in goals:
+        state = str(goal["lifecycle_state"])
+        state_counts[state] = state_counts.get(state, 0) + 1
+    analyzer_unhealthy = sum(
+        1
+        for goal in goals
+        if goal["analyzer_health"]
+        and str(goal["analyzer_health"].get("status") or goal["analyzer_health"].get("health") or "").lower()
+        not in {"healthy", "ok", "passing"}
+    )
+    quorum_satisfied = sum(
+        1
+        for goal in goals
+        if goal["exhaustion_quorum"].get("satisfied") is True
+        or goal["exhaustion_quorum"].get("quorum_met") is True
+    )
+    return {
+        "schema": GOAL_COMPLETION_DIAGNOSTICS_SCHEMA,
+        "schema_version": GOAL_COMPLETION_DIAGNOSTICS_SCHEMA_VERSION,
+        "generated_at": _now_iso(now),
+        "diagnostics_available": bool(goals),
+        "goal_count": len(goals),
+        "goals": goals,
+        "by_goal_id": {goal["goal_id"]: goal for goal in goals},
+        "state_counts": state_counts,
+        "uncovered_criteria_count": sum(len(goal["uncovered_criteria"]) for goal in goals),
+        "stale_evidence_goal_count": sum(bool(goal["stale_evidence"]) for goal in goals),
+        "unknown_confidence_goal_count": sum(goal["confidence"] is None for goal in goals),
+        "unhealthy_analyzer_goal_count": analyzer_unhealthy,
+        "exhaustion_quorum_satisfied_goal_count": quorum_satisfied,
+        "reopened_goal_count": state_counts.get("reopened", 0),
+    }
+
+
+goal_completion_diagnostics = project_goal_completion_diagnostics
+
+
+def _legacy_goal_completion_diagnostics(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Synthesize explicit unknowns for identities found in a v1 snapshot."""
+
+    goal_ids: set[str] = set()
+    for collection_name in ("task_states", "metrics"):
+        collection = payload.get(collection_name)
+        if not isinstance(collection, Sequence) or isinstance(
+            collection, (str, bytes, bytearray)
+        ):
+            continue
+        for item in collection:
+            if not isinstance(item, Mapping):
+                continue
+            goal_id = str(
+                item.get("goal_cid") or item.get("canonical_goal_id") or ""
+            ).strip()
+            if goal_id and goal_id not in {UNKNOWN_IDENTITY, "all"}:
+                goal_ids.add(goal_id)
+    goals = [
+        {
+            "schema_version": GOAL_COMPLETION_DIAGNOSTICS_SCHEMA_VERSION,
+            "goal_id": goal_id,
+            "goal_cid": goal_id,
+            "lifecycle_state": "unknown",
+            "status": "unknown",
+            "confidence": None,
+            "confidence_reported": False,
+            "uncovered_criteria": [],
+            "stale_evidence": [],
+            "evidence_stale": False,
+            "analyzer_health": {},
+            "exhaustion_quorum": {},
+            "reopen_reasons": [],
+            "reason_codes": ["legacy_diagnostics_unavailable"],
+            "actionable_reasons": [
+                "Re-evaluate this goal with the versioned completion gate."
+            ],
+            "completion_gate_passed": None,
+            "observed_at": "",
+        }
+        for goal_id in sorted(goal_ids)
+    ]
+    generated_at = str(payload.get("generated_at") or _now_iso())
+    return {
+        "schema": GOAL_COMPLETION_DIAGNOSTICS_SCHEMA,
+        "schema_version": GOAL_COMPLETION_DIAGNOSTICS_SCHEMA_VERSION,
+        "generated_at": generated_at,
+        "diagnostics_available": False,
+        "compatibility_status": "unavailable_in_v1_source",
+        "goal_count": len(goals),
+        "goals": goals,
+        "by_goal_id": {goal["goal_id"]: goal for goal in goals},
+        "state_counts": ({"unknown": len(goals)} if goals else {}),
+        "uncovered_criteria_count": 0,
+        "stale_evidence_goal_count": 0,
+        "unknown_confidence_goal_count": len(goals),
+        "unhealthy_analyzer_goal_count": 0,
+        "exhaustion_quorum_satisfied_goal_count": 0,
+        "reopened_goal_count": 0,
+    }
 
 
 def _scan_receipt_projection(
@@ -747,6 +1228,15 @@ def scheduler_snapshot(
         unique.append((index, event, _event_time(event)))
     unique.sort(key=lambda item: (item[2] is None, item[2] or datetime.max.replace(tzinfo=timezone.utc), item[0]))
     scan_metrics = _reduce_scan_metrics(unique)
+    completion_diagnostics = project_goal_completion_diagnostics(
+        [event for _index, event, _occurred in unique], now=now
+    )
+    diagnostics_by_goal: dict[str, Mapping[str, Any]] = {}
+    for goal_id, diagnostic in completion_diagnostics["by_goal_id"].items():
+        diagnostics_by_goal[str(goal_id)] = diagnostic
+        goal_cid = str(diagnostic.get("goal_cid") or "")
+        if goal_cid:
+            diagnostics_by_goal[goal_cid] = diagnostic
 
     accumulators: dict[tuple[str, str, str, str, str], _Accumulator] = {}
     inherited_by_task: dict[str, dict[str, str]] = {}
@@ -767,6 +1257,12 @@ def scheduler_snapshot(
             event.get("lane_id") or event.get("parallel_lane")
             or event.get("bundle_key") or event.get("state_prefix") or ""
         )
+        if not task_alias and not lane_alias and next(
+            _completion_candidates(event), None
+        ) is not None:
+            # A goal lifecycle decision is supervisor state, not a scheduler
+            # task, so it must not manufacture an ``unknown`` task row.
+            continue
         inherited = inherited_by_task.get(task_alias) or inherited_by_lane.get(lane_alias) or {}
         identity = normalize_metric_identity(event, {**dict(defaults or {}), **inherited})
         if task_alias:
@@ -926,6 +1422,10 @@ def scheduler_snapshot(
             "last_event_type": current.last_event_type,
             "last_event_at": current.last_event_at,
         }
+        goal_diagnostic = diagnostics_by_goal.get(current.identity["goal_cid"])
+        if goal_diagnostic is not None:
+            # Additive nested data leaves all v1 task-state keys intact.
+            state["goal_completion"] = dict(goal_diagnostic)
         task_states.append(state)
         phase_items[current.phase].append(state)
 
@@ -988,12 +1488,18 @@ def scheduler_snapshot(
         "phase_counts": phase_counts,
         "metrics": rows,
         "scan_metrics": scan_metrics,
+        "goal_completion_diagnostics": {
+            key: value
+            for key, value in completion_diagnostics.items()
+            if key != "generated_at"
+        },
     }
     snapshot_id = hashlib.sha256(
         json.dumps(fingerprint_material, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     payload = {
         "schema": SCHEDULER_SNAPSHOT_SCHEMA,
+        "schema_version": SCHEDULER_SNAPSHOT_SCHEMA_VERSION,
         "generated_at": generated_at,
         "snapshot_id": snapshot_id,
         "authoritative": True,
@@ -1006,6 +1512,10 @@ def scheduler_snapshot(
         "metrics": rows,
         "totals": totals,
         "scan_metrics": scan_metrics,
+        # The short alias is convenient for status pages; the explicit name
+        # is used by persisted manifests.  Both are the same versioned view.
+        "goal_completion": completion_diagnostics,
+        "goal_completion_diagnostics": completion_diagnostics,
     }
     return SchedulerSnapshot(payload)
 
@@ -1050,14 +1560,38 @@ publish_scheduler_snapshot = write_scheduler_snapshot
 
 
 def read_scheduler_snapshot(path: Path | str) -> SchedulerSnapshot | None:
-    """Read a published snapshot, returning ``None`` for partial/invalid files."""
+    """Read current or v1 snapshots, returning ``None`` for invalid files.
+
+    Compatibility defaults are additive.  The original schema identifier is
+    preserved so automation can still distinguish an artifact produced by an
+    older supervisor during a rolling upgrade.
+    """
 
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    if not isinstance(payload, dict) or payload.get("schema") != SCHEDULER_SNAPSHOT_SCHEMA:
+    if not isinstance(payload, dict) or payload.get("schema") not in {
+        SCHEDULER_SNAPSHOT_SCHEMA,
+        *LEGACY_SCHEDULER_SNAPSHOT_SCHEMAS,
+    }:
         return None
+    schema = str(payload.get("schema") or "")
+    payload.setdefault(
+        "schema_version",
+        1 if schema in LEGACY_SCHEDULER_SNAPSHOT_SCHEMAS else SCHEDULER_SNAPSHOT_SCHEMA_VERSION,
+    )
+    empty_diagnostics = (
+        _legacy_goal_completion_diagnostics(payload)
+        if schema in LEGACY_SCHEDULER_SNAPSHOT_SCHEMAS
+        else project_goal_completion_diagnostics((), now=payload.get("generated_at"))
+    )
+    diagnostics = payload.get("goal_completion_diagnostics")
+    if not isinstance(diagnostics, Mapping):
+        alias = payload.get("goal_completion")
+        diagnostics = alias if isinstance(alias, Mapping) else empty_diagnostics
+    payload.setdefault("goal_completion", diagnostics)
+    payload.setdefault("goal_completion_diagnostics", diagnostics)
     return SchedulerSnapshot(payload)
 
 
@@ -1105,18 +1639,24 @@ def ready_task_cids(snapshot: SchedulerSnapshot | Mapping[str, Any]) -> tuple[st
 
 
 __all__ = [
+    "GOAL_COMPLETION_DIAGNOSTICS_SCHEMA",
+    "GOAL_COMPLETION_DIAGNOSTICS_SCHEMA_VERSION",
+    "LEGACY_SCHEDULER_SNAPSHOT_SCHEMAS",
     "REFILL_SCAN_FAILED_REASONS",
     "REFILL_SCAN_SKIPPED_REASONS",
     "REFILL_SCAN_SUCCESS_REASONS",
     "REFILL_SCAN_TERMINAL_REASONS",
     "SCHEDULER_PHASES",
     "SCHEDULER_SNAPSHOT_SCHEMA",
+    "SCHEDULER_SNAPSHOT_SCHEMA_VERSION",
     "SchedulerSnapshot",
     "build_scheduler_snapshot",
     "build_scheduler_snapshot_from_paths",
     "derive_scheduler_snapshot",
+    "goal_completion_diagnostics",
     "normalize_metric_identity",
     "publish_scheduler_snapshot",
+    "project_goal_completion_diagnostics",
     "read_scheduler_snapshot",
     "ready_task_cids",
     "scheduler_metrics_snapshot",

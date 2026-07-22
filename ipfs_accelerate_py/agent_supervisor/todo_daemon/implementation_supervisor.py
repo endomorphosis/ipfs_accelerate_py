@@ -23,7 +23,10 @@ from ..checkout_lock import (
     checkout_mutation_lock_path,
 )
 from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
-from ..implementation_supervisor_runner import persist_supervisor_scan_receipt
+from ..implementation_supervisor_runner import (
+    persist_goal_completion_projection,
+    persist_supervisor_scan_receipt,
+)
 from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..scan_receipts import (
     RefillScanResult,
@@ -188,6 +191,9 @@ class PortalSupervisorConfig:
     objective_refine_goals: bool = True
     objective_reconcile_goal_completion: bool = True
     objective_goal_completion_todo_boards: tuple[str, ...] = field(default_factory=tuple)
+    objective_goal_migration_enabled: bool = True
+    objective_goal_migration_preview: bool = False
+    objective_goal_migration_batch_size: int = 100
     objective_seed_interoperability_goals: bool = False
     objective_seed_launch_readiness_goals: bool = False
     objective_interoperability_focus: tuple[str, ...] = field(default_factory=tuple)
@@ -350,6 +356,11 @@ class PortalImplementationSupervisor:
             "scan_health",
             "candidate_funnel",
             "scan_receipts",
+            "goal_completion",
+            "goal_completion_diagnostics",
+            "goal_completion_by_goal_id",
+            "goal_lifecycle_state_counts",
+            "goal_completion_migration",
         ):
             if key in strategy:
                 payload[key] = strategy[key]
@@ -441,6 +452,8 @@ class PortalImplementationSupervisor:
         update_maintenance_phase("strategy_state_repair")
         strategy_file_repair = self.ensure_strategy_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
+        update_maintenance_phase("objective_goal_migration")
+        objective_goal_migration = self.migrate_legacy_objective_goal_completion()
         update_maintenance_phase("objective_task_janitor")
         objective_task_janitor = self.reconcile_objective_task_janitor()
         update_maintenance_phase("reconciliation_guardrails")
@@ -477,6 +490,7 @@ class PortalImplementationSupervisor:
                 "stale_worktree_detection": stale_worktree_detection,
                 "todo_board_repair": todo_board_repair,
                 "objective_task_janitor": objective_task_janitor,
+                "objective_goal_migration": objective_goal_migration,
                 "main_checkout_repair": main_checkout_repair,
                 "generated_dirty_repair": generated_dirty_repair,
                 "post_stuck_generated_dirty_repair": post_stuck_generated_dirty_repair,
@@ -642,6 +656,15 @@ class PortalImplementationSupervisor:
                 "objective_task_janitor_reopened_goal_count": len(
                     objective_task_janitor.get("reopened_goal_ids") or []
                 ),
+                "objective_goal_migration_preview": bool(
+                    objective_goal_migration.get("preview")
+                ),
+                "objective_goal_migrated_count": len(
+                    objective_goal_migration.get("migrated_goal_ids") or []
+                ),
+                "objective_goal_migration_remaining_count": len(
+                    objective_goal_migration.get("remaining_goal_ids") or []
+                ),
                 "mapped_contradiction_count": len(mapped_contradictions),
                 "contradiction_reopened_goal_count": len(
                     objective_contradiction_reconciliation.get(
@@ -677,6 +700,7 @@ class PortalImplementationSupervisor:
             "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
             "objective_seeded_launch_readiness_goal_count": objective_seeded_launch_goal_count,
             "objective_task_janitor": objective_task_janitor,
+            "objective_goal_migration": objective_goal_migration,
             "mapped_contradiction_count": len(mapped_contradictions),
             "objective_contradiction_reconciliation": objective_contradiction_reconciliation,
             "codebase_refill_count": codebase_result.generated_count,
@@ -3662,6 +3686,134 @@ class PortalImplementationSupervisor:
             safe_for_completion_reasoning=False,
         )
 
+    def migrate_legacy_objective_goal_completion(self) -> dict[str, Any]:
+        """Migrate one bounded batch of ambiguous legacy completion claims.
+
+        The objective markdown is the durable checkpoint: migrated goals carry
+        their canonical lifecycle state and migration identity, so the next
+        pass naturally resumes at the first remaining legacy goal.  Preview
+        runs execute the same classifier without changing that document.
+        """
+
+        if not self.config.objective_goal_migration_enabled:
+            disabled = {
+                "schema": "ipfs_accelerate_py.agent_supervisor.objective_goal_migration@1",
+                "schema_version": 1,
+                "enabled": False,
+                "preview": bool(self.config.objective_goal_migration_preview),
+                "changed": False,
+                "reason": "disabled",
+            }
+            strategy = load_json_dict(self.config.strategy_path) or {}
+            persist_goal_completion_projection(
+                strategy.get("goal_completion_by_goal_id") or {},
+                state_dir=self.config.state_dir,
+                state_prefix=self.config.state_prefix,
+                strategy_path=self.config.strategy_path,
+                migration=disabled,
+            )
+            return disabled
+
+        from ipfs_accelerate_py.agent_supervisor.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+            migrate_legacy_objective_goals,
+        )
+
+        objective_path = self.config.objective_path or default_objective_path(self.config.repo_root)
+        if not objective_path.exists():
+            missing = {
+                "schema": "ipfs_accelerate_py.agent_supervisor.objective_goal_migration@1",
+                "schema_version": 1,
+                "enabled": True,
+                "preview": bool(self.config.objective_goal_migration_preview),
+                "changed": False,
+                "reason": "objective_path_missing",
+                "objective_path": str(objective_path),
+            }
+            strategy = load_json_dict(self.config.strategy_path) or {}
+            persist_goal_completion_projection(
+                strategy.get("goal_completion_by_goal_id") or {},
+                state_dir=self.config.state_dir,
+                state_prefix=self.config.state_prefix,
+                strategy_path=self.config.strategy_path,
+                migration=missing,
+            )
+            return missing
+
+        batch_size = max(1, int(self.config.objective_goal_migration_batch_size))
+        try:
+            result = migrate_legacy_objective_goals(
+                repo_root=self.config.repo_root,
+                objective_path=objective_path,
+                todo_path=self.config.todo_path if self.config.todo_path.exists() else None,
+                task_header_prefix=self.config.task_prefix,
+                preview=bool(self.config.objective_goal_migration_preview),
+                max_goals=batch_size,
+            )
+        except Exception as exc:
+            failure = {
+                "schema": "ipfs_accelerate_py.agent_supervisor.objective_goal_migration@1",
+                "schema_version": 1,
+                "enabled": True,
+                "preview": bool(self.config.objective_goal_migration_preview),
+                "changed": False,
+                "reason": "migration_failed",
+                "objective_path": str(objective_path),
+                "error": f"{type(exc).__name__}: {exc}",
+                "analyzer_health": {"healthy": False, "status": "failed"},
+            }
+            strategy = load_json_dict(self.config.strategy_path) or {}
+            persist_goal_completion_projection(
+                strategy.get("goal_completion_by_goal_id") or {},
+                state_dir=self.config.state_dir,
+                state_prefix=self.config.state_prefix,
+                strategy_path=self.config.strategy_path,
+                migration=failure,
+            )
+            self._record_event("objective_goal_migration_failed", failure)
+            return failure
+        payload = result.to_dict()
+        payload["enabled"] = True
+        payload["batch_size"] = batch_size
+        payload["resumable"] = bool(payload.get("remaining_goal_ids"))
+
+        strategy = load_json_dict(self.config.strategy_path) or {}
+        prior = strategy.get("goal_completion_by_goal_id")
+        diagnostics: dict[str, Any] = dict(prior) if isinstance(prior, Mapping) else {}
+        for record in payload.get("records") or ():
+            if not isinstance(record, Mapping):
+                continue
+            goal_id = str(record.get("goal_id") or "").strip()
+            if goal_id:
+                diagnostics[goal_id] = dict(record)
+        projection = persist_goal_completion_projection(
+            diagnostics,
+            state_dir=self.config.state_dir,
+            state_prefix=self.config.state_prefix,
+            strategy_path=self.config.strategy_path,
+            migration=payload,
+        )
+        payload["diagnostics"] = projection
+        self._record_event(
+            "objective_goal_migration_preview"
+            if self.config.objective_goal_migration_preview
+            else "objective_goal_migration",
+            {
+                "schema_version": payload.get("schema_version", 1),
+                "objective_path": str(objective_path),
+                "preview": bool(payload.get("preview")),
+                "changed": bool(payload.get("changed")),
+                "candidate_goal_ids": list(payload.get("candidate_goal_ids") or []),
+                "migrated_goal_ids": list(payload.get("migrated_goal_ids") or []),
+                "provisional_goal_ids": list(payload.get("provisional_goal_ids") or []),
+                "verified_goal_ids": list(payload.get("verified_goal_ids") or []),
+                "remaining_goal_ids": list(payload.get("remaining_goal_ids") or []),
+                "resumable": bool(payload["resumable"]),
+                "batch_size": batch_size,
+            },
+        )
+        return payload
+
     def reconcile_objective_task_janitor(
         self,
         *,
@@ -4509,6 +4661,8 @@ class PortalImplementationSupervisor:
         strategy["last_objective_completion_validation_results"] = dict(
             payload.get("objective_completion_validation_results") or {}
         )
+        completion_decisions = dict(payload.get("objective_completion_decisions") or {})
+        strategy["last_objective_completion_decisions"] = completion_decisions
         strategy["last_objective_seeded_interoperability_goal_ids"] = list(
             payload.get("seeded_interoperability_goal_ids") or []
         )
@@ -4529,6 +4683,20 @@ class PortalImplementationSupervisor:
         strategy["last_objective_heap_schedule_count"] = int(payload.get("objective_heap_schedule_count") or 0)
         strategy["last_objective_task_janitor_force_goal_ids"] = sorted(set(force_goal_ids))
         write_json(self.config.strategy_path, strategy)
+
+        prior_diagnostics = strategy.get("goal_completion_by_goal_id")
+        combined_diagnostics = (
+            dict(prior_diagnostics) if isinstance(prior_diagnostics, Mapping) else {}
+        )
+        combined_diagnostics.update(completion_decisions)
+        if combined_diagnostics:
+            persist_goal_completion_projection(
+                combined_diagnostics,
+                state_dir=self.config.state_dir,
+                state_prefix=self.config.state_prefix,
+                strategy_path=self.config.strategy_path,
+                migration=strategy.get("goal_completion_migration"),
+            )
 
         return result
 
@@ -5767,6 +5935,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--no-objective-goal-migration",
+        dest="objective_goal_migration_enabled",
+        action="store_false",
+        help="Disable idempotent migration of legacy completed objective goals.",
+    )
+    parser.set_defaults(objective_goal_migration_enabled=True)
+    parser.add_argument(
+        "--objective-goal-migration-preview",
+        action="store_true",
+        help=(
+            "Classify the next legacy-completion batch and publish diagnostics without "
+            "rewriting the objective document."
+        ),
+    )
+    parser.add_argument(
+        "--objective-goal-migration-batch-size",
+        type=int,
+        default=100,
+        help="Maximum legacy completed goals to migrate per supervisor pass (minimum 1).",
+    )
+    parser.add_argument(
         "--objective-seed-interoperability-goals",
         action="store_true",
         help="Seed objective goals for cross-submodule interoperability and integration tests.",
@@ -5985,6 +6174,11 @@ def supervisor_config_from_args(
         objective_refine_goals=args.objective_refine_goals,
         objective_reconcile_goal_completion=args.objective_reconcile_goal_completion,
         objective_goal_completion_todo_boards=tuple(args.objective_goal_completion_todo_board),
+        objective_goal_migration_enabled=(
+            args.objective_goal_migration_enabled and not reconciliation_only
+        ),
+        objective_goal_migration_preview=args.objective_goal_migration_preview,
+        objective_goal_migration_batch_size=max(1, args.objective_goal_migration_batch_size),
         objective_seed_interoperability_goals=args.objective_seed_interoperability_goals,
         objective_seed_launch_readiness_goals=args.objective_seed_launch_readiness_goals,
         objective_interoperability_focus=split_csv_values(args.objective_interoperability_focus),
