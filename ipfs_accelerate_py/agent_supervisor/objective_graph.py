@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
+from .scan_receipts import RefillScanResult, ScanTerminalReason, build_scan_result
 from .task_identity import TaskIdentity, canonical_bundle_identity, canonical_task_identity
 from .taskboard_store import (
     locked_taskboard,
@@ -64,6 +65,7 @@ DEFAULT_SCAN_OVERSAMPLE_MULTIPLIER = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_OVERSAMPLE_MULTIPLIER", "2")
 )
 DEFAULT_TASK_PREFIX = "AUTO-"
+OBJECTIVE_SCAN_ANALYZER_VERSION = "objective-gap-analyzer/v1"
 DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
 AST_DATASET_RECORD_SCHEMA_VERSION = 2
 LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
@@ -3021,6 +3023,136 @@ def generate_objective_todos(
             persist_dataset=persist_ast_dataset,
         )
     return records
+
+
+def generate_objective_todos_result(
+    *,
+    scan_mode: str = "direct",
+    **kwargs: Any,
+) -> RefillScanResult[ObjectiveTaskRecord]:
+    """Generate objective todos and describe the terminal scan outcome.
+
+    ``generate_objective_todos`` remains the list-returning primitive for
+    callers that are explicitly operating on task records.  Refill and goal
+    completion code should use this typed boundary so an empty collection can
+    never be mistaken for successful exhaustion without a terminal reason.
+    """
+
+    started_at = datetime.now(timezone.utc)
+    repo_root = Path(kwargs.get("repo_root") or ".").resolve()
+    try:
+        max_findings = int(kwargs.get("max_findings", 10))
+    except (TypeError, ValueError):
+        max_findings = 0
+    if max_findings <= 0:
+        return build_scan_result(
+            ScanTerminalReason.DISABLED,
+            scan_mode,
+            OBJECTIVE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            metadata={"cause": "non_positive_max_findings"},
+        )
+
+    objective_path = Path(kwargs.get("objective_path") or "")
+    todo_path = Path(kwargs.get("todo_path") or "")
+    missing_inputs = [
+        name
+        for name, path in (("objective_path", objective_path), ("todo_path", todo_path))
+        if not path.exists()
+    ]
+    if missing_inputs:
+        return build_scan_result(
+            ScanTerminalReason.FAILED,
+            scan_mode,
+            OBJECTIVE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            error=f"missing required scan input: {', '.join(missing_inputs)}",
+            metadata={"missing_inputs": missing_inputs},
+        )
+
+    try:
+        records = generate_objective_todos(**kwargs)
+    except TimeoutError as exc:
+        return build_scan_result(
+            ScanTerminalReason.TIMED_OUT,
+            scan_mode,
+            OBJECTIVE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            error=str(exc) or type(exc).__name__,
+        )
+    except Exception as exc:
+        return build_scan_result(
+            ScanTerminalReason.FAILED,
+            scan_mode,
+            OBJECTIVE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+
+    terminal_reason = ScanTerminalReason.GENERATED
+    duplicate_candidate_count = 0
+    if not records:
+        terminal_reason = ScanTerminalReason.EXHAUSTED
+        seen_fingerprints = tuple(kwargs.get("seen_fingerprints") or ())
+        if seen_fingerprints:
+            try:
+                duplicate_candidates = scan_objective_gaps(
+                    repo_root,
+                    objective_path=objective_path,
+                    max_findings=max_findings,
+                    seen_fingerprints=(),
+                    force_goal_ids=kwargs.get("force_goal_ids") or (),
+                    summary_prefix=str(
+                        kwargs.get("summary_prefix") or DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
+                    ),
+                    surplus_findings_per_goal=int(
+                        kwargs.get("surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL)
+                    ),
+                    surplus_min_terms_per_todo=int(
+                        kwargs.get("surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO)
+                    ),
+                )
+            except TimeoutError as exc:
+                return build_scan_result(
+                    ScanTerminalReason.TIMED_OUT,
+                    scan_mode,
+                    OBJECTIVE_SCAN_ANALYZER_VERSION,
+                    repo_root,
+                    started_at,
+                    error=str(exc) or type(exc).__name__,
+                )
+            except Exception as exc:
+                return build_scan_result(
+                    ScanTerminalReason.FAILED,
+                    scan_mode,
+                    OBJECTIVE_SCAN_ANALYZER_VERSION,
+                    repo_root,
+                    started_at,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            duplicate_candidate_count = len(duplicate_candidates)
+            if duplicate_candidates:
+                terminal_reason = ScanTerminalReason.DUPLICATE_ONLY
+    return build_scan_result(
+        terminal_reason,
+        scan_mode,
+        OBJECTIVE_SCAN_ANALYZER_VERSION,
+        repo_root,
+        started_at,
+        records,
+        safe_for_completion_reasoning=(
+            terminal_reason is ScanTerminalReason.EXHAUSTED
+            and str(scan_mode).endswith("exhaustive")
+        ),
+        metadata={
+            "candidate_count": len(records),
+            "duplicate_candidate_count": duplicate_candidate_count,
+        },
+    )
 
 
 def _profile_g_safe_planning_value(value: Any) -> Any:

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from .scan_receipts import RefillScanResult
 from .wrapper_utils import (
     AgentSupervisorNamespacePaths,
     with_default,
@@ -1724,7 +1725,12 @@ def _run_hooks(
         if hook.phase != phase:
             continue
         result = hook.callback(context)
-        if result:
+        should_log = (
+            result.generated_count > 0
+            if isinstance(result, RefillScanResult)
+            else bool(result)
+        )
+        if should_log:
             logger.log(hook.log_level, hook.message, result)
 
 

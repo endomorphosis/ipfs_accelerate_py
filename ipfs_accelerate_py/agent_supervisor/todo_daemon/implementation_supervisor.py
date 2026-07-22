@@ -24,6 +24,13 @@ from ..checkout_lock import (
 )
 from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
+from ..scan_receipts import (
+    RefillScanResult,
+    ScanTerminalReason,
+    adapt_legacy_scan_result,
+    build_scan_result,
+    scan_identity,
+)
 from .core import ManagedDaemonSpec, terminate_pid_tree
 from .implementation_daemon import (
     DEFAULT_TRACKS,
@@ -67,6 +74,18 @@ class ObjectiveRefillTimeoutError(TimeoutError):
 
 class CodebaseRefillTimeoutError(TimeoutError):
     """Raised when supervisor-owned codebase refill exceeds its local budget."""
+
+
+OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
+CODEBASE_REFILL_ANALYZER_VERSION = "codebase-scan-v1"
+
+
+def _scan_skip_reason(mode: str) -> ScanTerminalReason:
+    """Translate the backlog threshold decision into an explicit terminal reason."""
+
+    if mode == "cooldown":
+        return ScanTerminalReason.COOLDOWN
+    return ScanTerminalReason.THRESHOLD_SATISFIED
 
 
 def split_csv_values(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
@@ -453,8 +472,16 @@ class PortalImplementationSupervisor:
         dependency_findings = self.record_dependency_guardrails()
         if include_refill:
             update_maintenance_phase("objective_refill")
-            objective_payload = self.refill_objective_backlog()
-            objective_generated_count = int(objective_payload.get("generated_count") or 0)
+            objective_started_at = datetime.now(timezone.utc)
+            objective_result = self._adapt_legacy_objective_result(
+                self.refill_objective_backlog(),
+                scan_mode="supervisor_callback",
+                started_at=objective_started_at,
+            )
+            objective_payload = dict(objective_result.metadata)
+            objective_generated_count = int(
+                objective_payload.get("generated_count") or len(objective_payload.get("task_ids") or [])
+            )
             objective_refined_goal_count = len(objective_payload.get("refined_goal_ids") or [])
             objective_seeded_goal_count = len(objective_payload.get("seeded_interoperability_goal_ids") or [])
             objective_seeded_launch_goal_count = len(
@@ -467,10 +494,23 @@ class PortalImplementationSupervisor:
                 and objective_generated_count > 0
             ):
                 codebase_findings = []
+                codebase_result = self._terminal_refill_result(
+                    ScanTerminalReason.DISABLED,
+                    scan_mode="deferred",
+                    analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                    started_at=datetime.now(timezone.utc),
+                    metadata={"deferred_reason": "objective_refill_generated_todos"},
+                )
                 codebase_deferred_reason = "objective_refill_generated_todos"
             else:
                 update_maintenance_phase("codebase_refill")
-                codebase_findings = self.refill_codebase_backlog()
+                codebase_started_at = datetime.now(timezone.utc)
+                codebase_result = self._adapt_legacy_codebase_result(
+                    self.refill_codebase_backlog(),
+                    scan_mode="supervisor_callback",
+                    started_at=codebase_started_at,
+                )
+                codebase_findings = list(codebase_result.findings)
         else:
             update_maintenance_phase("preflight_refill_deferred")
             objective_payload = {}
@@ -479,6 +519,13 @@ class PortalImplementationSupervisor:
             objective_seeded_goal_count = 0
             objective_seeded_launch_goal_count = 0
             codebase_findings = []
+            codebase_result = self._terminal_refill_result(
+                ScanTerminalReason.DISABLED,
+                scan_mode="preflight_deferred",
+                analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                started_at=datetime.now(timezone.utc),
+                metadata={"deferred_reason": "preflight_refill_deferred_until_daemon_loop"},
+            )
             codebase_deferred_reason = "preflight_refill_deferred_until_daemon_loop"
         update_maintenance_phase("post_refill_generated_dirty_repair")
         post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
@@ -524,7 +571,7 @@ class PortalImplementationSupervisor:
                 "objective_task_janitor_reopened_goal_count": len(
                     objective_task_janitor.get("reopened_goal_ids") or []
                 ),
-                "codebase_refill_count": len(codebase_findings),
+                "codebase_refill_count": codebase_result.generated_count,
                 "codebase_deferred_reason": codebase_deferred_reason,
                 "generated_dirty_repair_committed_count": int(
                     generated_dirty_repair.get("committed_count") or 0
@@ -547,7 +594,7 @@ class PortalImplementationSupervisor:
             "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
             "objective_seeded_launch_readiness_goal_count": objective_seeded_launch_goal_count,
             "objective_task_janitor": objective_task_janitor,
-            "codebase_refill_count": len(codebase_findings),
+            "codebase_refill_count": codebase_result.generated_count,
             "codebase_deferred_reason": codebase_deferred_reason,
             "event_log_repair": event_log_repair,
             "strategy_file_repair": strategy_file_repair,
@@ -3408,12 +3455,108 @@ class PortalImplementationSupervisor:
             callback=lambda: run_objective_daemon(args),
         )
 
-    def _run_codebase_refill_with_timeout(self, callback) -> list[dict[str, Any]]:
+    def _run_codebase_refill_with_timeout(self, callback) -> Any:
         return self._run_supervisor_call_with_timeout(
             phase="codebase refill",
             timeout_seconds=float(self.config.codebase_refill_timeout_seconds or 0.0),
             timeout_error=CodebaseRefillTimeoutError,
             callback=callback,
+        )
+
+    def _terminal_refill_result(
+        self,
+        reason: ScanTerminalReason,
+        *,
+        scan_mode: str,
+        analyzer_version: str,
+        started_at: datetime,
+        findings: Any = (),
+        safe_for_completion_reasoning: bool = False,
+        error: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> RefillScanResult:
+        """Build a repository-bound refill receipt for supervisor-owned scans."""
+
+        return build_scan_result(
+            reason,
+            scan_mode,
+            analyzer_version,
+            self.config.repo_root,
+            started_at,
+            findings,
+            safe_for_completion_reasoning=safe_for_completion_reasoning,
+            error=error,
+            metadata=metadata,
+        )
+
+    def _adapt_legacy_objective_result(
+        self,
+        value: Any,
+        *,
+        scan_mode: str,
+        started_at: datetime,
+    ) -> RefillScanResult:
+        """Explicitly adapt the objective daemon's historical mapping payload."""
+
+        if isinstance(value, RefillScanResult):
+            return value
+        payload = dict(value) if isinstance(value, Mapping) else {}
+        task_ids = list(payload.get("task_ids") or [])
+        has_non_task_changes = any(
+            payload.get(key)
+            for key in (
+                "completed_goal_ids",
+                "refined_goal_ids",
+                "seeded_interoperability_goal_ids",
+                "seeded_launch_readiness_goal_ids",
+            )
+        )
+        if not task_ids and has_non_task_changes:
+            return self._terminal_refill_result(
+                ScanTerminalReason.PARTIAL,
+                scan_mode=scan_mode,
+                analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                metadata=payload,
+            )
+        identity = scan_identity(self.config.repo_root)
+        return adapt_legacy_scan_result(
+            task_ids,
+            empty_reason=ScanTerminalReason.PARTIAL,
+            scan_mode=scan_mode,
+            analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+            repository_id=identity.repository_id,
+            tree_id=identity.tree_id,
+            started_at=started_at,
+            # The legacy payload does not prove why it is empty.  Even when
+            # this call was requested in exhaustive mode, the adapter cannot
+            # promote absence into completion evidence.
+            safe_for_completion_reasoning=False,
+            metadata=payload,
+        )
+
+    def _adapt_legacy_codebase_result(
+        self,
+        value: Any,
+        *,
+        scan_mode: str,
+        started_at: datetime,
+    ) -> RefillScanResult:
+        """Explicitly adapt list-returning codebase refill callbacks."""
+
+        if isinstance(value, RefillScanResult):
+            return value
+        findings = list(value) if isinstance(value, (list, tuple)) else []
+        identity = scan_identity(self.config.repo_root)
+        return adapt_legacy_scan_result(
+            findings,
+            empty_reason=ScanTerminalReason.PARTIAL,
+            scan_mode=scan_mode,
+            analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+            repository_id=identity.repository_id,
+            tree_id=identity.tree_id,
+            started_at=started_at,
+            safe_for_completion_reasoning=False,
         )
 
     def reconcile_objective_task_janitor(self) -> dict[str, Any]:
@@ -3683,11 +3826,17 @@ class PortalImplementationSupervisor:
             return todo_text, []
         return "".join(output), inserted
 
-    def refill_objective_backlog(self) -> dict[str, Any]:
+    def refill_objective_backlog(self) -> RefillScanResult:
         """Refine the objective heap and feed todos when the backlog is low or drained."""
 
+        started_at = datetime.now(timezone.utc)
         if not self.config.objective_refill_enabled:
-            return {}
+            return self._terminal_refill_result(
+                ScanTerminalReason.DISABLED,
+                scan_mode="disabled",
+                analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+            )
 
         from argparse import Namespace
 
@@ -3714,9 +3863,21 @@ class PortalImplementationSupervisor:
 
         objective_path = self.config.objective_path or default_objective_path(self.config.repo_root)
         if not objective_path.exists() and not self.config.objective_ensure_tracking_document:
-            return {}
+            return self._terminal_refill_result(
+                ScanTerminalReason.FAILED,
+                scan_mode="prerequisite_check",
+                analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error=f"objective path does not exist: {objective_path}",
+            )
         if not self.config.todo_path.exists():
-            return {}
+            return self._terminal_refill_result(
+                ScanTerminalReason.FAILED,
+                scan_mode="prerequisite_check",
+                analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error=f"todo path does not exist: {self.config.todo_path}",
+            )
 
         todo_text = self.config.todo_path.read_text(encoding="utf-8")
         strategy = load_strategy(self.config.strategy_path)
@@ -3738,7 +3899,13 @@ class PortalImplementationSupervisor:
             force=bool(force_goal_ids),
         )
         if not should_scan:
-            return {}
+            return self._terminal_refill_result(
+                _scan_skip_reason(mode),
+                scan_mode=mode,
+                analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                metadata={"current_open": current_open, "task_count": task_count},
+            )
 
         state_root = self.config.state_dir.parent
         discovery_dir = self.config.objective_discovery_dir or state_root / "discovery"
@@ -3845,7 +4012,21 @@ class PortalImplementationSupervisor:
                     "error": str(exc),
                 },
             )
-            return payload
+            return self._terminal_refill_result(
+                ScanTerminalReason.TIMED_OUT,
+                scan_mode=mode,
+                analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error=str(exc),
+                metadata=payload,
+            )
+
+        result = self._adapt_legacy_objective_result(
+            payload,
+            scan_mode=mode,
+            started_at=started_at,
+        )
+        payload = dict(result.metadata)
 
         strategy = load_strategy(self.config.strategy_path)
         strategy["last_objective_goal_scan_at"] = utc_now()
@@ -3879,16 +4060,11 @@ class PortalImplementationSupervisor:
         strategy["last_objective_task_janitor_force_goal_ids"] = sorted(set(force_goal_ids))
         write_json(self.config.strategy_path, strategy)
 
-        if (
-            payload.get("completed_goal_ids")
-            or payload.get("seeded_interoperability_goal_ids")
-            or payload.get("seeded_launch_readiness_goal_ids")
-            or payload.get("refined_goal_ids")
-            or payload.get("task_ids")
-        ):
+        if result.generated_count > 0 or result.terminal_reason is ScanTerminalReason.PARTIAL:
             self._record_event(
                 "objective_refill_scan",
                 {
+                    "scan_result": result.to_dict(),
                     "mode": mode,
                     "objective_path": str(objective_path),
                     "completed_goal_ids": payload.get("completed_goal_ids") or [],
@@ -3907,13 +4083,19 @@ class PortalImplementationSupervisor:
                     or DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO,
                 },
             )
-        return payload
+        return result
 
-    def refill_codebase_backlog(self) -> list[dict[str, Any]]:
+    def refill_codebase_backlog(self) -> RefillScanResult:
         """Feed low or drained todo boards from a codebase/submodule scan."""
 
+        started_at = datetime.now(timezone.utc)
         if not self.config.codebase_refill_enabled:
-            return []
+            return self._terminal_refill_result(
+                ScanTerminalReason.DISABLED,
+                scan_mode="disabled",
+                analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+            )
 
         from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
             CODEBASE_SCAN_SKIP_PREFIXES,
@@ -3925,7 +4107,13 @@ class PortalImplementationSupervisor:
         )
 
         if not self.config.todo_path.exists():
-            return []
+            return self._terminal_refill_result(
+                ScanTerminalReason.FAILED,
+                scan_mode="prerequisite_check",
+                analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error=f"todo path does not exist: {self.config.todo_path}",
+            )
         discovery_dir = self.config.codebase_scan_discovery_dir or self.config.state_dir.parent / "discovery"
         discovery_output_path = self.config.codebase_scan_discovery_output_path
         if not discovery_output_path:
@@ -3947,9 +4135,15 @@ class PortalImplementationSupervisor:
             cooldown_seconds=self.config.codebase_scan_cooldown_seconds,
         )
         if not should_scan:
-            return []
+            return self._terminal_refill_result(
+                _scan_skip_reason(mode),
+                scan_mode=mode,
+                analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                metadata={"current_open": current_open, "task_count": task_count},
+            )
 
-        def run_refill() -> list[dict[str, Any]]:
+        def run_refill() -> RefillScanResult:
             return record_codebase_scan_findings(
                 todo_path=self.config.todo_path,
                 state_path=self.config.state_path,
@@ -3970,7 +4164,7 @@ class PortalImplementationSupervisor:
             )
 
         try:
-            findings = self._run_codebase_refill_with_timeout(run_refill)
+            callback_result = self._run_codebase_refill_with_timeout(run_refill)
         except CodebaseRefillTimeoutError as exc:
             strategy = load_strategy(self.config.strategy_path)
             strategy["last_codebase_scan_at"] = utc_now()
@@ -3994,7 +4188,14 @@ class PortalImplementationSupervisor:
                     "error": str(exc),
                 },
             )
-            return []
+            return self._terminal_refill_result(
+                ScanTerminalReason.TIMED_OUT,
+                scan_mode=mode,
+                analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error=str(exc),
+                metadata={"timeout_seconds": float(self.config.codebase_refill_timeout_seconds or 0.0)},
+            )
         except Exception as exc:
             failure = {
                 "todo_path": str(self.config.todo_path),
@@ -4005,18 +4206,31 @@ class PortalImplementationSupervisor:
             }
             logger.warning("Codebase backlog refill failed; leaving supervisor alive", exc_info=True)
             self._record_event("codebase_refill_failed", failure)
-            return []
-        if findings:
+            return self._terminal_refill_result(
+                ScanTerminalReason.FAILED,
+                scan_mode=mode,
+                analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error=str(exc),
+                metadata=failure,
+            )
+        result = self._adapt_legacy_codebase_result(
+            callback_result,
+            scan_mode=mode,
+            started_at=started_at,
+        )
+        if result.generated_count > 0:
             self._record_event(
                 "codebase_refill_scan",
                 {
-                    "generated_count": len(findings),
+                    "scan_result": result.to_dict(),
+                    "generated_count": result.generated_count,
                     "todo_path": str(self.config.todo_path),
                     "discovery_dir": str(discovery_dir),
-                    "findings": findings,
+                    "findings": list(result.findings),
                 },
             )
-        return findings
+        return result
 
     def _implementation_attempt_is_active(self, state: PortalTaskState, *, now_ts: float) -> bool:
         if not state.active_task_id or not state.implementation_in_progress:

@@ -35,12 +35,14 @@ from .objective_graph import (
     LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND,
     LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE,
     LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS,
+    OBJECTIVE_SCAN_ANALYZER_VERSION,
     SUCCESSFUL_MERGE_RECEIPT_STATUSES,
     bundle_path,
-    generate_objective_todos,
+    generate_objective_todos_result,
     repo_relative_path,
     safe_bundle_key,
 )
+from .scan_receipts import RefillScanResult, ScanTerminalReason, build_scan_result
 from .todo_daemon.implementation_daemon import (
     is_retry_budget_repair_task,
     parse_task_file,
@@ -93,6 +95,7 @@ DEFAULT_RECONCILIATION_GUARDRAIL_MAX_FINDINGS = int(
 )
 DEFAULT_TASK_ID_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = "## AUTO-"
+CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
 CODEBASE_SCAN_MAX_FILE_BYTES = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144"))
 CODEBASE_SCAN_SUFFIXES = {
     ".cjs",
@@ -4146,11 +4149,20 @@ def record_codebase_scan_findings(
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record codebase scan backlog findings",
-) -> list[dict[str, Any]]:
-    """Feed a todo board with static codebase findings when backlog runs low."""
+) -> RefillScanResult[dict[str, Any]]:
+    """Feed a low backlog and return a typed account of the scan attempt."""
 
+    started_at = datetime.now(timezone.utc)
     if not todo_path.exists():
-        return []
+        return build_scan_result(
+            ScanTerminalReason.FAILED,
+            "preflight",
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            error=f"todo board does not exist: {todo_path}",
+            metadata={"missing_input": "todo_path"},
+        )
     retired_duplicates = retire_duplicate_codebase_scan_tasks(
         todo_path,
         task_prefix=task_prefix,
@@ -4174,7 +4186,14 @@ def record_codebase_scan_findings(
     if max_findings <= 0:
         if retired_duplicates or seen != strategy_seen:
             write_json(strategy_path, strategy)
-        return []
+        return build_scan_result(
+            ScanTerminalReason.DISABLED,
+            "disabled",
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            metadata={"cause": "non_positive_max_findings"},
+        )
     should_scan, mode, current_open, task_count = should_refill_backlog(
         todo_text=todo_text,
         state_path=state_path,
@@ -4189,24 +4208,87 @@ def record_codebase_scan_findings(
     if not should_scan:
         if retired_duplicates or seen != strategy_seen:
             write_json(strategy_path, strategy)
-        return []
+        reason = (
+            ScanTerminalReason.COOLDOWN
+            if mode == "cooldown"
+            else ScanTerminalReason.THRESHOLD_SATISFIED
+        )
+        return build_scan_result(
+            reason,
+            mode,
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            metadata={"open_task_count": current_open, "task_count": task_count},
+        )
 
-    findings = scan_codebase_findings(
-        repo_root,
-        max_findings=max_findings,
-        seen_fingerprints=seen,
-        exhaustive=mode.endswith("drained_exhaustive"),
-        skip_prefixes=skip_prefixes,
-    )
+    try:
+        findings = scan_codebase_findings(
+            repo_root,
+            max_findings=max_findings,
+            seen_fingerprints=seen,
+            exhaustive=mode.endswith("drained_exhaustive"),
+            skip_prefixes=skip_prefixes,
+        )
+    except TimeoutError as exc:
+        return build_scan_result(
+            ScanTerminalReason.TIMED_OUT,
+            mode,
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            error=str(exc) or type(exc).__name__,
+        )
+    except Exception as exc:
+        logger.exception("Codebase refill scan failed")
+        return build_scan_result(
+            ScanTerminalReason.FAILED,
+            mode,
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            error=f"{type(exc).__name__}: {exc}",
+        )
     strategy["last_codebase_scan_at"] = utc_now()
     strategy["last_codebase_scan_mode"] = mode
     if current_open == 0 or mode.endswith("drained_exhaustive"):
         strategy["last_drained_codebase_scan_task_count"] = task_count
     strategy["codebase_scan_seen_fingerprints"] = sorted(seen | {finding.fingerprint for finding in findings})
     if not findings:
+        duplicate_candidates = (
+            scan_codebase_findings(
+                repo_root,
+                max_findings=1,
+                seen_fingerprints=(),
+                exhaustive=mode.endswith("exhaustive"),
+                skip_prefixes=skip_prefixes,
+            )
+            if seen
+            else []
+        )
+        terminal_reason = (
+            ScanTerminalReason.DUPLICATE_ONLY
+            if duplicate_candidates
+            else ScanTerminalReason.EXHAUSTED
+        )
         strategy["last_codebase_scan_findings"] = []
         write_json(strategy_path, strategy)
-        return []
+        return build_scan_result(
+            terminal_reason,
+            mode,
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            safe_for_completion_reasoning=(
+                terminal_reason is ScanTerminalReason.EXHAUSTED
+                and mode.endswith("exhaustive")
+            ),
+            metadata={
+                "duplicate_candidate_count": len(duplicate_candidates),
+                "open_task_count": current_open,
+                "task_count": task_count,
+            },
+        )
 
     appended: list[dict[str, Any]] = []
     bundle_records: list[dict[str, Any]] = []
@@ -4214,6 +4296,7 @@ def record_codebase_scan_findings(
     if bundle_dir is not None:
         from .todo_vector_index import collect_output_symbols
 
+    detected_count = len(findings)
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read()
         latest_seen = codebase_scan_fingerprint_hints(
@@ -4341,7 +4424,27 @@ def record_codebase_scan_findings(
         if commit_results:
             strategy["last_codebase_scan_commit_results"] = commit_results
             write_json(strategy_path, strategy)
-    return appended
+    reason = ScanTerminalReason.GENERATED if appended else ScanTerminalReason.DUPLICATE_ONLY
+    return build_scan_result(
+        reason,
+        mode,
+        CODEBASE_SCAN_ANALYZER_VERSION,
+        repo_root,
+        started_at,
+        appended,
+        metadata={
+            "detected_count": detected_count,
+            "duplicate_count": detected_count - len(appended),
+            "open_task_count": current_open,
+            "task_count": task_count,
+        },
+    )
+
+
+def record_codebase_scan_findings_legacy(**kwargs: Any) -> list[dict[str, Any]]:
+    """Explicit list compatibility wrapper for pre-receipt callers."""
+
+    return list(record_codebase_scan_findings(**kwargs).items)
 
 
 def record_objective_backlog_findings(
@@ -4369,11 +4472,34 @@ def record_objective_backlog_findings(
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
-) -> list[dict[str, Any]]:
-    """Feed a todo board from objective-heap gaps when backlog runs low."""
+) -> RefillScanResult[dict[str, Any]]:
+    """Feed a todo board from objective gaps and return a typed scan result."""
 
-    if max_findings <= 0 or not todo_path.exists() or not objective_path.exists():
-        return []
+    started_at = datetime.now(timezone.utc)
+    if max_findings <= 0:
+        return build_scan_result(
+            ScanTerminalReason.DISABLED,
+            "disabled",
+            OBJECTIVE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            metadata={"cause": "non_positive_max_findings"},
+        )
+    missing_inputs = [
+        name
+        for name, path in (("todo_path", todo_path), ("objective_path", objective_path))
+        if not path.exists()
+    ]
+    if missing_inputs:
+        return build_scan_result(
+            ScanTerminalReason.FAILED,
+            "preflight",
+            OBJECTIVE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            error=f"missing required scan input: {', '.join(missing_inputs)}",
+            metadata={"missing_inputs": missing_inputs},
+        )
     todo_text = todo_path.read_text(encoding="utf-8")
     strategy = load_strategy(strategy_path)
     should_scan, mode, current_open, task_count = should_refill_backlog(
@@ -4388,10 +4514,23 @@ def record_objective_backlog_findings(
         force=force,
     )
     if not should_scan:
-        return []
+        reason = (
+            ScanTerminalReason.COOLDOWN
+            if mode == "cooldown"
+            else ScanTerminalReason.THRESHOLD_SATISFIED
+        )
+        return build_scan_result(
+            reason,
+            mode,
+            OBJECTIVE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            metadata={"open_task_count": current_open, "task_count": task_count},
+        )
 
     seen = {str(item) for item in strategy.get("objective_goal_seen_fingerprints", []) if str(item).strip()}
-    records = generate_objective_todos(
+    generation_result = generate_objective_todos_result(
+        scan_mode=mode,
         repo_root=repo_root,
         objective_path=objective_path,
         todo_path=todo_path,
@@ -4410,6 +4549,7 @@ def record_objective_backlog_findings(
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path,
     )
+    records = list(generation_result.items)
     strategy["last_objective_goal_scan_at"] = utc_now()
     strategy["last_objective_goal_scan_mode"] = mode
     if current_open == 0 or mode.endswith("drained_exhaustive"):
@@ -4466,7 +4606,39 @@ def record_objective_backlog_findings(
         if commit_results:
             strategy["last_objective_goal_commit_results"] = commit_results
             write_json(strategy_path, strategy)
-    return appended
+    if generation_result.terminal_reason not in {
+        ScanTerminalReason.GENERATED,
+        ScanTerminalReason.EXHAUSTED,
+    }:
+        return build_scan_result(
+            generation_result.terminal_reason,
+            mode,
+            generation_result.analyzer_version,
+            repo_root,
+            started_at,
+            error=generation_result.error,
+            metadata=generation_result.metadata,
+        )
+    return build_scan_result(
+        ScanTerminalReason.GENERATED if appended else ScanTerminalReason.EXHAUSTED,
+        mode,
+        generation_result.analyzer_version,
+        repo_root,
+        started_at,
+        appended,
+        safe_for_completion_reasoning=(not appended and mode.endswith("exhaustive")),
+        metadata={
+            **generation_result.metadata,
+            "open_task_count": current_open,
+            "task_count": task_count,
+        },
+    )
+
+
+def record_objective_backlog_findings_legacy(**kwargs: Any) -> list[dict[str, Any]]:
+    """Explicit list compatibility wrapper for pre-receipt callers."""
+
+    return list(record_objective_backlog_findings(**kwargs).items)
 
 
 def record_configured_objective_backlog_findings(
@@ -4497,7 +4669,7 @@ def record_configured_objective_backlog_findings(
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
-) -> list[dict[str, Any]]:
+) -> RefillScanResult[dict[str, Any]]:
     """Run objective backlog refill with common wrapper-level defaults."""
 
     resolved_bundle_dir = (
@@ -4558,7 +4730,7 @@ def record_configured_codebase_scan_findings(
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record codebase scan backlog findings",
-) -> list[dict[str, Any]]:
+) -> RefillScanResult[dict[str, Any]]:
     """Run codebase backlog refill with common wrapper-level defaults."""
 
     return record_codebase_scan_findings(
@@ -4706,7 +4878,7 @@ class ConfiguredObjectiveBacklogRecorder:
     commit_subject: str = "Agent: record objective backlog findings"
     prepare_environment: Callable[[], None] | None = None
 
-    def __call__(self, **overrides: Any) -> list[dict[str, Any]]:
+    def __call__(self, **overrides: Any) -> RefillScanResult[dict[str, Any]]:
         _prepare_configured_recorder(self.prepare_environment)
         return record_configured_objective_backlog_findings(
             **_configured_recorder_kwargs(
@@ -4741,7 +4913,7 @@ class ConfiguredCodebaseScanRecorder:
     default_bundle_dir: Path | None = None
     prepare_environment: Callable[[], None] | None = None
 
-    def __call__(self, **overrides: Any) -> list[dict[str, Any]]:
+    def __call__(self, **overrides: Any) -> RefillScanResult[dict[str, Any]]:
         _prepare_configured_recorder(self.prepare_environment)
         return record_configured_codebase_scan_findings(
             **_configured_recorder_kwargs(
@@ -4788,7 +4960,9 @@ class ConfiguredRetryBudgetRecorder:
         )
 
 
-ConfiguredBacklogRecordCallback = Callable[..., list[dict[str, Any]]]
+ConfiguredBacklogRecordCallback = Callable[
+    ..., RefillScanResult[dict[str, Any]] | list[dict[str, Any]]
+]
 ConfiguredBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
 
 
@@ -5116,7 +5290,7 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
     dependency_findings: list[dict[str, Any]] = []
 
     if (args.objective_scan or run_all) and args.objective_path:
-        objective_findings = record_objective_backlog_findings(
+        objective_result = record_objective_backlog_findings(
             repo_root=repo_root,
             objective_path=args.objective_path.resolve(),
             todo_path=args.todo_path.resolve(),
@@ -5140,8 +5314,9 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             discovery_output_path=args.discovery_output_path,
             commit_outputs=args.commit_generated_outputs,
         )
+        objective_findings = list(objective_result.items)
     if args.codebase_scan or run_all:
-        codebase_findings = record_codebase_scan_findings(
+        codebase_result = record_codebase_scan_findings(
             todo_path=args.todo_path.resolve(),
             state_path=state_path,
             strategy_path=strategy_path,
@@ -5158,6 +5333,7 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             skip_prefixes=skip_prefixes,
             commit_outputs=args.commit_generated_outputs,
         )
+        codebase_findings = list(codebase_result.items)
     if args.retry_budget or run_all:
         retry_findings = record_retry_budget_findings(
             todo_path=args.todo_path.resolve(),

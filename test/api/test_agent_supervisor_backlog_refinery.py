@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
@@ -29,6 +30,15 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     write_reconciliation_guardrail_discovery_path,
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
+from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+    REFILL_SCAN_RESULT_SCHEMA_VERSION,
+    RefillScanResult,
+    ScanTerminalReason,
+    adapt_legacy_scan_callback,
+    adapt_legacy_scan_result,
+    build_scan_result,
+    scan_identity,
+)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -58,6 +68,97 @@ def _git_dir(cwd: Path) -> Path:
     if not git_dir.is_absolute():
         git_dir = cwd / git_dir
     return git_dir.resolve()
+
+
+def test_refill_scan_result_has_versioned_terminal_taxonomy_and_explicit_legacy_adapter(tmp_path):
+    repo = _seed_repo(tmp_path)
+    (repo / "README.md").write_text("seed\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "seed identity")
+    started_at = datetime.now(timezone.utc)
+    identity = scan_identity(repo)
+
+    examples = {
+        ScanTerminalReason.GENERATED: build_scan_result(
+            ScanTerminalReason.GENERATED, "force", "test/v1", repo, started_at, ({"id": "A"},)
+        ),
+        ScanTerminalReason.EXHAUSTED: build_scan_result(
+            ScanTerminalReason.EXHAUSTED,
+            "drained_exhaustive",
+            "test/v1",
+            repo,
+            started_at,
+            safe_for_completion_reasoning=True,
+        ),
+        ScanTerminalReason.DUPLICATE_ONLY: build_scan_result(
+            ScanTerminalReason.DUPLICATE_ONLY, "force", "test/v1", repo, started_at
+        ),
+        ScanTerminalReason.THRESHOLD_SATISFIED: build_scan_result(
+            ScanTerminalReason.THRESHOLD_SATISFIED, "open_task_threshold", "test/v1", repo, started_at
+        ),
+        ScanTerminalReason.COOLDOWN: build_scan_result(
+            ScanTerminalReason.COOLDOWN, "cooldown", "test/v1", repo, started_at
+        ),
+        ScanTerminalReason.DISABLED: build_scan_result(
+            ScanTerminalReason.DISABLED, "disabled", "test/v1", repo, started_at
+        ),
+        ScanTerminalReason.PARTIAL: build_scan_result(
+            ScanTerminalReason.PARTIAL, "incremental", "test/v1", repo, started_at, ({"id": "partial"},)
+        ),
+        ScanTerminalReason.FAILED: build_scan_result(
+            ScanTerminalReason.FAILED, "force", "test/v1", repo, started_at, error="analyzer failed"
+        ),
+        ScanTerminalReason.TIMED_OUT: build_scan_result(
+            ScanTerminalReason.TIMED_OUT, "force", "test/v1", repo, started_at, error="timed out"
+        ),
+    }
+
+    assert set(examples) == set(ScanTerminalReason)
+    exhausted = examples[ScanTerminalReason.EXHAUSTED]
+    assert exhausted.schema_version == REFILL_SCAN_RESULT_SCHEMA_VERSION
+    assert exhausted.repository_id == identity.repository_id
+    assert exhausted.tree_id == identity.tree_id
+    assert exhausted.finished_at >= exhausted.started_at
+    assert exhausted.safe_for_completion_reasoning is True
+    assert RefillScanResult.from_dict(exhausted.to_dict()) == exhausted
+    try:
+        bool(exhausted)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("typed refill results must reject implicit truthiness")
+
+    legacy_empty = adapt_legacy_scan_result(
+        [],
+        empty_reason=ScanTerminalReason.COOLDOWN,
+        scan_mode="legacy",
+        analyzer_version="legacy/v1",
+        repository_id=identity.repository_id,
+        tree_id=identity.tree_id,
+        started_at=started_at,
+    )
+    assert legacy_empty.terminal_reason is ScanTerminalReason.COOLDOWN
+    assert legacy_empty.generated_count == 0
+    assert legacy_empty.safe_for_completion_reasoning is False
+
+    legacy_callback = adapt_legacy_scan_callback(
+        lambda: [],
+        empty_reason=ScanTerminalReason.PARTIAL,
+        scan_mode="legacy",
+        analyzer_version="legacy/v1",
+        repo_root=repo,
+    )
+    callback_result = legacy_callback()
+    assert callback_result.terminal_reason is ScanTerminalReason.PARTIAL
+    assert callback_result.generated_count == 0
+    assert callback_result.repository_identity == identity.repository_id
+    assert callback_result.tree_identity == identity.tree_id
+
+    (repo / "README.md").write_text("dirty tree\n", encoding="utf-8")
+    dirty_identity = scan_identity(repo)
+    assert dirty_identity.repository_id == identity.repository_id
+    assert dirty_identity.tree_id.startswith("sha256:")
+    assert dirty_identity.tree_id != identity.tree_id
 
 
 def test_commit_generated_dirty_outputs_commits_nested_repo_and_parent_gitlink(tmp_path):
@@ -570,7 +671,9 @@ def test_codebase_scan_synchronizes_fingerprints_across_strategy_files(tmp_path)
     )
 
     assert len(first) == 1
-    assert second == []
+    assert second.generated_count == 0
+    assert second.terminal_reason is ScanTerminalReason.DUPLICATE_ONLY
+    assert second.safe_for_completion_reasoning is False
     todo_text = todo_path.read_text(encoding="utf-8")
     assert todo_text.count("## AUTO-002") == 1
     assert "## AUTO-003" not in todo_text
@@ -615,7 +718,9 @@ def test_codebase_scan_retires_later_duplicate_vector_tasks(tmp_path):
         max_findings=0,
     )
 
-    assert findings == []
+    assert findings.generated_count == 0
+    assert findings.terminal_reason is ScanTerminalReason.DISABLED
+    assert findings.safe_for_completion_reasoning is False
     todo_text = todo_path.read_text(encoding="utf-8")
     duplicate_block = todo_text.split("## AUTO-002", 1)[1]
     assert "- Status: completed" in duplicate_block
