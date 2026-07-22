@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import os
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from .event_log import append_scan_receipt_event
 from .scan_receipts import RefillScanResult
 from .wrapper_utils import (
     AgentSupervisorNamespacePaths,
@@ -42,6 +46,7 @@ class SupervisorRunHook:
     message: str
     callback: SupervisorRunHookCallback
     log_level: int = logging.WARNING
+    scan_kind: str = ""
 
 
 RefillHookEntry = tuple[str, SupervisorRunHookCallback]
@@ -51,6 +56,136 @@ SupervisorBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence[S
 SupervisorBootstrapOutputPathFactory = Callable[[Mapping[str, Path | str]], str | None]
 SupervisorBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
 SupervisorMergeResolverCommand = str | Callable[[], str]
+
+
+_SUCCESSFUL_SCAN_REASONS = {"generated", "exhausted", "duplicate_only"}
+
+
+def apply_scan_receipt_projection(
+    payload: Mapping[str, Any] | None,
+    projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merge one compact scan receipt into an operator-facing state payload.
+
+    The aggregate keys are intentionally duplicated beside the per-kind map:
+    older status readers can discover the latest scan without understanding
+    multiple analyzers, while newer consumers retain independent objective and
+    codebase histories.  ``projection`` is already bounded by the receipt
+    contract and never contains generated items or per-file diagnostics.
+    """
+
+    updated = dict(payload or {})
+    compact = dict(projection)
+    scan_kind = str(compact.get("scan_kind") or "unknown")
+    terminal_reason = str(compact.get("terminal_reason") or "")
+    per_kind = dict(updated.get("scan_receipts") or {})
+    kind_state = dict(per_kind.get(scan_kind) or {})
+
+    kind_state.update(
+        {
+            "latest_attempted_scan": compact,
+            "scan_terminal_reason": terminal_reason,
+            "scan_freshness": compact.get("freshness", "unknown"),
+            "scan_health": compact.get("health", "unknown"),
+            "candidate_funnel": dict(compact.get("candidate_funnel") or {}),
+        }
+    )
+    kind_state.setdefault("latest_successful_scan", None)
+    if terminal_reason in _SUCCESSFUL_SCAN_REASONS:
+        kind_state["latest_successful_scan"] = compact
+    per_kind[scan_kind] = kind_state
+
+    updated.update(
+        {
+            "latest_attempted_scan": compact,
+            "scan_terminal_reason": terminal_reason,
+            "scan_freshness": compact.get("freshness", "unknown"),
+            "scan_health": compact.get("health", "unknown"),
+            "candidate_funnel": dict(compact.get("candidate_funnel") or {}),
+            "scan_receipts": per_kind,
+        }
+    )
+    updated.setdefault("latest_successful_scan", None)
+    if terminal_reason in _SUCCESSFUL_SCAN_REASONS:
+        updated["latest_successful_scan"] = compact
+
+    # The codebase refinery historically left the complete generated finding
+    # list in strategy state.  The durable receipt is now the source of truth.
+    updated.pop("last_codebase_scan_findings", None)
+    return updated
+
+
+def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
+    """Write a small runner-owned JSON state file atomically."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    )
+    temporary_path = Path(handle.name)
+    try:
+        with handle:
+            json.dump(dict(payload), handle, indent=2, sort_keys=True, ensure_ascii=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def persist_supervisor_scan_receipt(
+    result: RefillScanResult[Any],
+    *,
+    scan_kind: str,
+    state_dir: Path,
+    state_prefix: str,
+    strategy_path: Path,
+    events_path: Path,
+) -> dict[str, Any]:
+    """Persist one refill result and publish its compact state projection."""
+
+    projection = append_scan_receipt_event(
+        events_path,
+        result,
+        state_dir / f"{state_prefix}_scan_receipts",
+        scan_kind=scan_kind,
+        relative_to=state_dir,
+    )
+    try:
+        strategy_payload = json.loads(strategy_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        strategy_payload = {}
+    if not isinstance(strategy_payload, dict):
+        strategy_payload = {}
+    _write_json_atomic(
+        strategy_path,
+        apply_scan_receipt_projection(strategy_payload, projection),
+    )
+    # After-once hooks run after the supervisor's final heartbeat.  Refresh an
+    # existing status file here so their receipt does not leave status one
+    # attempt behind; the normal supervisor path creates the file itself.
+    status_path = state_dir / f"{state_prefix}_supervisor_status.json"
+    if status_path.is_file():
+        try:
+            status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            status_payload = {}
+        if not isinstance(status_payload, dict):
+            status_payload = {}
+        _write_json_atomic(
+            status_path,
+            apply_scan_receipt_projection(status_payload, projection),
+        )
+    return dict(projection)
 
 
 def _with_extra_kwargs(
@@ -1350,6 +1485,15 @@ def _refill_hook_message(
     return f"Recorded {label} findings {phase_label} {runner_label} pass: %s"
 
 
+def _refill_scan_kind(finding_label: str) -> str:
+    normalized = finding_label.strip().lower().replace("_", "-")
+    if normalized.startswith("objective"):
+        return "objective"
+    if normalized.startswith("codebase"):
+        return "codebase"
+    return ""
+
+
 def build_supervisor_refill_hooks(
     entries: Sequence[RefillHookEntry],
     *,
@@ -1374,6 +1518,7 @@ def build_supervisor_refill_hooks(
                 ),
                 callback,
                 log_level=log_level,
+                scan_kind=_refill_scan_kind(finding_label),
             )
             for finding_label, callback in entries
         )
@@ -1389,6 +1534,7 @@ def build_supervisor_refill_hooks(
                 ),
                 callback,
                 log_level=log_level,
+                scan_kind=_refill_scan_kind(finding_label),
             )
             for finding_label, callback in _ordered_refill_entries(entries, after_once_order)
         )
@@ -1725,6 +1871,26 @@ def _run_hooks(
         if hook.phase != phase:
             continue
         result = hook.callback(context)
+        if isinstance(result, RefillScanResult) and hook.scan_kind:
+            config = context.config
+            state_dir = Path(
+                getattr(config, "state_dir", None)
+                or context.strategy_path.parent
+            )
+            state_prefix = str(
+                getattr(config, "state_prefix", None)
+                or getattr(context.parsed, "state_prefix", None)
+                or context.strategy_path.stem.removesuffix("_strategy")
+                or "supervisor"
+            )
+            persist_supervisor_scan_receipt(
+                result,
+                scan_kind=hook.scan_kind,
+                state_dir=state_dir,
+                state_prefix=state_prefix,
+                strategy_path=context.strategy_path,
+                events_path=context.events_path,
+            )
         should_log = (
             result.generated_count > 0
             if isinstance(result, RefillScanResult)

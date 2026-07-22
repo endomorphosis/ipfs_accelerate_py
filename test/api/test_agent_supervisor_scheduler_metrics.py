@@ -173,6 +173,157 @@ def test_multiple_and_rotated_event_logs_feed_one_atomic_snapshot(tmp_path: Path
     assert json.loads(output.read_text(encoding="utf-8"))["snapshot_id"] == snapshot.snapshot_id
 
 
+def test_refill_receipt_metrics_distinguish_terminal_outcomes_and_dedupe_cids() -> None:
+    reasons = (
+        "generated",
+        "exhausted",
+        "duplicate_only",
+        "threshold_satisfied",
+        "cooldown",
+        "disabled",
+        "partial",
+        "failed",
+        "timed_out",
+    )
+    events: list[dict[str, Any]] = []
+    for index, reason in enumerate(reasons):
+        events.append(
+            {
+                "type": "refill_scan_receipt",
+                "timestamp": f"2026-01-01T00:00:{index:02d}Z",
+                "receipt_cid": f"bafy-receipt-{reason}",
+                "artifact_path": f"state/scan_receipts/{reason}.json",
+                "scan_kind": "objective" if index % 2 else "codebase",
+                "terminal_reason": reason,
+                "scan_mode": "exhaustive",
+                "analyzer_version": "test/v2",
+                "repository_id": "repo:test",
+                "tree_id": "tree:test",
+                "started_at": f"2026-01-01T00:00:{index:02d}Z",
+                "finished_at": f"2026-01-01T00:00:{index:02d}Z",
+                "generated_count": 2 if reason == "generated" else 0,
+                "health": "unhealthy" if reason in {"failed", "timed_out"} else "healthy",
+                "freshness": {"fresh": True, "age_seconds": 0},
+                "candidate_funnel": {
+                    "raw_candidates": index + 1,
+                    "appended_tasks": 2 if reason == "generated" else 0,
+                },
+            }
+        )
+    # Delivery retries can replay a receipt.  Its CID, rather than event ID,
+    # is the canonical attempt identity.
+    events.append({**events[0], "timestamp": "2026-01-01T00:01:00Z"})
+
+    snapshot = build_scheduler_snapshot(events)
+    scans = snapshot["scan_metrics"]
+
+    assert (
+        scans["attempts"]
+        == scans["attempted"]
+        == scans["receipts"]
+        == scans["receipt_count"]
+        == 9
+    )
+    assert scans["skipped"] == 3
+    assert scans["failed_total"] == 2
+    assert scans["successful"] == 3
+    assert scans["generated_count"] == 2
+    assert scans["by_terminal_reason"] == {reason: 1 for reason in reasons}
+    assert scans["outcome_counts"] == scans["by_terminal_reason"]
+    assert scans["duplicate_only"] == scans["exhausted"] == scans["partial"] == 1
+    assert scans["failed"] == scans["timed_out"] == 1
+    assert scans["candidate_funnel"] == {"raw_candidates": 45, "appended_tasks": 2}
+    assert scans["latest_attempted_scan"]["terminal_reason"] == "timed_out"
+    assert scans["latest_attempted_scan"]["freshness"]["fresh"] is True
+    assert scans["latest_successful_scan"]["terminal_reason"] == "duplicate_only"
+    assert "items" not in scans["latest_attempted_scan"]
+    assert snapshot["totals"]["refill_scan_skipped"] == 3
+    assert snapshot["totals"]["refill_scan_duplicate_only"] == 1
+    assert snapshot["totals"]["scan_skipped"] == 3
+    assert snapshot["metrics"] == []
+    assert all(count == 0 for count in snapshot["phase_counts"].values())
+
+
+def test_refill_metrics_accept_nested_and_legacy_event_shapes_without_false_exhaustion() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "scan_receipt",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "scan_receipt": {
+                    "receipt_cid": "bafy-nested",
+                    "scan_kind": "codebase",
+                    "terminal_reason": "duplicate-only",
+                    "generated_count": 0,
+                    "metadata": {"candidate_funnel": {"deduplicated_candidates": 4}},
+                },
+            },
+            {
+                "type": "codebase_refill_failed",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "error": "parser unavailable",
+            },
+            {
+                "type": "objective_refill_scan",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "generated_count": 3,
+            },
+        ]
+    )
+
+    scans = snapshot["scan_metrics"]
+    assert scans["attempts"] == 3
+    assert scans["duplicate_only"] == 1
+    assert scans["failed"] == 1
+    assert scans["generated"] == 1
+    assert scans["exhausted"] == 0
+    assert scans["candidate_funnel"]["deduplicated_candidates"] == 4
+
+
+def test_canonical_receipt_supersedes_only_its_matching_legacy_event() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            # A historical legacy-only event remains a real attempted scan.
+            {
+                "type": "codebase_refill_failed",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "error": "historical parser failure",
+            },
+            # Current supervisors retain this compatibility event immediately
+            # before publishing the canonical receipt for the same attempt.
+            {
+                "type": "codebase_refill_failed",
+                "timestamp": "2026-01-01T01:00:00Z",
+                "error": "current parser failure",
+            },
+            {
+                "type": "refill_scan_receipt",
+                "timestamp": "2026-01-01T01:00:01Z",
+                "receipt_cid": "bafy-current-failure",
+                "scan_kind": "codebase",
+                "terminal_reason": "failed",
+                "scan_mode": "exhaustive",
+                "analyzer_version": "test/v2",
+                "repository_id": "repo:test",
+                "tree_id": "tree:test",
+                "started_at": "2026-01-01T00:59:00Z",
+                "finished_at": "2026-01-01T01:00:00Z",
+                "generated_count": 0,
+                "health": "unhealthy",
+                "candidate_funnel": {"parser_failure_count": 1},
+            },
+        ]
+    )
+
+    scans = snapshot["scan_metrics"]
+    assert scans["attempted"] == 2
+    assert scans["failed"] == 2
+    assert scans["failed_total"] == 2
+    assert scans["receipt_count"] == scans["receipts"] == 1
+    assert scans["legacy_event_count"] == 1
+    assert scans["candidate_funnel"] == {"parser_failure_count": 1}
+
+
 @dataclass
 class _Process:
     pid: int = 9001

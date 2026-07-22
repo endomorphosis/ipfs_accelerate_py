@@ -36,6 +36,44 @@ SCHEDULER_PHASES = (
 )
 UNKNOWN_IDENTITY = "unknown"
 
+# Keep these strings local to the event reducer instead of requiring event
+# readers to deserialize the typed receipt.  Event logs are a compatibility
+# boundary and may contain receipts produced by newer supervisor versions.
+REFILL_SCAN_TERMINAL_REASONS = (
+    "generated",
+    "exhausted",
+    "duplicate_only",
+    "threshold_satisfied",
+    "cooldown",
+    "disabled",
+    "partial",
+    "failed",
+    "timed_out",
+)
+REFILL_SCAN_SKIPPED_REASONS = frozenset(
+    {"threshold_satisfied", "cooldown", "disabled"}
+)
+REFILL_SCAN_FAILED_REASONS = frozenset({"failed", "timed_out"})
+REFILL_SCAN_SUCCESS_REASONS = frozenset(
+    {"generated", "exhausted", "duplicate_only"}
+)
+
+_REFILL_SCAN_EVENT_TYPES = frozenset(
+    {
+        "refill_scan_receipt",
+        "scan_receipt",
+        "objective_refill_receipt",
+        "codebase_refill_receipt",
+        # Historical result-bearing events are retained during migration.
+        "objective_refill_scan",
+        "codebase_refill_scan",
+        "objective_refill_failed",
+        "codebase_refill_failed",
+        "objective_refill_timeout",
+        "codebase_refill_timeout",
+    }
+)
+
 _READY_EVENTS = frozenset(
     {
         "queued", "task_queued", "task_registered", "task_discovered",
@@ -285,6 +323,251 @@ def _event_type(event: Mapping[str, Any]) -> str:
     return str(event.get("type") or event.get("event_type") or event.get("event") or "").strip().lower()
 
 
+def _mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _scan_receipt_projection(
+    event: Mapping[str, Any], kind: str
+) -> dict[str, Any] | None:
+    """Extract one compact refill receipt projection from an event.
+
+    The canonical event format puts the compact projection in ``scan_receipt``.
+    ``receipt`` and ``scan_result`` are accepted for forward and migration
+    compatibility.  Full generated items and per-file details are deliberately
+    not copied into the scheduler snapshot.
+    """
+
+    nested: Mapping[str, Any] = {}
+    for key in ("scan_receipt", "receipt", "scan_result", "receipt_projection"):
+        candidate = event.get(key)
+        if isinstance(candidate, Mapping):
+            nested = candidate
+            break
+
+    raw_reason = nested.get("terminal_reason", nested.get("reason"))
+    if raw_reason in (None, ""):
+        raw_reason = event.get("terminal_reason", event.get("reason"))
+
+    reason = str(getattr(raw_reason, "value", raw_reason) or "").strip().lower()
+    reason = reason.replace("-", "_").replace(" ", "_")
+    if not reason:
+        if kind.endswith("_timeout"):
+            reason = "timed_out"
+        elif kind.endswith("_failed"):
+            reason = "failed"
+        elif kind in {"objective_refill_scan", "codebase_refill_scan"}:
+            # Older supervisors emitted a *_scan event only after materializing
+            # work.  This inference preserves their historical counters without
+            # interpreting an arbitrary empty result as exhaustion.
+            reason = "generated"
+
+    scan_shape = any(
+        key in nested or key in event
+        for key in ("scan_mode", "analyzer_version", "candidate_funnel", "scan_kind")
+    )
+    is_scan_event = (
+        kind in _REFILL_SCAN_EVENT_TYPES
+        or "refill_scan" in kind
+        or bool(event.get("scan_receipt_cid"))
+        or bool(event.get("receipt_cid") and scan_shape)
+        or bool(nested and scan_shape)
+    )
+    if not is_scan_event or reason not in REFILL_SCAN_TERMINAL_REASONS:
+        return None
+
+    def first(*keys: str, default: Any = "") -> Any:
+        for source in (nested, event):
+            for key in keys:
+                value = source.get(key)
+                if value not in (None, ""):
+                    return value
+        return default
+
+    metadata = _mapping(nested.get("metadata"))
+    funnel: Mapping[str, Any] = {}
+    for candidate in (
+        nested.get("candidate_funnel"),
+        event.get("candidate_funnel"),
+        metadata.get("candidate_funnel"),
+    ):
+        if isinstance(candidate, Mapping):
+            funnel = candidate
+            break
+
+    # Some v1 analyzers put the bounded funnel counters directly in metadata.
+    # Accept numeric scalar fields, while excluding timing/version identifiers
+    # which are not candidate counts.
+    if not funnel and metadata:
+        ignored = {
+            "timeout_seconds", "duration_seconds", "schema_version",
+            "contract_version", "version", "current_open", "task_count",
+        }
+        funnel = {
+            str(key): value
+            for key, value in metadata.items()
+            if key not in ignored
+            and not isinstance(value, bool)
+            and isinstance(value, (int, float))
+        }
+
+    generated_count = int(max(0.0, _number(first("generated_count", default=0))))
+    if not generated_count:
+        items = nested.get("items", nested.get("findings"))
+        if isinstance(items, Sequence) and not isinstance(items, (str, bytes, bytearray)):
+            generated_count = len(items)
+
+    projection = {
+        "receipt_cid": str(first("receipt_cid", "scan_receipt_cid", default="")),
+        "scan_kind": str(first("scan_kind", "refill_kind", "source", default="")),
+        "terminal_reason": reason,
+        "scan_mode": str(first("scan_mode", "mode", default="")),
+        "analyzer_version": str(first("analyzer_version", default="")),
+        "repository_id": str(first("repository_id", "repository_identity", default="")),
+        "tree_id": str(first("tree_id", "tree_identity", default="")),
+        "started_at": str(first("started_at", default="")),
+        "finished_at": str(first("finished_at", default="")),
+        "duration_seconds": max(0.0, _number(first("duration_seconds", default=0))),
+        "generated_count": generated_count,
+        "safe_for_completion_reasoning": bool(
+            first("safe_for_completion_reasoning", default=False)
+        ),
+        "health": str(first("health", "scan_health", default="")),
+        "freshness": first("freshness", default=""),
+        "artifact_path": str(first("artifact_path", "details_artifact_path", default="")),
+        "artifact_cid": str(first("artifact_cid", "details_artifact_cid", default="")),
+        "candidate_funnel": {
+            str(key): int(max(0.0, _number(value)))
+            for key, value in funnel.items()
+            if not isinstance(value, bool) and isinstance(value, (int, float))
+        },
+    }
+    if not projection["scan_kind"]:
+        projection["scan_kind"] = "objective" if kind.startswith("objective_") else (
+            "codebase" if kind.startswith("codebase_") else "unknown"
+        )
+    if not projection["finished_at"]:
+        projection["finished_at"] = str(
+            event.get("timestamp") or event.get("occurred_at") or ""
+        )
+    return projection
+
+
+def _empty_scan_metrics() -> dict[str, Any]:
+    by_reason = {reason: 0 for reason in REFILL_SCAN_TERMINAL_REASONS}
+    return {
+        "attempts": 0,
+        "attempted": 0,
+        "receipts": 0,
+        "receipt_count": 0,
+        "legacy_event_count": 0,
+        "successful": 0,
+        "skipped": 0,
+        "failed_total": 0,
+        **by_reason,
+        "generated_count": 0,
+        "by_terminal_reason": by_reason,
+        "outcome_counts": by_reason,
+        "by_scan_kind": {},
+        "candidate_funnel": {},
+        "latest_attempted_scan": None,
+        "latest_successful_scan": None,
+        "latest_attempt": None,
+        "latest_successful": None,
+    }
+
+
+def _reduce_scan_metrics(
+    events: Sequence[tuple[int, dict[str, Any], datetime | None]],
+) -> dict[str, Any]:
+    metrics = _empty_scan_metrics()
+    scan_events: list[tuple[int, dict[str, Any], datetime | None, dict[str, Any]]] = []
+    for index, event, occurred in events:
+        projection = _scan_receipt_projection(event, _event_type(event))
+        if projection is not None:
+            scan_events.append((index, event, occurred, projection))
+
+    # During migration a failed/timeout (and, in a few older paths, generated)
+    # attempt first emitted a legacy event and then persisted its canonical
+    # receipt event.  Correlate only the immediately preceding scan event with
+    # the same kind/reason in a narrow time window.  This avoids counting the
+    # compatibility event twice while retaining genuinely historical events
+    # which have no receipt counterpart.
+    superseded_legacy_positions: set[int] = set()
+    for position, (_index, _event, occurred, projection) in enumerate(scan_events):
+        if not projection["receipt_cid"] or position == 0:
+            continue
+        previous_position = position - 1
+        _previous_index, _previous_event, previous_occurred, previous = scan_events[
+            previous_position
+        ]
+        if previous["receipt_cid"]:
+            continue
+        if (
+            previous["scan_kind"] != projection["scan_kind"]
+            or previous["terminal_reason"] != projection["terminal_reason"]
+        ):
+            continue
+        if occurred is None or previous_occurred is None:
+            continue
+        elapsed = (occurred - previous_occurred).total_seconds()
+        if 0.0 <= elapsed <= 30.0:
+            superseded_legacy_positions.add(previous_position)
+
+    seen_receipts: set[str] = set()
+    for position, (_index, _event, _occurred, projection) in enumerate(scan_events):
+        if position in superseded_legacy_positions:
+            continue
+        receipt_cid = projection["receipt_cid"]
+        if receipt_cid and receipt_cid in seen_receipts:
+            continue
+        if receipt_cid:
+            seen_receipts.add(receipt_cid)
+
+        reason = projection["terminal_reason"]
+        metrics["attempts"] += 1
+        metrics["attempted"] += 1
+        if receipt_cid:
+            metrics["receipts"] += 1
+            metrics["receipt_count"] += 1
+        else:
+            metrics["legacy_event_count"] += 1
+        metrics[reason] += 1
+        metrics["by_terminal_reason"][reason] += 1
+        if reason in REFILL_SCAN_SKIPPED_REASONS:
+            metrics["skipped"] += 1
+        if reason in REFILL_SCAN_FAILED_REASONS:
+            metrics["failed_total"] += 1
+        if reason in REFILL_SCAN_SUCCESS_REASONS:
+            metrics["successful"] += 1
+        metrics["generated_count"] += projection["generated_count"]
+
+        kind = projection["scan_kind"]
+        kind_counts = metrics["by_scan_kind"].setdefault(kind, {
+            "attempts": 0,
+            "skipped": 0,
+            "failed_total": 0,
+            **{reason_name: 0 for reason_name in REFILL_SCAN_TERMINAL_REASONS},
+        })
+        kind_counts["attempts"] += 1
+        kind_counts[reason] += 1
+        if reason in REFILL_SCAN_SKIPPED_REASONS:
+            kind_counts["skipped"] += 1
+        if reason in REFILL_SCAN_FAILED_REASONS:
+            kind_counts["failed_total"] += 1
+        for name, count in projection["candidate_funnel"].items():
+            metrics["candidate_funnel"][name] = (
+                metrics["candidate_funnel"].get(name, 0) + count
+            )
+
+        metrics["latest_attempted_scan"] = projection
+        metrics["latest_attempt"] = projection
+        if reason in REFILL_SCAN_SUCCESS_REASONS:
+            metrics["latest_successful_scan"] = projection
+            metrics["latest_successful"] = projection
+    return metrics
+
+
 def _explicit_phase(event: Mapping[str, Any]) -> str:
     phase = str(event.get("phase") or event.get("active_phase") or "").strip().lower()
     if "resolver" in phase or phase in {"conflict_repair", "resolving"}:
@@ -463,12 +746,19 @@ def scheduler_snapshot(
             event_ids.add(event_id)
         unique.append((index, event, _event_time(event)))
     unique.sort(key=lambda item: (item[2] is None, item[2] or datetime.max.replace(tzinfo=timezone.utc), item[0]))
+    scan_metrics = _reduce_scan_metrics(unique)
 
     accumulators: dict[tuple[str, str, str, str, str], _Accumulator] = {}
     inherited_by_task: dict[str, dict[str, str]] = {}
     inherited_by_lane: dict[str, dict[str, str]] = {}
 
     for _index, event, occurred in unique:
+        kind = _event_type(event)
+        if kind in _REFILL_SCAN_EVENT_TYPES or _scan_receipt_projection(event, kind) is not None:
+            # A repository scan is supervisor-level evidence, not a scheduler
+            # task.  It contributes to scan_metrics but must not manufacture an
+            # ``unknown`` idle task or alter a real task's current phase.
+            continue
         task_alias = str(
             event.get("task_cid") or event.get("canonical_task_cid")
             or event.get("canonical_task_key") or event.get("task_id") or ""
@@ -489,7 +779,6 @@ def scheduler_snapshot(
             current = _Accumulator(identity=identity, metrics=_metric_defaults(identity))
             accumulators[key] = current
 
-        kind = _event_type(event)
         current.last_event_type = kind
         if occurred is not None:
             current.last_event_at = occurred.isoformat()
@@ -666,6 +955,26 @@ def scheduler_snapshot(
     totals["completion_count"] = totals["completions"]
     totals["total_tokens"] = totals["tokens"]
     totals["total_cost_usd"] = totals["cost_usd"]
+    # Additive flat aliases let existing totals-only consumers adopt the new
+    # receipt metrics without changing how they access the snapshot.  The
+    # structured ``scan_metrics`` block below remains the authoritative view.
+    totals.update({
+        "scan_attempts": scan_metrics["attempts"],
+        "scan_receipts": scan_metrics["receipts"],
+        "scan_successful": scan_metrics["successful"],
+        "scan_skipped": scan_metrics["skipped"],
+        "scan_failed_total": scan_metrics["failed_total"],
+        "scan_generated_count": scan_metrics["generated_count"],
+        "refill_scan_attempts": scan_metrics["attempts"],
+        "refill_scan_receipts": scan_metrics["receipts"],
+        "refill_scan_successful": scan_metrics["successful"],
+        "refill_scan_skipped": scan_metrics["skipped"],
+        "refill_scan_failed_total": scan_metrics["failed_total"],
+        "refill_scan_generated_count": scan_metrics["generated_count"],
+    })
+    for reason in REFILL_SCAN_TERMINAL_REASONS:
+        totals[f"scan_{reason}"] = scan_metrics[reason]
+        totals[f"refill_scan_{reason}"] = scan_metrics[reason]
 
     phases = {
         phase: {"count": len(phase_items[phase]), "items": phase_items[phase]}
@@ -678,6 +987,7 @@ def scheduler_snapshot(
         "events": [event for _index, event, _occurred in unique],
         "phase_counts": phase_counts,
         "metrics": rows,
+        "scan_metrics": scan_metrics,
     }
     snapshot_id = hashlib.sha256(
         json.dumps(fingerprint_material, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
@@ -695,6 +1005,7 @@ def scheduler_snapshot(
         "task_states": task_states,
         "metrics": rows,
         "totals": totals,
+        "scan_metrics": scan_metrics,
     }
     return SchedulerSnapshot(payload)
 
@@ -794,6 +1105,10 @@ def ready_task_cids(snapshot: SchedulerSnapshot | Mapping[str, Any]) -> tuple[st
 
 
 __all__ = [
+    "REFILL_SCAN_FAILED_REASONS",
+    "REFILL_SCAN_SKIPPED_REASONS",
+    "REFILL_SCAN_SUCCESS_REASONS",
+    "REFILL_SCAN_TERMINAL_REASONS",
     "SCHEDULER_PHASES",
     "SCHEDULER_SNAPSHOT_SCHEMA",
     "SchedulerSnapshot",

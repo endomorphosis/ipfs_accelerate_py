@@ -23,6 +23,7 @@ from ..checkout_lock import (
     checkout_mutation_lock_path,
 )
 from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
+from ..implementation_supervisor_runner import persist_supervisor_scan_receipt
 from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..scan_receipts import (
     RefillScanResult,
@@ -336,6 +337,22 @@ class PortalImplementationSupervisor:
             payload["last_agentic_maintenance_error"] = error[-1000:]
         else:
             payload.pop("last_agentic_maintenance_error", None)
+
+        # Scan state lives in the strategy file and is copied into the status
+        # heartbeat as a compact projection.  Full generated items and parser
+        # diagnostics remain in the content-addressed receipt artifact.
+        strategy = load_json_dict(self.config.strategy_path) or {}
+        for key in (
+            "latest_attempted_scan",
+            "latest_successful_scan",
+            "scan_terminal_reason",
+            "scan_freshness",
+            "scan_health",
+            "candidate_funnel",
+            "scan_receipts",
+        ):
+            if key in strategy:
+                payload[key] = strategy[key]
         write_json_atomic(status_path, payload)
 
     def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
@@ -473,14 +490,31 @@ class PortalImplementationSupervisor:
         if include_refill:
             update_maintenance_phase("objective_refill")
             objective_started_at = datetime.now(timezone.utc)
-            objective_result = self._adapt_legacy_objective_result(
-                self.refill_objective_backlog(),
-                scan_mode="supervisor_callback",
-                started_at=objective_started_at,
-            )
+            try:
+                objective_result = self._adapt_legacy_objective_result(
+                    self.refill_objective_backlog(),
+                    scan_mode="supervisor_callback",
+                    started_at=objective_started_at,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Objective backlog refill failed; leaving supervisor alive",
+                    exc_info=True,
+                )
+                objective_result = self._terminal_refill_result(
+                    ScanTerminalReason.FAILED,
+                    scan_mode="supervisor_callback",
+                    analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                    started_at=objective_started_at,
+                    error=f"{type(exc).__name__}: {exc}",
+                    metadata={"error_type": type(exc).__name__},
+                )
+            objective_scan = self._persist_refill_result("objective", objective_result)
             objective_payload = dict(objective_result.metadata)
             objective_generated_count = int(
-                objective_payload.get("generated_count") or len(objective_payload.get("task_ids") or [])
+                objective_payload.get("generated_count")
+                or len(objective_payload.get("task_ids") or [])
+                or objective_result.generated_count
             )
             objective_refined_goal_count = len(objective_payload.get("refined_goal_ids") or [])
             objective_seeded_goal_count = len(objective_payload.get("seeded_interoperability_goal_ids") or [])
@@ -505,12 +539,27 @@ class PortalImplementationSupervisor:
             else:
                 update_maintenance_phase("codebase_refill")
                 codebase_started_at = datetime.now(timezone.utc)
-                codebase_result = self._adapt_legacy_codebase_result(
-                    self.refill_codebase_backlog(),
-                    scan_mode="supervisor_callback",
-                    started_at=codebase_started_at,
-                )
+                try:
+                    codebase_result = self._adapt_legacy_codebase_result(
+                        self.refill_codebase_backlog(),
+                        scan_mode="supervisor_callback",
+                        started_at=codebase_started_at,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Codebase backlog refill failed; leaving supervisor alive",
+                        exc_info=True,
+                    )
+                    codebase_result = self._terminal_refill_result(
+                        ScanTerminalReason.FAILED,
+                        scan_mode="supervisor_callback",
+                        analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                        started_at=codebase_started_at,
+                        error=f"{type(exc).__name__}: {exc}",
+                        metadata={"error_type": type(exc).__name__},
+                    )
                 codebase_findings = list(codebase_result.findings)
+            codebase_scan = self._persist_refill_result("codebase", codebase_result)
         else:
             update_maintenance_phase("preflight_refill_deferred")
             objective_payload = {}
@@ -527,6 +576,8 @@ class PortalImplementationSupervisor:
                 metadata={"deferred_reason": "preflight_refill_deferred_until_daemon_loop"},
             )
             codebase_deferred_reason = "preflight_refill_deferred_until_daemon_loop"
+            objective_scan = {}
+            codebase_scan = {}
         update_maintenance_phase("post_refill_generated_dirty_repair")
         post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("supervisor_check_event")
@@ -573,6 +624,8 @@ class PortalImplementationSupervisor:
                 ),
                 "codebase_refill_count": codebase_result.generated_count,
                 "codebase_deferred_reason": codebase_deferred_reason,
+                "objective_scan": objective_scan,
+                "codebase_scan": codebase_scan,
                 "generated_dirty_repair_committed_count": int(
                     generated_dirty_repair.get("committed_count") or 0
                 ),
@@ -596,6 +649,8 @@ class PortalImplementationSupervisor:
             "objective_task_janitor": objective_task_janitor,
             "codebase_refill_count": codebase_result.generated_count,
             "codebase_deferred_reason": codebase_deferred_reason,
+            "objective_scan": objective_scan,
+            "codebase_scan": codebase_scan,
             "event_log_repair": event_log_repair,
             "strategy_file_repair": strategy_file_repair,
             "state_file_repair": state_file_repair,
@@ -3489,6 +3544,22 @@ class PortalImplementationSupervisor:
             metadata=metadata,
         )
 
+    def _persist_refill_result(
+        self,
+        scan_kind: str,
+        result: RefillScanResult,
+    ) -> dict[str, Any]:
+        """Persist the canonical receipt/event/state record for one attempt."""
+
+        return persist_supervisor_scan_receipt(
+            result,
+            scan_kind=scan_kind,
+            state_dir=self.config.state_dir,
+            state_prefix=self.config.state_prefix,
+            strategy_path=self.config.strategy_path,
+            events_path=self.config.events_path,
+        )
+
     def _adapt_legacy_objective_result(
         self,
         value: Any,
@@ -4060,29 +4131,6 @@ class PortalImplementationSupervisor:
         strategy["last_objective_task_janitor_force_goal_ids"] = sorted(set(force_goal_ids))
         write_json(self.config.strategy_path, strategy)
 
-        if result.generated_count > 0 or result.terminal_reason is ScanTerminalReason.PARTIAL:
-            self._record_event(
-                "objective_refill_scan",
-                {
-                    "scan_result": result.to_dict(),
-                    "mode": mode,
-                    "objective_path": str(objective_path),
-                    "completed_goal_ids": payload.get("completed_goal_ids") or [],
-                    "seeded_interoperability_goal_ids": payload.get("seeded_interoperability_goal_ids") or [],
-                    "seeded_launch_readiness_goal_ids": payload.get("seeded_launch_readiness_goal_ids") or [],
-                    "refined_goal_ids": payload.get("refined_goal_ids") or [],
-                    "task_ids": payload.get("task_ids") or [],
-                    "objective_active_goal_count": payload.get("objective_active_goal_count") or 0,
-                    "objective_completed_goal_count": payload.get("objective_completed_goal_count") or 0,
-                    "objective_heap_schedule_count": payload.get("objective_heap_schedule_count") or 0,
-                    "bundle_keys": payload.get("bundle_keys") or [],
-                    "todo_vector_index_path": payload.get("todo_vector_index_path") or "",
-                    "surplus_findings_per_goal": payload.get("surplus_findings_per_goal")
-                    or DEFAULT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL,
-                    "surplus_min_terms_per_todo": payload.get("surplus_min_terms_per_todo")
-                    or DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO,
-                },
-            )
         return result
 
     def refill_codebase_backlog(self) -> RefillScanResult:
@@ -4219,17 +4267,6 @@ class PortalImplementationSupervisor:
             scan_mode=mode,
             started_at=started_at,
         )
-        if result.generated_count > 0:
-            self._record_event(
-                "codebase_refill_scan",
-                {
-                    "scan_result": result.to_dict(),
-                    "generated_count": result.generated_count,
-                    "todo_path": str(self.config.todo_path),
-                    "discovery_dir": str(discovery_dir),
-                    "findings": list(result.findings),
-                },
-            )
         return result
 
     def _implementation_attempt_is_active(self, state: PortalTaskState, *, now_ts: float) -> bool:

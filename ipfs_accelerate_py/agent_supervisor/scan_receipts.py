@@ -15,7 +15,11 @@ ambiguity.
 
 from __future__ import annotations
 
+import base64
+import json
+import os
 import subprocess
+import tempfile
 from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -31,6 +35,58 @@ REFILL_SCAN_RESULT_SCHEMA_VERSION = 1
 # contracts in one envelope.
 SCHEMA_VERSION = REFILL_SCAN_RESULT_SCHEMA_VERSION
 CONTRACT_VERSION = REFILL_SCAN_RESULT_SCHEMA_VERSION
+
+SCAN_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/refill-scan-receipt@1"
+"""Stable content-addressed artifact schema for refill scan receipts."""
+
+SCAN_RECEIPT_PROJECTION_SCHEMA_VERSION = 1
+SCAN_RECEIPT_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/refill-scan-receipt-projection@1"
+)
+"""Schema for bounded receipt projections embedded in events and status."""
+
+DEFAULT_SCAN_FRESHNESS_SECONDS = 3600.0
+"""Default age after which a projected scan receipt is classified as stale."""
+
+_HEALTHY_REASONS = frozenset(
+    {"generated", "exhausted", "duplicate_only"}
+)
+_SKIPPED_REASONS = frozenset({"threshold_satisfied", "cooldown", "disabled"})
+
+# Inventory implementations evolved independently before the receipt contract
+# was introduced.  Accept their established spellings but publish one compact
+# vocabulary.  Values are counters only; representative paths and errors stay
+# in the content-addressed artifact.
+_FUNNEL_COUNTER_ALIASES: Mapping[str, tuple[str, ...]] = {
+    "git_root_count": ("git_root_count", "git_roots_count", "git_roots", "repository_count"),
+    "tracked_file_count": ("tracked_file_count", "tracked_files_count", "tracked_files"),
+    "eligible_file_count": ("eligible_file_count", "eligible_files_count", "eligible_files"),
+    "parsed_file_count": ("parsed_file_count", "parsed_files_count", "parsed_files"),
+    "cache_hit_count": ("cache_hit_count", "cache_hits", "cached_file_count"),
+    "excluded_file_count": (
+        "excluded_file_count", "excluded_files_count", "excluded_files", "skipped_file_count"
+    ),
+    "parser_failure_count": (
+        "parser_failure_count", "parser_failures_count", "parser_failures", "parse_failure_count"
+    ),
+    "raw_candidate_count": (
+        "raw_candidate_count", "raw_candidates_count", "raw_candidates", "detected_count"
+    ),
+    "seen_candidate_count": ("seen_candidate_count", "seen_candidates_count", "seen_candidates"),
+    "deduplicated_candidate_count": (
+        "deduplicated_candidate_count",
+        "deduplicated_candidates_count",
+        "deduplicated_candidates",
+        "novel_candidate_count",
+    ),
+    "appended_task_count": (
+        "appended_task_count",
+        "appended_tasks_count",
+        "appended_tasks",
+        "materialized_candidate_count",
+        "generated_count",
+    ),
+}
 
 T = TypeVar("T")
 
@@ -371,6 +427,12 @@ class RefillScanResult(Generic[T]):
     def duration_seconds(self) -> float:
         return (self.finished_at - self.started_at).total_seconds()
 
+    @property
+    def receipt_cid(self) -> str:
+        """CIDv1 of the canonical, full-fidelity receipt artifact."""
+
+        return scan_receipt_cid(self)
+
     def __bool__(self) -> bool:
         raise TypeError(
             "RefillScanResult has no truth value; inspect terminal_reason, "
@@ -415,7 +477,36 @@ class RefillScanResult(Generic[T]):
             "safe_for_completion_reasoning": self.safe_for_completion_reasoning,
             "error": self.error,
             "metadata": _json_value(self.metadata),
+            # This is an assertion about the canonical fields above rather
+            # than CID input.  Consumers may therefore verify it without
+            # encountering a self-referential digest.
+            "receipt_cid": self.receipt_cid,
         }
+
+    def canonical_receipt(self) -> dict[str, Any]:
+        """Return the exact payload stored as the receipt artifact."""
+
+        return canonical_scan_receipt(self)
+
+    def compact_projection(
+        self,
+        *,
+        receipt_cid: str = "",
+        artifact_path: Path | str = "",
+        scan_kind: str = "",
+        now: datetime | str | None = None,
+        fresh_for_seconds: float = DEFAULT_SCAN_FRESHNESS_SECONDS,
+    ) -> dict[str, Any]:
+        """Return the bounded event/status representation of this receipt."""
+
+        return compact_scan_receipt_projection(
+            self,
+            receipt_cid=receipt_cid or self.receipt_cid,
+            artifact_path=artifact_path,
+            scan_kind=scan_kind,
+            now=now,
+            fresh_for_seconds=fresh_for_seconds,
+        )
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "RefillScanResult[Any]":
@@ -450,6 +541,291 @@ class RefillScanResult(Generic[T]):
             error=payload.get("error"),
             metadata=payload.get("metadata") or {},
         )
+
+
+def canonical_scan_receipt(
+    result_or_mapping: RefillScanResult[Any] | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the canonical full receipt used for persistence and CID input.
+
+    Compatibility aliases and derived fields such as ``generated_count`` are
+    omitted from the digest.  Consequently adding another presentation alias
+    does not silently change the identity of an already-created receipt.
+    """
+
+    if isinstance(result_or_mapping, RefillScanResult):
+        source: Mapping[str, Any] = {
+            "schema_version": result_or_mapping.schema_version,
+            "terminal_reason": result_or_mapping.terminal_reason.value,
+            "scan_mode": result_or_mapping.scan_mode,
+            "analyzer_version": result_or_mapping.analyzer_version,
+            "repository_id": result_or_mapping.repository_id,
+            "tree_id": result_or_mapping.tree_id,
+            "started_at": result_or_mapping.started_at.isoformat(),
+            "finished_at": result_or_mapping.finished_at.isoformat(),
+            "items": result_or_mapping.items,
+            "safe_for_completion_reasoning": result_or_mapping.safe_for_completion_reasoning,
+            "error": result_or_mapping.error,
+            "metadata": result_or_mapping.metadata,
+        }
+    elif isinstance(result_or_mapping, Mapping):
+        source = result_or_mapping
+    else:
+        raise TypeError("scan receipt must be a RefillScanResult or mapping")
+
+    reason = source.get("terminal_reason", source.get("reason"))
+    if isinstance(reason, Enum):
+        reason = reason.value
+    items = source.get("items", source.get("findings", ()))
+    if items is None:
+        items = ()
+    payload = {
+        "schema": SCAN_RECEIPT_SCHEMA,
+        "schema_version": int(
+            source.get(
+                "schema_version",
+                source.get("contract_version", source.get("version", REFILL_SCAN_RESULT_SCHEMA_VERSION)),
+            )
+        ),
+        "terminal_reason": str(reason or ""),
+        "scan_mode": str(source.get("scan_mode") or ""),
+        "analyzer_version": str(source.get("analyzer_version") or ""),
+        "repository_id": str(
+            source.get("repository_id", source.get("repository_identity", "")) or ""
+        ),
+        "tree_id": str(source.get("tree_id", source.get("tree_identity", "")) or ""),
+        "started_at": _utc_datetime(source.get("started_at", ""), field_name="started_at").isoformat(),
+        "finished_at": _utc_datetime(source.get("finished_at", ""), field_name="finished_at").isoformat(),
+        "items": _json_value(items),
+        "safe_for_completion_reasoning": bool(
+            source.get("safe_for_completion_reasoning", False)
+        ),
+        "error": str(source.get("error") or "").strip() or None,
+        "metadata": _json_value(source.get("metadata") or {}),
+    }
+    # Validate serializability here so failures happen before a partially
+    # persisted event can refer to an artifact which was never written.
+    json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return payload
+
+
+def _canonical_receipt_bytes(payload: Mapping[str, Any]) -> bytes:
+    return json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def scan_receipt_cid(
+    result_or_mapping: RefillScanResult[Any] | Mapping[str, Any],
+) -> str:
+    """Return one deterministic CIDv1 DAG-JSON/sha2-256 receipt identity."""
+
+    payload = canonical_scan_receipt(result_or_mapping)
+    try:
+        # Keep this contract aligned with the repository's established CID
+        # implementation.  A few legacy analyzer metadata fields contain
+        # finite floats, which that stricter identity helper rejects; the
+        # canonical JSON fallback preserves those otherwise valid receipts.
+        from .task_identity import canonical_content_cid
+
+        return canonical_content_cid(payload)
+    except ValueError:
+        digest = sha256(_canonical_receipt_bytes(payload)).digest()
+        raw = b"\x01\xa9\x02\x12\x20" + digest
+        return "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
+
+
+def _projection_sources(metadata: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    sources: list[Mapping[str, Any]] = [metadata]
+    for key in (
+        "candidate_funnel",
+        "candidate_counts",
+        "inventory",
+        "coverage",
+        "coverage_counts",
+        "counts",
+        "scan_inventory",
+    ):
+        nested = metadata.get(key)
+        if isinstance(nested, Mapping):
+            sources.append(nested)
+    return tuple(sources)
+
+
+def _counter(sources: Sequence[Mapping[str, Any]], aliases: Sequence[str]) -> int | None:
+    for source in sources:
+        for key in aliases:
+            if key not in source:
+                continue
+            value = source.get(key)
+            if isinstance(value, bool):
+                continue
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            return max(0, parsed)
+    return None
+
+
+def _candidate_funnel(source: Mapping[str, Any], generated_count: int) -> dict[str, int]:
+    metadata = source.get("metadata")
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    sources = _projection_sources(metadata)
+    funnel: dict[str, int] = {}
+    for canonical, aliases in _FUNNEL_COUNTER_ALIASES.items():
+        value = _counter(sources, aliases)
+        if value is not None:
+            funnel[canonical] = value
+
+    funnel.setdefault("appended_task_count", max(0, generated_count))
+    raw_count = funnel.get("raw_candidate_count")
+    if "deduplicated_candidate_count" not in funnel and raw_count is not None:
+        duplicate_count = _counter(sources, ("duplicate_count", "duplicate_candidate_count"))
+        if duplicate_count is not None:
+            funnel["deduplicated_candidate_count"] = max(0, raw_count - duplicate_count)
+    return funnel
+
+
+def _scan_health(reason: str) -> str:
+    if reason in _HEALTHY_REASONS:
+        return "healthy"
+    if reason in _SKIPPED_REASONS:
+        return "skipped"
+    if reason == ScanTerminalReason.PARTIAL.value:
+        return "partial"
+    return "unhealthy"
+
+
+def compact_scan_receipt_projection(
+    result: RefillScanResult[Any] | Mapping[str, Any],
+    *,
+    receipt_cid: str = "",
+    artifact_path: Path | str = "",
+    scan_kind: str = "",
+    now: datetime | str | None = None,
+    fresh_for_seconds: float = DEFAULT_SCAN_FRESHNESS_SECONDS,
+) -> dict[str, Any]:
+    """Build a compact event/heartbeat projection of a full scan receipt.
+
+    The projection deliberately contains neither ``items`` nor arbitrary
+    metadata.  File-level inventory, parser errors, and generated task records
+    remain reachable through ``artifact_path`` and ``receipt_cid``.
+    """
+
+    source = result.to_dict() if isinstance(result, RefillScanResult) else dict(result)
+    canonical = canonical_scan_receipt(result)
+    cid = str(receipt_cid or source.get("receipt_cid") or scan_receipt_cid(result)).strip()
+    if cid != scan_receipt_cid(result):
+        raise ValueError("receipt_cid does not match canonical scan receipt")
+
+    started_at = _utc_datetime(canonical["started_at"], field_name="started_at")
+    finished_at = _utc_datetime(canonical["finished_at"], field_name="finished_at")
+    observed_at = _utc_datetime(now or _utc_now(), field_name="now")
+    generated_count = len(canonical["items"])
+    reason = str(canonical["terminal_reason"])
+    age_seconds = max(0.0, (observed_at - finished_at).total_seconds())
+    duration_seconds = max(0.0, (finished_at - started_at).total_seconds())
+    freshness_threshold = max(0.0, float(fresh_for_seconds))
+    is_fresh = age_seconds <= freshness_threshold
+
+    return {
+        "schema": SCAN_RECEIPT_PROJECTION_SCHEMA,
+        "schema_version": SCAN_RECEIPT_PROJECTION_SCHEMA_VERSION,
+        "receipt_cid": cid,
+        "artifact_path": str(artifact_path or ""),
+        "scan_kind": str(scan_kind or "scan"),
+        "terminal_reason": reason,
+        "scan_mode": str(canonical["scan_mode"]),
+        "analyzer_version": str(canonical["analyzer_version"]),
+        "repository_id": str(canonical["repository_id"]),
+        "repository_identity": str(canonical["repository_id"]),
+        "tree_id": str(canonical["tree_id"]),
+        "tree_identity": str(canonical["tree_id"]),
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_seconds": round(duration_seconds, 6),
+        "generated_count": generated_count,
+        "safe_for_completion_reasoning": bool(canonical["safe_for_completion_reasoning"]),
+        "health": _scan_health(reason),
+        "freshness": {
+            "as_of": observed_at.isoformat(),
+            "age_seconds": round(age_seconds, 3),
+            "fresh_for_seconds": freshness_threshold,
+            "status": "fresh" if is_fresh else "stale",
+            "fresh": is_fresh,
+        },
+        "candidate_funnel": _candidate_funnel(source, generated_count),
+    }
+
+
+def persist_scan_receipt(
+    result: RefillScanResult[Any] | Mapping[str, Any],
+    artifact_dir: Path | str,
+    *,
+    scan_kind: str,
+    relative_to: Path | str | None = None,
+) -> dict[str, Any]:
+    """Atomically persist a canonical receipt and return its compact projection.
+
+    Writes are content-addressed and idempotent.  If another process wins the
+    same write race, its bytes must be identical or an error is raised rather
+    than allowing a CID/path mismatch.
+    """
+
+    directory = Path(artifact_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    if not directory.is_dir():
+        raise NotADirectoryError(str(directory))
+    payload = canonical_scan_receipt(result)
+    encoded = _canonical_receipt_bytes(payload) + b"\n"
+    cid = scan_receipt_cid(result)
+    path = directory / f"{cid}.json"
+
+    if path.exists():
+        try:
+            existing = path.read_bytes()
+        except OSError as exc:
+            raise OSError(f"unable to verify existing scan receipt {path}: {exc}") from exc
+        if existing != encoded:
+            raise ValueError(f"existing scan receipt does not match its CID: {path}")
+    else:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{cid}.", suffix=".tmp", dir=str(directory)
+        )
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # os.replace is atomic.  Concurrent identical writers are benign;
+            # the post-write verification protects against unexpected reuse.
+            os.replace(temporary, path)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+        if path.read_bytes() != encoded:
+            raise ValueError(f"persisted scan receipt failed verification: {path}")
+
+    display_path: Path = path
+    if relative_to is not None:
+        try:
+            display_path = path.resolve().relative_to(Path(relative_to).resolve())
+        except (OSError, ValueError):
+            display_path = path
+    return compact_scan_receipt_projection(
+        result,
+        receipt_cid=cid,
+        artifact_path=display_path,
+        scan_kind=scan_kind,
+    )
 
 
 def build_scan_result(
@@ -633,10 +1009,14 @@ create_scan_result = build_scan_result
 
 __all__ = [
     "CONTRACT_VERSION",
+    "DEFAULT_SCAN_FRESHNESS_SECONDS",
     "LegacyScanResultAdapter",
     "REFILL_SCAN_RESULT_SCHEMA_VERSION",
     "RepositoryTreeIdentity",
     "SCHEMA_VERSION",
+    "SCAN_RECEIPT_PROJECTION_SCHEMA",
+    "SCAN_RECEIPT_PROJECTION_SCHEMA_VERSION",
+    "SCAN_RECEIPT_SCHEMA",
     "ScanMode",
     "ScanResult",
     "ScanTerminalReason",
@@ -646,6 +1026,10 @@ __all__ = [
     "adapt_legacy_scan_callback",
     "adapt_legacy_scan_result",
     "build_scan_result",
+    "canonical_scan_receipt",
+    "compact_scan_receipt_projection",
     "create_scan_result",
+    "persist_scan_receipt",
+    "scan_receipt_cid",
     "scan_identity",
 ]

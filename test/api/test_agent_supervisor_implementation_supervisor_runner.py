@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
@@ -30,8 +33,13 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_supervisor_refill_hooks_from_recorders,
     build_supervisor_retry_budget_refill_callback,
     build_supervisor_runtime_callbacks,
+    persist_supervisor_scan_receipt,
     run_configured_portal_implementation_supervisor,
     run_portal_implementation_supervisor,
+)
+from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+    RefillScanResult,
+    ScanTerminalReason,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import parse_args
 
@@ -229,6 +237,124 @@ def test_run_portal_implementation_supervisor_runs_before_and_after_once_hooks(c
     assert "after hook: ['after-result']" in caplog.text
 
 
+def _scan_result(
+    reason: ScanTerminalReason,
+    *,
+    items: tuple[dict[str, object], ...] = (),
+    error: str | None = None,
+    metadata: dict[str, object] | None = None,
+) -> RefillScanResult[dict[str, object]]:
+    started = datetime.now(timezone.utc) - timedelta(seconds=2)
+    return RefillScanResult(
+        terminal_reason=reason,
+        scan_mode="exhaustive",
+        analyzer_version="test-v1",
+        repository_id="test-repository",
+        tree_id="test-tree",
+        started_at=started,
+        finished_at=started + timedelta(seconds=1),
+        items=items,
+        safe_for_completion_reasoning=reason is ScanTerminalReason.EXHAUSTED,
+        error=error,
+        metadata=metadata or {},
+    )
+
+
+def test_persist_supervisor_scan_receipt_keeps_strategy_projection_compact(tmp_path: Path):
+    state_dir = tmp_path / "state"
+    strategy_path = state_dir / "example_strategy.json"
+    events_path = state_dir / "example_supervisor_events.jsonl"
+    marker = "per-file-detail-must-only-live-in-artifact"
+    generated = _scan_result(
+        ScanTerminalReason.GENERATED,
+        items=({"task_id": "EX-001", "detail": marker},),
+        metadata={
+            "candidate_funnel": {
+                "raw_candidate_count": 4,
+                "deduplicated_candidate_count": 1,
+            },
+            "per_file_details": [{"path": f"src/{index}.py", "detail": marker} for index in range(50)],
+        },
+    )
+
+    generated_projection = persist_supervisor_scan_receipt(
+        generated,
+        scan_kind="codebase",
+        state_dir=state_dir,
+        state_prefix="example",
+        strategy_path=strategy_path,
+        events_path=events_path,
+    )
+    failed_projection = persist_supervisor_scan_receipt(
+        _scan_result(ScanTerminalReason.FAILED, error="parser unavailable"),
+        scan_kind="objective",
+        state_dir=state_dir,
+        state_prefix="example",
+        strategy_path=strategy_path,
+        events_path=events_path,
+    )
+
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    artifacts = list((state_dir / "example_scan_receipts").glob("*.json"))
+    assert len(artifacts) == 2
+    assert len(events) == 2
+    assert {event["type"] for event in events} == {"refill_scan_receipt"}
+    assert generated_projection["receipt_cid"] != failed_projection["receipt_cid"]
+    assert strategy["latest_attempted_scan"]["terminal_reason"] == "failed"
+    assert strategy["latest_successful_scan"]["receipt_cid"] == generated_projection["receipt_cid"]
+    assert strategy["scan_terminal_reason"] == "failed"
+    assert strategy["scan_health"] == "unhealthy"
+    assert strategy["scan_receipts"]["codebase"]["candidate_funnel"] == {
+        "raw_candidate_count": 4,
+        "deduplicated_candidate_count": 1,
+        "appended_task_count": 1,
+    }
+    assert marker not in strategy_path.read_text(encoding="utf-8")
+    assert marker not in events_path.read_text(encoding="utf-8")
+    assert marker in Path(state_dir / generated_projection["artifact_path"]).read_text(encoding="utf-8")
+
+
+def test_typed_runner_refill_hook_persists_one_canonical_receipt(tmp_path: Path):
+    state_dir = tmp_path / "state"
+    context = ImplementationSupervisorRunContext(
+        parsed=argparse.Namespace(once=True, state_prefix="example"),
+        config=SimpleNamespace(state_dir=state_dir, state_prefix="example"),
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "example_strategy.json",
+        events_path=state_dir / "example_supervisor_events.jsonl",
+        daemon_events_path=state_dir / "example_events.jsonl",
+    )
+
+    class FakeSupervisor:
+        def run_once(self) -> dict[str, bool]:
+            return {"ok": True}
+
+    result = run_portal_implementation_supervisor(
+        FakeSupervisor(),
+        context,
+        logger=logging.getLogger("test-typed-refill-hook"),
+        hooks=(
+            SupervisorRunHook(
+                "before",
+                "scan: %s",
+                lambda _context: _scan_result(ScanTerminalReason.EXHAUSTED),
+                scan_kind="codebase",
+            ),
+        ),
+    )
+
+    assert result == {"ok": True}
+    events = [
+        json.loads(line)
+        for line in context.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(events) == 1
+    assert events[0]["type"] == "refill_scan_receipt"
+    assert events[0]["terminal_reason"] == "exhausted"
+    assert "items" not in events[0]
+
+
 def test_run_portal_implementation_supervisor_skips_before_hooks_for_long_running_startup(caplog):
     class FakeSupervisor:
         def run_once(self) -> None:
@@ -359,6 +485,41 @@ def test_run_configured_portal_implementation_supervisor_builds_and_runs_once(tm
 
     assert calls == [board]
     assert isinstance(result, dict)
+    strategy = json.loads(
+        (tmp_path / "state" / "example_strategy.json").read_text(encoding="utf-8")
+    )
+    status = json.loads(
+        (tmp_path / "state" / "example_supervisor_status.json").read_text(encoding="utf-8")
+    )
+    assert strategy["latest_attempted_scan"]["scan_kind"] == "codebase"
+    assert strategy["latest_successful_scan"] is None
+    assert strategy["scan_terminal_reason"] == "disabled"
+    assert strategy["scan_health"] == "skipped"
+    assert strategy["candidate_funnel"] == {"appended_task_count": 0}
+    for key in (
+        "latest_attempted_scan",
+        "latest_successful_scan",
+        "scan_terminal_reason",
+        "scan_freshness",
+        "scan_health",
+        "candidate_funnel",
+        "scan_receipts",
+    ):
+        assert status[key] == strategy[key]
+    receipt_events = [
+        event
+        for event in (
+            json.loads(line)
+            for line in (tmp_path / "state" / "example_supervisor_events.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+        if event.get("type") == "refill_scan_receipt"
+    ]
+    assert len(receipt_events) == 2
+    assert {event["scan_kind"] for event in receipt_events} == {"objective", "codebase"}
+    assert all("items" not in event and "metadata" not in event for event in receipt_events)
+    assert len(list((tmp_path / "state" / "example_scan_receipts").glob("*.json"))) == 2
 
 
 def test_configured_supervisor_runtime_resolves_bootstrap_paths(monkeypatch, tmp_path: Path):

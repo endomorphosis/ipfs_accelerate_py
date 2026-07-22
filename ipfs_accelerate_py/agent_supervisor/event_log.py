@@ -187,7 +187,14 @@ def read_jsonl_event_sources(
     return [event for _index, event in indexed]
 
 
-def append_jsonl_event(path: Path, event_type: str, payload: Mapping[str, Any]) -> None:
+def append_jsonl_event(path: Path, event_type: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Append one event and return the exact JSON object written.
+
+    Returning the object is backward compatible with callers which ignored
+    the former ``None`` return and lets receipt publishers reuse the exact
+    compact projection which reached the durable log.
+    """
+
     if path.exists() and path.is_dir():
         repair_jsonl_event_log(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -196,6 +203,37 @@ def append_jsonl_event(path: Path, event_type: str, payload: Mapping[str, Any]) 
         fh.write(json.dumps(event, ensure_ascii=False) + "\n")
     # Auto-rotate if the log exceeds the size threshold
     rotate_event_log_if_needed(path)
+    return event
+
+
+def append_scan_receipt_event(
+    event_path: Path | str,
+    result: Any,
+    artifact_dir: Path | str,
+    *,
+    scan_kind: str,
+    relative_to: Path | str | None = None,
+) -> dict[str, Any]:
+    """Persist one full scan receipt and append its compact event projection.
+
+    Every invocation emits exactly one ``refill_scan_receipt`` event after the
+    content-addressed artifact is durable.  No generated item, per-file path
+    list, parser exception list, or arbitrary receipt metadata is copied into
+    the event log.
+    """
+
+    # Local import avoids making the general-purpose event-log reader import
+    # scan/git machinery at startup.
+    from .scan_receipts import persist_scan_receipt
+
+    projection = persist_scan_receipt(
+        result,
+        artifact_dir,
+        scan_kind=scan_kind,
+        relative_to=relative_to,
+    )
+    append_jsonl_event(Path(event_path), "refill_scan_receipt", projection)
+    return projection
 
 
 def rotate_event_log_if_needed(path: Path) -> dict[str, Any]:

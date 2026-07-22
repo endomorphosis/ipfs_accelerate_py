@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
@@ -32,11 +32,14 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
 from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
     REFILL_SCAN_RESULT_SCHEMA_VERSION,
+    SCAN_RECEIPT_PROJECTION_SCHEMA,
+    SCAN_RECEIPT_PROJECTION_SCHEMA_VERSION,
     RefillScanResult,
     ScanTerminalReason,
     adapt_legacy_scan_callback,
     adapt_legacy_scan_result,
     build_scan_result,
+    persist_scan_receipt,
     scan_identity,
 )
 
@@ -159,6 +162,78 @@ def test_refill_scan_result_has_versioned_terminal_taxonomy_and_explicit_legacy_
     assert dirty_identity.repository_id == identity.repository_id
     assert dirty_identity.tree_id.startswith("sha256:")
     assert dirty_identity.tree_id != identity.tree_id
+
+
+def test_scan_receipt_projection_is_versioned_compact_and_content_addressed(tmp_path):
+    started_at = datetime.now(timezone.utc)
+    result = build_scan_result(
+        ScanTerminalReason.GENERATED,
+        "exhaustive",
+        "test/v1",
+        tmp_path,
+        started_at,
+        ({"task_id": "REF-TEST", "per_file_detail": "artifact-only"},),
+        metadata={
+            "scan_inventory": {
+                "git_roots": 2,
+                "tracked_files": 20,
+                "eligible_files": 12,
+                "parsed_files": 10,
+                "excluded_files": 8,
+                "parser_failures": 2,
+                "raw_candidates": 6,
+                "seen_candidates": 3,
+                "deduplicated_candidates": 2,
+                "appended_tasks": 1,
+            },
+            "per_file_details": [{"path": "src/example.py", "reason": "large"}],
+        },
+    )
+
+    projection = persist_scan_receipt(
+        result,
+        tmp_path / "receipts",
+        scan_kind="codebase",
+        relative_to=tmp_path,
+    )
+    repeated = persist_scan_receipt(
+        result,
+        tmp_path / "receipts",
+        scan_kind="codebase",
+        relative_to=tmp_path,
+    )
+
+    assert repeated["receipt_cid"] == projection["receipt_cid"]
+    assert repeated["artifact_path"] == projection["artifact_path"]
+    assert projection["schema"] == SCAN_RECEIPT_PROJECTION_SCHEMA
+    assert projection["schema_version"] == SCAN_RECEIPT_PROJECTION_SCHEMA_VERSION
+    assert projection["receipt_cid"] == result.receipt_cid
+    assert projection["freshness"]["status"] == "fresh"
+    assert projection["freshness"]["fresh"] is True
+    stale_projection = result.compact_projection(
+        now=result.finished_at + timedelta(seconds=2),
+        fresh_for_seconds=1,
+    )
+    assert stale_projection["freshness"]["status"] == "stale"
+    assert stale_projection["freshness"]["fresh"] is False
+    assert projection["candidate_funnel"] == {
+        "git_root_count": 2,
+        "tracked_file_count": 20,
+        "eligible_file_count": 12,
+        "parsed_file_count": 10,
+        "excluded_file_count": 8,
+        "parser_failure_count": 2,
+        "raw_candidate_count": 6,
+        "seen_candidate_count": 3,
+        "deduplicated_candidate_count": 2,
+        "appended_task_count": 1,
+    }
+    assert "items" not in projection
+    assert "metadata" not in projection
+    artifact = tmp_path / projection["artifact_path"]
+    assert artifact.name == f"{result.receipt_cid}.json"
+    assert "artifact-only" in artifact.read_text(encoding="utf-8")
+    assert len(list((tmp_path / "receipts").glob("*.json"))) == 1
 
 
 def test_commit_generated_dirty_outputs_commits_nested_repo_and_parent_gitlink(tmp_path):
