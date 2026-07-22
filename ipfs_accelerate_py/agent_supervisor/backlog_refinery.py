@@ -22,7 +22,7 @@ import subprocess
 import time
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
-from hashlib import sha1
+from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
@@ -50,7 +50,19 @@ from .objective_graph import (
     repo_relative_path,
     safe_bundle_key,
 )
-from .scan_receipts import RefillScanResult, ScanAccounting, ScanTerminalReason, build_scan_result
+from .scan_receipts import (
+    DEFAULT_EXHAUSTION_QUORUM_SIZE,
+    ExhaustionBinding,
+    RefillScanResult,
+    RepositoryTreeIdentity,
+    ScanAccounting,
+    ScanTerminalReason,
+    build_scan_result,
+    evaluate_exhaustion_quorum,
+    objective_revision as canonical_objective_revision,
+    scan_configuration_revision,
+    scan_identity,
+)
 from .todo_daemon.implementation_daemon import (
     is_retry_budget_repair_task,
     parse_task_file,
@@ -104,6 +116,7 @@ DEFAULT_RECONCILIATION_GUARDRAIL_MAX_FINDINGS = int(
 DEFAULT_TASK_ID_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = "## AUTO-"
 CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
+CODEBASE_AUDIT_SCANNER_VERSION = "codebase-audit/v1"
 CODEBASE_SCAN_REASON_SAMPLE_LIMIT = 10
 CODEBASE_SCAN_MAX_FILE_BYTES = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144"))
 CODEBASE_SCAN_SUFFIXES = {
@@ -194,6 +207,8 @@ class CodebaseScanInventory:
     git_roots: list[str] = field(default_factory=list)
     expected_git_roots: list[str] = field(default_factory=list)
     tracked_file_count: int = 0
+    tracked_paths: list[str] = field(default_factory=list)
+    eligible_paths: list[str] = field(default_factory=list)
     eligible_file_count: int = 0
     parsed_file_count: int = 0
     cache_hit_count: int = 0
@@ -270,6 +285,8 @@ class CodebaseScanInventory:
             "coverage": self.coverage_dict(),
             "git_roots": list(self.git_roots),
             "expected_git_roots": list(self.expected_git_roots),
+            "tracked_paths": list(self.tracked_paths),
+            "eligible_paths": list(self.eligible_paths),
             "excluded_files": list(self.excluded_files),
             "parser_failures": list(self.parser_failures),
             "candidate_accounting": {
@@ -1806,7 +1823,7 @@ def scan_findings_in_file(path: Path, *, repo_root: Path) -> list[CodebaseFindin
 def scan_codebase_findings(
     repo_root: Path,
     *,
-    max_findings: int,
+    max_findings: int | None,
     seen_fingerprints: Iterable[str] = (),
     exhaustive: bool = False,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
@@ -1814,7 +1831,8 @@ def scan_codebase_findings(
 ) -> list[CodebaseFinding] | CodebaseScanInventory:
     """Scan tracked files for candidates, optionally returning full accounting.
 
-    The default remains the original list API.  Receipt-producing callers use
+    ``max_findings=None`` is the explicit uncapped audit mode.  The default
+    remains the original list API.  Receipt-producing callers use
     ``return_inventory=True`` so skipped paths and failures are never collapsed
     into the same empty result as a genuinely clean scan.
     """
@@ -1865,6 +1883,7 @@ def scan_codebase_findings(
                 )
                 continue
             path = git_root / relative
+            inventory.tracked_paths.append(root_relative_path(repo_root, path))
             reason = codebase_scan_file_exclusion_reason(
                 path,
                 repo_root=repo_root,
@@ -1876,6 +1895,7 @@ def scan_codebase_findings(
                 )
                 continue
             inventory.eligible_file_count += 1
+            inventory.eligible_paths.append(root_relative_path(repo_root, path))
             eligible_paths.append(path)
 
     for path in eligible_paths:
@@ -1892,7 +1912,7 @@ def scan_codebase_findings(
             if finding.fingerprint in selected_fingerprints:
                 inventory.deduplicated_candidate_count += 1
                 continue
-            if len(inventory.findings) < max_findings:
+            if max_findings is None or len(inventory.findings) < max_findings:
                 inventory.findings.append(finding)
                 selected_fingerprints.add(finding.fingerprint)
                 continue
@@ -1901,6 +1921,79 @@ def scan_codebase_findings(
                 inventory.complete = False
                 return inventory if return_inventory else inventory.findings
     return inventory if return_inventory else inventory.findings
+
+
+def codebase_source_tree_identity(
+    repo_root: Path,
+    inventory: CodebaseScanInventory,
+) -> str:
+    """Hash source/configuration material inspected by the codebase analyzer.
+
+    Supervisor state, taskboards, and generated discoveries are intentionally
+    absent because the inventory excludes them.  Common tracked configuration
+    formats that the annotation parser does not parse are included so a build
+    or analyzer configuration edit invalidates exhaustion evidence.
+    """
+
+    relevant = set(inventory.eligible_paths)
+    configuration_names = {
+        ".gitmodules",
+        "cargo.lock",
+        "deno.lock",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "poetry.lock",
+        "pyproject.toml",
+        "requirements.txt",
+        "uv.lock",
+        "yarn.lock",
+    }
+    for relative in inventory.tracked_paths:
+        path = Path(relative)
+        if path.name.lower() in configuration_names or path.suffix.lower() in {".toml", ".lock"}:
+            relevant.add(relative)
+    digest = sha256()
+    digest.update(b"codebase-source-tree/v1\0")
+    for relative in sorted(relevant):
+        digest.update(relative.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+        path = repo_root / relative
+        try:
+            digest.update(f"mode:{path.stat().st_mode & 0o111:o}\0".encode("ascii"))
+            if path.is_symlink():
+                digest.update(b"symlink\0")
+                digest.update(os.readlink(path).encode("utf-8", errors="surrogateescape"))
+            elif path.is_file():
+                digest.update(b"file\0")
+                with path.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+            else:
+                digest.update(b"missing\0")
+        except OSError as exc:
+            digest.update(f"error:{type(exc).__name__}".encode("ascii", errors="replace"))
+        digest.update(b"\0")
+    return f"sha256:{digest.hexdigest()}"
+
+
+def codebase_exhaustion_configuration(
+    *,
+    skip_prefixes: Sequence[str],
+    health_thresholds: AnalyzerHealthThresholds,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Canonical behavior-affecting configuration shared by normal/audit scans."""
+
+    return {
+        "audit_scanner_version": CODEBASE_AUDIT_SCANNER_VERSION,
+        "analyzer_version": CODEBASE_SCAN_ANALYZER_VERSION,
+        "max_file_bytes": CODEBASE_SCAN_MAX_FILE_BYTES,
+        "suffixes": sorted(CODEBASE_SCAN_SUFFIXES),
+        "skip_prefixes": sorted(str(item) for item in skip_prefixes),
+        "health_thresholds": health_thresholds.to_dict(),
+        "exhaustive": True,
+        "extra": dict(extra or {}),
+    }
 
 
 def write_codebase_scan_discovery(
@@ -4639,12 +4732,16 @@ def record_codebase_scan_findings(
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
     health_thresholds: AnalyzerHealthThresholds | Mapping[str, Any] | None = None,
+    exhaustion_quorum_size: int = DEFAULT_EXHAUSTION_QUORUM_SIZE,
+    objective_revision: str = "",
+    exhaustion_receipts: Iterable[RefillScanResult[Any] | Mapping[str, Any]] = (),
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record codebase scan backlog findings",
 ) -> RefillScanResult[dict[str, Any]]:
     """Feed a low backlog and return a typed account of the scan attempt."""
 
     started_at = datetime.now(timezone.utc)
+    initial_identity = scan_identity(repo_root)
     health_policy = AnalyzerHealthThresholds.from_value(health_thresholds)
     policy_metadata = analyzer_health_metadata(thresholds=health_policy)
     if not todo_path.exists():
@@ -4791,44 +4888,119 @@ def record_codebase_scan_findings(
             canaries=canaries,
             thresholds=health_policy,
         )
-        terminal_reason, completion_safe, health_error = fail_closed_scan_outcome(
+        terminal_reason, health_completion_safe, health_error = fail_closed_scan_outcome(
             nominal_reason,
             health,
             generated_count=0,
             exhaustive=mode.endswith("exhaustive"),
         )
-        strategy["last_codebase_scan_findings"] = []
-        strategy["last_codebase_scan_health"] = health.to_dict()
-        if completion_safe:
-            strategy["last_drained_codebase_scan_task_count"] = task_count
-        write_json(strategy_path, strategy)
-        return build_scan_result(
+        source_identity = RepositoryTreeIdentity(
+            initial_identity.repository_id,
+            codebase_source_tree_identity(repo_root, inventory),
+        )
+        objective_id = objective_revision or canonical_objective_revision("")
+        configuration_id = scan_configuration_revision(
+            codebase_exhaustion_configuration(
+                skip_prefixes=skip_prefixes,
+                health_thresholds=health_policy,
+            )
+        )
+        binding = ExhaustionBinding(
+            repository_id=source_identity.repository_id,
+            tree_id=source_identity.tree_id,
+            analyzer_version=CODEBASE_SCAN_ANALYZER_VERSION,
+            configuration_revision=configuration_id,
+            objective_revision=objective_id,
+        )
+        receipt_metadata = {
+            **analyzer_health_metadata(
+                thresholds=health_policy,
+                canaries=canaries,
+                health=health,
+            ),
+            **safe_codebase_scan_accounting_metadata(
+                inventory,
+                appended_tasks=0,
+                details_artifact=details_artifact,
+            ),
+            "duplicate_candidate_count": (
+                inventory.seen_candidate_count
+                + inventory.deduplicated_candidate_count
+            ),
+            "open_task_count": current_open,
+            "task_count": task_count,
+            "exhaustive": mode.endswith("exhaustive"),
+            "evidence_channel": "codebase:normal",
+            "configuration_revision": configuration_id,
+            "objective_revision": objective_id,
+            "exhaustion_binding": binding.to_dict(),
+        }
+        candidate_receipt = build_scan_result(
             terminal_reason,
             mode,
             CODEBASE_SCAN_ANALYZER_VERSION,
             repo_root,
             started_at,
+            safe_for_completion_reasoning=False,
+            error=health_error,
+            metadata=receipt_metadata,
+            identity=source_identity,
+        )
+        from .dataset_store import ObjectiveDatasetStore
+
+        quorum_store = ObjectiveDatasetStore(dataset_dir or discovery_dir)
+        stored_quorum = quorum_store.load_exhaustion_quorum(binding.repository_id)
+        stored_members = (
+            stored_quorum.get("members", ())
+            if isinstance(stored_quorum, Mapping)
+            else ()
+        )
+        quorum = evaluate_exhaustion_quorum(
+            [*stored_members, *exhaustion_receipts, candidate_receipt],
+            binding=binding,
+            required_members=exhaustion_quorum_size,
+        )
+        completion_safe = health_completion_safe and quorum.satisfied
+        receipt_metadata["exhaustion_quorum"] = quorum.to_dict()
+        receipt = build_scan_result(
+            terminal_reason,
+            mode,
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            finished_at=candidate_receipt.finished_at,
             safe_for_completion_reasoning=completion_safe,
             error=health_error,
-            metadata={
-                **analyzer_health_metadata(
-                    thresholds=health_policy,
-                    canaries=canaries,
-                    health=health,
-                ),
-                **safe_codebase_scan_accounting_metadata(
-                    inventory,
-                    appended_tasks=0,
-                    details_artifact=details_artifact,
-                ),
-                "duplicate_candidate_count": (
-                    inventory.seen_candidate_count
-                    + inventory.deduplicated_candidate_count
-                ),
-                "open_task_count": current_open,
-                "task_count": task_count,
-            },
+            metadata=receipt_metadata,
+            identity=source_identity,
         )
+        quorum = evaluate_exhaustion_quorum(
+            [*stored_members, *exhaustion_receipts, receipt],
+            binding=binding,
+            required_members=exhaustion_quorum_size,
+        )
+        receipt_metadata["exhaustion_quorum"] = quorum.to_dict()
+        # Rebuild once so the canonical receipt carries the final projection.
+        receipt = build_scan_result(
+            terminal_reason,
+            mode,
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            finished_at=candidate_receipt.finished_at,
+            safe_for_completion_reasoning=completion_safe,
+            error=health_error,
+            metadata=receipt_metadata,
+            identity=source_identity,
+        )
+        quorum_store.persist_exhaustion_quorum(quorum)
+        strategy["last_codebase_scan_findings"] = []
+        strategy["last_codebase_scan_health"] = health.to_dict()
+        strategy["last_codebase_scan_exhaustion_quorum"] = quorum.to_dict()
+        if completion_safe:
+            strategy["last_drained_codebase_scan_task_count"] = task_count
+        write_json(strategy_path, strategy)
+        return receipt
 
     appended: list[dict[str, Any]] = []
     bundle_records: list[dict[str, Any]] = []
@@ -5025,6 +5197,24 @@ def record_codebase_scan_findings_legacy(**kwargs: Any) -> list[dict[str, Any]]:
     """Explicit list compatibility wrapper for pre-receipt callers."""
 
     return list(record_codebase_scan_findings(**kwargs).items)
+
+
+def record_codebase_audit_findings(
+    *,
+    repo_root: Path,
+    dataset_dir: Path | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Run the independent audit path without touching taskboard/seen state.
+
+    This deliberately accepts no todo or strategy path.  Audit persistence is
+    confined to the dataset store, making it impossible for this wrapper to
+    synchronize, retire, or append normal refill fingerprints.
+    """
+
+    from .audit_scanner import run_audit_scan
+
+    return run_audit_scan(repo_root, dataset_dir=dataset_dir, **kwargs)
 
 
 def record_objective_backlog_findings(

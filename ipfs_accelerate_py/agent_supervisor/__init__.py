@@ -1,6 +1,6 @@
 """Autonomous agent supervisor helpers for objective-driven todo execution."""
 
-from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
+from .dataset_store import DatasetArtifact, DatasetAuditSnapshotArtifact, ObjectiveDatasetStore
 from .conflict_graph import (
     ConflictEdge,
     ConflictGraph,
@@ -143,6 +143,7 @@ __all__ = [
     "ConflictWeightHistory",
     "CompletionEvidence",
     "DatasetArtifact",
+    "DatasetAuditSnapshotArtifact",
     "DependencyEdge",
     "DependencyRepairEvidence",
     "DEFAULT_REPO_DOCS_DIR",
@@ -459,12 +460,39 @@ __all__ = [
     "TaskProposalRouterError",
     "TaskProposalRoutePaths",
     "TaskProposalRouteSpec",
+    "AuditFindingRecord",
+    "AuditFindingStatus",
+    "AuditScanResult",
+    "ExhaustionBinding",
+    "ExhaustionQuorumResult",
+    "audit_codebase_findings",
+    "evaluate_exhaustion_quorum",
+    "run_audit_scan",
+    "record_codebase_audit_findings",
     "task_metadata_lines",
     "build_task_proposal_route_paths",
 ]
 
 
 def __getattr__(name: str):
+    if name in {
+        "AuditFindingRecord",
+        "AuditFindingStatus",
+        "AuditScanResult",
+        "audit_codebase_findings",
+        "run_audit_scan",
+    }:
+        from . import audit_scanner
+
+        return getattr(audit_scanner, name)
+    if name in {
+        "ExhaustionBinding",
+        "ExhaustionQuorumResult",
+        "evaluate_exhaustion_quorum",
+    }:
+        from . import scan_receipts
+
+        return getattr(scan_receipts, name)
     if name in {
         "CodebaseFinding",
         "ConfiguredBacklogRecorderBundle",
@@ -481,6 +509,7 @@ def __getattr__(name: str):
         "record_configured_objective_backlog_findings",
         "record_configured_retry_budget_findings",
         "record_codebase_scan_findings",
+        "record_codebase_audit_findings",
         "record_objective_backlog_findings",
         "record_retry_budget_findings",
         "run_backlog_refinery",

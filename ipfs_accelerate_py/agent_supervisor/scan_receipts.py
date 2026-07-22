@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Callable, Generic, Iterator, Mapping, Sequence, TypeVar, Union, overload
+from typing import Any, Callable, Generic, Iterable, Iterator, Mapping, Sequence, TypeVar, Union, overload
 
 
 REFILL_SCAN_RESULT_SCHEMA_VERSION = 1
@@ -47,6 +47,26 @@ SCAN_RECEIPT_PROJECTION_SCHEMA = (
 
 DEFAULT_SCAN_FRESHNESS_SECONDS = 3600.0
 """Default age after which a projected scan receipt is classified as stale."""
+
+EXHAUSTION_QUORUM_SCHEMA_VERSION = 1
+EXHAUSTION_QUORUM_SCHEMA = "ipfs_accelerate_py/agent-supervisor/exhaustion-quorum@1"
+
+
+def _positive_env_int(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+DEFAULT_EXHAUSTION_QUORUM_SIZE = _positive_env_int(
+    "IPFS_ACCELERATE_AGENT_EXHAUSTION_QUORUM", 2
+)
+"""Independent healthy exhaustive evidence channels required for exhaustion."""
+
+# Concise compatibility spelling used by configuration/status consumers.
+DEFAULT_EXHAUSTION_QUORUM = DEFAULT_EXHAUSTION_QUORUM_SIZE
 
 _HEALTHY_REASONS = frozenset(
     {"generated", "exhausted", "duplicate_only"}
@@ -639,6 +659,264 @@ class RepositoryTreeIdentity:
         return {"repository_id": self.repository_id, "tree_id": self.tree_id}
 
 
+def canonical_revision(value: Any, *, namespace: str = "revision") -> str:
+    """Return a deterministic revision for configuration or objective material.
+
+    Mappings are canonicalized independently of insertion order.  Paths and
+    bytes are hashed by content.  Strings are treated as revision material,
+    not as implicit filesystem paths, which keeps this helper free of ambient
+    filesystem semantics.
+    """
+
+    if isinstance(value, Path):
+        try:
+            encoded = value.read_bytes()
+        except OSError:
+            encoded = b""
+    elif isinstance(value, (bytes, bytearray, memoryview)):
+        encoded = bytes(value)
+    else:
+        projected = _json_value(value)
+        encoded = json.dumps(
+            projected,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    digest = sha256()
+    digest.update(str(namespace or "revision").encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(encoded)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def scan_configuration_revision(configuration: Any) -> str:
+    """Canonical revision for all analyzer-affecting configuration."""
+
+    return canonical_revision(configuration, namespace="scan-configuration")
+
+
+def objective_revision(objective: Any) -> str:
+    """Canonical content revision for the objective governing a scan."""
+
+    return canonical_revision(objective, namespace="scan-objective")
+
+
+@dataclass(frozen=True)
+class ExhaustionBinding:
+    """The complete context in which exhaustion evidence remains relevant."""
+
+    repository_id: str
+    tree_id: str
+    analyzer_version: str
+    configuration_revision: str
+    objective_revision: str
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            object.__setattr__(self, name, _nonempty(getattr(self, name), field_name=name))
+
+    @property
+    def binding_id(self) -> str:
+        return canonical_revision(
+            {
+                "repository_id": self.repository_id,
+                "tree_id": self.tree_id,
+                "analyzer_version": self.analyzer_version,
+                "configuration_revision": self.configuration_revision,
+                "objective_revision": self.objective_revision,
+            },
+            namespace="exhaustion-binding",
+        )
+
+    # Alternate terminology used in persisted status payloads.
+    context_id = property(lambda self: self.binding_id)
+    configuration_id = property(lambda self: self.configuration_revision)
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "analyzer_version": self.analyzer_version,
+            "configuration_revision": self.configuration_revision,
+            "configuration_id": self.configuration_revision,
+            "objective_revision": self.objective_revision,
+            "binding_id": self.binding_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ExhaustionBinding":
+        return cls(
+            repository_id=str(payload.get("repository_id") or payload.get("repository_identity") or ""),
+            tree_id=str(payload.get("tree_id") or payload.get("tree_identity") or ""),
+            analyzer_version=str(payload.get("analyzer_version") or ""),
+            configuration_revision=str(
+                payload.get("configuration_revision") or payload.get("configuration_id") or ""
+            ),
+            objective_revision=str(payload.get("objective_revision") or ""),
+        )
+
+
+# Scope is a friendlier spelling for callers that reason in scheduler terms.
+ExhaustionScope = ExhaustionBinding
+
+
+@dataclass(frozen=True)
+class ExhaustionQuorumPolicy:
+    """Configurable number of distinct evidence channels required."""
+
+    required_members: int = DEFAULT_EXHAUSTION_QUORUM_SIZE
+
+    def __post_init__(self) -> None:
+        value = _count(self.required_members, field_name="required_members")
+        if value < 1:
+            raise ValueError("required_members must be at least one")
+        object.__setattr__(self, "required_members", value)
+
+    required_receipts = property(lambda self: self.required_members)
+
+    def to_dict(self) -> dict[str, int]:
+        return {"required_members": self.required_members}
+
+
+@dataclass(frozen=True)
+class ExhaustionQuorumMember:
+    """One stable, independent vote in an exhaustion quorum."""
+
+    member_id: str
+    evidence_channel: str
+    receipt_cid: str
+    binding: ExhaustionBinding
+    scan_mode: str
+    finished_at: str
+
+    def __post_init__(self) -> None:
+        for name in ("member_id", "evidence_channel", "receipt_cid", "scan_mode"):
+            object.__setattr__(self, name, _nonempty(getattr(self, name), field_name=name))
+        binding = self.binding
+        if not isinstance(binding, ExhaustionBinding):
+            binding = ExhaustionBinding.from_dict(binding)
+        object.__setattr__(self, "binding", binding)
+        finished = _utc_datetime(self.finished_at, field_name="finished_at")
+        object.__setattr__(self, "finished_at", finished.isoformat())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "member_id": self.member_id,
+            "evidence_channel": self.evidence_channel,
+            "receipt_cid": self.receipt_cid,
+            "binding": self.binding.to_dict(),
+            "scan_mode": self.scan_mode,
+            "finished_at": self.finished_at,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ExhaustionQuorumMember":
+        return cls(
+            member_id=str(payload.get("member_id") or ""),
+            evidence_channel=str(
+                payload.get("evidence_channel") or payload.get("independence_key") or ""
+            ),
+            receipt_cid=str(payload.get("receipt_cid") or ""),
+            binding=ExhaustionBinding.from_dict(payload.get("binding") or payload),
+            scan_mode=str(payload.get("scan_mode") or ""),
+            finished_at=str(payload.get("finished_at") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class ExhaustionQuorumResult:
+    """Deterministic evaluation of exhaustive scan evidence."""
+
+    binding: ExhaustionBinding
+    required_members: int
+    members: tuple[ExhaustionQuorumMember, ...] = ()
+    duplicates: tuple[Mapping[str, Any], ...] = ()
+    invalidated: tuple[Mapping[str, Any], ...] = ()
+    rejected: tuple[Mapping[str, Any], ...] = ()
+    schema_version: int = EXHAUSTION_QUORUM_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        binding = self.binding
+        if not isinstance(binding, ExhaustionBinding):
+            binding = ExhaustionBinding.from_dict(binding)
+        object.__setattr__(self, "binding", binding)
+        policy = ExhaustionQuorumPolicy(self.required_members)
+        object.__setattr__(self, "required_members", policy.required_members)
+        normalized = tuple(
+            item if isinstance(item, ExhaustionQuorumMember) else ExhaustionQuorumMember.from_dict(item)
+            for item in self.members
+        )
+        if len({item.member_id for item in normalized}) != len(normalized):
+            raise ValueError("quorum members must have unique member_id values")
+        object.__setattr__(self, "members", tuple(sorted(normalized, key=lambda item: item.member_id)))
+        object.__setattr__(self, "duplicates", tuple(dict(item) for item in self.duplicates))
+        object.__setattr__(self, "invalidated", tuple(dict(item) for item in self.invalidated))
+        object.__setattr__(self, "rejected", tuple(dict(item) for item in self.rejected))
+        if int(self.schema_version) != EXHAUSTION_QUORUM_SCHEMA_VERSION:
+            raise ValueError("unsupported exhaustion quorum schema version")
+
+    @property
+    def satisfied(self) -> bool:
+        return len(self.members) >= self.required_members
+
+    @property
+    def count(self) -> int:
+        return len(self.members)
+
+    @property
+    def confidence(self) -> float:
+        return min(1.0, self.count / self.required_members)
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.required_members - self.count)
+
+    quorum_met = property(lambda self: self.satisfied)
+    eligible_members = property(lambda self: self.members)
+    required = property(lambda self: self.required_members)
+    binding_id = property(lambda self: self.binding.binding_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": EXHAUSTION_QUORUM_SCHEMA,
+            "schema_version": self.schema_version,
+            "binding": self.binding.to_dict(),
+            "binding_id": self.binding.binding_id,
+            "required_members": self.required_members,
+            "member_count": self.count,
+            "confidence": self.confidence,
+            "remaining_members": self.remaining,
+            "satisfied": self.satisfied,
+            "quorum_met": self.satisfied,
+            "members": [member.to_dict() for member in self.members],
+            "duplicates": [dict(item) for item in self.duplicates],
+            "invalidated": [dict(item) for item in self.invalidated],
+            "rejected": [dict(item) for item in self.rejected],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ExhaustionQuorumResult":
+        return cls(
+            schema_version=int(payload.get("schema_version", EXHAUSTION_QUORUM_SCHEMA_VERSION)),
+            binding=ExhaustionBinding.from_dict(payload.get("binding") or payload),
+            required_members=int(
+                payload.get("required_members", payload.get("required", DEFAULT_EXHAUSTION_QUORUM_SIZE))
+            ),
+            members=tuple(payload.get("members") or payload.get("eligible_members") or ()),
+            duplicates=tuple(payload.get("duplicates") or ()),
+            invalidated=tuple(payload.get("invalidated") or ()),
+            rejected=tuple(payload.get("rejected") or ()),
+        )
+
+
+# Compatibility aliases for callers/tests using the longer nouns.
+ExhaustionQuorumEvaluation = ExhaustionQuorumResult
+ExhaustionQuorum = ExhaustionQuorumResult
+ExhaustionReceiptBinding = ExhaustionBinding
+
+
 def scan_identity(repo_root: Union[Path, str]) -> RepositoryTreeIdentity:
     """Resolve stable best-effort git identity for ``repo_root``.
 
@@ -1162,6 +1440,238 @@ def scan_receipt_cid(
         return "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
 
 
+def quorum_member_id(binding: ExhaustionBinding, evidence_channel: str) -> str:
+    """Return a timestamp-independent identity for one evidence channel."""
+
+    channel = _nonempty(evidence_channel, field_name="evidence_channel")
+    return canonical_revision(
+        {"binding_id": binding.binding_id, "evidence_channel": channel},
+        namespace="exhaustion-quorum-member",
+    )
+
+
+def _receipt_mapping(
+    receipt: RefillScanResult[Any] | ExhaustionQuorumMember | Mapping[str, Any],
+) -> dict[str, Any]:
+    if isinstance(receipt, RefillScanResult):
+        return receipt.to_dict()
+    if isinstance(receipt, ExhaustionQuorumMember):
+        return receipt.to_dict()
+    if not isinstance(receipt, Mapping):
+        raise TypeError("quorum receipts must be RefillScanResult or mapping values")
+    return dict(receipt)
+
+
+def _receipt_binding(source: Mapping[str, Any], target: ExhaustionBinding) -> ExhaustionBinding:
+    metadata = source.get("metadata")
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    raw = metadata.get("exhaustion_binding") or source.get("exhaustion_binding")
+    if isinstance(raw, Mapping):
+        return ExhaustionBinding.from_dict(raw)
+    return ExhaustionBinding(
+        repository_id=str(source.get("repository_id") or source.get("repository_identity") or target.repository_id),
+        tree_id=str(source.get("tree_id") or source.get("tree_identity") or target.tree_id),
+        analyzer_version=str(source.get("analyzer_version") or target.analyzer_version),
+        configuration_revision=str(
+            metadata.get("configuration_revision")
+            or metadata.get("configuration_id")
+            or source.get("configuration_revision")
+            or target.configuration_revision
+        ),
+        objective_revision=str(
+            metadata.get("objective_revision")
+            or source.get("objective_revision")
+            or target.objective_revision
+        ),
+    )
+
+
+def _binding_mismatches(
+    candidate: ExhaustionBinding,
+    target: ExhaustionBinding,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    for field_name, reason in (
+        ("repository_id", "repository_mismatch"),
+        ("tree_id", "tree_mismatch"),
+        ("analyzer_version", "analyzer_version_mismatch"),
+        ("configuration_revision", "configuration_mismatch"),
+        ("objective_revision", "objective_revision_mismatch"),
+    ):
+        if getattr(candidate, field_name) != getattr(target, field_name):
+            reasons.append(reason)
+    return tuple(reasons)
+
+
+def evaluate_exhaustion_quorum(
+    receipts: Iterable[RefillScanResult[Any] | Mapping[str, Any]],
+    *,
+    binding: ExhaustionBinding | Mapping[str, Any] | None = None,
+    required_members: int | None = None,
+    required_quorum: int | None = None,
+    quorum_size: int | None = None,
+    required: int | None = None,
+    repository_id: str = "",
+    repository_identity: str = "",
+    tree_id: str = "",
+    tree_identity: str = "",
+    analyzer_version: str = "",
+    configuration: Any = None,
+    configuration_revision: str = "",
+    configuration_id: str = "",
+    objective: Any = None,
+    objective_revision: str = "",
+) -> ExhaustionQuorumResult:
+    """Evaluate distinct, healthy exhaustive receipts against one binding.
+
+    The stable evidence channel is the independence dimension: re-running the
+    same analyzer mode on an unchanged context replaces one vote rather than
+    manufacturing additional confidence.  A normal exhaustive channel and an
+    independent audit channel can therefore form a two-member quorum.
+    """
+
+    materialized = tuple(receipts)
+    if binding is not None:
+        target = binding if isinstance(binding, ExhaustionBinding) else ExhaustionBinding.from_dict(binding)
+    else:
+        first: Mapping[str, Any] = {}
+        if materialized:
+            first = _receipt_mapping(materialized[0])
+        config_id = configuration_revision or configuration_id or scan_configuration_revision(
+            {} if configuration is None else configuration
+        )
+        objective_id = objective_revision or globals()["objective_revision"](
+            "" if objective is None else objective
+        )
+        target = ExhaustionBinding(
+            repository_id=repository_id or repository_identity or str(first.get("repository_id") or first.get("repository_identity") or ""),
+            tree_id=tree_id or tree_identity or str(first.get("tree_id") or first.get("tree_identity") or ""),
+            analyzer_version=analyzer_version or str(first.get("analyzer_version") or ""),
+            configuration_revision=config_id,
+            objective_revision=objective_id,
+        )
+
+    requested = next(
+        (value for value in (required_members, required_quorum, quorum_size, required) if value is not None),
+        DEFAULT_EXHAUSTION_QUORUM_SIZE,
+    )
+    policy = ExhaustionQuorumPolicy(int(requested))
+    by_member: dict[str, ExhaustionQuorumMember] = {}
+    duplicates: list[dict[str, Any]] = []
+    invalidated: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+
+    for receipt in materialized:
+        source = _receipt_mapping(receipt)
+        # Stored quorum projections can be replayed directly.
+        if source.get("member_id") and isinstance(source.get("binding"), Mapping):
+            try:
+                member = ExhaustionQuorumMember.from_dict(source)
+            except (TypeError, ValueError) as exc:
+                rejected.append({"receipt_cid": str(source.get("receipt_cid") or ""), "reasons": [f"invalid_member:{exc}"]})
+                continue
+            if member.member_id != quorum_member_id(member.binding, member.evidence_channel):
+                rejected.append(
+                    {
+                        "receipt_cid": member.receipt_cid,
+                        "reasons": ["member_identity_mismatch"],
+                    }
+                )
+                continue
+            mismatches = _binding_mismatches(member.binding, target)
+            if mismatches:
+                invalidated.append({"receipt_cid": member.receipt_cid, "member_id": member.member_id, "reasons": list(mismatches)})
+                continue
+        else:
+            metadata = source.get("metadata")
+            metadata = metadata if isinstance(metadata, Mapping) else {}
+            receipt_binding = _receipt_binding(source, target)
+            mismatches = _binding_mismatches(receipt_binding, target)
+            cid = str(source.get("receipt_cid") or "")
+            if not cid and isinstance(receipt, RefillScanResult):
+                cid = receipt.receipt_cid
+            if mismatches:
+                invalidated.append({"receipt_cid": cid, "reasons": list(mismatches)})
+                continue
+
+            reason = source.get("terminal_reason", source.get("reason", ""))
+            reason = reason.value if isinstance(reason, Enum) else str(reason)
+            mode = str(source.get("scan_mode") or "")
+            health_record = metadata.get("analyzer_health")
+            health_record = health_record if isinstance(health_record, Mapping) else {}
+            declared_health = str(
+                health_record.get("status") or metadata.get("health") or source.get("health") or ""
+            ).lower()
+            health_ok = declared_health == "healthy" or (
+                not declared_health and bool(source.get("safe_for_completion_reasoning", False))
+            )
+            exhaustive = bool(metadata.get("exhaustive", False)) or "exhaustive" in mode or mode == ScanMode.AUDIT.value
+            coverage_complete = metadata.get("coverage_complete", True) is not False
+            audit_summary = metadata.get("audit_summary")
+            audit_summary = audit_summary if isinstance(audit_summary, Mapping) else {}
+            actionable = int(audit_summary.get("novel", 0) or 0) + int(audit_summary.get("changed", 0) or 0)
+            eligibility_reasons: list[str] = []
+            if reason != ScanTerminalReason.EXHAUSTED.value:
+                eligibility_reasons.append("terminal_reason_not_exhausted")
+            if not exhaustive:
+                eligibility_reasons.append("scan_not_exhaustive")
+            if not health_ok:
+                eligibility_reasons.append("scan_not_healthy")
+            if not coverage_complete:
+                eligibility_reasons.append("coverage_incomplete")
+            if actionable:
+                eligibility_reasons.append("actionable_audit_findings")
+            if eligibility_reasons:
+                rejected.append({"receipt_cid": cid, "reasons": eligibility_reasons})
+                continue
+
+            channel = str(
+                metadata.get("quorum_member_id")
+                or metadata.get("evidence_channel")
+                or metadata.get("independence_key")
+                or mode
+            ).strip()
+            stable_id = quorum_member_id(receipt_binding, channel)
+            finished_at = str(source.get("finished_at") or _utc_now().isoformat())
+            member = ExhaustionQuorumMember(
+                member_id=stable_id,
+                evidence_channel=channel,
+                receipt_cid=cid or stable_id,
+                binding=receipt_binding,
+                scan_mode=mode,
+                finished_at=finished_at,
+            )
+
+        previous = by_member.get(member.member_id)
+        if previous is not None:
+            duplicates.append(
+                {
+                    "member_id": member.member_id,
+                    "receipt_cid": member.receipt_cid,
+                    "duplicate_of": previous.receipt_cid,
+                    "reason": "duplicate_evidence_channel",
+                }
+            )
+            # Retain the newest evidence while keeping the confidence count
+            # fixed. ISO UTC timestamps sort chronologically.
+            if member.finished_at > previous.finished_at:
+                by_member[member.member_id] = member
+        else:
+            by_member[member.member_id] = member
+
+    return ExhaustionQuorumResult(
+        binding=target,
+        required_members=policy.required_members,
+        members=tuple(by_member.values()),
+        duplicates=tuple(duplicates),
+        invalidated=tuple(invalidated),
+        rejected=tuple(rejected),
+    )
+
+
+evaluate_exhaustion_receipts = evaluate_exhaustion_quorum
+
+
 def _projection_sources(metadata: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
     sources: list[Mapping[str, Any]] = [metadata]
     for key in (
@@ -1364,16 +1874,30 @@ def build_scan_result(
     error: str | None = None,
     metadata: Mapping[str, Any] | None = None,
     accounting: ScanAccounting | Mapping[str, Any] | None = None,
+    identity: RepositoryTreeIdentity | Mapping[str, Any] | None = None,
 ) -> RefillScanResult[T]:
-    """Build a scan receipt using the repository's current git identity."""
+    """Build a receipt using current or explicitly captured source identity.
 
-    identity = scan_identity(repo_root)
+    Long-running scanners should capture ``identity`` before writing their own
+    state/artifacts so those writes cannot alter the tree attested by the
+    receipt.
+    """
+
+    if identity is None:
+        resolved_identity = scan_identity(repo_root)
+    elif isinstance(identity, RepositoryTreeIdentity):
+        resolved_identity = identity
+    else:
+        resolved_identity = RepositoryTreeIdentity(
+            repository_id=str(identity.get("repository_id") or identity.get("repository_identity") or ""),
+            tree_id=str(identity.get("tree_id") or identity.get("tree_identity") or ""),
+        )
     return RefillScanResult(
         terminal_reason=terminal_reason,
         scan_mode=scan_mode,
         analyzer_version=analyzer_version,
-        repository_id=identity.repository_id,
-        tree_id=identity.tree_id,
+        repository_id=resolved_identity.repository_id,
+        tree_id=resolved_identity.tree_id,
         started_at=started_at,
         finished_at=finished_at or _utc_now(),
         items=tuple(findings),
@@ -1535,7 +2059,19 @@ create_scan_result = build_scan_result
 __all__ = [
     "CandidateAccounting",
     "CONTRACT_VERSION",
+    "DEFAULT_EXHAUSTION_QUORUM",
+    "DEFAULT_EXHAUSTION_QUORUM_SIZE",
     "DEFAULT_SCAN_FRESHNESS_SECONDS",
+    "EXHAUSTION_QUORUM_SCHEMA",
+    "EXHAUSTION_QUORUM_SCHEMA_VERSION",
+    "ExhaustionBinding",
+    "ExhaustionQuorumEvaluation",
+    "ExhaustionQuorum",
+    "ExhaustionQuorumMember",
+    "ExhaustionQuorumPolicy",
+    "ExhaustionQuorumResult",
+    "ExhaustionReceiptBinding",
+    "ExhaustionScope",
     "LegacyScanResultAdapter",
     "MAX_REPRESENTATIVE_PATHS_PER_REASON",
     "REFILL_SCAN_RESULT_SCHEMA_VERSION",
@@ -1559,9 +2095,15 @@ __all__ = [
     "adapt_legacy_scan_result",
     "build_scan_result",
     "canonical_scan_receipt",
+    "canonical_revision",
     "compact_scan_receipt_projection",
     "create_scan_result",
+    "evaluate_exhaustion_quorum",
+    "evaluate_exhaustion_receipts",
+    "objective_revision",
     "persist_scan_receipt",
     "scan_receipt_cid",
     "scan_identity",
+    "scan_configuration_revision",
+    "quorum_member_id",
 ]

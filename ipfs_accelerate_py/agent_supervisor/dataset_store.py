@@ -14,6 +14,8 @@ from typing import Any, Iterable, Mapping
 
 
 SCAN_DETAILS_ARTIFACT_SCHEMA_VERSION = 1
+AUDIT_SNAPSHOT_SCHEMA_VERSION = 1
+EXHAUSTION_QUORUM_STORE_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,36 @@ class DatasetScanDetailsArtifact:
             "byte_count": self.byte_count,
             "reason_counts": dict(sorted(self.reason_counts.items())),
             "created_at": self.created_at,
+        }
+
+
+@dataclass(frozen=True)
+class DatasetAuditSnapshotArtifact:
+    """Immutable full-finding catalog used by fingerprint-independent audits."""
+
+    artifact_id: str
+    scope_id: str
+    jsonl_path: Path
+    manifest_path: Path
+    row_count: int
+    sha256: str
+    byte_count: int
+    created_at: str
+    metadata: Mapping[str, Any]
+    schema_version: int = AUDIT_SNAPSHOT_SCHEMA_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "artifact_id": self.artifact_id,
+            "scope_id": self.scope_id,
+            "jsonl_path": str(self.jsonl_path),
+            "manifest_path": str(self.manifest_path),
+            "row_count": self.row_count,
+            "sha256": self.sha256,
+            "byte_count": self.byte_count,
+            "created_at": self.created_at,
+            "metadata": _json_compatible(self.metadata),
         }
 
 
@@ -330,6 +362,190 @@ class ObjectiveDatasetStore:
         except (OSError, TypeError, ValueError):
             return {}
         return dict(value) if isinstance(value, dict) else {}
+
+    def persist_audit_snapshot(
+        self,
+        *,
+        scope_id: str,
+        findings: Iterable[Mapping[str, Any]],
+        metadata: Mapping[str, Any] | None = None,
+    ) -> DatasetAuditSnapshotArtifact:
+        """Persist a sorted, content-addressed audit baseline and latest pointer."""
+
+        normalized_scope = str(scope_id or "").strip()
+        if not normalized_scope:
+            raise ValueError("scope_id must not be empty")
+        rows: list[dict[str, Any]] = []
+        for index, finding in enumerate(findings):
+            if not isinstance(finding, Mapping):
+                raise TypeError(f"audit finding at index {index} must be a mapping")
+            row = _json_compatible(finding)
+            if not isinstance(row, dict):  # pragma: no cover - mapping invariant
+                raise TypeError(f"audit finding at index {index} must project to an object")
+            rows.append(row)
+        rows.sort(
+            key=lambda row: (
+                str(row.get("audit_key") or row.get("semantic_key") or ""),
+                str(row.get("content_revision") or row.get("fingerprint") or ""),
+                json.dumps(row, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+            )
+        )
+        encoded = "".join(
+            json.dumps(row, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
+            for row in rows
+        ).encode("utf-8")
+        digest = sha256(encoded).hexdigest()
+        safe_scope = _safe_dataset_id(normalized_scope)
+        directory = self.root / "audit-scans" / safe_scope
+        jsonl_path = directory / f"{digest}.jsonl"
+        manifest_path = directory / f"{digest}.manifest.json"
+        latest_path = self.root / "audit-scans" / f"{safe_scope}.latest.json"
+        created_at = datetime.now(timezone.utc).isoformat()
+        artifact_metadata = dict(metadata or {})
+        if manifest_path.exists():
+            try:
+                existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError):
+                existing_manifest = {}
+            if isinstance(existing_manifest, Mapping):
+                created_at = str(existing_manifest.get("created_at") or created_at)
+                existing_metadata = existing_manifest.get("metadata")
+                if isinstance(existing_metadata, Mapping):
+                    artifact_metadata = dict(existing_metadata)
+        artifact = DatasetAuditSnapshotArtifact(
+            artifact_id=f"sha256:{digest}",
+            scope_id=normalized_scope,
+            jsonl_path=jsonl_path,
+            manifest_path=manifest_path,
+            row_count=len(rows),
+            sha256=digest,
+            byte_count=len(encoded),
+            created_at=created_at,
+            metadata=artifact_metadata,
+        )
+        manifest_text = json.dumps(
+            artifact.to_dict(), ensure_ascii=False, indent=2, sort_keys=True
+        ) + "\n"
+        if not jsonl_path.exists():
+            _atomic_write_bytes(jsonl_path, encoded)
+        elif jsonl_path.read_bytes() != encoded:
+            raise ValueError(f"audit snapshot digest collision at {jsonl_path}")
+        if not manifest_path.exists():
+            _atomic_write_text(manifest_path, manifest_text)
+        else:
+            manifest_text = manifest_path.read_text(encoding="utf-8")
+        _atomic_write_text(latest_path, manifest_text)
+        return artifact
+
+    def load_audit_snapshot(
+        self,
+        scope: str | Path | Mapping[str, Any] | DatasetAuditSnapshotArtifact,
+    ) -> list[dict[str, Any]]:
+        """Load an audit catalog by stable scope, artifact, manifest, or JSONL path."""
+
+        if isinstance(scope, DatasetAuditSnapshotArtifact):
+            path: Path | None = scope.jsonl_path
+        elif isinstance(scope, Mapping):
+            raw_path = scope.get("jsonl_path") or scope.get("path")
+            path = Path(str(raw_path)) if raw_path else None
+        elif isinstance(scope, Path):
+            path = scope
+        else:
+            latest = self.root / "audit-scans" / f"{_safe_dataset_id(scope)}.latest.json"
+            try:
+                manifest = json.loads(latest.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError):
+                manifest = {}
+            raw_path = manifest.get("jsonl_path") if isinstance(manifest, Mapping) else None
+            path = Path(str(raw_path)) if raw_path else None
+        if path is None:
+            return []
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        rows: list[dict[str, Any]] = []
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(value, dict):
+                rows.append(value)
+        return rows
+
+    def load_audit_snapshot_manifest(self, scope_id: str) -> dict[str, Any]:
+        latest = self.root / "audit-scans" / f"{_safe_dataset_id(scope_id)}.latest.json"
+        try:
+            value = json.loads(latest.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError):
+            return {}
+        return dict(value) if isinstance(value, dict) else {}
+
+    def persist_exhaustion_quorum(self, quorum: Any) -> Path:
+        """Atomically persist a bounded quorum projection by repository.
+
+        The repository-keyed latest file lets a changed binding explicitly
+        invalidate prior members.  Receipt artifacts remain the durable source
+        of truth; this projection is a restart-friendly accumulator.
+        """
+
+        payload = quorum.to_dict() if hasattr(quorum, "to_dict") else dict(quorum)
+        binding = payload.get("binding")
+        if not isinstance(binding, Mapping):
+            raise ValueError("quorum projection is missing binding")
+        repository_id = str(binding.get("repository_id") or "").strip()
+        if not repository_id:
+            raise ValueError("quorum binding is missing repository_id")
+        directory = self.root / "exhaustion-quorum"
+        key = sha256(repository_id.encode("utf-8")).hexdigest()
+        path = directory / f"{key}.json"
+        envelope = {
+            "schema_version": EXHAUSTION_QUORUM_STORE_SCHEMA_VERSION,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "quorum": _json_compatible(payload),
+        }
+        _atomic_write_text(
+            path,
+            json.dumps(envelope, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        return path
+
+    def load_exhaustion_quorum(self, repository_id: str) -> dict[str, Any]:
+        key = sha256(str(repository_id).encode("utf-8")).hexdigest()
+        path = self.root / "exhaustion-quorum" / f"{key}.json"
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError):
+            return {}
+        if not isinstance(value, Mapping):
+            return {}
+        quorum = value.get("quorum", value)
+        return dict(quorum) if isinstance(quorum, Mapping) else {}
+
+    def record_exhaustion_receipt(
+        self,
+        receipt: Any,
+        *,
+        binding: Any,
+        required_members: int,
+    ) -> Any:
+        """Merge one receipt into persisted quorum state without double voting."""
+
+        from .scan_receipts import ExhaustionBinding, evaluate_exhaustion_quorum
+
+        resolved = binding if isinstance(binding, ExhaustionBinding) else ExhaustionBinding.from_dict(binding)
+        previous = self.load_exhaustion_quorum(resolved.repository_id)
+        prior_members = previous.get("members", ()) if isinstance(previous, Mapping) else ()
+        result = evaluate_exhaustion_quorum(
+            [*prior_members, receipt],
+            binding=resolved,
+            required_members=required_members,
+        )
+        self.persist_exhaustion_quorum(result)
+        return result
 
     def _scan_details_jsonl_path(
         self,

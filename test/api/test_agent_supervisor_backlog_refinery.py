@@ -2356,7 +2356,7 @@ def test_backlog_refinery_objective_scan_refills_low_backlog(tmp_path):
     assert (bundle_dir / "index.json").exists()
 
 
-def test_codebase_scan_healthy_exhaustion_records_policy_and_is_completion_safe(tmp_path):
+def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
     _write_todo(todo_path)
@@ -2376,7 +2376,9 @@ def test_codebase_scan_healthy_exhaustion_records_policy_and_is_completion_safe(
     )
 
     assert receipt.terminal_reason is ScanTerminalReason.EXHAUSTED
-    assert receipt.safe_for_completion_reasoning is True
+    assert receipt.safe_for_completion_reasoning is False
+    assert receipt.metadata["exhaustion_quorum"]["member_count"] == 1
+    assert receipt.metadata["exhaustion_quorum"]["required_members"] == 2
     assert receipt.metadata["health_thresholds"] == thresholds.to_dict()
     assert receipt.metadata["analyzer_health"]["status"] == "healthy"
     assert receipt.metadata["analyzer_canaries"]["passed"] is True
