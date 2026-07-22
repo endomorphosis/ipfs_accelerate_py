@@ -25,6 +25,10 @@ from .task_identity import canonical_bundle_identity
 MIN_LEASE_MS = 5_000
 MAX_LEASE_MS = 300_000
 PROVIDER_VERSION = "3.2.0"
+MAX_PERSISTED_DEPENDENCY_REPAIRS = 256
+STRUCTURAL_DEPENDENCY_REPAIR_KINDS = frozenset(
+    {"missing_dependency", "dependency_cycle", "duplicate_alias", "duplicate_task"}
+)
 
 
 class LeaseError(RuntimeError):
@@ -35,6 +39,16 @@ class LeaseError(RuntimeError):
 
 class LeaseConflictError(LeaseError):
     """Raised when another non-expired claim owns the task."""
+
+
+class DependencyNotReadyError(LeaseConflictError):
+    """Raised when a task's prerequisite receipts have not all succeeded."""
+
+    code = "G_DEPENDENCY_NOT_READY"
+
+    def __init__(self, message: str, *, evidence: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.evidence = dict(evidence)
 
 
 class LeaseExpiredError(LeaseError):
@@ -86,6 +100,108 @@ def _link(value: Any) -> str:
     """Create a content link for adapter inputs that are not already artifacts."""
 
     return profile_g_cid(value)
+
+
+def _dependency_task_cids(bundle: Mapping[str, Any]) -> tuple[list[str], dict[str, list[dict[str, Any]]]]:
+    """Return normalized prerequisite CIDs and their bounded source provenance.
+
+    Objective-graph payloads have existed in a few compatible shapes.  Accepting
+    those shapes here keeps the lease boundary strict without coupling it to the
+    planner implementation (which would also introduce an import cycle).
+    """
+
+    found: dict[str, list[dict[str, Any]]] = {}
+
+    def add(value: Any, source: str, *, edge: Mapping[str, Any] | None = None) -> None:
+        values: list[Any]
+        if isinstance(value, str):
+            values = [item.strip() for item in value.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple, set)):
+            values = list(value)
+        elif value in (None, ""):
+            values = []
+        else:
+            values = [value]
+        for item in values:
+            if isinstance(item, Mapping):
+                cid = str(
+                    item.get("dependency_task_cid")
+                    or item.get("prerequisite_task_cid")
+                    or item.get("task_cid")
+                    or item.get("cid")
+                    or ""
+                ).strip()
+            else:
+                cid = str(item).strip()
+            if not cid:
+                continue
+            provenance: dict[str, Any] = {"source": source}
+            if edge is not None:
+                for key in ("kind", "reason", "source_path", "source_task_cid", "target_task_cid"):
+                    if edge.get(key) not in (None, ""):
+                        provenance[key] = edge[key]
+                edge_provenance = edge.get("provenance")
+                if isinstance(edge_provenance, Mapping):
+                    provenance["edge_provenance"] = dict(edge_provenance)
+            records = found.setdefault(cid, [])
+            if provenance not in records and len(records) < 16:
+                records.append(provenance)
+
+    add(bundle.get("dependency_task_cids"), "bundle.dependency_task_cids")
+    embedded = bundle.get("profile_g")
+    if isinstance(embedded, Mapping):
+        embedded_task = embedded.get("task")
+        if isinstance(embedded_task, Mapping):
+            add(embedded_task.get("dependency_task_cids"), "bundle.profile_g.task.dependency_task_cids")
+    edges = bundle.get("dependency_edges")
+    if isinstance(edges, (list, tuple)):
+        for index, edge in enumerate(edges):
+            if not isinstance(edge, Mapping):
+                continue
+            add(
+                edge.get("dependency_task_cid")
+                or edge.get("prerequisite_task_cid")
+                or edge.get("source_task_cid"),
+                f"bundle.dependency_edges[{index}]",
+                edge=edge,
+            )
+    # Bundle execution CIDs are the receipt authority.  Member dependencies
+    # remain a compatibility fallback only when no aggregate bundle edge was
+    # supplied; mixing both identities would require two receipts for one
+    # logical prerequisite and could permanently block otherwise-ready work.
+    tasks = bundle.get("tasks")
+    if not found and isinstance(tasks, (list, tuple)):
+        for index, task in enumerate(tasks):
+            if not isinstance(task, Mapping):
+                continue
+            for key in ("dependency_task_cids", "prerequisite_task_cids"):
+                add(task.get(key), f"bundle.tasks[{index}].{key}")
+    explicit_provenance = bundle.get("dependency_provenance")
+    if not isinstance(explicit_provenance, Mapping) and isinstance(embedded, Mapping):
+        explicit_provenance = embedded.get("dependency_provenance")
+    if isinstance(explicit_provenance, Mapping):
+        for raw_cid, raw_items in explicit_provenance.items():
+            cid = str(raw_cid).strip()
+            if cid not in found:
+                continue
+            items = raw_items if isinstance(raw_items, (list, tuple)) else [raw_items]
+            for item in items:
+                record = dict(item) if isinstance(item, Mapping) else {"detail": str(item)}
+                record.setdefault("source", "bundle.dependency_provenance")
+                if record not in found[cid] and len(found[cid]) < 16:
+                    found[cid].append(record)
+    return sorted(found), found
+
+
+def _dependency_repair_evidence(bundle: Mapping[str, Any]) -> tuple[list[dict[str, Any]], int]:
+    """Return a bounded copy of planner-produced dependency repair records."""
+
+    value = bundle.get("dependency_repair_evidence")
+    embedded = bundle.get("profile_g")
+    if not isinstance(value, (list, tuple)) and isinstance(embedded, Mapping):
+        value = embedded.get("dependency_repair_evidence")
+    records = [dict(item) for item in value or [] if isinstance(item, Mapping)] if isinstance(value, (list, tuple)) else []
+    return records[:MAX_PERSISTED_DEPENDENCY_REPAIRS], len(records)
 
 
 def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = None) -> dict[str, Any]:
@@ -162,6 +278,8 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
     # Subgoal.selection_cid remains null because making both immutable objects
     # point at one another would create an impossible content-addressed cycle.
     # PlanSelection is the authoritative selected-branch record.
+    dependency_task_cids, dependency_provenance = _dependency_task_cids(bundle)
+    dependency_repairs, dependency_repair_count = _dependency_repair_evidence(bundle)
     task = {
         "schema": "mcp++/profile-g/task@1",
         "created_at_ms": now,
@@ -173,7 +291,7 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "interface_cid": _link({"interface": "codex.todo_bundle@1"}),
         "input_cid": _link(dict(bundle)),
         "tool": "codex.todo_bundle",
-        "dependency_task_cids": [],
+        "dependency_task_cids": dependency_task_cids,
         "idempotency_key": canonical_identity.semantic_fingerprint[:32],
         "canonical_task_key": canonical_identity.canonical_task_key,
         "canonical_task_cid": canonical_identity.canonical_task_cid,
@@ -199,6 +317,9 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "task_spec_cid": task_spec_cid,
         "canonical_task_key": canonical_identity.canonical_task_key,
         "canonical_task_cid": canonical_identity.canonical_task_cid,
+        "dependency_provenance": dependency_provenance,
+        "dependency_repair_evidence": dependency_repairs,
+        "dependency_repair_evidence_count": dependency_repair_count,
         "artifacts": artifacts,
     }
 
@@ -246,6 +367,23 @@ class LeaseCoordinator:
                   task_cid TEXT PRIMARY KEY, goal_cid TEXT NOT NULL, subgoal_cid TEXT NOT NULL,
                   task_id TEXT NOT NULL, bundle_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS task_aliases (
+                  alias_task_cid TEXT PRIMARY KEY, task_cid TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS task_dependencies (
+                  task_cid TEXT NOT NULL, dependency_task_cid TEXT NOT NULL,
+                  provenance_json TEXT NOT NULL,
+                  PRIMARY KEY(task_cid, dependency_task_cid)
+                );
+                CREATE TABLE IF NOT EXISTS task_dependency_repairs (
+                  task_cid TEXT NOT NULL, repair_index INTEGER NOT NULL,
+                  payload_json TEXT NOT NULL,
+                  PRIMARY KEY(task_cid, repair_index)
+                );
+                CREATE TABLE IF NOT EXISTS task_dependency_repair_state (
+                  task_cid TEXT PRIMARY KEY, source_count INTEGER NOT NULL,
+                  stored_count INTEGER NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS leases (
                   task_cid TEXT PRIMARY KEY, claim_cid TEXT NOT NULL, resolution_cid TEXT NOT NULL,
                   claimant_did TEXT NOT NULL, logical_epoch INTEGER NOT NULL,
@@ -267,6 +405,10 @@ class LeaseCoordinator:
                   subgoal_cid TEXT NOT NULL, claim_cid TEXT NOT NULL, fencing_token INTEGER NOT NULL,
                   payload_json TEXT NOT NULL
                 );
+                CREATE INDEX IF NOT EXISTS task_dependencies_dependency_idx
+                  ON task_dependencies(dependency_task_cid);
+                CREATE INDEX IF NOT EXISTS receipts_task_order_idx
+                  ON receipts(task_cid, receipt_cid);
                 """
             )
 
@@ -299,6 +441,24 @@ class LeaseCoordinator:
         )
         adapted["canonical_task_cid"] = canonical_task_cid
         adapted["task_spec_cid"] = task_spec_cid
+        dependency_task_cids, dependency_provenance = _dependency_task_cids(bundle)
+        adapted_task = adapted.get("task")
+        if isinstance(adapted_task, Mapping):
+            embedded_cids, _ = _dependency_task_cids(
+                {"dependency_task_cids": adapted_task.get("dependency_task_cids")}
+            )
+            for cid in embedded_cids:
+                if cid not in dependency_task_cids:
+                    dependency_task_cids.append(cid)
+                    dependency_provenance.setdefault(cid, []).append(
+                        {"source": "profile_g.task.dependency_task_cids"}
+                    )
+        dependency_task_cids.sort()
+        adapted["dependency_task_cids"] = dependency_task_cids
+        adapted["dependency_provenance"] = dependency_provenance
+        dependency_repairs, dependency_repair_count = _dependency_repair_evidence(bundle)
+        adapted["dependency_repair_evidence"] = dependency_repairs
+        adapted["dependency_repair_evidence_count"] = dependency_repair_count
         # Coordination is keyed by semantic execution identity. The immutable
         # Profile-G TaskSpec CID remains available separately for provenance.
         adapted["task_cid"] = canonical_task_cid
@@ -315,7 +475,237 @@ class LeaseCoordinator:
                 "INSERT OR IGNORE INTO tasks VALUES(?,?,?,?,?)",
                 (canonical_task_cid, adapted["goal_cid"], adapted["subgoal_cid"], task_id, json.dumps(dict(bundle), sort_keys=True)),
             )
+            # A dependency DAG names the immutable work-item CIDs while the
+            # coordination lease is bundle-scoped.  Aliases bridge those two
+            # identities so the bundle's successful receipt unlocks its tasks.
+            aliases = {canonical_task_cid, task_spec_cid}
+            for item in bundle.get("tasks", []) if isinstance(bundle.get("tasks"), (list, tuple)) else []:
+                if isinstance(item, Mapping):
+                    alias = str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
+                    if alias:
+                        aliases.add(alias)
+            for alias in sorted(aliases):
+                if alias:
+                    self._connection.execute(
+                        "INSERT OR REPLACE INTO task_aliases VALUES(?,?)",
+                        (alias, canonical_task_cid),
+                    )
+            self._connection.execute("DELETE FROM task_dependencies WHERE task_cid=?", (canonical_task_cid,))
+            for dependency_task_cid in dependency_task_cids:
+                self._connection.execute(
+                    "INSERT INTO task_dependencies VALUES(?,?,?)",
+                    (
+                        canonical_task_cid,
+                        dependency_task_cid,
+                        json.dumps(dependency_provenance.get(dependency_task_cid, []), sort_keys=True),
+                    ),
+                )
+            self._connection.execute("DELETE FROM task_dependency_repairs WHERE task_cid=?", (canonical_task_cid,))
+            for index, repair in enumerate(dependency_repairs):
+                self._connection.execute(
+                    "INSERT INTO task_dependency_repairs VALUES(?,?,?)",
+                    (canonical_task_cid, index, json.dumps(repair, sort_keys=True)),
+                )
+            self._connection.execute(
+                "INSERT OR REPLACE INTO task_dependency_repair_state VALUES(?,?,?)",
+                (canonical_task_cid, dependency_repair_count, len(dependency_repairs)),
+            )
         return adapted
+
+    @staticmethod
+    def _resolve_task_cid(connection: sqlite3.Connection, task_cid: str) -> str | None:
+        row = connection.execute(
+            "SELECT task_cid FROM task_aliases WHERE alias_task_cid=?",
+            (task_cid,),
+        ).fetchone()
+        if row is not None:
+            return str(row[0])
+        row = connection.execute("SELECT task_cid FROM tasks WHERE task_cid=?", (task_cid,)).fetchone()
+        return str(row[0]) if row is not None else None
+
+    def _dependency_cycles(
+        self,
+        connection: sqlite3.Connection,
+        task_cid: str,
+        *,
+        max_nodes: int,
+        max_cycles: int,
+    ) -> tuple[list[list[str]], bool]:
+        """Find a bounded set of dependency cycles reachable from ``task_cid``."""
+
+        cycles: list[list[str]] = []
+        visited: set[str] = set()
+        active: list[str] = []
+        active_set: set[str] = set()
+        truncated = False
+
+        def visit(current: str) -> None:
+            nonlocal truncated
+            if truncated or len(cycles) >= max_cycles:
+                truncated = True
+                return
+            if len(visited) >= max_nodes and current not in visited:
+                truncated = True
+                return
+            if current in active_set:
+                start = active.index(current)
+                cycle = active[start:] + [current]
+                if cycle not in cycles:
+                    cycles.append(cycle)
+                return
+            if current in visited:
+                return
+            visited.add(current)
+            active.append(current)
+            active_set.add(current)
+            rows = connection.execute(
+                "SELECT dependency_task_cid FROM task_dependencies WHERE task_cid=? ORDER BY dependency_task_cid",
+                (current,),
+            ).fetchall()
+            for row in rows:
+                resolved = self._resolve_task_cid(connection, str(row[0]))
+                if resolved is not None:
+                    visit(resolved)
+            active.pop()
+            active_set.remove(current)
+
+        visit(task_cid)
+        return cycles, truncated
+
+    def _claimability(
+        self,
+        connection: sqlite3.Connection,
+        task_cid: str,
+        *,
+        max_evidence: int,
+    ) -> dict[str, Any]:
+        resolved_task_cid = self._resolve_task_cid(connection, task_cid)
+        if resolved_task_cid is None:
+            raise KeyError(f"unknown task CID: {task_cid}")
+        rows = connection.execute(
+            "SELECT dependency_task_cid, provenance_json FROM task_dependencies "
+            "WHERE task_cid=? ORDER BY dependency_task_cid",
+            (resolved_task_cid,),
+        ).fetchall()
+        dependencies = [str(row["dependency_task_cid"]) for row in rows]
+        provenance = {
+            str(row["dependency_task_cid"]): json.loads(row["provenance_json"])
+            for row in rows
+        }
+        satisfied: list[str] = []
+        blocked: list[str] = []
+        missing: list[str] = []
+        evidence: list[dict[str, Any]] = []
+        evidence_truncated = False
+
+        def add_evidence(item: dict[str, Any]) -> None:
+            nonlocal evidence_truncated
+            if len(evidence) < max_evidence:
+                evidence.append(item)
+            else:
+                evidence_truncated = True
+
+        for dependency_cid in dependencies:
+            receipt_task_cid = self._resolve_task_cid(connection, dependency_cid)
+            if receipt_task_cid is None:
+                missing.append(dependency_cid)
+                blocked.append(dependency_cid)
+                add_evidence(
+                    {
+                        "kind": "missing_dependency",
+                        "dependency_task_cid": dependency_cid,
+                        "provenance": provenance.get(dependency_cid, []),
+                        "repair": "register the prerequisite task or repair the dependency edge",
+                    }
+                )
+                continue
+            receipt = connection.execute(
+                "SELECT receipt_cid, payload_json FROM receipts WHERE task_cid=? ORDER BY rowid DESC LIMIT 1",
+                (receipt_task_cid,),
+            ).fetchone()
+            receipt_payload = json.loads(receipt["payload_json"]) if receipt is not None else {}
+            latest_status = str(receipt_payload.get("status") or "missing")
+            if latest_status == "succeeded":
+                satisfied.append(dependency_cid)
+                continue
+            blocked.append(dependency_cid)
+            add_evidence(
+                {
+                    "kind": "prerequisite_receipt_not_succeeded",
+                    "dependency_task_cid": dependency_cid,
+                    "resolved_task_cid": receipt_task_cid,
+                    "latest_receipt_cid": str(receipt["receipt_cid"]) if receipt is not None else None,
+                    "latest_status": latest_status,
+                    "provenance": provenance.get(dependency_cid, []),
+                    "repair": "complete and merge the prerequisite successfully before claiming this task",
+                }
+            )
+
+        cycles, cycle_search_truncated = self._dependency_cycles(
+            connection,
+            resolved_task_cid,
+            max_nodes=max(64, max_evidence * 8),
+            max_cycles=max_evidence,
+        )
+        for cycle in cycles:
+            add_evidence(
+                {
+                    "kind": "dependency_cycle",
+                    "cycle_task_cids": cycle,
+                    "repair": "remove or redirect at least one cyclic prerequisite edge",
+                }
+            )
+        planner_repairs: list[dict[str, Any]] = []
+        repair_rows = connection.execute(
+            "SELECT payload_json FROM task_dependency_repairs WHERE task_cid=? ORDER BY repair_index",
+            (resolved_task_cid,),
+        ).fetchall()
+        for row in repair_rows:
+            repair = json.loads(row["payload_json"])
+            kind = str(repair.get("kind") or "").strip().lower().replace("-", "_")
+            if kind not in STRUCTURAL_DEPENDENCY_REPAIR_KINDS:
+                continue
+            repair["kind"] = kind
+            repair.setdefault(
+                "repair",
+                "repair the planner dependency metadata and regenerate the bundle schedule",
+            )
+            planner_repairs.append(repair)
+            add_evidence(repair)
+        repair_state = connection.execute(
+            "SELECT source_count, stored_count FROM task_dependency_repair_state WHERE task_cid=?",
+            (resolved_task_cid,),
+        ).fetchone()
+        persisted_repairs_truncated = bool(
+            repair_state is not None and int(repair_state["source_count"]) > int(repair_state["stored_count"])
+        )
+        return {
+            "schema": "ipfs_accelerate_py/dependency-claimability@1",
+            "task_cid": resolved_task_cid,
+            "claimable": not blocked and not cycles and not planner_repairs,
+            "dependency_task_cids": dependencies,
+            "satisfied_dependency_task_cids": satisfied,
+            "blocked_dependency_task_cids": blocked,
+            "missing_dependency_task_cids": missing,
+            "dependency_cycles": cycles,
+            "structural_dependency_repairs": planner_repairs[:max_evidence],
+            "repair_evidence": evidence,
+            "evidence_truncated": evidence_truncated or cycle_search_truncated or persisted_repairs_truncated,
+            "planner_repair_evidence_count": int(repair_state["source_count"]) if repair_state is not None else 0,
+        }
+
+    def claimability(self, task_cid: str, *, max_evidence: int = 32) -> dict[str, Any]:
+        """Explain whether all prerequisite tasks have successful receipts.
+
+        Evidence is deliberately bounded so malformed or cyclic planner input
+        becomes actionable repair data instead of an unbounded walk or deadlock.
+        """
+
+        limit = int(max_evidence)
+        if not 1 <= limit <= 256:
+            raise ValueError("max_evidence must be in [1, 256]")
+        with self._lock:
+            return self._claimability(self._connection, task_cid, max_evidence=limit)
 
     def _expire(self, connection: sqlite3.Connection, task_cid: str, now: int) -> None:
         row = connection.execute(
@@ -344,9 +734,22 @@ class LeaseCoordinator:
             conn = self._connection
             conn.execute("BEGIN IMMEDIATE")
             try:
-                task = conn.execute("SELECT * FROM tasks WHERE task_cid=?", (task_cid,)).fetchone()
-                if task is None:
+                resolved_task_cid = self._resolve_task_cid(conn, task_cid)
+                if resolved_task_cid is None:
                     raise KeyError(f"unknown task CID: {task_cid}")
+                task_cid = resolved_task_cid
+                task = conn.execute("SELECT * FROM tasks WHERE task_cid=?", (task_cid,)).fetchone()
+                assert task is not None
+                readiness = self._claimability(conn, task_cid, max_evidence=32)
+                if not readiness["claimable"]:
+                    count = len(readiness["blocked_dependency_task_cids"])
+                    cycles = len(readiness["dependency_cycles"])
+                    repairs = len(readiness["structural_dependency_repairs"])
+                    raise DependencyNotReadyError(
+                        f"task has {count} unsatisfied prerequisite(s), {cycles} dependency cycle(s), "
+                        f"and {repairs} structural dependency repair(s)",
+                        evidence=readiness,
+                    )
                 self._expire(conn, task_cid, now)
                 active = conn.execute(
                     "SELECT * FROM leases WHERE task_cid=? AND state='accepted' AND expires_at_ms>?",
@@ -527,6 +930,13 @@ class LeaseCoordinator:
         self, grant: LeaseGrant, *, status: str, output: Mapping[str, Any] | None = None,
         failure_class: str = "none", started_at_ms: int | None = None, now_ms: int | None = None,
     ) -> dict[str, Any]:
+        """Publish a terminal receipt for a fenced execution.
+
+        ``succeeded`` is the merge-success authority used by downstream
+        dependency gates.  Callers must therefore emit it only after the task's
+        outputs have merged and its required validation has passed.
+        """
+
         now = self._clock_ms() if now_ms is None else int(now_ms)
         status = str(status)
         if status not in {"succeeded", "failed", "cancelled", "compensated"}:
@@ -664,7 +1074,7 @@ class LeaseQueueBridge:
 
 
 __all__ = [
-    "LeaseConflictError", "LeaseCoordinator", "LeaseError", "LeaseExpiredError", "LeaseGrant",
+    "DependencyNotReadyError", "LeaseConflictError", "LeaseCoordinator", "LeaseError", "LeaseExpiredError", "LeaseGrant",
     "LeaseQueueBridge", "LeasedQueuedTask",
     "MAX_LEASE_MS", "MIN_LEASE_MS", "StaleFencingTokenError", "adapt_goal_bundle",
     "canonical_profile_g_bytes", "profile_g_cid",

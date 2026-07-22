@@ -9,6 +9,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     plan_bundle_lanes,
 )
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+    DependencyNotReadyError,
     LeaseConflictError,
     LeaseCoordinator,
     LeaseExpiredError,
@@ -31,6 +32,122 @@ def _bundle() -> dict[str, object]:
         "source_todo": "all.todo.md",
         "tasks": [{"task_id": "SVD-085"}],
     }
+
+
+def _named_bundle(name: str) -> dict[str, object]:
+    return {
+        "bundle_key": f"objective/dependency/{name.lower()}",
+        "source_todo": "dependency.todo.md",
+        "tasks": [{"task_id": name}],
+    }
+
+
+def test_claim_waits_for_latest_successful_prerequisite_receipt(tmp_path: Path) -> None:
+    prerequisite = _named_bundle("PRE-1")
+    prerequisite_cid = adapt_goal_bundle(prerequisite, created_at_ms=1)["canonical_task_cid"]
+    dependent = {
+        **_named_bundle("DEP-1"),
+        "dependency_task_cids": [prerequisite_cid],
+    }
+
+    with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
+        dependent_task = coordinator.register_bundle(dependent, created_at_ms=1)
+        with pytest.raises(DependencyNotReadyError) as missing_error:
+            coordinator.claim(dependent_task["task_cid"], "did:web:dependent.example")
+        missing = missing_error.value.evidence
+        assert missing_error.value.code == "G_DEPENDENCY_NOT_READY"
+        assert missing["missing_dependency_task_cids"] == [prerequisite_cid]
+        assert missing["repair_evidence"][0]["kind"] == "missing_dependency"
+
+        prerequisite_task = coordinator.register_bundle(prerequisite, created_at_ms=1)
+        failed_grant = coordinator.claim(prerequisite_task["task_cid"], "did:web:prerequisite.example")
+        coordinator.receipt(failed_grant, status="failed", failure_class="validation")
+        failed = coordinator.claimability(dependent_task["task_cid"])
+        assert failed["claimable"] is False
+        assert failed["repair_evidence"][0]["latest_status"] == "failed"
+
+        successful_grant = coordinator.claim(prerequisite_task["task_cid"], "did:web:prerequisite.example")
+        coordinator.receipt(successful_grant, status="succeeded", output={"merge_commit": "abc123"})
+        ready = coordinator.claimability(dependent_task["task_cid"])
+        assert ready["claimable"] is True
+        assert ready["satisfied_dependency_task_cids"] == [prerequisite_cid]
+        assert coordinator.claim(dependent_task["task_cid"], "did:web:dependent.example")
+
+
+def test_claimability_evidence_is_bounded_and_aliases_resolve_to_bundle_receipts(tmp_path: Path) -> None:
+    prerequisite = _named_bundle("PRE-ALIAS")
+    member_cid = profile_g_cid({"member": "PRE-ALIAS"})
+    prerequisite["tasks"][0]["canonical_task_cid"] = member_cid  # type: ignore[index]
+    dependent = {**_named_bundle("DEP-ALIAS"), "dependency_task_cids": [member_cid]}
+    missing = {
+        **_named_bundle("DEP-MISSING"),
+        "dependency_task_cids": ["missing-a", "missing-b", "missing-c"],
+    }
+
+    with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
+        prerequisite_task = coordinator.register_bundle(prerequisite, created_at_ms=1)
+        dependent_task = coordinator.register_bundle(dependent, created_at_ms=1)
+        missing_task = coordinator.register_bundle(missing, created_at_ms=1)
+        bounded = coordinator.claimability(missing_task["task_cid"], max_evidence=1)
+        assert len(bounded["repair_evidence"]) == 1
+        assert bounded["evidence_truncated"] is True
+
+        grant = coordinator.claim(prerequisite_task["task_cid"], "did:web:prerequisite.example")
+        coordinator.receipt(grant, status="succeeded", output={"merge_commit": "abc123"})
+        assert coordinator.claimability(dependent_task["task_cid"])["claimable"] is True
+
+
+def test_dependency_cycle_produces_repair_evidence_instead_of_claiming(tmp_path: Path) -> None:
+    first = _named_bundle("CYCLE-A")
+    second = _named_bundle("CYCLE-B")
+    first_cid = adapt_goal_bundle(first, created_at_ms=1)["canonical_task_cid"]
+    second_cid = adapt_goal_bundle(second, created_at_ms=1)["canonical_task_cid"]
+    first["dependency_task_cids"] = [second_cid]
+    second["dependency_task_cids"] = [first_cid]
+
+    with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
+        first_task = coordinator.register_bundle(first, created_at_ms=1)
+        coordinator.register_bundle(second, created_at_ms=1)
+        readiness = coordinator.claimability(first_task["task_cid"])
+        assert readiness["claimable"] is False
+        assert readiness["dependency_cycles"] == [[first_cid, second_cid, first_cid]]
+        assert any(item["kind"] == "dependency_cycle" for item in readiness["repair_evidence"])
+        with pytest.raises(DependencyNotReadyError):
+            coordinator.claim(first_task["task_cid"], "did:web:worker.example")
+
+
+def test_planner_structural_repairs_block_claims_without_resolved_dependency_cids(tmp_path: Path) -> None:
+    blocked = {
+        **_named_bundle("PLANNER-BLOCKED"),
+        "dependency_repair_evidence": [
+            {
+                "kind": "missing_dependency",
+                "task_id": "PLANNER-BLOCKED",
+                "reference": "UNKNOWN-1",
+                "message": "dependency reference cannot be resolved",
+            },
+            {
+                "kind": "dependency_cycle",
+                "task_id": "PLANNER-BLOCKED",
+                "reference": "A -> B -> A",
+                "message": "task participates in a dependency cycle",
+            },
+        ],
+    }
+    clean = _named_bundle("PLANNER-CLEAN")
+
+    with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
+        blocked_task = coordinator.register_bundle(blocked, created_at_ms=1)
+        clean_task = coordinator.register_bundle(clean, created_at_ms=1)
+        readiness = coordinator.claimability(blocked_task["task_cid"], max_evidence=1)
+        assert readiness["claimable"] is False
+        assert readiness["dependency_task_cids"] == []
+        assert readiness["planner_repair_evidence_count"] == 2
+        assert len(readiness["repair_evidence"]) == 1
+        assert readiness["evidence_truncated"] is True
+        with pytest.raises(DependencyNotReadyError):
+            coordinator.claim(blocked_task["task_cid"], "did:web:blocked.example")
+        assert coordinator.claim(clean_task["task_cid"], "did:web:clean.example")
 
 
 def test_goal_bundle_adapter_emits_immutable_linked_profile_g_artifacts() -> None:
