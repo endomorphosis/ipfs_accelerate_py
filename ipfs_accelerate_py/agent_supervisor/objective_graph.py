@@ -1286,14 +1286,10 @@ def materialize_task_dependency_dag(
         parent_goals = _dependency_values(task, "parent_goal_ids", "graph_parents", "goal_parents")
         for parent_goal in parent_goals:
             sources = goals.get(parent_goal, [])
-            if not sources:
-                add_repair(
-                    "missing_dependency",
-                    target,
-                    parent_goal,
-                    f"parent goal {parent_goal} has no materialized prerequisite task",
-                    {"edge_kind": "goal", "field": "parent_goal_ids"},
-                )
+            # Parent goals primarily describe objective hierarchy. They become
+            # executable prerequisites only when this planning snapshot also
+            # materializes a task for that goal. Explicit dependency fields
+            # below remain strict and still produce repair evidence.
             for source in sources:
                 add_edge(source, target, "goal", field_name="parent_goal_ids", value=parent_goal, resolution="goal_id")
 
@@ -2872,12 +2868,32 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         }
         dependency_task_cids = sorted(bundle_identity_cids[key] for key in dependency_bundle_keys)
         member_schedule = [schedule_by_cid[cid] for cid in member_cids if cid in schedule_by_cid]
-        repair_evidence = [
-            item.to_dict()
-            for item in graph.repair_evidence
-            if item.task_cid in member_cids
-        ]
-        invalid_member_cids = sorted(member_cids & invalid_task_cids)
+        repair_evidence: list[dict[str, Any]] = []
+        bundle_resolved_cycle_cids: set[str] = set()
+        for item in graph.repair_evidence:
+            if item.task_cid not in member_cids:
+                continue
+            component = {
+                str(cid)
+                for cid in item.provenance.get("component_task_cids", [])
+                if str(cid)
+            }
+            if item.kind == "dependency_cycle" and component and component <= member_cids:
+                # A lane owns every member of this strongly connected
+                # component, so the cycle is an internal implementation order
+                # concern rather than an impossible cross-lane prerequisite.
+                bundle_resolved_cycle_cids.update(component)
+                continue
+            repair_evidence.append(item.to_dict())
+        blocking_repair_cids = {
+            str(item.get("task_cid") or "")
+            for item in repair_evidence
+            if str(item.get("task_cid") or "")
+        }
+        invalid_member_cids = sorted(
+            blocking_repair_cids
+            | ((member_cids & invalid_task_cids) - bundle_resolved_cycle_cids)
+        )
         if invalid_member_cids and not repair_evidence:
             # The graph keeps the complete invalid-CID set even when detailed
             # repair evidence reaches its global bound. Preserve one compact

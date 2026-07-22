@@ -747,6 +747,77 @@ def test_task_dependency_dag_materializes_all_prerequisite_kinds_with_provenance
     assert graph.schedule[1].blocking_task_cids == ["cid-a"]
 
 
+def test_task_dependency_dag_does_not_require_an_abstract_parent_goal_task():
+    graph = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "TASK-A",
+                "task_cid": "cid-a",
+                "goal_id": "G1.S1",
+                "parent_goal_ids": ["G1"],
+            }
+        ]
+    )
+
+    assert graph.edges == []
+    assert graph.repair_evidence == []
+    assert graph.invalid_task_cids == []
+    assert graph.schedule[0].claimable is True
+
+
+def test_bundle_projection_absorbs_internal_cycles_but_keeps_cross_bundle_cycles(tmp_path):
+    internal_index = tmp_path / "internal-index.json"
+    internal_index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/internal": {
+                        "shard_path": "internal.todo.md",
+                        "tasks": [
+                            {"task_id": "A", "task_cid": "cid-a", "depends_on": ["B"]},
+                            {"task_id": "B", "task_cid": "cid-b", "depends_on": ["A"]},
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    internal = build_bundle_task_payloads(internal_index)[0]
+    assert internal["dependency_task_cids"] == []
+    assert internal["dependency_repair_evidence"] == []
+    assert internal["claimable"] is True
+
+    external_index = tmp_path / "external-index.json"
+    external_index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/a": {
+                        "shard_path": "a.todo.md",
+                        "tasks": [{"task_id": "A", "task_cid": "cid-a", "depends_on": ["B"]}],
+                    },
+                    "objective/b": {
+                        "shard_path": "b.todo.md",
+                        "tasks": [{"task_id": "B", "task_cid": "cid-b", "depends_on": ["A"]}],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    external = build_bundle_task_payloads(external_index)
+    assert all(payload["claimable"] is False for payload in external)
+    assert all(
+        any(item["kind"] == "dependency_cycle" for item in payload["dependency_repair_evidence"])
+        for payload in external
+    )
+
+
 def test_task_dependency_dag_requires_successful_merge_receipts_and_scores_critical_path():
     tasks = [
         {"task_id": "A", "task_cid": "cid-a", "depends_on": [], "priority": "P2", "created_at_ms": 1_000},
