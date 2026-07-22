@@ -7,10 +7,17 @@ import os
 import re
 import subprocess
 from dataclasses import asdict, dataclass, field
-from hashlib import sha1
+from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from .goal_completion import (
+    DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    CompletionEvidence,
+    GoalState,
+    evaluate_goal_completion,
+    normalize_goal_state,
+)
 from .objective_graph import (
     DEFAULT_EMBEDDING_MIN_SCORE,
     ObjectiveFinding,
@@ -26,6 +33,8 @@ from .objective_graph import (
     utc_now,
 )
 from .validation_commands import split_validation_commands
+from .scan_receipts import RepositoryTreeIdentity, scan_identity
+from .task_identity import canonical_content_cid
 
 
 DEFAULT_ULTIMATE_GOAL = (
@@ -77,6 +86,13 @@ class ObjectiveCompletionResult:
     completed_goal_count: int
     completion_evidence: dict[str, dict[str, list[str]]]
     validation_results: dict[str, dict[str, Any]]
+    provisional_goal_ids: list[str] = field(default_factory=list)
+    verified_goal_ids: list[str] = field(default_factory=list)
+    reopened_goal_ids: list[str] = field(default_factory=list)
+    analysis_inconclusive_goal_ids: list[str] = field(default_factory=list)
+    blocked_goal_ids: list[str] = field(default_factory=list)
+    state_counts: dict[str, int] = field(default_factory=dict)
+    decisions: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -265,21 +281,32 @@ def run_goal_validation(
     repo_root: Path,
     goal: ObjectiveGoal,
     timeout_seconds: float = 300.0,
+    repository_identity: RepositoryTreeIdentity | None = None,
 ) -> dict[str, Any]:
-    """Run a goal's validation commands before marking it completed."""
+    """Run goal validation and return a tree-bound, content-addressed receipt."""
 
     commands = split_validation_commands(str(goal.fields.get("validation") or ""))
+    started_at = utc_now()
     if not commands:
-        return {
+        payload = {
+            "schema": "ipfs_accelerate_py.agent_supervisor.goal-validation@1",
+            "goal_id": goal.goal_id,
             "attempted": False,
-            "passed": True,
-            "returncode": 0,
+            "passed": False,
+            "returncode": 1,
             "results": [],
-            "reason": "no_commands",
+            "reason": "missing_validation_commands",
+            "started_at": started_at,
+            "finished_at": utc_now(),
         }
+        identity = repository_identity or scan_identity(repo_root)
+        payload.update(identity.to_dict())
+        payload["receipt_cid"] = canonical_content_cid(payload)
+        return payload
     results: list[dict[str, Any]] = []
+    failure: dict[str, Any] = {}
     for command in commands:
-        started_at = utc_now()
+        command_started_at = utc_now()
         try:
             completed = subprocess.run(
                 ["/bin/bash", "-lc", command],
@@ -293,7 +320,7 @@ def run_goal_validation(
         except subprocess.TimeoutExpired as exc:
             result = {
                 "command": command,
-                "started_at": started_at,
+                "started_at": command_started_at,
                 "finished_at": utc_now(),
                 "returncode": 124,
                 "timed_out": True,
@@ -301,17 +328,11 @@ def run_goal_validation(
                 "stderr": str(exc.stderr or "")[-4000:],
             }
             results.append(result)
-            return {
-                "attempted": True,
-                "passed": False,
-                "returncode": 124,
-                "results": results,
-                "failed_command": command,
-                "error": "timeout",
-            }
+            failure = {"returncode": 124, "failed_command": command, "error": "timeout"}
+            break
         result = {
             "command": command,
-            "started_at": started_at,
+            "started_at": command_started_at,
             "finished_at": utc_now(),
             "returncode": completed.returncode,
             "stdout": completed.stdout[-4000:],
@@ -319,19 +340,125 @@ def run_goal_validation(
         }
         results.append(result)
         if completed.returncode != 0:
-            return {
-                "attempted": True,
-                "passed": False,
-                "returncode": completed.returncode,
-                "results": results,
-                "failed_command": command,
-            }
-    return {
+            failure = {"returncode": completed.returncode, "failed_command": command}
+            break
+    identity = repository_identity or scan_identity(repo_root)
+    payload = {
+        "schema": "ipfs_accelerate_py.agent_supervisor.goal-validation@1",
+        "goal_id": goal.goal_id,
         "attempted": True,
-        "passed": True,
-        "returncode": 0,
+        "passed": not failure,
+        "returncode": int(failure.get("returncode", 0)),
         "results": results,
+        "started_at": started_at,
+        "finished_at": utc_now(),
+        **identity.to_dict(),
     }
+    payload.update({key: value for key, value in failure.items() if key != "returncode"})
+    payload["receipt_cid"] = canonical_content_cid(payload)
+    return payload
+
+
+def _git_output(repo_root: Path, *arguments: str, binary: bool = False) -> str | bytes:
+    """Best-effort bounded git query used for completion tree identity."""
+
+    try:
+        completed = subprocess.run(
+            ["git", *arguments],
+            cwd=repo_root,
+            text=not binary,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return b"" if binary else ""
+    if completed.returncode != 0:
+        return b"" if binary else ""
+    return completed.stdout if binary else str(completed.stdout).strip()
+
+
+def completion_tree_identity(repo_root: Path, *, objective_path: Path) -> RepositoryTreeIdentity:
+    """Return source-tree identity without self-invalidating tracker writes.
+
+    The objective document is mutable supervisor state.  Persisting a
+    lifecycle transition must not immediately make otherwise-current evidence
+    stale.  This calculation is byte-for-byte compatible with ``scan_identity``
+    while excluding only that control document; every code, test, task-board,
+    configuration, tracked, and untracked change remains in the digest.
+    """
+
+    root = repo_root.resolve()
+    top_text = str(_git_output(root, "rev-parse", "--show-toplevel") or "")
+    if not top_text:
+        return scan_identity(root)
+    top = Path(top_text).resolve()
+    try:
+        relative = objective_path.resolve().relative_to(top).as_posix()
+    except ValueError:
+        return scan_identity(root)
+    base = scan_identity(root)
+    head_tree = str(_git_output(root, "rev-parse", "HEAD^{tree}") or "")
+    if not head_tree:
+        return base
+    exclude = f":(exclude){relative}"
+    pathspec = ("--", ".", exclude)
+    status = _git_output(
+        top,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        *pathspec,
+        binary=True,
+    )
+    assert isinstance(status, bytes)
+    if not status:
+        return RepositoryTreeIdentity(repository_id=base.repository_id, tree_id=head_tree)
+    digest = sha256()
+    digest.update(head_tree.encode("ascii", errors="replace"))
+    digest.update(b"\0status\0")
+    digest.update(status)
+    digest.update(b"\0diff\0")
+    diff = _git_output(
+        top,
+        "diff",
+        "--binary",
+        "--no-ext-diff",
+        "HEAD",
+        *pathspec,
+        binary=True,
+    )
+    assert isinstance(diff, bytes)
+    digest.update(diff)
+    untracked = _git_output(
+        top,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        *pathspec,
+        binary=True,
+    )
+    assert isinstance(untracked, bytes)
+    for raw_relative in sorted(path for path in untracked.split(b"\0") if path):
+        digest.update(b"\0untracked\0")
+        digest.update(raw_relative)
+        try:
+            candidate = top / raw_relative.decode("utf-8", errors="surrogateescape")
+            if candidate.is_symlink():
+                digest.update(candidate.readlink().as_posix().encode("utf-8"))
+            elif candidate.is_file():
+                with candidate.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+        except OSError:
+            continue
+    return RepositoryTreeIdentity(
+        repository_id=base.repository_id,
+        tree_id=f"sha256:{digest.hexdigest()}",
+    )
 
 
 def reconcile_objective_goal_completion(
@@ -342,8 +469,19 @@ def reconcile_objective_goal_completion(
     task_header_prefix: str = "",
     todo_boards: Sequence[tuple[Path, str]] | None = None,
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
+    completion_evidence_records: Mapping[
+        str, Sequence[CompletionEvidence | Mapping[str, Any]]
+    ] | None = None,
+    now: str | None = None,
+    evidence_freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
 ) -> ObjectiveCompletionResult:
-    """Mark active goals complete once all required evidence is present."""
+    """Reconcile objective goals through the evidence-backed lifecycle.
+
+    Closed tasks advance an active goal to ``provisionally_complete``.  A
+    separate reconciliation can advance that provisional goal to
+    ``verified_complete`` only when every acceptance criterion has a fresh,
+    tree-bound evidence record and the goal's validation command passes.
+    """
 
     if not objective_path.exists():
         return ObjectiveCompletionResult(
@@ -357,11 +495,46 @@ def reconcile_objective_goal_completion(
 
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
-    active_goals = [goal for goal in goals if goal.status in {"active", "todo", "open"}]
+    supplied_records = completion_evidence_records or {}
+    candidate_goals = []
+    persisted_records: dict[str, list[CompletionEvidence]] = {}
+    for goal in goals:
+        records: list[CompletionEvidence] = []
+        for item in supplied_records.get(goal.goal_id, ()):
+            records.append(item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item))
+        if not records:
+            raw_records = str(
+                goal.fields.get("completion_evidence_records")
+                or goal.fields.get("completion_evidence_json")
+                or ""
+            ).strip()
+            if raw_records:
+                try:
+                    decoded = json.loads(raw_records)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    decoded = []
+                if isinstance(decoded, Mapping):
+                    decoded = [decoded]
+                if isinstance(decoded, list):
+                    records.extend(
+                        CompletionEvidence.from_dict(item)
+                        for item in decoded
+                        if isinstance(item, Mapping)
+                    )
+        persisted_records[goal.goal_id] = records
+        state = normalize_goal_state(goal.status)
+        if state in {
+            GoalState.ACTIVE,
+            GoalState.REOPENED,
+            GoalState.PROVISIONALLY_COMPLETE,
+            GoalState.ANALYSIS_INCONCLUSIVE,
+        } or (goal.status == GoalState.VERIFIED_COMPLETE.value and records):
+            candidate_goals.append(goal)
+
     terms: list[str] = []
-    for goal in active_goals:
+    for goal in candidate_goals:
         terms.extend(goal.required_evidence)
-    evidence = evidence_index(
+    discovered_evidence = evidence_index(
         repo_root,
         objective_path=objective_path,
         terms=terms,
@@ -370,16 +543,32 @@ def reconcile_objective_goal_completion(
 
     updates: dict[str, dict[str, str]] = {}
     completed_goal_ids: list[str] = []
+    provisional_goal_ids: list[str] = []
+    reopened_goal_ids: list[str] = []
+    analysis_inconclusive_goal_ids: list[str] = []
+    blocked_goal_ids: list[str] = []
     completion_evidence: dict[str, dict[str, list[str]]] = {}
     validation_results: dict[str, dict[str, Any]] = {}
-    completed_at = utc_now()
+    decisions: dict[str, dict[str, Any]] = {}
+    transitioned_at = now or utc_now()
     completion_boards: list[tuple[Path, str]] = []
     if todo_path is not None:
         completion_boards.append((todo_path, task_header_prefix))
     completion_boards.extend(todo_boards or ())
     open_goal_ids = open_goal_ids_from_todo_boards(completion_boards)
-    for goal in active_goals:
-        if goal.goal_id in open_goal_ids:
+    repository_identity = completion_tree_identity(repo_root, objective_path=objective_path)
+    for goal in candidate_goals:
+        current_state = normalize_goal_state(goal.status)
+        tasks_complete = goal.goal_id not in open_goal_ids
+        records = persisted_records.get(goal.goal_id, [])
+        criteria_text = str(
+            goal.fields.get("acceptance_criteria")
+            or goal.fields.get("acceptance")
+            or ""
+        ).strip()
+        criteria: Sequence[str] | str = criteria_text or goal.required_evidence
+
+        if not tasks_complete:
             validation_results[goal.goal_id] = {
                 "attempted": False,
                 "passed": False,
@@ -387,35 +576,100 @@ def reconcile_objective_goal_completion(
                 "reason": "open_todo_tasks",
                 "todo_boards": open_goal_ids[goal.goal_id],
             }
-            continue
-        required = goal.required_evidence
-        if not required or any(not evidence.get(term) for term in required):
-            continue
-        validation_result = run_goal_validation(repo_root=repo_root, goal=goal)
-        validation_results[goal.goal_id] = validation_result
-        if not validation_result.get("passed", False):
-            continue
-        goal_evidence = {term: list(evidence.get(term, [])) for term in required}
-        completed_goal_ids.append(goal.goal_id)
-        completion_evidence[goal.goal_id] = goal_evidence
-        updates[goal.goal_id] = {
-            "Status": "completed",
-            "Completed at": completed_at,
-            "Completion evidence": completion_evidence_summary(goal_evidence),
-            "Completion validation": str(validation_result.get("returncode", 0)),
-        }
+        elif current_state in {GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE} and records:
+            # Receipts supplied by another process remain provenance inputs,
+            # but verification also requires the repository's current
+            # validation command to pass at reconciliation time.
+            validation_results[goal.goal_id] = run_goal_validation(
+                repo_root=repo_root,
+                goal=goal,
+                repository_identity=repository_identity,
+            )
+            records = [
+                CompletionEvidence.from_dict(
+                    {
+                        **record.to_dict(),
+                        "validation_receipt": validation_results[goal.goal_id],
+                        "validation_passed": bool(
+                            validation_results[goal.goal_id].get("passed", False)
+                        ),
+                    }
+                )
+                for record in records
+            ]
 
-    if completed_goal_ids:
+        decision = evaluate_goal_completion(
+            current_state=current_state,
+            acceptance_criteria=criteria,
+            evidence=records,
+            tasks_complete=tasks_complete,
+            repository_tree=repository_identity.tree_id,
+            repository_id=repository_identity.repository_id,
+            now=now,
+            freshness_seconds=evidence_freshness_seconds,
+        )
+        decisions[goal.goal_id] = decision.to_dict()
+        goal_evidence = {
+            term: list(discovered_evidence.get(term, []))
+            for term in goal.required_evidence
+        }
+        if any(goal_evidence.values()):
+            completion_evidence[goal.goal_id] = goal_evidence
+
+        if decision.state is current_state:
+            continue
+        reason = "; ".join(decision.actionable_reasons) or "all completion evidence gates passed"
+        goal_updates = {
+            "Status": decision.state.value,
+            "State transitioned at": transitioned_at,
+            "State transition reason": reason,
+        }
+        if records:
+            goal_updates["Completion evidence records"] = json.dumps(
+                [record.to_dict() for record in records],
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        if decision.state is GoalState.PROVISIONALLY_COMPLETE:
+            provisional_goal_ids.append(goal.goal_id)
+            goal_updates["Provisional at"] = transitioned_at
+        elif decision.state is GoalState.VERIFIED_COMPLETE:
+            completed_goal_ids.append(goal.goal_id)
+            goal_updates["Completed at"] = transitioned_at
+            goal_updates["Completion evidence"] = completion_evidence_summary(goal_evidence)
+            goal_updates["Completion validation"] = str(
+                validation_results.get(goal.goal_id, {}).get("receipt_cid", "")
+            )
+        elif decision.state is GoalState.REOPENED:
+            reopened_goal_ids.append(goal.goal_id)
+        elif decision.state is GoalState.ANALYSIS_INCONCLUSIVE:
+            analysis_inconclusive_goal_ids.append(goal.goal_id)
+        elif decision.state is GoalState.BLOCKED:
+            blocked_goal_ids.append(goal.goal_id)
+        updates[goal.goal_id] = goal_updates
+
+    if updates:
         objective_path.write_text(rewrite_goal_fields(text, updates), encoding="utf-8")
         goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+
+    state_counts = {state.value: 0 for state in GoalState}
+    for goal in goals:
+        state_counts[normalize_goal_state(goal.status).value] += 1
 
     return ObjectiveCompletionResult(
         objective_path=objective_path,
         completed_goal_ids=completed_goal_ids,
-        active_goal_count=sum(1 for goal in goals if goal.status in {"active", "todo", "open"}),
-        completed_goal_count=sum(1 for goal in goals if goal.status == "completed"),
+        active_goal_count=state_counts[GoalState.ACTIVE.value] + state_counts[GoalState.REOPENED.value],
+        completed_goal_count=state_counts[GoalState.VERIFIED_COMPLETE.value],
         completion_evidence=completion_evidence,
         validation_results=validation_results,
+        provisional_goal_ids=provisional_goal_ids,
+        verified_goal_ids=list(completed_goal_ids),
+        reopened_goal_ids=reopened_goal_ids,
+        analysis_inconclusive_goal_ids=analysis_inconclusive_goal_ids,
+        blocked_goal_ids=blocked_goal_ids,
+        state_counts=state_counts,
+        decisions=decisions,
     )
 
 

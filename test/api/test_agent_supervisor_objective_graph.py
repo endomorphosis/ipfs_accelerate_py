@@ -9,6 +9,7 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor import (
     build_bundle_task_payloads,
     generate_objective_todos,
+    goal_graph,
     objective_heap_schedule,
     parse_goal_heap,
     persist_objective_ast_dataset,
@@ -176,6 +177,147 @@ def test_objective_heap_schedule_uses_fibonacci_then_work_surface():
     assert [record.goal_id for record in schedule] == ["VAIOS-G001", "VAIOS-G002", "VAIOS-G003"]
     assert schedule[1].work_surface_score > schedule[2].work_surface_score
     assert schedule[1].sort_key[2] < schedule[2].sort_key[2]
+
+
+def test_objective_graph_projects_lifecycle_and_completion_evidence() -> None:
+    goals = parse_goal_heap(
+        """# Objective Heap
+
+## G10.S3 Evidence-backed completion
+
+- Status: provisionally_complete
+- Evidence: criterion one, criterion two
+- Acceptance criterion: criterion one
+- Producing task or scan: REF-206
+- Validation receipt: bafy-validation
+- Repository tree: sha256:tree
+- Freshness: fresh
+- Provenance CID: bafy-provenance
+
+## G10.S3.1 Reopened child
+
+- Status: reopened
+- Parent: G10.S3
+- Evidence: child criterion
+
+## G10.S3.2 Legacy completed child
+
+- Status: completed
+- Parent: G10.S3
+- Evidence: legacy criterion
+"""
+    )
+
+    graph = goal_graph(goals)
+
+    assert graph["node_details"]["G10.S3"] == {
+        "goal_id": "G10.S3",
+        "title": "Evidence-backed completion",
+        "status": "provisionally_complete",
+        "lifecycle_state": "provisionally_complete",
+        "schedulable": False,
+        "terminal": False,
+        "parents": [],
+        "required_evidence": ["criterion one", "criterion two"],
+        "completion_evidence": {
+            "acceptance_criterion": "criterion one",
+            "producer": "REF-206",
+            "validation_receipt": "bafy-validation",
+            "repository_tree": "sha256:tree",
+            "freshness": "fresh",
+            "provenance_cid": "bafy-provenance",
+        },
+    }
+    assert graph["node_details"]["G10.S3.1"]["lifecycle_state"] == "reopened"
+    assert graph["node_details"]["G10.S3.1"]["schedulable"] is True
+    assert graph["node_details"]["G10.S3.2"]["lifecycle_state"] == "verified_complete"
+    assert graph["node_details"]["G10.S3.2"]["terminal"] is True
+    assert graph["state_counts"] == {
+        "provisionally_complete": 1,
+        "reopened": 1,
+        "verified_complete": 1,
+    }
+    assert graph["schedulable_goal_ids"] == ["G10.S3.1"]
+    assert graph["terminal_goal_ids"] == ["G10.S3.2"]
+    assert {node["acceptance_criterion"] for node in graph["evidence_nodes"]} == {
+        "criterion one",
+        "criterion two",
+        "child criterion",
+        "legacy criterion",
+    }
+    assert {edge["kind"] for edge in graph["evidence_edges"]} == {"requires_evidence"}
+
+
+def test_objective_schedule_only_includes_active_and_reopened_states() -> None:
+    goals = parse_goal_heap(
+        """# Objective Heap
+
+## G-A Active
+- Status: active
+- Fib priority: 1
+
+## G-P Provisional
+- Status: provisionally_complete
+- Fib priority: 2
+
+## G-V Verified
+- Status: verified_complete
+- Fib priority: 3
+
+## G-I Inconclusive
+- Status: analysis_inconclusive
+- Fib priority: 4
+
+## G-B Blocked
+- Status: blocked
+- Fib priority: 5
+
+## G-R Reopened
+- Status: reopened
+- Fib priority: 6
+"""
+    )
+
+    schedule = objective_heap_schedule(goals)
+
+    assert [record.goal_id for record in schedule] == ["G-A", "G-R"]
+
+
+def test_objective_graph_links_persisted_completion_receipts() -> None:
+    records = json.dumps(
+        [
+            {
+                "acceptance_criterion": "criterion one",
+                "producing_task_or_scan": "REF-206",
+                "validation_receipt": "bafy-validation",
+                "repository_tree": "sha256:tree",
+                "freshness": True,
+                "provenance_cid": "bafy-provenance",
+            }
+        ],
+        separators=(",", ":"),
+    )
+    goals = parse_goal_heap(
+        "\n".join(
+            [
+                "# Objective Heap",
+                "",
+                "## G10.S3 Persisted evidence",
+                "",
+                "- Status: provisionally_complete",
+                "- Evidence: criterion one",
+                f"- Completion evidence records: {records}",
+            ]
+        )
+    )
+
+    graph = goal_graph(goals)
+    proof = next(node for node in graph["evidence_nodes"] if node.get("kind") == "completion_evidence")
+
+    assert proof["producing_task_or_scan"] == "REF-206"
+    assert proof["repository_tree"] == "sha256:tree"
+    assert proof["provenance_cid"] == "bafy-provenance"
+    assert any(edge["kind"] == "supported_by" and edge["to"] == proof["id"] for edge in graph["evidence_edges"])
 
 
 def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
