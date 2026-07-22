@@ -817,6 +817,16 @@ def test_bundle_projection_absorbs_internal_cycles_but_keeps_cross_bundle_cycles
         for payload in external
     )
 
+    resolved_index = tmp_path / "resolved-index.json"
+    resolved_payload = json.loads(external_index.read_text(encoding="utf-8"))
+    resolved_payload["bundles"]["objective/a"]["tasks"][0]["status"] = "completed"
+    resolved_index.write_text(json.dumps(resolved_payload), encoding="utf-8")
+
+    resolved = build_bundle_task_payloads(resolved_index)
+    assert all(payload["claimable"] is True for payload in resolved)
+    assert all(payload["dependency_task_cids"] == [] for payload in resolved)
+    assert all(payload["dependency_repair_evidence"] == [] for payload in resolved)
+
 
 def test_task_dependency_dag_requires_successful_merge_receipts_and_scores_critical_path():
     tasks = [

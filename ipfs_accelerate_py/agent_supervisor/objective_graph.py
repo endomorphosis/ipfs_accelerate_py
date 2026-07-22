@@ -1016,7 +1016,16 @@ def critical_path_schedule(
 
     invalid = set(graph.invalid_task_cids)
     invalid.update(item.task_cid for item in graph.repair_evidence if item.task_cid in graph.nodes)
-    cycle_nodes = {cid for group in _cycle_components(graph.nodes, outgoing) for cid in group}
+    unresolved_nodes = set(graph.nodes) - succeeded
+    unresolved_adjacency = {
+        cid: {child for child in outgoing[cid] if child in unresolved_nodes}
+        for cid in unresolved_nodes
+    }
+    cycle_nodes = {
+        cid
+        for group in _cycle_components(unresolved_nodes, unresolved_adjacency)
+        for cid in group
+    }
     invalid.update(cycle_nodes)
 
     indegree = {
@@ -1071,10 +1080,9 @@ def critical_path_schedule(
         current_ms = int(now)
 
     records: list[TaskScheduleRecord] = []
-    terminal_statuses = {"complete", "completed", "merged", "success", "succeeded"}
     for cid, node in graph.nodes.items():
         blockers = sorted(parent for parent in incoming[cid] if parent not in succeeded)
-        claimable = cid not in invalid and node.status not in terminal_statuses and not blockers
+        claimable = cid not in invalid and node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES and not blockers
         critical_length = longest_to_finish.get(cid, 0)
         slack = max(0, project_duration - earliest_start.get(cid, 0) - critical_length)
         unlock_value = len(descendants.get(cid, set()))
@@ -1343,7 +1351,13 @@ def materialize_task_dependency_dag(
     adjacency: dict[str, set[str]] = {cid: set() for cid in nodes}
     for edge in edges:
         adjacency[edge.source_task_cid].add(edge.target_task_cid)
-    for component in _cycle_components(nodes, adjacency):
+    succeeded_task_cids = _successful_merge_receipt_cids(merge_receipts, aliases)
+    unresolved_nodes = set(nodes) - succeeded_task_cids
+    unresolved_adjacency = {
+        cid: {target for target in adjacency[cid] if target in unresolved_nodes}
+        for cid in unresolved_nodes
+    }
+    for component in _cycle_components(unresolved_nodes, unresolved_adjacency):
         cycle = " -> ".join([*(nodes[cid].task_id or cid for cid in component), nodes[component[0]].task_id or component[0]])
         for cid in component:
             add_repair(
@@ -2799,7 +2813,15 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         for item in bundle_payload.get("tasks", [])
         if isinstance(item, Mapping)
     ]
-    planning_graph = materialize_task_planning_graph(flat_tasks)
+    terminal_receipts = {
+        str(task.get("canonical_task_cid") or task.get("task_cid") or task.get("task_id") or ""): {
+            "status": "succeeded"
+        }
+        for task in flat_tasks
+        if str(task.get("status") or "").strip().lower() in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+        and str(task.get("canonical_task_cid") or task.get("task_cid") or task.get("task_id") or "")
+    }
+    planning_graph = materialize_task_planning_graph(flat_tasks, merge_receipts=terminal_receipts)
     graph = planning_graph.dependency_graph
     graph_dict = graph.to_dict()
     conflict_graph_dict = planning_graph.conflict_graph.to_dict()
@@ -2812,6 +2834,14 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
     incoming: dict[str, set[str]] = {cid: set() for cid in graph.nodes}
     for edge in graph.edges:
         incoming.setdefault(edge.target_task_cid, set()).add(edge.source_task_cid)
+    unresolved_incoming = {
+        cid: (
+            set()
+            if node.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            else set(schedule_by_cid.get(cid).blocking_task_cids if cid in schedule_by_cid else incoming.get(cid, set()))
+        )
+        for cid, node in graph.nodes.items()
+    }
 
     member_bundle: dict[str, str] = {}
     bundle_identity_cids: dict[str, str] = {}
@@ -2863,7 +2893,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         dependency_bundle_keys = {
             member_bundle[source]
             for target in member_cids
-            for source in incoming.get(target, set())
+            for source in unresolved_incoming.get(target, set())
             if source in member_bundle and member_bundle[source] != bundle_key
         }
         dependency_task_cids = sorted(bundle_identity_cids[key] for key in dependency_bundle_keys)
@@ -2916,7 +2946,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
             {
                 bundle_identity_cids[member_bundle[source]]
                 for target in member_cids
-                for source in incoming.get(target, set())
+                for source in unresolved_incoming.get(target, set())
                 if source in member_bundle and member_bundle[source] != bundle_key
             }
         )
