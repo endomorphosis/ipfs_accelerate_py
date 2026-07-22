@@ -19,6 +19,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 ANALYZER_HEALTH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/analyzer-health@1"
 ANALYZER_CANARY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/analyzer-canaries@1"
+ANALYSIS_ESCALATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/analysis-escalation@1"
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -34,6 +35,209 @@ class AnalyzerHealthStatus(str, Enum):
     HEALTHY = "healthy"
     PARTIAL = "partial"
     UNHEALTHY = "unhealthy"
+
+
+class AnalysisEscalationStage(str, Enum):
+    """Ordered analysis stages used when the healthy backlog is too small."""
+
+    INCREMENTAL_STATIC = "incremental_static"
+    EXHAUSTIVE_AST = "exhaustive_ast"
+    LLM_ROUTER = "llm_router"
+    DETERMINISTIC_FALLBACK = "deterministic_fallback"
+
+
+class AnalysisEscalationStatus(str, Enum):
+    """Terminal state of one stage or the complete escalation run."""
+
+    SATISFIED = "satisfied"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+    LIMITED = "limited"
+    FAILED = "failed"
+    ANALYSIS_INCONCLUSIVE = "analysis_inconclusive"
+
+
+@dataclass(frozen=True)
+class AnalysisEscalationPolicy:
+    """Finite policy for low-backlog discovery.
+
+    The limits are per daemon cycle. ``router_calls_per_window`` also applies
+    to caller-supplied timestamps from earlier cycles, making the otherwise
+    stateless policy suitable for a persisted rate-limit ledger.
+    """
+
+    backlog_target: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_BACKLOG_TARGET", "5")
+        )
+    )
+    max_incremental_candidates: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MAX_INCREMENTAL", "20")
+        )
+    )
+    max_ast_records: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MAX_AST_RECORDS", "50000")
+        )
+    )
+    max_ast_bytes: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MAX_AST_BYTES", "67108864")
+        )
+    )
+    max_router_calls: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MAX_ROUTER_CALLS", "2")
+        )
+    )
+    router_calls_per_window: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_ROUTER_RATE", "4")
+        )
+    )
+    router_window_seconds: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_ROUTER_WINDOW_SECONDS", "3600")
+        )
+    )
+    max_router_tokens: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MAX_ROUTER_TOKENS", "8192")
+        )
+    )
+    max_router_retries: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MAX_ROUTER_RETRIES", "1")
+        )
+    )
+    max_novel_proposals: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MAX_NOVEL_PROPOSALS", "5")
+        )
+    )
+    max_rejected_candidates: int = field(
+        default_factory=lambda: int(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MAX_REJECTIONS", "100")
+        )
+    )
+    min_confidence: float = field(
+        default_factory=lambda: float(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MIN_CONFIDENCE", "0.65")
+        )
+    )
+    min_novelty: float = field(
+        default_factory=lambda: float(
+            os.environ.get("IPFS_ACCELERATE_AGENT_ANALYSIS_MIN_NOVELTY", "0.35")
+        )
+    )
+
+    def __post_init__(self) -> None:
+        positive = (
+            "backlog_target",
+            "max_ast_records",
+            "max_ast_bytes",
+            "router_window_seconds",
+            "max_router_tokens",
+        )
+        nonnegative = (
+            "max_incremental_candidates",
+            "max_router_calls",
+            "router_calls_per_window",
+            "max_router_retries",
+            "max_novel_proposals",
+            "max_rejected_candidates",
+        )
+        for name in positive:
+            value = int(getattr(self, name))
+            if value < 1:
+                raise ValueError(f"{name} must be at least 1")
+            object.__setattr__(self, name, value)
+        for name in nonnegative:
+            value = int(getattr(self, name))
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
+            object.__setattr__(self, name, value)
+        for name in ("min_confidence", "min_novelty"):
+            value = float(getattr(self, name))
+            if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be between 0 and 1")
+            object.__setattr__(self, name, value)
+
+    @classmethod
+    def from_value(
+        cls, value: "AnalysisEscalationPolicy | Mapping[str, Any] | None"
+    ) -> "AnalysisEscalationPolicy":
+        if value is None:
+            return cls()
+        if isinstance(value, cls):
+            return value
+        if not isinstance(value, Mapping):
+            raise TypeError("analysis policy must be AnalysisEscalationPolicy or a mapping")
+        known = set(cls.__dataclass_fields__)
+        unknown = sorted(str(key) for key in value if key not in known)
+        if unknown:
+            raise ValueError(f"unknown analysis policy fields: {', '.join(unknown)}")
+        return cls(**dict(value))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+# A descriptive alias for callers that think of the policy primarily as a
+# collection of circuit breakers.
+AnalysisEscalationLimits = AnalysisEscalationPolicy
+
+
+@dataclass(frozen=True)
+class AnalysisEscalationRecord:
+    """Auditable evidence for exactly one escalation stage."""
+
+    stage: AnalysisEscalationStage | str
+    status: AnalysisEscalationStatus | str
+    cost: Mapping[str, Any] = field(default_factory=dict)
+    scope: Mapping[str, Any] = field(default_factory=dict)
+    novelty: float = 0.0
+    confidence: float = 0.0
+    rejected_candidates: tuple[Mapping[str, Any], ...] = ()
+    objective_terms: tuple[str, ...] = ()
+    accepted_candidates: tuple[Mapping[str, Any], ...] = ()
+    reason: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "stage", AnalysisEscalationStage(str(getattr(self.stage, "value", self.stage))))
+        object.__setattr__(self, "status", AnalysisEscalationStatus(str(getattr(self.status, "value", self.status))))
+        for name in ("novelty", "confidence"):
+            value = float(getattr(self, name))
+            if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be between 0 and 1")
+            object.__setattr__(self, name, value)
+        terms = tuple(dict.fromkeys(str(item).strip() for item in self.objective_terms if str(item).strip()))
+        object.__setattr__(self, "objective_terms", terms)
+        object.__setattr__(self, "cost", dict(self.cost))
+        object.__setattr__(self, "scope", dict(self.scope))
+        object.__setattr__(self, "rejected_candidates", tuple(dict(item) for item in self.rejected_candidates))
+        object.__setattr__(self, "accepted_candidates", tuple(dict(item) for item in self.accepted_candidates))
+        object.__setattr__(self, "reason", str(self.reason or ""))
+
+    @property
+    def objective_terms_attempted(self) -> tuple[str, ...]:
+        return self.objective_terms
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage": self.stage.value,
+            "status": self.status.value,
+            "cost": dict(self.cost),
+            "scope": dict(self.scope),
+            "novelty": self.novelty,
+            "confidence": self.confidence,
+            "rejected_candidates": [dict(item) for item in self.rejected_candidates],
+            "objective_terms": list(self.objective_terms),
+            "objective_terms_attempted": list(self.objective_terms),
+            "accepted_candidates": [dict(item) for item in self.accepted_candidates],
+            "reason": self.reason,
+        }
 
 
 @dataclass(frozen=True)
@@ -529,6 +733,7 @@ def classify_analyzer_health(
 
 
 __all__ = [
+    "ANALYSIS_ESCALATION_SCHEMA",
     "ANALYZER_CANARY_FIXTURES",
     "ANALYZER_CANARY_SCHEMA",
     "ANALYZER_HEALTH_SCHEMA",
@@ -540,6 +745,11 @@ __all__ = [
     "AnalyzerHealthReport",
     "AnalyzerHealthStatus",
     "AnalyzerHealthThresholds",
+    "AnalysisEscalationLimits",
+    "AnalysisEscalationPolicy",
+    "AnalysisEscalationRecord",
+    "AnalysisEscalationStage",
+    "AnalysisEscalationStatus",
     "classify_analyzer_health",
     "impossible_candidate_funnel",
     "run_analyzer_canaries",

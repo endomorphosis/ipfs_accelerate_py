@@ -7,15 +7,20 @@ import json
 import os
 import re
 import sys
+import time
 from contextlib import redirect_stdout
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .plan_evaluator import (
+    ANALYSIS_PROPOSAL_JSON_SCHEMA,
     PLAN_BRANCH_JSON_SCHEMA,
+    AnalysisProposal,
+    AnalysisProposalEvaluation,
     PlanBranch,
     PlanBranchValidationError,
+    evaluate_analysis_proposals,
 )
 
 
@@ -827,6 +832,57 @@ class PlanRoutingResult:
         return self.to_dict(profile_g=True)
 
 
+@dataclass(frozen=True)
+class AnalysisProposalRoutingResult:
+    """Bounded semantic routing result with explicit fail-closed provenance."""
+
+    proposals: tuple[AnalysisProposal, ...]
+    evaluation: AnalysisProposalEvaluation
+    router_evaluation: AnalysisProposalEvaluation | None
+    used_fallback: bool
+    analysis_inconclusive: bool
+    router_calls: int = 0
+    router_retries: int = 0
+    reserved_tokens: int = 0
+    router_error: str | None = None
+    raw_responses: tuple[str, ...] = ()
+    router_call_timestamps: tuple[float, ...] = ()
+    limit_reason: str = ""
+
+    @property
+    def router_succeeded(self) -> bool:
+        return not self.used_fallback and not self.analysis_inconclusive
+
+    @property
+    def accepted(self) -> tuple[AnalysisProposal, ...]:
+        return self.evaluation.accepted
+
+    @property
+    def rejected(self) -> tuple[Any, ...]:
+        return self.evaluation.rejected
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        return {
+            "proposals": [item.to_dict(profile_g=profile_g) for item in self.proposals],
+            "evaluation": self.evaluation.to_dict(profile_g=profile_g),
+            "router_evaluation": (
+                self.router_evaluation.to_dict(profile_g=profile_g)
+                if self.router_evaluation is not None
+                else None
+            ),
+            "used_fallback": self.used_fallback,
+            "analysis_inconclusive": self.analysis_inconclusive,
+            "router_succeeded": self.router_succeeded,
+            "router_calls": self.router_calls,
+            "router_retries": self.router_retries,
+            "reserved_tokens": self.reserved_tokens,
+            "router_error": self.router_error,
+            "raw_responses": list(self.raw_responses),
+            "router_call_timestamps": list(self.router_call_timestamps),
+            "limit_reason": self.limit_reason,
+        }
+
+
 def _object_value(value: object, *names: str) -> Any:
     for name in names:
         if isinstance(value, Mapping) and name in value:
@@ -1005,6 +1061,93 @@ def parse_structured_plan_branches(text: str) -> tuple[PlanBranch, ...]:
     return branches
 
 
+def build_analysis_proposal_prompt(
+    context: object,
+    *,
+    objective_terms: Sequence[str],
+    ast_evidence: Mapping[str, Any] | None = None,
+    proposal_count: int = 3,
+) -> str:
+    """Build the schema-constrained goal-directed analysis request."""
+
+    count = int(proposal_count)
+    if count < 1:
+        raise ValueError("proposal_count must be at least 1")
+    terms = tuple(dict.fromkeys(str(item).strip() for item in objective_terms if str(item).strip()))
+    if not terms:
+        raise ValueError("objective_terms must contain at least one term")
+    ast_payload = dict(ast_evidence or {})
+    # Full source/AST blobs can exceed router context and are unnecessary for
+    # the planning boundary. The AST scanner supplies compact coverage fields.
+    ast_payload.pop("records", None)
+    return "\n".join(
+        (
+            "Propose bounded implementation tasks for objective terms that remain uncovered after static and AST analysis.",
+            f"Return between 1 and {count} materially distinct proposals.",
+            "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
+            "Each nested branch source must be 'llm_router'. Confidence and novelty are numbers from 0 through 1.",
+            "Only list objective_terms from the supplied terms and include repository-relative predicted files.",
+            "Do not claim that the objective or repository is exhausted.",
+            "",
+            "Objective terms:",
+            json.dumps(list(terms), indent=2, sort_keys=True),
+            "",
+            "Planning context:",
+            json.dumps(_jsonable_subgoal(context), indent=2, sort_keys=True, default=str),
+            "",
+            "Exhaustive AST coverage summary:",
+            json.dumps(ast_payload, indent=2, sort_keys=True, default=str),
+            "",
+            "Required JSON schema:",
+            json.dumps(ANALYSIS_PROPOSAL_JSON_SCHEMA, indent=2, sort_keys=True),
+        )
+    )
+
+
+def parse_analysis_proposals(text: str) -> tuple[AnalysisProposal, ...]:
+    """Parse a strict semantic proposal response as an all-or-nothing unit."""
+
+    payload = _decode_router_json(text)
+    if not isinstance(payload, Mapping):
+        raise PlanBranchValidationError("analysis proposal response must be a JSON object")
+    unknown = sorted(str(key) for key in payload if key != "proposals")
+    if unknown:
+        raise PlanBranchValidationError(
+            f"unknown top-level analysis proposal fields: {', '.join(unknown)}"
+        )
+    raw = payload.get("proposals")
+    if isinstance(raw, (str, bytes)) or not isinstance(raw, Sequence) or not raw:
+        raise PlanBranchValidationError("proposals must be a non-empty JSON array")
+    required = {"branch", "confidence", "novelty", "objective_terms"}
+    for index, item in enumerate(raw):
+        if not isinstance(item, Mapping):
+            raise PlanBranchValidationError(f"proposals[{index}] must be a JSON object")
+        fields = {str(key) for key in item}
+        missing = sorted(required - fields)
+        unknown_fields = sorted(fields - required)
+        if missing:
+            raise PlanBranchValidationError(
+                f"proposals[{index}] is missing required fields: {', '.join(missing)}"
+            )
+        if unknown_fields:
+            raise PlanBranchValidationError(
+                f"proposals[{index}] contains unknown fields: {', '.join(unknown_fields)}"
+            )
+    proposals = tuple(AnalysisProposal.from_dict(item) for item in raw)
+    branch_ids = [item.branch.branch_id for item in proposals]
+    duplicates = sorted({item for item in branch_ids if branch_ids.count(item) > 1})
+    if duplicates:
+        raise PlanBranchValidationError(
+            f"duplicate analysis proposal branch ids: {', '.join(duplicates)}"
+        )
+    for index, proposal in enumerate(proposals):
+        if proposal.branch.source != "llm_router":
+            raise PlanBranchValidationError(
+                f"proposals[{index}].branch.source must be 'llm_router'"
+            )
+    return proposals
+
+
 def deterministic_plan_branches(
     subgoal: object,
     branch_count: int = 1,
@@ -1137,3 +1280,183 @@ def generate_structured_plan_branches(
             router_error=error,
             raw_response=raw_response,
         )
+
+
+def _deterministic_analysis_proposals(
+    context: object,
+    objective_terms: Sequence[str],
+    count: int,
+) -> tuple[AnalysisProposal, ...]:
+    terms = tuple(dict.fromkeys(str(item).strip() for item in objective_terms if str(item).strip()))
+    branches = deterministic_plan_branches(context, max(1, int(count)))
+    return tuple(
+        AnalysisProposal(
+            branch=branch,
+            # These values describe confidence in the fallback task shape,
+            # not confidence that semantic analysis proved exhaustion.
+            confidence=1.0,
+            novelty=1.0,
+            objective_terms=terms or ("unresolved objective",),
+        )
+        for branch in branches
+    )
+
+
+def generate_analysis_proposals(
+    context: object,
+    *,
+    objective_terms: Sequence[str],
+    ast_evidence: Mapping[str, Any] | None = None,
+    router: StructuredRouter | None = None,
+    config: StructuredPlanRouterConfig | None = None,
+    policy: Any = None,
+    known_proposal_ids: Iterable[str] = (),
+    router_calls_in_window: int | Iterable[Any] = 0,
+    now: float | None = None,
+    fallback_planner: Callable[[object, int], Sequence[Any]] | None = None,
+) -> AnalysisProposalRoutingResult:
+    """Route semantic proposals under rate, token, retry, and novelty caps.
+
+    Any provider/schema/quality failure returns deterministic work while
+    retaining ``analysis_inconclusive=True``. A fallback is useful scheduler
+    input, but is never semantic evidence that the repository is exhausted.
+    """
+
+    from .analyzer_health import AnalysisEscalationPolicy
+
+    limits = AnalysisEscalationPolicy.from_value(policy)
+    resolved = config or StructuredPlanRouterConfig()
+    desired = min(resolved.branch_count, max(1, limits.max_novel_proposals))
+    prompt = build_analysis_proposal_prompt(
+        context,
+        objective_terms=objective_terms,
+        ast_evidence=ast_evidence,
+        proposal_count=desired,
+    )
+    now_epoch = float(time.time() if now is None else now)
+    historical_timestamps: list[float] = []
+    if isinstance(router_calls_in_window, int):
+        historical_count = max(0, router_calls_in_window)
+    else:
+        cutoff = now_epoch - limits.router_window_seconds
+        for item in router_calls_in_window:
+            try:
+                stamp = float(item.timestamp() if hasattr(item, "timestamp") else item)
+            except (TypeError, ValueError, OverflowError, OSError):
+                continue
+            if cutoff <= stamp <= now_epoch:
+                historical_timestamps.append(stamp)
+        historical_count = len(historical_timestamps)
+    calls_remaining = min(
+        limits.max_router_calls,
+        max(0, limits.router_calls_per_window - historical_count),
+    )
+    token_cost = min(int(resolved.max_new_tokens), limits.max_router_tokens)
+    token_limited_calls = limits.max_router_tokens // max(1, token_cost)
+    attempt_limit = min(1 + limits.max_router_retries, calls_remaining, token_limited_calls)
+    errors: list[str] = []
+    raw_responses: list[str] = []
+    calls = 0
+    last_evaluation = AnalysisProposalEvaluation((), (), None)
+    proposals: tuple[AnalysisProposal, ...] = ()
+    limit_reason = ""
+    if attempt_limit <= 0:
+        if calls_remaining <= 0:
+            limit_reason = "router_rate_or_call_limit_reached"
+        else:
+            limit_reason = "router_token_limit_reached"
+    for _attempt in range(attempt_limit):
+        calls += 1
+        try:
+            raw = (
+                router(prompt)
+                if router is not None
+                else _default_structured_router(
+                    prompt,
+                    replace(resolved, max_new_tokens=token_cost),
+                )
+            )
+            raw_responses.append(str(raw))
+            proposals = parse_analysis_proposals(raw)
+            if len(proposals) > desired:
+                raise PlanBranchValidationError(
+                    f"llm_router returned {len(proposals)} proposals; maximum is {desired}"
+                )
+            last_evaluation = evaluate_analysis_proposals(
+                proposals,
+                objective_terms=objective_terms,
+                known_proposal_ids=known_proposal_ids,
+                min_confidence=limits.min_confidence,
+                min_novelty=limits.min_novelty,
+                max_novel_proposals=limits.max_novel_proposals,
+            )
+            if last_evaluation.accepted:
+                return AnalysisProposalRoutingResult(
+                    proposals=proposals,
+                    evaluation=last_evaluation,
+                    router_evaluation=last_evaluation,
+                    used_fallback=False,
+                    analysis_inconclusive=False,
+                    router_calls=calls,
+                    router_retries=max(0, calls - 1),
+                    reserved_tokens=calls * token_cost,
+                    raw_responses=tuple(raw_responses),
+                    router_call_timestamps=tuple([*historical_timestamps, *([now_epoch] * calls)]),
+                )
+            reasons = ", ".join(item.reason for item in last_evaluation.rejected)
+            errors.append(f"all router proposals rejected: {reasons or 'no accepted proposals'}")
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}"[:1000])
+
+    fallback_count = max(1, min(desired, limits.max_novel_proposals or 1))
+    fallback_values = (
+        fallback_planner(context, fallback_count)
+        if fallback_planner is not None
+        else _deterministic_analysis_proposals(context, objective_terms, fallback_count)
+    )
+    fallback_proposals: list[AnalysisProposal] = []
+    for item in fallback_values:
+        if isinstance(item, AnalysisProposal):
+            fallback_proposals.append(item)
+        elif isinstance(item, PlanBranch):
+            fallback_proposals.append(
+                AnalysisProposal(item, 1.0, 1.0, tuple(objective_terms) or ("unresolved objective",))
+            )
+        elif isinstance(item, Mapping) and "branch" in item:
+            fallback_proposals.append(AnalysisProposal.from_dict(item))
+        else:
+            branch = PlanBranch.from_dict(item)
+            fallback_proposals.append(
+                AnalysisProposal(branch, 1.0, 1.0, tuple(objective_terms) or ("unresolved objective",))
+            )
+    if not fallback_proposals:
+        raise TaskProposalRouterError(
+            "analysis router was inconclusive and deterministic fallback returned no proposals"
+        )
+    fallback_evaluation = evaluate_analysis_proposals(
+        fallback_proposals,
+        objective_terms=objective_terms,
+        known_proposal_ids=known_proposal_ids,
+        min_confidence=0.0,
+        min_novelty=0.0,
+        max_novel_proposals=limits.max_novel_proposals,
+    )
+    combined_evaluation = AnalysisProposalEvaluation(
+        accepted=fallback_evaluation.accepted,
+        rejected=tuple([*last_evaluation.rejected, *fallback_evaluation.rejected]),
+        plan_evaluation=fallback_evaluation.plan_evaluation,
+    )
+    return AnalysisProposalRoutingResult(
+        proposals=tuple(fallback_proposals),
+        evaluation=combined_evaluation,
+        router_evaluation=last_evaluation,
+        used_fallback=True,
+        analysis_inconclusive=True,
+        router_calls=calls,
+        router_retries=max(0, calls - 1),
+        reserved_tokens=calls * token_cost,
+        router_error="; ".join(errors) or limit_reason or "router was not called",
+        raw_responses=tuple(raw_responses),
+        router_call_timestamps=tuple([*historical_timestamps, *([now_epoch] * calls)]),
+        limit_reason=limit_reason,
+    )

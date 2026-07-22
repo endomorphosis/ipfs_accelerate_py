@@ -90,12 +90,17 @@ from .todo_vector_index import (
     write_todo_vector_index,
 )
 from .plan_evaluator import (
+    ANALYSIS_PROPOSAL_JSON_SCHEMA,
     PLAN_BRANCH_JSON_SCHEMA,
     PLAN_EVALUATOR_VERSION,
+    AnalysisProposal,
+    AnalysisProposalEvaluation,
     EvaluatedPlanBranch,
     PlanBranch,
     PlanBranchValidationError,
     PlanEvaluation,
+    RejectedAnalysisProposal,
+    evaluate_analysis_proposals,
     evaluate_plan_branches,
 )
 
@@ -188,11 +193,15 @@ __all__ = [
     "LaneAssignment",
     "LaneDecision",
     "PLAN_BRANCH_JSON_SCHEMA",
+    "ANALYSIS_PROPOSAL_JSON_SCHEMA",
     "PLAN_EVALUATOR_VERSION",
     "EvaluatedPlanBranch",
     "PlanBranch",
     "PlanBranchValidationError",
     "PlanEvaluation",
+    "AnalysisProposal",
+    "AnalysisProposalEvaluation",
+    "RejectedAnalysisProposal",
     "ObjectiveRefillEnvSettings",
     "RepositoryComponent",
     "append_interoperability_goals",
@@ -280,6 +289,7 @@ __all__ = [
     "enforce_android_validation_environment",
     "ensure_runtime_pythonpath",
     "evaluate_plan_branches",
+    "evaluate_analysis_proposals",
     "fibonacci_priority",
     "goal_graph",
     "materialize_task_dependency_dag",
@@ -477,11 +487,24 @@ __all__ = [
     "AuditFindingRecord",
     "AuditFindingStatus",
     "AuditScanResult",
+    "AnalysisEscalationPolicy",
+    "AnalysisEscalationRecord",
+    "AnalysisEscalationResult",
+    "AnalysisEscalationStage",
+    "AnalysisEscalationStatus",
+    "AstCoverageReport",
+    "AnalysisProposalRoutingResult",
     "ExhaustionBinding",
     "ExhaustionQuorumResult",
     "audit_codebase_findings",
     "evaluate_exhaustion_quorum",
     "run_audit_scan",
+    "run_exhaustive_ast_coverage",
+    "run_low_backlog_analysis",
+    "run_analysis_escalation",
+    "generate_analysis_proposals",
+    "parse_analysis_proposals",
+    "build_analysis_proposal_prompt",
     "record_codebase_audit_findings",
     "task_metadata_lines",
     "build_task_proposal_route_paths",
@@ -514,10 +537,24 @@ def __getattr__(name: str):
         "AuditScanResult",
         "audit_codebase_findings",
         "run_audit_scan",
+        "AnalysisEscalationResult",
+        "AstCoverageReport",
+        "run_exhaustive_ast_coverage",
+        "run_low_backlog_analysis",
+        "run_analysis_escalation",
     }:
         from . import audit_scanner
 
         return getattr(audit_scanner, name)
+    if name in {
+        "AnalysisEscalationPolicy",
+        "AnalysisEscalationRecord",
+        "AnalysisEscalationStage",
+        "AnalysisEscalationStatus",
+    }:
+        from . import analyzer_health
+
+        return getattr(analyzer_health, name)
     if name in {
         "ExhaustionBinding",
         "ExhaustionQuorumResult",
@@ -885,6 +922,10 @@ def __getattr__(name: str):
         "ConfiguredTaskProposalRouterRunner",
         "StructuredPlanRouterConfig",
         "PlanRoutingResult",
+        "AnalysisProposalRoutingResult",
+        "build_analysis_proposal_prompt",
+        "generate_analysis_proposals",
+        "parse_analysis_proposals",
         "task_metadata_lines",
     }:
         from . import task_proposal_router

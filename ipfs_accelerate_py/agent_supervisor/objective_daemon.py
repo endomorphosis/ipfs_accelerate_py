@@ -190,6 +190,7 @@ def plan_objective_records(
                         else ("llm_router" if use_llm_router else "deterministic_planner")
                     ),
                     "used_fallback": used_fallback,
+                    "analysis_inconclusive": bool(used_fallback or route_error),
                     "router_error": route_error or None,
                     "evaluator_version": str(evaluation.evaluator_version),
                     "selected": selected,
@@ -209,6 +210,7 @@ def plan_objective_records(
                         "goal_id": context["goal_id"],
                         "source": "deterministic_fallback",
                         "used_fallback": True,
+                        "analysis_inconclusive": True,
                         "router_error": str(exc),
                         "evaluator_version": str(evaluation.evaluator_version),
                         "selected": selected,
@@ -227,6 +229,7 @@ def plan_objective_records(
                         "goal_id": context["goal_id"],
                         "source": "planning_error",
                         "used_fallback": True,
+                        "analysis_inconclusive": True,
                         "router_error": str(exc),
                         "fallback_error": str(fallback_exc),
                         "evaluator_version": "",
@@ -311,6 +314,62 @@ def persist_objective_plan_evaluations(
     from .artifact_store import write_bundle_index_artifact
 
     write_bundle_index_artifact(bundle_index_path, bundle_payload)
+
+
+def objective_terms_for_analysis(
+    objective_path: Path,
+    records: Sequence[Any] = (),
+) -> tuple[str, ...]:
+    """Return deterministic uncovered terms for goal-directed escalation."""
+
+    from .objective_graph import parse_goal_heap
+
+    terms: list[str] = []
+    if objective_path.exists():
+        for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace")):
+            if goal.is_schedulable:
+                terms.extend(goal.required_evidence)
+    for record in records:
+        finding = getattr(record, "finding", None)
+        terms.extend(str(item) for item in getattr(finding, "missing_evidence", ()) or ())
+    return tuple(dict.fromkeys(" ".join(item.strip().split()) for item in terms if item.strip()))
+
+
+def persist_analysis_escalation(path: Path, result: Any) -> dict[str, Any]:
+    """Persist one complete escalation artifact for daemon/status consumers."""
+
+    payload = result.to_dict() if hasattr(result, "to_dict") else dict(result)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return payload
+
+
+def run_objective_analysis_escalation(
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    healthy_backlog_count: int,
+    objective_terms: Sequence[str] = (),
+    artifact_path: Path | None = None,
+    policy: Any = None,
+    **kwargs: Any,
+) -> Any:
+    """Production bridge from objective state to the read-only analysis policy."""
+
+    from .audit_scanner import run_low_backlog_analysis
+
+    terms = tuple(objective_terms) or objective_terms_for_analysis(objective_path)
+    result = run_low_backlog_analysis(
+        repo_root,
+        objective_path=objective_path,
+        healthy_backlog_count=healthy_backlog_count,
+        objective_terms=terms,
+        policy=policy,
+        **kwargs,
+    )
+    if artifact_path is not None:
+        persist_analysis_escalation(artifact_path, result)
+    return result
 
 
 def default_repo_root() -> Path:
@@ -522,6 +581,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow llm_router's local provider fallback before deterministic planning.",
     )
+    parser.add_argument(
+        "--escalate-low-backlog-analysis",
+        action="store_true",
+        help="Run bounded static, exhaustive AST, and llm_router analysis when the healthy backlog is below target.",
+    )
+    parser.add_argument("--analysis-backlog-count", type=int, default=-1)
+    parser.add_argument("--analysis-backlog-target", type=int, default=5)
+    parser.add_argument("--analysis-max-router-calls", type=int, default=2)
+    parser.add_argument("--analysis-router-rate", type=int, default=4)
+    parser.add_argument("--analysis-max-router-tokens", type=int, default=8192)
+    parser.add_argument("--analysis-max-router-retries", type=int, default=1)
+    parser.add_argument("--analysis-max-novel-proposals", type=int, default=5)
+    parser.add_argument("--analysis-min-confidence", type=float, default=0.65)
+    parser.add_argument("--analysis-min-novelty", type=float, default=0.35)
+    parser.add_argument(
+        "--analysis-escalation-path",
+        type=Path,
+        default=None,
+        help="Escalation evidence artifact. Defaults to <state-root>/analysis_escalation.json.",
+    )
     parser.add_argument("--submit-bundles", action="store_true", help="Submit generated bundle shards to the local task queue")
     parser.add_argument("--queue-path", default=None)
     parser.add_argument("--queue-task-type", default="codex.todo_bundle")
@@ -678,6 +757,71 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         plan_decisions,
         bundle_index_path=bundle_dir / "index.json",
     )
+    analysis_escalation_path = (
+        getattr(args, "analysis_escalation_path", None)
+        or state_root / "analysis_escalation.json"
+    ).resolve()
+    analysis_escalation_payload: dict[str, Any] | None = None
+    if bool(getattr(args, "escalate_low_backlog_analysis", False)):
+        from .analyzer_health import AnalysisEscalationPolicy
+        from .task_proposal_router import StructuredPlanRouterConfig
+
+        analysis_policy = AnalysisEscalationPolicy(
+            backlog_target=int(getattr(args, "analysis_backlog_target", 5)),
+            max_router_calls=int(getattr(args, "analysis_max_router_calls", 2)),
+            router_calls_per_window=int(getattr(args, "analysis_router_rate", 4)),
+            max_router_tokens=int(getattr(args, "analysis_max_router_tokens", 8192)),
+            max_router_retries=int(getattr(args, "analysis_max_router_retries", 1)),
+            max_novel_proposals=int(getattr(args, "analysis_max_novel_proposals", 5)),
+            min_confidence=float(getattr(args, "analysis_min_confidence", 0.65)),
+            min_novelty=float(getattr(args, "analysis_min_novelty", 0.35)),
+        )
+        configured_backlog = int(getattr(args, "analysis_backlog_count", -1))
+        healthy_backlog_count = len(records) if configured_backlog < 0 else configured_backlog
+        prior_router_call_timestamps: list[float] = []
+        if analysis_escalation_path.exists():
+            try:
+                previous_escalation = json.loads(
+                    analysis_escalation_path.read_text(encoding="utf-8")
+                )
+                for stage_record in previous_escalation.get("records", []):
+                    if isinstance(stage_record, Mapping) and stage_record.get("stage") == "llm_router":
+                        cost = stage_record.get("cost")
+                        if isinstance(cost, Mapping):
+                            prior_router_call_timestamps.extend(
+                                float(item)
+                                for item in cost.get("router_call_timestamps", [])
+                            )
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                prior_router_call_timestamps = []
+        escalation_router_config = StructuredPlanRouterConfig(
+            repo_root=repo_root,
+            provider=str(getattr(args, "plan_router_provider", "") or "") or None,
+            model=str(getattr(args, "plan_router_model", "gpt-5.3-codex-spark")),
+            branch_count=max(1, min(
+                int(getattr(args, "plan_branch_count", 3)),
+                max(1, analysis_policy.max_novel_proposals),
+            )),
+            max_new_tokens=min(
+                int(getattr(args, "plan_router_max_new_tokens", 4096)),
+                analysis_policy.max_router_tokens,
+            ),
+            timeout_seconds=int(getattr(args, "plan_router_timeout", 300)),
+            allow_local_fallback=bool(getattr(args, "plan_router_allow_local_fallback", False)),
+            temperature=float(getattr(args, "plan_router_temperature", 0.1)),
+        )
+        escalation_result = run_objective_analysis_escalation(
+            repo_root=repo_root,
+            objective_path=objective_path,
+            healthy_backlog_count=healthy_backlog_count,
+            objective_terms=objective_terms_for_analysis(objective_path, records),
+            artifact_path=analysis_escalation_path,
+            policy=analysis_policy,
+            seen_fingerprints=seen_fingerprints,
+            router_config=escalation_router_config,
+            router_calls_in_window=prior_router_call_timestamps,
+        )
+        analysis_escalation_payload = escalation_result.to_dict()
     graph_payload = write_objective_graph_artifact(objective_path=objective_path, graph_path=graph_path)
 
     bundle_index_path = bundle_dir / "index.json"
@@ -709,6 +853,12 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "plan_router_enabled": bool(getattr(args, "generate_plan_branches", False)),
         "plan_router_fallback_count": sum(1 for item in plan_decisions if item.get("used_fallback")),
         "plan_router_error_count": sum(1 for item in plan_decisions if item.get("router_error")),
+        "analysis_escalation_enabled": bool(getattr(args, "escalate_low_backlog_analysis", False)),
+        "analysis_escalation_path": repo_relative_path(repo_root, analysis_escalation_path),
+        "analysis_escalation": analysis_escalation_payload,
+        "analysis_inconclusive": bool(
+            analysis_escalation_payload and analysis_escalation_payload.get("analysis_inconclusive")
+        ),
         "tracking_document_created": tracking_created,
         "ensured_goal_ids": ensured_goal_ids,
         "deduplicated_interoperability_goal_ids": deduplicated_interoperability_goal_ids,
