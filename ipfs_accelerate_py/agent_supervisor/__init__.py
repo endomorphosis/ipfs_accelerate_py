@@ -49,6 +49,7 @@ from .todo_vector_index import (
 __all__ = [
     "BundleWriteResult",
     "BundleLaneSpec",
+    "DynamicBundleScheduler",
     "ActionContractCodegenConfig",
     "ActionContractSyncSpec",
     "ActionContractSyncTarget",
@@ -174,6 +175,8 @@ __all__ = [
     "LeaseGrant",
     "LeaseQueueBridge",
     "LeasedQueuedTask",
+    "TaskLeaseState",
+    "LeasedLaneResult",
     "LeaseConflictError",
     "LeaseError",
     "LeaseExpiredError",
@@ -258,9 +261,12 @@ __all__ = [
     "implementation_supervisor_namespace_track_config",
     "implementation_supervisor_namespace_track_configs",
     "implementation_supervisor_track_spec",
+    "dynamic_bundle_scheduler_track",
     "parse_implementation_supervisor_track_spec",
     "parse_supervisor_track_spec",
     "run_supervisor_tracks",
+    "run_leased_lane",
+    "run_leased_lane_result",
     "SupervisorTrack",
     "build_task_proposal_prompt",
     "build_task_proposal_prompt_builder",
@@ -368,6 +374,7 @@ def __getattr__(name: str):
         return getattr(backlog_refinery, name)
     if name in {
         "BundleLaneSpec",
+        "DynamicBundleScheduler",
         "launch_bundle_lanes",
         "plan_bundle_lanes",
         "run_bundle_supervisor",
@@ -392,12 +399,21 @@ def __getattr__(name: str):
         "LeaseGrant",
         "LeaseQueueBridge",
         "LeasedQueuedTask",
+        "TaskLeaseState",
         "StaleFencingTokenError",
         "adapt_goal_bundle",
     }:
         from . import lease_coordination
 
         return getattr(lease_coordination, name)
+    if name in {
+        "LeasedLaneResult",
+        "run_leased_lane",
+        "run_leased_lane_result",
+    }:
+        from . import leased_lane
+
+        return getattr(leased_lane, name)
     if name in {"build_merge_prompt", "invoke_llm_resolver", "latest_failed_merge_event", "resolver_payload"}:
         from . import merge_resolver
 
@@ -551,6 +567,7 @@ def __getattr__(name: str):
         "implementation_supervisor_namespace_track_config",
         "implementation_supervisor_namespace_track_configs",
         "implementation_supervisor_track_spec",
+        "dynamic_bundle_scheduler_track",
         "parse_implementation_supervisor_track_spec",
         "parse_supervisor_track_spec",
         "run_supervisor_tracks",

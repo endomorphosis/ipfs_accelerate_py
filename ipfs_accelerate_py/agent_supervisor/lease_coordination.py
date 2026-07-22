@@ -15,7 +15,7 @@ import json
 import sqlite3
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -220,6 +220,43 @@ class LeaseGrant:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class TaskLeaseState:
+    """Authoritative scheduler projection for one registered task.
+
+    ``state`` is deliberately scheduler-oriented: expired and voluntarily
+    released lease records project as ``ready``.  The durable lease outcome is
+    retained in ``lease_state`` and ``release_reason`` for diagnostics.
+    """
+
+    task_cid: str
+    goal_cid: str
+    subgoal_cid: str
+    task_id: str
+    bundle: dict[str, Any]
+    state: str
+    lease_state: str | None
+    claim_cid: str | None
+    resolution_cid: str | None
+    claimant_did: str | None
+    logical_epoch: int
+    fencing_token: int
+    lease_expires_at_ms: int | None
+    attempt: int
+    max_attempts: int
+    release_reason: str | None
+    retry_not_before_ms: int
+    registered_at_ms: int
+    updated_at_ms: int
+
+    @property
+    def ready(self) -> bool:
+        return self.state == "ready"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 class LeaseCoordinator:
     """Durable accepted-lease registry for independent daemon processes."""
 
@@ -244,13 +281,17 @@ class LeaseCoordinator:
                 );
                 CREATE TABLE IF NOT EXISTS tasks (
                   task_cid TEXT PRIMARY KEY, goal_cid TEXT NOT NULL, subgoal_cid TEXT NOT NULL,
-                  task_id TEXT NOT NULL, bundle_json TEXT NOT NULL
+                  task_id TEXT NOT NULL, bundle_json TEXT NOT NULL,
+                  registered_at_ms INTEGER NOT NULL DEFAULT 0,
+                  updated_at_ms INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE TABLE IF NOT EXISTS leases (
                   task_cid TEXT PRIMARY KEY, claim_cid TEXT NOT NULL, resolution_cid TEXT NOT NULL,
                   claimant_did TEXT NOT NULL, logical_epoch INTEGER NOT NULL,
                   fencing_token INTEGER NOT NULL, expires_at_ms INTEGER NOT NULL,
-                  attempt INTEGER NOT NULL, state TEXT NOT NULL, started_at_ms INTEGER NOT NULL
+                  attempt INTEGER NOT NULL, state TEXT NOT NULL, started_at_ms INTEGER NOT NULL,
+                  release_reason TEXT,
+                  retry_not_before_ms INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE TABLE IF NOT EXISTS token_history (
                   task_cid TEXT NOT NULL, fencing_token INTEGER NOT NULL,
@@ -268,6 +309,32 @@ class LeaseCoordinator:
                   payload_json TEXT NOT NULL
                 );
                 """
+            )
+            # REF-036 databases remain valid in place. SQLite only supports
+            # additive migration for this shape, so inspect before altering.
+            task_columns = {
+                str(row["name"]) for row in self._connection.execute("PRAGMA table_info(tasks)")
+            }
+            if "registered_at_ms" not in task_columns:
+                self._connection.execute(
+                    "ALTER TABLE tasks ADD COLUMN registered_at_ms INTEGER NOT NULL DEFAULT 0"
+                )
+            if "updated_at_ms" not in task_columns:
+                self._connection.execute(
+                    "ALTER TABLE tasks ADD COLUMN updated_at_ms INTEGER NOT NULL DEFAULT 0"
+                )
+            lease_columns = {
+                str(row["name"]) for row in self._connection.execute("PRAGMA table_info(leases)")
+            }
+            if "release_reason" not in lease_columns:
+                self._connection.execute("ALTER TABLE leases ADD COLUMN release_reason TEXT")
+            if "retry_not_before_ms" not in lease_columns:
+                self._connection.execute(
+                    "ALTER TABLE leases ADD COLUMN retry_not_before_ms INTEGER NOT NULL DEFAULT 0"
+                )
+            self._connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_leases_scheduler_state "
+                "ON leases(state, expires_at_ms, retry_not_before_ms)"
             )
 
     def close(self) -> None:
@@ -302,6 +369,7 @@ class LeaseCoordinator:
         # Coordination is keyed by semantic execution identity. The immutable
         # Profile-G TaskSpec CID remains available separately for provenance.
         adapted["task_cid"] = canonical_task_cid
+        registered_at = self._clock_ms() if created_at_ms is None else int(created_at_ms)
         with self._lock, self._connection:
             for cid, artifact in adapted["artifacts"].items():
                 self._connection.execute(
@@ -311,11 +379,43 @@ class LeaseCoordinator:
             task_id = ",".join(
                 str(item.get("task_id")) for item in bundle.get("tasks", []) if isinstance(item, Mapping)
             ) or str(bundle.get("bundle_key") or adapted["task_cid"])
+            # Keep the original immutable Goal/Subgoal provenance while
+            # refreshing mutable discovery metadata on every scheduler poll.
             self._connection.execute(
-                "INSERT OR IGNORE INTO tasks VALUES(?,?,?,?,?)",
-                (canonical_task_cid, adapted["goal_cid"], adapted["subgoal_cid"], task_id, json.dumps(dict(bundle), sort_keys=True)),
+                """INSERT INTO tasks(
+                       task_cid, goal_cid, subgoal_cid, task_id, bundle_json,
+                       registered_at_ms, updated_at_ms
+                   ) VALUES(?,?,?,?,?,?,?)
+                   ON CONFLICT(task_cid) DO UPDATE SET
+                     task_id=excluded.task_id,
+                     bundle_json=excluded.bundle_json,
+                     updated_at_ms=excluded.updated_at_ms""",
+                (
+                    canonical_task_cid,
+                    adapted["goal_cid"],
+                    adapted["subgoal_cid"],
+                    task_id,
+                    json.dumps(dict(bundle), sort_keys=True),
+                    registered_at,
+                    registered_at,
+                ),
             )
         return adapted
+
+    def register_bundles(
+        self,
+        bundles: Iterable[Mapping[str, Any]],
+        *,
+        created_at_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Register a discovery batch idempotently.
+
+        This convenience API intentionally delegates one bundle at a time so
+        embedded Profile G artifacts and canonical identity follow exactly the
+        same compatibility path as :meth:`register_bundle`.
+        """
+
+        return [self.register_bundle(bundle, created_at_ms=created_at_ms) for bundle in bundles]
 
     def _expire(self, connection: sqlite3.Connection, task_cid: str, now: int) -> None:
         row = connection.execute(
@@ -324,9 +424,128 @@ class LeaseCoordinator:
         ).fetchone()
         if row is None:
             return
-        connection.execute("UPDATE leases SET state='expired' WHERE task_cid=?", (task_cid,))
         resolution = self._resolution_payload(row, outcome="expired", now=now)
-        self._put_artifact(connection, "ClaimResolution", resolution)
+        resolution_cid = self._put_artifact(connection, "ClaimResolution", resolution)
+        connection.execute(
+            """UPDATE leases
+               SET state='expired', resolution_cid=?, release_reason='expired'
+               WHERE task_cid=? AND claim_cid=? AND fencing_token=?""",
+            (resolution_cid, task_cid, row["claim_cid"], row["fencing_token"]),
+        )
+
+    @staticmethod
+    def _max_attempts(task: sqlite3.Row) -> int:
+        bundle = json.loads(task["bundle_json"])
+        return max(1, int(bundle.get("max_attempts") or 3))
+
+    def _task_projection(
+        self,
+        task: sqlite3.Row,
+        lease: sqlite3.Row | None,
+        *,
+        now: int,
+    ) -> TaskLeaseState:
+        bundle = json.loads(task["bundle_json"])
+        lease_state = str(lease["state"]) if lease is not None else None
+        max_attempts = self._max_attempts(task)
+        attempt = int(lease["attempt"] or 0) if lease is not None else 0
+        retry_not_before = int(lease["retry_not_before_ms"] or 0) if lease is not None else 0
+        if lease_state == "accepted" and int(lease["expires_at_ms"]) > now:
+            state = "accepted"
+        elif lease_state == "completed":
+            state = "completed"
+        elif attempt >= max_attempts or retry_not_before > now:
+            state = "blocked"
+        else:
+            state = "ready"
+        return TaskLeaseState(
+            task_cid=str(task["task_cid"]),
+            goal_cid=str(task["goal_cid"]),
+            subgoal_cid=str(task["subgoal_cid"]),
+            task_id=str(task["task_id"]),
+            bundle=bundle,
+            state=state,
+            lease_state=lease_state,
+            claim_cid=str(lease["claim_cid"]) if lease is not None else None,
+            resolution_cid=str(lease["resolution_cid"]) if lease is not None else None,
+            claimant_did=str(lease["claimant_did"]) if lease is not None and state == "accepted" else None,
+            logical_epoch=int(lease["logical_epoch"] or 0) if lease is not None else 0,
+            fencing_token=int(lease["fencing_token"] or 0) if lease is not None else 0,
+            lease_expires_at_ms=(
+                int(lease["expires_at_ms"]) if lease is not None and state == "accepted" else None
+            ),
+            attempt=attempt,
+            max_attempts=max_attempts,
+            release_reason=(
+                str(lease["release_reason"]) if lease is not None and lease["release_reason"] else None
+            ),
+            retry_not_before_ms=retry_not_before,
+            registered_at_ms=int(task["registered_at_ms"] or 0),
+            updated_at_ms=int(task["updated_at_ms"] or 0),
+        )
+
+    @staticmethod
+    def _projection_dict(state: TaskLeaseState) -> dict[str, Any]:
+        result = state.to_dict()
+        result["bundle_key"] = str(state.bundle.get("bundle_key") or state.task_id)
+        # Common spelling used by the lane manifest.
+        result["expires_at_ms"] = state.lease_expires_at_ms
+        return result
+
+    def list_tasks(self, *, now_ms: int | None = None) -> list[dict[str, Any]]:
+        """Return a consistent live projection of every registered task."""
+
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                expired = connection.execute(
+                    "SELECT task_cid FROM leases WHERE state='accepted' AND expires_at_ms<=?",
+                    (now,),
+                ).fetchall()
+                for row in expired:
+                    self._expire(connection, str(row["task_cid"]), now)
+                rows = connection.execute(
+                    """SELECT t.*, l.claim_cid, l.resolution_cid, l.claimant_did,
+                              l.logical_epoch, l.fencing_token, l.expires_at_ms,
+                              l.attempt, l.state, l.started_at_ms,
+                              l.release_reason, l.retry_not_before_ms
+                       FROM tasks AS t
+                       LEFT JOIN leases AS l ON l.task_cid=t.task_cid
+                       ORDER BY t.registered_at_ms, t.task_cid"""
+                ).fetchall()
+                result = [self._projection_dict(self._task_projection(row, row if row["state"] is not None else None, now=now)) for row in rows]
+                connection.commit()
+                return result
+            except Exception:
+                connection.rollback()
+                raise
+
+    def task_state(self, task_cid: str, *, now_ms: int | None = None) -> dict[str, Any] | None:
+        """Return the live scheduler projection for ``task_cid``."""
+
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                task = connection.execute(
+                    "SELECT * FROM tasks WHERE task_cid=?", (task_cid,)
+                ).fetchone()
+                if task is None:
+                    connection.commit()
+                    return None
+                self._expire(connection, task_cid, now)
+                lease = connection.execute(
+                    "SELECT * FROM leases WHERE task_cid=?", (task_cid,)
+                ).fetchone()
+                result = self._projection_dict(self._task_projection(task, lease, now=now))
+                connection.commit()
+                return result
+            except Exception:
+                connection.rollback()
+                raise
 
     def claim(
         self,
@@ -347,58 +566,236 @@ class LeaseCoordinator:
                 task = conn.execute("SELECT * FROM tasks WHERE task_cid=?", (task_cid,)).fetchone()
                 if task is None:
                     raise KeyError(f"unknown task CID: {task_cid}")
-                self._expire(conn, task_cid, now)
-                active = conn.execute(
-                    "SELECT * FROM leases WHERE task_cid=? AND state='accepted' AND expires_at_ms>?",
-                    (task_cid, now),
-                ).fetchone()
-                if active is not None:
-                    if active["claimant_did"] == claimant_did:
-                        grant = self._grant(active, task)
-                        conn.commit()
-                        return grant
-                    raise LeaseConflictError(f"task is leased by {active['claimant_did']}")
-                terminal = conn.execute("SELECT state FROM leases WHERE task_cid=?", (task_cid,)).fetchone()
-                if terminal is not None and terminal["state"] == "completed":
-                    raise LeaseConflictError("task already has a successful terminal receipt")
-                prior = conn.execute(
-                    "SELECT COALESCE(MAX(fencing_token),0), COALESCE(MAX(logical_epoch),0), COALESCE(MAX(attempt),0) FROM leases WHERE task_cid=?",
-                    (task_cid,),
-                ).fetchone()
-                token, epoch, attempt = int(prior[0]) + 1, int(prior[1]) + 1, int(prior[2]) + 1
-                claim = self._claim_payload(task, claimant_did, epoch, attempt, duration, now)
-                claim_cid = self._put_artifact(conn, "TaskClaim", claim)
-                expires = now + duration
-                resolution = {
-                    "schema": "mcp++/profile-g/claim-resolution@1",
-                    "created_at_ms": now,
-                    "parents": [claim_cid],
-                    "correlation_id": claim["correlation_id"],
-                    "task_cid": task_cid,
-                    "logical_epoch": epoch,
-                    "considered_claim_cids": [claim_cid],
-                    "accepted_claim_cid": claim_cid,
-                    "outcome": "accepted",
-                    "fencing_token": token,
-                    "lease_expires_at_ms": expires,
-                    "attestation_cids": [],
-                    "quorum_policy_cid": _link({"policy": "local-atomic-claim-v1"}),
-                    "policy_decision_cid": claim["policy_decision_cid"],
-                    "coordination_receipt_cid": None,
-                    "retry_not_before_ms": 0,
-                    "resolver_did": "did:web:ipfs-accelerate.local",
-                }
-                resolution_cid = self._put_artifact(conn, "ClaimResolution", resolution)
-                conn.execute(
-                    "INSERT OR REPLACE INTO leases VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    (task_cid, claim_cid, resolution_cid, claimant_did, epoch, token, expires, attempt, "accepted", now),
+                grant = self._claim_in_transaction(
+                    conn, task, claimant_did, duration=duration, now=now
                 )
-                conn.execute("INSERT INTO token_history VALUES(?,?)", (task_cid, token))
                 conn.commit()
-                return LeaseGrant(task_cid, task["goal_cid"], task["subgoal_cid"], claim_cid, resolution_cid, claimant_did, epoch, token, expires, attempt)
+                return grant
             except Exception:
                 conn.rollback()
                 raise
+
+    def claim_ready(
+        self,
+        claimant_did: str,
+        *,
+        requested_lease_ms: int = 60_000,
+        exclude_task_cids: Iterable[str] = (),
+        eligible_task_cids: Iterable[str] | None = None,
+        now_ms: int | None = None,
+    ) -> LeaseGrant | None:
+        """Atomically select and accept the oldest ready task.
+
+        Selection and acceptance share one ``BEGIN IMMEDIATE`` transaction;
+        two scheduler processes can therefore observe the same discovery set
+        without ever accepting two leases for one task. Exclusions are applied
+        in Python to avoid an unbounded dynamic SQL clause.
+        """
+
+        duration = int(requested_lease_ms)
+        if not MIN_LEASE_MS <= duration <= MAX_LEASE_MS:
+            raise ValueError(f"lease duration must be in [{MIN_LEASE_MS}, {MAX_LEASE_MS}]")
+        excluded = {str(item) for item in exclude_task_cids}
+        eligible = (
+            None
+            if eligible_task_cids is None
+            else {str(item) for item in eligible_task_cids}
+        )
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                expired = connection.execute(
+                    "SELECT task_cid FROM leases WHERE state='accepted' AND expires_at_ms<=?",
+                    (now,),
+                ).fetchall()
+                for row in expired:
+                    self._expire(connection, str(row["task_cid"]), now)
+                candidates = connection.execute(
+                    """SELECT t.*
+                       FROM tasks AS t
+                       LEFT JOIN leases AS l ON l.task_cid=t.task_cid
+                       WHERE l.task_cid IS NULL
+                          OR (l.state IN ('released','expired')
+                              AND l.retry_not_before_ms<=?)
+                       ORDER BY t.registered_at_ms, t.task_cid""",
+                    (now,),
+                ).fetchall()
+                for task in candidates:
+                    candidate_cid = str(task["task_cid"])
+                    if candidate_cid in excluded or (
+                        eligible is not None and candidate_cid not in eligible
+                    ):
+                        continue
+                    # A finite attempt budget prevents a permanently failing
+                    # task from monopolizing newly idle lanes.
+                    lease = connection.execute(
+                        "SELECT attempt FROM leases WHERE task_cid=?", (task["task_cid"],)
+                    ).fetchone()
+                    if lease is not None and int(lease["attempt"]) >= self._max_attempts(task):
+                        continue
+                    grant = self._claim_in_transaction(
+                        connection, task, claimant_did, duration=duration, now=now
+                    )
+                    connection.commit()
+                    return grant
+                connection.commit()
+                return None
+            except Exception:
+                connection.rollback()
+                raise
+
+    def steal(
+        self,
+        task_cid: str,
+        claimant_did: str,
+        *,
+        requested_lease_ms: int = 60_000,
+        now_ms: int | None = None,
+    ) -> LeaseGrant:
+        """Take over an expired or released task with a new fencing token.
+
+        An active lease is never pre-empted, even when the requesting DID is
+        the current owner. This stricter behavior makes work-stealing safe to
+        call from a competing idle lane.
+        """
+
+        duration = int(requested_lease_ms)
+        if not MIN_LEASE_MS <= duration <= MAX_LEASE_MS:
+            raise ValueError(f"lease duration must be in [{MIN_LEASE_MS}, {MAX_LEASE_MS}]")
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                task = connection.execute(
+                    "SELECT * FROM tasks WHERE task_cid=?", (task_cid,)
+                ).fetchone()
+                if task is None:
+                    raise KeyError(f"unknown task CID: {task_cid}")
+                self._expire(connection, task_cid, now)
+                lease = connection.execute(
+                    "SELECT * FROM leases WHERE task_cid=?", (task_cid,)
+                ).fetchone()
+                if lease is None:
+                    raise LeaseConflictError("unclaimed ready tasks must use claim or claim_ready")
+                if lease["state"] == "accepted":
+                    raise LeaseConflictError(f"task is leased by {lease['claimant_did']}")
+                if lease["state"] not in {"expired", "released"}:
+                    raise LeaseConflictError(f"task cannot be stolen from state {lease['state']}")
+                grant = self._claim_in_transaction(
+                    connection, task, claimant_did, duration=duration, now=now
+                )
+                connection.commit()
+                return grant
+            except Exception:
+                connection.rollback()
+                raise
+
+    def _claim_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        task: sqlite3.Row,
+        claimant_did: str,
+        *,
+        duration: int,
+        now: int,
+    ) -> LeaseGrant:
+        """Accept one claim inside a caller-owned immediate transaction."""
+
+        task_cid = str(task["task_cid"])
+        self._expire(connection, task_cid, now)
+        active = connection.execute(
+            "SELECT * FROM leases WHERE task_cid=? AND state='accepted' AND expires_at_ms>?",
+            (task_cid, now),
+        ).fetchone()
+        if active is not None:
+            if active["claimant_did"] == claimant_did:
+                return self._grant(active, task)
+            raise LeaseConflictError(f"task is leased by {active['claimant_did']}")
+        prior = connection.execute(
+            "SELECT * FROM leases WHERE task_cid=?", (task_cid,)
+        ).fetchone()
+        if prior is not None and prior["state"] == "completed":
+            raise LeaseConflictError("task already has a successful terminal receipt")
+        if prior is not None and int(prior["attempt"] or 0) >= self._max_attempts(task):
+            raise LeaseConflictError("task attempt budget is exhausted")
+        retry_not_before = int(prior["retry_not_before_ms"] or 0) if prior is not None else 0
+        if retry_not_before > now:
+            raise LeaseConflictError(f"task is cooling down until {retry_not_before}")
+        token = int(prior["fencing_token"] or 0) + 1 if prior is not None else 1
+        epoch = int(prior["logical_epoch"] or 0) + 1 if prior is not None else 1
+        attempt = int(prior["attempt"] or 0) + 1 if prior is not None else 1
+        claim = self._claim_payload(task, claimant_did, epoch, attempt, duration, now)
+        claim_cid = self._put_artifact(connection, "TaskClaim", claim)
+        expires = now + duration
+        resolution = {
+            "schema": "mcp++/profile-g/claim-resolution@1",
+            "created_at_ms": now,
+            "parents": [claim_cid],
+            "correlation_id": claim["correlation_id"],
+            "task_cid": task_cid,
+            "logical_epoch": epoch,
+            "considered_claim_cids": [claim_cid],
+            "accepted_claim_cid": claim_cid,
+            "outcome": "accepted",
+            "fencing_token": token,
+            "lease_expires_at_ms": expires,
+            "attestation_cids": [],
+            "quorum_policy_cid": _link({"policy": "local-atomic-claim-v1"}),
+            "policy_decision_cid": claim["policy_decision_cid"],
+            "coordination_receipt_cid": None,
+            "retry_not_before_ms": 0,
+            "resolver_did": "did:web:ipfs-accelerate.local",
+        }
+        resolution_cid = self._put_artifact(connection, "ClaimResolution", resolution)
+        connection.execute(
+            """INSERT INTO leases(
+                   task_cid, claim_cid, resolution_cid, claimant_did,
+                   logical_epoch, fencing_token, expires_at_ms, attempt,
+                   state, started_at_ms, release_reason, retry_not_before_ms
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(task_cid) DO UPDATE SET
+                 claim_cid=excluded.claim_cid,
+                 resolution_cid=excluded.resolution_cid,
+                 claimant_did=excluded.claimant_did,
+                 logical_epoch=excluded.logical_epoch,
+                 fencing_token=excluded.fencing_token,
+                 expires_at_ms=excluded.expires_at_ms,
+                 attempt=excluded.attempt,
+                 state='accepted',
+                 started_at_ms=excluded.started_at_ms,
+                 release_reason=NULL,
+                 retry_not_before_ms=0""",
+            (
+                task_cid,
+                claim_cid,
+                resolution_cid,
+                claimant_did,
+                epoch,
+                token,
+                expires,
+                attempt,
+                "accepted",
+                now,
+                None,
+                0,
+            ),
+        )
+        connection.execute("INSERT INTO token_history VALUES(?,?)", (task_cid, token))
+        return LeaseGrant(
+            task_cid,
+            task["goal_cid"],
+            task["subgoal_cid"],
+            claim_cid,
+            resolution_cid,
+            claimant_did,
+            epoch,
+            token,
+            expires,
+            attempt,
+        )
 
     def _claim_payload(self, task: sqlite3.Row, claimant: str, epoch: int, attempt: int, duration: int, now: int) -> dict[str, Any]:
         bundle = json.loads(task["bundle_json"])
@@ -484,15 +881,33 @@ class LeaseCoordinator:
             "coordination_receipt_cid": None, "retry_not_before_ms": 0, "resolver_did": "did:web:ipfs-accelerate.local",
         }
 
-    def release(self, grant: LeaseGrant, *, now_ms: int | None = None) -> str:
+    def release(
+        self,
+        grant: LeaseGrant,
+        *,
+        reason: str = "released",
+        now_ms: int | None = None,
+    ) -> str:
+        """Voluntarily return accepted work to the ready pool.
+
+        ``reason`` is scheduler metadata (for example ``drained`` or
+        ``blocked``), not lease authority. The accepted claim and fencing token
+        are still checked atomically before the state transition.
+        """
+
         now = self._clock_ms() if now_ms is None else int(now_ms)
+        reason = str(reason or "released")[:256]
         with self._lock:
             conn = self._connection
             conn.execute("BEGIN IMMEDIATE")
             try:
                 row = self._current(conn, grant, now)
                 cid = self._put_artifact(conn, "ClaimResolution", self._resolution_payload(row, outcome="released", now=now))
-                conn.execute("UPDATE leases SET state='released', resolution_cid=? WHERE task_cid=?", (cid, grant.task_cid))
+                conn.execute(
+                    """UPDATE leases SET state='released', resolution_cid=?, release_reason=?
+                       WHERE task_cid=? AND claim_cid=? AND fencing_token=?""",
+                    (cid, reason, grant.task_cid, grant.claim_cid, grant.fencing_token),
+                )
                 conn.commit()
                 return cid
             except Exception:
@@ -552,7 +967,11 @@ class LeaseCoordinator:
                 cid = self._put_artifact(conn, "TaskReceipt", payload)
                 conn.execute("INSERT INTO receipts VALUES(?,?,?,?,?,?,?)", (cid, grant.task_cid, grant.goal_cid, grant.subgoal_cid, grant.claim_cid, grant.fencing_token, json.dumps(payload, sort_keys=True)))
                 terminal = "completed" if status == "succeeded" else "released"
-                conn.execute("UPDATE leases SET state=? WHERE task_cid=?", (terminal, grant.task_cid))
+                release_reason = None if status == "succeeded" else f"receipt:{status}:{failure_class}"[:256]
+                conn.execute(
+                    "UPDATE leases SET state=?, release_reason=? WHERE task_cid=?",
+                    (terminal, release_reason, grant.task_cid),
+                )
                 conn.commit()
                 return {"receipt_cid": cid, "goal_cid": grant.goal_cid, "subgoal_cid": grant.subgoal_cid, "receipt": payload}
             except Exception:
@@ -636,7 +1055,7 @@ class LeaseQueueBridge:
         )
 
     def release(self, leased: LeasedQueuedTask, *, reason: str = "released") -> bool:
-        self.coordinator.release(leased.grant)
+        self.coordinator.release(leased.grant, reason=reason)
         return bool(self.queue.release(task_id=leased.task.task_id, worker_id=self.worker_id, reason=reason))
 
     def complete(
@@ -666,6 +1085,6 @@ class LeaseQueueBridge:
 __all__ = [
     "LeaseConflictError", "LeaseCoordinator", "LeaseError", "LeaseExpiredError", "LeaseGrant",
     "LeaseQueueBridge", "LeasedQueuedTask",
-    "MAX_LEASE_MS", "MIN_LEASE_MS", "StaleFencingTokenError", "adapt_goal_bundle",
+    "MAX_LEASE_MS", "MIN_LEASE_MS", "StaleFencingTokenError", "TaskLeaseState", "adapt_goal_bundle",
     "canonical_profile_g_bytes", "profile_g_cid",
 ]
