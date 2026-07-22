@@ -882,10 +882,16 @@ class LeaseCoordinator:
         result["expires_at_ms"] = state.lease_expires_at_ms
         return result
 
-    def list_tasks(self, *, now_ms: int | None = None) -> list[dict[str, Any]]:
-        """Return a consistent live projection of every registered task."""
+    def list_tasks(
+        self,
+        *,
+        task_cids: Iterable[str] | None = None,
+        now_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return a consistent live projection, optionally scoped to current tasks."""
 
         now = self._clock_ms() if now_ms is None else int(now_ms)
+        selected = None if task_cids is None else sorted({str(item) for item in task_cids})
         with self._lock:
             connection = self._connection
             connection.execute("BEGIN IMMEDIATE")
@@ -896,15 +902,28 @@ class LeaseCoordinator:
                 ).fetchall()
                 for row in expired:
                     self._expire(connection, str(row["task_cid"]), now)
-                rows = connection.execute(
-                    """SELECT t.*, l.claim_cid, l.resolution_cid, l.claimant_did,
-                              l.logical_epoch, l.fencing_token, l.expires_at_ms,
-                              l.attempt, l.state, l.started_at_ms,
-                              l.release_reason, l.retry_not_before_ms
-                       FROM tasks AS t
-                       LEFT JOIN leases AS l ON l.task_cid=t.task_cid
-                       ORDER BY t.registered_at_ms, t.task_cid"""
-                ).fetchall()
+                query = """SELECT t.*, l.claim_cid, l.resolution_cid, l.claimant_did,
+                                  l.logical_epoch, l.fencing_token, l.expires_at_ms,
+                                  l.attempt, l.state, l.started_at_ms,
+                                  l.release_reason, l.retry_not_before_ms
+                           FROM tasks AS t
+                           LEFT JOIN leases AS l ON l.task_cid=t.task_cid"""
+                if selected is None:
+                    rows = connection.execute(
+                        f"{query} ORDER BY t.registered_at_ms, t.task_cid"
+                    ).fetchall()
+                else:
+                    rows = []
+                    for offset in range(0, len(selected), 500):
+                        chunk = selected[offset : offset + 500]
+                        placeholders = ",".join("?" for _item in chunk)
+                        rows.extend(
+                            connection.execute(
+                                f"{query} WHERE t.task_cid IN ({placeholders})",
+                                chunk,
+                            ).fetchall()
+                        )
+                    rows.sort(key=lambda row: (int(row["registered_at_ms"]), str(row["task_cid"])))
                 result = [self._projection_dict(self._task_projection(row, row if row["state"] is not None else None, now=now)) for row in rows]
                 connection.commit()
                 return result

@@ -358,6 +358,39 @@ def test_manifest_is_an_authoritative_live_projection(tmp_path: Path) -> None:
     assert terminal["completed"][0]["task_cid"] == grant.task_cid
 
 
+def test_manifest_excludes_superseded_bundle_revisions(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    initial_bundle = _bundle("T-1")
+    initial_bundle["tasks"][0].update({"title": "Old work", "outputs": ["old.py"]})
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": initial_bundle}}),
+        encoding="utf-8",
+    )
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    first = scheduler.reconcile_once()
+    old_task_cid = first["lanes"][0]["task_cid"]
+    launcher.starts[0][2].finish()
+    replacement = _bundle("T-1")
+    replacement["tasks"][0].update({"title": "Replacement work", "outputs": ["new.py"]})
+    index.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": replacement}}),
+        encoding="utf-8",
+    )
+
+    current = scheduler.reconcile_once()
+
+    assert len(current["tasks"]) == 1
+    assert current["tasks"][0]["task_cid"] != old_task_cid
+    assert all(item["task_cid"] != old_task_cid for item in current["ready"])
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert len(coordinator.list_tasks()) == 2
+        assert len(coordinator.list_tasks(task_cids={current["tasks"][0]["task_cid"]})) == 1
+
+
 def test_manifest_references_full_planning_graphs_without_embedding_them(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"

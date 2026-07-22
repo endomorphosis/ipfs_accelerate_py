@@ -1303,7 +1303,11 @@ class DynamicBundleScheduler:
                     launched.append(lane.task_cid)
                     free_slots -= 1
 
-                projection = coordinator.list_tasks()
+                current_task_cids = {
+                    *(lane.task_cid for lane in registered),
+                    *self._running.keys(),
+                }
+                projection = coordinator.list_tasks(task_cids=current_task_cids)
             return self._write_live_manifest(
                 discovered=discovered,
                 task_projection=projection,
