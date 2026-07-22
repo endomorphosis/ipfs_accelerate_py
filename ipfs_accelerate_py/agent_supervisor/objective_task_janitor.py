@@ -87,6 +87,8 @@ GUARDRAIL_REPAIR_MARKERS = (
     "retry budget",
     "retry-budget",
 )
+DYNAMIC_GOAL_REGISTRATION_VALUES = {"active", "dynamic", "registered"}
+COMPLETED_TASK_STATUSES = {"complete", "completed", "done", "succeeded"}
 
 
 @dataclass(frozen=True)
@@ -217,6 +219,44 @@ def _janitor_owned_task_ids(receipts: Sequence[Mapping[str, Any]], action: str) 
     }
 
 
+def registered_goal_ids_from_bundle_index(payload: Mapping[str, Any]) -> list[str]:
+    """Return active dynamic goal IDs declared by an authoritative bundle index."""
+
+    bundles = payload.get("bundles")
+    if not isinstance(bundles, Mapping):
+        return []
+
+    registered: list[str] = []
+    for bundle_key, raw_bundle in bundles.items():
+        if not isinstance(raw_bundle, Mapping):
+            continue
+        tasks = raw_bundle.get("tasks")
+        if not isinstance(tasks, list):
+            continue
+        for raw_task in tasks:
+            if not isinstance(raw_task, Mapping):
+                continue
+            registration = str(raw_task.get("goal_registration") or "").strip().lower()
+            candidate_kind = str(raw_task.get("candidate_kind") or "").strip().lower()
+            if registration not in DYNAMIC_GOAL_REGISTRATION_VALUES and candidate_kind != "codebase_scan":
+                continue
+            status = str(raw_task.get("status") or "todo").strip().lower().replace("-", "_")
+            if status in COMPLETED_TASK_STATUSES:
+                continue
+            registered.append(str(bundle_key))
+            for key in ("goal_id", "subgoal_id", "parent_goal_id"):
+                value = str(raw_task.get(key) or "").strip()
+                if value:
+                    registered.append(value)
+            for key in ("parent_goal_ids", "goal_packet_goal_ids"):
+                value = raw_task.get(key)
+                if isinstance(value, (list, tuple)):
+                    registered.extend(str(item) for item in value)
+                elif isinstance(value, str):
+                    registered.extend(_split_terms(value))
+    return _unique(registered)
+
+
 def reconcile_objective_task_strategy(
     *,
     goals: Sequence[ObjectiveGoal],
@@ -224,6 +264,7 @@ def reconcile_objective_task_strategy(
     strategy: Mapping[str, Any],
     now: str,
     mission_terms: Sequence[str] = DEFAULT_MISSION_TERMS,
+    registered_goal_ids: Sequence[str] = (),
     max_blocked_tasks: int = 50,
     max_deprioritized_tasks: int = 50,
     max_reopened_goals: int = 12,
@@ -232,7 +273,9 @@ def reconcile_objective_task_strategy(
 
     goals_by_id = {goal.goal_id: goal for goal in goals if goal.goal_id}
     tasks_by_id = {task.task_id: task for task in tasks if task.task_id}
-    active_goal_ids = {goal.goal_id for goal in goals if goal.status in ACTIVE_GOAL_STATUSES}
+    heap_active_goal_ids = {goal.goal_id for goal in goals if goal.status in ACTIVE_GOAL_STATUSES}
+    dynamic_goal_ids = set(_unique(registered_goal_ids))
+    active_goal_ids = heap_active_goal_ids | dynamic_goal_ids
     scheduled_goal_ids = [
         record.goal_id
         for record in objective_heap_schedule(goals)
@@ -445,6 +488,8 @@ def reconcile_objective_task_strategy(
     updated_strategy["objective_task_janitor_critical_goal_ids"] = sorted(critical_goal_ids)
     updated_strategy["objective_task_janitor_mission_terms"] = list(mission_terms)
     updated_strategy["objective_task_janitor_active_goal_ids"] = sorted(active_goal_ids)
+    updated_strategy["objective_task_janitor_heap_active_goal_ids"] = sorted(heap_active_goal_ids)
+    updated_strategy["objective_task_janitor_registered_goal_ids"] = sorted(dynamic_goal_ids)
     updated_strategy["objective_task_janitor_heap_schedule_goal_ids"] = scheduled_goal_ids
     updated_strategy["objective_task_janitor_last_run_at"] = now
     updated_strategy["objective_task_janitor_last_run_summary"] = {
@@ -467,6 +512,9 @@ def reconcile_objective_task_strategy(
         "objective_task_janitor_validation_gate_goal_ids",
         "objective_task_janitor_launch_playwright_validation_gate",
         "objective_task_janitor_mission_terms",
+        "objective_task_janitor_active_goal_ids",
+        "objective_task_janitor_heap_active_goal_ids",
+        "objective_task_janitor_registered_goal_ids",
     )
     changed = any(strategy.get(key) != updated_strategy.get(key) for key in comparable_keys)
     return {
@@ -479,6 +527,8 @@ def reconcile_objective_task_strategy(
         "reopened_goal_ids": reopened_goal_ids,
         "receipts": receipt_payloads,
         "active_goal_ids": sorted(active_goal_ids),
+        "heap_active_goal_ids": sorted(heap_active_goal_ids),
+        "registered_goal_ids": sorted(dynamic_goal_ids),
         "scheduled_goal_ids": scheduled_goal_ids,
         "critical_goal_ids": sorted(critical_goal_ids),
         "open_goal_ids": sorted(open_goal_ids),

@@ -529,6 +529,7 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
     index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
     member = index["bundles"]["codebase/runtime/src-runtime"]["tasks"][0]
     assert member["candidate_kind"] == "codebase_scan"
+    assert member["goal_registration"] == "dynamic"
     assert member["paths"] == ["src/runtime.py"]
     assert "route_request" in member["ast_symbols"]
 

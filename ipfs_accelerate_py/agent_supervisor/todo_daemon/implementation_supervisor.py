@@ -3433,6 +3433,7 @@ class PortalImplementationSupervisor:
         from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
             DEFAULT_MISSION_TERMS,
             reconcile_objective_task_strategy,
+            registered_goal_ids_from_bundle_index,
         )
         from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_task_file
 
@@ -3449,6 +3450,15 @@ class PortalImplementationSupervisor:
             return result
 
         strategy = load_strategy(self.config.strategy_path)
+        registered_goal_ids: list[str] = []
+        if self.config.objective_bundle_dir is not None:
+            bundle_index_path = self.config.objective_bundle_dir / "index.json"
+            try:
+                bundle_index = json.loads(bundle_index_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                bundle_index = {}
+            if isinstance(bundle_index, Mapping):
+                registered_goal_ids = registered_goal_ids_from_bundle_index(bundle_index)
         mission_terms = tuple(
             dict.fromkeys([*DEFAULT_MISSION_TERMS, *self.config.objective_task_janitor_mission_terms])
         )
@@ -3458,6 +3468,7 @@ class PortalImplementationSupervisor:
             strategy=strategy,
             now=utc_now(),
             mission_terms=mission_terms,
+            registered_goal_ids=registered_goal_ids,
             max_blocked_tasks=self.config.objective_task_janitor_max_blocked_tasks,
             max_deprioritized_tasks=self.config.objective_task_janitor_max_deprioritized_tasks,
             max_reopened_goals=self.config.objective_task_janitor_max_reopened_goals,
@@ -3480,6 +3491,7 @@ class PortalImplementationSupervisor:
             "critical_goal_count": len(result.get("critical_goal_ids") or []),
             "active_goal_count": len(result.get("active_goal_ids") or []),
             "scheduled_goal_count": len(result.get("scheduled_goal_ids") or []),
+            "registered_goal_count": len(result.get("registered_goal_ids") or []),
         }
         self._record_event("objective_task_janitor", event_payload)
         result.pop("strategy", None)

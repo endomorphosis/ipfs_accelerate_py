@@ -1677,6 +1677,7 @@ def codebase_scan_task_block(
             "- Work item count: 1",
             "- Work scope: codebase_file_ast",
             "- Candidate kind: codebase_scan",
+            "- Goal registration: dynamic",
             f"- Todo vector key: {finding.fingerprint[:16]}",
         ]
     planning = ("\n" + "\n".join(planning_lines)) if planning_lines else ""
@@ -4169,6 +4170,7 @@ def record_codebase_scan_findings(
                             "work_item_count": 1,
                             "work_scope": "codebase_file_ast",
                             "candidate_kind": "codebase_scan",
+                            "goal_registration": "dynamic",
                             "todo_vector_key": finding.fingerprint[:16],
                             "discovery_path": repo_relative_path(repo_root, discovery_path),
                         },
