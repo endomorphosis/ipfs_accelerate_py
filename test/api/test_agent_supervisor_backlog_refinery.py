@@ -662,13 +662,140 @@ def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):
         force=True,
     )
 
-    assert len(findings) == 1
+    assert findings.terminal_reason is ScanTerminalReason.GENERATED
+    assert findings.scan_mode == "force"
+    assert findings.generated_count == 1
+    assert findings.safe_for_completion_reasoning is False
+    assert findings.raw_candidates == 1
+    assert findings.appended_tasks == 1
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "## AUTO-002 Resolve code annotation in src/runtime.py:2" in todo_text
     assert "- Validation: python3 -m py_compile src/runtime.py" in todo_text
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["last_codebase_scan_findings"][0]["follow_up_task_id"] == "AUTO-002"
     assert Path(findings[0]["discovery_path"]).exists()
+
+
+def test_codebase_scan_distinguishes_threshold_skip_from_cooldown(tmp_path, monkeypatch):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "discovery"
+    source = repo / "runtime.py"
+    source.write_text("# TODO: this scan must be gated\n", encoding="utf-8")
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 First open task
+
+- Status: todo
+- Completion: manual
+
+## AUTO-002 Second open task
+
+- Status: todo
+- Completion: manual
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed refill gates")
+
+    def scan_must_not_run(*_args, **_kwargs):
+        raise AssertionError("analyzer ran despite an early refill gate")
+
+    monkeypatch.setattr(backlog_refinery, "scan_codebase_findings", scan_must_not_run)
+    before = todo_path.read_text(encoding="utf-8")
+    threshold = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        repo_root=repo,
+        min_open_tasks=1,
+        max_findings=1,
+        cooldown_seconds=3600,
+    )
+
+    assert threshold.terminal_reason is ScanTerminalReason.THRESHOLD_SATISFIED
+    assert threshold.scan_mode == "open_task_threshold"
+    assert threshold.generated_count == 0
+    assert threshold.safe_for_completion_reasoning is False
+    assert threshold.metadata["open_task_count"] == 2
+    assert threshold.metadata["task_count"] == 2
+    assert todo_path.read_text(encoding="utf-8") == before
+
+    # Once the queue is below the threshold, a recent attempt is a cooldown,
+    # not evidence that analysis ran or that the repository is exhausted.
+    todo_path.write_text(
+        before.replace("- Status: todo", "- Status: completed", 1),
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps({"last_codebase_scan_at": datetime.now(timezone.utc).isoformat()}),
+        encoding="utf-8",
+    )
+    cooled_board = todo_path.read_text(encoding="utf-8")
+    cooldown = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        repo_root=repo,
+        min_open_tasks=1,
+        max_findings=1,
+        cooldown_seconds=3600,
+    )
+
+    assert cooldown.terminal_reason is ScanTerminalReason.COOLDOWN
+    assert cooldown.scan_mode == "cooldown"
+    assert cooldown.generated_count == 0
+    assert cooldown.safe_for_completion_reasoning is False
+    assert cooldown.metadata["open_task_count"] == 1
+    assert cooldown.metadata["task_count"] == 2
+    assert todo_path.read_text(encoding="utf-8") == cooled_board
+
+
+def test_codebase_scan_timeout_is_retryable_and_does_not_record_exhaustion(
+    tmp_path,
+    monkeypatch,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    _write_todo(todo_path)
+    (repo / "runtime.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed timed scan")
+    before = todo_path.read_text(encoding="utf-8")
+
+    def time_out(*_args, **_kwargs):
+        raise TimeoutError("fixture analyzer deadline exceeded")
+
+    monkeypatch.setattr(backlog_refinery, "scan_codebase_findings", time_out)
+    receipt = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=repo / "discovery",
+        repo_root=repo,
+        max_findings=5,
+    )
+
+    assert receipt.terminal_reason is ScanTerminalReason.TIMED_OUT
+    assert receipt.scan_mode == "drained_exhaustive"
+    assert receipt.generated_count == 0
+    assert receipt.safe_for_completion_reasoning is False
+    assert receipt.error == "fixture analyzer deadline exceeded"
+    assert receipt.metadata["analyzer_canaries"]["passed"] is True
+    assert receipt.raw_candidates == 0
+    assert receipt.appended_tasks == 0
+    assert todo_path.read_text(encoding="utf-8") == before
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert "last_codebase_scan_at" not in strategy
+    assert "last_drained_codebase_scan_task_count" not in strategy
+    assert "last_codebase_scan_exhaustion_quorum" not in strategy
 
 
 def test_codebase_scan_receipt_accounts_inventory_candidates_and_durable_details(tmp_path):
@@ -896,6 +1023,10 @@ def test_codebase_scan_synchronizes_fingerprints_across_strategy_files(tmp_path)
     assert second.generated_count == 0
     assert second.terminal_reason is ScanTerminalReason.DUPLICATE_ONLY
     assert second.safe_for_completion_reasoning is False
+    assert second.raw_candidates == 1
+    assert second.seen_candidates == 1
+    assert second.appended_tasks == 0
+    assert second.metadata["duplicate_candidate_count"] == 1
     todo_text = todo_path.read_text(encoding="utf-8")
     assert todo_text.count("## AUTO-002") == 1
     assert "## AUTO-003" not in todo_text
@@ -904,6 +1035,90 @@ def test_codebase_scan_synchronizes_fingerprints_across_strategy_files(tmp_path)
         first[0]["fingerprint"].startswith(item)
         for item in synchronized["codebase_scan_seen_fingerprints"]
     )
+
+
+def test_stale_fingerprint_cannot_certify_exhaustion_or_suppress_later_refill(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "discovery"
+    source = repo / "runtime.py"
+    _write_todo(todo_path)
+    source.write_text("# TODO: repair the original route\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed fingerprint lifecycle")
+
+    first = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        repo_root=repo,
+        max_findings=5,
+        force=True,
+    )
+    assert first.terminal_reason is ScanTerminalReason.GENERATED
+    assert first.generated_count == 1
+    original_fingerprint = first[0]["fingerprint"]
+
+    # Completing the generated task and removing its source candidate leaves a
+    # durable seen fingerprint.  That history is useful for deduplication, but
+    # a forced/non-exhaustive pass must not turn it into completion proof.
+    board = todo_path.read_text(encoding="utf-8")
+    generated_heading = board.index("## AUTO-002")
+    completed_generated = (
+        board[:generated_heading]
+        + board[generated_heading:].replace("- Status: todo", "- Status: completed", 1)
+    )
+    todo_path.write_text(completed_generated, encoding="utf-8")
+    source.write_text("ROUTE_READY = True\n", encoding="utf-8")
+    no_current_findings = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        repo_root=repo,
+        max_findings=5,
+        force=True,
+    )
+
+    assert no_current_findings.terminal_reason is ScanTerminalReason.EXHAUSTED
+    assert no_current_findings.generated_count == 0
+    assert no_current_findings.safe_for_completion_reasoning is False
+    assert no_current_findings.scan_mode == "force"
+    stale_strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert original_fingerprint in stale_strategy["codebase_scan_seen_fingerprints"]
+    assert "last_drained_codebase_scan_task_count" not in stale_strategy
+
+    # A later, distinct source finding changes the source-tree identity and
+    # reopens autonomous work even though the old fingerprint remains stored.
+    source.write_text(
+        """ROUTE_READY = True
+# FIXME: cover the newly introduced fallback
+""",
+        encoding="utf-8",
+    )
+    later = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        repo_root=repo,
+        max_findings=5,
+    )
+
+    assert later.terminal_reason is ScanTerminalReason.GENERATED
+    assert later.scan_mode == "drained_exhaustive"
+    assert later.generated_count == 1
+    assert later[0]["follow_up_task_id"] == "AUTO-003"
+    assert later[0]["fingerprint"] != original_fingerprint
+    assert later.tree_id != no_current_findings.tree_id
+    final_board = todo_path.read_text(encoding="utf-8")
+    assert final_board.count("## AUTO-002") == 1
+    assert final_board.count("## AUTO-003") == 1
+    final_strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert original_fingerprint in final_strategy["codebase_scan_seen_fingerprints"]
+    assert later[0]["fingerprint"] in final_strategy["codebase_scan_seen_fingerprints"]
 
 
 def test_codebase_scan_retires_later_duplicate_vector_tasks(tmp_path):

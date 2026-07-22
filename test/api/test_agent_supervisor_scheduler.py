@@ -6,11 +6,15 @@ import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Barrier
 from typing import Any
 
+from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
+from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
 from ipfs_accelerate_py.agent_supervisor.resource_scheduler import HostResourceSnapshot
@@ -246,6 +250,176 @@ def test_pool_capacity_and_shared_leases_prevent_duplicate_execution(tmp_path: P
     second.reconcile_once()
     assert len(first_launcher.starts) == 2
     assert len(second_launcher.starts) == 1
+
+
+def test_concurrent_serial_and_dynamic_supervisors_publish_one_canonical_result(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """A serial launch racing the persistent pool must remain exactly once.
+
+    This exercises the process boundary contract, not merely two calls on one
+    coordinator instance: both supervisor entry paths open their own SQLite
+    connection, rediscover/register the same generated bundle, and contend for
+    its canonical lease.  The winning execution then publishes the only
+    terminal receipt and a fresh scheduler process reconstructs the completed
+    projection from durable state.
+    """
+
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    generated_bundle = _bundle("T-GENERATED-1")
+    generated_bundle["tasks"] = [
+        {
+            "task_id": "T-GENERATED-1",
+            "goal_id": "G-GENERATED",
+            "title": "Generate the canonical goal output",
+            "status": "todo",
+        },
+        {
+            "task_id": "T-GENERATED-2",
+            "goal_id": "G-GENERATED",
+            "title": "Validate the generated output",
+            "status": "todo",
+            "depends_on": ["T-GENERATED-1"],
+        },
+    ]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {"objective/test/generated": generated_bundle},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    dynamic_launcher = _FakeLauncher()
+    dynamic = _scheduler(
+        tmp_path,
+        index,
+        dynamic_launcher,
+        claimant="did:web:dynamic-supervisor.example",
+        manifest_name="dynamic.json",
+    )
+    lane = dynamic._plan()[0]
+    assert lane.queue_payload is not None
+    # Bundle workers cannot independently refill their shard and manufacture
+    # another copy of objective work while the serial supervisor owns refill.
+    assert "--objective-refill-scan" not in lane.command
+    assert "--codebase-refill-scan" not in lane.command
+
+    coordination = repo / "coordination.sqlite3"
+    with LeaseCoordinator(coordination) as coordinator:
+        initially_registered = coordinator.register_bundle(lane.queue_payload)
+
+    race = Barrier(2)
+    original_claim = LeaseCoordinator.claim
+
+    def synchronized_serial_claim(self: LeaseCoordinator, *args: Any, **kwargs: Any):
+        race.wait(timeout=10)
+        return original_claim(self, *args, **kwargs)
+
+    monkeypatch.setattr(LeaseCoordinator, "claim", synchronized_serial_claim)
+    original_resource_source = dynamic._host_resource_source
+
+    def synchronized_dynamic_admission(*args: Any, **kwargs: Any) -> HostResourceSnapshot:
+        race.wait(timeout=10)
+        return original_resource_source(*args, **kwargs)
+
+    dynamic._host_resource_source = synchronized_dynamic_admission
+
+    serial_process = _FakeProcess(pid=20_000)
+    serial_grants: list[Any] = []
+
+    def fake_serial_spawn(serial_lane: Any, grant: Any, **_kwargs: Any):
+        serial_grants.append(grant)
+        return serial_process, list(serial_lane.command), serial_lane.state_dir / "serial.pid"
+
+    monkeypatch.setattr(bundle_supervisor_module, "_spawn_accepted_lane", fake_serial_spawn)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        serial_future = executor.submit(
+            launch_bundle_lanes,
+            [lane],
+            repo_root=repo,
+            coordination_path=coordination,
+            claimant_did="did:web:serial-supervisor.example",
+        )
+        dynamic_future = executor.submit(dynamic.reconcile_once)
+        serial_result = serial_future.result(timeout=15)
+        dynamic_manifest = dynamic_future.result(timeout=15)
+
+    serial_accepted = bool(serial_result[0]["accepted"])
+    dynamic_accepted = bool(dynamic_launcher.starts)
+    assert serial_accepted + dynamic_accepted == 1
+    assert len(serial_grants) == int(serial_accepted)
+    assert dynamic_manifest["counts"]["active"] == int(dynamic_accepted)
+
+    winning_grant = (
+        serial_grants[0] if serial_accepted else dynamic_launcher.starts[0][1]
+    )
+    with LeaseCoordinator(coordination) as coordinator:
+        receipt = coordinator.receipt(
+            winning_grant,
+            status="succeeded",
+            output={"merge_commit": "abc123", "generated_goal_id": "G-GENERATED"},
+        )
+        receipts = coordinator.list_receipts(winning_grant.task_cid)
+        tasks = coordinator.list_tasks()
+
+    assert len(receipts) == 1
+    assert receipts[0]["receipt_cid"] == receipt["receipt_cid"]
+    assert len(tasks) == 1
+    assert tasks[0]["task_cid"] == initially_registered["task_cid"]
+    assert tasks[0]["goal_cid"] == receipt["goal_cid"]
+    assert tasks[0]["subgoal_cid"] == receipt["subgoal_cid"]
+    persisted_members = tasks[0]["bundle"]["tasks"]
+    assert [item["task_id"] for item in persisted_members] == [
+        "T-GENERATED-1",
+        "T-GENERATED-2",
+    ]
+    assert {item["goal_id"] for item in persisted_members} == {"G-GENERATED"}
+    assert persisted_members[1]["dependency_task_cids"] == [
+        persisted_members[0]["canonical_task_cid"]
+    ]
+
+    if dynamic_accepted:
+        dynamic_launcher.starts[0][2].finish()
+    else:
+        serial_process.finish()
+
+    restarted_launcher = _FakeLauncher()
+    restarted = _scheduler(
+        tmp_path,
+        index,
+        restarted_launcher,
+        claimant="did:web:restarted-supervisor.example",
+        manifest_name="restarted.json",
+    )
+    restarted_manifest = restarted.reconcile_once()
+
+    assert not restarted_launcher.starts
+    assert restarted_manifest["counts"] == {
+        "active": 0,
+        "ready": 0,
+        "blocked": 0,
+        "completed": 1,
+        "capacity": 1,
+        "effective_capacity": 1,
+    }
+    completed = restarted_manifest["completed"][0]
+    assert completed["task_cid"] == winning_grant.task_cid
+    assert completed["goal_cid"] == receipt["goal_cid"]
+    assert completed["subgoal_cid"] == receipt["subgoal_cid"]
+    assert completed["bundle"]["tasks"][1]["dependency_task_cids"] == [
+        completed["bundle"]["tasks"][0]["canonical_task_cid"]
+    ]
+    with LeaseCoordinator(coordination) as coordinator:
+        assert len(coordinator.list_tasks()) == 1
+        assert len(coordinator.list_receipts(winning_grant.task_cid)) == 1
 
 
 def test_two_scheduler_processes_with_same_did_do_not_share_one_grant(tmp_path: Path) -> None:

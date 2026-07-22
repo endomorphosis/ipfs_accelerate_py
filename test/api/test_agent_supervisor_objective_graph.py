@@ -26,10 +26,20 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     main as merge_resolver_main,
     run_configured_merge_resolver_cli,
 )
+from ipfs_accelerate_py.agent_supervisor.goal_completion import CompletionEvidence
+from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+    build_goal_completion_projection,
+)
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     materialize_task_dependency_dag,
     materialize_task_planning_graph,
+    objective_fingerprint,
     objective_finding_conflict_record,
+)
+from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+    completion_tree_identity,
+    migrate_legacy_objective_goals,
+    reconcile_objective_goal_completion,
 )
 
 
@@ -318,6 +328,347 @@ def test_objective_graph_links_persisted_completion_receipts() -> None:
     assert proof["repository_tree"] == "sha256:tree"
     assert proof["provenance_cid"] == "bafy-provenance"
     assert any(edge["kind"] == "supported_by" and edge["to"] == proof["id"] for edge in graph["evidence_edges"])
+
+
+def _truthful_completion_gate(identity, *, criterion: str, observed_at: str) -> dict[str, object]:
+    binding = {
+        "repository_id": identity.repository_id,
+        "tree_id": identity.tree_id,
+    }
+    return {
+        "coverage": {
+            "verified": True,
+            "repository_tree": identity.tree_id,
+            "evaluated_at": observed_at,
+            "criteria": [{"criterion": criterion, "status": "verified"}],
+        },
+        "analyzer_health": {"status": "healthy"},
+        "exhaustion_quorum": {
+            "satisfied": True,
+            "required_members": 2,
+            "member_count": 2,
+            "binding": binding,
+            "members": [
+                {
+                    "member_id": "normal-scan",
+                    "evidence_channel": "exhaustive",
+                    "receipt_cid": "bafy-normal-scan",
+                    "finished_at": observed_at,
+                    "binding": binding,
+                },
+                {
+                    "member_id": "independent-audit",
+                    "evidence_channel": "audit",
+                    "receipt_cid": "bafy-independent-audit",
+                    "finished_at": observed_at,
+                    "binding": binding,
+                },
+            ],
+        },
+    }
+
+
+def test_restart_after_legacy_migration_preserves_lineage_quorum_and_dependencies(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## G10.S4 Legacy parent completion
+
+- Status: completed
+- Acceptance: current API proof
+- Evidence: current API proof
+- Validation: test -f proof.txt
+
+## G10.S4.1 Verified prerequisite
+
+- Status: verified_complete
+- Parent: G10.S4
+- Acceptance: prerequisite proof
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Drained task board\n", encoding="utf-8")
+    (repo / "proof.txt").write_text("current API proof\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed legacy objective")
+
+    observed_at = "2026-07-22T12:00:00+00:00"
+    identity = completion_tree_identity(repo, objective_path=objective_path)
+    # A rollout-era record deliberately uses the v0 aliases.  Migration must
+    # preserve its source lineage rather than replacing it with an optimistic
+    # modern receipt.
+    legacy_evidence = {
+        "version": 0,
+        "criterion": "current API proof",
+        "task_id": "REF-208",
+        "validation": {"attempted": True, "passed": True},
+        "tree_identity": identity.tree_id,
+        "repository_id": identity.repository_id,
+        "fresh": True,
+        "generated_at": observed_at,
+        "receipt_cid": "bafy-original-proof",
+    }
+    gate = _truthful_completion_gate(
+        identity,
+        criterion="current API proof",
+        observed_at=observed_at,
+    )
+
+    migrated = migrate_legacy_objective_goals(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_evidence_records={"G10.S4": [legacy_evidence]},
+        completion_gate_records={"G10.S4": gate},
+        now=observed_at,
+    )
+
+    assert migrated.verified_goal_ids == ["G10.S4"]
+    persisted_text = objective_path.read_text(encoding="utf-8")
+    restarted_goals = parse_goal_heap(persisted_text)
+    restarted_parent = next(goal for goal in restarted_goals if goal.goal_id == "G10.S4")
+    persisted_record = restarted_parent.completion_evidence_records[0]
+    assert restarted_parent.status == "verified_complete"
+    assert persisted_record["producing_task_or_scan"] == "REF-208"
+    assert persisted_record["provenance_cid"] == "bafy-original-proof"
+    assert persisted_record["metadata"]["source_schema_version"] == 0
+    persisted_quorum = json.loads(restarted_parent.fields["exhaustion_quorum"])
+    assert persisted_quorum["satisfied"] is True
+    assert persisted_quorum["required_members"] == 2
+    assert persisted_quorum["member_count"] == 2
+    persisted_gate = json.loads(restarted_parent.fields["completion_gate_record"])
+    assert persisted_gate == gate
+    assert {
+        (member["member_id"], member["receipt_cid"], member["evidence_channel"])
+        for member in persisted_gate["exhaustion_quorum"]["members"]
+    } == {
+        ("normal-scan", "bafy-normal-scan", "exhaustive"),
+        ("independent-audit", "bafy-independent-audit", "audit"),
+    }
+    assert all(
+        member["binding"] == gate["exhaustion_quorum"]["binding"]
+        for member in persisted_gate["exhaustion_quorum"]["members"]
+    )
+
+    restarted_graph = goal_graph(restarted_goals)
+    assert restarted_graph["terminal_goal_ids"] == ["G10.S4", "G10.S4.1"]
+    assert {tuple((edge["from"], edge["to"], edge["kind"])) for edge in restarted_graph["edges"]} == {
+        ("G10.S4", "G10.S4.1", "refines")
+    }
+    proof = next(
+        item
+        for item in restarted_graph["evidence_nodes"]
+        if item.get("kind") == "completion_evidence"
+    )
+    assert proof["producing_task_or_scan"] == "REF-208"
+    assert proof["provenance_cid"] == "bafy-original-proof"
+
+    # Rebuild the bounded status projection only from durable markdown fields,
+    # as a new supervisor process would do after losing all in-memory objects.
+    restarted_diagnostic = {
+        "state": restarted_parent.lifecycle_state_value,
+        "confidence": float(restarted_parent.fields["completion_confidence"]),
+        "uncovered_criteria": json.loads(restarted_parent.fields["uncovered_criteria"]),
+        "stale_evidence": json.loads(restarted_parent.fields["stale_evidence"]),
+        "analyzer_health": json.loads(restarted_parent.fields["analyzer_health"]),
+        "exhaustion_quorum": json.loads(restarted_parent.fields["exhaustion_quorum"]),
+        "reopen_reasons": json.loads(restarted_parent.fields["reopen_reasons"]),
+    }
+    projection = build_goal_completion_projection(
+        {"G10.S4": restarted_diagnostic},
+        migration=migrated,
+    )
+    operator_row = projection["by_goal_id"]["G10.S4"]
+    assert operator_row["lifecycle_state"] == "verified_complete"
+    assert operator_row["confidence"] == 1.0
+    assert operator_row["analyzer_health"]["status"] == "healthy"
+    assert operator_row["analyzer_health"]["passed"] is True
+    assert operator_row["analyzer_health"]["evidence"] == {"status": "healthy"}
+    assert operator_row["exhaustion_quorum"] == persisted_quorum
+    assert operator_row["uncovered_criteria"] == []
+    assert operator_row["stale_evidence"] == []
+
+    # Dependency inputs are another restart boundary.  JSON round-tripping
+    # must retain the exact edge and its blocked/claimable scheduler meaning.
+    task_state_path = repo / "task-dependencies.json"
+    task_state_path.write_text(
+        json.dumps(
+            [
+                {"task_id": "REF-208", "task_cid": "cid-proof", "goal_id": "G10.S4.1"},
+                {
+                    "task_id": "REF-212",
+                    "task_cid": "cid-regression",
+                    "goal_id": "G10.S4",
+                    "depends_on": ["REF-208"],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    restarted_dependencies = materialize_task_dependency_dag(
+        json.loads(task_state_path.read_text(encoding="utf-8")),
+        now=0,
+    )
+    assert [edge.to_dict() for edge in restarted_dependencies.edges] == [
+        {
+            "source_task_cid": "cid-proof",
+            "target_task_cid": "cid-regression",
+            "kind": "goal",
+                "provenance": {
+                    "field": "depends_on",
+                    "value": "REF-208",
+                "resolution": "task_alias",
+                "source_task_id": "REF-208",
+                "target_task_id": "REF-212",
+            },
+        }
+    ]
+    restarted_schedule = {
+        row.task_cid: row for row in restarted_dependencies.schedule
+    }
+    assert restarted_schedule["cid-proof"].claimable is True
+    assert restarted_schedule["cid-regression"].claimable is False
+    assert restarted_schedule["cid-regression"].blocking_task_cids == ["cid-proof"]
+
+    replay = migrate_legacy_objective_goals(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        now="2026-07-22T12:01:00+00:00",
+    )
+    assert replay.changed is False
+    assert replay.candidate_goal_ids == []
+    assert objective_path.read_text(encoding="utf-8") == persisted_text
+
+
+def test_changed_tree_reopens_goal_and_refills_despite_historical_fingerprint(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## G10.S4 Truthful completion
+
+- Status: completed
+- Priority: P0
+- Track: g10
+- Bundle: refactor/g10/g10-s4
+- Acceptance: runtime proof marker
+- Evidence: runtime proof marker
+- Outputs: proof.txt, tests
+- Validation: test -f proof.txt
+- Gap task: Restore the runtime proof and its regression test.
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Drained task board\n", encoding="utf-8")
+    proof_path = repo / "proof.txt"
+    proof_path.write_text("runtime proof marker\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed verified surface")
+
+    verified_at = "2026-07-22T12:00:00+00:00"
+    old_identity = completion_tree_identity(repo, objective_path=objective_path)
+    evidence = CompletionEvidence(
+        acceptance_criterion="runtime proof marker",
+        producing_task_or_scan="REF-208",
+        validation_receipt={"attempted": True, "passed": True},
+        repository_id=old_identity.repository_id,
+        repository_tree=old_identity.tree_id,
+        freshness=True,
+        observed_at=verified_at,
+        provenance_cid="bafy-proof-before-regression",
+        validation_passed=True,
+    )
+    gate = _truthful_completion_gate(
+        old_identity,
+        criterion="runtime proof marker",
+        observed_at=verified_at,
+    )
+    migration = migrate_legacy_objective_goals(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_evidence_records={"G10.S4": [evidence]},
+        completion_gate_records={"G10.S4": gate},
+        now=verified_at,
+    )
+    assert migration.verified_goal_ids == ["G10.S4"]
+
+    verified_goal = parse_goal_heap(objective_path.read_text(encoding="utf-8"))[0]
+    historical_fingerprint = objective_fingerprint(
+        verified_goal,
+        ["runtime proof marker"],
+    )
+
+    # A later commit removes the evidence from the repository.  The old scan
+    # fingerprint and its once-valid receipts remain durable history, but are
+    # bound to a different tree and therefore cannot certify this one.
+    proof_path.write_text("regressed surface\n", encoding="utf-8")
+    _git(repo, "add", "proof.txt")
+    _git(repo, "commit", "-m", "introduce later regression")
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        now="2026-07-22T12:05:00+00:00",
+    )
+
+    assert result.reopened_goal_ids == ["G10.S4"]
+    decision = result.decisions["G10.S4"]
+    assert decision["state"] == "reopened"
+    assert "repository_tree_mismatch" in decision["reason_codes"]
+    reopened_goal = parse_goal_heap(objective_path.read_text(encoding="utf-8"))[0]
+    assert reopened_goal.status == "reopened"
+    assert reopened_goal.is_schedulable is True
+
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    suppressed = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="REFILL-",
+        max_findings=1,
+        seen_fingerprints=[historical_fingerprint],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert suppressed == []
+
+    refilled = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="REFILL-",
+        max_findings=1,
+        seen_fingerprints=[historical_fingerprint],
+        force_goal_ids=["G10.S4"],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert [record.finding.fingerprint for record in refilled] == [historical_fingerprint]
+    assert [record.finding.goal_id for record in refilled] == ["G10.S4"]
+    assert "## REFILL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
 
 
 def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
