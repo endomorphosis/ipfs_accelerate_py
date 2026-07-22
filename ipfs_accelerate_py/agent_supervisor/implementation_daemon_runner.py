@@ -769,6 +769,9 @@ def build_daemon_objective_refill_callback(
             kwargs["objective_path"] = resolved_objective_path
         if repo_root is not None:
             kwargs["repo_root"] = repo_root
+        bundle_dir = getattr(ctx.parsed, "objective_bundle_dir", None)
+        if bundle_dir is not None:
+            kwargs["bundle_dir"] = bundle_dir
         for attr, key in (
             ("objective_scan_min_open_tasks", "min_open_tasks"),
             ("objective_scan_max_findings", "max_findings"),
@@ -803,6 +806,9 @@ def build_daemon_codebase_scan_refill_callback(
         }
         if repo_root is not None:
             kwargs["repo_root"] = repo_root
+        bundle_dir = getattr(ctx.parsed, "objective_bundle_dir", None)
+        if bundle_dir is not None:
+            kwargs["bundle_dir"] = bundle_dir
         for attr, key in (
             ("codebase_scan_min_open_tasks", "min_open_tasks"),
             ("codebase_scan_max_findings", "max_findings"),

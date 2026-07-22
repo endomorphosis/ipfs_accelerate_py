@@ -3944,6 +3944,8 @@ class PortalImplementationSupervisor:
                 strategy_path=self.config.strategy_path,
                 discovery_dir=discovery_dir,
                 repo_root=self.config.repo_root,
+                bundle_dir=self.config.objective_bundle_dir
+                or self.config.state_dir.parent / "objective_bundles",
                 task_prefix=task_prefix,
                 depends_on=self.config.codebase_scan_depends_on,
                 min_open_tasks=self.config.codebase_scan_min_open_tasks,

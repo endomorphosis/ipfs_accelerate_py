@@ -1651,8 +1651,35 @@ def codebase_scan_task_block(
     discovery_path: Path,
     depends_on: Sequence[str] = (),
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    bundle_key: str = "",
+    bundle_shard: str = "",
+    ast_symbols: Sequence[str] = (),
 ) -> str:
     outputs = [discovery_output_path, finding.root_relative_path]
+    planning_lines: list[str] = []
+    if bundle_key:
+        parent_goal = "/".join(bundle_key.split("/")[:2])
+        planning_lines = [
+            f"- Bundle: {bundle_key}",
+            f"- Bundle shard: {bundle_shard}",
+            "- Bundle strategy: codebase_file_ast",
+            f"- Graph parents: {parent_goal}",
+            "- Graph depth: 1",
+            f"- Parallel lane: {bundle_key}",
+            "- Conflict policy: serialize findings for the same file; allow independent file bundles to run concurrently",
+            f"- Predicted files: {finding.root_relative_path}",
+            f"- AST symbols: {', '.join(ast_symbols)}",
+            f"- Goal id: {bundle_key}",
+            f"- Missing evidence: {finding.summary}",
+            f"- Merge key: {bundle_key}",
+            f"- Merge family: {finding.root_relative_path}",
+            "- Merge role: codebase_scan",
+            "- Work item count: 1",
+            "- Work scope: codebase_file_ast",
+            "- Candidate kind: codebase_scan",
+            f"- Todo vector key: {finding.fingerprint[:16]}",
+        ]
+    planning = ("\n" + "\n".join(planning_lines)) if planning_lines else ""
     return f"""## {task_id} {finding.summary}
 
 - Status: todo
@@ -1661,9 +1688,97 @@ def codebase_scan_task_block(
 - Track: {finding.track}
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
-- Validation: {finding.validation}
+- Validation: {finding.validation}{planning}
 - Acceptance: Codebase scan filed this finding from {finding.root_relative_path}:{finding.line_number}. Use evidence in {discovery_path}, fix the bug or improvement, add or update focused validation when appropriate, and keep the supervisor-fed backlog parseable.
 """
+
+
+def codebase_scan_bundle_key(finding: CodebaseFinding) -> str:
+    """Return a file-local bundle key for a generated codebase finding."""
+
+    source_key = safe_bundle_key(Path(finding.root_relative_path).with_suffix("").as_posix())
+    return f"codebase/{safe_bundle_key(finding.track)}/{source_key}"
+
+
+def write_codebase_scan_bundle_shards(
+    *,
+    bundle_dir: Path,
+    repo_root: Path,
+    todo_path: Path,
+    records: Sequence[Mapping[str, Any]],
+) -> list[Path]:
+    """Merge codebase-scan records into file-local shards and their bundle index."""
+
+    if not records:
+        return []
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    index_path = bundle_dir / "index.json"
+    try:
+        index_payload = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        index_payload = {}
+    if not isinstance(index_payload, dict):
+        index_payload = {}
+    bundles = index_payload.get("bundles")
+    if not isinstance(bundles, dict):
+        bundles = {}
+
+    generated_paths: list[Path] = []
+    source_todo = repo_relative_path(repo_root, todo_path)
+    for record in records:
+        task_id = str(record.get("task_id") or "")
+        bundle_key = str(record.get("bundle_key") or "")
+        task_block = str(record.get("task_block") or "")
+        task_payload = record.get("task_payload")
+        if not task_id or not bundle_key or not task_block or not isinstance(task_payload, Mapping):
+            continue
+
+        shard_path = bundle_path(bundle_dir, bundle_key)
+        try:
+            shard_text = shard_path.read_text(encoding="utf-8")
+        except OSError:
+            shard_text = (
+                f"# Codebase Bundle: {bundle_key}\n\n"
+                f"Source todo: {source_todo}\n"
+                "Purpose: group generated codebase findings by source file and AST locality.\n"
+                "Conflict policy: serialize edits to one file; allow independent file bundles to run concurrently.\n"
+            )
+        if f"## {task_id} " not in shard_text:
+            shard_path.write_text(shard_text.rstrip() + "\n\n" + task_block.strip() + "\n", encoding="utf-8")
+            generated_paths.append(shard_path)
+
+        existing = bundles.get(bundle_key)
+        info = dict(existing) if isinstance(existing, Mapping) else {}
+        task_map = {
+            str(item.get("task_id")): dict(item)
+            for item in info.get("tasks", [])
+            if isinstance(item, Mapping) and str(item.get("task_id") or "")
+        }
+        task_map[task_id] = dict(task_payload)
+        info.update(
+            {
+                "bundle_key": bundle_key,
+                "shard_path": repo_relative_path(repo_root, shard_path),
+                "parallel_lane": bundle_key,
+                "bundle_strategy": "codebase_file_ast",
+                "conflict_policy": (
+                    "serialize findings for the same file; allow independent file bundles to run concurrently"
+                ),
+                "tasks": [task_map[key] for key in sorted(task_map)],
+            }
+        )
+        bundles[bundle_key] = info
+
+    index_payload.update(
+        {
+            "generated_at": utc_now(),
+            "source_todo": source_todo,
+            "bundles": bundles,
+        }
+    )
+    index_path.write_text(json.dumps(index_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    generated_paths.append(index_path)
+    return list(dict.fromkeys(generated_paths))
 
 
 def duplicate_task_id_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
@@ -3914,6 +4029,7 @@ def record_codebase_scan_findings(
     strategy_path: Path,
     discovery_dir: Path,
     repo_root: Path,
+    bundle_dir: Path | None = None,
     task_prefix: str = DEFAULT_TASK_ID_PREFIX,
     depends_on: Sequence[str] = (),
     min_open_tasks: int = DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS,
@@ -3964,7 +4080,11 @@ def record_codebase_scan_findings(
         return []
 
     appended: list[dict[str, Any]] = []
+    bundle_records: list[dict[str, Any]] = []
     generated_paths: list[Path] = []
+    if bundle_dir is not None:
+        from .todo_vector_index import collect_output_symbols
+
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read()
         reserved_task_ids = task_ids_from_artifact_names(
@@ -3984,25 +4104,88 @@ def record_codebase_scan_findings(
                 finding=finding,
             )
             generated_paths.append(discovery_path)
+            bundle_key = codebase_scan_bundle_key(finding) if bundle_dir is not None else ""
+            shard_path = bundle_path(bundle_dir, bundle_key) if bundle_dir is not None else None
+            bundle_shard = repo_relative_path(repo_root, shard_path) if shard_path is not None else ""
+            ast_symbols = (
+                collect_output_symbols(repo_root, [finding.root_relative_path])[:80]
+                if bundle_dir is not None
+                else []
+            )
             task_block = codebase_scan_task_block(
                 task_id=follow_up_task_id,
                 finding=finding,
                 discovery_path=discovery_path,
                 depends_on=depends_on,
                 discovery_output_path=discovery_output_path,
+                bundle_key=bundle_key,
+                bundle_shard=bundle_shard,
+                ast_symbols=ast_symbols,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
-            appended.append(
-                {
-                    "follow_up_task_id": follow_up_task_id,
-                    "fingerprint": finding.fingerprint,
-                    "kind": finding.kind,
-                    "source": f"{finding.root_relative_path}:{finding.line_number}",
-                    "discovery_path": str(discovery_path),
-                }
-            )
+            finding_record = {
+                "follow_up_task_id": follow_up_task_id,
+                "fingerprint": finding.fingerprint,
+                "kind": finding.kind,
+                "source": f"{finding.root_relative_path}:{finding.line_number}",
+                "discovery_path": str(discovery_path),
+            }
+            if bundle_key:
+                finding_record.update({"bundle_key": bundle_key, "bundle_shard": bundle_shard})
+                parent_goal = "/".join(bundle_key.split("/")[:2])
+                bundle_records.append(
+                    {
+                        "task_id": follow_up_task_id,
+                        "bundle_key": bundle_key,
+                        "task_block": task_block,
+                        "task_payload": {
+                            "task_id": follow_up_task_id,
+                            "status": "todo",
+                            "title": finding.summary,
+                            "priority": finding.priority,
+                            "track": finding.track,
+                            "goal_id": bundle_key,
+                            "parent_goal_id": parent_goal,
+                            "subgoal_id": bundle_key,
+                            "parent_goal_ids": [parent_goal],
+                            "graph_depth": 1,
+                            "rationale": finding.summary,
+                            "acceptance": [
+                                f"Resolve the {finding.kind} finding at "
+                                f"{finding.root_relative_path}:{finding.line_number}."
+                            ],
+                            "validation": [finding.validation],
+                            "paths": [finding.root_relative_path],
+                            "outputs": [finding.root_relative_path],
+                            "predicted_files": [finding.root_relative_path],
+                            "ast_symbols": ast_symbols,
+                            "generated_artifacts": [repo_relative_path(repo_root, discovery_path)],
+                            "depends_on": list(depends_on),
+                            "bundle_strategy": "codebase_file_ast",
+                            "surplus_group": parent_goal,
+                            "merge_key": bundle_key,
+                            "merge_family": finding.root_relative_path,
+                            "merge_role": "codebase_scan",
+                            "work_item_count": 1,
+                            "work_scope": "codebase_file_ast",
+                            "candidate_kind": "codebase_scan",
+                            "todo_vector_key": finding.fingerprint[:16],
+                            "discovery_path": repo_relative_path(repo_root, discovery_path),
+                        },
+                    }
+                )
+            appended.append(finding_record)
 
         replace_locked_taskboard(taskboard, todo_text)
+    if bundle_dir is not None:
+        generated_paths.extend(
+            write_codebase_scan_bundle_shards(
+                bundle_dir=bundle_dir,
+                repo_root=repo_root,
+                todo_path=todo_path,
+                records=bundle_records,
+            )
+        )
     strategy["last_codebase_scan_findings"] = appended
     write_json(strategy_path, strategy)
     if commit_outputs:
@@ -4219,6 +4402,8 @@ def record_configured_codebase_scan_findings(
     strategy_path: Path,
     discovery_dir: Path,
     repo_root: Path,
+    bundle_dir: Path | None = None,
+    default_bundle_dir: Path | None = None,
     task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
     depends_on_if_present: Sequence[str] = (),
     min_open_tasks: int = DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS,
@@ -4239,6 +4424,9 @@ def record_configured_codebase_scan_findings(
         strategy_path=strategy_path,
         discovery_dir=discovery_dir,
         repo_root=repo_root,
+        bundle_dir=bundle_dir
+        or default_bundle_dir
+        or repo_root / "data" / "agent_supervisor" / "objective_bundles",
         task_prefix=task_id_prefix(task_header_prefix_value),
         depends_on=task_dependencies_if_present(
             todo_path,
@@ -4406,6 +4594,8 @@ class ConfiguredCodebaseScanRecorder:
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES
     commit_outputs: bool = False
     commit_subject: str = "Agent: record codebase scan backlog findings"
+    bundle_dir: Path | None = None
+    default_bundle_dir: Path | None = None
     prepare_environment: Callable[[], None] | None = None
 
     def __call__(self, **overrides: Any) -> list[dict[str, Any]]:
@@ -4659,6 +4849,7 @@ def build_namespace_codebase_scan_recorder(
         state_path=Path(state_path) if state_path is not None else None,
         strategy_path=Path(strategy_path),
         discovery_dir=namespace_paths.discovery_dir,
+        default_bundle_dir=namespace_paths.objective_bundle_dir,
         task_header_prefix_value=task_header_prefix_value,
         depends_on_if_present=tuple(depends_on_if_present),
         min_open_tasks=min_open_tasks,
@@ -4813,6 +5004,7 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             strategy_path=strategy_path,
             discovery_dir=discovery_dir,
             repo_root=repo_root,
+            bundle_dir=bundle_dir,
             task_prefix=args.task_prefix,
             depends_on=depends_on,
             min_open_tasks=args.min_open_tasks,

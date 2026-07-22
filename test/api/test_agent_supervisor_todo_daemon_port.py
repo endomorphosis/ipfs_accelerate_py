@@ -5456,6 +5456,7 @@ def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
         todo_path=tmp_path / "tasks.todo.md",
         task_prefix="## EX-",
         objective_path=None,
+        objective_bundle_dir=tmp_path / "bundles",
         objective_scan_min_open_tasks=20,
         objective_scan_max_findings=6,
         objective_scan_cooldown_seconds=900,
@@ -5502,6 +5503,7 @@ def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
     assert captured["codebase"]["min_open_tasks"] == 20
     assert captured["codebase"]["max_findings"] == 0
     assert captured["codebase"]["cooldown_seconds"] == 900
+    assert captured["codebase"]["bundle_dir"] == tmp_path / "bundles"
 
 
 def test_implementation_daemon_run_once_cleans_already_merged_worktree(tmp_path):

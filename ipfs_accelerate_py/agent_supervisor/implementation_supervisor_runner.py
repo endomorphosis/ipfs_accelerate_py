@@ -1450,6 +1450,7 @@ def build_supervisor_codebase_scan_refill_callback(
         _set_present(
             kwargs,
             repo_root=repo_root,
+            bundle_dir=getattr(ctx.parsed, "objective_bundle_dir", None),
             min_open_tasks=getattr(ctx.parsed, "codebase_scan_min_open_tasks", None),
             max_findings=getattr(ctx.parsed, "codebase_scan_max_findings", None),
             cooldown_seconds=getattr(ctx.parsed, "codebase_scan_cooldown_seconds", None),

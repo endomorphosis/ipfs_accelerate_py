@@ -296,6 +296,7 @@ def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
 
     assert isinstance(codebase_recorder, ConfiguredCodebaseScanRecorder)
     assert codebase_recorder.discovery_dir == namespace_paths.discovery_dir
+    assert codebase_recorder.default_bundle_dir == namespace_paths.objective_bundle_dir
     assert codebase_recorder.skip_prefixes == ("data/agent_supervisor/state/",)
     assert codebase_recorder.depends_on_if_present == ("EX-002",)
     assert codebase_recorder.max_findings == 5
@@ -485,6 +486,51 @@ def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["last_codebase_scan_findings"][0]["follow_up_task_id"] == "AUTO-002"
     assert Path(findings[0]["discovery_path"]).exists()
+
+
+def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        """def route_request(request):
+    # TODO: prove routing retry behavior
+    return request
+""",
+        encoding="utf-8",
+    )
+    _write_todo(todo_path)
+    _git(repo, "add", "todo.md", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed repo")
+
+    findings = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        repo_root=repo,
+        bundle_dir=bundle_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        force=True,
+    )
+
+    assert findings[0]["bundle_key"] == "codebase/runtime/src-runtime"
+    shard_path = bundle_dir / "codebase-runtime-src-runtime.todo.md"
+    assert "## AUTO-002 Resolve code annotation" in shard_path.read_text(encoding="utf-8")
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Bundle: codebase/runtime/src-runtime" in todo_text
+    assert "- AST symbols:" in todo_text
+    assert "route_request" in todo_text
+    index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
+    member = index["bundles"]["codebase/runtime/src-runtime"]["tasks"][0]
+    assert member["candidate_kind"] == "codebase_scan"
+    assert member["paths"] == ["src/runtime.py"]
+    assert "route_request" in member["ast_symbols"]
 
 
 def test_codebase_scan_reserves_ids_from_discovery_artifacts(tmp_path):

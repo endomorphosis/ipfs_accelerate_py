@@ -742,6 +742,7 @@ def test_build_supervisor_context_refill_callbacks(tmp_path: Path):
     assert captured["objective"]["objective_path"] == tmp_path / "objective.md"
     assert captured["objective"]["bundle_dir"] == tmp_path / "bundles"
     assert captured["objective"]["surplus_findings_per_goal"] == 4
+    assert captured["codebase"]["bundle_dir"] == tmp_path / "bundles"
     assert captured["codebase"]["max_findings"] == 5
     assert captured["retry"]["events_path"] == tmp_path / "daemon-events.jsonl"
     assert captured["retry"]["task_header_prefix"] == "## EX-"
