@@ -5,11 +5,18 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from contextlib import redirect_stdout
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
+
+from .plan_evaluator import (
+    PLAN_BRANCH_JSON_SCHEMA,
+    PlanBranch,
+    PlanBranchValidationError,
+)
 
 
 PromptBuilder = Callable[[object, str], str]
@@ -757,3 +764,376 @@ def run_task_proposal_router_cli(config: TaskProposalRouterCliConfig, argv: list
         raise SystemExit(str(exc)) from exc
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
+
+
+# Structured objective-plan routing -------------------------------------------------
+
+StructuredRouter = Callable[[str], str]
+FallbackPlanner = Callable[[object, int], Sequence[PlanBranch | Mapping[str, Any]]]
+
+
+@dataclass(frozen=True)
+class StructuredPlanRouterConfig:
+    """Runtime settings for one structured ``llm_router`` planning call."""
+
+    repo_root: Path = field(default_factory=Path.cwd)
+    provider: str | None = None
+    model: str = "gpt-5.3-codex-spark"
+    branch_count: int = 3
+    max_new_tokens: int = 4096
+    timeout_seconds: int = 300
+    allow_local_fallback: bool = False
+    temperature: float = 0.1
+
+    def __post_init__(self) -> None:
+        if int(self.branch_count) < 1:
+            raise ValueError("branch_count must be at least 1")
+        if int(self.max_new_tokens) < 1:
+            raise ValueError("max_new_tokens must be at least 1")
+        if int(self.timeout_seconds) < 1:
+            raise ValueError("timeout_seconds must be at least 1")
+        if not 0.0 <= float(self.temperature) <= 2.0:
+            raise ValueError("temperature must be in [0, 2]")
+
+
+@dataclass(frozen=True)
+class PlanRoutingResult:
+    """Schema-validated branches plus auditable router/fallback provenance."""
+
+    branches: tuple[PlanBranch, ...]
+    used_fallback: bool
+    router_error: str | None = None
+    raw_response: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.branches:
+            raise ValueError("a routing result must contain at least one plan branch")
+
+    @property
+    def router_succeeded(self) -> bool:
+        return not self.used_fallback
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        encode = PlanBranch.to_profile_g_dict if profile_g else PlanBranch.to_dict
+        return {
+            "branches": [encode(branch) for branch in self.branches],
+            "used_fallback": self.used_fallback,
+            "router_succeeded": self.router_succeeded,
+            "router_error": self.router_error,
+            "raw_response": self.raw_response,
+        }
+
+    def to_profile_g_dict(self) -> dict[str, Any]:
+        return self.to_dict(profile_g=True)
+
+
+def _object_value(value: object, *names: str) -> Any:
+    for name in names:
+        if isinstance(value, Mapping) and name in value:
+            return value[name]
+        if hasattr(value, name):
+            return getattr(value, name)
+    return None
+
+
+def _values(value: object, *names: str) -> tuple[str, ...]:
+    raw = _object_value(value, *names)
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        return tuple(item.strip() for item in raw.split(",") if item.strip())
+    if isinstance(raw, Sequence):
+        return tuple(str(item).strip() for item in raw if str(item).strip())
+    return (str(raw).strip(),) if str(raw).strip() else ()
+
+
+def _jsonable_subgoal(subgoal: object) -> dict[str, Any]:
+    if isinstance(subgoal, Mapping):
+        source = dict(subgoal)
+    elif hasattr(subgoal, "to_dict") and callable(getattr(subgoal, "to_dict")):
+        converted = subgoal.to_dict()
+        source = (
+            dict(converted)
+            if isinstance(converted, Mapping)
+            else {"description": str(converted)}
+        )
+    elif hasattr(subgoal, "__dict__"):
+        source = dict(vars(subgoal))
+    else:
+        source = {"description": str(subgoal)}
+    names = (
+        "subgoal_cid",
+        "goal_id",
+        "task_id",
+        "title",
+        "summary",
+        "goal",
+        "missing_evidence",
+        "acceptance",
+        "outputs",
+        "predicted_files",
+        "ast_symbols",
+        "predicted_symbols",
+        "dependencies",
+        "depends_on",
+        "validation",
+        "validation_commands",
+        "interfaces",
+        "submodules",
+    )
+    return {name: source[name] for name in names if name in source}
+
+
+def build_structured_plan_prompt(subgoal: object, branch_count: int = 3) -> str:
+    """Build the strict JSON request used for objective branch generation."""
+
+    count = int(branch_count)
+    if count < 1:
+        raise ValueError("branch_count must be at least 1")
+    context = _jsonable_subgoal(subgoal)
+    return "\n".join(
+        (
+            "Generate alternative implementation plan branches for this scheduler subgoal.",
+            f"Return exactly {count} materially distinct branches.",
+            "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
+            "All files must be repository-relative. source must be 'llm_router'.",
+            "estimated_cost is a non-negative relative work estimate; risk and "
+            "expected_objective_delta are numbers from 0 through 1.",
+            "validation_proof must state the observable success evidence expected from the commands.",
+            "",
+            "Subgoal:",
+            json.dumps(context, indent=2, sort_keys=True, default=str),
+            "",
+            "Required JSON schema:",
+            json.dumps(PLAN_BRANCH_JSON_SCHEMA, indent=2, sort_keys=True),
+        )
+    )
+
+
+def _decode_router_json(text: str) -> Any:
+    if not isinstance(text, str) or not text.strip():
+        raise PlanBranchValidationError("llm_router returned an empty response")
+    stripped = text.strip()
+    fenced = re.fullmatch(
+        r"```(?:json)?\s*(.*?)\s*```",
+        stripped,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    if fenced is not None:
+        stripped = fenced.group(1).strip()
+    else:
+        embedded = re.findall(
+            r"```(?:json)?\s*(.*?)\s*```",
+            stripped,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        if len(embedded) == 1:
+            stripped = embedded[0].strip()
+    try:
+        return json.loads(
+            stripped,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON number {value}")
+            ),
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise PlanBranchValidationError(
+            f"llm_router response is not valid JSON: {exc}"
+        ) from exc
+
+
+def parse_structured_plan_branches(text: str) -> tuple[PlanBranch, ...]:
+    """Parse one complete router response, rejecting partial/mixed validity."""
+
+    payload = _decode_router_json(text)
+    if isinstance(payload, Mapping):
+        unknown = sorted(str(key) for key in payload if key != "branches")
+        if unknown:
+            raise PlanBranchValidationError(
+                f"unknown top-level plan fields: {', '.join(unknown)}"
+            )
+        if "branches" not in payload:
+            raise PlanBranchValidationError(
+                "router JSON object must contain 'branches'"
+            )
+        raw_branches = payload["branches"]
+    else:
+        raw_branches = payload
+    if isinstance(raw_branches, (str, bytes)) or not isinstance(
+        raw_branches, Sequence
+    ):
+        raise PlanBranchValidationError("branches must be a JSON array")
+    if not raw_branches:
+        raise PlanBranchValidationError(
+            "branches must contain at least one candidate"
+        )
+    required_fields = set(
+        PLAN_BRANCH_JSON_SCHEMA["properties"]["branches"]["items"]["required"]
+    )
+    branches_list: list[PlanBranch] = []
+    for index, item in enumerate(raw_branches):
+        if not isinstance(item, Mapping):
+            raise PlanBranchValidationError(
+                f"branches[{index}] must be a JSON object"
+            )
+        fields = {str(key) for key in item}
+        missing = sorted(required_fields - fields)
+        unknown = sorted(fields - required_fields)
+        if missing:
+            raise PlanBranchValidationError(
+                f"branches[{index}] is missing required fields: {', '.join(missing)}"
+            )
+        if unknown:
+            raise PlanBranchValidationError(
+                f"branches[{index}] contains unknown fields: {', '.join(unknown)}"
+            )
+        branch = PlanBranch.from_dict(item)
+        if branch.source != "llm_router":
+            raise PlanBranchValidationError(
+                f"branches[{index}].source must be 'llm_router'"
+            )
+        branches_list.append(branch)
+    branches = tuple(branches_list)
+    branch_ids = [branch.branch_id for branch in branches]
+    duplicates = sorted(
+        {item for item in branch_ids if branch_ids.count(item) > 1}
+    )
+    if duplicates:
+        raise PlanBranchValidationError(
+            f"duplicate branch ids: {', '.join(duplicates)}"
+        )
+    return branches
+
+
+def deterministic_plan_branches(
+    subgoal: object,
+    branch_count: int = 1,
+) -> tuple[PlanBranch, ...]:
+    """Derive safe, deterministic branches without an LLM provider."""
+
+    requested = max(1, int(branch_count))
+    identifier = str(
+        _object_value(subgoal, "task_id", "goal_id", "subgoal_cid", "id")
+        or "subgoal"
+    ).strip()
+    safe_identifier = (
+        re.sub(r"[^A-Za-z0-9._:-]+", "-", identifier).strip("-.") or "subgoal"
+    )
+    title = str(
+        _object_value(subgoal, "title", "summary", "goal", "description")
+        or identifier
+    ).strip()
+    files = _values(subgoal, "predicted_files", "outputs", "files") or (
+        "objective-plan.unspecified",
+    )
+    symbols = _values(
+        subgoal, "predicted_symbols", "ast_symbols", "symbols", "interfaces"
+    ) or (re.sub(r"\W+", "_", safe_identifier).strip("_") or "objective_subgoal",)
+    dependencies = _values(
+        subgoal, "dependencies", "depends_on", "dependency_task_cids"
+    )
+    validations = _values(subgoal, "validation_commands", "validation") or (
+        "git diff --check",
+    )
+    proof = tuple(f"{command} exits with status 0" for command in validations)
+    variants = (
+        ("focused", 1.0, 0.20, 0.70),
+        ("incremental", 1.2, 0.15, 0.65),
+        ("proof-first", 1.4, 0.10, 0.60),
+    )
+    results: list[PlanBranch] = []
+    for index in range(requested):
+        label, cost, risk, delta = variants[index % len(variants)]
+        cycle = index // len(variants)
+        results.append(
+            PlanBranch(
+                branch_id=f"fallback:{safe_identifier}:{label}-{index + 1}",
+                summary=f"Deterministic {label} plan for {title}",
+                predicted_files=files,
+                predicted_symbols=symbols,
+                dependencies=dependencies,
+                validation_commands=validations,
+                validation_proof=proof,
+                estimated_cost=cost + cycle,
+                risk=risk,
+                expected_objective_delta=delta,
+                source="deterministic_fallback",
+            )
+        )
+    return tuple(results)
+
+
+def _default_structured_router(
+    prompt: str,
+    config: StructuredPlanRouterConfig,
+) -> str:
+    from .todo_daemon.llm import LlmRouterInvocation, call_llm_router
+
+    invocation = LlmRouterInvocation(
+        repo_root=config.repo_root,
+        model_name=config.model,
+        provider=config.provider,
+        allow_local_fallback=config.allow_local_fallback,
+        timeout_seconds=config.timeout_seconds,
+        max_new_tokens=config.max_new_tokens,
+        temperature=config.temperature,
+        reject_effective_provider_name=(
+            None if config.allow_local_fallback else "local_hf"
+        ),
+    )
+    return call_llm_router(prompt, invocation)
+
+
+def generate_structured_plan_branches(
+    subgoal: object,
+    *,
+    router: StructuredRouter | None = None,
+    fallback_planner: FallbackPlanner | None = None,
+    config: StructuredPlanRouterConfig | None = None,
+    branch_count: int | None = None,
+) -> PlanRoutingResult:
+    """Generate validated branches, falling back without blocking ready work."""
+
+    resolved_config = config or StructuredPlanRouterConfig()
+    count = int(
+        branch_count if branch_count is not None else resolved_config.branch_count
+    )
+    if count < 1:
+        raise ValueError("branch_count must be at least 1")
+    prompt = build_structured_plan_prompt(subgoal, count)
+    raw_response: str | None = None
+    try:
+        raw_response = (
+            router(prompt)
+            if router is not None
+            else _default_structured_router(prompt, resolved_config)
+        )
+        branches = parse_structured_plan_branches(raw_response)
+        if len(branches) != count:
+            raise PlanBranchValidationError(
+                f"llm_router returned {len(branches)} branches; expected exactly {count}"
+            )
+        return PlanRoutingResult(
+            branches=branches,
+            used_fallback=False,
+            raw_response=raw_response,
+        )
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"[:1000]
+        planner = fallback_planner or deterministic_plan_branches
+        fallback_values = planner(subgoal, count)
+        fallback_branches = tuple(
+            item if isinstance(item, PlanBranch) else PlanBranch.from_dict(item)
+            for item in fallback_values
+        )
+        if not fallback_branches:
+            raise TaskProposalRouterError(
+                "llm_router failed and fallback planner returned no branches: "
+                f"{error}"
+            ) from exc
+        return PlanRoutingResult(
+            branches=fallback_branches,
+            used_fallback=True,
+            router_error=error,
+            raw_response=raw_response,
+        )
