@@ -123,6 +123,134 @@ class ObjectiveGoal:
         return str(self.fields.get("status") or "active").strip().lower()
 
     @property
+    def lifecycle_state(self) -> Any:
+        """Return this goal's canonical :class:`GoalState`.
+
+        The import is intentionally local.  ``goal_completion`` consumes the
+        objective parser defined in this module, so a module-level import would
+        create a cycle.  Keeping normalization at this boundary lets older
+        objective heaps continue to use labels such as ``open`` or
+        ``completed`` while every graph consumer sees the six-state lifecycle.
+        """
+
+        from .goal_completion import normalize_goal_state
+
+        return normalize_goal_state(self.status)
+
+    @property
+    def lifecycle_state_value(self) -> str:
+        """Return the serializable value of :attr:`lifecycle_state`."""
+
+        state = self.lifecycle_state
+        return str(getattr(state, "value", state))
+
+    @property
+    def is_schedulable(self) -> bool:
+        """Whether new implementation work may be generated for this goal."""
+
+        from .goal_completion import is_schedulable_goal_state
+
+        return is_schedulable_goal_state(self.lifecycle_state)
+
+    @property
+    def is_terminal(self) -> bool:
+        """Whether the goal has reached the sole terminal lifecycle state."""
+
+        from .goal_completion import is_terminal_goal_state
+
+        return is_terminal_goal_state(self.lifecycle_state)
+
+    @property
+    def completion_evidence_metadata(self) -> dict[str, Any]:
+        """Return completion-proof references recorded on the goal.
+
+        Objective heaps predate the typed evidence ledger and consequently use
+        a few field spellings in the wild.  This projection is deliberately
+        lossless (values are not split or otherwise interpreted) and gives
+        graph artifacts stable names for the proof dimensions required by the
+        completion gate.
+        """
+
+        aliases = {
+            "acceptance_criterion": (
+                "acceptance_criterion",
+                "acceptance_criteria",
+                "acceptance",
+            ),
+            "producer": (
+                "producing_task_or_scan",
+                "producing_task",
+                "producing_scan",
+                "produced_by",
+            ),
+            "validation_receipt": (
+                "validation_receipt",
+                "validation_receipt_cid",
+            ),
+            "repository_tree": (
+                "repository_tree",
+                "repository_tree_cid",
+                "repo_tree",
+                "tree",
+            ),
+            "freshness": (
+                "freshness",
+                "evidence_freshness",
+                "fresh_at",
+            ),
+            "provenance_cid": (
+                "provenance_cid",
+                "evidence_provenance_cid",
+                "provenance",
+            ),
+        }
+        metadata: dict[str, Any] = {}
+        for canonical_name, field_names in aliases.items():
+            for field_name in field_names:
+                value = str(self.fields.get(field_name) or "").strip()
+                if value:
+                    metadata[canonical_name] = value
+                    break
+        records = self.completion_evidence_records
+        if records:
+            record = records[0]
+            metadata.setdefault("acceptance_criterion", record.get("acceptance_criterion", ""))
+            metadata.setdefault(
+                "producer",
+                record.get("producing_task_or_scan", record.get("producer_id", "")),
+            )
+            metadata.setdefault("validation_receipt", record.get("validation_receipt", ""))
+            metadata.setdefault(
+                "repository_tree", record.get("repository_tree", record.get("tree_id", ""))
+            )
+            metadata.setdefault("freshness", record.get("freshness", ""))
+            metadata.setdefault(
+                "provenance_cid", record.get("provenance_cid", record.get("receipt_cid", ""))
+            )
+        return metadata
+
+    @property
+    def completion_evidence_records(self) -> list[dict[str, Any]]:
+        """Return typed completion records persisted by the tracker."""
+
+        raw = str(
+            self.fields.get("completion_evidence_records")
+            or self.fields.get("completion_evidence_json")
+            or ""
+        ).strip()
+        if not raw:
+            return []
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+        if isinstance(payload, Mapping):
+            payload = [payload]
+        if not isinstance(payload, list):
+            return []
+        return [dict(item) for item in payload if isinstance(item, Mapping)]
+
+    @property
     def priority(self) -> tuple[int, str]:
         try:
             fib_priority = int(str(self.fields.get("fib_priority") or "999999").strip())
@@ -1025,6 +1153,14 @@ def evidence_index(
 
 
 def goal_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, Any]:
+    """Materialize objective hierarchy, lifecycle, and proof requirements.
+
+    ``nodes``, ``edges``, ``children``, ``roots``, and ``depths`` retain their
+    historical shapes.  The additional projections make the graph safe for
+    lifecycle-aware callers: no consumer needs to infer completion from a lack
+    of scheduled tasks, and proof references remain attached to their goal.
+    """
+
     nodes = {goal.goal_id: goal for goal in goals if goal.goal_id}
     edges: list[dict[str, str]] = []
     children: dict[str, list[str]] = {goal_id: [] for goal_id in nodes}
@@ -1061,12 +1197,100 @@ def goal_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, Any]:
     for goal_id in nodes:
         depth_for(goal_id)
 
+    node_details: dict[str, dict[str, Any]] = {}
+    state_counts: dict[str, int] = {}
+    schedulable_goal_ids: list[str] = []
+    terminal_goal_ids: list[str] = []
+    evidence_nodes: list[dict[str, Any]] = []
+    evidence_edges: list[dict[str, str]] = []
+    for goal_id, goal in sorted(nodes.items()):
+        state = goal.lifecycle_state_value
+        state_counts[state] = state_counts.get(state, 0) + 1
+        if goal.is_schedulable:
+            schedulable_goal_ids.append(goal_id)
+        if goal.is_terminal:
+            terminal_goal_ids.append(goal_id)
+        required_evidence = goal.required_evidence
+        node_details[goal_id] = {
+            "goal_id": goal_id,
+            "title": goal.title,
+            "status": goal.status,
+            "lifecycle_state": state,
+            "schedulable": goal.is_schedulable,
+            "terminal": goal.is_terminal,
+            "parents": goal.parent_goal_ids,
+            "required_evidence": required_evidence,
+            "completion_evidence": goal.completion_evidence_metadata,
+        }
+        for term in required_evidence:
+            evidence_id = "evidence:" + sha1(
+                f"{goal_id}\0{term}".encode("utf-8")
+            ).hexdigest()[:16]
+            evidence_nodes.append(
+                {
+                    "id": evidence_id,
+                    "goal_id": goal_id,
+                    "acceptance_criterion": term,
+                }
+            )
+            evidence_edges.append(
+                {
+                    "from": goal_id,
+                    "to": evidence_id,
+                    "kind": "requires_evidence",
+                }
+            )
+        for record in goal.completion_evidence_records:
+            criterion = str(record.get("acceptance_criterion") or "").strip()
+            provenance_cid = str(
+                record.get("provenance_cid") or record.get("receipt_cid") or ""
+            ).strip()
+            proof_id = "completion-evidence:" + sha1(
+                f"{goal_id}\0{criterion}\0{provenance_cid}".encode("utf-8")
+            ).hexdigest()[:16]
+            evidence_nodes.append(
+                {
+                    "id": proof_id,
+                    "goal_id": goal_id,
+                    "acceptance_criterion": criterion,
+                    "kind": "completion_evidence",
+                    "producing_task_or_scan": str(
+                        record.get("producing_task_or_scan")
+                        or record.get("producer_id")
+                        or ""
+                    ),
+                    "validation_receipt": record.get("validation_receipt"),
+                    "repository_tree": str(
+                        record.get("repository_tree") or record.get("tree_id") or ""
+                    ),
+                    "freshness": record.get("freshness"),
+                    "provenance_cid": provenance_cid,
+                }
+            )
+            evidence_edges.append(
+                {"from": goal_id, "to": proof_id, "kind": "supported_by"}
+            )
+
+    lifecycle = {
+        "state_counts": dict(sorted(state_counts.items())),
+        "schedulable_goal_ids": schedulable_goal_ids,
+        "terminal_goal_ids": terminal_goal_ids,
+        "nonterminal_goal_ids": sorted(set(nodes) - set(terminal_goal_ids)),
+    }
+
     return {
         "nodes": sorted(nodes),
+        "node_details": node_details,
         "edges": edges,
         "children": {key: sorted(value) for key, value in children.items() if value},
         "roots": sorted(roots),
         "depths": depths,
+        "lifecycle": lifecycle,
+        "state_counts": lifecycle["state_counts"],
+        "schedulable_goal_ids": lifecycle["schedulable_goal_ids"],
+        "terminal_goal_ids": lifecycle["terminal_goal_ids"],
+        "evidence_nodes": evidence_nodes,
+        "evidence_edges": evidence_edges,
     }
 
 
@@ -1781,7 +2005,7 @@ def interoperability_pair_schedule_key(goal: ObjectiveGoal) -> str:
 
 
 def objective_heap_schedule(goals: Sequence[ObjectiveGoal]) -> list[ObjectiveHeapRecord]:
-    """Return active goals in Fibonacci-priority heap order.
+    """Return schedulable goals in Fibonacci-priority heap order.
 
     The persisted objective heap stores Fibonacci priority buckets in markdown.
     This function materializes those buckets as a deterministic heap schedule and
@@ -1793,7 +2017,7 @@ def objective_heap_schedule(goals: Sequence[ObjectiveGoal]) -> list[ObjectiveHea
     heap: list[tuple[tuple[Any, ...], ObjectiveGoal]] = []
     seen_interoperability_pairs: set[str] = set()
     for goal in goals:
-        if goal.status not in {"active", "todo", "open"}:
+        if not goal.is_schedulable:
             continue
         interoperability_key = interoperability_pair_schedule_key(goal)
         if interoperability_key:
@@ -2355,7 +2579,7 @@ def scan_objective_gaps(
     goals = [
         goal
         for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
-        if goal.status in {"active", "todo", "open"}
+        if goal.is_schedulable
     ]
     if not goals:
         return []
