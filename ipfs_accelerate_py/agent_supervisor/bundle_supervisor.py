@@ -6,12 +6,14 @@ import argparse
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
+import threading
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .lease_coordination import LeaseCoordinator, LeaseError
 from .objective_graph import (
@@ -50,6 +52,33 @@ class BundleLaneSpec:
         for key in ("todo_path", "state_dir", "worktree_root", "log_path"):
             path = Path(payload[key])
             payload[key] = repo_relative_path(repo_root, path) if repo_root is not None else str(path)
+        return payload
+
+
+@dataclass
+class RunningBundleLane:
+    """Live scheduler ownership for one subprocess and its fenced lease."""
+
+    spec: BundleLaneSpec
+    grant: Any
+    handle: Any
+    started_at: str
+
+    @property
+    def pid(self) -> int | None:
+        value = getattr(self.handle, "pid", None)
+        return int(value) if isinstance(value, int) else None
+
+    def to_dict(self, *, repo_root: Path) -> dict[str, Any]:
+        payload = self.spec.to_dict(repo_root=repo_root)
+        payload.update(
+            {
+                "state": "running",
+                "pid": self.pid,
+                "started_at": self.started_at,
+                "lease": self.grant.to_dict(),
+            }
+        )
         return payload
 
 
@@ -252,38 +281,19 @@ def launch_bundle_lanes(
             except LeaseError as exc:
                 results.append({"bundle_key": lane.bundle_key, "accepted": False, "error": str(exc), "code": exc.code})
                 continue
-            lane.state_dir.mkdir(parents=True, exist_ok=True)
-            lane.worktree_root.mkdir(parents=True, exist_ok=True)
-            lane.log_path.parent.mkdir(parents=True, exist_ok=True)
-            guarded_command = [
-                sys.executable, "-m", "ipfs_accelerate_py.agent_supervisor.leased_lane",
-                "--coordination-path", str(path), "--grant-json", json.dumps(grant.to_dict(), sort_keys=True),
-                "--lease-ms", str(lease_ms), "--heartbeat-interval", str(heartbeat_interval),
-                "--capacity-millionths", str(capacity_millionths), "--", *lane.command,
-            ]
-            handle = lane.log_path.open("ab")
             try:
-                env = os.environ.copy()
-                package_root = repo_root / "ipfs_datasets_py" / "ipfs_accelerate_py"
-                if package_root.exists():
-                    env["PYTHONPATH"] = str(package_root) + os.pathsep + env.get("PYTHONPATH", "")
-                try:
-                    process = subprocess.Popen(
-                        guarded_command,
-                        cwd=repo_root,
-                        env=env,
-                        stdin=subprocess.DEVNULL,
-                        stdout=handle,
-                        stderr=subprocess.STDOUT,
-                        start_new_session=True,
-                    )
-                except Exception:
-                    coordinator.release(grant)
-                    raise
-            finally:
-                handle.close()
-            pid_path = lane.state_dir / f"{lane.state_prefix}_bundle_supervisor.pid"
-            pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
+                process, guarded_command, pid_path = _spawn_accepted_lane(
+                    lane,
+                    grant,
+                    repo_root=repo_root,
+                    coordination_path=path,
+                    lease_ms=lease_ms,
+                    heartbeat_interval=heartbeat_interval,
+                    capacity_millionths=capacity_millionths,
+                )
+            except Exception:
+                coordinator.release(grant, reason="launch failed")
+                raise
             results.append(
                 {
                     "bundle_key": lane.bundle_key, "accepted": True, "pid": process.pid,
@@ -292,6 +302,60 @@ def launch_bundle_lanes(
                 }
             )
     return results
+
+
+def _spawn_accepted_lane(
+    lane: BundleLaneSpec,
+    grant: Any,
+    *,
+    repo_root: Path,
+    coordination_path: Path,
+    lease_ms: int,
+    heartbeat_interval: float,
+    capacity_millionths: int,
+) -> tuple[subprocess.Popen[bytes], list[str], Path]:
+    """Start one already-claimed lane without opening a second claim race."""
+
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    lane.worktree_root.mkdir(parents=True, exist_ok=True)
+    lane.log_path.parent.mkdir(parents=True, exist_ok=True)
+    guarded_command = [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.leased_lane",
+        "--coordination-path",
+        str(coordination_path),
+        "--grant-json",
+        json.dumps(grant.to_dict(), sort_keys=True),
+        "--lease-ms",
+        str(lease_ms),
+        "--heartbeat-interval",
+        str(heartbeat_interval),
+        "--capacity-millionths",
+        str(capacity_millionths),
+        "--",
+        *lane.command,
+    ]
+    env = os.environ.copy()
+    package_root = repo_root / "ipfs_datasets_py" / "ipfs_accelerate_py"
+    if package_root.exists():
+        env["PYTHONPATH"] = str(package_root) + os.pathsep + env.get("PYTHONPATH", "")
+    handle = lane.log_path.open("ab")
+    try:
+        process = subprocess.Popen(
+            guarded_command,
+            cwd=repo_root,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    finally:
+        handle.close()
+    pid_path = lane.state_dir / f"{lane.state_prefix}_bundle_supervisor.pid"
+    pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
+    return process, guarded_command, pid_path
 
 
 def check_lane_health(
@@ -372,6 +436,433 @@ def default_state_root(repo_root: Path) -> Path:
     return repo_root / "data" / "agent_supervisor" / "bundle_lanes"
 
 
+class DynamicBundleScheduler:
+    """Persistent, capacity-bounded reconciler for objective bundle workers.
+
+    The bundle index is an input stream, not a launch snapshot.  Every
+    reconciliation rereads it, durably registers all discovered work, reaps
+    lanes that no longer execute, and claims enough ready work to fill the
+    configured capacity.  SQLite leases remain the sole execution authority;
+    the in-memory process table is only a live-process projection.
+    """
+
+    def __init__(
+        self,
+        *,
+        bundle_index_path: Path,
+        repo_root: Path,
+        state_root: Path | None = None,
+        worktree_root: Path | None = None,
+        log_dir: Path | None = None,
+        manifest_path: Path | None = None,
+        coordination_path: Path | None = None,
+        max_lanes: int = 1,
+        claimant_did: str = "did:web:ipfs-accelerate.local",
+        lease_ms: int = 60_000,
+        heartbeat_interval: float = 5.0,
+        capacity_millionths: int = 1_000_000,
+        poll_interval: float = 5.0,
+        launcher: Callable[[BundleLaneSpec, Any], Any] | None = None,
+        process_alive: Callable[[Any], bool] | None = None,
+        lane_disposition: Callable[[BundleLaneSpec], str | bool] | None = None,
+        **lane_options: Any,
+    ) -> None:
+        if int(max_lanes) < 1:
+            raise ValueError("max_lanes must be at least 1")
+        self.repo_root = Path(repo_root).resolve()
+        self.bundle_index_path = Path(bundle_index_path).resolve()
+        self.state_root = Path(state_root or default_state_root(self.repo_root)).resolve()
+        self.worktree_root = Path(worktree_root or self.state_root / "worktrees").resolve()
+        self.log_dir = Path(log_dir or self.state_root / "logs").resolve()
+        self.manifest_path = Path(manifest_path or self.state_root / "bundle_lanes.json").resolve()
+        self.coordination_path = Path(
+            coordination_path or self.state_root / "coordination.sqlite3"
+        ).resolve()
+        self.max_lanes = int(max_lanes)
+        self.claimant_did = str(claimant_did)
+        self.lease_ms = int(lease_ms)
+        self.heartbeat_interval = float(heartbeat_interval)
+        self.capacity_millionths = int(capacity_millionths)
+        self.poll_interval = max(0.0, float(poll_interval))
+        self.lane_options = dict(lane_options)
+        self._launcher = launcher or self._default_launcher
+        self._process_alive = process_alive or self._default_process_alive
+        self._lane_disposition = lane_disposition or self._default_lane_disposition
+        self._running: dict[str, RunningBundleLane] = {}
+        self._stop_event = threading.Event()
+        self._lock = threading.RLock()
+        self._cycle = 0
+        self._last_discovery_error = ""
+
+    @property
+    def running_count(self) -> int:
+        return len(self._running)
+
+    def _plan(self) -> list[BundleLaneSpec]:
+        allowed = {
+            "task_prefix", "implement", "daemon_interval", "stale_seconds",
+            "check_interval", "max_restarts", "implementation_timeout",
+            "implementation_command", "llm_merge_resolver_command",
+            "llm_merge_resolver_timeout_seconds", "merge_reconciliation_max_merges",
+            "generated_dirty_repair_enabled", "generated_dirty_repair_commit_subject",
+            "generated_dirty_repair_include_submodule_gitlinks",
+            "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
+            "log_level",
+        }
+        options = {key: value for key, value in self.lane_options.items() if key in allowed}
+        return plan_bundle_lanes(
+            bundle_index_path=self.bundle_index_path,
+            repo_root=self.repo_root,
+            state_root=self.state_root,
+            worktree_root=self.worktree_root,
+            log_dir=self.log_dir,
+            max_lanes=None,
+            **options,
+        )
+
+    @staticmethod
+    def _default_process_alive(handle: Any) -> bool:
+        poll = getattr(handle, "poll", None)
+        if callable(poll):
+            return poll() is None
+        return bool(getattr(handle, "alive", False))
+
+    @staticmethod
+    def _default_lane_disposition(lane: BundleLaneSpec) -> str:
+        """Project a fully settled shard board to a bundle disposition."""
+
+        try:
+            markdown = lane.todo_path.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+        from .todo_daemon.engine import parse_markdown_tasks
+
+        tasks = parse_markdown_tasks(markdown)
+        if not tasks:
+            return ""
+        if all(task.status == "complete" for task in tasks):
+            return "completed"
+        if all(task.status in {"complete", "blocked"} for task in tasks):
+            return "blocked"
+        return ""
+
+    def _disposition(self, lane: BundleLaneSpec) -> str:
+        value = self._lane_disposition(lane)
+        if value is True:
+            return "completed"
+        if value is False or value is None:
+            return ""
+        normalized = str(value).strip().lower()
+        return normalized if normalized in {"completed", "blocked"} else ""
+
+    @staticmethod
+    def _terminate_handle(handle: Any) -> None:
+        terminate = getattr(handle, "terminate", None)
+        if callable(terminate):
+            try:
+                terminate()
+            except OSError:
+                pass
+
+    @staticmethod
+    def _settle_grant(
+        coordinator: LeaseCoordinator,
+        grant: Any,
+        *,
+        disposition: str,
+    ) -> None:
+        if disposition == "completed":
+            coordinator.receipt(
+                grant,
+                status="succeeded",
+                output={"reason": "bundle board drained"},
+            )
+        else:
+            coordinator.receipt(
+                grant,
+                status="failed",
+                failure_class="blocked",
+            )
+
+    def _default_launcher(self, lane: BundleLaneSpec, grant: Any) -> subprocess.Popen[bytes]:
+        process, _command, _pid_path = _spawn_accepted_lane(
+            lane,
+            grant,
+            repo_root=self.repo_root,
+            coordination_path=self.coordination_path,
+            lease_ms=self.lease_ms,
+            heartbeat_interval=self.heartbeat_interval,
+            capacity_millionths=self.capacity_millionths,
+        )
+        return process
+
+    def _reap(self, coordinator: LeaseCoordinator) -> list[str]:
+        reaped: list[str] = []
+        for task_cid, running in list(self._running.items()):
+            try:
+                alive = bool(self._process_alive(running.handle))
+            except (OSError, RuntimeError):
+                alive = False
+            disposition = self._disposition(running.spec) if alive else ""
+            if alive and not disposition:
+                continue
+            if disposition:
+                try:
+                    self._settle_grant(coordinator, running.grant, disposition=disposition)
+                except LeaseError:
+                    pass
+                self._terminate_handle(running.handle)
+            # The leased-lane wrapper normally publishes a receipt first.  A
+            # crashed wrapper does not, so explicitly release its still-current
+            # grant and make the lane immediately reclaimable.
+            try:
+                if coordinator.active_lease(task_cid) is not None:
+                    coordinator.release(running.grant, reason="worker drained or exited")
+            except LeaseError:
+                pass
+            del self._running[task_cid]
+            reaped.append(task_cid)
+        return reaped
+
+    @staticmethod
+    def _projection_state(item: dict[str, Any]) -> str:
+        state = str(item.get("state") or item.get("lease_state") or "ready")
+        if state in {"released", "expired", "pending", "registered"}:
+            return "ready"
+        if state in {"complete", "completed", "succeeded"}:
+            return "completed"
+        return state
+
+    def _write_live_manifest(
+        self,
+        *,
+        discovered: Sequence[BundleLaneSpec],
+        task_projection: Sequence[dict[str, Any]],
+        launched: Sequence[str],
+        reaped: Sequence[str],
+    ) -> dict[str, Any]:
+        running_ids = set(self._running)
+        normalized: list[dict[str, Any]] = []
+        for raw in task_projection:
+            item = dict(raw)
+            item["state"] = self._projection_state(item)
+            normalized.append(item)
+        ready = [item for item in normalized if item["state"] == "ready"]
+        completed = [item for item in normalized if item["state"] == "completed"]
+        blocked = [
+            item
+            for item in normalized
+            if item["state"] == "blocked"
+            or (
+                item["state"] == "accepted"
+                and str(item.get("task_cid") or "") not in running_ids
+            )
+        ]
+        active_lanes = [
+            running.to_dict(repo_root=self.repo_root)
+            for _task_cid, running in sorted(self._running.items())
+        ]
+        payload: dict[str, Any] = {
+            "schema": "ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler@1",
+            "generated_at": utc_now(),
+            "authoritative": True,
+            "scheduler_state": "stopping" if self._stop_event.is_set() else "running",
+            "cycle": self._cycle,
+            "repo_root": str(self.repo_root),
+            "bundle_index_path": repo_relative_path(self.repo_root, self.bundle_index_path),
+            "coordination_path": repo_relative_path(self.repo_root, self.coordination_path),
+            "capacity": self.max_lanes,
+            "planned_count": len(discovered),
+            "started_count": len(active_lanes),
+            "running_count": len(active_lanes),
+            "ready_count": len(ready),
+            "blocked_count": len(blocked),
+            "completed_count": len(completed),
+            "counts": {
+                "active": len(active_lanes),
+                "ready": len(ready),
+                "blocked": len(blocked),
+                "completed": len(completed),
+                "capacity": self.max_lanes,
+            },
+            "lanes": active_lanes,
+            "ready": ready,
+            "blocked": blocked,
+            "completed": completed,
+            "tasks": normalized,
+            "launched_task_cids": list(launched),
+            "reaped_task_cids": list(reaped),
+        }
+        if self._last_discovery_error:
+            payload["discovery_error"] = self._last_discovery_error
+        self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.manifest_path.with_name(
+            f".{self.manifest_path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+        )
+        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(temporary, self.manifest_path)
+        return payload
+
+    def reconcile_once(self) -> dict[str, Any]:
+        """Perform one atomic discovery/reap/claim/fill/projection cycle."""
+
+        with self._lock:
+            self._cycle += 1
+            try:
+                discovered = self._plan()
+                self._last_discovery_error = ""
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                discovered = []
+                self._last_discovery_error = f"{type(exc).__name__}: {exc}"
+                logger.warning("Bundle discovery failed; retaining live lanes: %s", exc)
+
+            launched: list[str] = []
+            with LeaseCoordinator(self.coordination_path) as coordinator:
+                registered: list[BundleLaneSpec] = []
+                for lane in discovered:
+                    if not lane.queue_payload:
+                        continue
+                    adapted = coordinator.register_bundle(lane.queue_payload)
+                    registered.append(
+                        replace(
+                            lane,
+                            task_cid=str(adapted["task_cid"]),
+                            goal_cid=str(adapted["goal_cid"]),
+                            subgoal_cid=str(adapted["subgoal_cid"]),
+                        )
+                    )
+
+                reaped = self._reap(coordinator)
+                free_slots = max(0, self.max_lanes - len(self._running))
+                for lane in registered:
+                    if free_slots <= 0:
+                        break
+                    if lane.task_cid in self._running:
+                        continue
+                    grant = coordinator.claim_ready(
+                        self.claimant_did,
+                        requested_lease_ms=self.lease_ms,
+                        eligible_task_cids=(lane.task_cid,),
+                    )
+                    if grant is None:
+                        continue
+                    disposition = self._disposition(lane)
+                    if disposition:
+                        try:
+                            self._settle_grant(coordinator, grant, disposition=disposition)
+                        except LeaseError:
+                            pass
+                        continue
+                    try:
+                        handle = self._launcher(lane, grant)
+                    except Exception:
+                        try:
+                            coordinator.release(grant, reason="launch failed")
+                        except LeaseError:
+                            pass
+                        logger.exception("Failed to launch bundle lane %s", lane.bundle_key)
+                        continue
+                    self._running[lane.task_cid] = RunningBundleLane(
+                        spec=lane,
+                        grant=grant,
+                        handle=handle,
+                        started_at=utc_now(),
+                    )
+                    launched.append(lane.task_cid)
+                    free_slots -= 1
+
+                projection = coordinator.list_tasks()
+            return self._write_live_manifest(
+                discovered=discovered,
+                task_projection=projection,
+                launched=launched,
+                reaped=reaped,
+            )
+
+    def run(
+        self,
+        *,
+        max_cycles: int | None = None,
+        stop_event: threading.Event | None = None,
+    ) -> dict[str, Any]:
+        """Reconcile until stopped; an empty queue never terminates the pool."""
+
+        external_stop = stop_event
+        cycles = 0
+        payload: dict[str, Any] = {}
+        if max_cycles is not None and int(max_cycles) <= 0:
+            return payload
+        install_handlers = max_cycles is None and threading.current_thread() is threading.main_thread()
+        previous_term: Any = None
+        previous_int: Any = None
+
+        def request_stop(_signum: int, _frame: object) -> None:
+            self._stop_event.set()
+
+        if install_handlers:
+            previous_term = signal.signal(signal.SIGTERM, request_stop)
+            previous_int = signal.signal(signal.SIGINT, request_stop)
+        try:
+            while not self._stop_event.is_set() and not (external_stop and external_stop.is_set()):
+                payload = self.reconcile_once()
+                cycles += 1
+                if max_cycles is not None and cycles >= int(max_cycles):
+                    break
+                wait_for = max(0.01, self.poll_interval)
+                if self._stop_event.wait(wait_for):
+                    break
+                if external_stop and external_stop.is_set():
+                    break
+        except BaseException:
+            self._stop_event.set()
+            raise
+        finally:
+            if install_handlers:
+                signal.signal(signal.SIGTERM, previous_term)
+                signal.signal(signal.SIGINT, previous_int)
+            if self._stop_event.is_set() or (external_stop and external_stop.is_set()):
+                payload = self.stop()
+        return payload
+
+    def stop(self, *, grace_seconds: float = 5.0) -> dict[str, Any]:
+        """Stop owned processes and release only leases still fenced to them."""
+
+        self._stop_event.set()
+        with self._lock, LeaseCoordinator(self.coordination_path) as coordinator:
+            for task_cid, running in list(self._running.items()):
+                terminate = getattr(running.handle, "terminate", None)
+                if callable(terminate):
+                    try:
+                        terminate()
+                    except OSError:
+                        pass
+                wait = getattr(running.handle, "wait", None)
+                if callable(wait):
+                    try:
+                        wait(timeout=max(0.0, float(grace_seconds)))
+                    except (OSError, subprocess.TimeoutExpired):
+                        kill = getattr(running.handle, "kill", None)
+                        if callable(kill):
+                            kill()
+                try:
+                    if coordinator.active_lease(task_cid) is not None:
+                        coordinator.release(running.grant, reason="scheduler stopped")
+                except LeaseError:
+                    pass
+            self._running.clear()
+            projection = coordinator.list_tasks()
+        try:
+            discovered = self._plan()
+        except (OSError, ValueError, json.JSONDecodeError):
+            discovered = []
+        return self._write_live_manifest(
+            discovered=discovered,
+            task_projection=projection,
+            launched=(),
+            reaped=(),
+        )
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Plan or launch isolated daemon lanes for objective bundle shards")
     parser.add_argument("--bundle-index-path", type=Path, required=True)
@@ -382,7 +873,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-path", type=Path, default=None)
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
     parser.add_argument("--start", action="store_true", help="Launch the planned lane supervisors")
-    parser.add_argument("--max-lanes", type=int, default=None)
+    parser.add_argument("--max-lanes", type=int, default=1, help="Maximum concurrent leased workers")
+    parser.add_argument("--poll-interval", type=float, default=5.0)
+    parser.add_argument("--once", action="store_true", help="Run one reconciliation cycle and exit")
     implement_group = parser.add_mutually_exclusive_group()
     implement_group.add_argument("--implement", dest="implement", action="store_true")
     implement_group.add_argument("--no-implement", dest="implement", action="store_false")
@@ -423,12 +916,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
     log_dir = (args.log_dir or state_root / "logs").resolve()
     manifest_path = (args.manifest_path or state_root / "bundle_lanes.json").resolve()
     bundle_index_path = args.bundle_index_path.resolve()
-    lanes = plan_bundle_lanes(
-        bundle_index_path=bundle_index_path,
-        repo_root=repo_root,
-        state_root=state_root,
-        worktree_root=worktree_root,
-        log_dir=log_dir,
+    lane_options = dict(
         task_prefix=args.task_prefix,
         implement=args.implement,
         daemon_interval=args.daemon_interval,
@@ -446,25 +934,43 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         generated_dirty_repair_max_paths=args.generated_dirty_max_paths,
         generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
         log_level=args.log_level,
-        max_lanes=args.max_lanes,
     )
-    started = launch_bundle_lanes(
-        lanes,
+    if args.start:
+        scheduler = DynamicBundleScheduler(
+            bundle_index_path=bundle_index_path,
+            repo_root=repo_root,
+            state_root=state_root,
+            worktree_root=worktree_root,
+            log_dir=log_dir,
+            manifest_path=manifest_path,
+            coordination_path=getattr(args, "coordination_path", None),
+            max_lanes=getattr(args, "max_lanes", 1) or 1,
+            claimant_did=getattr(args, "claimant_did", "did:web:ipfs-accelerate.local"),
+            lease_ms=getattr(args, "lease_ms", 60_000),
+            heartbeat_interval=getattr(args, "heartbeat_interval", 5.0),
+            capacity_millionths=getattr(args, "capacity_millionths", 1_000_000),
+            poll_interval=getattr(args, "poll_interval", 5.0),
+            **lane_options,
+        )
+        return scheduler.run(max_cycles=1 if getattr(args, "once", False) else None)
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=bundle_index_path,
         repo_root=repo_root,
-        coordination_path=getattr(args, "coordination_path", None),
-        claimant_did=getattr(args, "claimant_did", "did:web:ipfs-accelerate.local"),
-        lease_ms=getattr(args, "lease_ms", 60_000),
-        heartbeat_interval=getattr(args, "heartbeat_interval", 5.0),
-        capacity_millionths=getattr(args, "capacity_millionths", 1_000_000),
-    ) if args.start else []
+        state_root=state_root,
+        worktree_root=worktree_root,
+        log_dir=log_dir,
+        max_lanes=None,
+        **lane_options,
+    )
     payload = write_bundle_lane_manifest(
         manifest_path=manifest_path,
         repo_root=repo_root,
         bundle_index_path=bundle_index_path,
         lanes=lanes,
-        started=started,
+        started=[],
     )
-    logger.info("Planned %s bundle lanes; started %s", len(lanes), len(started))
+    logger.info("Planned %s bundle lanes; started 0", len(lanes))
     return payload
 
 

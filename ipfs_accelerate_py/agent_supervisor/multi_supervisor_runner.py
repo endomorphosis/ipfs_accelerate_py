@@ -42,6 +42,7 @@ class SupervisorTrack:
     daemon_pid_path: Path
     supervisor_status_path: Path | None = None
     extra_args: tuple[str, ...] = ()
+    module_name: str = ""
 
     def resolve(self, repo_root: Path) -> "SupervisorTrack":
         return SupervisorTrack(
@@ -56,6 +57,7 @@ class SupervisorTrack:
                 else None
             ),
             extra_args=self.extra_args,
+            module_name=self.module_name,
         )
 
 
@@ -413,13 +415,56 @@ def expand_implementation_track_lanes(spec: str, *, stamp: str = "", lanes_per_t
 def supervisor_track_payload(track: SupervisorTrack) -> dict[str, str]:
     """Return a serializable track description for tests and diagnostics."""
 
-    return {
+    payload = {
         "name": track.name,
         "script_path": str(track.script_path),
         "log_path": str(track.log_path),
         "supervisor_pid_path": str(track.supervisor_pid_path),
         "daemon_pid_path": str(track.daemon_pid_path),
     }
+    if track.module_name:
+        payload["module_name"] = track.module_name
+    return payload
+
+
+def dynamic_bundle_scheduler_track(
+    *,
+    name: str,
+    bundle_index_path: Path | str,
+    state_root: Path | str,
+    max_lanes: int,
+    repo_root: Path | str = Path("."),
+    poll_interval: float = 5.0,
+    implement: bool = True,
+    claimant_did: str = "did:web:ipfs-accelerate.local",
+) -> SupervisorTrack:
+    """Build a managed track for the persistent leased bundle scheduler.
+
+    Unlike deterministic ``lanes_per_track`` shards, this is one scheduler
+    process that continuously lends a bounded number of slots to live work.
+    """
+
+    if int(max_lanes) < 1:
+        raise ValueError("max_lanes must be at least 1")
+    root = Path(state_root)
+    return SupervisorTrack(
+        name=str(name),
+        script_path=Path("."),
+        log_path=root / "bundle_scheduler.log",
+        supervisor_pid_path=root / "bundle_scheduler.pid",
+        daemon_pid_path=root / "bundle_scheduler_worker.pid",
+        module_name="ipfs_accelerate_py.agent_supervisor.bundle_supervisor",
+        extra_args=(
+            "--repo-root", str(repo_root),
+            "--bundle-index-path", str(bundle_index_path),
+            "--state-root", str(state_root),
+            "--max-lanes", str(max_lanes),
+            "--poll-interval", str(poll_interval),
+            "--claimant-did", str(claimant_did),
+            "--start",
+            "--implement" if implement else "--no-implement",
+        ),
+    )
 
 
 def _env_default_items(
@@ -933,7 +978,11 @@ def start_track(
     resolved = track.resolve(repo_root)
     resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
     resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
-    command = [python_executable, str(resolved.script_path), *common_args, *resolved.extra_args]
+    command = (
+        [python_executable, "-m", resolved.module_name, *resolved.extra_args]
+        if resolved.module_name
+        else [python_executable, str(resolved.script_path), *common_args, *resolved.extra_args]
+    )
     out_handle = resolved.log_path.open("ab")
     try:
         process = subprocess.Popen(
