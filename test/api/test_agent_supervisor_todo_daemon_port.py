@@ -8354,6 +8354,43 @@ def test_implementation_daemon_removes_registered_submodule_worktree_even_when_d
     assert ref_check.returncode != 0
 
 
+def test_implementation_daemon_ignores_independent_nested_checkout_during_cleanup(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "external" / "lib"
+    source.mkdir(parents=True)
+    _git(source, "init")
+    _git(source, "checkout", "-b", "main")
+    _git(source, "config", "user.name", "Test User")
+    _git(source, "config", "user.email", "test@example.invalid")
+    (source / "file.txt").write_text("base\n", encoding="utf-8")
+    _git(source, "add", "file.txt")
+    _git(source, "commit", "-m", "base")
+
+    target = repo / "worktrees" / "accel-010" / "external" / "lib"
+    target.parent.mkdir(parents=True)
+    _git(target.parent, "clone", str(source), str(target))
+    branch_name = "implementation/accel-010"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["external/lib"],
+    )
+
+    result = daemon._cleanup_worktree_submodules(
+        repo / "worktrees" / "accel-010",
+        branch_name,
+    )
+
+    assert result[0]["cleaned"] is True
+    assert result[0]["removed_worktree"] is False
+    assert result[0]["independent_checkout"] is True
+    assert target.exists()
+
+
 def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

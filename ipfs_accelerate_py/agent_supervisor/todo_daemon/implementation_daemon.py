@@ -6835,7 +6835,10 @@ class PortalImplementationDaemon:
             nested_cleanup: list[dict[str, Any]] = []
             errors: list[str] = []
             target_is_registered_worktree = self._worktree_path_registered_in_repo(source, target)
-            if self._is_git_worktree(target) or target_is_registered_worktree:
+            target_is_independent_checkout = (
+                not target_is_registered_worktree and self._is_git_worktree(target)
+            )
+            if target_is_registered_worktree:
                 if target.exists():
                     nested_cleanup = self._cleanup_worktree_submodules(
                         target,
@@ -6879,6 +6882,7 @@ class PortalImplementationDaemon:
                     "cleaned": not errors and not nested_failures,
                     "errors": errors,
                     "nested_submodule_cleanup": nested_cleanup,
+                    "independent_checkout": target_is_independent_checkout,
                 }
             )
         return results
