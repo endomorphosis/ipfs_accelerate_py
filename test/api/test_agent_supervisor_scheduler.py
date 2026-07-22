@@ -125,6 +125,7 @@ def _scheduler(
         launcher=launcher,
         process_alive=launcher.alive,
         poll_interval=0,
+        task_prefix="T-",
     )
 
 
@@ -274,6 +275,29 @@ def test_settled_boards_release_capacity_without_starting_workers(tmp_path: Path
     assert not launcher.starts
     assert blocked["counts"]["active"] == 0
     assert any(item["bundle_key"].endswith("t-2") for item in blocked["blocked"])
+
+
+def test_explicit_terminal_status_uses_the_configured_task_prefix(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    shard = repo / "bundles" / "t-1.todo.md"
+    shard.parent.mkdir(parents=True)
+    shard.write_text(
+        "- [ ] Task checkbox-1: stale checkbox\n\n"
+        "## T-1 Completed by a prior lane\n\n"
+        "- Status: completed\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    settled = scheduler.reconcile_once()
+
+    assert not launcher.starts
+    assert settled["counts"]["active"] == 0
+    assert settled["counts"]["completed"] == 1
 
 
 def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path: Path) -> None:

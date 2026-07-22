@@ -590,6 +590,7 @@ def implementation_supervisor_command(
     generated_dirty_repair_include_submodule_gitlinks: bool = False,
     generated_dirty_repair_max_paths: int | None = None,
     generated_dirty_repair_stale_lock_seconds: float | None = None,
+    worktree_submodule_paths: Sequence[str] = (),
     log_level: str = "INFO",
 ) -> list[str]:
     command = [
@@ -619,6 +620,9 @@ def implementation_supervisor_command(
         "--log-level",
         log_level,
     ]
+    for relative in dict.fromkeys(str(path).strip().strip("/") for path in worktree_submodule_paths):
+        if relative:
+            command.extend(["--worktree-submodule-path", relative])
     command.append("--implement" if implement else "--no-implement")
     if implementation_command:
         command.extend(["--implementation-command", implementation_command])
@@ -664,6 +668,7 @@ def plan_bundle_lanes(
     generated_dirty_repair_include_submodule_gitlinks: bool = False,
     generated_dirty_repair_max_paths: int | None = None,
     generated_dirty_repair_stale_lock_seconds: float | None = None,
+    worktree_submodule_paths: Sequence[str] = (),
     log_level: str = "INFO",
     max_lanes: int | None = None,
 ) -> list[BundleLaneSpec]:
@@ -713,6 +718,7 @@ def plan_bundle_lanes(
             generated_dirty_repair_include_submodule_gitlinks=generated_dirty_repair_include_submodule_gitlinks,
             generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
             generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
+            worktree_submodule_paths=worktree_submodule_paths,
             log_level=log_level,
         )
         lanes.append(
@@ -1081,7 +1087,7 @@ class DynamicBundleScheduler:
             "generated_dirty_repair_enabled", "generated_dirty_repair_commit_subject",
             "generated_dirty_repair_include_submodule_gitlinks",
             "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
-            "log_level",
+            "worktree_submodule_paths", "log_level",
         }
         options = {key: value for key, value in self.lane_options.items() if key in allowed}
         return plan_bundle_lanes(
@@ -1101,8 +1107,7 @@ class DynamicBundleScheduler:
             return poll() is None
         return bool(getattr(handle, "alive", False))
 
-    @staticmethod
-    def _default_lane_disposition(lane: BundleLaneSpec) -> str:
+    def _default_lane_disposition(self, lane: BundleLaneSpec) -> str:
         """Project a fully settled shard board to a bundle disposition."""
 
         state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
@@ -1128,7 +1133,8 @@ class DynamicBundleScheduler:
             return ""
         from .todo_daemon.implementation_daemon import parse_task_file
 
-        portal_tasks = parse_task_file(lane.todo_path)
+        task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
+        portal_tasks = parse_task_file(lane.todo_path, task_prefix)
         if portal_tasks:
             if all(task.status == "completed" for task in portal_tasks):
                 return "completed"
@@ -1750,6 +1756,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.set_defaults(generated_dirty_repair_include_submodule_gitlinks=False)
     parser.add_argument("--generated-dirty-max-paths", type=int, default=200)
     parser.add_argument("--generated-dirty-stale-lock-seconds", type=float, default=300.0)
+    parser.add_argument(
+        "--worktree-submodule-path",
+        action="append",
+        default=[],
+        help="Repeatable nested submodule path to prepare, commit, merge, and clean in every lane.",
+    )
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--coordination-path", type=Path, default=None)
     parser.add_argument("--claimant-did", default="did:web:ipfs-accelerate.local")
@@ -1783,6 +1795,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         generated_dirty_repair_include_submodule_gitlinks=args.generated_dirty_repair_include_submodule_gitlinks,
         generated_dirty_repair_max_paths=args.generated_dirty_max_paths,
         generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
+        worktree_submodule_paths=tuple(args.worktree_submodule_path or ()),
         log_level=args.log_level,
     )
     if args.start:

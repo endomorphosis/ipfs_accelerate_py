@@ -10671,6 +10671,7 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         implementation_command="codex exec --full-auto",
         llm_merge_resolver_command="python resolver.py",
         generated_dirty_repair_enabled=True,
+        worktree_submodule_paths=("ipfs_datasets_py/ipfs_accelerate_py",),
         log_level="DEBUG",
         max_lanes=None,
     )
@@ -10689,6 +10690,8 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     assert lanes[0].command[lanes[0].command.index("--log-level") + 1] == "DEBUG"
     assert lanes[0].command[lanes[0].command.index("--llm-merge-resolver-command") + 1] == "python resolver.py"
     assert "--auto-commit-generated-dirty" in lanes[0].command
+    assert lanes[0].command.count("--worktree-submodule-path") == 1
+    assert "ipfs_datasets_py/ipfs_accelerate_py" in lanes[0].command
 
 
 def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
