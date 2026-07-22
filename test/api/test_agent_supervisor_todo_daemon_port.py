@@ -5975,6 +5975,54 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(t
     assert not any(event["type"] == "implementation_finished" for event in events)
 
 
+def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "quota.sh").write_text(
+        "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md", "quota.sh")
+    _git(repo, "commit", "-m", "seed")
+    state_path = repo / "state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="bash quota.sh",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Wait for provider capacity",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(state_path)
+
+    assert result["deferred"] is True
+    assert result["reason"] == "provider_capacity_exhausted"
+    assert result["attempt_consumed"] is False
+    assert persisted.implementation_attempts == {}
+    assert daemon._find_live_inflight_implementation() is None
+
+
 def test_validation_command_splitter_preserves_quoted_semicolons():
     inline_python = (
         "python3 -c 'import pathlib, sys; "
