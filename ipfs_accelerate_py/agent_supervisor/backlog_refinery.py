@@ -2165,7 +2165,9 @@ def write_codebase_scan_bundle_shards(
             "bundles": bundles,
         }
     )
-    index_path.write_text(json.dumps(index_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    from .artifact_store import write_bundle_index_artifact
+
+    write_bundle_index_artifact(index_path, index_payload)
     generated_paths.append(index_path)
     return list(dict.fromkeys(generated_paths))
 

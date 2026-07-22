@@ -3143,7 +3143,9 @@ def write_bundle_shards(
     index_payload["task_conflict_graph"] = index_planning_graph.conflict_graph.to_dict()
     index_payload["conflict_graph"] = index_planning_graph.conflict_graph.to_dict()
     index_payload["task_planning_graph"] = index_planning_graph.to_dict()
-    index_path.write_text(json.dumps(index_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    from .artifact_store import write_bundle_index_artifact
+
+    write_bundle_index_artifact(index_path, index_payload)
     generated_paths.append(index_path)
     return BundleWriteResult(generated_paths=generated_paths, index_path=index_path, bundle_paths=bundle_paths)
 
@@ -3445,9 +3447,10 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
 
     # Local import avoids making objective scanning depend on coordination
     # initialization while ensuring queue consumers receive immutable links.
+    from .artifact_store import read_bundle_index_projection
     from .lease_coordination import adapt_goal_bundle
 
-    payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
+    payload = read_bundle_index_projection(bundle_index_path, field_names=("source_todo",))
     bundles = payload.get("bundles") if isinstance(payload, Mapping) else {}
     if not isinstance(bundles, Mapping):
         return []

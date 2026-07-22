@@ -100,6 +100,20 @@ from .plan_evaluator import (
 )
 
 __all__ = [
+    "BUNDLE_INDEX_KIND",
+    "SCHEDULER_MANIFEST_KIND",
+    "QUERY_SCHEMA",
+    "QueryArtifactPaths",
+    "artifact_schema",
+    "ensure_query_database",
+    "query_artifact",
+    "query_artifact_paths",
+    "read_artifact_fields",
+    "read_bundle_index_artifact",
+    "read_bundle_index_projection",
+    "write_bundle_index_artifact",
+    "write_queryable_artifact",
+    "write_scheduler_manifest_artifact",
     "BundleWriteResult",
     "BundleLaneSpec",
     "DynamicBundleScheduler",
@@ -475,6 +489,25 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    if name in {
+        "BUNDLE_INDEX_KIND",
+        "SCHEDULER_MANIFEST_KIND",
+        "QUERY_SCHEMA",
+        "QueryArtifactPaths",
+        "artifact_schema",
+        "ensure_query_database",
+        "query_artifact",
+        "query_artifact_paths",
+        "read_artifact_fields",
+        "read_bundle_index_artifact",
+        "read_bundle_index_projection",
+        "write_bundle_index_artifact",
+        "write_queryable_artifact",
+        "write_scheduler_manifest_artifact",
+    }:
+        from . import artifact_store
+
+        return getattr(artifact_store, name)
     if name in {
         "AuditFindingRecord",
         "AuditFindingStatus",

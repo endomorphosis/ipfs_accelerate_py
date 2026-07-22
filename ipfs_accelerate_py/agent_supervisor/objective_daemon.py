@@ -308,7 +308,9 @@ def persist_objective_plan_evaluations(
                 task["plan_selection_rationale"] = decision.get("selection_rationale", [])
     bundle_payload["plan_evaluation_path"] = str(path)
     bundle_payload["plan_evaluation_count"] = len(ordered)
-    bundle_index_path.write_text(json.dumps(bundle_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    from .artifact_store import write_bundle_index_artifact
+
+    write_bundle_index_artifact(bundle_index_path, bundle_payload)
 
 
 def default_repo_root() -> Path:

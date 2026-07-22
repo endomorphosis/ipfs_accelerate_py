@@ -15,6 +15,11 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
 
+from .artifact_store import (
+    BUNDLE_INDEX_KIND,
+    read_artifact_fields,
+    write_scheduler_manifest_artifact,
+)
 from .conflict_graph import materialize_task_conflict_graph
 from .lease_coordination import LeaseCoordinator, LeaseError
 from .objective_graph import (
@@ -50,6 +55,38 @@ _MANIFEST_REFERENCED_BUNDLE_FIELDS = frozenset(
         "dependency_dag",
         "task_conflict_graph",
         "task_dependency_graph",
+    }
+)
+
+_MANIFEST_MEMBER_TASK_FIELDS = frozenset(
+    {
+        "blocking_task_cids",
+        "canonical_task_cid",
+        "depends_on",
+        "dependency_task_cids",
+        "goal_id",
+        "parent_goal_id",
+        "priority",
+        "status",
+        "subgoal_id",
+        "task_cid",
+        "task_id",
+        "title",
+    }
+)
+
+_MANIFEST_PROFILE_G_REFERENCE_FIELDS = frozenset(
+    {
+        "canonical_task_cid",
+        "canonical_task_key",
+        "dependency_repair_evidence",
+        "dependency_repair_evidence_count",
+        "goal_cid",
+        "plan_branch_cid",
+        "selection_cid",
+        "subgoal_cid",
+        "task_cid",
+        "task_spec_cid",
     }
 )
 
@@ -166,11 +203,33 @@ def _compact_bundle_manifest_payload(payload: dict[str, Any]) -> dict[str, Any]:
         if key not in _MANIFEST_REFERENCED_BUNDLE_FIELDS
     }
     omitted = sorted(_MANIFEST_REFERENCED_BUNDLE_FIELDS.intersection(payload))
+    tasks = compact.get("tasks")
+    if isinstance(tasks, list):
+        compact["tasks"] = [
+            {
+                key: value
+                for key, value in task.items()
+                if key in _MANIFEST_MEMBER_TASK_FIELDS
+            }
+            for task in tasks
+            if isinstance(task, dict)
+        ]
+    profile_g = compact.get("profile_g")
+    if isinstance(profile_g, dict):
+        compact["profile_g"] = {
+            key: value
+            for key, value in profile_g.items()
+            if key in _MANIFEST_PROFILE_G_REFERENCE_FIELDS
+        }
     if omitted:
+        index_path = str(payload.get("objective_bundle_index") or "")
         compact["planning_evidence_ref"] = {
-            "bundle_index": str(payload.get("objective_bundle_index") or ""),
+            "bundle_index": index_path,
+            "bundle_index_duckdb": str(Path(index_path).with_suffix(".duckdb")) if index_path else "",
             "bundle_key": str(payload.get("bundle_key") or ""),
             "omitted_fields": omitted,
+            "bundle_table": "bundles",
+            "task_table": "bundle_tasks",
         }
     return compact
 
@@ -191,6 +250,12 @@ def _lane_manifest_payload(lane: BundleLaneSpec, *, repo_root: Path) -> dict[str
     return payload
 
 
+def _lane_database_payload(lane: BundleLaneSpec, *, repo_root: Path) -> dict[str, Any]:
+    """Retain complete lane details in DuckDB while JSON stays prompt-bounded."""
+
+    return lane.to_dict(repo_root=repo_root)
+
+
 @dataclass
 class RunningBundleLane:
     """Live scheduler ownership for one subprocess and its fenced lease."""
@@ -207,6 +272,18 @@ class RunningBundleLane:
 
     def to_dict(self, *, repo_root: Path) -> dict[str, Any]:
         payload = _lane_manifest_payload(self.spec, repo_root=repo_root)
+        payload.update(
+            {
+                "state": "running",
+                "pid": self.pid,
+                "started_at": self.started_at,
+                "lease": self.grant.to_dict(),
+            }
+        )
+        return payload
+
+    def to_database_dict(self, *, repo_root: Path) -> dict[str, Any]:
+        payload = _lane_database_payload(self.spec, repo_root=repo_root)
         payload.update(
             {
                 "state": "running",
@@ -450,10 +527,12 @@ def _excluded_bundle_keys(bundle_index_path: Path) -> set[str]:
     """Return execution units retained only as dependency metadata."""
 
     try:
-        payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return set()
-    if not isinstance(payload, dict):
+        payload = read_artifact_fields(
+            bundle_index_path,
+            ("excluded_bundle_keys",),
+            kind=BUNDLE_INDEX_KIND,
+        )
+    except (OSError, ValueError, RuntimeError):
         return set()
     value = payload.get("excluded_bundle_keys")
     if isinstance(value, dict):
@@ -465,10 +544,19 @@ def _conflict_graph_inputs(bundle_index_path: Path) -> dict[str, Any]:
     """Load optional learned-conflict inputs without making them mandatory."""
 
     try:
-        payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(payload, dict):
+        payload = read_artifact_fields(
+            bundle_index_path,
+            (
+                "branch_diffs",
+                "conflict_graph",
+                "conflict_history",
+                "conflict_receipts",
+                "conflict_weight_history",
+                "concurrency_overrides",
+            ),
+            kind=BUNDLE_INDEX_KIND,
+        )
+    except (OSError, ValueError, RuntimeError):
         return {}
     stored_graph = payload.get("conflict_graph") if isinstance(payload.get("conflict_graph"), dict) else {}
     history = payload.get("conflict_history")
@@ -1175,6 +1263,7 @@ def write_bundle_lane_manifest(
     lanes: Sequence[BundleLaneSpec],
     started: Sequence[dict[str, Any]] = (),
 ) -> dict[str, Any]:
+    detailed_lanes = [_lane_database_payload(lane, repo_root=repo_root) for lane in lanes]
     payload = {
         "schema": "ipfs_accelerate_py.agent_supervisor.bundle_supervisor",
         "generated_at": utc_now(),
@@ -1189,9 +1278,12 @@ def write_bundle_lane_manifest(
         "lanes": [_lane_manifest_payload(lane, repo_root=repo_root) for lane in lanes],
         "started": list(started),
     }
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return payload
+    database_payload = {**payload, "lanes": detailed_lanes}
+    return write_scheduler_manifest_artifact(
+        manifest_path,
+        payload,
+        database_payload=database_payload,
+    )
 
 
 def default_state_root(repo_root: Path) -> Path:
@@ -1701,10 +1793,12 @@ class DynamicBundleScheduler:
     ) -> dict[str, Any]:
         running_ids = set(self._running)
         normalized: list[dict[str, Any]] = []
+        detailed_tasks: list[dict[str, Any]] = []
         for raw in task_projection:
-            item = _compact_task_manifest_payload(raw)
-            item["state"] = self._projection_state(item)
-            normalized.append(item)
+            detailed = dict(raw)
+            detailed["state"] = self._projection_state(detailed)
+            detailed_tasks.append(detailed)
+            normalized.append(_compact_task_manifest_payload(detailed))
         ready = [item for item in normalized if item["state"] == "ready"]
         completed = [item for item in normalized if item["state"] == "completed"]
         blocked = [
@@ -1718,6 +1812,10 @@ class DynamicBundleScheduler:
         ]
         active_lanes = [
             running.to_dict(repo_root=self.repo_root)
+            for _task_cid, running in sorted(self._running.items())
+        ]
+        detailed_active_lanes = [
+            running.to_database_dict(repo_root=self.repo_root)
             for _task_cid, running in sorted(self._running.items())
         ]
         current_snapshot = scheduler_state or self._build_scheduler_snapshot(discovered, normalized)
@@ -1808,12 +1906,16 @@ class DynamicBundleScheduler:
         }
         if self._last_discovery_error:
             payload["discovery_error"] = self._last_discovery_error
-        self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.manifest_path.with_name(
-            f".{self.manifest_path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+        database_payload = {
+            **payload,
+            "lanes": detailed_active_lanes,
+            "tasks": detailed_tasks,
+        }
+        payload = write_scheduler_manifest_artifact(
+            self.manifest_path,
+            payload,
+            database_payload=database_payload,
         )
-        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(temporary, self.manifest_path)
         write_scheduler_snapshot(self.metrics_path, current_snapshot)
         write_scheduler_snapshot(self.decision_metrics_path, decision_state)
         return payload

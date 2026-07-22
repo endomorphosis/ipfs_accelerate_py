@@ -1379,4 +1379,6 @@ def update_bundle_index_with_todo_vectors(
         payload["conflict_graph"] = graph_payload
         payload["task_conflict_graph"] = graph_payload
         payload["conflict_history"] = dict(graph_payload.get("history") or {})
-    bundle_index_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    from .artifact_store import write_bundle_index_artifact
+
+    write_bundle_index_artifact(bundle_index_path, payload)
