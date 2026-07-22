@@ -21,7 +21,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 BUNDLE_INDEX_KIND = "bundle_planning_index"
 SCHEDULER_MANIFEST_KIND = "scheduler_manifest"
-QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.queryable_artifact@1"
+QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.queryable_artifact@2"
 MAX_QUERY_ROWS = 1_000
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -850,7 +850,8 @@ def _database_fresh(database_path: Path, source_path: Path, kind: str | None) ->
         connection = duckdb.connect(str(database_path), read_only=True)
         try:
             row = connection.execute(
-                "SELECT artifact_kind, source_size, source_mtime_ns FROM artifact_catalog LIMIT 1"
+                "SELECT artifact_kind, schema_version, source_size, source_mtime_ns "
+                "FROM artifact_catalog LIMIT 1"
             ).fetchone()
         finally:
             connection.close()
@@ -860,8 +861,9 @@ def _database_fresh(database_path: Path, source_path: Path, kind: str | None) ->
     return bool(
         row
         and (kind is None or str(row[0]) == kind)
-        and int(row[1]) == stat.st_size
-        and int(row[2]) == stat.st_mtime_ns
+        and str(row[1]) == QUERY_SCHEMA
+        and int(row[2]) == stat.st_size
+        and int(row[3]) == stat.st_mtime_ns
     )
 
 
@@ -900,21 +902,28 @@ def ensure_query_database(path: Path | str, *, kind: str | None = None) -> Path:
     if requested.suffix.lower() == ".duckdb":
         if not requested.exists():
             raise FileNotFoundError(requested)
-        if kind is not None:
-            duckdb = _duckdb_module()
-            connection = duckdb.connect(str(requested), read_only=True)
-            try:
-                row = connection.execute(
-                    "SELECT artifact_kind FROM artifact_catalog LIMIT 1"
-                ).fetchone()
-            finally:
-                connection.close()
-            if not row or str(row[0]) != kind:
-                actual = str(row[0]) if row else "unknown"
-                raise ValueError(
-                    f"expected {kind} DuckDB artifact, found {actual}: {requested}"
-                )
-        return requested
+        duckdb = _duckdb_module()
+        connection = duckdb.connect(str(requested), read_only=True)
+        try:
+            row = connection.execute(
+                "SELECT artifact_kind, schema_version FROM artifact_catalog LIMIT 1"
+            ).fetchone()
+        finally:
+            connection.close()
+        if (
+            row
+            and str(row[1]) == QUERY_SCHEMA
+            and (kind is None or str(row[0]) == kind)
+        ):
+            return requested
+        if paths.json_path.exists():
+            return ensure_query_database(paths.json_path, kind=kind)
+        actual_kind = str(row[0]) if row else "unknown"
+        actual_schema = str(row[1]) if row else "unknown"
+        raise ValueError(
+            f"expected {kind or actual_kind} {QUERY_SCHEMA} DuckDB artifact, "
+            f"found {actual_kind} {actual_schema}: {requested}"
+        )
     if _database_fresh(paths.duckdb_path, paths.json_path, kind):
         return paths.duckdb_path
     payload, source_stat, source_sha256 = _read_stable_json(paths.json_path)
