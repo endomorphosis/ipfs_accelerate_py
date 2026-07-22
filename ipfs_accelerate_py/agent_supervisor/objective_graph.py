@@ -20,6 +20,7 @@ import time
 import warnings
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
+from enum import Enum
 from hashlib import sha1
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -375,6 +376,293 @@ DEPENDENCY_EDGE_KINDS = frozenset(
 SUCCESSFUL_MERGE_RECEIPT_STATUSES = frozenset(
     {"complete", "completed", "merged", "passed", "success", "succeeded"}
 )
+
+
+class CoverageSurfaceKind(str, Enum):
+    """The implementation and proof surfaces addressable by goal coverage.
+
+    These values deliberately describe nodes rather than relationships.  The
+    coverage assembler is consequently free to use precise edge kinds such as
+    ``maps_to_task`` or ``produced_receipt`` without expanding this stable
+    interchange vocabulary.
+    """
+
+    ACCEPTANCE_CRITERION = "acceptance_criterion"
+    TASK = "task"
+    PREDICTED_FILE = "predicted_file"
+    CHANGED_FILE = "changed_file"
+    AST_SYMBOL = "ast_symbol"
+    INTERFACE = "interface"
+    VALIDATION_COMMAND = "validation_command"
+    VALIDATION_RECEIPT = "validation_receipt"
+    FINDING = "finding"
+
+
+class CoverageStatus(str, Enum):
+    """Mutually exclusive evidence assessments for one coverage edge."""
+
+    UNCOVERED = "uncovered"
+    WEAKLY_INFERRED = "weakly_inferred"
+    STALE = "stale"
+    CONTRADICTED = "contradicted"
+    VERIFIED = "verified"
+
+
+def _coverage_json_value(value: Any) -> Any:
+    """Return a stable, JSON-safe value used by coverage IDs and artifacts."""
+
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, Mapping):
+        return {
+            str(key): _coverage_json_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (set, frozenset)):
+        converted = [_coverage_json_value(item) for item in value]
+        return sorted(converted, key=lambda item: json.dumps(item, sort_keys=True, default=str))
+    if isinstance(value, (list, tuple)):
+        return [_coverage_json_value(item) for item in value]
+    if isinstance(value, Path):
+        return value.as_posix()
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _coverage_enum_value(value: Any, enum_type: type[Enum], *, field_name: str) -> str:
+    normalized = str(getattr(value, "value", value) or "").strip().lower()
+    allowed = {str(item.value) for item in enum_type}
+    if normalized not in allowed:
+        raise ValueError(
+            f"unsupported coverage {field_name} {value!r}; expected one of {sorted(allowed)}"
+        )
+    return normalized
+
+
+@dataclass(frozen=True)
+class ObjectiveCoverageEdge:
+    """One explainable relationship in a goal coverage graph.
+
+    ``edge_id`` is derived from the full normalized assertion, including the
+    evidence and provenance CID.  Equal assertions therefore deduplicate
+    safely, while a refreshed or contradictory assertion remains visible as a
+    separate edge for reconciliation.
+    """
+
+    source: str
+    target: str
+    kind: str
+    status: CoverageStatus | str = CoverageStatus.UNCOVERED
+    confidence: float = 0.0
+    explanation: str = ""
+    evidence: Sequence[Any] = field(default_factory=tuple)
+    provenance_cid: str = ""
+
+    def __post_init__(self) -> None:
+        source = str(self.source or "").strip()
+        target = str(self.target or "").strip()
+        kind = str(self.kind or "").strip().lower()
+        if not source or not target:
+            raise ValueError("coverage edges require non-empty source and target node IDs")
+        if not kind:
+            raise ValueError("coverage edges require a non-empty relationship kind")
+        status = _coverage_enum_value(self.status, CoverageStatus, field_name="status")
+        try:
+            confidence = float(self.confidence)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("coverage edge confidence must be numeric") from exc
+        if not math.isfinite(confidence) or confidence < 0.0 or confidence > 1.0:
+            raise ValueError("coverage edge confidence must be between 0.0 and 1.0")
+        explanation = " ".join(str(self.explanation or "").split())
+        raw_evidence: Iterable[Any]
+        if isinstance(self.evidence, Mapping):
+            raw_evidence = (self.evidence,)
+        elif isinstance(self.evidence, (str, bytes)):
+            raw_evidence = (self.evidence,)
+        else:
+            raw_evidence = self.evidence or ()
+        normalized_evidence = [_coverage_json_value(item) for item in raw_evidence]
+        normalized_evidence.sort(key=lambda item: json.dumps(item, sort_keys=True, default=str))
+        object.__setattr__(self, "source", source)
+        object.__setattr__(self, "target", target)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "status", CoverageStatus(status))
+        object.__setattr__(self, "confidence", confidence)
+        object.__setattr__(self, "explanation", explanation)
+        object.__setattr__(self, "evidence", tuple(normalized_evidence))
+        object.__setattr__(self, "provenance_cid", str(self.provenance_cid or "").strip())
+
+    @property
+    def edge_id(self) -> str:
+        canonical = json.dumps(
+            {
+                "source": self.source,
+                "target": self.target,
+                "kind": self.kind,
+                "status": self.status.value,
+                "confidence": self.confidence,
+                "explanation": self.explanation,
+                "evidence": list(self.evidence),
+                "provenance_cid": self.provenance_cid,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+        return "coverage-edge:" + sha1(canonical.encode("utf-8")).hexdigest()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "edge_id": self.edge_id,
+            "source": self.source,
+            "target": self.target,
+            "kind": self.kind,
+            "status": self.status.value,
+            "confidence": self.confidence,
+            "explanation": self.explanation,
+            "evidence": list(self.evidence),
+            "provenance_cid": self.provenance_cid,
+        }
+
+
+@dataclass(frozen=True)
+class ObjectiveCoverageGraph:
+    """Deterministic node/edge projection for goal coverage consumers."""
+
+    nodes: tuple[dict[str, Any], ...]
+    edges: tuple[ObjectiveCoverageEdge, ...]
+
+    @property
+    def edges_by_status(self) -> dict[str, list[ObjectiveCoverageEdge]]:
+        grouped = {status.value: [] for status in CoverageStatus}
+        for edge in self.edges:
+            grouped[edge.status.value].append(edge)
+        return grouped
+
+    @property
+    def status_counts(self) -> dict[str, int]:
+        return {status: len(edges) for status, edges in self.edges_by_status.items()}
+
+    def edges_for_status(self, status: CoverageStatus | str) -> list[ObjectiveCoverageEdge]:
+        normalized = _coverage_enum_value(status, CoverageStatus, field_name="status")
+        return list(self.edges_by_status[normalized])
+
+    @property
+    def uncovered(self) -> list[ObjectiveCoverageEdge]:
+        return self.edges_for_status(CoverageStatus.UNCOVERED)
+
+    @property
+    def weakly_inferred(self) -> list[ObjectiveCoverageEdge]:
+        return self.edges_for_status(CoverageStatus.WEAKLY_INFERRED)
+
+    @property
+    def stale(self) -> list[ObjectiveCoverageEdge]:
+        return self.edges_for_status(CoverageStatus.STALE)
+
+    @property
+    def contradicted(self) -> list[ObjectiveCoverageEdge]:
+        return self.edges_for_status(CoverageStatus.CONTRADICTED)
+
+    @property
+    def verified(self) -> list[ObjectiveCoverageEdge]:
+        return self.edges_for_status(CoverageStatus.VERIFIED)
+
+    def to_dict(self) -> dict[str, Any]:
+        projections = {
+            status: [edge.to_dict() for edge in edges]
+            for status, edges in self.edges_by_status.items()
+        }
+        return {
+            "nodes": [dict(node) for node in self.nodes],
+            "edges": [edge.to_dict() for edge in self.edges],
+            "status_counts": self.status_counts,
+            "surfaces_by_status": projections,
+            # Keep direct keys so diagnostics and JSON-query callers do not
+            # have to know the projection container name.
+            **projections,
+        }
+
+
+def _coverage_node_dict(node: Any) -> dict[str, Any]:
+    if isinstance(node, Mapping):
+        payload = dict(node)
+    else:
+        to_dict = getattr(node, "to_dict", None)
+        if not callable(to_dict):
+            raise TypeError("coverage nodes must be mappings or provide to_dict()")
+        payload = dict(to_dict())
+    node_id = str(payload.get("node_id") or payload.get("id") or "").strip()
+    if not node_id:
+        raise ValueError("coverage nodes require a non-empty node_id or id")
+    payload["node_id"] = node_id
+    payload.setdefault("id", node_id)
+    if payload.get("surface_kind"):
+        payload["surface_kind"] = _coverage_enum_value(
+            payload["surface_kind"], CoverageSurfaceKind, field_name="surface kind"
+        )
+    elif payload.get("kind"):
+        # Grouping nodes (for example a goal or the explicit unmapped bucket)
+        # may share this graph without pretending to be a coverage surface.
+        # Validate known surface values while preserving those group kinds.
+        kind = str(getattr(payload["kind"], "value", payload["kind"])).strip().lower()
+        if kind in {item.value for item in CoverageSurfaceKind}:
+            payload["kind"] = kind
+    return _coverage_json_value(payload)
+
+
+def _coverage_edge_from_value(edge: Any) -> ObjectiveCoverageEdge:
+    if isinstance(edge, ObjectiveCoverageEdge):
+        return edge
+    if not isinstance(edge, Mapping):
+        raise TypeError("coverage edges must be ObjectiveCoverageEdge instances or mappings")
+    return ObjectiveCoverageEdge(
+        source=str(edge.get("source") or edge.get("from") or edge.get("source_node_id") or ""),
+        target=str(edge.get("target") or edge.get("to") or edge.get("target_node_id") or ""),
+        kind=str(edge.get("kind") or edge.get("relationship") or ""),
+        status=edge.get("status") or CoverageStatus.UNCOVERED,
+        confidence=edge.get("confidence", 0.0),
+        explanation=str(edge.get("explanation") or edge.get("reason") or ""),
+        evidence=edge.get("evidence") or (),
+        provenance_cid=str(edge.get("provenance_cid") or edge.get("receipt_cid") or ""),
+    )
+
+
+def materialize_objective_coverage_graph(
+    nodes: Iterable[Any],
+    edges: Iterable[ObjectiveCoverageEdge | Mapping[str, Any]],
+) -> ObjectiveCoverageGraph:
+    """Normalize, validate, deduplicate, and sort a coverage graph.
+
+    Duplicate node IDs must contain the same normalized payload.  Treating a
+    collision as an error, instead of allowing insertion order to win, is
+    important because objective graph artifacts are used as completion proof.
+    Edges must reference registered nodes and exact duplicate assertions are
+    collapsed by their deterministic ID.
+    """
+
+    nodes_by_id: dict[str, dict[str, Any]] = {}
+    for raw_node in nodes:
+        node = _coverage_node_dict(raw_node)
+        node_id = str(node["node_id"])
+        previous = nodes_by_id.get(node_id)
+        if previous is not None and previous != node:
+            raise ValueError(f"conflicting coverage node registrations for {node_id!r}")
+        nodes_by_id[node_id] = node
+
+    edges_by_id: dict[str, ObjectiveCoverageEdge] = {}
+    for raw_edge in edges:
+        edge = _coverage_edge_from_value(raw_edge)
+        missing = [node_id for node_id in (edge.source, edge.target) if node_id not in nodes_by_id]
+        if missing:
+            raise ValueError(
+                f"coverage edge {edge.edge_id!r} references unregistered nodes: {sorted(set(missing))}"
+            )
+        edges_by_id[edge.edge_id] = edge
+
+    normalized_nodes = tuple(nodes_by_id[key] for key in sorted(nodes_by_id))
+    normalized_edges = tuple(edges_by_id[key] for key in sorted(edges_by_id))
+    return ObjectiveCoverageGraph(nodes=normalized_nodes, edges=normalized_edges)
 
 
 @dataclass(frozen=True)
