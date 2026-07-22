@@ -3480,8 +3480,40 @@ class PortalImplementationDaemon:
             gitlink_ref or "HEAD",
             source_key=source_key,
             worktree_path=worktree_path,
+            fallback_when_missing=source_relative is None,
         )
         target = worktree_path / relative
+        if base_ref is None:
+            # A recursive dependency whose recorded gitlink is unavailable
+            # cannot be replaced with an unrelated local HEAD without making
+            # its parent checkout dirty. Leave it uninitialized instead.
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(target)],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if target.exists() or target.is_symlink():
+                if target.is_symlink() or target.is_file():
+                    target.unlink()
+                elif target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
+            target.mkdir(parents=True, exist_ok=True)
+            self._record_event(
+                "nested_submodule_worktree_deferred",
+                {
+                    "source": str(source),
+                    "source_key": source_key,
+                    "worktree_path": str(worktree_path),
+                    "target": str(target),
+                    "missing_ref": gitlink_ref,
+                    "reason": "gitlink_ref_unavailable",
+                },
+            )
+            return False
         if self._is_git_worktree(target) and not target.is_symlink():
             if branch_name:
                 expected_branch = self._submodule_worktree_branch_name(branch_name, source_key)
@@ -3539,7 +3571,8 @@ class PortalImplementationDaemon:
         *,
         source_key: str,
         worktree_path: Path,
-    ) -> str:
+        fallback_when_missing: bool = True,
+    ) -> str | None:
         if not base_ref or base_ref == "HEAD" or self._git_ref_exists_in_repo(source, base_ref):
             return base_ref or "HEAD"
 
@@ -3569,11 +3602,14 @@ class PortalImplementationDaemon:
                 "worktree_path": str(worktree_path),
                 "missing_ref": base_ref,
                 "fallback_ref": fallback_ref,
+                "fallback_used": fallback_when_missing,
                 "fetch_attempted": True,
                 "fetch_returncode": fetch_result.returncode,
                 "fetch_error": fetch_result.stderr.strip()[:1000],
             },
         )
+        if not fallback_when_missing:
+            return None
         return fallback_ref or "HEAD"
 
     def _fallback_submodule_worktree_ref(

@@ -3764,6 +3764,48 @@ def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
     assert worktree_listing.count(f"worktree {target}") == 1
 
 
+def test_implementation_daemon_defers_nested_submodule_with_missing_gitlink(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    worktree = repo / "worktrees" / "missing-nested-ref"
+    _git(repo, "worktree", "add", "-b", "implementation/missing-nested-ref", str(worktree), "main")
+    target = worktree / "libs" / "child"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "fallback.txt").write_text("wrong checkout\n", encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    missing_ref = "f" * 40
+    monkeypatch.setattr(daemon, "_submodule_gitlink_ref", lambda *_args: missing_ref)
+    monkeypatch.setattr(daemon, "_git_ref_exists_in_repo", lambda *_args: False)
+
+    created = daemon._create_local_submodule_worktree(
+        worktree,
+        "libs/child",
+        branch_name="implementation/missing-nested-ref",
+        source_relative="libs/child",
+    )
+
+    assert created is False
+    assert target.is_dir()
+    assert not list(target.iterdir())
+    assert _git(worktree, "status", "--porcelain") == ""
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    missing_event = next(event for event in events if event["type"] == "submodule_gitlink_ref_missing")
+    assert missing_event["fallback_used"] is False
+    deferred_event = next(event for event in events if event["type"] == "nested_submodule_worktree_deferred")
+    assert deferred_event["missing_ref"] == missing_ref
+    assert deferred_event["reason"] == "gitlink_ref_unavailable"
+
+
 def test_implementation_daemon_creates_parent_handoff_for_submodule_only_commit(
     tmp_path: Path,
     monkeypatch,
