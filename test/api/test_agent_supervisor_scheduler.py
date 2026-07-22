@@ -521,7 +521,7 @@ def test_leased_lane_signal_terminates_detached_descendants(tmp_path: Path) -> N
             "--lease-ms",
             "300000",
             "--heartbeat-interval",
-            "0.05",
+            "30",
             "--",
             sys.executable,
             "-c",

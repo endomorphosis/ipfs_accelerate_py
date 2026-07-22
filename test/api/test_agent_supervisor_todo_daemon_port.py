@@ -5039,6 +5039,83 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     assert events[-1]["status"] == "stopped"
 
 
+def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
+    tmp_path, monkeypatch
+):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_supervisor as supervisor_module,
+    )
+
+    repo = tmp_path / "repo"
+    state_dir = repo / "state"
+    state_dir.mkdir(parents=True)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    handlers = {
+        signal.SIGTERM: "previous-term",
+        signal.SIGINT: "previous-int",
+    }
+    transitions = []
+
+    def fake_getsignal(signum):
+        return handlers[signum]
+
+    def fake_signal(signum, handler):
+        previous = handlers[signum]
+        handlers[signum] = handler
+        transitions.append((signum, handler))
+        return previous
+
+    cleanup_calls = []
+    recorded = []
+
+    def fake_loop():
+        handlers[signal.SIGTERM](signal.SIGTERM, None)
+
+    monkeypatch.setattr(supervisor_module.signal, "getsignal", fake_getsignal)
+    monkeypatch.setattr(supervisor_module.signal, "signal", fake_signal)
+    monkeypatch.setattr(supervisor, "_run_forever_loop", fake_loop)
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        lambda: cleanup_calls.append(True) or {"pid": 4321, "terminated": True},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda event_type, payload: recorded.append((event_type, payload)),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        supervisor.run_forever()
+
+    assert exc_info.value.code == 128 + signal.SIGTERM
+    assert cleanup_calls == [True]
+    assert recorded == [
+        (
+            "supervisor_signal_shutdown",
+            {
+                "signal": signal.SIGTERM,
+                "managed_daemon_cleanup": {"pid": 4321, "terminated": True},
+            },
+        )
+    ]
+    assert handlers == {
+        signal.SIGTERM: "previous-term",
+        signal.SIGINT: "previous-int",
+    }
+    assert len(transitions) == 4
+
+
 def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

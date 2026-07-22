@@ -24,7 +24,7 @@ from ..checkout_lock import (
 )
 from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
-from .core import ManagedDaemonSpec
+from .core import ManagedDaemonSpec, terminate_pid_tree
 from .implementation_daemon import (
     DEFAULT_TRACKS,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
@@ -562,6 +562,38 @@ class PortalImplementationSupervisor:
         }
 
     def run_forever(self) -> None:
+        """Run continuously and fence the managed daemon on process signals."""
+
+        stop_signal: int | None = None
+
+        def request_stop(signum: int, _frame: object) -> None:
+            nonlocal stop_signal
+            stop_signal = signum
+            raise SystemExit(128 + signum)
+
+        handlers_installed = threading.current_thread() is threading.main_thread()
+        previous_term: Any = None
+        previous_int: Any = None
+        if handlers_installed:
+            previous_term = signal.signal(signal.SIGTERM, request_stop)
+            previous_int = signal.signal(signal.SIGINT, request_stop)
+        try:
+            self._run_forever_loop()
+        finally:
+            if stop_signal is not None:
+                cleanup = self._terminate_managed_daemon_tree()
+                try:
+                    self._record_event(
+                        "supervisor_signal_shutdown",
+                        {"signal": stop_signal, "managed_daemon_cleanup": cleanup},
+                    )
+                except OSError:
+                    logger.exception("Could not record supervisor signal shutdown")
+            if handlers_installed:
+                signal.signal(signal.SIGTERM, previous_term)
+                signal.signal(signal.SIGINT, previous_int)
+
+    def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
         self.repair_main_checkout_merge_state()
         self.ensure_managed_daemon_pid_file()
@@ -4385,6 +4417,33 @@ class PortalImplementationSupervisor:
 
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
+
+    def _terminate_managed_daemon_tree(self, *, grace_seconds: float = 1.0) -> dict[str, Any]:
+        """Stop the daemon this supervisor owns, including late-spawned workers."""
+
+        pid_path = self._managed_daemon_pid_path()
+        pid = self._read_managed_daemon_pid()
+        if pid is not None:
+            command_line = process_command_line(pid) if process_is_running(pid) else ""
+            if not self._managed_daemon_matches_command_line(command_line):
+                pid = None
+        if pid is None:
+            pid = self._find_matching_managed_daemon_pid()
+
+        terminated = bool(
+            pid is not None
+            and terminate_pid_tree(pid, grace_seconds=max(0.0, float(grace_seconds)))
+        )
+        try:
+            if pid_path.is_file():
+                pid_path.unlink()
+        except OSError:
+            pass
+        return {
+            "pid": pid,
+            "terminated": terminated,
+            "pid_path": str(pid_path),
+        }
 
     def _read_managed_daemon_pid(self) -> int | None:
         try:

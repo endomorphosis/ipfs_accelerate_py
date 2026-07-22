@@ -249,10 +249,12 @@ def run_leased_lane_result(
                 )
 
         stopping_signal: int | None = None
+        stop_event = threading.Event()
 
         def stop_child(signum: int, _frame: object) -> None:
             nonlocal stopping_signal
             stopping_signal = signum
+            stop_event.set()
             # The polling loop must capture and terminate the whole descendant
             # tree before the immediate child can exit and orphan its daemon.
 
@@ -271,7 +273,7 @@ def run_leased_lane_result(
                 # Never sleep through the renewal window, even when an
                 # operator configured a heartbeat interval longer than it.
                 delay = min(max(0.05, float(heartbeat_interval)), max(0.05, until_renewal))
-                time.sleep(delay)
+                stop_event.wait(delay)
                 if stopping_signal is not None:
                     _terminate_child(process)
                     break
