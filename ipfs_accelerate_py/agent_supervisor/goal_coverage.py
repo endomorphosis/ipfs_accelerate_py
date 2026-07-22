@@ -26,6 +26,8 @@ from typing import Any, Iterable, Mapping, Sequence
 from .objective_graph import (
     CoverageStatus,
     CoverageSurfaceKind,
+    ObjectiveWorkKind,
+    ObjectiveWorkProposal,
     ObjectiveCoverageEdge,
     ObjectiveCoverageGraph,
     materialize_objective_coverage_graph,
@@ -1423,6 +1425,326 @@ def goal_coverage_graph(*args: Any, **kwargs: Any) -> dict[str, Any]:
     return build_goal_coverage_map(*args, **kwargs).to_dict()
 
 
+def _goal_work_metadata(goals: Iterable[Any]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    if isinstance(goals, Mapping):
+        goal_values: Iterable[Any] = (
+            ({"goal_id": key, **dict(value)} if isinstance(value, Mapping) else value)
+            for key, value in goals.items()
+        )
+    else:
+        goal_values = goals
+    for goal in goal_values:
+        payload = _payload(goal)
+        sources = _nested_sources(goal)
+        goal_id = str(_first(sources, ("goal_id", "id", "objective_id")) or "").strip()
+        if not goal_id:
+            continue
+        fields = payload.get("fields") if isinstance(payload.get("fields"), Mapping) else {}
+        result[goal_id] = {
+            **dict(fields),
+            **payload,
+            "goal_id": goal_id,
+        }
+    return result
+
+
+def _work_depth(payload: Mapping[str, Any]) -> int:
+    for name in ("graph_depth", "depth", "refinement_depth"):
+        if name not in payload or payload.get(name) in (None, ""):
+            continue
+        try:
+            return max(0, int(payload[name]))
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
+def _goal_work_fields(payload: Mapping[str, Any], *names: str) -> tuple[str, ...]:
+    sources = _nested_sources(payload)
+    return tuple(_field_items(sources, names))
+
+
+def goal_coverage_work_seeds(
+    coverage: GoalCoverageMap | Mapping[str, Any],
+    *,
+    goals: Iterable[Any] = (),
+    contradictions: Iterable[Any] = (),
+    default_validation: Sequence[str] = (),
+) -> list[ObjectiveWorkProposal]:
+    """Create deterministic work candidates from incomplete coverage.
+
+    This function intentionally does not decide cycle capacity.  It converts
+    every actionable gap into a complete, reviewable record; callers pass the
+    result to :func:`objective_graph.materialize_bounded_objective_work`, which
+    applies cross-cycle deduplication and finite scheduler limits.
+
+    Unmapped findings become child goals, incomplete criteria become subgoals,
+    and each unsupported proof surface becomes a dependency-linked task.  A
+    contradiction receipt also creates a focused repair task even when the
+    criterion row has not yet been rebuilt from the reopened goal.
+    """
+
+    raw = coverage.to_dict() if isinstance(coverage, GoalCoverageMap) else dict(coverage)
+    goal_metadata = _goal_work_metadata(goals)
+    edge_rows = [dict(item) for item in raw.get("edges", ()) if isinstance(item, Mapping)]
+    proposals: list[ObjectiveWorkProposal] = []
+
+    incomplete_statuses = {
+        CoverageStatus.UNCOVERED.value,
+        CoverageStatus.WEAKLY_INFERRED.value,
+        CoverageStatus.STALE.value,
+        CoverageStatus.CONTRADICTED.value,
+    }
+    criteria = [dict(item) for item in raw.get("criteria", ()) if isinstance(item, Mapping)]
+    criteria.sort(
+        key=lambda item: (
+            str(item.get("goal_id") or "").casefold(),
+            _normalized(item.get("criterion")),
+            str(item.get("criterion_id") or ""),
+        )
+    )
+    for criterion in criteria:
+        status = _status_value(criterion.get("status", ""))
+        goal_id = str(criterion.get("goal_id") or "").strip()
+        criterion_id = str(criterion.get("criterion_id") or _stable_id("criterion", criterion))
+        criterion_text = " ".join(str(criterion.get("criterion") or "").split())
+        if not goal_id or not criterion_text:
+            continue
+        matching_edges = [row for row in edge_rows if str(row.get("criterion_id") or "") == criterion_id]
+        unsupported_edge_surfaces = sorted(
+            {
+                str(row.get("surface") or row.get("surface_kind") or "").strip()
+                for row in matching_edges
+                if _status_value(row.get("status", "")) in incomplete_statuses
+                and str(row.get("surface") or row.get("surface_kind") or "").strip()
+            }
+        )
+        if status not in incomplete_statuses and not unsupported_edge_surfaces:
+            continue
+        goal = goal_metadata.get(goal_id, {})
+        goal_terms = _goal_work_fields(
+            goal,
+            "objective_terms",
+            "acceptance",
+            "acceptance_criteria",
+            "required_evidence",
+            "evidence",
+        )
+        parent_terms = tuple(sorted({criterion_text, *goal_terms}, key=lambda item: (item.casefold(), item)))
+        depth = _work_depth(goal) + 1
+        predicted_files = {
+            str(row.get("value") or "").strip()
+            for row in matching_edges
+            if str(row.get("surface") or row.get("surface_kind") or "")
+            in {CoverageSurface.PREDICTED_FILE.value, CoverageSurface.CHANGED_FILE.value}
+            and str(row.get("value") or "").strip()
+        }
+        predicted_files.update(_goal_work_fields(goal, "predicted_files", "outputs", "files"))
+        predicted_symbols = {
+            str(row.get("value") or "").strip()
+            for row in matching_edges
+            if str(row.get("surface") or row.get("surface_kind") or "")
+            in {CoverageSurface.AST_SYMBOL.value, CoverageSurface.INTERFACE.value}
+            and str(row.get("value") or "").strip()
+        }
+        predicted_symbols.update(_goal_work_fields(goal, "predicted_symbols", "ast_symbols", "symbols"))
+        validation = {
+            str(row.get("value") or "").strip()
+            for row in matching_edges
+            if str(row.get("surface") or row.get("surface_kind") or "")
+            == CoverageSurface.VALIDATION_COMMAND.value
+            and str(row.get("value") or "").strip()
+        }
+        validation.update(_goal_work_fields(goal, "validation", "validation_commands"))
+        validation.update(str(item).strip() for item in default_validation if str(item).strip())
+        missing = sorted(
+            {*_items(criterion.get("missing_surfaces")), *unsupported_edge_surfaces},
+            key=lambda item: (item.casefold(), item),
+        )
+        delta = tuple(
+            [criterion_text]
+            + [f"{criterion_text}: add {surface.replace('_', ' ')} evidence" for surface in missing]
+        )
+        subgoal = ObjectiveWorkProposal(
+            kind=ObjectiveWorkKind.SUBGOAL,
+            title=f"Establish evidence for {criterion_text}",
+            parent_goal_id=goal_id,
+            parent_objective_terms=parent_terms,
+            expected_evidence_delta=delta,
+            dependencies=tuple(_items(goal.get("depends_on", goal.get("dependencies")))),
+            predicted_files=tuple(predicted_files),
+            predicted_symbols=tuple(predicted_symbols),
+            validation_commands=tuple(validation),
+            confidence=1.0 if status in {"uncovered", "contradicted"} else 0.75,
+            estimated_cost=max(1.0, float(len(missing) or 1)),
+            novelty=1.0,
+            depth=depth,
+            estimated_tokens=max(128, 96 * max(1, len(missing))),
+            source="coverage_rule",
+            source_id=criterion_id,
+            rationale=f"Criterion is {status}; required proof surfaces: {', '.join(missing) or 'inconclusive evidence'}.",
+        )
+        proposals.append(subgoal)
+
+        task_surfaces = missing or [status]
+        for surface in task_surfaces:
+            surface_text = str(surface).replace("_", " ")
+            proposals.append(
+                ObjectiveWorkProposal(
+                    kind=ObjectiveWorkKind.TASK,
+                    title=f"Add {surface_text} proof for {criterion_text}",
+                    parent_goal_id=subgoal.canonical_id,
+                    parent_objective_terms=parent_terms,
+                    expected_evidence_delta=(
+                        f"{criterion_text}: add {surface_text} evidence",
+                    ),
+                    dependencies=(subgoal.canonical_id,),
+                    predicted_files=tuple(predicted_files),
+                    predicted_symbols=tuple(predicted_symbols),
+                    validation_commands=tuple(validation),
+                    confidence=subgoal.confidence,
+                    estimated_cost=1.0,
+                    novelty=1.0,
+                    depth=depth + 1,
+                    estimated_tokens=128,
+                    source="coverage_rule",
+                    source_id=f"{criterion_id}:{surface}",
+                    rationale=f"The {surface_text} surface is absent or inconclusive.",
+                )
+            )
+
+    assignments = [
+        dict(item) for item in raw.get("finding_assignments", ()) if isinstance(item, Mapping)
+    ]
+    assignments.sort(key=lambda item: (str(item.get("goal_id") or ""), str(item.get("finding_id") or "")))
+    for assignment in assignments:
+        if str(assignment.get("goal_id") or "") != UNMAPPED_GOAL_ID:
+            continue
+        finding = assignment.get("finding") if isinstance(assignment.get("finding"), Mapping) else {}
+        finding_id = str(assignment.get("finding_id") or _stable_id("finding", finding))
+        title = " ".join(
+            str(finding.get("title") or finding.get("summary") or f"Resolve unmapped finding {finding_id}").split()
+        )
+        terms = _field_items(
+            _nested_sources(finding),
+            ("objective_terms", "missing_evidence", "acceptance", "acceptance_criteria"),
+        ) or [title]
+        proposals.append(
+            ObjectiveWorkProposal(
+                kind=ObjectiveWorkKind.GOAL,
+                title=title,
+                parent_goal_id=UNMAPPED_GOAL_ID,
+                parent_objective_terms=tuple(terms),
+                expected_evidence_delta=tuple(
+                    _field_items(_nested_sources(finding), ("expected_evidence_delta", "missing_evidence"))
+                    or terms
+                ),
+                dependencies=tuple(_field_items(_nested_sources(finding), ("dependencies", "depends_on"))),
+                predicted_files=tuple(_field_items(_nested_sources(finding), ("predicted_files", "outputs", "files"))),
+                predicted_symbols=tuple(_field_items(_nested_sources(finding), ("predicted_symbols", "ast_symbols", "symbols"))),
+                validation_commands=tuple(
+                    _field_items(_nested_sources(finding), ("validation_commands", "validation"))
+                    or [str(item) for item in default_validation if str(item).strip()]
+                ),
+                confidence=max(0.0, min(1.0, float(assignment.get("confidence", 0.5) or 0.5))),
+                estimated_cost=max(0.0, float(finding.get("estimated_cost", finding.get("cost", 1.0)) or 1.0)),
+                novelty=max(0.0, min(1.0, float(finding.get("novelty", 1.0) or 1.0))),
+                depth=1,
+                estimated_tokens=max(0, int(finding.get("estimated_tokens", finding.get("token_cost", 128)) or 128)),
+                retry_count=max(0, int(finding.get("retry_count", 0) or 0)),
+                source="unmapped_finding_rule",
+                source_id=finding_id,
+                rationale="The actionable finding is not mapped to a registered objective.",
+            )
+        )
+
+    contradiction_rows: list[dict[str, Any]] = []
+    embedded_contradictions: list[Any] = []
+    for key in ("contradictions", "contradiction_receipts"):
+        value = raw.get(key, ())
+        if isinstance(value, Mapping):
+            embedded_contradictions.append(value)
+        elif isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+            embedded_contradictions.extend(value)
+    supplied_contradictions: Iterable[Any]
+    if isinstance(contradictions, Mapping):
+        supplied_contradictions = (contradictions,)
+    else:
+        supplied_contradictions = contradictions
+    for contradiction in [*supplied_contradictions, *embedded_contradictions]:
+        payload = _payload(contradiction)
+        if payload:
+            contradiction_rows.append(payload)
+    contradiction_rows.sort(
+        key=lambda item: (
+            str(item.get("goal_id") or ""),
+            str(item.get("kind") or ""),
+            str(item.get("contradiction_id") or item.get("source_receipt_id") or ""),
+        )
+    )
+    for contradiction in contradiction_rows:
+        goal_id = str(contradiction.get("goal_id") or "").strip()
+        if not goal_id:
+            continue
+        impacted = _items(contradiction.get("impacted_criteria"))
+        invalidated = _items(contradiction.get("invalidated_evidence"))
+        source_id = str(
+            contradiction.get("contradiction_id")
+            or contradiction.get("source_receipt_id")
+            or _stable_id("contradiction", contradiction)
+        )
+        goal = goal_metadata.get(goal_id, {})
+        validation = _goal_work_fields(goal, "validation", "validation_commands") or tuple(default_validation)
+        proposals.append(
+            ObjectiveWorkProposal(
+                kind=ObjectiveWorkKind.TASK,
+                title=f"Repair contradicted evidence for {goal_id}",
+                parent_goal_id=goal_id,
+                parent_objective_terms=tuple(impacted or _goal_work_fields(goal, "acceptance", "evidence")),
+                expected_evidence_delta=tuple(
+                    [f"replace invalidated evidence {item}" for item in invalidated]
+                    or [f"revalidate contradicted criterion {item}" for item in impacted]
+                    or ["replace contradicted objective evidence"]
+                ),
+                dependencies=tuple(
+                    str(item.get("task_id") or item.get("canonical_id") or "").strip()
+                    for item in contradiction.get("scheduled_work", ())
+                    if isinstance(item, Mapping) and str(item.get("task_id") or item.get("canonical_id") or "").strip()
+                ),
+                predicted_files=_goal_work_fields(goal, "predicted_files", "outputs", "files"),
+                predicted_symbols=_goal_work_fields(goal, "predicted_symbols", "ast_symbols", "symbols"),
+                validation_commands=tuple(validation),
+                confidence=1.0,
+                estimated_cost=max(1.0, float(len(invalidated) or len(impacted) or 1)),
+                novelty=1.0,
+                depth=_work_depth(goal) + 1,
+                estimated_tokens=max(128, 96 * max(1, len(invalidated))),
+                source="contradiction_rule",
+                source_id=source_id,
+                rationale=str(contradiction.get("summary") or "Previously accepted evidence was contradicted."),
+            )
+        )
+
+    # Exact duplication may occur when the same contradiction is represented
+    # in both a criterion status and receipt list.  Keep first provenance in a
+    # deterministic ordering; semantic deduplication remains the materializer's
+    # responsibility because it must compare historical work too.
+    unique: dict[str, ObjectiveWorkProposal] = {}
+    for proposal in proposals:
+        unique.setdefault(proposal.canonical_id, proposal)
+    return sorted(
+        unique.values(),
+        key=lambda item: (item.depth, item.parent_goal_id, item.kind.value, item.semantic_key),
+    )
+
+
+# Compatibility names for callers which phrase coverage conversion as
+# generation rather than seed extraction.
+generate_goal_work_from_coverage = goal_coverage_work_seeds
+generate_objective_work_seeds = goal_coverage_work_seeds
+
+
 # Descriptive compatibility aliases for graph-oriented consumers.
 GoalCoverageGraph = GoalCoverageMap
 GoalCoverageEdge = CoverageEdge
@@ -1479,6 +1801,9 @@ __all__ = [
     "detect_goal_coverage_contradictions",
     "discover_goal_contradictions",
     "goal_coverage_graph",
+    "goal_coverage_work_seeds",
+    "generate_goal_work_from_coverage",
+    "generate_objective_work_seeds",
     "normalize_validation_receipt",
     "write_goal_coverage_map",
 ]

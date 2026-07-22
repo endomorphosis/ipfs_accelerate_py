@@ -21,7 +21,7 @@ import warnings
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
-from hashlib import sha1
+from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -663,6 +663,496 @@ def materialize_objective_coverage_graph(
     normalized_nodes = tuple(nodes_by_id[key] for key in sorted(nodes_by_id))
     normalized_edges = tuple(edges_by_id[key] for key in sorted(edges_by_id))
     return ObjectiveCoverageGraph(nodes=normalized_nodes, edges=normalized_edges)
+
+
+class ObjectiveWorkKind(str, Enum):
+    """Kinds of work which may be introduced while refining an objective."""
+
+    GOAL = "goal"
+    SUBGOAL = "subgoal"
+    TASK = "task"
+
+
+@dataclass(frozen=True)
+class ObjectiveGenerationLimits:
+    """Hard limits applied to one autonomous objective-refinement cycle.
+
+    The limits are deliberately independent.  In particular, a large token
+    budget cannot bypass the hierarchy or open-board limits and retries do not
+    gain a fresh breadth allocation.  This makes repeated daemon cycles safe
+    even when their proposal source is nondeterministic.
+    """
+
+    max_depth: int = 3
+    max_breadth_per_parent: int = 4
+    max_new_work: int = 12
+    max_open_work: int = 48
+    token_budget: int = 8192
+    max_retries: int = 2
+    semantic_similarity_threshold: float = 0.82
+
+    def __post_init__(self) -> None:
+        for name in (
+            "max_depth",
+            "max_breadth_per_parent",
+            "max_new_work",
+            "max_open_work",
+            "token_budget",
+            "max_retries",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        threshold = float(self.semantic_similarity_threshold)
+        if not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+            raise ValueError("semantic_similarity_threshold must be between 0 and 1")
+        object.__setattr__(self, "semantic_similarity_threshold", threshold)
+
+
+def _objective_work_strings(value: Any) -> tuple[str, ...]:
+    if value in (None, ""):
+        return ()
+    if isinstance(value, str):
+        values: Iterable[Any] = re.split(r"[,;\n]+", value)
+    elif isinstance(value, Mapping):
+        values = value.keys()
+    elif isinstance(value, Iterable):
+        values = value
+    else:
+        values = (value,)
+    normalized = {
+        " ".join(str(item or "").split())
+        for item in values
+        if " ".join(str(item or "").split())
+    }
+    return tuple(sorted(normalized, key=lambda item: (item.casefold(), item)))
+
+
+def _objective_work_value(payload: Mapping[str, Any], name: str, *aliases: str) -> Any:
+    for key in (name, *aliases):
+        if key in payload and payload[key] not in (None, ""):
+            return payload[key]
+    return ""
+
+
+def _objective_work_normalized_text(value: Any) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+
+
+def semantic_objective_work_key(value: Any) -> str:
+    """Return a stable semantic key which ignores display IDs and ordering."""
+
+    payload = value.to_dict() if isinstance(value, ObjectiveWorkProposal) else _task_record_mapping(value)
+    material = {
+        "kind": str(_objective_work_value(payload, "kind", "work_kind") or "task").casefold(),
+        "parent_goal_id": _objective_work_normalized_text(
+            _objective_work_value(payload, "parent_goal_id", "parent_objective_id", "goal_id")
+        ),
+        "objective_terms": sorted(
+            _objective_work_normalized_text(item)
+            for item in _objective_work_strings(
+                _objective_work_value(payload, "parent_objective_terms", "objective_terms")
+            )
+        ),
+        "evidence_delta": sorted(
+            _objective_work_normalized_text(item)
+            for item in _objective_work_strings(
+                _objective_work_value(
+                    payload,
+                    "expected_evidence_delta",
+                    "missing_evidence",
+                    "evidence_delta",
+                )
+            )
+        ),
+        "files": sorted(
+            str(item).strip().replace("\\", "/").casefold()
+            for item in _objective_work_strings(
+                _objective_work_value(payload, "predicted_files", "outputs", "files")
+            )
+        ),
+        "symbols": sorted(
+            _objective_work_normalized_text(item)
+            for item in _objective_work_strings(
+                _objective_work_value(payload, "predicted_symbols", "ast_symbols", "symbols")
+            )
+        ),
+        "validation": sorted(
+            _objective_work_normalized_text(item)
+            for item in _objective_work_strings(
+                _objective_work_value(payload, "validation_commands", "validation")
+            )
+        ),
+    }
+    # A title is only identity material when no objective/evidence surface was
+    # supplied.  This keeps harmless wording changes from regenerating work.
+    if not any(material[key] for key in ("objective_terms", "evidence_delta", "files", "symbols")):
+        material["title"] = _objective_work_normalized_text(
+            _objective_work_value(payload, "title", "summary")
+        )
+    canonical = json.dumps(material, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "objective-work/v1/" + sha1(canonical.encode("utf-8")).hexdigest()
+
+
+def canonical_objective_work_identity(value: Any) -> str:
+    """Return the canonical content identity used across refinement cycles."""
+
+    payload = value.to_dict() if isinstance(value, ObjectiveWorkProposal) else _task_record_mapping(value)
+    semantic_key = str(payload.get("semantic_key") or semantic_objective_work_key(payload))
+    material = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/objective-work@1",
+        "semantic_key": semantic_key,
+        "title": _objective_work_normalized_text(
+            _objective_work_value(payload, "title", "summary")
+        ),
+        "dependencies": sorted(
+            _objective_work_normalized_text(item)
+            for item in _objective_work_strings(
+                _objective_work_value(payload, "dependencies", "depends_on")
+            )
+        ),
+        "confidence": float(_objective_work_value(payload, "confidence") or 0.0),
+        "estimated_cost": float(
+            _objective_work_value(payload, "estimated_cost", "cost") or 0.0
+        ),
+        "novelty": float(_objective_work_value(payload, "novelty") or 0.0),
+        "depth": int(_objective_work_value(payload, "depth", "graph_depth") or 0),
+        "estimated_tokens": int(
+            _objective_work_value(payload, "estimated_tokens", "token_cost") or 0
+        ),
+    }
+    return "objective-work:" + sha256(
+        json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+@dataclass(frozen=True)
+class ObjectiveWorkProposal:
+    """A reviewable goal, subgoal, or task proposed from incomplete proof."""
+
+    kind: ObjectiveWorkKind | str
+    title: str
+    parent_goal_id: str
+    parent_objective_terms: tuple[str, ...]
+    expected_evidence_delta: tuple[str, ...]
+    dependencies: tuple[str, ...]
+    predicted_files: tuple[str, ...]
+    predicted_symbols: tuple[str, ...]
+    validation_commands: tuple[str, ...]
+    confidence: float
+    estimated_cost: float
+    novelty: float
+    depth: int
+    estimated_tokens: int = 0
+    retry_count: int = 0
+    source: str = "deterministic"
+    source_id: str = ""
+    rationale: str = ""
+    semantic_key: str = ""
+    canonical_id: str = ""
+
+    def __post_init__(self) -> None:
+        try:
+            kind = self.kind if isinstance(self.kind, ObjectiveWorkKind) else ObjectiveWorkKind(str(self.kind).lower())
+        except ValueError as exc:
+            raise ValueError("kind must be goal, subgoal, or task") from exc
+        title = " ".join(str(self.title or "").split())
+        parent = str(self.parent_goal_id or "").strip()
+        if not title:
+            raise ValueError("objective work title must be non-empty")
+        if kind is not ObjectiveWorkKind.GOAL and not parent:
+            raise ValueError("subgoal and task work require parent_goal_id")
+        if isinstance(self.depth, bool) or int(self.depth) < 0:
+            raise ValueError("depth must be a non-negative integer")
+        if isinstance(self.estimated_tokens, bool) or int(self.estimated_tokens) < 0:
+            raise ValueError("estimated_tokens must be a non-negative integer")
+        if isinstance(self.retry_count, bool) or int(self.retry_count) < 0:
+            raise ValueError("retry_count must be a non-negative integer")
+        for name in ("confidence", "novelty"):
+            number = float(getattr(self, name))
+            if not math.isfinite(number) or not 0.0 <= number <= 1.0:
+                raise ValueError(f"{name} must be between 0 and 1")
+            object.__setattr__(self, name, number)
+        cost = float(self.estimated_cost)
+        if not math.isfinite(cost) or cost < 0.0:
+            raise ValueError("estimated_cost must be finite and non-negative")
+        object.__setattr__(self, "estimated_cost", cost)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "title", title)
+        object.__setattr__(self, "parent_goal_id", parent)
+        object.__setattr__(self, "depth", int(self.depth))
+        object.__setattr__(self, "estimated_tokens", int(self.estimated_tokens))
+        object.__setattr__(self, "retry_count", int(self.retry_count))
+        object.__setattr__(self, "source", str(self.source or "deterministic").strip())
+        object.__setattr__(self, "source_id", str(self.source_id or "").strip())
+        object.__setattr__(self, "rationale", " ".join(str(self.rationale or "").split()))
+        for name in (
+            "parent_objective_terms",
+            "expected_evidence_delta",
+            "dependencies",
+            "predicted_files",
+            "predicted_symbols",
+            "validation_commands",
+        ):
+            object.__setattr__(self, name, _objective_work_strings(getattr(self, name)))
+        expected_semantic_key = semantic_objective_work_key(self)
+        supplied_semantic_key = str(self.semantic_key or "").strip()
+        if supplied_semantic_key and supplied_semantic_key != expected_semantic_key:
+            raise ValueError("semantic_key does not match canonical objective work content")
+        object.__setattr__(self, "semantic_key", expected_semantic_key)
+        expected_canonical_id = canonical_objective_work_identity(self)
+        supplied_canonical_id = str(self.canonical_id or "").strip()
+        if supplied_canonical_id and supplied_canonical_id != expected_canonical_id:
+            raise ValueError("canonical_id does not match canonical objective work content")
+        object.__setattr__(self, "canonical_id", expected_canonical_id)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ObjectiveWorkProposal":
+        """Normalize deterministic and LLM-router spellings into one record."""
+
+        if not isinstance(payload, Mapping):
+            raise TypeError("objective work proposals must be mappings")
+        kind = _objective_work_value(payload, "kind", "work_kind", "proposal_kind") or "task"
+        terms = _objective_work_value(payload, "parent_objective_terms", "objective_terms", "terms")
+        delta = _objective_work_value(
+            payload, "expected_evidence_delta", "evidence_delta", "missing_evidence"
+        )
+        return cls(
+            kind=kind,
+            title=_objective_work_value(payload, "title", "summary"),
+            parent_goal_id=_objective_work_value(
+                payload, "parent_goal_id", "parent_objective_id", "goal_id"
+            ),
+            parent_objective_terms=_objective_work_strings(terms),
+            expected_evidence_delta=_objective_work_strings(delta),
+            dependencies=_objective_work_strings(
+                _objective_work_value(payload, "dependencies", "depends_on")
+            ),
+            predicted_files=_objective_work_strings(
+                _objective_work_value(payload, "predicted_files", "outputs", "files")
+            ),
+            predicted_symbols=_objective_work_strings(
+                _objective_work_value(payload, "predicted_symbols", "ast_symbols", "symbols")
+            ),
+            validation_commands=_objective_work_strings(
+                _objective_work_value(payload, "validation_commands", "validation")
+            ),
+            confidence=_objective_work_value(payload, "confidence") or 0.0,
+            estimated_cost=_objective_work_value(payload, "estimated_cost", "cost") or 0.0,
+            novelty=_objective_work_value(payload, "novelty") or 0.0,
+            depth=_objective_work_value(payload, "depth", "graph_depth") or 0,
+            estimated_tokens=_objective_work_value(payload, "estimated_tokens", "token_cost") or 0,
+            retry_count=_objective_work_value(payload, "retry_count", "retries") or 0,
+            source=_objective_work_value(payload, "source", "proposal_source") or "deterministic",
+            source_id=_objective_work_value(payload, "source_id", "criterion_id", "finding_id", "receipt_id"),
+            rationale=_objective_work_value(payload, "rationale", "explanation", "reason"),
+            semantic_key=str(payload.get("semantic_key") or ""),
+            canonical_id=str(payload.get("canonical_id") or payload.get("work_id") or ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["kind"] = self.kind.value
+        for name in (
+            "parent_objective_terms",
+            "expected_evidence_delta",
+            "dependencies",
+            "predicted_files",
+            "predicted_symbols",
+            "validation_commands",
+        ):
+            payload[name] = list(payload[name])
+        # Task consumers already understand these canonical identity names.
+        payload["canonical_task_key"] = self.semantic_key
+        payload["dedupe_key"] = self.semantic_key
+        payload["cost"] = self.estimated_cost
+        payload["validation"] = list(self.validation_commands)
+        payload["parent_objective_id"] = self.parent_goal_id
+        return payload
+
+
+@dataclass(frozen=True)
+class ObjectiveGenerationRejection:
+    """One proposal excluded by an explicit finite-refinement rule."""
+
+    reason: str
+    canonical_id: str
+    source_id: str = ""
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ObjectiveGenerationResult:
+    """Accepted work plus a complete deterministic accounting of rejections."""
+
+    accepted: tuple[ObjectiveWorkProposal, ...]
+    rejected: tuple[ObjectiveGenerationRejection, ...]
+    limits: ObjectiveGenerationLimits
+    initial_open_work: int
+    consumed_tokens: int
+
+    @property
+    def exhausted(self) -> bool:
+        return bool(self.rejected) and any(
+            item.reason in {
+                "depth_limit", "breadth_limit", "cycle_limit", "open_work_limit",
+                "retry_limit", "token_budget",
+            }
+            for item in self.rejected
+        )
+
+    @property
+    def generated_work(self) -> tuple[ObjectiveWorkProposal, ...]:
+        return self.accepted
+
+    def to_dict(self) -> dict[str, Any]:
+        rejection_counts: dict[str, int] = {}
+        for item in self.rejected:
+            rejection_counts[item.reason] = rejection_counts.get(item.reason, 0) + 1
+        return {
+            "accepted": [item.to_dict() for item in self.accepted],
+            "generated_work": [item.to_dict() for item in self.accepted],
+            "rejected": [item.to_dict() for item in self.rejected],
+            "rejection_counts": dict(sorted(rejection_counts.items())),
+            "limits": asdict(self.limits),
+            "initial_open_work": self.initial_open_work,
+            "final_open_work": self.initial_open_work + len(self.accepted),
+            "consumed_tokens": self.consumed_tokens,
+            "exhausted": self.exhausted,
+        }
+
+
+def _objective_work_tokens(value: ObjectiveWorkProposal) -> set[str]:
+    fields: list[str] = [
+        value.kind.value,
+        value.parent_goal_id,
+        *value.parent_objective_terms,
+        *value.expected_evidence_delta,
+        *value.predicted_files,
+        *value.predicted_symbols,
+    ]
+    return set(re.findall(r"[a-z0-9]+", " ".join(fields).casefold()))
+
+
+def _objective_work_similarity(left: ObjectiveWorkProposal, right: ObjectiveWorkProposal) -> float:
+    if left.kind is not right.kind or left.parent_goal_id.casefold() != right.parent_goal_id.casefold():
+        return 0.0
+    left_tokens, right_tokens = _objective_work_tokens(left), _objective_work_tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+
+
+def materialize_bounded_objective_work(
+    proposals: Iterable[ObjectiveWorkProposal | Mapping[str, Any]],
+    *,
+    existing_work: Iterable[ObjectiveWorkProposal | Mapping[str, Any]] = (),
+    limits: ObjectiveGenerationLimits | Mapping[str, Any] | None = None,
+    current_open_work: int | None = None,
+) -> ObjectiveGenerationResult:
+    """Validate, deduplicate, and bound autonomous objective refinement.
+
+    Candidates are ordered by parent, depth, kind, semantic identity, rather
+    than provider order.  Exact identities and high-overlap semantic work are
+    checked against historical as well as newly accepted records, preventing
+    equivalent work from reappearing on later daemon cycles.
+    """
+
+    if limits is None:
+        policy = ObjectiveGenerationLimits()
+    elif isinstance(limits, ObjectiveGenerationLimits):
+        policy = limits
+    elif isinstance(limits, Mapping):
+        policy = ObjectiveGenerationLimits(**dict(limits))
+    else:
+        raise TypeError("limits must be ObjectiveGenerationLimits or a mapping")
+
+    existing = [
+        item if isinstance(item, ObjectiveWorkProposal) else ObjectiveWorkProposal.from_dict(item)
+        for item in existing_work
+    ]
+    normalized = [
+        item if isinstance(item, ObjectiveWorkProposal) else ObjectiveWorkProposal.from_dict(item)
+        for item in proposals
+    ]
+    normalized.sort(
+        key=lambda item: (
+            item.parent_goal_id.casefold(),
+            item.depth,
+            {ObjectiveWorkKind.GOAL: 0, ObjectiveWorkKind.SUBGOAL: 1, ObjectiveWorkKind.TASK: 2}[item.kind],
+            item.semantic_key,
+            item.source_id,
+        )
+    )
+    open_count = len(existing) if current_open_work is None else max(0, int(current_open_work))
+    exact_ids = {item.canonical_id for item in existing}
+    comparison = list(existing)
+    accepted: list[ObjectiveWorkProposal] = []
+    rejected: list[ObjectiveGenerationRejection] = []
+    breadth: dict[str, int] = {}
+    consumed_tokens = 0
+
+    def reject(item: ObjectiveWorkProposal, reason: str, detail: str) -> None:
+        rejected.append(ObjectiveGenerationRejection(reason, item.canonical_id, item.source_id, detail))
+
+    for item in normalized:
+        if item.canonical_id in exact_ids:
+            reject(item, "canonical_duplicate", "canonical identity already exists")
+            continue
+        duplicate = next(
+            (
+                prior
+                for prior in comparison
+                if _objective_work_similarity(item, prior) >= policy.semantic_similarity_threshold
+            ),
+            None,
+        )
+        if duplicate is not None:
+            reject(item, "semantic_duplicate", f"equivalent to {duplicate.canonical_id}")
+            continue
+        if item.depth > policy.max_depth:
+            reject(item, "depth_limit", f"depth {item.depth} exceeds {policy.max_depth}")
+            continue
+        if item.retry_count > policy.max_retries:
+            reject(item, "retry_limit", f"retry {item.retry_count} exceeds {policy.max_retries}")
+            continue
+        if len(accepted) >= policy.max_new_work:
+            reject(item, "cycle_limit", f"cycle allows {policy.max_new_work} new records")
+            continue
+        if open_count + len(accepted) >= policy.max_open_work:
+            reject(item, "open_work_limit", f"open work limit is {policy.max_open_work}")
+            continue
+        parent_key = item.parent_goal_id or "__root__"
+        if breadth.get(parent_key, 0) >= policy.max_breadth_per_parent:
+            reject(item, "breadth_limit", f"parent allows {policy.max_breadth_per_parent} open children")
+            continue
+        if consumed_tokens + item.estimated_tokens > policy.token_budget:
+            reject(item, "token_budget", f"cycle token budget is {policy.token_budget}")
+            continue
+        accepted.append(item)
+        exact_ids.add(item.canonical_id)
+        comparison.append(item)
+        breadth[parent_key] = breadth.get(parent_key, 0) + 1
+        consumed_tokens += item.estimated_tokens
+
+    return ObjectiveGenerationResult(
+        accepted=tuple(accepted),
+        rejected=tuple(rejected),
+        limits=policy,
+        initial_open_work=open_count,
+        consumed_tokens=consumed_tokens,
+    )
+
+
+# Public aliases use both "goal generation" and "objective refinement"
+# terminology because persisted callers and operator docs use both.
+GoalGenerationLimits = ObjectiveGenerationLimits
+GeneratedObjectiveWork = ObjectiveWorkProposal
+ObjectiveGenerationPlan = ObjectiveGenerationResult
+generate_bounded_objective_work = materialize_bounded_objective_work
 
 
 @dataclass(frozen=True)

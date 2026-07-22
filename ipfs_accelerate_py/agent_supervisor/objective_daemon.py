@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -46,6 +47,9 @@ logger = logging.getLogger(__name__)
 
 OBJECTIVE_COMPLETION_GATE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.objective_daemon.completion_gate.v1"
+)
+OBJECTIVE_GENERATION_ARTIFACT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.objective_daemon.generation.v1"
 )
 
 
@@ -331,7 +335,12 @@ def objective_terms_for_analysis(
     terms: list[str] = []
     if objective_path.exists():
         for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace")):
-            if goal.is_schedulable:
+            # Provisional and inconclusive goals are not claimable execution
+            # work, but their unproven criteria are precisely the input to
+            # bounded evidence-generation.
+            if goal.lifecycle_state_value in {
+                "active", "reopened", "provisionally_complete", "analysis_inconclusive"
+            }:
                 terms.extend(goal.required_evidence)
     for record in records:
         finding = getattr(record, "finding", None)
@@ -346,6 +355,309 @@ def persist_analysis_escalation(path: Path, result: Any) -> dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload
+
+
+def load_objective_generation_work(path: Path | None) -> tuple[dict[str, Any], ...]:
+    """Load durable generated work used to deduplicate later daemon cycles.
+
+    A malformed artifact fails closed instead of silently forgetting identity
+    history and regenerating equivalent tasks.  Legacy artifacts which stored
+    work under ``accepted`` are accepted to keep upgrades idempotent.
+    """
+
+    if path is None or not path.exists():
+        return ()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError("objective generation artifact must be a JSON object")
+    schema = str(payload.get("schema") or "")
+    if schema and schema != OBJECTIVE_GENERATION_ARTIFACT_SCHEMA:
+        raise ValueError(f"unsupported objective generation artifact schema: {schema}")
+    raw = payload.get("generated_work", payload.get("accepted", ()))
+    if not isinstance(raw, list) or any(not isinstance(item, Mapping) for item in raw):
+        raise ValueError("objective generation artifact work must be an array of objects")
+    from .objective_graph import ObjectiveWorkProposal
+
+    # Revalidate canonical identity when loading untrusted persisted state.
+    validated = [ObjectiveWorkProposal.from_dict(item).to_dict() for item in raw]
+    by_id: dict[str, dict[str, Any]] = {}
+    for item in validated:
+        canonical_id = str(item["canonical_id"])
+        prior = by_id.get(canonical_id)
+        if prior is not None and prior != item:
+            raise ValueError(f"conflicting generated work identity {canonical_id}")
+        by_id[canonical_id] = item
+    return tuple(by_id[key] for key in sorted(by_id))
+
+
+def persist_objective_generation(
+    path: Path,
+    result: Any,
+    *,
+    existing_work: Iterable[Mapping[str, Any]] = (),
+    evaluation: Any = None,
+) -> dict[str, Any]:
+    """Persist a bounded generation cycle and its cross-cycle identity ledger."""
+
+    cycle = result.to_dict() if hasattr(result, "to_dict") else dict(result)
+    raw_accepted = cycle.get("accepted", cycle.get("generated_work", ()))
+    if not isinstance(raw_accepted, list):
+        raise ValueError("objective generation result accepted work must be an array")
+    from .objective_graph import ObjectiveWorkProposal
+
+    merged: dict[str, dict[str, Any]] = {}
+    for value in [*existing_work, *raw_accepted]:
+        item = ObjectiveWorkProposal.from_dict(value).to_dict()
+        canonical_id = str(item["canonical_id"])
+        prior = merged.get(canonical_id)
+        if prior is not None and prior != item:
+            raise ValueError(f"conflicting generated work identity {canonical_id}")
+        merged[canonical_id] = item
+    prior_cycle_count = 0
+    if path.exists():
+        try:
+            prior_payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(prior_payload, Mapping):
+                prior_cycle_count = max(0, int(prior_payload.get("cycle_count", 0)))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            # Loading the identity ledger is separately fail-closed.  This
+            # best-effort counter is observability only and cannot admit work.
+            prior_cycle_count = 0
+    payload = {
+        "schema": OBJECTIVE_GENERATION_ARTIFACT_SCHEMA,
+        "cycle_count": prior_cycle_count + 1,
+        "generated_work_count": len(merged),
+        "generated_work": [merged[key] for key in sorted(merged)],
+        "last_cycle": cycle,
+        "last_evaluation": (
+            evaluation.to_dict() if hasattr(evaluation, "to_dict") else evaluation
+        ),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    except BaseException:
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+        raise
+    return payload
+
+
+def materialize_objective_generation_cycle(
+    proposals: Iterable[Any],
+    *,
+    artifact_path: Path,
+    limits: Any = None,
+    current_open_work: int | None = None,
+    evaluation_policy: Any = None,
+    objective_terms: Sequence[str] = (),
+) -> tuple[Any, dict[str, Any]]:
+    """Apply finite graph limits and persist canonical history for one cycle."""
+
+    from .objective_graph import materialize_bounded_objective_work
+    from .plan_evaluator import evaluate_objective_work_proposals
+
+    existing = load_objective_generation_work(artifact_path)
+    proposal_values = tuple(proposals)
+    evaluation = None
+    if evaluation_policy is not None:
+        evaluation = evaluate_objective_work_proposals(
+            proposal_values,
+            policy=evaluation_policy,
+            objective_terms=objective_terms,
+            known_canonical_ids=(str(item.get("canonical_id") or "") for item in existing),
+            known_semantic_keys=(str(item.get("semantic_key") or "") for item in existing),
+        )
+        proposal_values = evaluation.accepted_proposals
+    result = materialize_bounded_objective_work(
+        proposal_values,
+        existing_work=existing,
+        limits=limits,
+        current_open_work=current_open_work,
+    )
+    return result, persist_objective_generation(
+        artifact_path,
+        result,
+        existing_work=existing,
+        evaluation=evaluation,
+    )
+
+
+def objective_generation_proposals(
+    *,
+    objective_path: Path,
+    completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
+    completion_decisions: Mapping[str, Mapping[str, Any]] | None = None,
+    analysis_escalation: Mapping[str, Any] | None = None,
+    default_validation: Sequence[str] = (),
+    estimated_router_tokens: int = 0,
+    router_retry_count: int = 0,
+    objective_terms: Sequence[str] = (),
+) -> tuple[Any, ...]:
+    """Collect deterministic coverage and routed-analysis work candidates."""
+
+    from .goal_coverage import goal_coverage_work_seeds
+    from .objective_graph import ObjectiveWorkProposal, parse_goal_heap
+    from .plan_evaluator import AnalysisProposal
+    from .task_proposal_router import analysis_proposals_to_objective_work
+
+    goals = (
+        parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace"))
+        if objective_path.exists()
+        else []
+    )
+    goals_by_id = {str(goal.goal_id): goal for goal in goals}
+    default_parent = next(
+        (str(goal.goal_id) for goal in goals if getattr(goal, "is_schedulable", False)),
+        next((str(goal.goal_id) for goal in goals), "objective-analysis"),
+    )
+    proposals: list[Any] = []
+    gates = completion_gate_records or {}
+    for goal_id in sorted(str(item) for item in gates):
+        record = gates.get(goal_id) or {}
+        coverage = record.get("coverage")
+        if not isinstance(coverage, Mapping):
+            continue
+        contradictions = record.get("contradictions", record.get("contradiction_receipts", ()))
+        if not isinstance(contradictions, Sequence) or isinstance(contradictions, (str, bytes)):
+            contradictions = ()
+        goal = goals_by_id.get(goal_id)
+        proposals.extend(
+            goal_coverage_work_seeds(
+                coverage,
+                goals=([goal] if goal is not None else ()),
+                contradictions=contradictions,
+                default_validation=default_validation,
+            )
+        )
+
+    # Completion reconciliation remains fail-closed when a rich coverage map
+    # is unavailable.  Its actionable reasons still become a fully linked
+    # evidence task instead of allowing provisional/inconclusive work to
+    # disappear from the scheduler.
+    for goal_id in sorted(str(item) for item in (completion_decisions or {})):
+        decision = (completion_decisions or {}).get(goal_id) or {}
+        if decision.get("verified") is True:
+            continue
+        goal = goals_by_id.get(goal_id)
+        if goal is None:
+            continue
+        reasons = tuple(
+            dict.fromkeys(
+                str(item).strip()
+                for item in (
+                    decision.get("actionable_reasons")
+                    or decision.get("reason_codes")
+                    or ()
+                )
+                if str(item).strip()
+            )
+        )
+        if not reasons:
+            continue
+        fields = goal.fields
+        predicted_files = tuple(split_csv([str(fields.get("outputs") or "")]))
+        predicted_symbols = tuple(goal.required_evidence)
+        validation = tuple(split_csv([str(fields.get("validation") or "")]))
+        if not predicted_files or not predicted_symbols or not validation:
+            continue
+        proposals.append(
+            ObjectiveWorkProposal(
+                kind="task",
+                title=f"Produce completion evidence for {goal.title}",
+                parent_goal_id=goal_id,
+                parent_objective_terms=tuple(goal.required_evidence),
+                expected_evidence_delta=reasons,
+                dependencies=tuple(goal.parent_goal_ids),
+                predicted_files=predicted_files,
+                predicted_symbols=predicted_symbols,
+                validation_commands=validation,
+                confidence=1.0,
+                estimated_cost=max(1.0, float(len(reasons))),
+                novelty=1.0,
+                depth=1,
+                estimated_tokens=128,
+                source="completion_gate",
+                source_id=f"{goal_id}:{decision.get('state') or decision.get('next_state') or 'unverified'}",
+                rationale="; ".join(reasons),
+            )
+        )
+
+    escalation = dict(analysis_escalation or {})
+    raw_analysis = escalation.get("proposals", ())
+    if not isinstance(raw_analysis, Sequence) or isinstance(raw_analysis, (str, bytes)):
+        raw_analysis = ()
+    routed: list[AnalysisProposal] = []
+    direct: list[Mapping[str, Any]] = []
+    for raw in raw_analysis:
+        if not isinstance(raw, Mapping):
+            continue
+        if isinstance(raw.get("branch"), Mapping):
+            try:
+                routed.append(AnalysisProposal.from_dict(raw))
+            except (TypeError, ValueError):
+                logger.warning("Ignoring malformed routed objective proposal")
+        else:
+            direct.append(raw)
+    per_routed_tokens = (
+        max(1, int(estimated_router_tokens) // len(routed)) if routed and estimated_router_tokens else 0
+    )
+    if routed:
+        proposals.extend(
+            analysis_proposals_to_objective_work(
+                routed,
+                parent_goal_id=default_parent,
+                depth=1,
+                estimated_tokens=per_routed_tokens,
+                retry_count=max(0, int(router_retry_count)),
+            )
+        )
+    # Static/AST escalation findings use the same durable record even though
+    # they do not pass through the AnalysisProposal provider schema.
+    for raw in direct:
+        title = str(raw.get("summary") or raw.get("title") or "").strip()
+        path = str(raw.get("root_relative_path") or raw.get("path") or "").strip()
+        validation = str(raw.get("validation") or "").strip()
+        if not title or not path or not validation:
+            continue
+        parent_goal_id = str(raw.get("goal_id") or default_parent).strip()
+        proposals.append(
+            ObjectiveWorkProposal(
+                kind="task",
+                title=title,
+                parent_goal_id=parent_goal_id,
+                parent_objective_terms=tuple(
+                    str(item)
+                    for item in (
+                        escalation.get("objective_terms", ()) or objective_terms
+                    )
+                    if str(item).strip()
+                ) or (title,),
+                expected_evidence_delta=(title,),
+                dependencies=tuple(str(item) for item in raw.get("dependencies", ()) if str(item).strip()),
+                predicted_files=(path,),
+                predicted_symbols=(str(raw.get("kind") or "codebase_finding"),),
+                validation_commands=(validation,),
+                confidence=1.0,
+                estimated_cost=1.0,
+                novelty=1.0,
+                depth=1,
+                source="deterministic_analysis",
+                source_id=str(raw.get("fingerprint") or ""),
+                rationale=str(raw.get("snippet") or "static analysis finding"),
+            )
+        )
+    return tuple(proposals)
 
 
 def run_objective_analysis_escalation(
@@ -737,6 +1049,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Escalation evidence artifact. Defaults to <state-root>/analysis_escalation.json.",
     )
+    parser.add_argument(
+        "--no-generate-bounded-work",
+        action="store_true",
+        help="Disable durable bounded work generation from coverage and analysis evidence.",
+    )
+    parser.add_argument("--objective-generation-path", type=Path, default=None)
+    parser.add_argument("--objective-generation-max-depth", type=int, default=3)
+    parser.add_argument("--objective-generation-max-breadth", type=int, default=4)
+    parser.add_argument("--objective-generation-max-new-work", type=int, default=12)
+    parser.add_argument("--objective-generation-max-open-work", type=int, default=48)
+    parser.add_argument("--objective-generation-token-budget", type=int, default=8192)
+    parser.add_argument("--objective-generation-max-retries", type=int, default=2)
+    parser.add_argument("--objective-generation-semantic-threshold", type=float, default=0.82)
+    parser.add_argument("--objective-generation-min-confidence", type=float, default=0.0)
+    parser.add_argument("--objective-generation-min-novelty", type=float, default=0.0)
+    parser.add_argument("--objective-generation-max-cost", type=float, default=1000000.0)
+    parser.add_argument(
+        "--objective-generation-current-open-work",
+        type=int,
+        default=-1,
+        help="Override scheduler open-work count; negative derives it from active goals and generated tasks.",
+    )
     parser.add_argument("--submit-bundles", action="store_true", help="Submit generated bundle shards to the local task queue")
     parser.add_argument("--queue-path", default=None)
     parser.add_argument("--queue-task-type", default="codex.todo_bundle")
@@ -965,6 +1299,108 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             router_calls_in_window=prior_router_call_timestamps,
         )
         analysis_escalation_payload = escalation_result.to_dict()
+
+    objective_generation_path = Path(
+        getattr(args, "objective_generation_path", None)
+        or state_root / "objective_generation.json"
+    )
+    if not objective_generation_path.is_absolute():
+        objective_generation_path = repo_root / objective_generation_path
+    objective_generation_path = objective_generation_path.resolve()
+    objective_generation_payload: dict[str, Any] | None = None
+    objective_generation_error = ""
+    if not bool(getattr(args, "no_generate_bounded_work", False)):
+        from .objective_graph import ObjectiveGenerationLimits, parse_goal_heap
+        from .plan_evaluator import ObjectiveWorkEvaluationPolicy
+
+        generation_terms = objective_terms_for_analysis(objective_path, records)
+        reserved_router_tokens = 0
+        router_retry_count = 0
+        if analysis_escalation_payload:
+            for stage in analysis_escalation_payload.get("records", ()):
+                if isinstance(stage, Mapping) and isinstance(stage.get("cost"), Mapping):
+                    reserved_router_tokens += max(
+                        0, int(stage["cost"].get("reserved_tokens", 0) or 0)
+                    )
+                    router_retry_count = max(
+                        router_retry_count,
+                        int(stage["cost"].get("router_retries", 0) or 0),
+                    )
+        generation_candidates = objective_generation_proposals(
+            objective_path=objective_path,
+            completion_gate_records=completion_gate_records,
+            completion_decisions=objective_completion_decisions,
+            analysis_escalation=analysis_escalation_payload,
+            default_validation=("git diff --check",),
+            estimated_router_tokens=reserved_router_tokens,
+            router_retry_count=router_retry_count,
+            objective_terms=generation_terms,
+        )
+        generation_limits = ObjectiveGenerationLimits(
+            max_depth=int(getattr(args, "objective_generation_max_depth", 3)),
+            max_breadth_per_parent=int(
+                getattr(args, "objective_generation_max_breadth", 4)
+            ),
+            max_new_work=int(getattr(args, "objective_generation_max_new_work", 12)),
+            max_open_work=int(getattr(args, "objective_generation_max_open_work", 48)),
+            token_budget=int(getattr(args, "objective_generation_token_budget", 8192)),
+            max_retries=int(getattr(args, "objective_generation_max_retries", 2)),
+            semantic_similarity_threshold=float(
+                getattr(args, "objective_generation_semantic_threshold", 0.82)
+            ),
+        )
+        configured_open_work = int(
+            getattr(args, "objective_generation_current_open_work", -1)
+        )
+        if configured_open_work < 0:
+            active_goal_count = 0
+            if objective_path.exists():
+                active_goal_count = sum(
+                    1
+                    for goal in parse_goal_heap(
+                        objective_path.read_text(encoding="utf-8", errors="replace")
+                    )
+                    if goal.is_schedulable
+                )
+            try:
+                persisted_generated_count = len(
+                    load_objective_generation_work(objective_generation_path)
+                )
+            except (OSError, TypeError, ValueError):
+                # The materialization call below reports the corrupt ledger
+                # and admits no work; this count must not mask that failure.
+                persisted_generated_count = 0
+            configured_open_work = (
+                active_goal_count + len(records) + persisted_generated_count
+            )
+        evaluation_policy = ObjectiveWorkEvaluationPolicy(
+            min_confidence=float(
+                getattr(args, "objective_generation_min_confidence", 0.0)
+            ),
+            min_novelty=float(getattr(args, "objective_generation_min_novelty", 0.0)),
+            max_proposals=generation_limits.max_new_work,
+            max_total_cost=float(
+                getattr(args, "objective_generation_max_cost", 1000000.0)
+            ),
+            max_open_work=generation_limits.max_open_work,
+            current_open_work=configured_open_work,
+            remaining_token_budget=generation_limits.token_budget,
+        )
+        try:
+            _, objective_generation_payload = materialize_objective_generation_cycle(
+                generation_candidates,
+                artifact_path=objective_generation_path,
+                limits=generation_limits,
+                current_open_work=configured_open_work,
+                evaluation_policy=evaluation_policy,
+                objective_terms=generation_terms,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            # A corrupt identity ledger or malformed proposal must fail closed
+            # for generated work without suppressing the daemon's ordinary
+            # deterministic backlog scan.
+            objective_generation_error = f"{type(exc).__name__}: {exc}"
+            logger.error("Bounded objective generation failed closed: %s", exc)
     graph_payload = write_objective_graph_artifact(objective_path=objective_path, graph_path=graph_path)
 
     bundle_index_path = bundle_dir / "index.json"
@@ -1001,6 +1437,20 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "analysis_escalation": analysis_escalation_payload,
         "analysis_inconclusive": bool(
             analysis_escalation_payload and analysis_escalation_payload.get("analysis_inconclusive")
+        ),
+        "objective_generation_enabled": not bool(
+            getattr(args, "no_generate_bounded_work", False)
+        ),
+        "objective_generation_path": repo_relative_path(
+            repo_root, objective_generation_path
+        ),
+        "objective_generation": objective_generation_payload,
+        "objective_generation_error": objective_generation_error or None,
+        "objective_generated_work_count": int(
+            (objective_generation_payload or {}).get("generated_work_count", 0)
+        ),
+        "objective_generation_cycle_accepted_count": len(
+            ((objective_generation_payload or {}).get("last_cycle") or {}).get("accepted", ())
         ),
         "tracking_document_created": tracking_created,
         "ensured_goal_ids": ensured_goal_ids,

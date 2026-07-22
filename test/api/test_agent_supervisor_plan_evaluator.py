@@ -13,8 +13,10 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
     AnalysisProposal,
+    ObjectiveWorkEvaluationPolicy,
     PlanBranch,
     evaluate_analysis_proposals,
+    evaluate_objective_work_proposals,
     evaluate_plan_branches,
 )
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
@@ -247,6 +249,155 @@ def test_analysis_proposal_parser_requires_explicit_confidence_novelty_and_terms
     del payload["proposals"][0]["confidence"]
     with pytest.raises(ValueError, match="confidence"):
         parse_analysis_proposals(json.dumps(payload))
+
+
+def _work_proposal(
+    canonical_id: str,
+    *,
+    semantic_key: str | None = None,
+    objective_terms: tuple[str, ...] = ("coverage proof",),
+    confidence: float = 0.9,
+    novelty: float = 0.8,
+    cost: float = 2.0,
+    estimated_tokens: int = 100,
+) -> dict[str, Any]:
+    return {
+        "canonical_id": canonical_id,
+        "semantic_key": semantic_key or f"semantic/{canonical_id}",
+        "kind": "task",
+        "title": f"Generate evidence for {canonical_id}",
+        "parent_goal_id": "G10.S4",
+        "parent_objective_terms": list(objective_terms),
+        "expected_evidence_delta": [f"criterion {canonical_id} becomes verified"],
+        "dependencies": ["REF-209"],
+        "predicted_files": [f"src/{canonical_id}.py"],
+        "predicted_symbols": [f"verify_{canonical_id}"],
+        "validation_commands": [f"pytest tests/test_{canonical_id}.py -q"],
+        "confidence": confidence,
+        "estimated_cost": cost,
+        "novelty": novelty,
+        "estimated_tokens": estimated_tokens,
+    }
+
+
+def test_objective_work_evaluator_is_order_independent_and_semantically_deduplicates() -> None:
+    stronger = _work_proposal("strong", semantic_key="semantic/criterion-a")
+    rephrased = _work_proposal(
+        "rephrased",
+        semantic_key="  SEMANTIC/CRITERION-A  ",
+        confidence=0.7,
+        novelty=0.5,
+    )
+    novel = _work_proposal("novel", semantic_key="semantic/criterion-b")
+
+    forward = evaluate_objective_work_proposals(
+        [rephrased, novel, stronger], objective_terms=["coverage proof"]
+    )
+    reverse = evaluate_objective_work_proposals(
+        [stronger, novel, rephrased], objective_terms=["coverage proof"]
+    )
+
+    assert [item.canonical_id for item in forward.accepted] == [
+        item.canonical_id for item in reverse.accepted
+    ]
+    assert [item.score_millionths for item in forward.accepted] == sorted(
+        (item.score_millionths for item in forward.accepted), reverse=True
+    )
+    assert [(item.canonical_id, item.reason) for item in forward.rejected] == [
+        ("rephrased", "duplicate_semantic_work")
+    ]
+    assert forward.to_dict() == reverse.to_dict()
+
+
+def test_objective_work_evaluator_rejects_historical_identity_and_semantic_keys() -> None:
+    evaluation = evaluate_objective_work_proposals(
+        [
+            _work_proposal("historical-id"),
+            _work_proposal("new-id", semantic_key="semantic/historical"),
+        ],
+        known_canonical_ids=["historical-id"],
+        known_semantic_keys=["SEMANTIC/HISTORICAL"],
+    )
+
+    assert not evaluation.accepted
+    assert {item.reason for item in evaluation.rejected} == {
+        "duplicate_canonical_identity",
+        "duplicate_semantic_work",
+    }
+
+
+def test_objective_work_evaluator_applies_scheduler_capacity_cost_and_token_limits() -> None:
+    open_limited = evaluate_objective_work_proposals(
+        [_work_proposal("open")],
+        policy=ObjectiveWorkEvaluationPolicy(max_open_work=2, current_open_work=2),
+    )
+    cost_limited = evaluate_objective_work_proposals(
+        [_work_proposal("cost", cost=2.1)],
+        policy=ObjectiveWorkEvaluationPolicy(max_total_cost=2.0),
+    )
+    token_limited = evaluate_objective_work_proposals(
+        [_work_proposal("tokens", estimated_tokens=101)],
+        policy=ObjectiveWorkEvaluationPolicy(remaining_token_budget=100),
+    )
+
+    assert open_limited.rejected[0].reason == "open_work_limit_reached"
+    assert cost_limited.rejected[0].reason == "cost_limit_reached"
+    assert token_limited.rejected[0].reason == "token_limit_reached"
+    assert open_limited.remaining_open_slots == 0
+    assert cost_limited.admitted_cost == 0
+    assert token_limited.admitted_tokens == 0
+
+
+def test_objective_work_evaluator_requires_reviewable_execution_and_evidence_fields() -> None:
+    for missing in (
+        "parent_objective_terms",
+        "expected_evidence_delta",
+        "predicted_files",
+        "predicted_symbols",
+        "validation_commands",
+    ):
+        proposal = _work_proposal(f"missing-{missing}")
+        del proposal[missing]
+        with pytest.raises(ValueError, match=missing):
+            evaluate_objective_work_proposals([proposal])
+
+
+def test_objective_work_evaluator_filters_thresholds_and_unrelated_terms() -> None:
+    evaluation = evaluate_objective_work_proposals(
+        [
+            _work_proposal("weak", confidence=0.2),
+            _work_proposal("familiar", novelty=0.1),
+            _work_proposal("unrelated", objective_terms=("other objective",)),
+        ],
+        objective_terms=["coverage proof"],
+    )
+
+    assert not evaluation.accepted
+    assert {item.reason for item in evaluation.rejected} == {
+        "confidence_below_threshold",
+        "novelty_below_threshold",
+        "no_parent_objective_term_coverage",
+    }
+
+
+def test_objective_work_evaluation_profile_g_contains_no_floats() -> None:
+    evaluation = evaluate_objective_work_proposals([_work_proposal("profile")])
+
+    payload = evaluation.to_profile_g_dict()
+
+    def assert_no_floats(value: object) -> None:
+        assert not isinstance(value, float)
+        if isinstance(value, dict):
+            for child in value.values():
+                assert_no_floats(child)
+        elif isinstance(value, list):
+            for child in value:
+                assert_no_floats(child)
+
+    assert_no_floats(payload)
+    accepted = payload["accepted"][0]["proposal"]
+    assert accepted["confidence_millionths"] == 900_000
+    assert accepted["estimated_cost_millionths"] == 2_000_000
 
 
 def test_router_generates_multiple_validated_branches_for_an_eligible_subgoal() -> None:

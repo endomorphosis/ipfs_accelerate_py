@@ -1302,6 +1302,66 @@ def _deterministic_analysis_proposals(
     )
 
 
+def analysis_proposals_to_objective_work(
+    proposals: Iterable[AnalysisProposal | Mapping[str, Any]],
+    *,
+    parent_goal_id: str,
+    depth: int = 1,
+    kind: str = "task",
+    estimated_tokens: int = 0,
+    retry_count: int = 0,
+) -> tuple[Any, ...]:
+    """Project routed analysis candidates into canonical scheduler work.
+
+    ``AnalysisProposal`` is deliberately a provider-boundary shape whereas
+    ``ObjectiveWorkProposal`` is the durable objective-graph shape.  Keeping
+    this conversion here prevents the daemon from depending on LLM-selected
+    branch identifiers and ensures canonical identity is calculated from the
+    actual evidence surface, files, symbols, and validation proof.
+    """
+
+    from .objective_graph import ObjectiveWorkProposal
+
+    parent = str(parent_goal_id or "").strip()
+    work: list[ObjectiveWorkProposal] = []
+    for value in proposals:
+        proposal = (
+            value
+            if isinstance(value, AnalysisProposal)
+            else AnalysisProposal.from_dict(value)
+        )
+        branch = proposal.branch
+        work.append(
+            ObjectiveWorkProposal(
+                kind=kind,
+                title=branch.summary,
+                parent_goal_id=parent,
+                parent_objective_terms=proposal.objective_terms,
+                # Validation proof describes the observable evidence gained
+                # when the proposed commands succeed, so it is a stronger
+                # delta than the branch's scalar utility estimate.
+                expected_evidence_delta=branch.validation_proof,
+                dependencies=branch.dependencies,
+                predicted_files=branch.predicted_files,
+                predicted_symbols=branch.predicted_symbols,
+                validation_commands=branch.validation_commands,
+                confidence=proposal.confidence,
+                estimated_cost=branch.estimated_cost,
+                novelty=proposal.novelty,
+                depth=depth,
+                estimated_tokens=estimated_tokens,
+                retry_count=retry_count,
+                source=branch.source,
+                source_id=proposal.proposal_id,
+                rationale=(
+                    f"Expected objective delta {branch.expected_objective_delta:.6f}; "
+                    f"risk {branch.risk:.6f}."
+                ),
+            )
+        )
+    return tuple(work)
+
+
 def generate_analysis_proposals(
     context: object,
     *,
