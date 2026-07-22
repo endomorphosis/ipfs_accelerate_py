@@ -16,6 +16,7 @@ import math
 import os
 import re
 import subprocess
+import time
 import warnings
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
@@ -64,6 +65,7 @@ DEFAULT_SCAN_OVERSAMPLE_MULTIPLIER = int(
 )
 DEFAULT_TASK_PREFIX = "AUTO-"
 DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
+AST_DATASET_RECORD_SCHEMA_VERSION = 2
 LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
     "(test ! -f swissknife/package.json || npm --prefix swissknife run test:e2e:meta-glasses) && "
     "(test ! -f hallucinate_app/package.json || "
@@ -598,29 +600,173 @@ def collect_ast_dataset_records(
     *,
     objective_path: Path,
     max_ast_chars: int = DEFAULT_AST_DATASET_MAX_CHARS,
+    previous_records: Sequence[Mapping[str, Any]] = (),
+    scan_stats: dict[str, Any] | None = None,
+    excluded_roots: Iterable[Path] = (),
 ) -> list[dict[str, Any]]:
-    """Collect AST/symbol records for dataset-backed objective scans."""
+    """Collect a complete snapshot while reusing unchanged source blobs."""
 
+    started = time.monotonic()
     rows: list[dict[str, Any]] = []
-    for path in objective_candidate_files(repo_root, objective_path=objective_path):
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+    prior_rows = [dict(row) for row in previous_records if isinstance(row, Mapping)]
+    prior_by_blob: dict[str, list[dict[str, Any]]] = {}
+    prior_by_source: dict[str, list[dict[str, Any]]] = {}
+    for row in prior_rows:
+        if int(row.get("record_schema_version") or 0) != AST_DATASET_RECORD_SCHEMA_VERSION:
             continue
+        blob_hash = str(row.get("blob_hash") or "")
+        source_hash = str(row.get("source_sha1") or "")
+        if blob_hash:
+            prior_by_blob.setdefault(blob_hash, []).append(row)
+        if source_hash:
+            prior_by_source.setdefault(source_hash, []).append(row)
+    for candidates in [*prior_by_blob.values(), *prior_by_source.values()]:
+        candidates.sort(key=lambda item: str(item.get("root_relative_path") or ""))
+
+    blob_hashes = tracked_blob_hashes(repo_root)
+    current_paths: set[str] = set()
+    current_path_blobs: dict[str, str] = {}
+    parsed_count = 0
+    reused_count = 0
+    parse_elapsed = 0.0
+    saved_parse_seconds = 0.0
+    excluded = tuple(root.resolve() for root in excluded_roots)
+    for path in objective_candidate_files(repo_root, objective_path=objective_path):
+        resolved_path = path.resolve()
+        if any(resolved_path == root or root in resolved_path.parents for root in excluded):
+            continue
+        root_relative = repo_relative_path(repo_root, path)
+        current_paths.add(root_relative)
+        blob_hash = blob_hashes.get(resolved_path, "")
+        prior = prior_by_blob.get(blob_hash, [None])[0] if blob_hash else None
+        source_bytes: bytes | None = None
+        text: str | None = None
+        source_hash = ""
+        if prior is None:
+            try:
+                source_bytes = path.read_bytes()
+            except OSError:
+                continue
+            text = source_bytes.decode("utf-8", errors="replace")
+            source_hash = sha1(source_bytes).hexdigest()
+            prior = prior_by_source.get(source_hash, [None])[0]
+
+        if prior is not None:
+            row = dict(prior)
+            if str(row.get("root_relative_path") or "") != root_relative:
+                row.update(
+                    _ast_evidence_fields(
+                        root_relative,
+                        str(row.get("evidence_text") or ""),
+                        _record_symbols(row),
+                    )
+                )
+            row.update(
+                {
+                    "root_relative_path": root_relative,
+                    "suffix": path.suffix.lower(),
+                    "blob_hash": blob_hash or str(row.get("blob_hash") or source_hash),
+                }
+            )
+            rows.append(row)
+            reused_count += 1
+            saved_parse_seconds += _nonnegative_seconds(row.get("parse_elapsed_seconds"))
+            current_path_blobs[root_relative] = str(row.get("blob_hash") or row.get("source_sha1") or "")
+            continue
+
+        assert text is not None and source_bytes is not None
+        parse_started = time.monotonic()
         symbols = sorted(symbol_terms(path, text))
         payload = ast_dataset_payload(path, text, max_chars=max_ast_chars)
+        row_parse_elapsed = max(0.0, time.monotonic() - parse_started)
+        parsed_count += 1
+        parse_elapsed += row_parse_elapsed
+        effective_blob_hash = blob_hash or source_hash
         rows.append(
             {
-                "root_relative_path": repo_relative_path(repo_root, path),
+                "record_schema_version": AST_DATASET_RECORD_SCHEMA_VERSION,
+                "root_relative_path": root_relative,
                 "suffix": path.suffix.lower(),
-                "source_sha1": sha1(text.encode("utf-8", errors="replace")).hexdigest(),
-                "source_bytes": len(text.encode("utf-8", errors="replace")),
+                "blob_hash": effective_blob_hash,
+                "source_sha1": source_hash,
+                "source_bytes": len(source_bytes),
                 "symbols_json": json.dumps(symbols, sort_keys=True),
                 "token_count": len(objective_tokens(text)),
+                "parse_elapsed_seconds": row_parse_elapsed,
+                **_ast_evidence_fields(root_relative, text, symbols),
                 **payload,
             }
         )
+        current_path_blobs[root_relative] = effective_blob_hash
+
+    rows.sort(key=lambda row: str(row.get("root_relative_path") or ""))
+    prior_paths = {
+        str(row.get("root_relative_path") or "")
+        for row in prior_rows
+        if str(row.get("root_relative_path") or "")
+    }
+    deleted_paths = sorted(prior_paths - current_paths)
+    prior_blob_by_path = {
+        str(row.get("root_relative_path") or ""): str(row.get("blob_hash") or row.get("source_sha1") or "")
+        for row in prior_rows
+    }
+    deleted_blob_counts: dict[str, int] = {}
+    added_blob_counts: dict[str, int] = {}
+    for path in deleted_paths:
+        blob = prior_blob_by_path.get(path, "")
+        if blob:
+            deleted_blob_counts[blob] = deleted_blob_counts.get(blob, 0) + 1
+    for path in current_paths - prior_paths:
+        blob = current_path_blobs.get(path, "")
+        if blob:
+            added_blob_counts[blob] = added_blob_counts.get(blob, 0) + 1
+    renamed_count = sum(
+        min(count, added_blob_counts.get(blob, 0))
+        for blob, count in deleted_blob_counts.items()
+    )
+    if scan_stats is not None:
+        scan_stats.clear()
+        scan_stats.update(
+            {
+                "scanned_record_count": len(rows),
+                "parsed_record_count": parsed_count,
+                "reused_record_count": reused_count,
+                "deleted_record_count": len(deleted_paths),
+                "renamed_record_count": renamed_count,
+                "invalidated_record_count": len(deleted_paths),
+                "scan_elapsed_seconds": max(0.0, time.monotonic() - started),
+                "parse_elapsed_seconds": parse_elapsed,
+                "saved_parse_seconds": saved_parse_seconds,
+                "deleted_paths": deleted_paths,
+            }
+        )
     return rows
+
+
+def _record_symbols(row: Mapping[str, Any]) -> list[str]:
+    try:
+        value = json.loads(str(row.get("symbols_json") or "[]"))
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(value, list):
+        return []
+    return sorted({str(item).strip().lower() for item in value if str(item).strip()})
+
+
+def _ast_evidence_fields(root_relative: str, text: str, symbols: Sequence[str]) -> dict[str, Any]:
+    document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
+    return {
+        "evidence_text": text,
+        "document_tokens_json": json.dumps(sorted(set(objective_tokens(document_text)))),
+        "document_embedding_json": json.dumps(text_embedding(document_text)),
+    }
+
+
+def _nonnegative_seconds(value: Any) -> float:
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def persist_objective_ast_dataset(
@@ -633,9 +779,18 @@ def persist_objective_ast_dataset(
     """Persist scan AST/symbol records with the optional ipfs_datasets backend."""
 
     store = ObjectiveDatasetStore(dataset_dir)
+    stats: dict[str, Any] = {}
+    rows = collect_ast_dataset_records(
+        repo_root,
+        objective_path=objective_path,
+        previous_records=store.load_records(dataset_id),
+        scan_stats=stats,
+        excluded_roots=(dataset_dir,),
+    )
     return store.persist_records(
         dataset_id=dataset_id,
-        records=collect_ast_dataset_records(repo_root, objective_path=objective_path),
+        records=rows,
+        scan_stats=stats,
     )
 
 
@@ -656,6 +811,55 @@ def discover_git_worktrees(repo_root: Path) -> list[Path]:
             if line:
                 roots.append(repo_root / line)
     return list(dict.fromkeys(path.resolve() for path in roots if path.exists()))
+
+
+def tracked_blob_hashes(repo_root: Path) -> dict[Path, str]:
+    """Map clean tracked paths to their Git blob ids.
+
+    Unstaged paths are omitted because the index blob does not describe their
+    current source.  Those files fall back to a content read/hash in the
+    incremental collector, while unchanged files need no source read at all.
+    """
+
+    hashes: dict[Path, str] = {}
+    for git_root in discover_git_worktrees(repo_root):
+        listed = subprocess.run(
+            ["git", "ls-files", "-s", "-z"],
+            cwd=git_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if listed.returncode != 0:
+            continue
+        dirty_result = subprocess.run(
+            ["git", "diff-files", "--name-only", "-z"],
+            cwd=git_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        dirty = (
+            {
+                raw.decode("utf-8", errors="surrogateescape")
+                for raw in dirty_result.stdout.split(b"\0")
+                if raw
+            }
+            if dirty_result.returncode == 0
+            else set()
+        )
+        for entry in listed.stdout.split(b"\0"):
+            if not entry or b"\t" not in entry:
+                continue
+            metadata, raw_relative = entry.split(b"\t", 1)
+            fields = metadata.split()
+            if len(fields) < 3 or fields[2] != b"0":
+                continue
+            relative = raw_relative.decode("utf-8", errors="surrogateescape")
+            if relative in dirty or not repo_relative_path_safe(relative):
+                continue
+            hashes[(git_root / relative).resolve()] = fields[1].decode("ascii", errors="ignore")
+    return hashes
 
 
 def tracked_files(git_root: Path) -> list[Path]:
@@ -707,7 +911,7 @@ def objective_candidate_files(repo_root: Path, *, objective_path: Path) -> list[
         for path in tracked_files(git_root):
             if scan_candidate(path, repo_root=repo_root, objective_path=objective_path):
                 files.append(path)
-    return files
+    return sorted(dict.fromkeys(files), key=lambda path: repo_relative_path(repo_root, path))
 
 
 def evidence_methods(present_evidence: Mapping[str, Any]) -> list[str]:
@@ -727,6 +931,7 @@ def evidence_index(
     objective_path: Path,
     terms: Sequence[str],
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
+    records: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, list[str]]:
     normalized_terms = [term for term in dict.fromkeys(str(term).strip() for term in terms) if term]
     evidence = {term: [] for term in normalized_terms}
@@ -744,17 +949,52 @@ def evidence_index(
             evidence[term].append(f"{Path(term).as_posix()} (path)")
 
     lowered_terms = {term: term.lower() for term in normalized_terms}
-    for path in objective_candidate_files(repo_root, objective_path=objective_path):
-        root_relative = repo_relative_path(repo_root, path)
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        symbols = symbol_terms(path, text)
-        symbol_text = " ".join(sorted(symbols))
-        document_text = f"{root_relative}\n{symbol_text}\n{text[:12000]}"
-        document_embedding = text_embedding(document_text)
-        document_tokens = set(objective_tokens(document_text))
+    cached_records = list(records) if records is not None else None
+    candidates: list[tuple[str, str, set[str], set[str], list[float]]] = []
+    if cached_records is not None:
+        for row in sorted(cached_records, key=lambda item: str(item.get("root_relative_path") or "")):
+            root_relative = str(row.get("root_relative_path") or "")
+            if not root_relative:
+                continue
+            text = str(row.get("evidence_text") or "")
+            symbols = set(_record_symbols(row))
+            try:
+                raw_tokens = json.loads(str(row.get("document_tokens_json") or "[]"))
+            except (TypeError, ValueError):
+                raw_tokens = []
+            document_tokens = {str(item) for item in raw_tokens} if isinstance(raw_tokens, list) else set()
+            try:
+                raw_embedding = json.loads(str(row.get("document_embedding_json") or "[]"))
+                document_embedding = [float(item) for item in raw_embedding] if isinstance(raw_embedding, list) else []
+            except (TypeError, ValueError):
+                document_embedding = []
+            # Legacy/incomplete rows are never silently treated as negative
+            # evidence.  Rebuild their cheap derived fields from cached text.
+            if not document_embedding or not document_tokens:
+                document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
+                document_embedding = text_embedding(document_text)
+                document_tokens = set(objective_tokens(document_text))
+            candidates.append((root_relative, text, symbols, document_tokens, document_embedding))
+    else:
+        for path in objective_candidate_files(repo_root, objective_path=objective_path):
+            root_relative = repo_relative_path(repo_root, path)
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            symbols = symbol_terms(path, text)
+            document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
+            candidates.append(
+                (
+                    root_relative,
+                    text,
+                    symbols,
+                    set(objective_tokens(document_text)),
+                    text_embedding(document_text),
+                )
+            )
+
+    for root_relative, text, symbols, document_tokens, document_embedding in candidates:
         haystack = f"{root_relative}\n{text}".lower()
 
         for term, lowered in lowered_terms.items():
@@ -2087,6 +2327,9 @@ def scan_objective_gaps(
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
     surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
+    dataset_dir: Path | None = None,
+    dataset_id: str = "objective-ast",
+    scan_stats: dict[str, Any] | None = None,
 ) -> list[ObjectiveFinding]:
     if max_findings <= 0 or not objective_path.exists():
         return []
@@ -2101,11 +2344,24 @@ def scan_objective_gaps(
     required_terms: list[str] = []
     for goal in goals:
         required_terms.extend(goal.required_evidence)
+    cached_records: list[dict[str, Any]] | None = None
+    if dataset_dir is not None:
+        artifact = persist_objective_ast_dataset(
+            repo_root=repo_root,
+            objective_path=objective_path,
+            dataset_dir=dataset_dir,
+            dataset_id=dataset_id,
+        )
+        cached_records = ObjectiveDatasetStore(dataset_dir).load_records(dataset_id)
+        if scan_stats is not None:
+            scan_stats.clear()
+            scan_stats.update(artifact.to_dict())
     evidence = evidence_index(
         repo_root,
         objective_path=objective_path,
         terms=required_terms,
         embedding_min_score=embedding_min_score,
+        records=cached_records,
     )
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
     forced_goal_ids = {str(item) for item in force_goal_ids if str(item).strip()}
@@ -2682,6 +2938,8 @@ def generate_objective_todos(
         summary_prefix=summary_prefix,
         surplus_findings_per_goal=surplus_findings_per_goal,
         surplus_min_terms_per_todo=surplus_min_terms_per_todo,
+        dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
+        dataset_id=f"{task_prefix.rstrip('-').lower()}-objective-ast",
     )
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
@@ -2744,13 +3002,6 @@ def generate_objective_todos(
             dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
             dataset_id=f"{task_prefix.rstrip('-').lower()}-todo-vector-index",
             persist_dataset=persist_ast_dataset,
-        )
-    if persist_ast_dataset:
-        persist_objective_ast_dataset(
-            repo_root=repo_root,
-            objective_path=objective_path,
-            dataset_dir=dataset_dir or bundle_dir.parent / "objective_datasets",
-            dataset_id=f"{task_prefix.rstrip('-').lower()}-objective-ast",
         )
     return records
 
