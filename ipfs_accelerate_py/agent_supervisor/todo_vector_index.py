@@ -18,6 +18,7 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .conflict_graph import build_conflict_surface, materialize_task_conflict_graph
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
 from .objective_graph import (
     DEFAULT_EMBEDDING_DIMENSIONS,
@@ -77,6 +78,14 @@ class TodoIndexRecord:
     embedding: list[float] = field(default_factory=list)
     ast_symbols: list[str] = field(default_factory=list)
     related_task_ids: list[str] = field(default_factory=list)
+    task_cid: str = ""
+    predicted_files: list[str] = field(default_factory=list)
+    changed_paths: list[str] = field(default_factory=list)
+    interfaces: list[str] = field(default_factory=list)
+    submodules: list[str] = field(default_factory=list)
+    generated_artifacts: list[str] = field(default_factory=list)
+    allow_concurrent_with: list[str] = field(default_factory=list)
+    conflict_surface: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -208,9 +217,35 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             " ".join(record.graph_parents),
             " ".join(record.missing_evidence),
             " ".join(record.outputs),
+            " ".join(record.predicted_files),
+            " ".join(record.changed_paths),
+            " ".join(record.interfaces),
+            " ".join(record.submodules),
+            " ".join(record.generated_artifacts),
             record.acceptance,
         ]
     )
+
+
+def _surface_dict(surface: Any) -> dict[str, Any]:
+    to_dict = getattr(surface, "to_dict", None)
+    payload = to_dict() if callable(to_dict) else surface
+    return dict(payload) if isinstance(payload, Mapping) else {}
+
+
+def _first_csv(fields: Mapping[str, str], *keys: str) -> list[str]:
+    for key in keys:
+        values = split_csv(str(fields.get(key) or ""))
+        if values:
+            return values
+    return []
+
+
+def _all_csv(fields: Mapping[str, str], *keys: str) -> list[str]:
+    values: set[str] = set()
+    for key in keys:
+        values.update(split_csv(str(fields.get(key) or "")))
+    return sorted(values)
 
 
 def collect_output_symbols(repo_root: Path, outputs: Sequence[str], *, max_file_bytes: int = 262144) -> list[str]:
@@ -299,7 +334,54 @@ def parse_todo_vector_records(
             goal_packet_work_item_count=parse_int(fields.get("goal_packet_work_item_count"), 0),
             candidate_kind=candidate_kind,
             vector_key=vector_key,
-            ast_symbols=collect_output_symbols(repo_root, outputs),
+            ast_symbols=sorted_unique(
+                [*split_csv(fields.get("ast_symbols", "")), *collect_output_symbols(repo_root, outputs)]
+            ),
+            task_cid=str(fields.get("canonical_task_cid") or fields.get("task_cid") or "").strip(),
+            predicted_files=sorted_unique(
+                [*_first_csv(fields, "predicted_files", "files"), *outputs]
+            ),
+            changed_paths=_first_csv(fields, "changed_paths", "actual_changed_paths", "branch_diff_paths"),
+            interfaces=_all_csv(
+                fields,
+                "interfaces",
+                "interface_contracts",
+                "provides_interfaces",
+                "requires_interfaces",
+                "required_interfaces",
+                "interface_dependencies",
+                "public_interfaces",
+            ),
+            submodules=_all_csv(fields, "submodules", "submodule_paths", "interoperability_pair"),
+            generated_artifacts=_all_csv(
+                fields,
+                "generated_artifacts",
+                "generated_outputs",
+                "generated_paths",
+                "artifacts",
+            ),
+            allow_concurrent_with=_all_csv(
+                fields,
+                "allow_concurrent_with",
+                "concurrency_overrides",
+            ),
+        )
+        surface = build_conflict_surface(base_record.to_dict(), repo_root=repo_root)
+        surface_payload = _surface_dict(surface)
+        base_record = replace_record(
+            base_record,
+            predicted_files=list(surface_payload.get("files") or base_record.predicted_files),
+            changed_paths=list(surface_payload.get("changed_paths") or base_record.changed_paths),
+            ast_symbols=list(surface_payload.get("ast_symbols") or base_record.ast_symbols),
+            interfaces=list(surface_payload.get("interfaces") or base_record.interfaces),
+            submodules=list(surface_payload.get("submodules") or base_record.submodules),
+            generated_artifacts=list(
+                surface_payload.get("generated_artifacts") or base_record.generated_artifacts
+            ),
+            allow_concurrent_with=list(
+                surface_payload.get("allow_concurrent_with") or base_record.allow_concurrent_with
+            ),
+            conflict_surface=surface_payload,
         )
         text = record_embedding_text(base_record)
         records.append(
@@ -506,8 +588,15 @@ def build_merge_candidate(
         "cluster_keys": sorted_unique([cluster_by_task.get(record.task_id, "") for record in records]),
         "shared_outputs": shared_outputs,
         "all_outputs": all_outputs,
+        "predicted_files": sorted_unique([path for record in records for path in record.predicted_files]),
+        "changed_paths": sorted_unique([path for record in records for path in record.changed_paths]),
         "missing_evidence": missing_evidence,
         "ast_symbols": ast_symbols,
+        "interfaces": sorted_unique([item for record in records for item in record.interfaces]),
+        "submodules": sorted_unique([item for record in records for item in record.submodules]),
+        "generated_artifacts": sorted_unique(
+            [item for record in records for item in record.generated_artifacts]
+        ),
         "work_item_count_min": min(work_counts) if work_counts else 0,
         "work_item_count_max": max(work_counts) if work_counts else 0,
         "work_item_count_total": sum(work_counts),
@@ -599,6 +688,8 @@ def _compact_context_text(context: Mapping[str, Any]) -> str:
         f"missing={', '.join(context.get('missing_evidence') or [])}",
         f"outputs={', '.join((context.get('shared_outputs') or context.get('all_outputs') or [])[:4])}",
         f"ast={', '.join((context.get('ast_symbols') or [])[:12])}",
+        f"interfaces={', '.join((context.get('interfaces') or [])[:6])}",
+        f"submodules={', '.join((context.get('submodules') or [])[:4])}",
     ]
     return "; ".join(part for part in parts if not part.endswith("=") and part.strip())
 
@@ -671,6 +762,13 @@ def build_bundle_context(
         "validation": sorted_unique([command for record in records for command in record.validation])[:8],
         "missing_evidence": sorted_unique([item for record in records for item in record.missing_evidence]),
         "ast_symbols": sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80],
+        "predicted_files": sorted_unique([path for record in records for path in record.predicted_files]),
+        "changed_paths": sorted_unique([path for record in records for path in record.changed_paths]),
+        "interfaces": sorted_unique([item for record in records for item in record.interfaces]),
+        "submodules": sorted_unique([item for record in records for item in record.submodules]),
+        "generated_artifacts": sorted_unique(
+            [item for record in records for item in record.generated_artifacts]
+        ),
         "raw_prompt_tokens": sum(record.token_count for record in records),
     }
     compact_context = _compact_context_text(context)
@@ -764,6 +862,8 @@ def _compact_execution_packet_text(packet: Mapping[str, Any]) -> str:
         f"miss={','.join((packet.get('missing_evidence') or [])[:10])}",
         f"out={','.join((packet.get('shared_outputs') or packet.get('all_outputs') or [])[:5])}",
         f"ast={','.join((packet.get('ast_symbols') or [])[:12])}",
+        f"if={','.join((packet.get('interfaces') or [])[:6])}",
+        f"sm={','.join((packet.get('submodules') or [])[:4])}",
         f"todo={'|'.join(packet.get('task_summaries') or [])}",
     ]
     return ";".join(part for part in parts if not part.endswith("=") and part.strip())
@@ -867,6 +967,17 @@ def build_execution_packet(
         "validation": sorted_unique([command for record in selected_records for command in record.validation])[:8],
         "missing_evidence": sorted_unique([item for record in selected_records for item in record.missing_evidence]),
         "ast_symbols": sorted_unique([symbol for record in selected_records for symbol in record.ast_symbols])[:80],
+        "predicted_files": sorted_unique(
+            [path for record in selected_records for path in record.predicted_files]
+        ),
+        "changed_paths": sorted_unique(
+            [path for record in selected_records for path in record.changed_paths]
+        ),
+        "interfaces": sorted_unique([item for record in selected_records for item in record.interfaces]),
+        "submodules": sorted_unique([item for record in selected_records for item in record.submodules]),
+        "generated_artifacts": sorted_unique(
+            [item for record in selected_records for item in record.generated_artifacts]
+        ),
         "task_summaries": [_compact_record_summary(record) for record in selected_records],
         "raw_prompt_tokens": sum(record.token_count for record in selected_records),
     }
@@ -916,6 +1027,39 @@ def build_execution_packets(
     )
 
 
+def _stored_conflict_inputs(paths: Sequence[Path | None]) -> dict[str, Any]:
+    """Recover learned conflict evidence from an earlier generated index."""
+
+    collected: dict[str, Any] = {}
+    for path in paths:
+        if path is None or not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        graph = payload.get("conflict_graph") if isinstance(payload.get("conflict_graph"), dict) else {}
+        aliases = {
+            "branch_diffs": ("branch_diffs",),
+            "conflict_receipts": ("conflict_receipts",),
+            "concurrency_overrides": ("concurrency_overrides",),
+            "history": ("conflict_history", "conflict_weight_history", "history"),
+        }
+        for canonical, keys in aliases.items():
+            if canonical in collected:
+                continue
+            for key in keys:
+                value = payload.get(key)
+                if value is None:
+                    value = graph.get(key)
+                if value is not None:
+                    collected[canonical] = value
+                    break
+    return collected
+
+
 def write_todo_vector_index(
     *,
     repo_root: Path,
@@ -928,6 +1072,11 @@ def write_todo_vector_index(
     dataset_id: str = "todo-vector-index",
     persist_dataset: bool = False,
     dimensions: int = DEFAULT_EMBEDDING_DIMENSIONS,
+    branch_diffs: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+    conflict_receipts: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+    concurrency_overrides: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+    conflict_history: Mapping[str, Any] | None = None,
+    max_lanes: int | None = None,
 ) -> dict[str, Any]:
     """Build and persist a vector/AST index for a todo board."""
 
@@ -941,6 +1090,25 @@ def write_todo_vector_index(
     merge_candidates = build_merge_candidates(records, clusters)
     bundle_contexts = build_bundle_contexts(records, clusters, merge_candidates)
     execution_packets = build_execution_packets(records, bundle_contexts)
+    # The existing vector index contains the newest learned history.  The
+    # bundle index is a fallback because objective regeneration may have
+    # replaced its graph with prediction-only state.
+    graph_kwargs = _stored_conflict_inputs((index_path, bundle_index_path))
+    if branch_diffs is not None:
+        graph_kwargs["branch_diffs"] = branch_diffs
+    if conflict_receipts is not None:
+        graph_kwargs["conflict_receipts"] = conflict_receipts
+    if concurrency_overrides is not None:
+        graph_kwargs["concurrency_overrides"] = concurrency_overrides
+    if conflict_history is not None:
+        graph_kwargs["history"] = conflict_history
+    conflict_graph = materialize_task_conflict_graph(
+        [record.to_dict() for record in records],
+        repo_root=repo_root,
+        max_lanes=max_lanes,
+        **graph_kwargs,
+    )
+    conflict_graph_payload = _surface_dict(conflict_graph)
     payload: dict[str, Any] = {
         "schema": DEFAULT_TODO_VECTOR_INDEX_SCHEMA,
         "generated_at": utc_now(),
@@ -963,6 +1131,9 @@ def write_todo_vector_index(
         "merge_candidates": merge_candidates,
         "bundle_contexts": bundle_contexts,
         "execution_packets": execution_packets,
+        "conflict_graph": conflict_graph_payload,
+        "task_conflict_graph": conflict_graph_payload,
+        "conflict_history": dict(conflict_graph_payload.get("history") or {}),
     }
     if bundle_index_path is not None:
         payload["bundle_index_path"] = repo_relative_path(repo_root, bundle_index_path)
@@ -983,6 +1154,7 @@ def write_todo_vector_index(
             merge_candidates=merge_candidates,
             bundle_contexts=bundle_contexts,
             execution_packets=execution_packets,
+            conflict_graph=conflict_graph_payload,
         )
     return payload
 
@@ -1008,6 +1180,7 @@ def update_bundle_index_with_todo_vectors(
     merge_candidates: Sequence[Mapping[str, Any]] = (),
     bundle_contexts: Sequence[Mapping[str, Any]] = (),
     execution_packets: Sequence[Mapping[str, Any]] = (),
+    conflict_graph: Mapping[str, Any] | None = None,
 ) -> None:
     try:
         payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
@@ -1019,6 +1192,9 @@ def update_bundle_index_with_todo_vectors(
     if not isinstance(bundles, dict):
         return
     by_task = {record.task_id: record for record in records}
+
+    def conflict_key(record: TodoIndexRecord) -> str:
+        return record.task_cid or record.task_id
     by_bundle: dict[str, list[TodoIndexRecord]] = {}
     for record in records:
         if record.bundle_key:
@@ -1061,6 +1237,30 @@ def update_bundle_index_with_todo_vectors(
                 normalized = str(task_id)
                 if normalized:
                     packet_keys_by_task.setdefault(normalized, []).append(packet_key)
+    graph_payload = dict(conflict_graph or {})
+    graph_surfaces = graph_payload.get("surfaces") if isinstance(graph_payload.get("surfaces"), dict) else {}
+    graph_assignments = graph_payload.get("assignments") if isinstance(graph_payload.get("assignments"), list) else []
+    graph_decisions = graph_payload.get("decisions") if isinstance(graph_payload.get("decisions"), list) else []
+    graph_edges = graph_payload.get("edges") if isinstance(graph_payload.get("edges"), list) else []
+    assignment_by_task: dict[str, dict[str, Any]] = {}
+    for assignment in graph_assignments:
+        if isinstance(assignment, dict):
+            task_id = str(assignment.get("task_cid") or assignment.get("task_id") or assignment.get("node") or "")
+            if task_id:
+                assignment_by_task[task_id] = dict(assignment)
+
+    def graph_item_task_ids(item: Mapping[str, Any]) -> set[str]:
+        values = [
+            item.get(key)
+            for key in (
+                "task_id", "source", "target", "left", "right", "task_a", "task_b",
+                "task_cid", "source_task_id", "target_task_id", "left_task_cid", "right_task_cid",
+            )
+        ]
+        raw_task_ids = item.get("task_ids")
+        if isinstance(raw_task_ids, list):
+            values.extend(raw_task_ids)
+        return {str(value) for value in values if value}
     for bundle_key, bundle_payload in bundles.items():
         if not isinstance(bundle_payload, dict):
             continue
@@ -1116,6 +1316,20 @@ def update_bundle_index_with_todo_vectors(
                     if merge_ready_by_task.get(record.task_id)
                 }
             ),
+            "conflict_surface_count": sum(
+                1 for record in bundle_records if conflict_key(record) in graph_surfaces
+            ),
+            "conflict_assignments": [
+                assignment_by_task[conflict_key(record)]
+                for record in bundle_records
+                if conflict_key(record) in assignment_by_task
+            ],
+            "conflict_decisions": [
+                dict(decision)
+                for decision in graph_decisions
+                if isinstance(decision, Mapping)
+                and graph_item_task_ids(decision) & {conflict_key(record) for record in bundle_records}
+            ],
         }
         tasks = bundle_payload.get("tasks")
         if not isinstance(tasks, list):
@@ -1142,4 +1356,27 @@ def update_bundle_index_with_todo_vectors(
             task["todo_bundle_context_keys"] = context_keys_by_task.get(record.task_id, [])[:5]
             task["todo_execution_packet_keys"] = packet_keys_by_task.get(record.task_id, [])[:5]
             task["related_task_ids"] = record.related_task_ids
+            task["predicted_files"] = record.predicted_files
+            task["changed_paths"] = record.changed_paths
+            task["interfaces"] = record.interfaces
+            task["submodules"] = record.submodules
+            task["generated_artifacts"] = record.generated_artifacts
+            task["allow_concurrent_with"] = record.allow_concurrent_with
+            record_conflict_key = conflict_key(record)
+            task["conflict_surface"] = dict(graph_surfaces.get(record_conflict_key) or record.conflict_surface)
+            task["conflict_assignment"] = assignment_by_task.get(record_conflict_key, {})
+            task["conflict_decisions"] = [
+                dict(decision)
+                for decision in graph_decisions
+                if isinstance(decision, Mapping) and record_conflict_key in graph_item_task_ids(decision)
+            ]
+            task["conflict_edges"] = [
+                dict(edge)
+                for edge in graph_edges
+                if isinstance(edge, Mapping) and record_conflict_key in graph_item_task_ids(edge)
+            ]
+    if graph_payload:
+        payload["conflict_graph"] = graph_payload
+        payload["task_conflict_graph"] = graph_payload
+        payload["conflict_history"] = dict(graph_payload.get("history") or {})
     bundle_index_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

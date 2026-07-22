@@ -187,6 +187,13 @@ class ObjectiveFinding:
     goal_packet_goal_ids: list[str] = field(default_factory=list)
     goal_packet_task_count: int = 0
     goal_packet_work_item_count: int = 0
+    predicted_files: list[str] = field(default_factory=list)
+    changed_paths: list[str] = field(default_factory=list)
+    ast_symbols: list[str] = field(default_factory=list)
+    interfaces: list[str] = field(default_factory=list)
+    submodules: list[str] = field(default_factory=list)
+    generated_artifacts: list[str] = field(default_factory=list)
+    allow_concurrent_with: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -335,6 +342,38 @@ class TaskDependencyGraph:
 
 # A concise alias for callers that use the backlog task's DAG terminology.
 TaskDependencyDAG = TaskDependencyGraph
+
+
+@dataclass(frozen=True)
+class TaskPlanningGraph:
+    """Combined dependency schedule and conflict-colored execution plan.
+
+    Keeping the two graph types together prevents callers from accidentally
+    treating a dependency-ready task as concurrency-safe.  The conflict graph
+    remains the owner of lane assignments and their explanations, while the
+    dependency graph remains the owner of prerequisite claimability.
+    """
+
+    dependency_graph: TaskDependencyGraph
+    conflict_graph: Any
+
+    @property
+    def claimable_task_cids(self) -> list[str]:
+        return self.dependency_graph.claimable_task_cids
+
+    def to_dict(self) -> dict[str, Any]:
+        dependency = self.dependency_graph.to_dict()
+        conflict = self.conflict_graph.to_dict()
+        return {
+            "task_dependency_graph": dependency,
+            "dependency_dag": dependency,
+            "task_conflict_graph": conflict,
+            "conflict_graph": conflict,
+            "claimable_task_cids": self.claimable_task_cids,
+            "lanes": conflict.get("lanes", {}),
+            "lane_assignments": conflict.get("assignments", []),
+            "planning_decisions": conflict.get("decisions", []),
+        }
 
 
 @dataclass(frozen=True)
@@ -1335,6 +1374,56 @@ materialize_task_dependency_graph = materialize_task_dependency_dag
 schedule_critical_path = critical_path_schedule
 
 
+def materialize_task_planning_graph(
+    tasks: Sequence[Any],
+    *,
+    repo_root: Path | None = None,
+    merge_receipts: Mapping[str, Any] | Iterable[Mapping[str, Any]] = (),
+    branch_diffs: Mapping[str, Any] | Iterable[Mapping[str, Any]] | None = None,
+    conflict_receipts: Mapping[str, Any] | Iterable[Mapping[str, Any]] | None = None,
+    concurrency_overrides: Mapping[str, Any] | Iterable[Any] | None = None,
+    conflict_history: Any = None,
+    max_lanes: int | None = None,
+    now: datetime | int | None = None,
+    max_repair_evidence: int = 64,
+) -> TaskPlanningGraph:
+    """Materialize dependency readiness and conflict-colored lanes together.
+
+    ``tasks`` is copied before either graph consumes it, which is important for
+    callers that supply generators.  Historical branch diffs and merge-conflict
+    receipts are deliberately routed only to the conflict model; successful
+    merge receipts independently control dependency claimability.
+    """
+
+    from .conflict_graph import materialize_task_conflict_graph
+
+    task_records = list(tasks)
+    dependency_graph = materialize_task_dependency_dag(
+        task_records,
+        merge_receipts=merge_receipts,
+        now=now,
+        max_repair_evidence=max_repair_evidence,
+    )
+    conflict_graph = materialize_task_conflict_graph(
+        task_records,
+        repo_root=repo_root,
+        branch_diffs=branch_diffs,
+        conflict_receipts=conflict_receipts,
+        concurrency_overrides=concurrency_overrides,
+        history=conflict_history,
+        max_lanes=max_lanes,
+    )
+    return TaskPlanningGraph(
+        dependency_graph=dependency_graph,
+        conflict_graph=conflict_graph,
+    )
+
+
+# Discoverable aliases for scheduler and planner callers.
+materialize_task_execution_graph = materialize_task_planning_graph
+plan_task_lanes = materialize_task_planning_graph
+
+
 def objective_goal_work_surface(goal: ObjectiveGoal) -> int:
     """Estimate how much coherent work one goal can support."""
 
@@ -1596,6 +1685,16 @@ def _unique_strings(values: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
 
 
+def _goal_conflict_terms(goal: ObjectiveGoal, *field_names: str) -> list[str]:
+    """Collect normalized conflict-surface declarations from goal fields."""
+
+    return _unique_strings(
+        term
+        for field_name in field_names
+        for term in split_terms(str(goal.fields.get(field_name) or ""))
+    )
+
+
 def _merge_present_evidence(findings: Sequence[ObjectiveFinding]) -> dict[str, list[str]]:
     present: dict[str, list[str]] = {}
     for finding in findings:
@@ -1728,6 +1827,21 @@ def add_goal_packet_aggregate_findings(
             goal_packet_task_count=len(sorted_group) + 1,
             goal_packet_work_item_count=sum(
                 finding.work_item_count or len(finding.missing_evidence) for finding in sorted_group
+            ),
+            predicted_files=_unique_strings(
+                path for finding in sorted_group for path in (finding.predicted_files or finding.outputs)
+            ),
+            changed_paths=_unique_strings(
+                path for finding in sorted_group for path in finding.changed_paths
+            ),
+            ast_symbols=_unique_strings(symbol for finding in sorted_group for symbol in finding.ast_symbols),
+            interfaces=_unique_strings(interface for finding in sorted_group for interface in finding.interfaces),
+            submodules=_unique_strings(submodule for finding in sorted_group for submodule in finding.submodules),
+            generated_artifacts=_unique_strings(
+                artifact for finding in sorted_group for artifact in finding.generated_artifacts
+            ),
+            allow_concurrent_with=_unique_strings(
+                task for finding in sorted_group for task in finding.allow_concurrent_with
             ),
         )
         planned.append(aggregate)
@@ -2072,6 +2186,53 @@ def scan_objective_gaps(
                     candidate_missing_terms,
                     candidate_kind=candidate_kind,
                 ),
+                predicted_files=_unique_strings(
+                    [
+                        *split_terms(str(fields.get("outputs") or "")),
+                        *_goal_conflict_terms(goal, "predicted_files", "files"),
+                    ]
+                ),
+                changed_paths=_goal_conflict_terms(
+                    goal,
+                    "changed_paths",
+                    "actual_changed_paths",
+                    "branch_diff_paths",
+                ),
+                ast_symbols=_unique_strings(
+                    [
+                        *_goal_conflict_terms(goal, "ast_symbols"),
+                        *split_terms(str(fields.get("ast_query") or ", ".join(terms))),
+                    ]
+                ),
+                interfaces=_goal_conflict_terms(
+                    goal,
+                    "interfaces",
+                    "interface_contracts",
+                    "provides_interfaces",
+                    "requires_interfaces",
+                    "required_interfaces",
+                    "interface_dependencies",
+                    "public_interfaces",
+                ),
+                submodules=_goal_conflict_terms(
+                    goal,
+                    "submodules",
+                    "submodule_paths",
+                    "interoperability_pair",
+                    "gitlinks",
+                ),
+                generated_artifacts=_goal_conflict_terms(
+                    goal,
+                    "generated_artifacts",
+                    "generated_outputs",
+                    "generated_paths",
+                    "artifacts",
+                ),
+                allow_concurrent_with=_goal_conflict_terms(
+                    goal,
+                    "allow_concurrent_with",
+                    "concurrency_overrides",
+                ),
             )
             findings.append(finding)
             if not forced_goal:
@@ -2155,6 +2316,12 @@ Evidence methods: {", ".join(finding.evidence_methods) or "none"}
 Embedding query: {finding.embedding_query}
 AST query: {finding.ast_query}
 Conflict policy: {finding.conflict_policy}
+Predicted files: {", ".join(finding.predicted_files or finding.outputs) or "none"}
+AST symbols: {", ".join(finding.ast_symbols) or "none"}
+Interfaces: {", ".join(finding.interfaces) or "none"}
+Submodules: {", ".join(finding.submodules) or "none"}
+Generated artifacts: {", ".join(finding.generated_artifacts) or "none"}
+Allow concurrent with: {", ".join(finding.allow_concurrent_with) or "none"}
 
 ## Goal
 
@@ -2187,6 +2354,28 @@ def objective_finding_task_identity(task_id: str, finding: ObjectiveFinding) -> 
         board_namespace="objective-graph",
         source_path=finding.objective_path,
     )
+
+
+def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -> dict[str, Any]:
+    """Return the canonical conflict-surface fields for a generated finding."""
+
+    identity = objective_finding_task_identity(task_id, finding)
+    predicted_files = _unique_strings([*(finding.predicted_files or finding.outputs), *finding.outputs])
+    return {
+        "task_id": task_id,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "task_cid": identity.canonical_task_cid,
+        "predicted_files": predicted_files,
+        "files": predicted_files,
+        "changed_paths": _unique_strings(finding.changed_paths),
+        "outputs": _unique_strings(finding.outputs),
+        "ast_symbols": _unique_strings(finding.ast_symbols or split_terms(finding.ast_query)),
+        "interfaces": _unique_strings(finding.interfaces),
+        "submodules": _unique_strings(finding.submodules),
+        "generated_artifacts": _unique_strings(finding.generated_artifacts),
+        "allow_concurrent_with": _unique_strings(finding.allow_concurrent_with),
+        "conflict_policy": finding.conflict_policy,
+    }
 
 
 def render_task_block(
@@ -2229,6 +2418,13 @@ def render_task_block(
 - Graph depth: {finding.graph_depth}
 - Parallel lane: {finding.parallel_lane}
 - Conflict policy: {finding.conflict_policy}
+- Predicted files: {", ".join(finding.predicted_files or finding.outputs)}
+- Changed paths: {", ".join(finding.changed_paths)}
+- AST symbols: {", ".join(finding.ast_symbols)}
+- Interfaces: {", ".join(finding.interfaces)}
+- Submodules: {", ".join(finding.submodules)}
+- Generated artifacts: {", ".join(finding.generated_artifacts)}
+- Allow concurrent with: {", ".join(finding.allow_concurrent_with)}
 - Goal id: {finding.goal_id}
 - Canonical task key: {identity.canonical_task_key}
 - Canonical task CID: {identity.canonical_task_cid}
@@ -2267,9 +2463,10 @@ def write_bundle_shards(
     for record in records:
         groups.setdefault(record.finding.bundle_key, []).append(record)
 
-    generated_graph = materialize_task_dependency_dag(
+    generated_planning_graph = materialize_task_planning_graph(
         [
             {
+                **objective_finding_conflict_record(record.task_id, record.finding),
                 "task_id": record.task_id,
                 "canonical_task_cid": objective_finding_task_identity(record.task_id, record.finding).canonical_task_cid,
                 "goal_id": record.finding.goal_id,
@@ -2282,6 +2479,7 @@ def write_bundle_shards(
             for record in records
         ]
     )
+    generated_graph = generated_planning_graph.dependency_graph
     generated_incoming: dict[str, set[str]] = {cid: set() for cid in generated_graph.nodes}
     for edge in generated_graph.edges:
         generated_incoming.setdefault(edge.target_task_cid, set()).add(edge.source_task_cid)
@@ -2335,6 +2533,7 @@ def write_bundle_shards(
             identity = objective_finding_task_identity(record.task_id, record.finding)
             schedule_record = generated_schedule.get(identity.canonical_task_cid)
             task_map[record.task_id] = {
+                **objective_finding_conflict_record(record.task_id, record.finding),
                 "task_id": record.task_id,
                 "canonical_task_key": identity.canonical_task_key,
                 "canonical_task_cid": identity.canonical_task_cid,
@@ -2379,7 +2578,8 @@ def write_bundle_shards(
         for item in (info.get("tasks") or [])
         if isinstance(item, Mapping)
     ]
-    index_graph = materialize_task_dependency_dag(all_index_tasks)
+    index_planning_graph = materialize_task_planning_graph(all_index_tasks, repo_root=repo_root)
+    index_graph = index_planning_graph.dependency_graph
     index_incoming: dict[str, set[str]] = {cid: set() for cid in index_graph.nodes}
     for edge in index_graph.edges:
         index_incoming.setdefault(edge.target_task_cid, set()).add(edge.source_task_cid)
@@ -2414,6 +2614,9 @@ def write_bundle_shards(
     index_payload["bundles"] = bundles
     index_payload["task_dependency_graph"] = index_graph.to_dict()
     index_payload["dependency_dag"] = index_graph.to_dict()
+    index_payload["task_conflict_graph"] = index_planning_graph.conflict_graph.to_dict()
+    index_payload["conflict_graph"] = index_planning_graph.conflict_graph.to_dict()
+    index_payload["task_planning_graph"] = index_planning_graph.to_dict()
     index_path.write_text(json.dumps(index_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     generated_paths.append(index_path)
     return BundleWriteResult(generated_paths=generated_paths, index_path=index_path, bundle_paths=bundle_paths)
@@ -2507,6 +2710,67 @@ def generate_objective_todos(
     return records
 
 
+def _profile_g_safe_planning_value(value: Any) -> Any:
+    """Encode graph weights without violating Profile G's no-float codec."""
+
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return str(value)
+        return format(value, ".12g")
+    if isinstance(value, Mapping):
+        return {str(key): _profile_g_safe_planning_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_profile_g_safe_planning_value(item) for item in value]
+    return value
+
+
+def _project_task_conflict_graph(
+    graph: Mapping[str, Any], member_task_cids: set[str]
+) -> dict[str, Any]:
+    """Return the incident conflict evidence needed by one bundle payload.
+
+    The complete O(n²) decision matrix belongs once in the bundle index.  Queue
+    payloads carry only their member surfaces, assignments, and incident
+    decisions/edges; otherwise serializing and hashing n full graphs creates
+    cubic planning work for large objective boards.
+    """
+
+    def incident(item: Any) -> bool:
+        if not isinstance(item, Mapping):
+            return False
+        left = str(item.get("left_task_cid") or item.get("left") or "")
+        right = str(item.get("right_task_cid") or item.get("right") or "")
+        return bool({left, right} & member_task_cids)
+
+    surfaces = graph.get("surfaces") if isinstance(graph.get("surfaces"), Mapping) else {}
+    assignments = graph.get("assignments") if isinstance(graph.get("assignments"), list) else []
+    lanes = graph.get("lanes") if isinstance(graph.get("lanes"), Mapping) else {}
+    projected_lanes: dict[str, list[str]] = {}
+    for color, raw_task_cids in lanes.items():
+        if not isinstance(raw_task_cids, list):
+            continue
+        selected = [str(cid) for cid in raw_task_cids if str(cid) in member_task_cids]
+        if selected:
+            projected_lanes[str(color)] = selected
+    return {
+        "schema": graph.get("schema", "ipfs_accelerate_py.agent_supervisor.conflict_graph@1"),
+        "projection": "bundle_incident",
+        "surfaces": {
+            cid: dict(surface)
+            for cid, surface in surfaces.items()
+            if str(cid) in member_task_cids and isinstance(surface, Mapping)
+        },
+        "edges": [dict(item) for item in graph.get("edges", []) if incident(item)],
+        "assignments": [
+            dict(item)
+            for item in assignments
+            if isinstance(item, Mapping) and str(item.get("task_cid") or "") in member_task_cids
+        ],
+        "decisions": [dict(item) for item in graph.get("decisions", []) if incident(item)],
+        "lanes": projected_lanes,
+    }
+
+
 def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
     """Build dependency-aware task-queue payloads and Profile G adapters."""
 
@@ -2539,8 +2803,10 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         for item in bundle_payload.get("tasks", [])
         if isinstance(item, Mapping)
     ]
-    graph = materialize_task_dependency_dag(flat_tasks)
+    planning_graph = materialize_task_planning_graph(flat_tasks)
+    graph = planning_graph.dependency_graph
     graph_dict = graph.to_dict()
+    conflict_graph_dict = planning_graph.conflict_graph.to_dict()
     invalid_task_cids = set(graph.invalid_task_cids)
     schedule_by_cid = {item.task_cid: item for item in graph.schedule}
     member_cids_by_bundle_and_id = {
@@ -2638,6 +2904,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
                 if source in member_bundle and member_bundle[source] != bundle_key
             }
         )
+        projected_conflicts = _project_task_conflict_graph(conflict_graph_dict, member_cids)
         bundle_payload.update(
             {
                 "canonical_task_cid": bundle_identity_cids[bundle_key],
@@ -2655,6 +2922,9 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
                 "dependency_repair_evidence": repair_evidence,
                 "task_dependency_graph": graph_dict,
                 "dependency_dag": graph_dict,
+                "task_conflict_graph": projected_conflicts,
+                "conflict_graph": projected_conflicts,
+                "conflict_planning_decisions": projected_conflicts["decisions"],
             }
         )
 
@@ -2671,7 +2941,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
     )
     for rank, task_payload in enumerate(task_payloads):
         task_payload["schedule_rank"] = rank
-        task_payload["profile_g"] = adapt_goal_bundle(task_payload)
+        task_payload["profile_g"] = adapt_goal_bundle(_profile_g_safe_planning_value(task_payload))
     return task_payloads
 
 

@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
 
+from .conflict_graph import materialize_task_conflict_graph
 from .lease_coordination import LeaseCoordinator, LeaseError
 from .objective_graph import (
     DEFAULT_TASK_PREFIX,
@@ -57,6 +58,10 @@ class BundleLaneSpec:
     objective_priority: int = 0
     schedule_score: int = 0
     dependency_repair_evidence: list[dict[str, Any]] = field(default_factory=list)
+    conflict_color: int | None = None
+    conflicting_task_ids: list[str] = field(default_factory=list)
+    conflict_decisions: list[dict[str, Any]] = field(default_factory=list)
+    conflict_surface: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
         payload = asdict(self)
@@ -141,6 +146,314 @@ def _lane_schedule_key(lane: BundleLaneSpec) -> tuple[int, int, str]:
 
     rank = lane.schedule_rank if lane.schedule_rank is not None else sys.maxsize
     return (0 if lane.claimable else 1, rank, lane.bundle_key)
+
+
+def _mapping_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [dict(item) for item in value if isinstance(item, dict)]
+
+
+def _bundle_conflict_task(payload: dict[str, Any]) -> dict[str, Any]:
+    """Project all member work onto the execution unit that owns a lane."""
+
+    tasks = _mapping_list(payload.get("tasks"))
+
+    def member_values(*keys: str) -> list[str]:
+        values: list[str] = []
+        for source in [payload, *tasks]:
+            for key in keys:
+                raw = source.get(key)
+                if isinstance(raw, str):
+                    candidates = [part.strip() for part in raw.split(",")]
+                elif isinstance(raw, (list, tuple, set, frozenset)):
+                    candidates = [str(part).strip() for part in raw]
+                else:
+                    candidates = []
+                values.extend(item for item in candidates if item)
+        return list(dict.fromkeys(values))
+
+    bundle_key = str(payload.get("bundle_key") or "objective/general")
+    profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
+    return {
+        "task_id": bundle_key,
+        "task_cid": str(profile_g.get("task_cid") or payload.get("task_cid") or ""),
+        "outputs": member_values("outputs", "files", "predicted_files"),
+        "changed_paths": member_values("changed_paths", "actual_changed_paths"),
+        "ast_symbols": member_values("ast_symbols", "symbols"),
+        "ast_query": ", ".join(member_values("ast_query")),
+        "interfaces": member_values(
+            "interfaces", "interface_contracts", "provides_interfaces", "requires_interfaces",
+            "required_interfaces", "interface_dependencies", "public_interfaces",
+        ),
+        "submodules": member_values("submodules", "submodule_paths", "interoperability_pair", "gitlinks"),
+        "generated_artifacts": member_values(
+            "generated_artifacts", "generated_outputs", "generated_paths", "artifacts"
+        ),
+        "allow_concurrent_with": member_values("allow_concurrent_with", "concurrency_overrides"),
+        "metadata": {
+            "bundle_key": bundle_key,
+            "member_task_ids": [str(task.get("task_id")) for task in tasks if task.get("task_id")],
+            "conflict_policy": str(payload.get("conflict_policy") or ""),
+        },
+    }
+
+
+def _conflict_graph_inputs(bundle_index_path: Path) -> dict[str, Any]:
+    """Load optional learned-conflict inputs without making them mandatory."""
+
+    try:
+        payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    stored_graph = payload.get("conflict_graph") if isinstance(payload.get("conflict_graph"), dict) else {}
+    history = payload.get("conflict_history")
+    if history is None:
+        history = stored_graph.get("history")
+    return {
+        "branch_diffs": payload.get("branch_diffs", stored_graph.get("branch_diffs")),
+        "conflict_receipts": payload.get("conflict_receipts", stored_graph.get("conflict_receipts")),
+        "concurrency_overrides": payload.get("concurrency_overrides", stored_graph.get("concurrency_overrides")),
+        "history": history if history is not None else payload.get("conflict_weight_history"),
+    }
+
+
+def _graph_payload(graph: Any) -> dict[str, Any]:
+    to_dict = getattr(graph, "to_dict", None)
+    payload = to_dict() if callable(to_dict) else graph
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _bundle_conflict_annotations(
+    payloads: Sequence[dict[str, Any]],
+    *,
+    bundle_index_path: Path,
+    repo_root: Path,
+) -> dict[str, dict[str, Any]]:
+    """Return graph color, surface, edges, and reasons keyed by bundle."""
+
+    if not payloads:
+        return {}
+    inputs = {key: value for key, value in _conflict_graph_inputs(bundle_index_path).items() if value is not None}
+    conflict_tasks = [_bundle_conflict_task(payload) for payload in payloads]
+    aliases: dict[str, str] = {}
+    for payload, conflict_task in zip(payloads, conflict_tasks):
+        conflict_cid = str(conflict_task.get("task_cid") or conflict_task.get("task_id") or "")
+        aliases[str(conflict_task.get("task_id") or "")] = conflict_cid
+        aliases[conflict_cid] = conflict_cid
+        for member in _mapping_list(payload.get("tasks")):
+            for key in ("task_id", "task_cid", "canonical_task_cid"):
+                if member.get(key):
+                    aliases[str(member[key])] = conflict_cid
+
+    # Overrides are normally declared against member task identities, while a
+    # lane executes their whole bundle.  Translate them to execution-unit CIDs
+    # before coloring so explicit safe-concurrency declarations remain valid.
+    for conflict_task in conflict_tasks:
+        translated = [
+            aliases.get(str(item), str(item))
+            for item in (conflict_task.get("allow_concurrent_with") or [])
+        ]
+        conflict_task["allow_concurrent_with"] = list(dict.fromkeys(translated))
+    history = inputs.get("history")
+    if isinstance(history, dict):
+        translated_history = dict(history)
+        pair_weights = history.get("pair_weights")
+        if isinstance(pair_weights, dict):
+            translated_pairs: dict[str, float] = {}
+            for pair, weight in pair_weights.items():
+                parts = str(pair).split("\0", 1)
+                if len(parts) != 2:
+                    continue
+                translated_pair = "\0".join(
+                    sorted((aliases.get(parts[0], parts[0]), aliases.get(parts[1], parts[1])))
+                )
+                try:
+                    translated_pairs[translated_pair] = translated_pairs.get(translated_pair, 0.0) + float(weight)
+                except (TypeError, ValueError):
+                    continue
+            translated_history["pair_weights"] = translated_pairs
+        inputs["history"] = translated_history
+    diffs = inputs.get("branch_diffs")
+    if isinstance(diffs, dict):
+        by_conflict_cid = {
+            str(task.get("task_cid") or task.get("task_id") or ""): task
+            for task in conflict_tasks
+        }
+        translated_diffs: dict[str, list[str]] = {}
+        for identity, value in diffs.items():
+            if isinstance(value, dict):
+                value = value.get("changed_paths") or value.get("paths") or value.get("files") or []
+            paths = [str(item) for item in value] if isinstance(value, (list, tuple, set, frozenset)) else []
+            target_cid = aliases.get(str(identity), str(identity))
+            translated_diffs.setdefault(target_cid, []).extend(paths)
+            target = by_conflict_cid.get(target_cid)
+            if target is not None:
+                target["changed_paths"] = list(
+                    dict.fromkeys([*(target.get("changed_paths") or []), *paths])
+                )
+        inputs["branch_diffs"] = translated_diffs
+    receipts = inputs.get("conflict_receipts")
+    if isinstance(receipts, dict):
+        if set(receipts) & {"left_task_cid", "source_task_cid", "task_cids", "status"}:
+            receipts = [receipts]
+        else:
+            normalized_receipts: list[dict[str, Any]] = []
+            for pair, raw_receipt in receipts.items():
+                if not isinstance(raw_receipt, dict):
+                    continue
+                item = dict(raw_receipt)
+                if not item.get("task_cids"):
+                    parts = str(pair).replace("<->", "\0").replace("::", "\0").split("\0", 1)
+                    if len(parts) == 2:
+                        item["task_cids"] = parts
+                normalized_receipts.append(item)
+            receipts = normalized_receipts
+    if isinstance(receipts, (list, tuple)):
+        translated_receipts: list[dict[str, Any]] = []
+        for receipt in receipts:
+            if not isinstance(receipt, dict):
+                continue
+            item = dict(receipt)
+            for key in (
+                "left_task_cid", "source_task_cid", "task_cid", "left_task_id",
+                "right_task_cid", "target_task_cid", "other_task_cid", "right_task_id",
+            ):
+                if item.get(key):
+                    item[key] = aliases.get(str(item[key]), str(item[key]))
+            task_cids = item.get("task_cids") or item.get("tasks")
+            if isinstance(task_cids, (list, tuple)):
+                item["task_cids"] = [aliases.get(str(value), str(value)) for value in task_cids]
+            translated_receipts.append(item)
+        inputs["conflict_receipts"] = translated_receipts
+    overrides = inputs.get("concurrency_overrides")
+    if isinstance(overrides, dict):
+        if set(overrides) & {"left", "left_task_cid", "task", "right", "right_task_cid", "with"}:
+            overrides = [overrides]
+        else:
+            normalized_overrides: list[Any] = []
+            for pair, allowed in overrides.items():
+                if not allowed:
+                    continue
+                parts = str(pair).replace("<->", "\0").replace("::", "\0").split("\0", 1)
+                if len(parts) == 2:
+                    normalized_overrides.append(tuple(parts))
+            overrides = normalized_overrides
+    if isinstance(overrides, (list, tuple, set, frozenset)):
+        translated_overrides: list[Any] = []
+        for override in overrides:
+            if isinstance(override, dict):
+                item = dict(override)
+                for key in ("left", "left_task_cid", "task"):
+                    if item.get(key):
+                        item[key] = aliases.get(str(item[key]), str(item[key]))
+                for key in ("right", "right_task_cid", "with"):
+                    if item.get(key):
+                        item[key] = aliases.get(str(item[key]), str(item[key]))
+                translated_overrides.append(item)
+            elif isinstance(override, (list, tuple)) and len(override) == 2:
+                translated_overrides.append(
+                    (aliases.get(str(override[0]), str(override[0])), aliases.get(str(override[1]), str(override[1])))
+                )
+            else:
+                translated_overrides.append(override)
+        inputs["concurrency_overrides"] = translated_overrides
+    graph = materialize_task_conflict_graph(
+        conflict_tasks,
+        repo_root=repo_root,
+        **inputs,
+    )
+    serialized = _graph_payload(graph)
+    surfaces = serialized.get("surfaces") if isinstance(serialized.get("surfaces"), dict) else {}
+    assignments = serialized.get("assignments") if isinstance(serialized.get("assignments"), list) else []
+    decisions = serialized.get("decisions") if isinstance(serialized.get("decisions"), list) else []
+    edges = serialized.get("edges") if isinstance(serialized.get("edges"), list) else []
+    colors: dict[str, int] = {}
+    for assignment in assignments:
+        if not isinstance(assignment, dict):
+            continue
+        task_id = str(assignment.get("task_cid") or assignment.get("task_id") or assignment.get("node") or "")
+        value = assignment.get("lane_color", assignment.get("color"))
+        try:
+            if task_id and value is not None:
+                colors[task_id] = int(value)
+        except (TypeError, ValueError):
+            continue
+    # Some graph serializers expose the inverse color -> task list mapping.
+    lanes = serialized.get("lanes") if isinstance(serialized.get("lanes"), dict) else {}
+    for color, task_ids in lanes.items():
+        try:
+            parsed_color = int(color)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(task_ids, list):
+            for task_id in task_ids:
+                colors.setdefault(str(task_id), parsed_color)
+
+    annotations: dict[str, dict[str, Any]] = {}
+    for payload, conflict_task in zip(payloads, conflict_tasks):
+        bundle_key = str(payload.get("bundle_key") or "objective/general")
+        conflict_key = str(conflict_task.get("task_cid") or bundle_key)
+        peers: set[str] = set()
+        relevant_decisions: list[dict[str, Any]] = []
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            if edge.get("blocks_concurrency") is False or edge.get("explicitly_allowed") is True:
+                continue
+            left = str(
+                edge.get("left_task_cid") or edge.get("source") or edge.get("left")
+                or edge.get("task_a") or edge.get("source_task_id") or ""
+            )
+            right = str(
+                edge.get("right_task_cid") or edge.get("target") or edge.get("right")
+                or edge.get("task_b") or edge.get("target_task_id") or ""
+            )
+            if left == conflict_key and right:
+                peer = next(
+                    (
+                        str(task.get("task_id"))
+                        for task in conflict_tasks
+                        if str(task.get("task_cid") or task.get("task_id")) == right
+                    ),
+                    right,
+                )
+                peers.add(peer)
+            elif right == conflict_key and left:
+                peer = next(
+                    (
+                        str(task.get("task_id"))
+                        for task in conflict_tasks
+                        if str(task.get("task_cid") or task.get("task_id")) == left
+                    ),
+                    left,
+                )
+                peers.add(peer)
+        for decision in decisions:
+            if not isinstance(decision, dict):
+                continue
+            ids = {
+                str(decision.get(key) or "")
+                for key in (
+                    "task_id", "task_cid", "source", "target", "left", "right", "task_a", "task_b",
+                    "left_task_cid", "right_task_cid",
+                )
+            }
+            if conflict_key in ids or bundle_key in ids:
+                relevant_decisions.append(dict(decision))
+        annotations[bundle_key] = {
+            "conflict_color": colors.get(conflict_key),
+            "conflicting_task_ids": sorted(peers),
+            "conflict_decisions": relevant_decisions,
+            "conflict_surface": (
+                dict(surfaces.get(conflict_key) or {})
+                if isinstance(surfaces.get(conflict_key), dict)
+                else {}
+            ),
+        }
+    return annotations
 
 
 def implementation_supervisor_command(
@@ -245,8 +558,15 @@ def plan_bundle_lanes(
     """Return one isolated supervisor command for each objective bundle."""
 
     lanes: list[BundleLaneSpec] = []
-    for payload in build_bundle_task_payloads(bundle_index_path):
+    bundle_payloads = build_bundle_task_payloads(bundle_index_path)
+    conflict_annotations = _bundle_conflict_annotations(
+        bundle_payloads,
+        bundle_index_path=bundle_index_path,
+        repo_root=repo_root,
+    )
+    for payload in bundle_payloads:
         bundle_key = str(payload.get("bundle_key") or "objective/general")
+        conflict_annotation = conflict_annotations.get(bundle_key, {})
         safe_key = safe_bundle_key(bundle_key)
         todo_path = resolve_repo_path(repo_root, str(payload.get("todo_path") or ""))
         state_dir = state_root / safe_key / "state"
@@ -310,6 +630,10 @@ def plan_bundle_lanes(
                 objective_priority=_schedule_int(payload, "objective_priority"),
                 schedule_score=_schedule_int(payload, "schedule_score"),
                 dependency_repair_evidence=[dict(item) for item in (payload.get("dependency_repair_evidence") or []) if isinstance(item, dict)],
+                conflict_color=conflict_annotation.get("conflict_color"),
+                conflicting_task_ids=_string_list(conflict_annotation.get("conflicting_task_ids")),
+                conflict_decisions=_mapping_list(conflict_annotation.get("conflict_decisions")),
+                conflict_surface=dict(conflict_annotation.get("conflict_surface") or {}),
             )
         )
     lanes.sort(key=_lane_schedule_key)
@@ -329,9 +653,24 @@ def launch_bundle_lanes(
     """Claim and launch lane supervisors under accepted, fenced leases."""
 
     results: list[dict[str, Any]] = []
+    active_lanes: list[BundleLaneSpec] = []
     path = coordination_path or default_state_root(repo_root) / "coordination.sqlite3"
     with LeaseCoordinator(path) as coordinator:
         for lane in lanes:
+            blockers = [active.bundle_key for active in active_lanes if _lanes_conflict(lane, active)]
+            if blockers:
+                results.append(
+                    {
+                        "bundle_key": lane.bundle_key,
+                        "accepted": False,
+                        "error": "conflicts with an active lane",
+                        "code": "G_LANE_CONFLICT",
+                        "blocking_bundle_keys": blockers,
+                        "conflict_color": lane.conflict_color,
+                        "decisions": lane.conflict_decisions,
+                    }
+                )
+                continue
             if not lane.queue_payload:
                 results.append({"bundle_key": lane.bundle_key, "accepted": False, "error": "missing queue payload"})
                 continue
@@ -370,7 +709,51 @@ def launch_bundle_lanes(
                     "command": guarded_command, "lease": grant.to_dict(),
                 }
             )
+            active_lanes.append(lane)
     return results
+
+
+def _lanes_conflict(left: BundleLaneSpec, right: BundleLaneSpec) -> bool:
+    """Return whether graph edges prohibit two currently active lanes."""
+
+    return (
+        right.bundle_key in left.conflicting_task_ids
+        or left.bundle_key in right.conflicting_task_ids
+    )
+
+
+def _lane_conflict_manifest(lanes: Sequence[BundleLaneSpec]) -> dict[str, Any]:
+    """Serialize the bundle projection with one explanation per decision."""
+
+    unique_decisions: dict[str, dict[str, Any]] = {}
+    edge_pairs: set[tuple[str, str]] = set()
+    color_lanes: dict[str, list[str]] = {}
+    surfaces: dict[str, dict[str, Any]] = {}
+    for lane in lanes:
+        if lane.conflict_color is not None:
+            color_lanes.setdefault(str(lane.conflict_color), []).append(lane.bundle_key)
+        if lane.conflict_surface:
+            surfaces[lane.bundle_key] = dict(lane.conflict_surface)
+        for peer in lane.conflicting_task_ids:
+            edge_pairs.add(tuple(sorted((lane.bundle_key, peer))))
+        for decision in lane.conflict_decisions:
+            key = json.dumps(decision, sort_keys=True, default=str)
+            unique_decisions.setdefault(key, dict(decision))
+    return {
+        "color_count": len(color_lanes),
+        "assignments": [
+            {"task_id": lane.bundle_key, "lane_color": lane.conflict_color}
+            for lane in lanes
+            if lane.conflict_color is not None
+        ],
+        "lanes": {color: sorted(task_ids) for color, task_ids in sorted(color_lanes.items())},
+        "surfaces": surfaces,
+        "edges": [
+            {"left_task_id": left, "right_task_id": right, "blocks_concurrency": True}
+            for left, right in sorted(edge_pairs)
+        ],
+        "decisions": list(unique_decisions.values()),
+    }
 
 
 def _spawn_accepted_lane(
@@ -496,6 +879,7 @@ def write_bundle_lane_manifest(
         "blocked_count": sum(not lane.claimable for lane in lanes),
         "started_count": len(started),
         "critical_path": [lane.bundle_key for lane in lanes if lane.claimable],
+        "conflict_graph": _lane_conflict_manifest(lanes),
         "lanes": [lane.to_dict(repo_root=repo_root) for lane in lanes],
         "started": list(started),
     }
@@ -757,6 +1141,7 @@ class DynamicBundleScheduler:
                 "completed": len(completed),
                 "capacity": self.max_lanes,
             },
+            "conflict_graph": _lane_conflict_manifest(discovered),
             "lanes": active_lanes,
             "ready": ready,
             "blocked": blocked,
@@ -810,6 +1195,11 @@ class DynamicBundleScheduler:
                     if free_slots <= 0:
                         break
                     if lane.task_cid in self._running:
+                        continue
+                    if any(_lanes_conflict(lane, running.spec) for running in self._running.values()):
+                        # A color is a reusable placement hint, not a lock.
+                        # Only an actual graph edge against a live lane blocks
+                        # admission, and a later reconciliation retries it.
                         continue
                     grant = coordinator.claim_ready(
                         self.claimant_did,
