@@ -2342,6 +2342,11 @@ class PortalImplementationDaemon:
             for item in submodule_merge_results
             if isinstance(item, dict) and not item.get("merged", False)
         ]
+        raw_gitlink_recording = result.get("merged_gitlink_recording")
+        gitlink_recording_failed = bool(
+            isinstance(raw_gitlink_recording, dict)
+            and raw_gitlink_recording.get("ok") is False
+        )
         if missing_changed_submodule_paths:
             previous_reason = str(result.get("reason") or "submodule_merge_results_missing")
             result.update(
@@ -2365,6 +2370,7 @@ class PortalImplementationDaemon:
             and not result.get("submodule_merge_failed", False)
             and not failed_submodules
             and not missing_changed_submodule_paths
+            and not gitlink_recording_failed
             and self._git_ref_is_ancestor(implementation_commit, target_branch)
         ):
             previous_reason = str(result.get("reason") or "merge_callback_failed")
@@ -4678,6 +4684,8 @@ class PortalImplementationDaemon:
                 )
                 if merged_gitlink_recording.get("committed", False):
                     merge_commit = str(merged_gitlink_recording["commit"])
+                if not merged_gitlink_recording.get("ok", True):
+                    merge_returncode = 2
             elif removed_untracked:
                 self._restore_removed_untracked_paths(removed_untracked, cwd=merge_workspace)
             failed_submodules = [item for item in submodule_merge_results if not item.get("merged", False)]
@@ -4731,6 +4739,8 @@ class PortalImplementationDaemon:
             if failed_submodules:
                 result["submodule_merge_failed"] = True
                 result["reason"] = "submodule_merge_failed"
+            elif not merged_gitlink_recording.get("ok", True):
+                result["reason"] = "submodule_gitlink_recording_failed"
             self._record_event("merge_finished", result)
             return result
         finally:
@@ -4826,14 +4836,13 @@ class PortalImplementationDaemon:
         *,
         task: PortalTask,
     ) -> dict[str, Any]:
-        """Commit only clean root gitlinks advanced by this task's submodule merge.
+        """Record verified merged revisions through every parent gitlink.
 
-        A submodule merge can create a merge commit that differs from the
-        gitlink carried by the already-merged parent task branch. Without an
-        explicit parent commit the checkout remains `` M <submodule>`` and
-        blocks every later task merge. The expected child commit and a strictly
-        unstaged, gitlink-only parent status make this recovery safe; any other
-        dirty path is left untouched for normal conflict handling.
+        Managed paths may identify a nested repository such as
+        ``outer/parent/inner/child``.  After the child branch merges, each
+        containing repository must commit its direct child gitlink before the
+        root can record the new parent revision.  Only the expected gitlink is
+        staged at each level; unrelated unstaged work remains untouched.
         """
 
         expected_commits: dict[str, str] = {}
@@ -4856,84 +4865,196 @@ class PortalImplementationDaemon:
                 expected_commits[relative] = commit
 
         if not expected_commits:
-            return {"attempted": False, "reason": "no_matching_merged_root_gitlinks"}
-
-        status = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=all"],
-            cwd=workspace,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if status.returncode != 0:
             return {
-                "attempted": True,
+                "attempted": False,
+                "ok": True,
                 "committed": False,
-                "reason": "parent_status_failed",
-                "returncode": status.returncode,
-                "stderr": status.stderr[-1000:],
+                "reason": "no_matching_merged_root_gitlinks",
             }
 
-        dirty_paths = self._dirty_status_paths(status.stdout)
-        if not dirty_paths:
-            return {
-                "attempted": True,
-                "committed": False,
-                "reason": "parent_gitlinks_already_recorded",
-                "paths": sorted(expected_commits),
-            }
-        status_lines = [line for line in status.stdout.splitlines() if len(line) >= 4]
-        only_expected_unstaged_gitlinks = (
-            set(dirty_paths).issubset(expected_commits)
-            and all(line[:2] == " M" for line in status_lines)
-        )
-        if not only_expected_unstaged_gitlinks:
-            return {
-                "attempted": True,
-                "committed": False,
-                "reason": "parent_has_unrelated_or_staged_changes",
-                "dirty_paths": dirty_paths,
-                "expected_paths": sorted(expected_commits),
-            }
+        workspace = workspace.resolve()
+        chain: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
+        committed = False
 
-        paths = sorted(expected_commits)
-        stage = subprocess.run(
-            ["git", "add", "--", *paths],
-            cwd=workspace,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if stage.returncode != 0:
-            return {
-                "attempted": True,
-                "committed": False,
-                "reason": "parent_gitlink_stage_failed",
-                "paths": paths,
-                "returncode": stage.returncode,
-                "stdout": stage.stdout[-1000:],
-                "stderr": stage.stderr[-1000:],
-            }
-        commit = subprocess.run(
-            ["git", "commit", "-m", f"{task.task_id}: record merged submodule revisions"],
-            cwd=workspace,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        for relative, leaf_commit in sorted(
+            expected_commits.items(),
+            key=lambda item: (-len(Path(item[0]).parts), item[0]),
+        ):
+            current_checkout = (workspace / relative).resolve()
+            expected_commit = leaf_commit
+            if not self._is_git_worktree(current_checkout):
+                failures.append(
+                    {
+                        "path": relative,
+                        "reason": "merged_submodule_checkout_missing",
+                        "expected_commit": expected_commit,
+                    }
+                )
+                continue
+
+            while current_checkout != workspace:
+                parent_repo = current_checkout.parent
+                while parent_repo != workspace and not self._is_git_worktree(parent_repo):
+                    parent_repo = parent_repo.parent
+                if not self._is_git_worktree(parent_repo):
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": "parent_git_worktree_missing",
+                            "checkout": str(current_checkout),
+                        }
+                    )
+                    break
+
+                try:
+                    child_relative = current_checkout.relative_to(parent_repo).as_posix()
+                    full_relative = current_checkout.relative_to(workspace).as_posix()
+                except ValueError:
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": "submodule_outside_merge_workspace",
+                            "checkout": str(current_checkout),
+                            "parent_repo": str(parent_repo),
+                        }
+                    )
+                    break
+
+                current_commit = self._run_git(
+                    ["rev-parse", "HEAD"], cwd=current_checkout
+                ).stdout.strip()
+                if current_commit != expected_commit:
+                    failures.append(
+                        {
+                            "path": full_relative,
+                            "reason": "merged_submodule_revision_mismatch",
+                            "expected_commit": expected_commit,
+                            "current_commit": current_commit,
+                        }
+                    )
+                    break
+
+                tracked = self._run_git(
+                    ["ls-files", "--stage", "--", child_relative], cwd=parent_repo
+                )
+                tracked_line = tracked.stdout.strip().splitlines()
+                if (
+                    tracked.returncode != 0
+                    or len(tracked_line) != 1
+                    or not tracked_line[0].startswith("160000 ")
+                ):
+                    failures.append(
+                        {
+                            "path": full_relative,
+                            "reason": "parent_path_is_not_gitlink",
+                            "parent_repo": str(parent_repo),
+                            "tracked": tracked.stdout[-1000:],
+                        }
+                    )
+                    break
+
+                recorded_commit = self._submodule_gitlink_ref(parent_repo, child_relative)
+                entry: dict[str, Any] = {
+                    "path": full_relative,
+                    "parent_repo": str(parent_repo),
+                    "expected_commit": expected_commit,
+                    "recorded_commit": recorded_commit,
+                    "committed": False,
+                }
+                if recorded_commit != expected_commit:
+                    staged = self._run_git(
+                        ["diff", "--cached", "--name-only"], cwd=parent_repo
+                    )
+                    staged_paths = {
+                        line.strip() for line in staged.stdout.splitlines() if line.strip()
+                    }
+                    unrelated_staged = sorted(staged_paths - {child_relative})
+                    if staged.returncode != 0 or unrelated_staged:
+                        entry.update(
+                            {
+                                "reason": "parent_has_unrelated_staged_changes",
+                                "staged_paths": sorted(staged_paths),
+                                "unrelated_staged_paths": unrelated_staged,
+                            }
+                        )
+                        failures.append(entry)
+                        break
+
+                    stage = self._run_git(
+                        ["add", "--", child_relative], cwd=parent_repo
+                    )
+                    if stage.returncode != 0:
+                        entry.update(
+                            {
+                                "reason": "parent_gitlink_stage_failed",
+                                "returncode": stage.returncode,
+                                "stdout": stage.stdout[-1000:],
+                                "stderr": stage.stderr[-1000:],
+                            }
+                        )
+                        failures.append(entry)
+                        break
+
+                    commit_result = self._run_git(
+                        [
+                            "commit",
+                            "-m",
+                            f"{task.task_id}: record merged submodule revision {full_relative}",
+                            "--",
+                            child_relative,
+                        ],
+                        cwd=parent_repo,
+                    )
+                    recorded_commit = self._submodule_gitlink_ref(parent_repo, child_relative)
+                    if commit_result.returncode != 0 or recorded_commit != expected_commit:
+                        entry.update(
+                            {
+                                "reason": "parent_gitlink_commit_failed",
+                                "returncode": commit_result.returncode,
+                                "stdout": commit_result.stdout[-1000:],
+                                "stderr": commit_result.stderr[-1000:],
+                                "recorded_commit": recorded_commit,
+                            }
+                        )
+                        failures.append(entry)
+                        break
+                    committed = True
+                    entry.update(
+                        {
+                            "committed": True,
+                            "recorded_commit": recorded_commit,
+                            "commit": self._run_git(
+                                ["rev-parse", "HEAD"], cwd=parent_repo
+                            ).stdout.strip(),
+                        }
+                    )
+                else:
+                    entry["reason"] = "gitlink_already_recorded"
+
+                chain.append(entry)
+                expected_commit = self._run_git(
+                    ["rev-parse", "HEAD"], cwd=parent_repo
+                ).stdout.strip()
+                current_checkout = parent_repo
+
         result: dict[str, Any] = {
             "attempted": True,
-            "committed": commit.returncode == 0,
-            "paths": paths,
+            "ok": not failures,
+            "committed": committed,
+            "paths": sorted(expected_commits),
             "expected_commits": expected_commits,
-            "returncode": commit.returncode,
-            "stdout": commit.stdout[-1000:],
-            "stderr": commit.stderr[-1000:],
+            "chain": chain,
+            "failures": failures,
         }
-        if commit.returncode == 0:
-            result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
+        if failures:
+            result["reason"] = "parent_gitlink_chain_failed"
         else:
-            result["reason"] = "parent_gitlink_commit_failed"
+            result["commit"] = self._run_git(
+                ["rev-parse", "HEAD"], cwd=workspace
+            ).stdout.strip()
+            if not committed:
+                result["reason"] = "parent_gitlinks_already_recorded"
         return result
 
     def _rollback_parent_merge_after_submodule_failure(

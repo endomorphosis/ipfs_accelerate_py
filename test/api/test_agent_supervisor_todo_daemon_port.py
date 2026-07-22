@@ -4641,6 +4641,88 @@ def test_implementation_daemon_records_merged_root_submodule_gitlink(tmp_path):
     assert _git(repo, "status", "--porcelain") == ""
 
 
+def test_implementation_daemon_records_nested_gitlink_chain_and_preserves_local_dirt(
+    tmp_path,
+):
+    repo, parent = _seed_parent_with_submodule(tmp_path)
+    leaf_source = tmp_path / "leaf-source"
+    leaf_source.mkdir()
+    _git(leaf_source, "init")
+    _git(leaf_source, "checkout", "-b", "main")
+    _git(leaf_source, "config", "user.name", "Test User")
+    _git(leaf_source, "config", "user.email", "test@example.invalid")
+    (leaf_source / "leaf.txt").write_text("base\n", encoding="utf-8")
+    _git(leaf_source, "add", "leaf.txt")
+    _git(leaf_source, "commit", "-m", "leaf base")
+
+    _git(
+        parent,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(leaf_source),
+        "nested/leaf",
+    )
+    _git(parent, "commit", "-am", "add leaf submodule")
+    _git(repo, "add", "libs/child")
+    (repo / "local.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "local.txt")
+    _git(repo, "commit", "-m", "record nested baseline")
+
+    leaf = parent / "nested" / "leaf"
+    _git(leaf, "checkout", "main")
+    _git(leaf, "config", "user.name", "Test User")
+    _git(leaf, "config", "user.email", "test@example.invalid")
+    (leaf / "merged.txt").write_text("merged leaf work\n", encoding="utf-8")
+    _git(leaf, "add", "merged.txt")
+    _git(leaf, "commit", "-m", "merged leaf work")
+    merged_commit = _git(leaf, "rev-parse", "HEAD")
+    (repo / "local.txt").write_text("preserved local work\n", encoding="utf-8")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child/nested/leaf"],
+    )
+    task = PortalTask(
+        task_id="AUTO-122",
+        title="Record nested merged revision",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+    )
+
+    result = daemon._record_merged_submodule_gitlinks(
+        repo,
+        [
+            {
+                "path": "libs/child/nested/leaf",
+                "merged": True,
+                "commit": merged_commit,
+            }
+        ],
+        task=task,
+    )
+
+    parent_commit = _git(parent, "rev-parse", "HEAD")
+    assert result["ok"] is True
+    assert result["committed"] is True
+    assert [entry["path"] for entry in result["chain"]] == [
+        "libs/child/nested/leaf",
+        "libs/child",
+    ]
+    assert _git(parent, "rev-parse", "HEAD:nested/leaf") == merged_commit
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == parent_commit
+    assert (repo / "local.txt").read_text(encoding="utf-8") == "preserved local work\n"
+    assert _git(repo, "status", "--porcelain") == "M local.txt"
+
+
 def test_implementation_daemon_rolls_back_parent_when_root_submodule_merge_fails(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     base_parent = _git(repo, "rev-parse", "HEAD")
