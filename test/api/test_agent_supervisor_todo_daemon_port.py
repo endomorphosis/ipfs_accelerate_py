@@ -3858,6 +3858,82 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
     assert mismatch["branch_commit"] == later
 
 
+def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/ref-041-resolver"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "resolved.txt").write_text("resolved\n", encoding="utf-8")
+    _git(repo, "add", "resolved.txt")
+    _git(repo, "commit", "-m", "REF-041: resolved implementation")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-041 Accept resolver merge\n\n- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+
+    def resolver_integrates_branch(selected_branch, *_args, **_kwargs):
+        _git(repo, "merge", "--no-ff", "--no-edit", selected_branch)
+        _git(repo, "branch", "-D", selected_branch)
+        return {
+            "attempted": True,
+            "merged": False,
+            "returncode": 1,
+            "reason": "merge_branch_missing_after_resolver",
+            "submodule_merge_results": [],
+        }
+
+    monkeypatch.setattr(daemon, "_merge_branch_to_main", resolver_integrates_branch)
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-041",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "task": {
+                "task_id": "REF-041",
+                "title": "Accept resolver merge",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            }
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result["returncode"] == 0
+    assert result["reason"] == "implementation_commit_already_merged"
+    assert result["post_callback_ancestry_reconciliation"]["previous_reason"] == (
+        "merge_branch_missing_after_resolver"
+    )
+    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+
+
 def _seed_parent_with_divergent_gitlinks(
     tmp_path: Path,
     *,

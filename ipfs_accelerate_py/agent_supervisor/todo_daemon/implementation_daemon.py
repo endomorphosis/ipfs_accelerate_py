@@ -2286,9 +2286,12 @@ class PortalImplementationDaemon:
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
         task = self._portal_task_from_merge_request(request)
         branch_name = str(request.branch_name or "")
+        implementation_commit = str(
+            request.commit_sha or metadata.get("implementation_commit") or ""
+        )
         branch_rehydration = self._rehydrate_merge_request_branch(
             branch_name=branch_name,
-            commit_sha=str(request.commit_sha or metadata.get("implementation_commit") or ""),
+            commit_sha=implementation_commit,
             task=task,
             attempt=int(request.attempt or 0),
         )
@@ -2320,6 +2323,45 @@ class PortalImplementationDaemon:
             baseline_ref=str(metadata.get("baseline_ref") or ""),
             changed_submodule_paths=changed_submodule_paths,
         )
+        raw_submodule_merge_results = result.get("submodule_merge_results", [])
+        submodule_merge_results = (
+            raw_submodule_merge_results
+            if isinstance(raw_submodule_merge_results, list)
+            else []
+        )
+        failed_submodules = [
+            item
+            for item in submodule_merge_results
+            if isinstance(item, dict) and not item.get("merged", False)
+        ]
+        target_branch = self._main_branch_name()
+        if (
+            not result.get("merged", False)
+            and implementation_commit
+            and not result.get("submodule_merge_failed", False)
+            and not failed_submodules
+            and self._git_ref_is_ancestor(implementation_commit, target_branch)
+        ):
+            previous_reason = str(result.get("reason") or "merge_callback_failed")
+            target_commit = self._run_git(
+                ["rev-parse", target_branch],
+                cwd=self.repo_root,
+            ).stdout.strip()
+            result.update(
+                {
+                    "merged": True,
+                    "returncode": 0,
+                    "reason": "implementation_commit_already_merged",
+                    "merge_commit": target_commit,
+                    "post_callback_ancestry_reconciliation": {
+                        "promoted": True,
+                        "implementation_commit": implementation_commit,
+                        "target_branch": target_branch,
+                        "target_commit": target_commit,
+                        "previous_reason": previous_reason,
+                    },
+                }
+            )
         if branch_rehydration.get("rehydrated", False):
             result["branch_rehydration"] = branch_rehydration
         if result.get("merged"):
