@@ -116,6 +116,54 @@ def test_dependency_cycle_produces_repair_evidence_instead_of_claiming(tmp_path:
             coordinator.claim(first_task["task_cid"], "did:web:worker.example")
 
 
+def test_empty_bundle_dependency_projection_absorbs_internal_member_edges(tmp_path: Path) -> None:
+    index = tmp_path / "index.json"
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/internal": {
+                        "shard_path": "internal.todo.md",
+                        "tasks": [
+                            {"task_id": "INTERNAL-A", "task_cid": "cid-a"},
+                            {
+                                "task_id": "INTERNAL-B",
+                                "task_cid": "cid-b",
+                                "depends_on": ["INTERNAL-A"],
+                            },
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_bundle_task_payloads(index)[0]
+    assert payload["dependency_task_cids"] == []
+    assert payload["profile_g"]["task"]["dependency_task_cids"] == []
+
+    with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
+        registered = coordinator.register_bundle(payload, created_at_ms=1)
+        assert registered["dependency_task_cids"] == []
+        assert coordinator.claimability(registered["task_cid"])["claimable"] is True
+        assert coordinator.claim(registered["task_cid"], "did:web:internal.example")
+
+
+def test_explicit_empty_projection_overrides_stale_embedded_dependencies(tmp_path: Path) -> None:
+    member_cid = profile_g_cid({"member": "LEGACY-INTERNAL"})
+    legacy = _named_bundle("LEGACY-INTERNAL")
+    legacy["tasks"][0]["dependency_task_cids"] = [member_cid]  # type: ignore[index]
+    legacy["profile_g"] = adapt_goal_bundle(legacy, created_at_ms=1)
+    legacy["dependency_task_cids"] = []
+
+    with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
+        registered = coordinator.register_bundle(legacy, created_at_ms=1)
+        assert registered["dependency_task_cids"] == []
+        assert coordinator.claimability(registered["task_cid"])["claimable"] is True
+
+
 def test_planner_structural_repairs_block_claims_without_resolved_dependency_cids(tmp_path: Path) -> None:
     blocked = {
         **_named_bundle("PLANNER-BLOCKED"),

@@ -147,14 +147,19 @@ def _dependency_task_cids(bundle: Mapping[str, Any]) -> tuple[list[str], dict[st
             if provenance not in records and len(records) < 16:
                 records.append(provenance)
 
+    # Presence matters here: the objective planner emits an explicit bundle-
+    # scoped projection, and an empty projection means every prerequisite is
+    # internal to this execution unit.  Falling through to member or embedded
+    # dependencies would reintroduce CIDs that never receive their own lease.
+    has_bundle_dependency_projection = "dependency_task_cids" in bundle
     add(bundle.get("dependency_task_cids"), "bundle.dependency_task_cids")
     embedded = bundle.get("profile_g")
-    if isinstance(embedded, Mapping):
+    if not has_bundle_dependency_projection and isinstance(embedded, Mapping):
         embedded_task = embedded.get("task")
         if isinstance(embedded_task, Mapping):
             add(embedded_task.get("dependency_task_cids"), "bundle.profile_g.task.dependency_task_cids")
     edges = bundle.get("dependency_edges")
-    if isinstance(edges, (list, tuple)):
+    if not has_bundle_dependency_projection and isinstance(edges, (list, tuple)):
         for index, edge in enumerate(edges):
             if not isinstance(edge, Mapping):
                 continue
@@ -170,7 +175,7 @@ def _dependency_task_cids(bundle: Mapping[str, Any]) -> tuple[list[str], dict[st
     # supplied; mixing both identities would require two receipts for one
     # logical prerequisite and could permanently block otherwise-ready work.
     tasks = bundle.get("tasks")
-    if not found and isinstance(tasks, (list, tuple)):
+    if not has_bundle_dependency_projection and not found and isinstance(tasks, (list, tuple)):
         for index, task in enumerate(tasks):
             if not isinstance(task, Mapping):
                 continue
@@ -510,7 +515,7 @@ class LeaseCoordinator:
         adapted["task_spec_cid"] = task_spec_cid
         dependency_task_cids, dependency_provenance = _dependency_task_cids(bundle)
         adapted_task = adapted.get("task")
-        if isinstance(adapted_task, Mapping):
+        if "dependency_task_cids" not in bundle and isinstance(adapted_task, Mapping):
             embedded_cids, _ = _dependency_task_cids(
                 {"dependency_task_cids": adapted_task.get("dependency_task_cids")}
             )
