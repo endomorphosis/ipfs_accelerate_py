@@ -987,10 +987,36 @@ class DynamicBundleScheduler:
     def _default_lane_disposition(lane: BundleLaneSpec) -> str:
         """Project a fully settled shard board to a bundle disposition."""
 
+        state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            state = {}
+        if isinstance(state, dict):
+            task_count = _schedule_int(state, "task_count")
+            completed_count = _schedule_int(state, "completed_count")
+            blocked_count = _schedule_int(state, "blocked_count")
+            waiting_count = _schedule_int(state, "waiting_count")
+            active = bool(state.get("implementation_in_progress") or state.get("active_task_id"))
+            if task_count > 0 and not active and waiting_count == 0:
+                if completed_count >= task_count:
+                    return "completed"
+                if completed_count + blocked_count >= task_count:
+                    return "blocked"
+
         try:
             markdown = lane.todo_path.read_text(encoding="utf-8")
         except OSError:
             return ""
+        from .todo_daemon.implementation_daemon import parse_task_file
+
+        portal_tasks = parse_task_file(lane.todo_path)
+        if portal_tasks:
+            if all(task.status == "completed" for task in portal_tasks):
+                return "completed"
+            if all(task.status in {"completed", "blocked"} for task in portal_tasks):
+                return "blocked"
+
         from .todo_daemon.engine import parse_markdown_tasks
 
         tasks = parse_markdown_tasks(markdown)

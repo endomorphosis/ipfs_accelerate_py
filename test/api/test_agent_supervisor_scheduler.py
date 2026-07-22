@@ -228,6 +228,45 @@ def test_settled_boards_release_capacity_without_starting_workers(tmp_path: Path
     assert any(item["bundle_key"].endswith("t-2") for item in blocked["blocked"])
 
 
+def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    initial = scheduler.reconcile_once()
+    assert initial["counts"]["active"] == 1
+    lane = launcher.starts[0][0]
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (lane.state_dir / f"{lane.state_prefix}_task_state.json").write_text(
+        json.dumps(
+            {
+                "task_count": 2,
+                "completed_count": 1,
+                "blocked_count": 1,
+                "waiting_count": 0,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settled = scheduler.reconcile_once()
+
+    assert settled["counts"]["active"] == 0
+    # The first release remains retryable; repeated state-aware admission
+    # consumes the bounded attempt budget without spawning another worker.
+    for _ in range(3):
+        settled = scheduler.reconcile_once()
+    assert settled["counts"]["blocked"] == 1
+    assert len(launcher.starts) == 1
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        state = coordinator.task_state(launcher.starts[0][1].task_cid)
+    assert state is not None and state["state"] == "blocked"
+
+
 def test_drained_lane_releases_lease_for_conflict_safe_steal(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"
