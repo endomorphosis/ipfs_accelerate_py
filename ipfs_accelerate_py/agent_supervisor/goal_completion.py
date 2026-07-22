@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from hashlib import sha256
+import json
 from typing import Any, Iterable, Mapping, Sequence
 
 
@@ -160,6 +162,202 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, (list, tuple, set, frozenset)):
         return [_json_value(item) for item in value]
     return value
+
+
+def _canonical_json(value: Any) -> str:
+    """Return a stable representation suitable for persisted identities."""
+
+    return json.dumps(
+        _json_value(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    )
+
+
+def _stable_fingerprint(prefix: str, value: Any) -> str:
+    return f"{prefix}-{sha256(_canonical_json(value).encode('utf-8')).hexdigest()[:32]}"
+
+
+def _string_tuple(values: Any) -> tuple[str, ...]:
+    if values is None:
+        return ()
+    if isinstance(values, str):
+        values = (values,)
+    elif isinstance(values, Mapping):
+        scalar = next(
+            (
+                values.get(key)
+                for key in ("criterion", "acceptance_criterion", "receipt_id", "receipt_cid", "provenance_cid", "id", "value")
+                if values.get(key) is not None
+            ),
+            _canonical_json(values),
+        )
+        values = (scalar,)
+    elif not isinstance(values, Iterable):
+        values = (values,)
+    result: list[str] = []
+    for value in values:
+        item = " ".join(str(value or "").split())
+        if item and item not in result:
+            result.append(item)
+    return tuple(sorted(result, key=lambda item: (item.casefold(), item)))
+
+
+def _mapping_tuple(values: Any) -> tuple[dict[str, Any], ...]:
+    if values is None:
+        return ()
+    if isinstance(values, Mapping):
+        values = (values,)
+    elif isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
+        values = (values,)
+    result: dict[str, dict[str, Any]] = {}
+    for value in values:
+        if isinstance(value, Mapping):
+            payload = {str(key): _json_value(item) for key, item in value.items()}
+        else:
+            payload = {"value": _json_value(value)}
+        result[_canonical_json(payload)] = payload
+    return tuple(result[key] for key in sorted(result))
+
+
+CONTRADICTION_KINDS = frozenset(
+    {
+        "mapped_finding",
+        "failed_validation",
+        "changed_surface",
+        "invalidated_receipt",
+        "child_reopened",
+        "dependency_reopened",
+    }
+)
+
+
+@dataclass(frozen=True)
+class ContradictionEvidence:
+    """Content-addressed evidence which invalidates a completion claim.
+
+    ``fingerprint`` deliberately excludes ``detected_at`` and scheduled work.
+    Replaying the same source receipt therefore cannot manufacture another
+    contradiction merely because a daemon ran later or chose an equivalent
+    scheduling representation.
+    """
+
+    goal_id: str
+    kind: str
+    summary: str = ""
+    impacted_criteria: tuple[str, ...] = ()
+    invalidated_evidence: tuple[str, ...] = ()
+    source_receipt: Mapping[str, Any] = field(default_factory=dict)
+    scheduled_work: tuple[Mapping[str, Any], ...] = ()
+    source_receipt_id: str = ""
+    fingerprint: str = ""
+    detected_at: datetime | str | None = None
+    schema_version: int = GOAL_COMPLETION_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        goal_id = str(self.goal_id or "").strip()
+        if not goal_id:
+            raise ValueError("contradiction evidence requires goal_id")
+        kind = str(self.kind or "").strip().casefold().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "novel_finding": "mapped_finding",
+            "novel_mapped_finding": "mapped_finding",
+            "validation_failed": "failed_validation",
+            "surface_changed": "changed_surface",
+            "evidence_surface_changed": "changed_surface",
+            "audit_receipt_invalidated": "invalidated_receipt",
+            "invalid_audit_receipt": "invalidated_receipt",
+        }
+        kind = aliases.get(kind, kind)
+        if kind not in CONTRADICTION_KINDS:
+            choices = ", ".join(sorted(CONTRADICTION_KINDS))
+            raise ValueError(f"unknown contradiction kind {self.kind!r}; expected one of: {choices}")
+        source = {str(key): _json_value(value) for key, value in dict(self.source_receipt or {}).items()}
+        source_id = str(
+            self.source_receipt_id
+            or source.get("receipt_id")
+            or source.get("receipt_cid")
+            or source.get("provenance_cid")
+            or source.get("finding_id")
+            or source.get("fingerprint")
+            or ""
+        ).strip()
+        criteria = _string_tuple(self.impacted_criteria)
+        invalidated = _string_tuple(self.invalidated_evidence)
+        scheduled_input: Any = self.scheduled_work
+        if isinstance(scheduled_input, (str, bytes)):
+            text = str(scheduled_input).strip()
+            scheduled_input = ({"task_id": text},) if text else ()
+        elif scheduled_input is not None and not isinstance(scheduled_input, (Mapping, Iterable)):
+            scheduled_input = ({"value": _json_value(scheduled_input)},)
+        scheduled = _mapping_tuple(scheduled_input)
+        identity = {
+            "goal_id": goal_id,
+            "kind": kind,
+            "impacted_criteria": criteria,
+            "invalidated_evidence": invalidated,
+            "source_receipt_id": source_id,
+            "source_receipt": source,
+        }
+        object.__setattr__(self, "goal_id", goal_id)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "summary", " ".join(str(self.summary or "").split()))
+        object.__setattr__(self, "impacted_criteria", criteria)
+        object.__setattr__(self, "invalidated_evidence", invalidated)
+        object.__setattr__(self, "source_receipt", source)
+        object.__setattr__(self, "scheduled_work", scheduled)
+        object.__setattr__(self, "source_receipt_id", source_id)
+        object.__setattr__(self, "fingerprint", str(self.fingerprint or _stable_fingerprint("contradiction", identity)))
+        object.__setattr__(self, "detected_at", _utc_datetime(self.detected_at, field_name="detected_at"))
+
+    @property
+    def contradiction_id(self) -> str:
+        return self.fingerprint
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "ipfs_accelerate_py.agent_supervisor.contradiction.v1",
+            "schema_version": self.schema_version,
+            "contradiction_id": self.fingerprint,
+            "fingerprint": self.fingerprint,
+            "goal_id": self.goal_id,
+            "kind": self.kind,
+            "summary": self.summary,
+            "impacted_criteria": list(self.impacted_criteria),
+            "invalidated_evidence": list(self.invalidated_evidence),
+            "source_receipt_id": self.source_receipt_id,
+            "source_receipt": _json_value(self.source_receipt),
+            "scheduled_work": _json_value(self.scheduled_work),
+            "detected_at": _json_value(self.detected_at),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ContradictionEvidence":
+        return cls(
+            goal_id=str(payload.get("goal_id", "")),
+            kind=str(payload.get("kind", payload.get("contradiction_kind", ""))),
+            summary=str(
+                payload.get(
+                    "summary",
+                    payload.get("description", payload.get("contradiction", payload.get("explanation", ""))),
+                )
+            ),
+            impacted_criteria=payload.get("impacted_criteria", payload.get("criteria", ())) or (),
+            invalidated_evidence=payload.get("invalidated_evidence", payload.get("evidence_ids", ())) or (),
+            source_receipt=payload.get("source_receipt", payload.get("receipt", {})) or {},
+            scheduled_work=payload.get("scheduled_work", payload.get("newly_scheduled_work", ())) or (),
+            source_receipt_id=str(
+                payload.get(
+                    "source_receipt_id",
+                    payload.get("finding_id", payload.get("receipt_id", payload.get("receipt_cid", ""))),
+                )
+            ),
+            fingerprint=str(payload.get("fingerprint", payload.get("contradiction_id", ""))),
+            detected_at=payload.get("detected_at"),
+            schema_version=int(payload.get("schema_version", GOAL_COMPLETION_SCHEMA_VERSION)),
+        )
 
 
 @dataclass(frozen=True)
@@ -572,6 +770,370 @@ class GoalLifecycle:
                 if isinstance(item, Mapping)
             ],
         )
+
+
+def _contradiction(value: ContradictionEvidence | Mapping[str, Any]) -> ContradictionEvidence:
+    return value if isinstance(value, ContradictionEvidence) else ContradictionEvidence.from_dict(value)
+
+
+def _records_for_goal(records: Any, goal_id: str) -> tuple[dict[str, Any], ...]:
+    if isinstance(records, Mapping):
+        # A goal-indexed mapping is the common daemon representation; a
+        # receipt record itself is recognized by its identity/state fields.
+        if goal_id in records and not any(
+            key in records for key in ("receipt_id", "goal_id", "state", "contradiction_ids")
+        ):
+            records = records.get(goal_id, ())
+        else:
+            records = (records,)
+    return tuple(
+        payload
+        for payload in _mapping_tuple(records)
+        if not str(payload.get("goal_id", "")).strip()
+        or str(payload.get("goal_id", "")).strip() == goal_id
+    )
+
+
+def _handled_contradiction_ids(receipts: Sequence[Mapping[str, Any]]) -> set[str]:
+    handled: set[str] = set()
+    for receipt in receipts:
+        values = receipt.get("contradiction_ids", receipt.get("contradictions", ()))
+        if isinstance(values, str):
+            values = (values,)
+        if isinstance(values, Mapping):
+            values = (values,)
+        for value in values or ():
+            if isinstance(value, Mapping):
+                identity = value.get("contradiction_id", value.get("fingerprint", ""))
+            else:
+                identity = value
+            if str(identity or "").strip():
+                handled.add(str(identity).strip())
+    return handled
+
+
+@dataclass(frozen=True)
+class ReopenDecision:
+    """Idempotent, receipt-bearing decision for one goal recalculation."""
+
+    goal_id: str
+    previous_state: GoalState
+    state: GoalState
+    reopened: bool
+    idempotent: bool
+    contradictions: tuple[ContradictionEvidence, ...] = ()
+    impacted_criteria: tuple[str, ...] = ()
+    invalidated_evidence: tuple[str, ...] = ()
+    source_receipts: tuple[Mapping[str, Any], ...] = ()
+    newly_scheduled_work: tuple[Mapping[str, Any], ...] = ()
+    historical_completion_receipts: tuple[Mapping[str, Any], ...] = ()
+    reopening_receipt: Mapping[str, Any] = field(default_factory=dict)
+    reason_codes: tuple[str, ...] = ()
+    schema_version: int = GOAL_COMPLETION_SCHEMA_VERSION
+
+    @property
+    def changed(self) -> bool:
+        return self.state is not self.previous_state
+
+    @property
+    def contradiction_ids(self) -> tuple[str, ...]:
+        return tuple(item.contradiction_id for item in self.contradictions)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "ipfs_accelerate_py.agent_supervisor.goal_reopen_decision.v1",
+            "schema_version": self.schema_version,
+            "goal_id": self.goal_id,
+            "previous_state": self.previous_state.value,
+            "state": self.state.value,
+            "reopened": self.reopened,
+            "changed": self.changed,
+            "idempotent": self.idempotent,
+            "contradiction_ids": list(self.contradiction_ids),
+            "contradictions": [item.to_dict() for item in self.contradictions],
+            "impacted_criteria": list(self.impacted_criteria),
+            "invalidated_evidence": list(self.invalidated_evidence),
+            "source_receipts": _json_value(self.source_receipts),
+            "newly_scheduled_work": _json_value(self.newly_scheduled_work),
+            # Historical receipts are copied, never replaced by the reopen
+            # receipt.  Consumers may keep both ledgers independently.
+            "historical_completion_receipts": _json_value(self.historical_completion_receipts),
+            "reopening_receipt": _json_value(self.reopening_receipt),
+            "reason_codes": list(self.reason_codes),
+        }
+
+
+# Descriptive spelling for consumers that prefer the domain prefix.
+GoalReopenDecision = ReopenDecision
+
+
+def reopen_goal_for_contradictions(
+    *,
+    goal_id: str,
+    current_state: GoalState | str,
+    contradictions: Sequence[ContradictionEvidence | Mapping[str, Any]],
+    historical_completion_receipts: Any = (),
+    existing_reopen_receipts: Any = (),
+    now: datetime | str | None = None,
+) -> ReopenDecision:
+    """Reopen a completed goal once for each distinct relevant contradiction.
+
+    Contradictions assigned to another goal are intentionally ignored.  This
+    is the key churn guard for unrelated dynamic findings.
+    """
+
+    canonical_goal_id = str(goal_id or "").strip()
+    if not canonical_goal_id:
+        raise ValueError("goal_id is required")
+    previous = normalize_goal_state(current_state)
+    relevant_by_id: dict[str, ContradictionEvidence] = {}
+    for value in contradictions:
+        item = _contradiction(value)
+        if item.goal_id == canonical_goal_id:
+            relevant_by_id[item.contradiction_id] = item
+    relevant = tuple(relevant_by_id[key] for key in sorted(relevant_by_id))
+    historical = _records_for_goal(historical_completion_receipts, canonical_goal_id)
+    existing = _records_for_goal(existing_reopen_receipts, canonical_goal_id)
+    handled = _handled_contradiction_ids(existing)
+    novel = tuple(item for item in relevant if item.contradiction_id not in handled)
+    completed = previous in {GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE}
+    already_reopened = previous is GoalState.REOPENED
+    should_record = bool(novel and (completed or already_reopened))
+    replayed_reopening = bool(relevant and not novel and any(
+        str(receipt.get("state", receipt.get("next_state", ""))).strip() == GoalState.REOPENED.value
+        for receipt in existing
+    ))
+    # Persisted goal state and receipt writes are not necessarily atomic.  A
+    # durable reopening receipt wins over an older verified state on replay,
+    # but does not create another receipt or schedule duplicate work.
+    next_state = GoalState.REOPENED if should_record or replayed_reopening else previous
+    reopened = bool(should_record and completed)
+    impacted = _string_tuple(item for contradiction in novel for item in contradiction.impacted_criteria)
+    invalidated = _string_tuple(item for contradiction in novel for item in contradiction.invalidated_evidence)
+    sources = _mapping_tuple(item.source_receipt for item in novel if item.source_receipt)
+    scheduled = _mapping_tuple(item for contradiction in novel for item in contradiction.scheduled_work)
+    if novel and not scheduled:
+        scheduled = _mapping_tuple(
+            {
+                "kind": "goal_work_request",
+                "request_id": _stable_fingerprint(
+                    "work",
+                    {"goal_id": canonical_goal_id, "contradiction_id": item.contradiction_id},
+                ),
+                "goal_id": canonical_goal_id,
+                "contradiction_id": item.contradiction_id,
+                "reason": item.kind,
+            }
+            for item in novel
+        )
+    current = _now(now)
+    reopening_receipt: dict[str, Any] = {}
+    if should_record:
+        identity = {
+            "goal_id": canonical_goal_id,
+            "previous_state": previous.value,
+            "state": GoalState.REOPENED.value,
+            "contradiction_ids": [item.contradiction_id for item in novel],
+        }
+        reopening_receipt = {
+            "schema": "ipfs_accelerate_py.agent_supervisor.goal_reopening_receipt.v1",
+            "schema_version": GOAL_COMPLETION_SCHEMA_VERSION,
+            "receipt_id": _stable_fingerprint("reopen", identity),
+            "goal_id": canonical_goal_id,
+            "previous_state": previous.value,
+            "state": GoalState.REOPENED.value,
+            "reopened_at": current.isoformat(),
+            "contradiction_ids": [item.contradiction_id for item in novel],
+            "contradictions": [item.to_dict() for item in novel],
+            "impacted_criteria": list(impacted),
+            "invalidated_evidence": list(invalidated),
+            "source_receipts": _json_value(sources),
+            "newly_scheduled_work": _json_value(scheduled),
+            "historical_completion_receipt_ids": [
+                str(item.get("receipt_id", item.get("receipt_cid", item.get("provenance_cid", ""))))
+                for item in historical
+                if str(item.get("receipt_id", item.get("receipt_cid", item.get("provenance_cid", ""))))
+            ],
+        }
+    if not relevant:
+        reasons = ()
+    elif not novel:
+        reasons = ("contradiction_already_recorded",)
+    elif should_record:
+        reasons = ("completion_evidence_contradicted", "goal_reopened") if reopened else ("additional_contradiction_recorded",)
+    else:
+        reasons = ("goal_not_completed",)
+    return ReopenDecision(
+        goal_id=canonical_goal_id,
+        previous_state=previous,
+        state=next_state,
+        reopened=reopened,
+        idempotent=bool(relevant and not novel),
+        contradictions=novel,
+        impacted_criteria=impacted,
+        invalidated_evidence=invalidated,
+        source_receipts=sources,
+        newly_scheduled_work=scheduled,
+        historical_completion_receipts=historical,
+        reopening_receipt=reopening_receipt,
+        reason_codes=reasons,
+    )
+
+
+def _goal_payloads(goals: Any) -> dict[str, dict[str, Any]]:
+    if isinstance(goals, Mapping):
+        if "goal_id" in goals or "id" in goals:
+            values = (goals,)
+        else:
+            values = []
+            for goal_id, value in goals.items():
+                payload = dict(value) if isinstance(value, Mapping) else {"state": value}
+                payload.setdefault("goal_id", goal_id)
+                values.append(payload)
+    else:
+        values = goals or ()
+    result: dict[str, dict[str, Any]] = {}
+    for value in values:
+        if isinstance(value, GoalLifecycle):
+            payload = value.to_dict()
+        elif isinstance(value, Mapping):
+            payload = dict(value)
+        else:
+            to_dict = getattr(value, "to_dict", None)
+            payload = dict(to_dict()) if callable(to_dict) else dict(vars(value))
+        goal_id = str(payload.get("goal_id", payload.get("id", ""))).strip()
+        if goal_id:
+            result[goal_id] = payload
+    return result
+
+
+def _goal_links(payload: Mapping[str, Any], names: Sequence[str]) -> tuple[str, ...]:
+    values: list[Any] = []
+    for name in names:
+        value = payload.get(name)
+        if isinstance(value, str):
+            values.extend(part.strip() for part in value.replace(";", ",").split(","))
+        elif isinstance(value, Iterable) and not isinstance(value, (str, bytes, Mapping)):
+            values.extend(value)
+    return _string_tuple(values)
+
+
+def reconcile_goal_reopenings(
+    goals: Any,
+    contradictions: Sequence[ContradictionEvidence | Mapping[str, Any]],
+    *,
+    historical_completion_receipts: Any = (),
+    existing_reopen_receipts: Any = (),
+    now: datetime | str | None = None,
+) -> dict[str, ReopenDecision]:
+    """Recalculate directly affected, ancestor, and dependent goal states.
+
+    Propagation evidence is itself content-addressed and references the source
+    contradiction.  A replay consequently yields the same IDs and is absorbed
+    by the same idempotency ledger as a direct contradiction.
+    """
+
+    payloads = _goal_payloads(goals)
+    direct = sorted((_contradiction(item) for item in contradictions), key=lambda item: item.contradiction_id)
+    by_goal: dict[str, list[ContradictionEvidence]] = {goal_id: [] for goal_id in payloads}
+    for item in direct:
+        if item.goal_id in by_goal:
+            by_goal[item.goal_id].append(item)
+
+    propagation: dict[str, list[tuple[str, str]]] = {goal_id: [] for goal_id in payloads}
+    for goal_id, payload in payloads.items():
+        for parent_id in _goal_links(payload, ("parent_goal_id", "parent_id", "parents", "parent_goal_ids")):
+            if parent_id in propagation:
+                propagation[goal_id].append((parent_id, "child_reopened"))
+        for dependency_id in _goal_links(payload, ("depends_on", "dependencies", "dependency_goal_ids")):
+            if dependency_id in propagation:
+                propagation[dependency_id].append((goal_id, "dependency_reopened"))
+    for goal_id in propagation:
+        propagation[goal_id].sort()
+
+    # Breadth-first closure is deterministic and safe in the presence of goal
+    # graph cycles because (target, root contradiction) pairs are visited once.
+    # Only an effectively reopened source propagates.  An active or blocked
+    # goal receiving a finding has no completion claim to invalidate and must
+    # not churn otherwise completed relatives.
+    reopenable = {
+        goal_id
+        for goal_id, payload in payloads.items()
+        if normalize_goal_state(payload.get("state", payload.get("status", GoalState.ACTIVE.value)))
+        in {GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE, GoalState.REOPENED}
+    }
+    queue: list[tuple[str, ContradictionEvidence]] = [
+        (item.goal_id, item) for item in direct if item.goal_id in reopenable
+    ]
+    visited = {(goal_id, item.contradiction_id) for goal_id, item in queue}
+    cursor = 0
+    while cursor < len(queue):
+        source_goal, root = queue[cursor]
+        cursor += 1
+        for target_goal, kind in propagation.get(source_goal, ()):
+            key = (target_goal, root.contradiction_id)
+            if key in visited:
+                continue
+            visited.add(key)
+            criterion_values = payloads[target_goal].get("acceptance_criteria", ())
+            synthetic = ContradictionEvidence(
+                goal_id=target_goal,
+                kind=kind,
+                summary=(
+                    f"Child goal {source_goal} was reopened by contradiction {root.contradiction_id}."
+                    if kind == "child_reopened"
+                    else f"Dependency goal {source_goal} was reopened by contradiction {root.contradiction_id}."
+                ),
+                impacted_criteria=_string_tuple(criterion_values),
+                invalidated_evidence=(f"goal:{source_goal}",),
+                source_receipt={
+                    "source_goal_id": source_goal,
+                    "root_contradiction_id": root.contradiction_id,
+                    "kind": kind,
+                },
+                source_receipt_id=root.contradiction_id,
+                scheduled_work=({"goal_id": target_goal, "reason": kind, "source_goal_id": source_goal},),
+                detected_at=root.detected_at,
+            )
+            by_goal[target_goal].append(synthetic)
+            if target_goal in reopenable:
+                queue.append((target_goal, root))
+
+    decisions: dict[str, ReopenDecision] = {}
+    for goal_id in sorted(goal_id for goal_id, values in by_goal.items() if values):
+        payload = payloads[goal_id]
+        decisions[goal_id] = reopen_goal_for_contradictions(
+            goal_id=goal_id,
+            current_state=payload.get("state", payload.get("status", GoalState.ACTIVE.value)),
+            contradictions=by_goal[goal_id],
+            historical_completion_receipts=_records_for_goal(historical_completion_receipts, goal_id),
+            existing_reopen_receipts=_records_for_goal(existing_reopen_receipts, goal_id),
+            now=now,
+        )
+    return decisions
+
+
+def discover_goal_contradictions(
+    coverage: Any,
+    *,
+    previous_coverage: Any = None,
+    completed_goal_ids: Sequence[str] = (),
+    known_finding_ids: Sequence[str] = (),
+    scheduled_work: Any = (),
+    detected_at: datetime | str | None = None,
+) -> list[ContradictionEvidence]:
+    """Discover coverage contradictions without creating an import cycle."""
+
+    from .goal_coverage import detect_goal_coverage_contradictions
+
+    return detect_goal_coverage_contradictions(
+        coverage,
+        previous_coverage=previous_coverage,
+        completed_goal_ids=completed_goal_ids,
+        known_finding_ids=known_finding_ids,
+        scheduled_work=scheduled_work,
+        detected_at=detected_at,
+    )
 
 
 @dataclass(frozen=True)
@@ -1319,10 +1881,12 @@ assess_goal_completion = evaluate_goal_completion
 
 
 __all__ = [
+    "CONTRADICTION_KINDS",
     "CompletionDecision",
     "CompletionGateCheck",
     "CompletionGateResult",
     "CompletionEvidence",
+    "ContradictionEvidence",
     "DEFAULT_CLOCK_SKEW_SECONDS",
     "DEFAULT_EVIDENCE_FRESHNESS_SECONDS",
     "EvidenceValidationResult",
@@ -1330,17 +1894,22 @@ __all__ = [
     "GoalCompletionDecision",
     "GoalLifecycle",
     "GoalLifecycleState",
+    "GoalReopenDecision",
     "GoalState",
     "GoalTransition",
     "IllegalGoalTransition",
     "IllegalGoalTransitionError",
     "LEGAL_GOAL_TRANSITIONS",
+    "ReopenDecision",
     "assess_goal_completion",
+    "discover_goal_contradictions",
     "evaluate_goal_completion",
     "evaluate_completion_gate",
     "is_schedulable_goal_state",
     "is_terminal_goal_state",
     "legal_goal_transitions",
     "normalize_goal_state",
+    "reconcile_goal_reopenings",
+    "reopen_goal_for_contradictions",
     "validate_completion_evidence",
 ]

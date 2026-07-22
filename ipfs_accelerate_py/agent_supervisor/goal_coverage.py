@@ -30,6 +30,7 @@ from .objective_graph import (
     ObjectiveCoverageGraph,
     materialize_objective_coverage_graph,
 )
+from .goal_completion import ContradictionEvidence
 
 
 GOAL_COVERAGE_SCHEMA_VERSION = 1
@@ -196,6 +197,267 @@ def _freshness_bool(value: Any) -> bool | None:
 
 def _status_value(value: CoverageStatus | str) -> str:
     return value.value if isinstance(value, CoverageStatus) else str(value)
+
+
+def _coverage_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, GoalCoverageMap):
+        return value.to_dict()
+    return _payload(value)
+
+
+def _scheduled_for_goal(value: Any, goal_id: str) -> tuple[dict[str, Any], ...]:
+    if not value:
+        return ()
+    if isinstance(value, Mapping) and goal_id in value and not value.get("goal_id"):
+        value = value[goal_id]
+    if isinstance(value, Mapping):
+        value = (value,)
+    elif isinstance(value, (str, bytes)):
+        text = str(value).strip()
+        value = ({"task_id": text, "goal_id": goal_id},) if text else ()
+    elif not isinstance(value, Iterable):
+        value = (value,)
+    unique: dict[str, dict[str, Any]] = {}
+    for item in value or ():
+        payload = _payload(item)
+        if not payload and str(item or "").strip():
+            payload = {"task_id": str(item).strip(), "goal_id": goal_id}
+        owner = str(payload.get("goal_id", payload.get("objective_id", ""))).strip()
+        if payload and (not owner or owner == goal_id):
+            unique[_canonical(payload)] = payload
+    return tuple(unique[key] for key in sorted(unique))
+
+
+def _actionable_finding(payload: Mapping[str, Any]) -> bool:
+    if _bool(payload.get("actionable")) is False or _bool(payload.get("requires_work")) is False:
+        return False
+    status = _normalized(payload.get("status", payload.get("disposition", ""))).replace(" ", "_")
+    return status not in {
+        "closed", "dismissed", "duplicate", "duplicate_only", "fixed", "informational",
+        "not_actionable", "resolved", "suppressed",
+    }
+
+
+_SURFACE_FIELDS = (
+    "task_ids",
+    "predicted_files",
+    "changed_files",
+    "ast_symbols",
+    "interfaces",
+    "validation_commands",
+)
+
+
+def detect_goal_coverage_contradictions(
+    coverage: Any,
+    *,
+    previous_coverage: Any = None,
+    completed_goal_ids: Sequence[str] = (),
+    known_finding_ids: Sequence[str] = (),
+    scheduled_work: Any = (),
+    detected_at: datetime | str | None = None,
+) -> list[ContradictionEvidence]:
+    """Detect completion-invalidating deltas in a coverage artifact.
+
+    The comparison is intentionally goal-scoped.  Unmapped and unrelated
+    findings are never promoted, while a mapped finding is novel only when its
+    stable ID was absent from both the baseline graph and the caller's durable
+    finding ledger.
+    """
+
+    current = _coverage_payload(coverage)
+    baseline = _coverage_payload(previous_coverage) if previous_coverage is not None else {}
+    completed = {str(item).strip() for item in completed_goal_ids if str(item).strip()}
+    if not completed:
+        # Omitting the filter is useful to callers which detect first and
+        # apply lifecycle policy later.  An explicitly empty input therefore
+        # means all registered goals, not no goals.
+        completed = {
+            str(item).strip()
+            for item in current.get("registered_goal_ids", ())
+            if str(item).strip()
+        }
+    known = {str(item).strip() for item in known_finding_ids if str(item).strip()}
+    known.update(
+        str(item.get("finding_id", "")).strip()
+        for item in baseline.get("finding_assignments", ())
+        if isinstance(item, Mapping)
+    )
+    criteria = {
+        str(item.get("criterion_id", "")): dict(item)
+        for item in current.get("criteria", ())
+        if isinstance(item, Mapping) and str(item.get("criterion_id", ""))
+    }
+    criteria_by_goal: dict[str, list[dict[str, Any]]] = {}
+    for item in criteria.values():
+        criteria_by_goal.setdefault(str(item.get("goal_id", "")), []).append(item)
+    for rows in criteria_by_goal.values():
+        rows.sort(key=lambda item: (str(item.get("criterion", "")).casefold(), str(item.get("criterion_id", ""))))
+    baseline_criteria = {
+        (str(item.get("goal_id", "")), _normalized(item.get("criterion", ""))): dict(item)
+        for item in baseline.get("criteria", ())
+        if isinstance(item, Mapping)
+    }
+
+    contradictions: dict[str, ContradictionEvidence] = {}
+
+    def add(item: ContradictionEvidence) -> None:
+        if item.goal_id in completed:
+            contradictions[item.contradiction_id] = item
+
+    # Novel mapped findings create goal-scoped work.  Inferred mappings remain
+    # valid contradictions because attach_findings_to_goals records the score
+    # and explanation needed to audit that deterministic decision.
+    assignments = sorted(
+        (dict(item) for item in current.get("finding_assignments", ()) if isinstance(item, Mapping)),
+        key=lambda item: (str(item.get("goal_id", "")), str(item.get("finding_id", ""))),
+    )
+    for assignment in assignments:
+        goal_id = str(assignment.get("goal_id", "")).strip()
+        finding_id = str(assignment.get("finding_id", "")).strip()
+        finding = dict(assignment.get("finding") or {})
+        if not goal_id or goal_id == UNMAPPED_GOAL_ID or not finding_id or finding_id in known:
+            continue
+        if not _actionable_finding(finding):
+            continue
+        explicit_impacted = _items(
+            finding.get("impacted_criteria", assignment.get("impacted_criteria", ())),
+            split_sentences=True,
+        )
+        named_criterion = str(finding.get("acceptance_criterion", finding.get("criterion", ""))).strip()
+        impacted = explicit_impacted or [
+            str(item.get("criterion", ""))
+            for item in criteria_by_goal.get(goal_id, ())
+            if not named_criterion or _normalized(item.get("criterion", "")) == _normalized(named_criterion)
+        ]
+        baseline_for_goal = [
+            item for (owner, _criterion), item in baseline_criteria.items() if owner == goal_id
+        ]
+        proposed = finding.get(
+            "scheduled_work",
+            finding.get("newly_scheduled_work", finding.get("proposed_tasks", finding.get("gap_task", ()))),
+        )
+        finding_work = _scheduled_for_goal(proposed, goal_id)
+        work = _scheduled_for_goal(scheduled_work, goal_id) or finding_work
+        source = {**assignment, "finding": finding}
+        add(
+            ContradictionEvidence(
+                goal_id=goal_id,
+                kind="mapped_finding",
+                summary=f"Novel actionable finding {finding_id} maps to completed goal {goal_id}.",
+                impacted_criteria=tuple(impacted),
+                invalidated_evidence=tuple(
+                    cid
+                    for item in (baseline_for_goal or criteria_by_goal.get(goal_id, ()))
+                    for cid in item.get("provenance_cids", ())
+                ),
+                source_receipt=source,
+                source_receipt_id=finding_id,
+                scheduled_work=work,
+                detected_at=detected_at,
+            )
+        )
+
+    # A failed required validation or explicitly invalidated audit receipt is
+    # attached through the criterion's receipt IDs, never by global receipt
+    # presence.  This prevents a failure for one goal reopening another.
+    receipt_criteria: dict[str, list[dict[str, Any]]] = {}
+    for criterion in criteria.values():
+        for receipt_id in criterion.get("validation_receipt_ids", ()):
+            receipt_criteria.setdefault(str(receipt_id), []).append(criterion)
+    receipts = sorted(
+        (dict(item) for item in current.get("receipts", current.get("validation_receipts", ())) if isinstance(item, Mapping)),
+        key=lambda item: str(item.get("receipt_id", "")),
+    )
+    for receipt in receipts:
+        receipt_id = str(receipt.get("receipt_id", "")).strip()
+        raw = dict(receipt.get("raw") or {})
+        sources = [receipt, raw]
+        invalidated = _status_value(receipt.get("status", "")) == CoverageStatus.STALE.value or any(
+            _bool(source.get(key)) is True
+            for source in sources
+            for key in ("invalidated", "revoked", "audit_invalidated")
+        ) or any(
+            _bool(source.get(key)) is False
+            for source in sources
+            for key in ("valid", "audit_valid", "receipt_valid")
+            if key in source
+        ) or _normalized(receipt.get("outcome")) in {"invalid", "invalidated", "revoked"}
+        failed = (
+            _status_value(receipt.get("status", "")) == CoverageStatus.CONTRADICTED.value
+            or _bool(receipt.get("passed")) is False
+            or _normalized(receipt.get("outcome")) in {"fail", "failed", "failure", "error"}
+        )
+        if not invalidated and not failed:
+            continue
+        for criterion in sorted(receipt_criteria.get(receipt_id, ()), key=lambda item: str(item.get("criterion_id", ""))):
+            goal_id = str(criterion.get("goal_id", "")).strip()
+            provenance = str(receipt.get("provenance_cid", "")).strip()
+            add(
+                ContradictionEvidence(
+                    goal_id=goal_id,
+                    kind="invalidated_receipt" if invalidated else "failed_validation",
+                    summary=(
+                        f"Audit receipt {receipt_id} was invalidated."
+                        if invalidated
+                        else f"Required validation receipt {receipt_id} failed."
+                    ),
+                    impacted_criteria=(str(criterion.get("criterion", "")),),
+                    invalidated_evidence=tuple(item for item in (receipt_id, provenance) if item),
+                    source_receipt=receipt,
+                    source_receipt_id=receipt_id or provenance,
+                    scheduled_work=_scheduled_for_goal(scheduled_work, goal_id),
+                    detected_at=detected_at,
+                )
+            )
+
+    # Surface comparisons use (goal, normalized criterion), since criterion
+    # IDs are stable today but persisted v0 artifacts did not guarantee that.
+    for criterion in sorted(criteria.values(), key=lambda item: (str(item.get("goal_id", "")), str(item.get("criterion_id", "")))):
+        goal_id = str(criterion.get("goal_id", "")).strip()
+        old = baseline_criteria.get((goal_id, _normalized(criterion.get("criterion", ""))))
+        if not old:
+            continue
+        changes: dict[str, dict[str, list[str]]] = {}
+        for field_name in _SURFACE_FIELDS:
+            before = sorted({_normalized(item) for item in old.get(field_name, ()) if _normalized(item)})
+            after = sorted({_normalized(item) for item in criterion.get(field_name, ()) if _normalized(item)})
+            if before != after:
+                changes[field_name] = {"before": before, "after": after}
+        if not changes:
+            continue
+        invalidated_ids = sorted(
+            {
+                *[str(item) for item in old.get("provenance_cids", ()) if str(item)],
+                *[str(item) for item in old.get("validation_receipt_ids", ()) if str(item)],
+                *[str(item) for item in old.get("edge_ids", ()) if str(item)],
+            }
+        )
+        source = {
+            "criterion_id": criterion.get("criterion_id", ""),
+            "baseline_graph_id": baseline.get("graph_id", ""),
+            "current_graph_id": current.get("graph_id", ""),
+            "surface_changes": changes,
+        }
+        add(
+            ContradictionEvidence(
+                goal_id=goal_id,
+                kind="changed_surface",
+                summary=f"Evidence surfaces changed for criterion {criterion.get('criterion', '')!r}.",
+                impacted_criteria=(str(criterion.get("criterion", "")),),
+                invalidated_evidence=tuple(invalidated_ids),
+                source_receipt=source,
+                source_receipt_id=str(current.get("graph_id", "")),
+                scheduled_work=_scheduled_for_goal(scheduled_work, goal_id),
+                detected_at=detected_at,
+            )
+        )
+
+    return [contradictions[key] for key in sorted(contradictions)]
+
+
+# Public vocabulary shared with the completion lifecycle module.
+discover_goal_contradictions = detect_goal_coverage_contradictions
 
 
 @dataclass(frozen=True)
@@ -1214,6 +1476,8 @@ __all__ = [
     "attach_findings_to_goals",
     "build_goal_coverage_map",
     "build_goal_coverage",
+    "detect_goal_coverage_contradictions",
+    "discover_goal_contradictions",
     "goal_coverage_graph",
     "normalize_validation_receipt",
     "write_goal_coverage_map",

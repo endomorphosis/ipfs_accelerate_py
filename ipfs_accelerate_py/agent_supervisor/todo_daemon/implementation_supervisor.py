@@ -560,6 +560,21 @@ class PortalImplementationSupervisor:
                     )
                 codebase_findings = list(codebase_result.findings)
             codebase_scan = self._persist_refill_result("codebase", codebase_result)
+            mapped_contradictions = self._mapped_finding_contradictions(
+                codebase_findings,
+                source_receipt=codebase_scan,
+                goals=self._objective_goals_for_finding_mapping(),
+            )
+            if mapped_contradictions:
+                update_maintenance_phase("post_refill_goal_contradictions")
+                objective_contradiction_reconciliation = self.reconcile_objective_task_janitor(
+                    contradictions=mapped_contradictions,
+                )
+            else:
+                objective_contradiction_reconciliation = {
+                    "changed": False,
+                    "reason": "no_mapped_contradictions",
+                }
         else:
             update_maintenance_phase("preflight_refill_deferred")
             objective_payload = {}
@@ -578,6 +593,11 @@ class PortalImplementationSupervisor:
             codebase_deferred_reason = "preflight_refill_deferred_until_daemon_loop"
             objective_scan = {}
             codebase_scan = {}
+            mapped_contradictions = ()
+            objective_contradiction_reconciliation = {
+                "changed": False,
+                "reason": "refill_deferred",
+            }
         update_maintenance_phase("post_refill_generated_dirty_repair")
         post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("supervisor_check_event")
@@ -622,6 +642,16 @@ class PortalImplementationSupervisor:
                 "objective_task_janitor_reopened_goal_count": len(
                     objective_task_janitor.get("reopened_goal_ids") or []
                 ),
+                "mapped_contradiction_count": len(mapped_contradictions),
+                "contradiction_reopened_goal_count": len(
+                    objective_contradiction_reconciliation.get(
+                        "contradiction_reopened_goal_ids"
+                    )
+                    or []
+                ),
+                "objective_contradiction_reconciliation": (
+                    objective_contradiction_reconciliation
+                ),
                 "codebase_refill_count": codebase_result.generated_count,
                 "codebase_deferred_reason": codebase_deferred_reason,
                 "objective_scan": objective_scan,
@@ -647,6 +677,8 @@ class PortalImplementationSupervisor:
             "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
             "objective_seeded_launch_readiness_goal_count": objective_seeded_launch_goal_count,
             "objective_task_janitor": objective_task_janitor,
+            "mapped_contradiction_count": len(mapped_contradictions),
+            "objective_contradiction_reconciliation": objective_contradiction_reconciliation,
             "codebase_refill_count": codebase_result.generated_count,
             "codebase_deferred_reason": codebase_deferred_reason,
             "objective_scan": objective_scan,
@@ -3630,7 +3662,11 @@ class PortalImplementationSupervisor:
             safe_for_completion_reasoning=False,
         )
 
-    def reconcile_objective_task_janitor(self) -> dict[str, Any]:
+    def reconcile_objective_task_janitor(
+        self,
+        *,
+        contradictions: tuple[Mapping[str, Any], ...] = (),
+    ) -> dict[str, Any]:
         """Keep strategy blocks and objective refills aligned with the goal heap."""
 
         if not self.config.objective_task_janitor_enabled:
@@ -3686,9 +3722,14 @@ class PortalImplementationSupervisor:
             max_blocked_tasks=self.config.objective_task_janitor_max_blocked_tasks,
             max_deprioritized_tasks=self.config.objective_task_janitor_max_deprioritized_tasks,
             max_reopened_goals=self.config.objective_task_janitor_max_reopened_goals,
+            contradictions=contradictions,
         )
         if result.get("changed"):
             write_json(self.config.strategy_path, result["strategy"])
+        materialized_reopenings = self._materialize_objective_goal_reopenings(
+            objective_path,
+            result,
+        )
         materialized = self._materialize_objective_task_janitor_retirements(
             result,
             mark_task_statuses_in_todo_text=mark_task_statuses_in_todo_text,
@@ -3701,6 +3742,15 @@ class PortalImplementationSupervisor:
             "materialized_blocked_task_ids": list(materialized.get("blocked_task_ids") or []),
             "materialized_reason_task_ids": list(materialized.get("reason_task_ids") or []),
             "reopened_goal_ids": list(result.get("reopened_goal_ids") or []),
+            "contradiction_reopened_goal_ids": list(
+                result.get("contradiction_reopened_goal_ids") or []
+            ),
+            "recalculated_goal_ids": list(result.get("recalculated_goal_ids") or []),
+            "newly_scheduled_task_ids": list(result.get("newly_scheduled_task_ids") or []),
+            "goal_reopening_receipts": list(result.get("goal_reopening_receipts") or []),
+            "materialized_reopened_goal_ids": list(
+                materialized_reopenings.get("goal_ids") or []
+            ),
             "mission_terms": list(mission_terms),
             "critical_goal_count": len(result.get("critical_goal_ids") or []),
             "active_goal_count": len(result.get("active_goal_ids") or []),
@@ -3710,7 +3760,356 @@ class PortalImplementationSupervisor:
         self._record_event("objective_task_janitor", event_payload)
         result.pop("strategy", None)
         result["materialized"] = materialized
+        result["materialized_reopenings"] = materialized_reopenings
         return result
+
+    def _materialize_objective_goal_reopenings(
+        self,
+        objective_path: Path,
+        result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Persist effective reopenings without deleting completion history.
+
+        The janitor's strategy ledger is authoritative for idempotency, while
+        the objective heap remains authoritative for schedulability.  Writing
+        the effective state back to markdown ensures forced gap generation
+        sees the reopened goal in the same supervisor cycle.  Only lifecycle
+        and contradiction fields are updated; historical completion evidence
+        and validation receipts remain untouched.
+        """
+
+        effective_goal_ids = {
+            str(item).strip()
+            for item in result.get(
+                "effective_reopened_goal_ids",
+                result.get("contradiction_reopened_goal_ids", ()),
+            )
+            if str(item).strip()
+        }
+        receipts = [
+            dict(item)
+            for item in result.get("goal_reopening_receipts", ())
+            if isinstance(item, Mapping)
+            and str(item.get("goal_id") or "").strip() in effective_goal_ids
+        ]
+        if not effective_goal_ids or not receipts:
+            return {"changed": False, "goal_ids": [], "reason": "no_effective_reopenings"}
+
+        receipts_by_goal: dict[str, list[dict[str, Any]]] = {}
+        for receipt in receipts:
+            receipts_by_goal.setdefault(str(receipt.get("goal_id") or "").strip(), []).append(
+                receipt
+            )
+        try:
+            text = objective_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return {
+                "changed": False,
+                "goal_ids": [],
+                "reason": "objective_read_failed",
+                "error": str(exc),
+            }
+
+        from ipfs_accelerate_py.agent_supervisor.objective_tracker import rewrite_goal_fields
+
+        updates: dict[str, dict[str, str]] = {}
+        for goal_id in sorted(effective_goal_ids):
+            goal_receipts = sorted(
+                receipts_by_goal.get(goal_id, ()),
+                key=lambda item: (
+                    str(item.get("reopened_at") or ""),
+                    str(item.get("receipt_id") or ""),
+                ),
+            )
+            if not goal_receipts:
+                continue
+            latest = goal_receipts[-1]
+            contradiction_ids = sorted(
+                {
+                    str(item).strip()
+                    for receipt in goal_receipts
+                    for item in receipt.get("contradiction_ids", ())
+                    if str(item).strip()
+                }
+            )
+            impacted_criteria = sorted(
+                {
+                    str(item).strip()
+                    for receipt in goal_receipts
+                    for item in receipt.get("impacted_criteria", ())
+                    if str(item).strip()
+                }
+            )
+            invalidated_evidence = sorted(
+                {
+                    str(item).strip()
+                    for receipt in goal_receipts
+                    for item in receipt.get("invalidated_evidence", ())
+                    if str(item).strip()
+                }
+            )
+            source_receipts = [
+                source
+                for receipt in goal_receipts
+                for source in receipt.get("source_receipts", ())
+                if isinstance(source, Mapping)
+            ]
+            scheduled_work = [
+                work
+                for receipt in goal_receipts
+                for work in receipt.get("newly_scheduled_work", ())
+                if isinstance(work, Mapping)
+            ]
+            updates[goal_id] = {
+                "Status": "reopened",
+                "State transitioned at": str(latest.get("reopened_at") or utc_now()),
+                "State transition reason": (
+                    "completion evidence contradicted; scheduled repair work and "
+                    "recalculate parent/dependent goal proof"
+                ),
+                "Goal reopening receipts": json.dumps(
+                    goal_receipts,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                "Contradiction ids": json.dumps(contradiction_ids, separators=(",", ":")),
+                "Contradiction impacted criteria": json.dumps(
+                    impacted_criteria,
+                    separators=(",", ":"),
+                ),
+                "Contradiction invalidated evidence": json.dumps(
+                    invalidated_evidence,
+                    separators=(",", ":"),
+                ),
+                "Contradiction source receipts": json.dumps(
+                    source_receipts,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                "Newly scheduled work": json.dumps(
+                    scheduled_work,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            }
+        rewritten = rewrite_goal_fields(text, updates)
+        if rewritten == text:
+            return {"changed": False, "goal_ids": sorted(updates), "reason": "already_materialized"}
+        try:
+            write_text_atomic(objective_path, rewritten)
+        except OSError as exc:
+            return {
+                "changed": False,
+                "goal_ids": [],
+                "reason": "objective_write_failed",
+                "error": str(exc),
+            }
+        return {"changed": True, "goal_ids": sorted(updates)}
+
+    @staticmethod
+    def _mapped_finding_contradictions(
+        findings: tuple[Any, ...] | list[Any],
+        *,
+        source_receipt: Mapping[str, Any],
+        goals: tuple[Any, ...] | list[Any] = (),
+    ) -> tuple[dict[str, Any], ...]:
+        """Project explicitly goal-mapped findings into janitor contradictions.
+
+        Codebase refill records are intentionally allowed to remain unmapped.
+        Such findings still create backlog work, but they must not churn a
+        completed objective.  A goal identifier in the finding is therefore
+        the boundary between ordinary discovery and completion-invalidating
+        evidence.
+        """
+
+        inferred_mapping: dict[str, dict[str, Any]] = {}
+        criteria_by_goal: dict[str, list[str]] = {}
+        if goals and findings:
+            from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+                UNMAPPED_GOAL_ID,
+                acceptance_criteria_for_goal,
+                attach_findings_to_goals,
+            )
+
+            enriched_findings: list[dict[str, Any]] = []
+            for raw_finding in findings:
+                if not isinstance(raw_finding, Mapping):
+                    continue
+                enriched = dict(raw_finding)
+                source = str(enriched.get("source") or "").strip()
+                if source and not any(
+                    enriched.get(key)
+                    for key in ("outputs", "predicted_files", "changed_files")
+                ):
+                    path, separator, line = source.rpartition(":")
+                    enriched["predicted_files"] = [
+                        path if separator and line.isdigit() else source
+                    ]
+                enriched_findings.append(enriched)
+            for assignment in attach_findings_to_goals(goals, enriched_findings):
+                if assignment.goal_id != UNMAPPED_GOAL_ID:
+                    inferred_mapping[assignment.finding_id] = assignment.to_dict()
+            for goal in goals:
+                goal_id = str(
+                    getattr(goal, "goal_id", "")
+                    or (goal.get("goal_id") if isinstance(goal, Mapping) else "")
+                ).strip()
+                if goal_id:
+                    criteria_by_goal[goal_id] = acceptance_criteria_for_goal(goal)
+
+        projected: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for raw_finding in findings:
+            if not isinstance(raw_finding, Mapping):
+                continue
+            finding = dict(raw_finding)
+            goal_ids: list[str] = []
+            for key in ("goal_id", "mapped_goal_id"):
+                value = str(finding.get(key) or "").strip()
+                if value and value not in goal_ids:
+                    goal_ids.append(value)
+            for key in ("goal_ids", "affected_goal_ids", "goal_packet_goal_ids"):
+                values = finding.get(key)
+                if isinstance(values, str):
+                    candidates = values.split(",")
+                elif isinstance(values, (list, tuple, set, frozenset)):
+                    candidates = values
+                else:
+                    candidates = ()
+                for candidate in candidates:
+                    value = str(candidate or "").strip()
+                    if value and value not in goal_ids:
+                        goal_ids.append(value)
+            impacted_criteria = finding.get(
+                "impacted_criteria",
+                finding.get("acceptance_criteria", finding.get("criterion", ())),
+            )
+            if isinstance(impacted_criteria, str):
+                impacted_criteria = [impacted_criteria] if impacted_criteria.strip() else []
+            elif not isinstance(impacted_criteria, (list, tuple, set, frozenset)):
+                impacted_criteria = []
+            criteria = [
+                str(item).strip() for item in impacted_criteria if str(item).strip()
+            ]
+
+            scheduled_work = finding.get(
+                "scheduled_work",
+                finding.get("newly_scheduled_work", finding.get("follow_up_task_id", ())),
+            )
+            if isinstance(scheduled_work, str):
+                scheduled_work = [scheduled_work] if scheduled_work.strip() else []
+            elif not isinstance(scheduled_work, (list, tuple, set, frozenset)):
+                scheduled_work = []
+            scheduled: list[dict[str, Any]] = []
+            for item in scheduled_work:
+                if isinstance(item, Mapping):
+                    record = dict(item)
+                    if record and record not in scheduled:
+                        scheduled.append(record)
+                    continue
+                task_id = str(item).strip()
+                record = {"task_id": task_id}
+                if task_id and record not in scheduled:
+                    scheduled.append(record)
+            finding_id = str(
+                finding.get("finding_id") or finding.get("fingerprint") or finding.get("source") or ""
+            ).strip()
+            mapping_evidence = inferred_mapping.get(finding_id, {})
+            inferred_goal_id = str(mapping_evidence.get("goal_id") or "").strip()
+            if not goal_ids and inferred_goal_id:
+                goal_ids.append(inferred_goal_id)
+            if not criteria and len(goal_ids) == 1:
+                criteria = list(criteria_by_goal.get(goal_ids[0], ()))
+            if not goal_ids:
+                continue
+            description = str(
+                finding.get("contradiction")
+                or finding.get("description")
+                or finding.get("summary")
+                or finding.get("kind")
+                or "novel mapped finding invalidates prior completion evidence"
+            ).strip()
+            invalidated_evidence = finding.get("invalidated_evidence") or []
+            if isinstance(invalidated_evidence, str):
+                invalidated_evidence = (
+                    [invalidated_evidence] if invalidated_evidence.strip() else []
+                )
+            elif not isinstance(
+                invalidated_evidence,
+                (list, tuple, set, frozenset),
+            ):
+                invalidated_evidence = []
+            for goal_id in goal_ids:
+                finding_identity = finding_id or sha1(
+                    json.dumps(
+                        finding,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                    ).encode("utf-8")
+                ).hexdigest()
+                contradiction_id = "contradiction-" + sha1(
+                    "\0".join(["mapped_finding", goal_id, finding_identity]).encode(
+                        "utf-8"
+                    )
+                ).hexdigest()
+                # The scan receipt is retained as provenance, but it is not
+                # part of contradiction identity.  Re-observing the same
+                # stable finding in a later scan must replay the original
+                # contradiction instead of churning a completed goal.
+                dedupe_key = (goal_id, finding_identity, "mapped_finding")
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
+                projected.append(
+                    {
+                        "contradiction_id": contradiction_id,
+                        "fingerprint": contradiction_id,
+                        "kind": "mapped_finding",
+                        "goal_id": goal_id,
+                        "finding_id": finding_id,
+                        "summary": description,
+                        "impacted_criteria": criteria,
+                        "invalidated_evidence": [
+                            str(item).strip()
+                            for item in invalidated_evidence
+                            if str(item).strip()
+                        ],
+                        "source_receipt": {
+                            **dict(source_receipt),
+                            **(
+                                {"finding_mapping": mapping_evidence}
+                                if mapping_evidence
+                                else {}
+                            ),
+                        },
+                        "scheduled_work": scheduled,
+                        "newly_scheduled_work": scheduled,
+                    }
+                )
+        return tuple(
+            sorted(
+                projected,
+                key=lambda item: (
+                    str(item.get("goal_id") or ""),
+                    str(item.get("finding_id") or ""),
+                ),
+            )
+        )
+
+    def _objective_goals_for_finding_mapping(self) -> list[Any]:
+        """Read the current heap for deterministic dynamic-finding assignment."""
+
+        from ipfs_accelerate_py.agent_supervisor.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
+
+        objective_path = self.config.objective_path or default_objective_path(
+            self.config.repo_root
+        )
+        try:
+            return parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            return []
 
     def _materialize_objective_task_janitor_retirements(
         self,

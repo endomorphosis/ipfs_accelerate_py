@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping, Sequence
@@ -16,6 +18,9 @@ OPEN_TASK_STATUSES = {"todo", "ready", "in_progress"}
 JANITOR_RECEIPT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.v1"
 JANITOR_COMPLETION_GATE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.completion_gate.v1"
+)
+JANITOR_GOAL_REOPEN_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.goal_reopening.v1"
 )
 LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE = "launch Playwright validation gate"
 LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
@@ -257,6 +262,77 @@ def _goal_descendants(goals: Sequence[ObjectiveGoal]) -> dict[str, list[str]]:
     return descendants
 
 
+def _json_safe_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return {str(key): item for key, item in value.items()}
+    serializer = getattr(value, "to_dict", None)
+    if callable(serializer):
+        payload = serializer()
+        if isinstance(payload, Mapping):
+            return {str(key): item for key, item in payload.items()}
+    raise TypeError("contradictions must be mappings or expose to_dict()")
+
+
+def _stable_contradiction_id(payload: Mapping[str, Any]) -> str:
+    """Return the source identity used to make reopening replay-safe."""
+
+    for key in ("contradiction_id", "fingerprint", "receipt_cid", "source_receipt_cid"):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value
+    source = payload.get("source_receipt")
+    if isinstance(source, Mapping):
+        for key in ("receipt_cid", "cid", "fingerprint", "id"):
+            value = str(source.get(key) or "").strip()
+            if value:
+                return value
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _payload_string_list(payload: Mapping[str, Any], *keys: str) -> list[str]:
+    values: list[str] = []
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str):
+            values.extend(_split_terms(value))
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            values.extend(str(item) for item in value if str(item).strip())
+    return _unique(values)
+
+
+def _contradiction_goal_ids(payload: Mapping[str, Any]) -> list[str]:
+    return _payload_string_list(
+        payload,
+        "goal_id",
+        "goal_ids",
+        "mapped_goal_id",
+        "mapped_goal_ids",
+        "affected_goal_id",
+        "affected_goal_ids",
+    )
+
+
+def _contradiction_scheduled_task_ids(payload: Mapping[str, Any]) -> list[str]:
+    values = _payload_string_list(
+        payload,
+        "newly_scheduled_task_ids",
+        "scheduled_task_ids",
+        "work_task_ids",
+        "task_ids",
+    )
+    raw_work = payload.get("newly_scheduled_work") or payload.get("scheduled_work")
+    if isinstance(raw_work, list):
+        for item in raw_work:
+            if isinstance(item, Mapping):
+                task_id = str(item.get("task_id") or item.get("id") or "").strip()
+                if task_id:
+                    values.append(task_id)
+            elif str(item).strip():
+                values.append(str(item).strip())
+    return _unique(values)
+
+
 def _completion_gate_receipt(
     goal: ObjectiveGoal,
     *,
@@ -428,6 +504,7 @@ def reconcile_objective_task_strategy(
     mission_terms: Sequence[str] = DEFAULT_MISSION_TERMS,
     registered_goal_ids: Sequence[str] = (),
     completion_decisions: Mapping[str, Any] | None = None,
+    contradictions: Sequence[Any] = (),
     max_blocked_tasks: int = 50,
     max_deprioritized_tasks: int = 50,
     max_reopened_goals: int = 12,
@@ -441,6 +518,188 @@ def reconcile_objective_task_strategy(
         supplied_completion_decisions = (
             strategy_decisions if isinstance(strategy_decisions, Mapping) else {}
         )
+
+    prior_reopening_receipts = [
+        dict(receipt)
+        for receipt in strategy.get("objective_task_janitor_goal_reopening_receipts", ())
+        if isinstance(receipt, Mapping)
+    ] if isinstance(
+        strategy.get("objective_task_janitor_goal_reopening_receipts"), list
+    ) else []
+    contradiction_payloads = [_json_safe_mapping(item) for item in contradictions]
+    goal_reopening_decisions: dict[str, Any] = {}
+    if contradiction_payloads:
+        # The lifecycle module owns contradiction classification, relevance,
+        # propagation, and receipt idempotency.  The janitor consumes those
+        # decisions to update scheduling strategy without maintaining a
+        # second, subtly different reopening state machine.
+        from .goal_completion import reconcile_goal_reopenings
+
+        goal_records = []
+        for goal in goals:
+            dependency_ids: list[str] = []
+            for key in ("depends_on", "dependencies", "dependency_goal_ids", "prerequisites"):
+                dependency_ids.extend(_split_terms(goal.fields.get(key, "")))
+            goal_records.append(
+                {
+                    "goal_id": goal.goal_id,
+                    "state": goal.lifecycle_state_value,
+                    "parent_goal_ids": goal.parent_goal_ids,
+                    "depends_on": _unique(dependency_ids),
+                    "acceptance_criteria": _split_terms(
+                        goal.fields.get("acceptance", goal.fields.get("acceptance_criteria", ""))
+                    ),
+                }
+            )
+
+        historical_completion_receipts: list[dict[str, Any]] = []
+        for goal_id, decision in supplied_completion_decisions.items():
+            if isinstance(decision, Mapping):
+                historical_receipt = dict(decision)
+                historical_receipt.setdefault("goal_id", str(goal_id))
+                historical_completion_receipts.append(historical_receipt)
+        raw_history = strategy.get("objective_goal_completion_receipts", ())
+        if isinstance(raw_history, list):
+            historical_completion_receipts.extend(
+                dict(receipt) for receipt in raw_history if isinstance(receipt, Mapping)
+            )
+
+        goal_reopening_decisions = reconcile_goal_reopenings(
+            goal_records,
+            contradictions,
+            historical_completion_receipts=historical_completion_receipts,
+            existing_reopen_receipts=prior_reopening_receipts,
+            now=now,
+        )
+
+    serialized_reopening_decisions = {
+        goal_id: (
+            decision.to_dict()
+            if callable(getattr(decision, "to_dict", None))
+            else dict(decision)
+        )
+        for goal_id, decision in sorted(goal_reopening_decisions.items())
+    }
+    prior_reopening_decisions = strategy.get(
+        "objective_task_janitor_goal_reopening_decisions", {}
+    )
+    persisted_reopening_decisions = (
+        {
+            str(goal_id): dict(payload)
+            for goal_id, payload in prior_reopening_decisions.items()
+            if isinstance(payload, Mapping)
+        }
+        if isinstance(prior_reopening_decisions, Mapping)
+        else {}
+    )
+    for goal_id, payload in serialized_reopening_decisions.items():
+        if payload.get("idempotent") is not True or goal_id not in persisted_reopening_decisions:
+            persisted_reopening_decisions[goal_id] = payload
+    contradiction_reopened_goal_ids = [
+        goal_id
+        for goal_id, payload in serialized_reopening_decisions.items()
+        if payload.get("reopened") is True and payload.get("idempotent") is not True
+    ]
+    raw_pending_reopen_goal_ids = strategy.get(
+        "objective_task_janitor_pending_reopen_goal_ids"
+    )
+    if isinstance(raw_pending_reopen_goal_ids, list):
+        prior_pending_reopen_goal_ids = _unique(
+            [str(goal_id) for goal_id in raw_pending_reopen_goal_ids]
+        )
+    else:
+        # Compatibility for receipts written before pending materialization
+        # was tracked separately from the append-only audit ledger.
+        prior_pending_reopen_goal_ids = _unique(
+            [str(receipt.get("goal_id") or "") for receipt in prior_reopening_receipts]
+        )
+    effective_contradiction_reopened_goal_ids = _unique(
+        [
+            goal_id
+            for goal_id, payload in serialized_reopening_decisions.items()
+            if str(payload.get("state") or "").strip().lower() == "reopened"
+        ]
+        + [
+            goal_id
+            for goal_id in prior_pending_reopen_goal_ids
+            if goal_id in goals_by_id
+            and goals_by_id[goal_id].lifecycle_state_value
+            in {"provisionally_complete", "verified_complete"}
+        ]
+    )
+    pending_reopen_goal_ids = _unique(
+        [*prior_pending_reopen_goal_ids, *contradiction_reopened_goal_ids]
+    )
+    pending_reopen_goal_ids = [
+        goal_id
+        for goal_id in pending_reopen_goal_ids
+        if goal_id in goals_by_id
+        and goals_by_id[goal_id].lifecycle_state_value
+        in {"provisionally_complete", "verified_complete"}
+    ]
+    recalculated_goal_ids = sorted(
+        goal_id
+        for goal_id, payload in serialized_reopening_decisions.items()
+        if payload.get("contradiction_ids") or payload.get("reason_codes")
+    )
+    new_reopening_receipts = [
+        dict(payload["reopening_receipt"])
+        for payload in serialized_reopening_decisions.values()
+        if payload.get("reopened") is True
+        and payload.get("idempotent") is not True
+        and isinstance(payload.get("reopening_receipt"), Mapping)
+        and payload.get("reopening_receipt")
+    ]
+    def reopening_receipt_key(receipt: Mapping[str, Any]) -> str:
+        receipt_id = str(receipt.get("receipt_id") or "").strip()
+        if receipt_id:
+            return "receipt:" + receipt_id
+        contradiction_ids = receipt.get("contradiction_ids", ())
+        if isinstance(contradiction_ids, str):
+            contradiction_ids = [contradiction_ids]
+        identity = {
+            "goal_id": str(receipt.get("goal_id") or ""),
+            "contradiction_ids": sorted(str(item) for item in contradiction_ids or ()),
+        }
+        return "fallback:" + _stable_contradiction_id(identity)
+
+    seen_reopening_receipts = {
+        reopening_receipt_key(receipt) for receipt in prior_reopening_receipts
+    }
+    persisted_reopening_receipts = list(prior_reopening_receipts)
+    for receipt in new_reopening_receipts:
+        receipt.setdefault("schema", JANITOR_GOAL_REOPEN_RECEIPT_SCHEMA)
+        key = reopening_receipt_key(receipt)
+        if key not in seen_reopening_receipts:
+            persisted_reopening_receipts.append(receipt)
+            seen_reopening_receipts.add(key)
+
+    newly_scheduled_task_ids = _unique(
+        [
+            task_id
+            for goal_id in contradiction_reopened_goal_ids
+            for task_id in _contradiction_scheduled_task_ids(
+                serialized_reopening_decisions.get(goal_id, {})
+            )
+        ]
+        + [
+            task_id
+            for payload in contradiction_payloads
+            if set(_contradiction_goal_ids(payload)) & set(contradiction_reopened_goal_ids)
+            for task_id in _contradiction_scheduled_task_ids(payload)
+        ]
+    )
+    raw_persisted_scheduled_tasks = strategy.get(
+        "objective_task_janitor_newly_scheduled_task_ids", ()
+    )
+    persisted_scheduled_task_ids = _unique(
+        (
+            [str(task_id) for task_id in raw_persisted_scheduled_tasks]
+            if isinstance(raw_persisted_scheduled_tasks, (list, tuple))
+            else []
+        )
+        + newly_scheduled_task_ids
+    )
     descendants_by_goal = _goal_descendants(goals)
     completion_gate_receipts = {
         goal_id: _completion_gate_receipt(
@@ -472,15 +731,26 @@ def reconcile_objective_task_strategy(
         return reason_codes[0] if reason_codes else "completion_gate_missing"
 
     tasks_by_id = {task.task_id: task for task in tasks if task.task_id}
-    heap_active_goal_ids = {goal.goal_id for goal in goals if goal.is_schedulable}
+    contradiction_reopened_set = set(effective_contradiction_reopened_goal_ids)
+    effective_goals = [
+        ObjectiveGoal(
+            goal.goal_id,
+            goal.title,
+            {**goal.fields, "status": "reopened"},
+        )
+        if goal.goal_id in contradiction_reopened_set
+        else goal
+        for goal in goals
+    ]
+    heap_active_goal_ids = {goal.goal_id for goal in effective_goals if goal.is_schedulable}
     dynamic_goal_ids = set(_unique(registered_goal_ids))
     active_goal_ids = heap_active_goal_ids | dynamic_goal_ids
     scheduled_goal_ids = [
         record.goal_id
-        for record in objective_heap_schedule(goals)
+        for record in objective_heap_schedule(effective_goals)
         if record.goal_id in active_goal_ids
     ]
-    critical_goal_ids = _critical_goal_ids(goals, mission_terms)
+    critical_goal_ids = _critical_goal_ids(effective_goals, mission_terms)
     previous_receipts = [
         receipt
         for receipt in strategy.get("objective_task_janitor_receipts", [])
@@ -673,11 +943,14 @@ def reconcile_objective_task_strategy(
     deprioritize_receipts = deprioritize_receipts[: max(0, int(max_deprioritized_tasks))]
     blocked_task_ids = [receipt.task_id for receipt in block_receipts]
     deprioritized_task_ids = [receipt.task_id for receipt in deprioritize_receipts]
-    reopened_goal_ids = [
+    missing_work_goal_ids = [
         goal_id
         for goal_id in scheduled_goal_ids
         if goal_id in critical_goal_ids and goal_id not in open_goal_ids
     ][: max(0, int(max_reopened_goals))]
+    reopened_goal_ids = _unique(
+        [*effective_contradiction_reopened_goal_ids, *missing_work_goal_ids]
+    )
     validation_gate_goal_ids = [
         goal_id
         for goal_id in scheduled_goal_ids
@@ -737,6 +1010,25 @@ def reconcile_objective_task_strategy(
     updated_strategy["objective_task_janitor_completion_gate_failed_goal_ids"] = sorted(
         goal_id for goal_id, receipt in completion_gate_receipts.items() if not receipt["passed"]
     )
+    updated_strategy["objective_task_janitor_goal_reopening_decisions"] = (
+        persisted_reopening_decisions
+    )
+    updated_strategy["objective_task_janitor_goal_reopening_receipts"] = (
+        persisted_reopening_receipts
+    )
+    updated_strategy["objective_task_janitor_contradiction_reopened_goal_ids"] = (
+        effective_contradiction_reopened_goal_ids
+    )
+    updated_strategy["objective_task_janitor_effective_reopened_goal_ids"] = (
+        effective_contradiction_reopened_goal_ids
+    )
+    updated_strategy["objective_task_janitor_pending_reopen_goal_ids"] = (
+        pending_reopen_goal_ids
+    )
+    updated_strategy["objective_task_janitor_recalculated_goal_ids"] = recalculated_goal_ids
+    updated_strategy["objective_task_janitor_newly_scheduled_task_ids"] = (
+        persisted_scheduled_task_ids
+    )
     updated_strategy["objective_task_janitor_last_run_at"] = now
     updated_strategy["objective_task_janitor_last_run_summary"] = {
         "blocked_count": len(blocked_task_ids),
@@ -752,6 +1044,9 @@ def reconcile_objective_task_strategy(
         "completion_gate_failed_count": sum(
             1 for receipt in completion_gate_receipts.values() if not receipt["passed"]
         ),
+        "contradiction_reopened_goal_count": len(contradiction_reopened_goal_ids),
+        "recalculated_goal_count": len(recalculated_goal_ids),
+        "newly_scheduled_task_count": len(newly_scheduled_task_ids),
     }
 
     comparable_keys = (
@@ -770,6 +1065,13 @@ def reconcile_objective_task_strategy(
         "objective_task_janitor_completion_gate_receipts",
         "objective_task_janitor_completion_gate_passed_goal_ids",
         "objective_task_janitor_completion_gate_failed_goal_ids",
+        "objective_task_janitor_goal_reopening_decisions",
+        "objective_task_janitor_goal_reopening_receipts",
+        "objective_task_janitor_contradiction_reopened_goal_ids",
+        "objective_task_janitor_effective_reopened_goal_ids",
+        "objective_task_janitor_pending_reopen_goal_ids",
+        "objective_task_janitor_recalculated_goal_ids",
+        "objective_task_janitor_newly_scheduled_task_ids",
     )
     changed = any(strategy.get(key) != updated_strategy.get(key) for key in comparable_keys)
     return {
@@ -780,6 +1082,12 @@ def reconcile_objective_task_strategy(
         "unblocked_task_ids": unblocked_task_ids,
         "removed_task_ids": removed_task_ids,
         "reopened_goal_ids": reopened_goal_ids,
+        "contradiction_reopened_goal_ids": contradiction_reopened_goal_ids,
+        "effective_reopened_goal_ids": effective_contradiction_reopened_goal_ids,
+        "recalculated_goal_ids": recalculated_goal_ids,
+        "newly_scheduled_task_ids": newly_scheduled_task_ids,
+        "goal_reopening_decisions": serialized_reopening_decisions,
+        "goal_reopening_receipts": persisted_reopening_receipts,
         "receipts": receipt_payloads,
         "active_goal_ids": sorted(active_goal_ids),
         "heap_active_goal_ids": sorted(heap_active_goal_ids),

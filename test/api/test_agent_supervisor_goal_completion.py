@@ -7,16 +7,24 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
+    ContradictionEvidence,
     GoalCompletionDecision,
     GoalLifecycle,
     GoalState,
     IllegalGoalTransitionError,
+    discover_goal_contradictions,
     evaluate_goal_completion,
     evaluate_completion_gate,
+    reconcile_goal_reopenings,
+    reopen_goal_for_contradictions,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     completion_tree_identity,
     reconcile_objective_goal_completion,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
 )
 
 
@@ -512,6 +520,428 @@ def test_contradictory_evidence_reopens_a_previously_verified_goal() -> None:
     assert decision.state is GoalState.REOPENED
     assert decision.verified is False
     assert "contradict" in " ".join(decision.actionable_reasons).lower()
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["mapped_finding", "failed_validation", "changed_surface", "invalidated_receipt"],
+)
+@pytest.mark.parametrize(
+    "completed_state",
+    [GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE],
+)
+def test_each_completion_contradiction_reopens_and_records_full_provenance(
+    kind: str,
+    completed_state: GoalState,
+) -> None:
+    contradiction = ContradictionEvidence(
+        goal_id="G10.S3",
+        kind=kind,
+        summary=f"{kind} invalidated the completion claim",
+        impacted_criteria=("criterion two", "criterion one"),
+        invalidated_evidence=("bafy-old-audit", "bafy-old-validation"),
+        source_receipt={"receipt_cid": f"bafy-{kind}", "tree_id": CURRENT_TREE},
+        scheduled_work=({"task_id": "REF-901", "reason": kind},),
+        detected_at=NOW,
+    )
+    historical = [{"goal_id": "G10.S3", "receipt_id": "bafy-completion"}]
+
+    decision = reopen_goal_for_contradictions(
+        goal_id="G10.S3",
+        current_state=completed_state,
+        contradictions=[contradiction],
+        historical_completion_receipts=historical,
+        now=NOW,
+    )
+    payload = decision.to_dict()
+
+    assert decision.state is GoalState.REOPENED
+    assert decision.reopened is True
+    assert decision.idempotent is False
+    assert payload["contradiction_ids"] == [contradiction.contradiction_id]
+    assert payload["impacted_criteria"] == ["criterion one", "criterion two"]
+    assert payload["invalidated_evidence"] == ["bafy-old-audit", "bafy-old-validation"]
+    assert payload["source_receipts"] == [contradiction.source_receipt]
+    assert payload["newly_scheduled_work"] == [{"task_id": "REF-901", "reason": kind}]
+    assert payload["historical_completion_receipts"] == historical
+    assert payload["reopening_receipt"]["historical_completion_receipt_ids"] == [
+        "bafy-completion"
+    ]
+
+
+def test_unrelated_contradiction_does_not_churn_completed_goal() -> None:
+    decision = reopen_goal_for_contradictions(
+        goal_id="G10.S3",
+        current_state=GoalState.VERIFIED_COMPLETE,
+        contradictions=[
+            ContradictionEvidence(
+                goal_id="G99",
+                kind="mapped_finding",
+                source_receipt={"receipt_cid": "bafy-unrelated"},
+            )
+        ],
+        now=NOW,
+    )
+
+    assert decision.state is GoalState.VERIFIED_COMPLETE
+    assert decision.reopened is False
+    assert decision.changed is False
+    assert decision.contradictions == ()
+    assert decision.reopening_receipt == {}
+
+
+def test_replayed_contradiction_is_idempotent_and_retains_effective_reopened_state() -> None:
+    contradiction = ContradictionEvidence(
+        goal_id="G10.S3",
+        kind="failed_validation",
+        impacted_criteria=("criterion one",),
+        invalidated_evidence=("bafy-completion",),
+        source_receipt={"receipt_cid": "bafy-failed-validation"},
+        scheduled_work=({"task_id": "REF-901"},),
+        detected_at=NOW,
+    )
+    first = reopen_goal_for_contradictions(
+        goal_id="G10.S3",
+        current_state=GoalState.VERIFIED_COMPLETE,
+        contradictions=[contradiction],
+        historical_completion_receipts=[
+            {"goal_id": "G10.S3", "receipt_id": "bafy-completion"}
+        ],
+        now=NOW,
+    )
+    replay = reopen_goal_for_contradictions(
+        goal_id="G10.S3",
+        current_state=GoalState.VERIFIED_COMPLETE,
+        contradictions=[contradiction],
+        historical_completion_receipts=[
+            {"goal_id": "G10.S3", "receipt_id": "bafy-completion"}
+        ],
+        existing_reopen_receipts=[first.reopening_receipt],
+        now=NOW + timedelta(minutes=10),
+    )
+
+    assert replay.state is GoalState.REOPENED
+    assert replay.reopened is False
+    assert replay.idempotent is True
+    assert replay.changed is True
+    assert replay.reopening_receipt == {}
+    assert replay.historical_completion_receipts == first.historical_completion_receipts
+
+
+def test_reopening_recalculates_parent_and_dependent_without_erasing_history() -> None:
+    goals = [
+        {"goal_id": "G1", "state": "verified_complete", "acceptance_criteria": ["parent"]},
+        {
+            "goal_id": "G1.S1",
+            "state": "verified_complete",
+            "parent_goal_ids": ["G1"],
+            "acceptance_criteria": ["child"],
+        },
+        {
+            "goal_id": "G2",
+            "state": "provisionally_complete",
+            "depends_on": ["G1.S1"],
+            "acceptance_criteria": ["dependent"],
+        },
+        {"goal_id": "G3", "state": "verified_complete"},
+    ]
+    completion_history = [
+        {"goal_id": goal["goal_id"], "receipt_id": f"complete-{goal['goal_id']}"}
+        for goal in goals
+    ]
+    contradiction = ContradictionEvidence(
+        goal_id="G1.S1",
+        kind="changed_surface",
+        impacted_criteria=("child",),
+        invalidated_evidence=("complete-G1.S1",),
+        source_receipt={"receipt_cid": "bafy-changed-tree", "tree_id": CURRENT_TREE},
+        scheduled_work=({"task_id": "REF-901"},),
+        detected_at=NOW,
+    )
+
+    decisions = reconcile_goal_reopenings(
+        goals,
+        [contradiction],
+        historical_completion_receipts=completion_history,
+        now=NOW,
+    )
+
+    assert decisions["G1.S1"].state is GoalState.REOPENED
+    assert decisions["G1"].state is GoalState.REOPENED
+    assert decisions["G2"].state is GoalState.REOPENED
+    assert "G3" not in decisions
+    assert decisions["G1"].historical_completion_receipts == (
+        {"goal_id": "G1", "receipt_id": "complete-G1"},
+    )
+    assert decisions["G2"].historical_completion_receipts == (
+        {"goal_id": "G2", "receipt_id": "complete-G2"},
+    )
+    assert decisions["G1"].contradictions[0].kind == "child_reopened"
+    assert decisions["G2"].contradictions[0].kind == "dependency_reopened"
+
+
+def test_coverage_discovery_detects_every_reopening_surface_without_cross_goal_churn() -> None:
+    previous = {
+        "graph_id": "coverage-old",
+        "registered_goal_ids": ["G1", "G2"],
+        "criteria": [
+            {
+                "criterion_id": "criterion-G1",
+                "goal_id": "G1",
+                "criterion": "criterion one",
+                "task_ids": ["REF-100"],
+                "validation_receipt_ids": ["receipt-old"],
+                "provenance_cids": ["bafy-old-proof"],
+            }
+        ],
+        "finding_assignments": [],
+    }
+    current = {
+        "graph_id": "coverage-new",
+        "registered_goal_ids": ["G1", "G2"],
+        "criteria": [
+            {
+                "criterion_id": "criterion-G1",
+                "goal_id": "G1",
+                "criterion": "criterion one",
+                "task_ids": ["REF-101"],
+                "validation_receipt_ids": ["receipt-failed", "receipt-invalidated"],
+                "provenance_cids": ["bafy-old-proof"],
+            }
+        ],
+        "receipts": [
+            {
+                "receipt_id": "receipt-failed",
+                "status": "contradicted",
+                "passed": False,
+                "provenance_cid": "bafy-failed",
+                "raw": {},
+            },
+            {
+                "receipt_id": "receipt-invalidated",
+                "status": "contradicted",
+                "passed": True,
+                "provenance_cid": "bafy-invalidated",
+                "raw": {"audit_invalidated": True},
+            },
+        ],
+        "finding_assignments": [
+            {
+                "finding_id": "finding-G1",
+                "goal_id": "G1",
+                "finding": {"actionable": True, "criterion": "criterion one"},
+            },
+            {
+                "finding_id": "finding-unmapped",
+                "goal_id": "__unmapped__",
+                "finding": {"actionable": True},
+            },
+        ],
+    }
+
+    first = discover_goal_contradictions(
+        current,
+        previous_coverage=previous,
+        completed_goal_ids=["G1"],
+        scheduled_work="REF-901",
+        detected_at=NOW,
+    )
+    replay = discover_goal_contradictions(
+        current,
+        previous_coverage=previous,
+        completed_goal_ids=["G1"],
+        scheduled_work="REF-901",
+        detected_at=NOW + timedelta(minutes=5),
+    )
+
+    assert {item.kind for item in first} == {
+        "mapped_finding",
+        "failed_validation",
+        "invalidated_receipt",
+        "changed_surface",
+    }
+    assert {item.goal_id for item in first} == {"G1"}
+    assert [item.contradiction_id for item in first] == [
+        item.contradiction_id for item in replay
+    ]
+    assert all(item.scheduled_work for item in first)
+    assert all(item.scheduled_work[0]["task_id"] == "REF-901" for item in first)
+
+
+def test_supervisor_projects_only_explicitly_mapped_findings_as_contradictions() -> None:
+    receipt = {
+        "receipt_cid": "bafy-codebase-scan",
+        "tree_id": CURRENT_TREE,
+        "terminal_reason": "generated",
+    }
+    findings = [
+        {
+            "fingerprint": "finding-mapped",
+            "goal_id": "G10.S3",
+            "kind": "swallowed_exception",
+            "impacted_criteria": ["criterion two", "criterion one"],
+            "invalidated_evidence": ["bafy-old-validation"],
+            "follow_up_task_id": "REF-901",
+        },
+        {
+            "fingerprint": "finding-unrelated",
+            "kind": "annotation",
+            "bundle_key": "codebase/unregistered-bucket",
+            "follow_up_task_id": "REF-902",
+        },
+    ]
+
+    contradictions = PortalImplementationSupervisor._mapped_finding_contradictions(
+        findings,
+        source_receipt=receipt,
+    )
+
+    assert len(contradictions) == 1
+    contradiction = contradictions[0]
+    assert contradiction["kind"] == "mapped_finding"
+    assert contradiction["goal_id"] == "G10.S3"
+    assert contradiction["finding_id"] == "finding-mapped"
+    assert contradiction["impacted_criteria"] == ["criterion two", "criterion one"]
+    assert contradiction["invalidated_evidence"] == ["bafy-old-validation"]
+    assert contradiction["source_receipt"] == receipt
+    assert contradiction["scheduled_work"] == [{"task_id": "REF-901"}]
+
+
+def test_supervisor_mapped_finding_projection_is_deterministic_and_deduplicated() -> None:
+    receipt = {"receipt_cid": "bafy-codebase-scan", "tree_id": CURRENT_TREE}
+    finding = {
+        "fingerprint": "finding-one",
+        "goal_ids": ["G2", "G1", "G2"],
+        "newly_scheduled_work": ["REF-901"],
+    }
+
+    first = PortalImplementationSupervisor._mapped_finding_contradictions(
+        [finding, dict(finding)],
+        source_receipt=receipt,
+    )
+    second = PortalImplementationSupervisor._mapped_finding_contradictions(
+        [dict(finding), finding],
+        source_receipt=receipt,
+    )
+
+    assert first == second
+    assert [item["goal_id"] for item in first] == ["G1", "G2"]
+    assert len({item["contradiction_id"] for item in first}) == 2
+
+    later_scan = PortalImplementationSupervisor._mapped_finding_contradictions(
+        [finding],
+        source_receipt={"receipt_cid": "bafy-later-scan", "tree_id": "later-tree"},
+    )
+    assert [item["contradiction_id"] for item in later_scan] == [
+        item["contradiction_id"] for item in first
+    ]
+    assert later_scan[0]["source_receipt"]["receipt_cid"] == "bafy-later-scan"
+
+    distinct_finding = PortalImplementationSupervisor._mapped_finding_contradictions(
+        [finding, {**finding, "fingerprint": "finding-two"}],
+        source_receipt=receipt,
+    )
+    assert len(distinct_finding) == 4
+    assert len({item["contradiction_id"] for item in distinct_finding}) == 4
+
+
+def test_supervisor_deterministically_maps_new_surface_finding_to_goal_coverage() -> None:
+    goals = [{
+        "goal_id": "G10.S3",
+        "title": "Meta glasses API",
+        "fields": {
+            "status": "verified_complete",
+            "acceptance": "The Meta glasses API remains operational.",
+            "outputs": "swissknife/meta_glasses.py",
+        },
+    }]
+    finding = {
+        "fingerprint": "finding-new-surface",
+        "source": "swissknife/meta_glasses.py:42",
+        "kind": "swallowed_exception",
+        "follow_up_task_id": "REF-901",
+    }
+
+    contradictions = PortalImplementationSupervisor._mapped_finding_contradictions(
+        [finding],
+        source_receipt={"receipt_cid": "bafy-codebase-scan"},
+        goals=goals,
+    )
+
+    assert len(contradictions) == 1
+    assert contradictions[0]["goal_id"] == "G10.S3"
+    assert contradictions[0]["impacted_criteria"] == [
+        "The Meta glasses API remains operational."
+    ]
+    mapping = contradictions[0]["source_receipt"]["finding_mapping"]
+    assert mapping["inferred"] is True
+    assert mapping["confidence"] >= 0.2
+
+
+def test_supervisor_materializes_reopening_without_erasing_completion_history(tmp_path) -> None:
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G10.S3 Completed goal
+
+- Status: verified_complete
+- Acceptance: criterion one
+- Completed at: 2026-07-22T10:00:00+00:00
+- Completion validation: bafy-original-validation
+- Completion evidence records: [{"provenance_cid":"bafy-original-evidence"}]
+""",
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state"
+    config = PortalSupervisorConfig(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        objective_path=objective_path,
+        repo_root=tmp_path,
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    receipt = {
+        "receipt_id": "reopen-one",
+        "goal_id": "G10.S3",
+        "previous_state": "verified_complete",
+        "state": "reopened",
+        "reopened_at": NOW.isoformat(),
+        "contradiction_ids": ["contradiction-one"],
+        "impacted_criteria": ["criterion one"],
+        "invalidated_evidence": ["bafy-original-evidence"],
+        "source_receipts": [{"receipt_cid": "bafy-regression"}],
+        "newly_scheduled_work": [{"task_id": "REF-901"}],
+    }
+    result = {
+        "effective_reopened_goal_ids": ["G10.S3"],
+        "goal_reopening_receipts": [receipt],
+    }
+
+    materialized = supervisor._materialize_objective_goal_reopenings(
+        objective_path,
+        result,
+    )
+    first_text = objective_path.read_text(encoding="utf-8")
+    replay = supervisor._materialize_objective_goal_reopenings(objective_path, result)
+
+    assert materialized == {"changed": True, "goal_ids": ["G10.S3"]}
+    assert replay == {
+        "changed": False,
+        "goal_ids": ["G10.S3"],
+        "reason": "already_materialized",
+    }
+    assert objective_path.read_text(encoding="utf-8") == first_text
+    assert "- Status: reopened" in first_text
+    assert "- Completion validation: bafy-original-validation" in first_text
+    assert 'bafy-original-evidence"}]' in first_text
+    assert "- Goal reopening receipts:" in first_text
+    assert "contradiction-one" in first_text
+    assert "bafy-regression" in first_text
+    assert "REF-901" in first_text
 
 
 def test_incomplete_tasks_keep_an_active_goal_active_even_with_evidence() -> None:

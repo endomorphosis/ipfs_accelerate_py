@@ -9,6 +9,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     completion_gate_receipts_from_decisions,
     load_goal_completion_gate_records,
 )
+from ipfs_accelerate_py.agent_supervisor.goal_completion import ContradictionEvidence
 from ipfs_accelerate_py.agent_supervisor.objective_graph import ObjectiveGoal
 from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
     JANITOR_RECEIPT_SCHEMA,
@@ -430,3 +431,163 @@ def test_daemon_gate_receipt_rechecks_internal_checks_and_preserves_exact_eviden
     assert receipt["passed"] is False
     assert "completion_gate_check_failed" in receipt["reason_codes"]
     assert receipt["evaluated_evidence"] == decision["completion_gate"]["evaluated_evidence"]
+
+
+def test_contradiction_reopens_goal_parent_and_dependent_and_schedules_work():
+    goals = [
+        ObjectiveGoal(
+            "G1",
+            "Parent goal",
+            {"status": "verified_complete", "acceptance": "parent criterion"},
+        ),
+        ObjectiveGoal(
+            "G1.S1",
+            "Affected child",
+            {
+                "status": "verified_complete",
+                "parents": "G1",
+                "acceptance": "child criterion",
+            },
+        ),
+        ObjectiveGoal(
+            "G2",
+            "Dependent goal",
+            {
+                "status": "provisionally_complete",
+                "depends_on": "G1.S1",
+                "acceptance": "dependent criterion",
+            },
+        ),
+    ]
+    repair = replace(
+        _goal_task("G1.S1"),
+        task_id="AUTO-209",
+        title="Repair the failed required validation",
+    )
+    contradiction = ContradictionEvidence(
+        goal_id="G1.S1",
+        kind="failed_validation",
+        summary="The required API validation regressed.",
+        impacted_criteria=("child criterion",),
+        invalidated_evidence=("bafy-old-proof",),
+        source_receipt={"receipt_cid": "bafy-failed-validation", "passed": False},
+        scheduled_work=({"task_id": repair.task_id, "reason": "rerun validation"},),
+    )
+    historical_completion = {
+        "receipt_id": "bafy-historical-completion",
+        "state": "verified_complete",
+        "verified": True,
+    }
+
+    result = reconcile_objective_task_strategy(
+        goals=goals,
+        tasks=[repair],
+        strategy={"objective_completion_decisions": {"G1.S1": historical_completion}},
+        now="2026-07-22T00:00:00+00:00",
+        contradictions=[contradiction],
+    )
+
+    assert result["blocked_task_ids"] == []
+    assert result["contradiction_reopened_goal_ids"] == ["G1", "G1.S1", "G2"]
+    assert result["effective_reopened_goal_ids"] == ["G1", "G1.S1", "G2"]
+    assert result["recalculated_goal_ids"] == ["G1", "G1.S1", "G2"]
+    assert result["newly_scheduled_task_ids"] == ["AUTO-209"]
+    assert set(result["scheduled_goal_ids"]) == {"G1", "G1.S1", "G2"}
+
+    child_decision = result["goal_reopening_decisions"]["G1.S1"]
+    assert child_decision["state"] == "reopened"
+    assert child_decision["impacted_criteria"] == ["child criterion"]
+    assert child_decision["invalidated_evidence"] == ["bafy-old-proof"]
+    assert child_decision["source_receipts"] == [
+        {"passed": False, "receipt_cid": "bafy-failed-validation"}
+    ]
+    assert child_decision["newly_scheduled_work"] == [
+        {"reason": "rerun validation", "task_id": "AUTO-209"}
+    ]
+    # Reopening adds a new ledger entry; it does not overwrite the historical
+    # proof which justified the earlier verified state.
+    assert child_decision["historical_completion_receipts"] == [
+        {"goal_id": "G1.S1", **historical_completion}
+    ]
+    assert len(result["goal_reopening_receipts"]) == 3
+    assert result["strategy"]["objective_completion_decisions"] == {
+        "G1.S1": historical_completion
+    }
+
+
+def test_identical_contradiction_replay_is_idempotent_and_preserves_force_state():
+    goal = ObjectiveGoal(
+        "G1",
+        "Completed goal",
+        {"status": "verified_complete", "acceptance": "criterion one"},
+    )
+    contradiction = ContradictionEvidence(
+        goal_id="G1",
+        kind="changed_surface",
+        impacted_criteria=("criterion one",),
+        invalidated_evidence=("src/api.py@old",),
+        source_receipt={"receipt_cid": "bafy-surface-change"},
+        scheduled_work=({"task_id": "AUTO-210"},),
+    )
+    first = reconcile_objective_task_strategy(
+        goals=[goal],
+        tasks=[],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+        contradictions=[contradiction],
+    )
+    second = reconcile_objective_task_strategy(
+        goals=[goal],
+        tasks=[],
+        strategy=first["strategy"],
+        now="2026-07-22T01:00:00+00:00",
+        contradictions=[contradiction],
+    )
+
+    assert first["contradiction_reopened_goal_ids"] == ["G1"]
+    assert second["contradiction_reopened_goal_ids"] == []
+    assert second["effective_reopened_goal_ids"] == ["G1"]
+    assert second["newly_scheduled_task_ids"] == []
+    assert len(second["goal_reopening_receipts"]) == 1
+    assert second["goal_reopening_receipts"] == first["goal_reopening_receipts"]
+    assert second["changed"] is False
+
+    materialized = reconcile_objective_task_strategy(
+        goals=[replace(goal, fields={**goal.fields, "status": "reopened"})],
+        tasks=[],
+        strategy=second["strategy"],
+        now="2026-07-22T02:00:00+00:00",
+    )
+    reverified = reconcile_objective_task_strategy(
+        goals=[goal],
+        tasks=[],
+        strategy=materialized["strategy"],
+        now="2026-07-22T03:00:00+00:00",
+    )
+    assert materialized["strategy"]["objective_task_janitor_pending_reopen_goal_ids"] == []
+    assert reverified["effective_reopened_goal_ids"] == []
+    assert reverified["reopened_goal_ids"] == []
+
+
+def test_unrelated_finding_does_not_reopen_completed_goal():
+    result = reconcile_objective_task_strategy(
+        goals=[
+            ObjectiveGoal("G1", "Completed goal", {"status": "verified_complete"}),
+            ObjectiveGoal("G2", "Active goal", {"status": "active"}),
+        ],
+        tasks=[],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+        contradictions=[
+            ContradictionEvidence(
+                goal_id="G2",
+                kind="mapped_finding",
+                source_receipt={"finding_id": "finding-unrelated-to-G1"},
+                scheduled_work=({"task_id": "AUTO-211"},),
+            )
+        ],
+    )
+
+    assert "G1" not in result["reopened_goal_ids"]
+    assert result["contradiction_reopened_goal_ids"] == []
+    assert result["goal_reopening_receipts"] == []
