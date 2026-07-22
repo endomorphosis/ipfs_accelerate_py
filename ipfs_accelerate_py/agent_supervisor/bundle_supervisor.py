@@ -198,14 +198,60 @@ def _mapping_list(value: Any) -> list[dict[str, Any]]:
     return [dict(item) for item in value if isinstance(item, dict)]
 
 
-def _bundle_conflict_task(payload: dict[str, Any]) -> dict[str, Any]:
-    """Project all member work onto the execution unit that owns a lane."""
+_TERMINAL_CONFLICT_TASK_STATUSES = frozenset(
+    {"complete", "completed", "done", "merged", "success", "succeeded"}
+)
+
+
+def _live_bundle_conflict_members(
+    payload: dict[str, Any],
+    *,
+    repo_root: Path,
+    task_prefix: str,
+) -> list[dict[str, Any]]:
+    """Exclude settled members from the bundle's prospective edit surface."""
 
     tasks = _mapping_list(payload.get("tasks"))
+    todo_path_text = str(payload.get("todo_path") or "").strip()
+    live_statuses: dict[str, str] = {}
+    if todo_path_text:
+        from .todo_daemon.implementation_daemon import parse_task_file
+
+        try:
+            portal_tasks = parse_task_file(
+                resolve_repo_path(repo_root, todo_path_text),
+                task_prefix,
+            )
+        except OSError:
+            portal_tasks = []
+        live_statuses = {
+            str(task.task_id): str(task.status or "").strip().lower()
+            for task in portal_tasks
+            if task.task_id
+        }
+
+    live: list[dict[str, Any]] = []
+    for task in tasks:
+        task_id = str(task.get("task_id") or "")
+        status = live_statuses.get(task_id, str(task.get("status") or "").strip().lower())
+        if status in _TERMINAL_CONFLICT_TASK_STATUSES:
+            continue
+        live.append(task)
+    return live
+
+
+def _bundle_conflict_task(
+    payload: dict[str, Any],
+    *,
+    tasks: Sequence[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Project all member work onto the execution unit that owns a lane."""
+
+    members = _mapping_list(payload.get("tasks")) if tasks is None else [dict(task) for task in tasks]
 
     def member_values(*keys: str) -> list[str]:
         values: list[str] = []
-        for source in [payload, *tasks]:
+        for source in [payload, *members]:
             for key in keys:
                 raw = source.get(key)
                 if isinstance(raw, str):
@@ -237,7 +283,9 @@ def _bundle_conflict_task(payload: dict[str, Any]) -> dict[str, Any]:
         "allow_concurrent_with": member_values("allow_concurrent_with", "concurrency_overrides"),
         "metadata": {
             "bundle_key": bundle_key,
-            "member_task_ids": [str(task.get("task_id")) for task in tasks if task.get("task_id")],
+            "member_task_ids": [
+                str(task.get("task_id")) for task in members if task.get("task_id")
+            ],
             "conflict_policy": str(payload.get("conflict_policy") or ""),
         },
     }
@@ -275,19 +323,31 @@ def _bundle_conflict_annotations(
     *,
     bundle_index_path: Path,
     repo_root: Path,
+    task_prefix: str,
 ) -> dict[str, dict[str, Any]]:
     """Return graph color, surface, edges, and reasons keyed by bundle."""
 
     if not payloads:
         return {}
     inputs = {key: value for key, value in _conflict_graph_inputs(bundle_index_path).items() if value is not None}
-    conflict_tasks = [_bundle_conflict_task(payload) for payload in payloads]
+    conflict_members = [
+        _live_bundle_conflict_members(
+            payload,
+            repo_root=repo_root,
+            task_prefix=task_prefix,
+        )
+        for payload in payloads
+    ]
+    conflict_tasks = [
+        _bundle_conflict_task(payload, tasks=members)
+        for payload, members in zip(payloads, conflict_members)
+    ]
     aliases: dict[str, str] = {}
-    for payload, conflict_task in zip(payloads, conflict_tasks):
+    for conflict_task, members in zip(conflict_tasks, conflict_members):
         conflict_cid = str(conflict_task.get("task_cid") or conflict_task.get("task_id") or "")
         aliases[str(conflict_task.get("task_id") or "")] = conflict_cid
         aliases[conflict_cid] = conflict_cid
-        for member in _mapping_list(payload.get("tasks")):
+        for member in members:
             for key in ("task_id", "task_cid", "canonical_task_cid"):
                 if member.get(key):
                     aliases[str(member[key])] = conflict_cid
@@ -607,6 +667,7 @@ def plan_bundle_lanes(
         bundle_payloads,
         bundle_index_path=bundle_index_path,
         repo_root=repo_root,
+        task_prefix=task_prefix,
     )
     for payload in bundle_payloads:
         bundle_key = str(payload.get("bundle_key") or "objective/general")

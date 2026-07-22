@@ -286,3 +286,78 @@ def test_bundle_lane_planner_projects_blocking_edges_but_honors_overrides(
         decision["action"] == "concurrent_override"
         for decision in by_key["bundle/base"].conflict_decisions
     )
+
+
+def test_bundle_lane_planner_excludes_completed_members_from_conflict_surface(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "base.md").write_text(
+        """## REF-001 Settled shared-file task
+
+- Status: completed
+- Completion: manual
+
+## REF-002 Remaining base task
+
+- Status: todo
+- Completion: manual
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "other.md").write_text(
+        """## REF-003 Other live task
+
+- Status: todo
+- Completion: manual
+""",
+        encoding="utf-8",
+    )
+    payloads = [
+        {
+            "bundle_key": "bundle/base",
+            "todo_path": "base.md",
+            "tasks": [
+                {
+                    "task_id": "REF-001",
+                    "status": "todo",
+                    "outputs": ["src/shared.py"],
+                },
+                {
+                    "task_id": "REF-002",
+                    "status": "todo",
+                    "outputs": ["src/base.py"],
+                },
+            ],
+            "profile_g": {"task_cid": "cid-base"},
+        },
+        {
+            "bundle_key": "bundle/other",
+            "todo_path": "other.md",
+            "tasks": [
+                {
+                    "task_id": "REF-003",
+                    "status": "todo",
+                    "outputs": ["src/shared.py"],
+                }
+            ],
+            "profile_g": {"task_cid": "cid-other"},
+        },
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        task_prefix="REF-",
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert "bundle/other" not in by_key["bundle/base"].conflicting_task_ids
+    assert by_key["bundle/base"].conflict_surface["files"] == ["src/base.py"]
