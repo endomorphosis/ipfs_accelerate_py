@@ -115,6 +115,31 @@ def test_train_rebases_candidate_on_latest_target_and_updates_target(tmp_path: P
     assert queue.get(request.request_id).status == "completed"  # type: ignore[union-attr]
 
 
+def test_train_callback_runs_when_root_candidate_is_already_merged(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/ref-040",
+        task_id="REF-040",
+        canonical_task_id="canonical-ref-040",
+        commit_sha=candidate,
+    )
+    callbacks: list[str] = []
+
+    def finish_nested_handoff(claimed: MergeRequest) -> dict[str, object]:
+        callbacks.append(claimed.request_id)
+        return {"merged": True, "nested_handoff": "completed"}
+
+    result = MergeTrain(repo, queue, merge_callback=finish_nested_handoff).run_once()
+
+    assert result is not None
+    assert result["status"] == "merged"
+    assert result["merge_result"]["nested_handoff"] == "completed"
+    assert callbacks == [request.request_id]
+    assert queue.get(request.request_id).status == "completed"  # type: ignore[union-attr]
+
+
 def test_bounded_train_failures_create_durable_quarantine_receipt(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _git(repo, "switch", "-c", "implementation/broken")

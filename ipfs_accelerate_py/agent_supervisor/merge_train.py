@@ -245,32 +245,37 @@ class MergeTrain:
                 started_at=started_at,
             )
 
-        dedupe_key = self._dedupe_key(canonical, candidate)
-        previous = self._read_receipt(dedupe_key)
-        if previous and str(previous.get("status")) in {
-            "merged",
-            "already_merged",
-            "deduplicated",
-        }:
-            return self._finish_success(
-                request,
-                status="deduplicated",
-                canonical=canonical,
-                candidate=candidate,
-                target=target,
-                started_at=started_at,
-                extra={"duplicate_of": previous.get("request_id", "")},
-            )
+        # A callback owns the complete integration lifecycle, including nested
+        # repository handoff and taskboard completion.  Root-level receipts or
+        # ancestry only prove that the parent commit landed; they cannot safely
+        # short-circuit those callback side effects after a daemon restart.
+        if self.merge_callback is None:
+            dedupe_key = self._dedupe_key(canonical, candidate)
+            previous = self._read_receipt(dedupe_key)
+            if previous and str(previous.get("status")) in {
+                "merged",
+                "already_merged",
+                "deduplicated",
+            }:
+                return self._finish_success(
+                    request,
+                    status="deduplicated",
+                    canonical=canonical,
+                    candidate=candidate,
+                    target=target,
+                    started_at=started_at,
+                    extra={"duplicate_of": previous.get("request_id", "")},
+                )
 
-        if self._is_ancestor(candidate, target):
-            return self._finish_success(
-                request,
-                status="already_merged",
-                canonical=canonical,
-                candidate=candidate,
-                target=target,
-                started_at=started_at,
-            )
+            if self._is_ancestor(candidate, target):
+                return self._finish_success(
+                    request,
+                    status="already_merged",
+                    canonical=canonical,
+                    candidate=candidate,
+                    target=target,
+                    started_at=started_at,
+                )
 
         if self.merge_callback is not None:
             try:
