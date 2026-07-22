@@ -29,8 +29,232 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     run_configured_portal_implementation_daemon,
     run_portal_implementation_daemon_loop,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_args
+from ipfs_accelerate_py.agent_supervisor.checkout_lock import checkout_lock_owner_is_active
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalImplementationDaemon,
+    default_llm_merge_resolver_command,
+    parse_args,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    parse_args as parse_supervisor_args,
+    supervisor_config_from_args,
+)
+from ipfs_accelerate_py.agent_supervisor.validation_commands import (
+    normalize_validation_command_text,
+    split_validation_commands,
+)
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
+
+
+def test_validation_command_helpers_unwrap_markdown_inline_code():
+    assert (
+        normalize_validation_command_text(
+            "`cd swissknife && npm run test:e2e:app-improvement -- --all`."
+        )
+        == "cd swissknife && npm run test:e2e:app-improvement -- --all"
+    )
+    assert split_validation_commands(
+        "`cd swissknife && npm test`; `cd external/ipfs_datasets && pytest -q`"
+    ) == [
+        "cd swissknife && npm test",
+        "cd external/ipfs_datasets && pytest -q",
+    ]
+
+
+def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    target_branch = "automation/virtual-desktop-app-improvement"
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implement",
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+            "--merge-target-branch",
+            target_branch,
+        ]
+    )
+
+    config = supervisor_config_from_args(parsed, repo_root=tmp_path)
+    command = PortalImplementationSupervisor(config)._build_daemon_command()
+
+    assert config.merge_target_branch == target_branch
+    assert command[command.index("--merge-target-branch") + 1] == target_branch
+
+
+def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(tmp_path: Path, monkeypatch):
+    target_branch = "automation/virtual-desktop-app-improvement"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        merge_target_branch=target_branch,
+    )
+    monkeypatch.setattr(daemon, "_git_ref_exists", lambda ref: ref == target_branch)
+    assert daemon._main_branch_name() == target_branch
+
+    monkeypatch.setattr(daemon, "_git_ref_exists", lambda _ref: False)
+    try:
+        daemon._main_branch_name()
+    except RuntimeError as error:
+        assert target_branch in str(error)
+    else:
+        raise AssertionError("missing configured merge target must not fall back to main")
+
+
+def test_daemon_uses_packaged_merge_resolver_by_default(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", raising=False)
+    expected = f"{sys.executable} -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+    )
+
+    assert default_llm_merge_resolver_command() == expected
+    assert daemon.llm_merge_resolver_command == expected
+    assert parse_args([]).llm_merge_resolver_command == expected
+
+
+def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", "custom-resolver")
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        llm_merge_resolver_command="explicit-resolver",
+    )
+
+    assert default_llm_merge_resolver_command() == "custom-resolver"
+    assert daemon.llm_merge_resolver_command == "explicit-resolver"
+
+
+def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.shutil.which",
+        lambda name: "/usr/bin/codex" if name == "codex" else None,
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=Path("tmp") / "implementation-worktrees",
+    )
+
+    workspace = daemon.worktree_root / "svd-223-attempt-1"
+    command = daemon._build_implementation_command(workspace)
+
+    assert daemon.worktree_root == (tmp_path / "tmp" / "implementation-worktrees").resolve()
+    assert command[command.index("-C") + 1] == str(workspace.resolve())
+
+
+def test_daemon_links_shared_dependencies_from_configured_source_root(tmp_path: Path, monkeypatch):
+    repo_root = tmp_path / "branch-checkout"
+    worktree_root = repo_root / "worktrees"
+    worktree_path = worktree_root / "svd-174-attempt-5"
+    dependency_root = tmp_path / "dependency-checkout"
+    dependency_path = dependency_root / "swissknife" / "node_modules"
+    dependency_path.mkdir(parents=True)
+    worktree_path.mkdir(parents=True)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_SHARED_WORKTREE_SOURCE_ROOT",
+        str(dependency_root),
+    )
+
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo_root,
+        worktree_root=worktree_root,
+    )
+
+    daemon._link_shared_worktree_paths(worktree_path)
+
+    target = worktree_path / "swissknife" / "node_modules"
+    assert target.is_symlink()
+    assert target.resolve() == dependency_path.resolve()
+
+
+def test_secondary_task_shard_skips_repository_wide_git_gc(tmp_path: Path, monkeypatch):
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        task_shard_count=2,
+        task_shard_index=1,
+    )
+    monkeypatch.setattr(daemon, "_cleanup_stale_worktrees", lambda: {})
+    monkeypatch.setattr(daemon, "_cleanup_stale_locks", lambda: {})
+    monkeypatch.setattr(daemon, "_reset_persistently_dirty_submodules", lambda: {})
+    monkeypatch.setattr(daemon.task_queue, "compact", lambda _active_ids: 0)
+    monkeypatch.setattr(
+        daemon.git_gc,
+        "run_if_needed",
+        lambda: (_ for _ in ()).throw(AssertionError("secondary shard must not run Git GC")),
+    )
+
+    result = daemon._periodic_maintenance()
+
+    assert result["git_gc"] == {"ran": False, "reason": "non_primary_shard"}
+
+
+def test_task_claim_liveness_accepts_module_style_daemon_invocation(tmp_path: Path, monkeypatch):
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.process_is_running",
+        lambda _pid: True,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.process_command_line",
+        lambda _pid: "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+    )
+
+    assert daemon._lock_owner_is_active(
+        {
+            "kind": "implementation_task_claim",
+            "pid": 1234,
+            "owner_script": "implementation_daemon.py",
+        },
+        expected_kind="implementation_task_claim",
+    )
+
+
+def test_shared_checkout_lock_liveness_accepts_module_style_invocation(tmp_path: Path):
+    assert checkout_lock_owner_is_active(
+        {
+            "kind": "checkout-mutation",
+            "pid": 1234,
+            "owner_script": "implementation_daemon.py",
+            "repo_root": str(tmp_path),
+        },
+        expected_kind="checkout-mutation",
+        expected_repo_root=tmp_path,
+        process_is_running=lambda _pid: True,
+        process_command_line=lambda _pid: "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+    )
 
 
 def test_implementation_state_paths_follow_state_prefix(tmp_path: Path):

@@ -101,6 +101,7 @@ class PortalSupervisorConfig:
     implementation_log_stall_seconds: float = 300.0
     use_ephemeral_worktree: bool = True
     worktree_root: Path | None = None
+    merge_target_branch: str = ""
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
     worktree_reconciliation_enabled: bool = True
     worktree_reconciliation_max_merges: int = 1
@@ -4324,6 +4325,8 @@ class PortalImplementationSupervisor:
                 command.append("--no-ephemeral-worktree")
             if self.config.worktree_root is not None:
                 command.extend(["--worktree-root", str(self.config.worktree_root)])
+            if self.config.merge_target_branch:
+                command.extend(["--merge-target-branch", self.config.merge_target_branch])
             for relative in self.config.worktree_submodule_paths:
                 command.extend(["--worktree-submodule-path", relative])
             if self.config.objective_path is not None:
@@ -4689,6 +4692,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help="Directory for temporary implementation worktrees",
+    )
+    parser.add_argument(
+        "--merge-target-branch",
+        default="",
+        help=(
+            "Branch that receives isolated implementation merges. Defaults to main/master, then the "
+            "current branch. A configured branch must exist."
+        ),
     )
     parser.add_argument(
         "--daemon-script-path",
@@ -5166,6 +5177,7 @@ def supervisor_config_from_args(
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
         use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
+        merge_target_branch=args.merge_target_branch,
         worktree_submodule_paths=normalize_relative_path_list(resolved_worktree_submodule_paths),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,

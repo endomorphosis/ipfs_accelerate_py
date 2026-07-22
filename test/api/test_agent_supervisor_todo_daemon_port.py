@@ -4446,6 +4446,82 @@ def test_implementation_daemon_merges_submodule_with_nonoverlapping_dirty_paths(
     assert (submodule / "child.txt").read_text(encoding="utf-8") == "preserved local dirt\n"
 
 
+def test_implementation_daemon_records_merged_root_submodule_gitlink(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / "merged.txt").write_text("merged child work\n", encoding="utf-8")
+    _git(submodule, "add", "merged.txt")
+    _git(submodule, "commit", "-m", "merged child work")
+    merged_commit = _git(submodule, "rev-parse", "HEAD")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    task = PortalTask(
+        task_id="AUTO-119",
+        title="Record merged child revision",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+    )
+
+    result = daemon._record_merged_submodule_gitlinks(
+        repo,
+        [{"path": "libs/child", "merged": True, "commit": merged_commit}],
+        task=task,
+    )
+
+    assert result["committed"] is True
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == merged_commit
+    assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_implementation_daemon_rolls_back_parent_when_root_submodule_merge_fails(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    base_parent = _git(repo, "rev-parse", "HEAD")
+    base_child = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "-b", "implementation/auto-120-submodule-libs-child")
+    (submodule / "conflicting.txt").write_text("task child work\n", encoding="utf-8")
+    _git(submodule, "add", "conflicting.txt")
+    _git(submodule, "commit", "-m", "AUTO-120: child task work")
+
+    _git(repo, "checkout", "-b", "implementation/auto-120")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-120: advance child gitlink")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "implementation/auto-120")
+    assert _git(repo, "status", "--porcelain").endswith("libs/child")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._rollback_parent_merge_after_submodule_failure(
+        repo,
+        pre_merge_commit=base_parent,
+        failed_submodules=[{"path": "libs/child", "merged": False}],
+    )
+
+    assert result["rolled_back"] is True
+    assert _git(repo, "rev-parse", "HEAD") == base_parent
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == base_child
+    assert _git(submodule, "rev-parse", "HEAD") == base_child
+    assert _git(repo, "status", "--porcelain") == ""
+
+
 def test_implementation_daemon_preserves_nested_tmp_and_allows_unchanged_dirty_submodule(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     (repo / "README.md").write_text("base\n", encoding="utf-8")
@@ -4608,6 +4684,7 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     assert first["merged"] is False
     assert first["reason"] == "submodule_merge_failed"
     assert first["submodule_merge_results"][0]["reason"] == "submodule_checkout_dirty"
+    assert first["submodule_failure_rollback"]["reason"] == "parent_gitlinks_unchanged"
     assert _git(repo, "merge-base", "--is-ancestor", implementation_commit, "main") == ""
     checkpoint_path = state_dir / "merge_checkpoints" / "implementation-auto-116.json"
     assert checkpoint_path.exists()
@@ -7426,6 +7503,31 @@ def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(
         daemon,
         "_list_process_commands",
         lambda: [f"node /usr/local/bin/codex exec -C {worktree_path} -"],
+    )
+
+    assert daemon._implementation_process_active(event) is True
+
+
+def test_implementation_daemon_recognizes_shared_checkout_runner_without_worktree_path(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "worktree_path": "",
+        "command": ["bash", "-lc", "serialized wrapper command"],
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_list_process_commands",
+        lambda: [
+            f"node /usr/local/bin/codex exec -C {repo} -",
+            f"python {repo}/swissknife/scripts/ipfs_mcp_libp2p_bridge.py --port 9114",
+        ],
     )
 
     assert daemon._implementation_process_active(event) is True

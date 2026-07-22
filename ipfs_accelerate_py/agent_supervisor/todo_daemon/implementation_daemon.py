@@ -32,9 +32,10 @@ from ..submodule_degradation import DegradationState
 from ..persistent_task_queue import PersistentTaskQueue
 from ..task_identity import TaskIdentity, canonical_task_identity
 from ..git_gc import GitGarbageCollector
+from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
 from ..merge_queue import MergeQueue
-from ..validation_commands import split_validation_commands
+from ..validation_commands import normalize_validation_command_text, split_validation_commands
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
 REPO_ROOT = Path.cwd()
@@ -60,6 +61,7 @@ DEFAULT_TRACKS = [
 ]
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
+SHARED_WORKTREE_SOURCE_ROOT_ENV = "IPFS_ACCELERATE_AGENT_SHARED_WORKTREE_SOURCE_ROOT"
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
 DAEMON_MERGE_RECONCILIATION_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGE_RECONCILIATION_MAX"
@@ -100,6 +102,21 @@ DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
 )
 
 
+def default_llm_merge_resolver_command() -> str:
+    """Return the configured resolver or the packaged agent fallback.
+
+    The fallback starts Codex in the conflicted workspace and uses Copilot only
+    when Codex cannot complete the repair. Keeping this as the daemon default
+    means semantic merge conflicts are actively repaired instead of merely
+    recorded for a later manual retry.
+    """
+
+    configured = os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "").strip()
+    if configured:
+        return configured
+    return llm_merge_resolver_fallback_command(python_executable=sys.executable)
+
+
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -108,6 +125,38 @@ def _env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def shared_worktree_source_roots(repo_root: Path) -> tuple[Path, ...]:
+    """Return checkout roots that may provide untracked shared dependencies.
+
+    An ephemeral worktree normally links dependencies from ``repo_root``. A
+    branch checkout can omit untracked directories such as
+    ``swissknife/node_modules`` though, so an operator may configure a stable
+    checkout containing those installed dependencies. Multiple roots use the
+    platform path separator.
+    """
+
+    candidates = [repo_root]
+    configured = os.environ.get(SHARED_WORKTREE_SOURCE_ROOT_ENV, "")
+    for raw_root in configured.split(os.pathsep):
+        value = raw_root.strip()
+        if not value:
+            continue
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            candidate = repo_root / candidate
+        candidates.append(candidate)
+
+    roots: list[Path] = []
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if resolved.is_dir() and resolved not in roots:
+            roots.append(resolved)
+    return tuple(roots)
 
 
 def normalize_relative_path_list(values: Any) -> tuple[str, ...]:
@@ -790,6 +839,7 @@ class PortalImplementationDaemon:
         implementation_log_dir: Path | None = None,
         use_ephemeral_worktree: bool = False,
         worktree_root: Path | None = None,
+        merge_target_branch: str | None = None,
         worktree_submodule_paths: Any = None,
         objective_path: Path | None = None,
         objective_bundle_dir: Path | None = None,
@@ -807,20 +857,28 @@ class PortalImplementationDaemon:
         self.state_path = state_path
         self.strategy_path = strategy_path
         self.events_path = events_path
-        self.repo_root = repo_root or REPO_ROOT
+        self.repo_root = (repo_root or REPO_ROOT).resolve()
+        self.shared_worktree_source_roots = shared_worktree_source_roots(self.repo_root)
         self.task_header_prefix = normalize_task_header_prefix(task_header_prefix)
         self.implement = implement
         self.implementation_command = implementation_command
         self.implementation_timeout = implementation_timeout
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.use_ephemeral_worktree = use_ephemeral_worktree
-        self.worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
+        configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
+        # The implementation runner executes with the ephemeral worktree as
+        # its cwd.  Keep the path supplied to Codex/Copilot absolute so a
+        # relative --worktree-root cannot be resolved a second time below it.
+        if not configured_worktree_root.is_absolute():
+            configured_worktree_root = self.repo_root / configured_worktree_root
+        self.worktree_root = configured_worktree_root.resolve()
+        self.merge_target_branch = str(merge_target_branch or "").strip()
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
         self.llm_merge_resolver_command = (
-            llm_merge_resolver_command
-            if llm_merge_resolver_command is not None
-            else os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "")
+            default_llm_merge_resolver_command()
+            if llm_merge_resolver_command is None
+            else llm_merge_resolver_command
         ).strip()
         self.llm_merge_resolver_timeout_seconds = llm_merge_resolver_timeout_seconds
         self.merge_reconciliation_max_merges = (
@@ -3342,10 +3400,16 @@ class PortalImplementationDaemon:
             return
 
         for relative in SHARED_WORKTREE_PATHS:
-            source_path = self.repo_root / relative
-            try:
-                source = source_path.resolve(strict=True)
-            except (OSError, RuntimeError):
+            source: Path | None = None
+            for source_root in self.shared_worktree_source_roots:
+                try:
+                    candidate = (source_root / relative).resolve(strict=True)
+                except (OSError, RuntimeError):
+                    continue
+                if candidate.is_dir():
+                    source = candidate
+                    break
+            if source is None:
                 continue
             target = worktree_path / relative
             try:
@@ -3907,8 +3971,10 @@ class PortalImplementationDaemon:
     def _normalize_validation_command(command: str) -> tuple[str, list[str]]:
         """Return a shell validation command with known stale tool flags removed."""
 
-        normalized = command
+        normalized = normalize_validation_command_text(command)
         notes: list[str] = []
+        if normalized != command:
+            notes.append("removed markdown inline-code wrapper from validation command")
         if re.search(r"\b(?:tsc|typescript)\b", normalized):
             for flag in UNSUPPORTED_TYPESCRIPT_VALIDATION_FLAGS:
                 updated = re.sub(rf"(^|[\s;&|]){re.escape(flag)}(?=$|[\s;&|])", r"\1", normalized)
@@ -3918,6 +3984,12 @@ class PortalImplementationDaemon:
         return normalized, notes
 
     def _main_branch_name(self) -> str:
+        if self.merge_target_branch:
+            if not self._git_ref_exists(self.merge_target_branch):
+                raise RuntimeError(
+                    f"Configured merge target branch does not exist: {self.merge_target_branch}"
+                )
+            return self.merge_target_branch
         for candidate in ("main", "master"):
             if self._git_ref_exists(candidate):
                 return candidate
@@ -4436,6 +4508,7 @@ class PortalImplementationDaemon:
                 "--no-edit",
                 branch_name,
             ]
+            pre_merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=merge_workspace).stdout.strip()
             merge = subprocess.run(
                 command,
                 cwd=merge_workspace,
@@ -4453,6 +4526,7 @@ class PortalImplementationDaemon:
             deterministic_conflict_repair: list[dict[str, object]] = []
             shared_worktree_path_scrub: dict[str, Any] = {}
             merge_returncode = merge.returncode
+            merged_gitlink_recording: dict[str, Any] = {}
             if merge_returncode != 0:
                 deterministic_conflict_repair = [
                     *self._resolve_generated_markdown_conflicts(merge_workspace),
@@ -4530,9 +4604,25 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     changed_submodule_paths=changed_submodule_paths,
                 )
+                merged_gitlink_recording = self._record_merged_submodule_gitlinks(
+                    merge_workspace,
+                    submodule_merge_results,
+                    task=task,
+                )
+                if merged_gitlink_recording.get("committed", False):
+                    merge_commit = str(merged_gitlink_recording["commit"])
             elif removed_untracked:
                 self._restore_removed_untracked_paths(removed_untracked, cwd=merge_workspace)
             failed_submodules = [item for item in submodule_merge_results if not item.get("merged", False)]
+            submodule_failure_rollback: dict[str, Any] = {}
+            if failed_submodules and merge_returncode == 0:
+                submodule_failure_rollback = self._rollback_parent_merge_after_submodule_failure(
+                    merge_workspace,
+                    pre_merge_commit=pre_merge_commit,
+                    failed_submodules=failed_submodules,
+                )
+                if submodule_failure_rollback.get("rolled_back", False):
+                    merge_commit = ""
             effective_returncode = merge_returncode
             effective_merged = merge_returncode == 0 and not failed_submodules
             result = {
@@ -4555,6 +4645,8 @@ class PortalImplementationDaemon:
                     "generated_submodule_reconciliation": generated_submodule_reconciliation,
                     "deterministic_conflict_repair": deterministic_conflict_repair,
                     "shared_worktree_path_scrub": shared_worktree_path_scrub,
+                    "merged_gitlink_recording": merged_gitlink_recording,
+                    "submodule_failure_rollback": submodule_failure_rollback,
                     "submodule_merge_results": submodule_merge_results,
                 }
             if stale_submodule_worktree_config_repair.get("repairs"):
@@ -4658,6 +4750,263 @@ class PortalImplementationDaemon:
             result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=cwd).stdout.strip()
         else:
             result["reason"] = "commit_failed"
+        return result
+
+    def _record_merged_submodule_gitlinks(
+        self,
+        workspace: Path,
+        submodule_merge_results: Sequence[dict[str, Any]],
+        *,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Commit only clean root gitlinks advanced by this task's submodule merge.
+
+        A submodule merge can create a merge commit that differs from the
+        gitlink carried by the already-merged parent task branch. Without an
+        explicit parent commit the checkout remains `` M <submodule>`` and
+        blocks every later task merge. The expected child commit and a strictly
+        unstaged, gitlink-only parent status make this recovery safe; any other
+        dirty path is left untouched for normal conflict handling.
+        """
+
+        expected_commits: dict[str, str] = {}
+        for item in submodule_merge_results:
+            relative = str(item.get("path") or "").strip().strip("/")
+            commit = str(item.get("commit") or "").strip()
+            if (
+                not item.get("merged", False)
+                or not relative
+                or not commit
+                or not self._repo_relative_path_safe(relative)
+                or relative not in self.worktree_submodule_paths
+            ):
+                continue
+            checkout = workspace / relative
+            if not self._is_git_worktree(checkout):
+                continue
+            current = self._run_git(["rev-parse", "HEAD"], cwd=checkout).stdout.strip()
+            if current == commit:
+                expected_commits[relative] = commit
+
+        if not expected_commits:
+            return {"attempted": False, "reason": "no_matching_merged_root_gitlinks"}
+
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0:
+            return {
+                "attempted": True,
+                "committed": False,
+                "reason": "parent_status_failed",
+                "returncode": status.returncode,
+                "stderr": status.stderr[-1000:],
+            }
+
+        dirty_paths = self._dirty_status_paths(status.stdout)
+        if not dirty_paths:
+            return {
+                "attempted": True,
+                "committed": False,
+                "reason": "parent_gitlinks_already_recorded",
+                "paths": sorted(expected_commits),
+            }
+        status_lines = [line for line in status.stdout.splitlines() if len(line) >= 4]
+        only_expected_unstaged_gitlinks = (
+            set(dirty_paths).issubset(expected_commits)
+            and all(line[:2] == " M" for line in status_lines)
+        )
+        if not only_expected_unstaged_gitlinks:
+            return {
+                "attempted": True,
+                "committed": False,
+                "reason": "parent_has_unrelated_or_staged_changes",
+                "dirty_paths": dirty_paths,
+                "expected_paths": sorted(expected_commits),
+            }
+
+        paths = sorted(expected_commits)
+        stage = subprocess.run(
+            ["git", "add", "--", *paths],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if stage.returncode != 0:
+            return {
+                "attempted": True,
+                "committed": False,
+                "reason": "parent_gitlink_stage_failed",
+                "paths": paths,
+                "returncode": stage.returncode,
+                "stdout": stage.stdout[-1000:],
+                "stderr": stage.stderr[-1000:],
+            }
+        commit = subprocess.run(
+            ["git", "commit", "-m", f"{task.task_id}: record merged submodule revisions"],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        result: dict[str, Any] = {
+            "attempted": True,
+            "committed": commit.returncode == 0,
+            "paths": paths,
+            "expected_commits": expected_commits,
+            "returncode": commit.returncode,
+            "stdout": commit.stdout[-1000:],
+            "stderr": commit.stderr[-1000:],
+        }
+        if commit.returncode == 0:
+            result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
+        else:
+            result["reason"] = "parent_gitlink_commit_failed"
+        return result
+
+    def _rollback_parent_merge_after_submodule_failure(
+        self,
+        workspace: Path,
+        *,
+        pre_merge_commit: str,
+        failed_submodules: Sequence[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Abort a parent merge when one of its configured child merges fails.
+
+        Parent and configured submodule branches form one logical transaction.
+        Git commits the parent merge first, so a child conflict used to leave a
+        parent gitlink pointing at an unmerged child revision. Restore the
+        parent to its pre-merge commit only after checking out the parent-index
+        child revisions and confirming there are no unrelated tracked changes.
+        ``git reset --merge`` preserves untracked files while removing the
+        unpublishable merge ancestry, allowing the failed task to retry.
+        """
+
+        paths = sorted(
+            {
+                str(item.get("path") or "").strip().strip("/")
+                for item in failed_submodules
+                if str(item.get("path") or "").strip().strip("/") in self.worktree_submodule_paths
+            }
+        )
+        if not pre_merge_commit or not paths:
+            return {
+                "attempted": False,
+                "rolled_back": False,
+                "reason": "no_failed_configured_root_submodules",
+                "paths": paths,
+            }
+
+        current = self._run_git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
+        if current == pre_merge_commit:
+            return {
+                "attempted": True,
+                "rolled_back": True,
+                "reason": "parent_already_at_pre_merge_commit",
+                "paths": paths,
+            }
+
+        changed_paths: list[str] = []
+        unchanged_paths: list[str] = []
+        for path in paths:
+            diff = subprocess.run(
+                ["git", "diff", "--quiet", pre_merge_commit, current, "--", path],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if diff.returncode == 0:
+                unchanged_paths.append(path)
+            else:
+                # Return code 1 means the gitlink changed. Operational errors
+                # remain conservative and retain the transactional rollback.
+                changed_paths.append(path)
+        if not changed_paths:
+            return {
+                "attempted": False,
+                "rolled_back": False,
+                "reason": "parent_gitlinks_unchanged",
+                "paths": paths,
+                "unchanged_paths": unchanged_paths,
+            }
+        paths = changed_paths
+
+        align_before = subprocess.run(
+            ["git", "submodule", "update", "--init", "--checkout", "--", *paths],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if align_before.returncode != 0:
+            return {
+                "attempted": True,
+                "rolled_back": False,
+                "reason": "failed_submodule_alignment_failed",
+                "paths": paths,
+                "returncode": align_before.returncode,
+                "stdout": align_before.stdout[-1000:],
+                "stderr": align_before.stderr[-1000:],
+            }
+        tracked_status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if tracked_status.returncode != 0 or tracked_status.stdout.strip():
+            return {
+                "attempted": True,
+                "rolled_back": False,
+                "reason": "parent_has_tracked_changes_after_submodule_alignment",
+                "paths": paths,
+                "status": tracked_status.stdout[-1000:],
+                "stderr": tracked_status.stderr[-1000:],
+            }
+
+        reset = subprocess.run(
+            ["git", "reset", "--merge", pre_merge_commit],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if reset.returncode != 0:
+            return {
+                "attempted": True,
+                "rolled_back": False,
+                "reason": "parent_merge_reset_failed",
+                "paths": paths,
+                "returncode": reset.returncode,
+                "stdout": reset.stdout[-1000:],
+                "stderr": reset.stderr[-1000:],
+            }
+        align_after = subprocess.run(
+            ["git", "submodule", "update", "--init", "--checkout", "--", *paths],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        result: dict[str, Any] = {
+            "attempted": True,
+            "rolled_back": align_after.returncode == 0,
+            "paths": paths,
+            "unchanged_paths": unchanged_paths,
+            "pre_merge_commit": pre_merge_commit,
+            "returncode": align_after.returncode,
+            "stdout": align_after.stdout[-1000:],
+            "stderr": align_after.stderr[-1000:],
+        }
+        if align_after.returncode != 0:
+            result["reason"] = "post_reset_submodule_alignment_failed"
         return result
 
     def _abort_failed_merge(self, cwd: Path) -> dict[str, Any]:
@@ -4884,6 +5233,18 @@ class PortalImplementationDaemon:
             return self._record_submodule_gitlink_repair_result(
                 result, workspace=workspace, task=task, attempt=attempt
             )
+        alignment_repairs = self._unmanaged_gitlink_checkout_alignment_repairs(workspace, repairs)
+        checkout_alignment = self._preflight_resolved_gitlink_checkout_alignment(workspace, alignment_repairs)
+        if not checkout_alignment["ready"]:
+            result = {
+                "repaired": False,
+                "reason": "resolved_gitlink_checkout_alignment_unavailable",
+                "repairs": repairs,
+                "checkout_alignment": checkout_alignment,
+            }
+            return self._record_submodule_gitlink_repair_result(
+                result, workspace=workspace, task=task, attempt=attempt
+            )
         commit = subprocess.run(
             [
                 "git",
@@ -4912,17 +5273,131 @@ class PortalImplementationDaemon:
                 result, workspace=workspace, task=task, attempt=attempt
             )
         merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
+        checkout_alignment = self._align_resolved_gitlink_checkouts(workspace, checkout_alignment)
         result = {
             "repaired": True,
             "reason": "committed_resolved_gitlinks",
             "repairs": repairs,
             "merge_commit": merge_commit,
+            "checkout_alignment": checkout_alignment,
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
         }
         return self._record_submodule_gitlink_repair_result(
             result, workspace=workspace, task=task, attempt=attempt
         )
+
+    def _unmanaged_gitlink_checkout_alignment_repairs(
+        self,
+        workspace: Path,
+        repairs: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Return only embedded gitlinks that lack normal submodule ownership.
+
+        Declared or daemon-managed submodules are reconciled by
+        ``_merge_submodule_branches_to_main_in_repo`` and must remain on their
+        active branch while that work completes.  An embedded repository without
+        either declaration has no such owner; leaving it at the old commit makes
+        the just-committed parent worktree dirty.
+        """
+
+        if workspace.resolve() != self.repo_root.resolve():
+            return []
+        managed = set(self.worktree_submodule_paths)
+        managed.update(self._declared_submodule_paths(workspace))
+        return [
+            repair
+            for repair in repairs
+            if str(repair.get("path") or "") not in managed
+        ]
+
+    def _preflight_resolved_gitlink_checkout_alignment(
+        self,
+        workspace: Path,
+        repairs: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Verify that resolved gitlinks can safely match their parent index.
+
+        A parent merge that records a new unmanaged gitlink while leaving its
+        embedded checkout on the old commit reports the parent as dirty
+        immediately. Only align clean, available checkouts, and validate every
+        target before committing the parent merge so an unsafe checkout leaves
+        the merge abortable.
+        """
+
+        entries: list[dict[str, Any]] = []
+        for repair in repairs:
+            relative = str(repair.get("path") or "")
+            selected_commit = str(repair.get("selected_commit") or "")
+            entry: dict[str, Any] = {
+                "path": relative,
+                "selected_commit": selected_commit,
+                "ready": False,
+            }
+            if not relative or not selected_commit or not self._repo_relative_path_safe(relative):
+                entry["reason"] = "invalid_gitlink_checkout_target"
+                entries.append(entry)
+                continue
+            checkout = (workspace / relative).resolve()
+            if not self._is_git_worktree(checkout):
+                entry["reason"] = "submodule_checkout_unavailable"
+                entries.append(entry)
+                continue
+            if not self._git_commit_exists_in_repo(checkout, selected_commit):
+                entry["reason"] = "selected_commit_unavailable"
+                entries.append(entry)
+                continue
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=checkout,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if status.returncode != 0:
+                entry["reason"] = "submodule_status_failed"
+                entry["stderr"] = status.stderr[-4000:]
+                entries.append(entry)
+                continue
+            if status.stdout.strip():
+                entry["reason"] = "submodule_checkout_dirty"
+                entry["status"] = status.stdout[-4000:]
+                entries.append(entry)
+                continue
+            entry["ready"] = True
+            entries.append(entry)
+        return {"ready": all(entry["ready"] for entry in entries), "entries": entries}
+
+    @staticmethod
+    def _align_resolved_gitlink_checkouts(
+        workspace: Path,
+        preflight: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Detach clean nested checkouts at the gitlinks committed by a merge."""
+
+        entries: list[dict[str, Any]] = []
+        for planned in preflight.get("entries", []):
+            relative = str(planned.get("path") or "")
+            selected_commit = str(planned.get("selected_commit") or "")
+            checkout = (workspace / relative).resolve()
+            result = subprocess.run(
+                ["git", "checkout", "--detach", selected_commit],
+                cwd=checkout,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            entries.append(
+                {
+                    "path": relative,
+                    "selected_commit": selected_commit,
+                    "aligned": result.returncode == 0,
+                    "returncode": result.returncode,
+                    "stdout": result.stdout[-4000:],
+                    "stderr": result.stderr[-4000:],
+                }
+            )
+        return {"aligned": all(entry["aligned"] for entry in entries), "entries": entries}
 
     def _record_submodule_gitlink_repair_result(
         self,
@@ -5013,8 +5488,10 @@ class PortalImplementationDaemon:
         """Select only a commit proven to contain both gitlink candidates.
 
         A divergent pair is merged in an isolated worktree and published under a
-        deterministic recovery ref.  The active submodule checkout is never used
-        as an implicit third candidate and is never modified by this operation.
+        deterministic recovery ref. The active submodule checkout is never used
+        as an implicit third candidate. After a resolved parent merge commits,
+        a separate clean-only alignment step may detach an unmanaged embedded
+        checkout at the selected commit so the parent worktree remains clean.
         """
 
         source = (self.repo_root / relative).resolve()
@@ -5044,8 +5521,22 @@ class PortalImplementationDaemon:
             if not self._git_commit_exists_in_repo(source, candidate)
         ]
         if missing_candidates:
-            diagnostic["reason"] = "gitlink_candidate_unavailable"
             diagnostic["missing_candidates"] = missing_candidates
+            available_candidates = [
+                candidate
+                for candidate in (ours, theirs)
+                if candidate and candidate not in missing_candidates
+            ]
+            if len(available_candidates) == 1:
+                diagnostic.update(
+                    {
+                        "selected_commit": available_candidates[0],
+                        "selection_reason": "only_verified_available_candidate",
+                        "reason": "selected_verified_available_candidate",
+                    }
+                )
+                return diagnostic
+            diagnostic["reason"] = "gitlink_candidate_unavailable"
             return diagnostic
 
         diagnostic["reachable_merge_bases"] = self._git_merge_bases_in_repo(source, ours, theirs)
@@ -5073,6 +5564,20 @@ class PortalImplementationDaemon:
                     "selected_commit": ours,
                     "selection_reason": "ours_verified_descendant_of_theirs",
                     "reason": "selected_verified_descendant",
+                }
+            )
+            return diagnostic
+        if self._git_commit_subject_mentions_task(source, ours, task.task_id) and self._git_commit_subject_mentions_task(
+            source, theirs, task.task_id
+        ):
+            # The target branch already contains an independently committed
+            # outcome for this task. Preserve that current result instead of
+            # creating a synthetic merge that combines two task attempts.
+            diagnostic.update(
+                {
+                    "selected_commit": ours,
+                    "selection_reason": "ours_equivalent_task_head",
+                    "reason": "selected_equivalent_task_head",
                 }
             )
             return diagnostic
@@ -5132,6 +5637,22 @@ class PortalImplementationDaemon:
             check=False,
         )
         return result.stdout.strip() if result.returncode == 0 else ""
+
+    @staticmethod
+    def _git_commit_subject_mentions_task(repo: Path, commit: str, task_id: str) -> bool:
+        if not commit or not task_id:
+            return False
+        result = subprocess.run(
+            ["git", "show", "-s", "--format=%s", commit],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return False
+        pattern = rf"(?<![A-Za-z0-9]){re.escape(task_id)}(?![A-Za-z0-9])"
+        return bool(re.search(pattern, result.stdout.strip()))
 
     def _git_merge_bases_in_repo(self, repo: Path, ours: str, theirs: str) -> list[str]:
         result = subprocess.run(
@@ -6325,10 +6846,17 @@ class PortalImplementationDaemon:
             results["dirty_submodule_reset"] = self._reset_persistently_dirty_submodules()
         except Exception as exc:
             results["dirty_submodule_reset"] = {"error": str(exc)}
-        try:
-            results["git_gc"] = self.git_gc.run_if_needed()
-        except Exception as exc:
-            results["git_gc"] = {"error": str(exc)}
+        # Every shard shares the repository object database, but each shard
+        # keeps separate runtime state. Letting a new secondary shard see an
+        # empty GC state triggers an immediate aggressive repack and blocks
+        # all lanes. The primary shard owns repository-wide garbage collection.
+        if self.task_shard_count > 1 and self.task_shard_index != 0:
+            results["git_gc"] = {"ran": False, "reason": "non_primary_shard"}
+        else:
+            try:
+                results["git_gc"] = self.git_gc.run_if_needed()
+            except Exception as exc:
+                results["git_gc"] = {"error": str(exc)}
         try:
             # Compact queue by canonical work identity, not board-local display id.
             removed = self.task_queue.compact(self._active_canonical_task_cids)
@@ -7812,7 +8340,12 @@ class PortalImplementationDaemon:
         owner_script = str(metadata.get("owner_script") or "")
         command_line = process_command_line(pid)
         if owner_script and owner_script not in command_line:
-            return False
+            # ``python -m package.implementation_daemon`` does not retain the
+            # ``.py`` filename in argv. Accept the module stem as well so a
+            # live daemon never has its task claim stolen by another shard.
+            owner_module_stem = Path(owner_script).stem
+            if not owner_module_stem or owner_module_stem not in command_line:
+                return False
         return True
 
     def _try_acquire_lock(
@@ -8080,6 +8613,17 @@ class PortalImplementationDaemon:
                 worktree_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
                 for line in process_lines
             )
+        # Shared-checkout implementations deliberately do not have a task
+        # worktree path.  Their serialized wrapper command contains a
+        # heredoc, so matching the complete command line is not reliable.
+        # The repository path plus the configured runner is the stable
+        # identity, and still excludes MCP bridge/service processes.
+        repo_path = str(self.repo_root.resolve())
+        if repo_path:
+            return any(
+                repo_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
+                for line in process_lines
+            )
         if isinstance(command, list):
             command_text = " ".join(str(item) for item in command if item)
             if command_text:
@@ -8123,6 +8667,7 @@ class PortalImplementationDaemon:
         return result
 
     def _build_implementation_command(self, workspace_path: Path) -> list[str]:
+        workspace_path = workspace_path.resolve()
         if self.implementation_command:
             return shlex.split(self.implementation_command)
         env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
@@ -9107,10 +9652,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--llm-merge-resolver-command",
-        default=os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, ""),
+        default=default_llm_merge_resolver_command(),
         help=(
             "Command invoked with merge-conflict repair prompts on stdin. "
-            f"Defaults to {LLM_MERGE_RESOLVER_COMMAND_ENV}."
+            "Defaults to the packaged Codex/Copilot resolver, unless "
+            f"{LLM_MERGE_RESOLVER_COMMAND_ENV} is set."
         ),
     )
     parser.add_argument(
@@ -9225,6 +9771,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Directory for temporary implementation worktrees. Defaults to the system temp directory.",
     )
     parser.add_argument(
+        "--merge-target-branch",
+        default="",
+        help=(
+            "Branch that receives isolated implementation merges. Defaults to main/master, then the "
+            "current branch. A configured branch must exist."
+        ),
+    )
+    parser.add_argument(
         "--worktree-submodule-path",
         action="append",
         default=[],
@@ -9281,6 +9835,7 @@ def main(argv: list[str] | None = None) -> None:
         implementation_timeout=args.implementation_timeout,
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
+        merge_target_branch=args.merge_target_branch,
         worktree_submodule_paths=args.worktree_submodule_path or None,
         objective_path=args.objective_path,
         objective_bundle_dir=args.objective_bundle_dir,
