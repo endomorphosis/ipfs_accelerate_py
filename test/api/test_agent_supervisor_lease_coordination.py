@@ -244,6 +244,36 @@ def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -
             )
 
 
+def test_reopened_blocked_bundle_resets_exhausted_attempt_budget(tmp_path: Path) -> None:
+    blocked_bundle = {
+        **_bundle(),
+        "max_attempts": 1,
+        "tasks": [{"task_id": "SVD-085", "status": "blocked"}],
+    }
+    reopened_bundle = {
+        **blocked_bundle,
+        "tasks": [{"task_id": "SVD-085", "status": "todo"}],
+    }
+
+    with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
+        registered = coordinator.register_bundle(blocked_bundle, created_at_ms=1)
+        failed = coordinator.claim(registered["task_cid"], "did:web:lane-a.example")
+        coordinator.receipt(failed, status="failed", failure_class="blocked")
+        assert coordinator.task_state(registered["task_cid"])["state"] == "blocked"
+
+        reopened = coordinator.register_bundle(reopened_bundle, created_at_ms=2)
+        reopened_state = coordinator.task_state(reopened["task_cid"])
+
+        assert reopened["task_cid"] == registered["task_cid"]
+        assert reopened["attempt_budget_reset"] is True
+        assert reopened_state["state"] == "ready"
+        assert reopened_state["attempt"] == 0
+        assert reopened_state["release_reason"] == "requeued:bundle_status_reopened"
+        replacement = coordinator.claim(reopened["task_cid"], "did:web:lane-b.example")
+        assert replacement.attempt == 1
+        assert replacement.fencing_token > failed.fencing_token
+
+
 def test_changed_bundle_revision_cannot_overlap_its_active_execution_scope(
     tmp_path: Path,
 ) -> None:

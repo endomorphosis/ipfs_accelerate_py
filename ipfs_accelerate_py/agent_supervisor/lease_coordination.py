@@ -29,6 +29,7 @@ MAX_PERSISTED_DEPENDENCY_REPAIRS = 256
 STRUCTURAL_DEPENDENCY_REPAIR_KINDS = frozenset(
     {"missing_dependency", "dependency_cycle", "duplicate_alias", "duplicate_task"}
 )
+READY_BUNDLE_TASK_STATUSES = frozenset({"todo", "ready", "needed", "queued", "in_progress"})
 
 
 class LeaseError(RuntimeError):
@@ -106,6 +107,33 @@ def _link(value: Any) -> str:
     """Create a content link for adapter inputs that are not already artifacts."""
 
     return profile_g_cid(value)
+
+
+def _bundle_task_statuses(bundle: Mapping[str, Any]) -> set[str]:
+    """Return normalized explicit member statuses from a bundle payload."""
+
+    tasks = bundle.get("tasks")
+    if not isinstance(tasks, (list, tuple)):
+        return set()
+    statuses: set[str] = set()
+    for task in tasks:
+        if not isinstance(task, Mapping) or task.get("status") in (None, ""):
+            continue
+        status = str(task["status"]).strip().lower().replace("-", "_").replace(" ", "_")
+        if status in {"done", "complete"}:
+            status = "completed"
+        elif status in {"active"}:
+            status = "in_progress"
+        statuses.add(status)
+    return statuses
+
+
+def _reopens_blocked_bundle(previous: Mapping[str, Any], current: Mapping[str, Any]) -> bool:
+    """Return whether authoritative discovery reopened previously blocked work."""
+
+    previous_statuses = _bundle_task_statuses(previous)
+    current_statuses = _bundle_task_statuses(current)
+    return "blocked" in previous_statuses and bool(current_statuses & READY_BUNDLE_TASK_STATUSES)
 
 
 def _dependency_task_cids(bundle: Mapping[str, Any]) -> tuple[list[str], dict[str, list[dict[str, Any]]]]:
@@ -541,6 +569,7 @@ class LeaseCoordinator:
         # Profile-G TaskSpec CID remains available separately for provenance.
         adapted["task_cid"] = canonical_task_cid
         registered_at = self._clock_ms() if created_at_ms is None else int(created_at_ms)
+        attempt_budget_reset = False
         with self._lock, self._connection:
             for cid, artifact in adapted["artifacts"].items():
                 self._connection.execute(
@@ -550,6 +579,19 @@ class LeaseCoordinator:
             task_id = ",".join(
                 str(item.get("task_id")) for item in bundle.get("tasks", []) if isinstance(item, Mapping)
             ) or str(bundle.get("bundle_key") or adapted["task_cid"])
+            previous_task = self._connection.execute(
+                "SELECT bundle_json FROM tasks WHERE task_cid=?",
+                (canonical_task_cid,),
+            ).fetchone()
+            previous_bundle = (
+                json.loads(str(previous_task["bundle_json"]))
+                if previous_task is not None
+                else {}
+            )
+            reopened = isinstance(previous_bundle, Mapping) and _reopens_blocked_bundle(
+                previous_bundle,
+                bundle,
+            )
             # Keep the original immutable Goal/Subgoal provenance while
             # refreshing mutable discovery metadata on every scheduler poll.
             self._connection.execute(
@@ -571,6 +613,18 @@ class LeaseCoordinator:
                     registered_at,
                 ),
             )
+            if reopened:
+                reset = self._connection.execute(
+                    """UPDATE leases
+                       SET state='released', attempt=0,
+                           release_reason='requeued:bundle_status_reopened',
+                           retry_not_before_ms=0
+                       WHERE task_cid=?
+                         AND state IN ('released','expired')
+                         AND release_reason LIKE 'receipt:%:blocked'""",
+                    (canonical_task_cid,),
+                )
+                attempt_budget_reset = reset.rowcount > 0
             # A dependency DAG names the immutable work-item CIDs while the
             # coordination lease is bundle-scoped.  Aliases bridge those two
             # identities so the bundle's successful receipt unlocks its tasks.
@@ -606,6 +660,7 @@ class LeaseCoordinator:
                 "INSERT OR REPLACE INTO task_dependency_repair_state VALUES(?,?,?)",
                 (canonical_task_cid, dependency_repair_count, len(dependency_repairs)),
             )
+        adapted["attempt_budget_reset"] = attempt_budget_reset
         return adapted
 
     def register_bundles(
