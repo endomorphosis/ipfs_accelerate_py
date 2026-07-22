@@ -8,10 +8,15 @@ import json
 import os
 import signal
 import shlex
+import sqlite3
 import subprocess
+import tempfile
+import time
+import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from .event_log import read_jsonl_events
 
@@ -33,12 +38,466 @@ _MAX_RESOLVE_ATTEMPTS_PER_EVENT = int(
 _RESOLVED_EVENTS_FILENAME = ".agent-merge-resolved-events.json"
 
 
+def conflict_fingerprint(event: Mapping[str, Any]) -> str:
+    """Return a stable identity for the underlying conflict, not its log event.
+
+    Timestamps and resolver-attempt numbers are intentionally excluded: those
+    fields change every time a daemon observes the same conflicted merge.  File
+    paths and commit identities are normalized so independent lanes converge on
+    the same fingerprint.
+    """
+
+    nested = event.get("merge_result")
+    merge_result = nested if isinstance(nested, Mapping) else event
+    explicit = event.get("conflict_fingerprint") or merge_result.get("conflict_fingerprint")
+    if explicit is not None and str(explicit).strip():
+        return str(explicit).strip()
+
+    def value(*keys: str) -> str:
+        for key in keys:
+            candidate = merge_result.get(key)
+            if candidate in (None, ""):
+                candidate = event.get(key)
+            if candidate not in (None, ""):
+                return str(candidate).strip()
+        return ""
+
+    paths_value = (
+        merge_result.get("unmerged_paths")
+        or merge_result.get("conflicted_paths")
+        or merge_result.get("dirty_paths")
+        or event.get("unmerged_paths")
+        or event.get("conflicted_paths")
+        or event.get("dirty_paths")
+        or []
+    )
+    if isinstance(paths_value, str):
+        paths = [item.strip() for item in paths_value.splitlines() if item.strip()]
+    elif isinstance(paths_value, Sequence):
+        paths = [str(item).strip() for item in paths_value if str(item).strip()]
+    else:
+        paths = []
+    material = {
+        "task": value("canonical_task_key", "canonical_task_id", "canonical_task_cid", "task_id").casefold(),
+        "branch": value("branch", "branch_name", "source_branch").casefold(),
+        "target_branch": value("target_branch").casefold(),
+        "source_commit": value("source_commit", "commit_sha", "head_sha", "commit").casefold(),
+        "target_commit": value("target_commit", "target_head", "base_commit").casefold(),
+        "reason": " ".join(value("reason", "failure_reason").casefold().split()),
+        "paths": sorted(set(paths)),
+    }
+    canonical = json.dumps(material, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _event_fingerprint(event: dict[str, Any]) -> str:
-    """Compute a stable fingerprint for a merge event to detect re-processing."""
-    keys = ("task_id", "attempt", "branch", "target_branch", "reason", "timestamp")
-    merge_result = event.get("merge_result") if isinstance(event.get("merge_result"), dict) else event
-    parts = [str(merge_result.get(key) or event.get(key) or "") for key in keys]
-    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+    """Compatibility alias for the public full-length fingerprint."""
+
+    return conflict_fingerprint(event)
+
+
+@dataclass(frozen=True)
+class ResolverClaim:
+    """Fenced ownership of one active conflict-resolution attempt."""
+
+    fingerprint: str
+    owner_id: str
+    token: str
+    attempt: int
+    acquired_at: float
+    lease_expires_at: float
+    event: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fingerprint": self.fingerprint,
+            "owner_id": self.owner_id,
+            "token": self.token,
+            "attempt": self.attempt,
+            "acquired_at": self.acquired_at,
+            "lease_expires_at": self.lease_expires_at,
+            "event": dict(self.event),
+        }
+
+
+class MergeResolverRegistry:
+    """Durable, fenced registry for conflict resolver attempts.
+
+    Acquisition is serialized by an immediate SQLite transaction.  Thus two
+    daemon processes can observe the same event concurrently, but at most one
+    receives a claim.  Abandoned claims can be recovered after their lease;
+    once the configured attempt bound is reached the conflict is terminally
+    quarantined with a JSON receipt rather than becoming a polling loop.
+    """
+
+    def __init__(
+        self,
+        state_dir: Path | str,
+        *,
+        max_attempts: int = _MAX_RESOLVE_ATTEMPTS_PER_EVENT,
+        lease_timeout_seconds: float = DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        self.state_dir = Path(state_dir)
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.database_path = self.state_dir / "merge_resolver.sqlite3"
+        self.quarantine_dir = self.state_dir / "merge_resolver_quarantine"
+        self.quarantine_dir.mkdir(parents=True, exist_ok=True)
+        self.max_attempts = max(1, int(max_attempts))
+        self.lease_timeout_seconds = max(1.0, float(lease_timeout_seconds))
+        self._clock = clock or time.time
+        with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS conflict_resolutions (
+                    fingerprint TEXT PRIMARY KEY,
+                    state TEXT NOT NULL,
+                    owner_id TEXT NOT NULL DEFAULT '',
+                    token TEXT NOT NULL DEFAULT '',
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    acquired_at REAL NOT NULL DEFAULT 0,
+                    lease_expires_at REAL NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL,
+                    last_error TEXT NOT NULL DEFAULT '',
+                    event_json TEXT NOT NULL DEFAULT '{}',
+                    outcome_json TEXT NOT NULL DEFAULT '{}',
+                    receipt_path TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS conflict_resolutions_state
+                  ON conflict_resolutions(state, lease_expires_at);
+                """
+            )
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(str(self.database_path), timeout=30, isolation_level=None)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=30000")
+        return connection
+
+    def acquire(
+        self,
+        event: Mapping[str, Any],
+        *,
+        owner_id: str = "",
+        lease_seconds: float | None = None,
+    ) -> ResolverClaim | None:
+        """Atomically acquire the event or return ``None`` when it is suppressed."""
+
+        event_dict = dict(event)
+        fingerprint = conflict_fingerprint(event_dict)
+        owner = str(owner_id or f"resolver-{os.getpid()}")
+        now = self._clock()
+        lease_duration = max(
+            1.0,
+            float(self.lease_timeout_seconds if lease_seconds is None else lease_seconds),
+        )
+        token = uuid.uuid4().hex
+        receipt: tuple[dict[str, Any], str, int] | None = None
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT * FROM conflict_resolutions WHERE fingerprint=?", (fingerprint,)
+                ).fetchone()
+                if row is not None:
+                    state = str(row["state"])
+                    attempts = int(row["attempt_count"])
+                    if state in {"succeeded", "quarantined"}:
+                        connection.commit()
+                        return None
+                    if state == "active" and float(row["lease_expires_at"]) > now:
+                        connection.commit()
+                        return None
+                    if attempts >= self.max_attempts:
+                        error = str(row["last_error"] or "resolver attempt bound reached")
+                        connection.execute(
+                            """UPDATE conflict_resolutions SET state='quarantined',
+                               owner_id='', token='', lease_expires_at=0, updated_at=?
+                               WHERE fingerprint=?""",
+                            (now, fingerprint),
+                        )
+                        connection.commit()
+                        receipt = (event_dict, error, attempts)
+                    else:
+                        attempt = attempts + 1
+                        connection.execute(
+                            """UPDATE conflict_resolutions SET state='active', owner_id=?,
+                               token=?, attempt_count=?, acquired_at=?, lease_expires_at=?,
+                               updated_at=?, event_json=?, last_error=''
+                               WHERE fingerprint=?""",
+                            (
+                                owner,
+                                token,
+                                attempt,
+                                now,
+                                now + lease_duration,
+                                now,
+                                _json_text(event_dict),
+                                fingerprint,
+                            ),
+                        )
+                        connection.commit()
+                        return ResolverClaim(
+                            fingerprint=fingerprint,
+                            owner_id=owner,
+                            token=token,
+                            attempt=attempt,
+                            acquired_at=now,
+                            lease_expires_at=now + lease_duration,
+                            event=event_dict,
+                        )
+                else:
+                    connection.execute(
+                        """INSERT INTO conflict_resolutions (
+                           fingerprint, state, owner_id, token, attempt_count,
+                           acquired_at, lease_expires_at, updated_at, event_json
+                           ) VALUES (?, 'active', ?, ?, 1, ?, ?, ?, ?)""",
+                        (
+                            fingerprint,
+                            owner,
+                            token,
+                            now,
+                            now + lease_duration,
+                            now,
+                            _json_text(event_dict),
+                        ),
+                    )
+                    connection.commit()
+                    return ResolverClaim(
+                        fingerprint=fingerprint,
+                        owner_id=owner,
+                        token=token,
+                        attempt=1,
+                        acquired_at=now,
+                        lease_expires_at=now + lease_duration,
+                        event=event_dict,
+                    )
+            except Exception:
+                connection.rollback()
+                raise
+        if receipt is not None:
+            path = self._write_quarantine_receipt(fingerprint, *receipt)
+            self._set_receipt_path(fingerprint, path)
+        return None
+
+    def heartbeat(
+        self,
+        claim: ResolverClaim,
+        *,
+        lease_seconds: float | None = None,
+    ) -> bool:
+        """Extend a current claim, rejecting stale fencing tokens."""
+
+        now = self._clock()
+        duration = max(
+            1.0,
+            float(self.lease_timeout_seconds if lease_seconds is None else lease_seconds),
+        )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            result = connection.execute(
+                """UPDATE conflict_resolutions SET lease_expires_at=?, updated_at=?
+                   WHERE fingerprint=? AND state='active' AND owner_id=? AND token=?""",
+                (now + duration, now, claim.fingerprint, claim.owner_id, claim.token),
+            )
+            connection.commit()
+        return result.rowcount == 1
+
+    def release(
+        self,
+        claim: ResolverClaim,
+        *,
+        succeeded: bool | None = None,
+        outcome: str | Mapping[str, Any] | None = None,
+        error: str = "",
+        metadata: Mapping[str, Any] | None = None,
+    ) -> Path | None:
+        """Release a fenced claim and return a receipt if it was quarantined."""
+
+        if succeeded is None:
+            if isinstance(outcome, Mapping):
+                succeeded = bool(
+                    outcome.get("succeeded")
+                    or outcome.get("resolved")
+                    or outcome.get("applied")
+                    or outcome.get("merged")
+                )
+            else:
+                succeeded = str(outcome or "").casefold() in {
+                    "success",
+                    "succeeded",
+                    "resolved",
+                    "completed",
+                    "merged",
+                }
+        outcome_payload: dict[str, Any]
+        if isinstance(outcome, Mapping):
+            outcome_payload = dict(outcome)
+        else:
+            outcome_payload = {"outcome": str(outcome or ("succeeded" if succeeded else "failed"))}
+        if metadata:
+            outcome_payload["metadata"] = dict(metadata)
+        now = self._clock()
+        receipt_data: tuple[dict[str, Any], str, int] | None = None
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM conflict_resolutions WHERE fingerprint=?",
+                (claim.fingerprint,),
+            ).fetchone()
+            if (
+                row is None
+                or str(row["state"]) != "active"
+                or str(row["owner_id"]) != claim.owner_id
+                or str(row["token"]) != claim.token
+            ):
+                connection.commit()
+                return None
+            attempts = int(row["attempt_count"])
+            terminal = not succeeded and attempts >= self.max_attempts
+            state = "succeeded" if succeeded else ("quarantined" if terminal else "failed")
+            final_error = str(error or outcome_payload.get("error") or outcome_payload.get("apply_error") or "")
+            connection.execute(
+                """UPDATE conflict_resolutions SET state=?, owner_id='', token='',
+                   lease_expires_at=0, updated_at=?, last_error=?, outcome_json=?
+                   WHERE fingerprint=?""",
+                (state, now, final_error, _json_text(outcome_payload), claim.fingerprint),
+            )
+            connection.commit()
+            if terminal:
+                receipt_data = (json.loads(row["event_json"] or "{}"), final_error, attempts)
+        if receipt_data is None:
+            return None
+        path = self._write_quarantine_receipt(claim.fingerprint, *receipt_data)
+        self._set_receipt_path(claim.fingerprint, path)
+        return path
+
+    def active_attempt(self, event_or_fingerprint: Mapping[str, Any] | str) -> ResolverClaim | None:
+        """Return the current non-expired attempt, if any."""
+
+        fingerprint = self._resolve_fingerprint(event_or_fingerprint)
+        now = self._clock()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM conflict_resolutions WHERE fingerprint=?", (fingerprint,)
+            ).fetchone()
+        if row is None or str(row["state"]) != "active" or float(row["lease_expires_at"]) <= now:
+            return None
+        return ResolverClaim(
+            fingerprint=fingerprint,
+            owner_id=str(row["owner_id"]),
+            token=str(row["token"]),
+            attempt=int(row["attempt_count"]),
+            acquired_at=float(row["acquired_at"]),
+            lease_expires_at=float(row["lease_expires_at"]),
+            event=json.loads(row["event_json"] or "{}"),
+        )
+
+    def status(self, event_or_fingerprint: Mapping[str, Any] | str) -> dict[str, Any]:
+        """Return durable resolver state for one conflict."""
+
+        fingerprint = self._resolve_fingerprint(event_or_fingerprint)
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM conflict_resolutions WHERE fingerprint=?", (fingerprint,)
+            ).fetchone()
+        if row is None:
+            return {"fingerprint": fingerprint, "state": "unseen", "attempt_count": 0}
+        return {
+            "fingerprint": fingerprint,
+            "state": str(row["state"]),
+            "owner_id": str(row["owner_id"]),
+            "attempt_count": int(row["attempt_count"]),
+            "acquired_at": float(row["acquired_at"]),
+            "lease_expires_at": float(row["lease_expires_at"]),
+            "last_error": str(row["last_error"]),
+            "receipt_path": str(row["receipt_path"]),
+        }
+
+    @contextmanager
+    def claim(
+        self,
+        event: Mapping[str, Any],
+        *,
+        owner_id: str = "",
+        lease_seconds: float | None = None,
+    ) -> Iterator[ResolverClaim | None]:
+        """Context-manager form that records exceptions as failed attempts."""
+
+        acquired = self.acquire(event, owner_id=owner_id, lease_seconds=lease_seconds)
+        try:
+            yield acquired
+        except BaseException as exc:
+            if acquired is not None:
+                self.release(acquired, succeeded=False, error=f"{type(exc).__name__}: {exc}")
+            raise
+        else:
+            if acquired is not None:
+                self.release(acquired, succeeded=True, outcome="completed")
+
+    @staticmethod
+    def _resolve_fingerprint(event_or_fingerprint: Mapping[str, Any] | str) -> str:
+        if isinstance(event_or_fingerprint, Mapping):
+            return conflict_fingerprint(event_or_fingerprint)
+        return str(event_or_fingerprint)
+
+    def _write_quarantine_receipt(
+        self,
+        fingerprint: str,
+        event: dict[str, Any],
+        error: str,
+        attempts: int,
+    ) -> Path:
+        path = self.quarantine_dir / f"{fingerprint}.json"
+        _atomic_json_write(
+            path,
+            {
+                "receipt_type": "merge_resolver_quarantine",
+                "fingerprint": fingerprint,
+                "attempt_count": attempts,
+                "max_attempts": self.max_attempts,
+                "reason": error or "resolver attempt bound reached",
+                "quarantined_at": self._clock(),
+                "event": event,
+            },
+        )
+        return path
+
+    def _set_receipt_path(self, fingerprint: str, path: Path) -> None:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "UPDATE conflict_resolutions SET receipt_path=?, updated_at=? WHERE fingerprint=?",
+                (str(path), self._clock(), fingerprint),
+            )
+            connection.commit()
+
+
+# Name the invariant explicitly for callers that do not need the LLM CLI layer.
+ConflictResolverRegistry = MergeResolverRegistry
+ResolverLease = ResolverClaim
+
+
+def _json_text(value: Mapping[str, Any]) -> str:
+    return json.dumps(dict(value), sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _atomic_json_write(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(dict(payload), handle, indent=2, sort_keys=True, default=str)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
 
 
 def _load_resolved_events(state_dir: Path) -> dict[str, int]:
@@ -58,7 +517,7 @@ def _save_resolved_events(state_dir: Path, resolved: dict[str, int]) -> None:
     state_dir.mkdir(parents=True, exist_ok=True)
     path = state_dir / _RESOLVED_EVENTS_FILENAME
     try:
-        path.write_text(json.dumps(resolved, indent=2), encoding="utf-8")
+        _atomic_json_write(path, resolved)
     except OSError:
         pass
 
