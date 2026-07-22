@@ -41,6 +41,12 @@ class LeaseConflictError(LeaseError):
     """Raised when another non-expired claim owns the task."""
 
 
+class ExecutionScopeConflictError(LeaseConflictError):
+    """Raised when another task revision owns the same execution scope."""
+
+    code = "G_EXECUTION_SCOPE_CONFLICT"
+
+
 class DependencyNotReadyError(LeaseConflictError):
     """Raised when a task's prerequisite receipts have not all succeeded."""
 
@@ -833,6 +839,39 @@ class LeaseCoordinator:
         bundle = json.loads(task["bundle_json"])
         return max(1, int(bundle.get("max_attempts") or 3))
 
+    @staticmethod
+    def _execution_scope(task: sqlite3.Row) -> str:
+        """Return the stable bundle scope that must have at most one live lease."""
+
+        bundle = json.loads(task["bundle_json"])
+        return str(bundle.get("bundle_key") or "").strip()
+
+    def _active_execution_scope_conflict(
+        self,
+        connection: sqlite3.Connection,
+        task: sqlite3.Row,
+        *,
+        now: int,
+    ) -> sqlite3.Row | None:
+        """Find a live lease for another revision of this task's bundle."""
+
+        execution_scope = self._execution_scope(task)
+        if not execution_scope:
+            return None
+        rows = connection.execute(
+            """SELECT l.*, t.bundle_json, t.task_id
+               FROM leases AS l
+               JOIN tasks AS t ON t.task_cid=l.task_cid
+               WHERE l.task_cid<>?
+                 AND l.state='accepted'
+                 AND l.expires_at_ms>?""",
+            (str(task["task_cid"]), now),
+        ).fetchall()
+        return next(
+            (row for row in rows if self._execution_scope(row) == execution_scope),
+            None,
+        )
+
     def _task_projection(
         self,
         task: sqlite3.Row,
@@ -1070,6 +1109,10 @@ class LeaseCoordinator:
                     ).fetchone()
                     if lease is not None and int(lease["attempt"]) >= self._max_attempts(task):
                         continue
+                    if self._active_execution_scope_conflict(
+                        connection, task, now=now
+                    ) is not None:
+                        continue
                     grant = self._claim_in_transaction(
                         connection, task, claimant_did, duration=duration, now=now
                     )
@@ -1149,6 +1192,15 @@ class LeaseCoordinator:
             if active["claimant_did"] == claimant_did:
                 return self._grant(active, task)
             raise LeaseConflictError(f"task is leased by {active['claimant_did']}")
+        scope_conflict = self._active_execution_scope_conflict(
+            connection, task, now=now
+        )
+        if scope_conflict is not None:
+            execution_scope = self._execution_scope(task)
+            raise ExecutionScopeConflictError(
+                f"bundle execution scope {execution_scope!r} is leased by task "
+                f"{scope_conflict['task_cid']} ({scope_conflict['claimant_did']})"
+            )
         prior = connection.execute(
             "SELECT * FROM leases WHERE task_cid=?", (task_cid,)
         ).fetchone()

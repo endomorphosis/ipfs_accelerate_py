@@ -508,6 +508,56 @@ def test_manifest_excludes_superseded_bundle_revisions(tmp_path: Path) -> None:
         assert len(coordinator.list_tasks(task_cids={current["tasks"][0]["task_cid"]})) == 1
 
 
+def test_live_bundle_revision_blocks_replacement_with_the_same_bundle_key(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    initial_bundle = _bundle("T-1")
+    initial_bundle["tasks"][0].update({"title": "Old work", "outputs": ["old.py"]})
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {"objective/test/t-1": initial_bundle},
+            }
+        ),
+        encoding="utf-8",
+    )
+    scheduler = _scheduler(tmp_path, index, launcher, max_lanes=2)
+
+    first = scheduler.reconcile_once()
+    old_task_cid = first["lanes"][0]["task_cid"]
+    replacement = _bundle("T-1")
+    replacement["tasks"][0].update(
+        {"title": "Replacement work", "outputs": ["new.py"]}
+    )
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {"objective/test/t-1": replacement},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    current = scheduler.reconcile_once()
+
+    assert len(launcher.starts) == 1
+    assert current["counts"]["active"] == 1
+    assert current["lanes"][0]["task_cid"] == old_task_cid
+    decision = next(
+        item
+        for item in current["scheduler_decisions"]
+        if item["task_cid"] != old_task_cid
+    )
+    assert decision["reason"] == "bundle_key_active"
+    assert decision["blocking_task_cid"] == old_task_cid
+
+
 def test_manifest_references_full_planning_graphs_without_embedding_them(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"

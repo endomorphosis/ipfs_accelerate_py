@@ -1762,15 +1762,21 @@ class DynamicBundleScheduler:
                 decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
                 snapshot_ready = set(ready_task_cids(decision_snapshot))
                 decisions: list[dict[str, Any]] = []
+                running_by_bundle_key = {
+                    running.spec.bundle_key: running
+                    for running in self._running.values()
+                }
                 dispositions = {
                     lane.task_cid: self._disposition(lane)
                     for lane in registered
                     if lane.task_cid not in self._running and lane.task_cid in snapshot_ready
+                    and lane.bundle_key not in running_by_bundle_key
                 }
                 resource_candidates = [
                     lane
                     for lane in registered
                     if lane.task_cid not in self._running
+                    and lane.bundle_key not in running_by_bundle_key
                     and lane.task_cid in snapshot_ready
                     and not dispositions.get(lane.task_cid)
                     and not any(
@@ -1811,6 +1817,17 @@ class DynamicBundleScheduler:
                             "bundle_key": lane.bundle_key,
                             "decision": "retained",
                             "reason": "already_active",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
+                        continue
+                    scope_owner = running_by_bundle_key.get(lane.bundle_key)
+                    if scope_owner is not None:
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            "reason": "bundle_key_active",
+                            "blocking_task_cid": scope_owner.spec.task_cid,
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
                         continue

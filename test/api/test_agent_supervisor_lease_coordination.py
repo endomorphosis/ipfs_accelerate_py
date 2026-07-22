@@ -10,6 +10,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
 )
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
     DependencyNotReadyError,
+    ExecutionScopeConflictError,
     LeaseConflictError,
     LeaseCoordinator,
     LeaseExpiredError,
@@ -241,6 +242,45 @@ def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -
                 "did:web:lane-b.example",
                 requested_lease_ms=10_000,
             )
+
+
+def test_changed_bundle_revision_cannot_overlap_its_active_execution_scope(
+    tmp_path: Path,
+) -> None:
+    first_bundle = _bundle()
+    first_bundle["tasks"] = [{"task_id": "SVD-085", "title": "First revision"}]
+    second_bundle = _bundle()
+    second_bundle["tasks"] = [{"task_id": "SVD-086", "title": "Second revision"}]
+
+    with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
+        first = coordinator.register_bundle(first_bundle, created_at_ms=1)
+        second = coordinator.register_bundle(second_bundle, created_at_ms=2)
+        assert first["task_cid"] != second["task_cid"]
+
+        first_grant = coordinator.claim(
+            first["task_cid"],
+            "did:web:lane-a.example",
+            requested_lease_ms=10_000,
+        )
+        with pytest.raises(ExecutionScopeConflictError) as raised:
+            coordinator.claim(
+                second["task_cid"],
+                "did:web:lane-b.example",
+                requested_lease_ms=10_000,
+            )
+        assert raised.value.code == "G_EXECUTION_SCOPE_CONFLICT"
+        assert coordinator.claim_ready(
+            "did:web:lane-b.example",
+            requested_lease_ms=10_000,
+            eligible_task_cids=(second["task_cid"],),
+        ) is None
+
+        coordinator.release(first_grant)
+        assert coordinator.claim(
+            second["task_cid"],
+            "did:web:lane-b.example",
+            requested_lease_ms=10_000,
+        ).task_cid == second["task_cid"]
 
 
 def test_claim_renew_heartbeat_release_and_receipt_are_fenced(tmp_path: Path) -> None:
