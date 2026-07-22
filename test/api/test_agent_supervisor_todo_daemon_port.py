@@ -21,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     run_objective_daemon,
 )
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+    bundle_member_completion_receipts,
     build_arg_parser as build_bundle_arg_parser,
     plan_bundle_lanes,
     run_bundle_supervisor,
@@ -10961,6 +10962,70 @@ def test_objective_daemon_refines_missing_evidence_into_child_goals(tmp_path):
     assert refined[0].fields["fib_priority"] == str(fibonacci_priority(1, 0))
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "Prove missing_gesture_policy for Meta display control bridge" in todo_text
+
+
+def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_path):
+    state_dir = tmp_path / "objective-runtime" / "state"
+    state_dir.mkdir(parents=True)
+    event_path = state_dir / "agent_objective_runtime_events.jsonl"
+    rotated_path = state_dir / "agent_objective_runtime_events.jsonl.rotated-20260722T120000Z"
+    rotated_path.write_text(
+        json.dumps(
+            {
+                "type": "todo_status_updated",
+                "timestamp": "2026-07-22T12:00:00+00:00",
+                "task_id": "ACCEL-001",
+                "canonical_task_cid": "cid-completed-from-status",
+                "canonical_task_key": "task/v1/status",
+                "updated": True,
+                "updated_task_ids": ["ACCEL-001"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    event_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "implementation_finished",
+                        "timestamp": "2026-07-22T12:01:00+00:00",
+                        "task_id": "ACCEL-002",
+                        "canonical_task_cid": "cid-completed-from-merge",
+                        "returncode": 0,
+                        "merge_result": {"merged": True},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "implementation_finished",
+                        "timestamp": "2026-07-22T12:02:00+00:00",
+                        "task_id": "ACCEL-003",
+                        "canonical_task_cid": "cid-failed",
+                        "returncode": 1,
+                        "merge_result": {"merged": False},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "task_completed",
+                        "timestamp": "2026-07-22T12:03:00+00:00",
+                        "task_id": "ACCEL-004",
+                        "canonical_task_cid": "cid-non-authoritative",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    receipts = bundle_member_completion_receipts(tmp_path)
+
+    assert set(receipts) == {"cid-completed-from-status", "cid-completed-from-merge"}
+    assert receipts["cid-completed-from-status"]["event_path"] == str(rotated_path)
+    assert receipts["cid-completed-from-merge"]["task_id"] == "ACCEL-002"
 
 
 def test_bundle_supervisor_plans_isolated_lanes(tmp_path):

@@ -54,6 +54,60 @@ _MANIFEST_REFERENCED_BUNDLE_FIELDS = frozenset(
 )
 
 
+def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, Any]]:
+    """Return successful member-task receipts keyed by canonical task CID.
+
+    Bundle boards are mutable projections, so their current status is not a
+    durable completion authority.  The implementation daemon emits terminal
+    events after a successful merge; retain those receipts so a source board
+    can promote the matching canonical task even after a shard is regenerated.
+    """
+
+    event_paths = sorted(
+        {
+            *state_root.glob("*_events.jsonl"),
+            *state_root.glob("*/state/*_events.jsonl"),
+        }
+    )
+    receipts: dict[str, dict[str, Any]] = {}
+    for source in event_log_sources(event_paths, include_rotated=True):
+        for event in read_jsonl_events(source):
+            event_type = str(event.get("type") or "")
+            task_id = str(event.get("task_id") or "")
+            completed = False
+            if event_type == "todo_status_updated":
+                completed_ids = {
+                    str(item)
+                    for key in ("updated_task_ids", "already_completed_task_ids")
+                    for item in (event.get(key) or [])
+                }
+                completed = bool(event.get("updated")) or bool(task_id and task_id in completed_ids)
+            elif event_type == "implementation_finished":
+                merge_result = event.get("merge_result")
+                completed = (
+                    event.get("returncode") == 0
+                    and isinstance(merge_result, dict)
+                    and merge_result.get("merged") is True
+                )
+            if not completed:
+                continue
+            canonical_task_cid = str(event.get("canonical_task_cid") or "")
+            if not canonical_task_cid:
+                continue
+            receipt = {
+                "canonical_task_cid": canonical_task_cid,
+                "canonical_task_key": str(event.get("canonical_task_key") or ""),
+                "task_id": task_id,
+                "timestamp": str(event.get("timestamp") or ""),
+                "event_type": event_type,
+                "event_path": str(source),
+            }
+            previous = receipts.get(canonical_task_cid)
+            if previous is None or receipt["timestamp"] >= previous["timestamp"]:
+                receipts[canonical_task_cid] = receipt
+    return receipts
+
+
 @dataclass(frozen=True)
 class BundleLaneSpec:
     """One isolated daemon/supervisor lane for an objective bundle shard."""
