@@ -4115,7 +4115,10 @@ class PortalImplementationSupervisor:
     def _worktree_phase_without_worker_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id:
             return ""
-        threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
+        if state.active_phase == "merge_resolver":
+            threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
+        else:
+            threshold = max(30.0, min(120.0, float(self.config.check_interval) * 2.0))
         worker_status = worktree_phase_worker_status(
             {
                 "active_phase": state.active_phase,
