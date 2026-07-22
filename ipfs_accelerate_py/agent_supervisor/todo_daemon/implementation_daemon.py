@@ -36,6 +36,7 @@ from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
 from ..merge_queue import MergeQueue
 from ..validation_commands import normalize_validation_command_text, split_validation_commands
+from ..validation_scheduler import ValidationScheduler
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
 REPO_ROOT = Path.cwd()
@@ -86,6 +87,9 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
+VALIDATION_MAX_WORKERS_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_MAX_WORKERS"
+VALIDATION_RESOURCE_BUDGET_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_RESOURCE_BUDGET"
+DEFAULT_VALIDATION_MAX_WORKERS = 2
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
 IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(r"(?:^|[\s/])(codex|copilot)(?:\s|$)")
 SHARED_WORKTREE_PATHS = (
@@ -852,6 +856,10 @@ class PortalImplementationDaemon:
         task_shard_index: int = 0,
         merge_queue: MergeQueue | None = None,
         merge_queue_dir: Path | None = None,
+        validation_scheduler: ValidationScheduler | None = None,
+        validation_cache_dir: Path | None = None,
+        validation_max_workers: int | None = None,
+        validation_resource_budget: int | None = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -906,6 +914,29 @@ class PortalImplementationDaemon:
         default_merge_queue_dir = checkout_mutation_lock_path(self.repo_root).parent / "agent-merge-train"
         self.merge_queue_dir = merge_queue_dir or default_merge_queue_dir
         self.merge_queue = merge_queue or MergeQueue(self.merge_queue_dir)
+        configured_validation_workers = (
+            _env_int(VALIDATION_MAX_WORKERS_ENV, DEFAULT_VALIDATION_MAX_WORKERS)
+            if validation_max_workers is None
+            else int(validation_max_workers)
+        )
+        configured_validation_budget = (
+            _env_int(VALIDATION_RESOURCE_BUDGET_ENV, configured_validation_workers)
+            if validation_resource_budget is None
+            else int(validation_resource_budget)
+        )
+        # This directory lives beside the shared checkout mutation lock so all
+        # isolated lanes and merge consumers reuse the same content-addressed
+        # successes without sharing mutable scheduler state.
+        default_validation_cache_dir = (
+            checkout_mutation_lock_path(self.repo_root).parent / "agent-validation-cache"
+        )
+        self.validation_cache_dir = validation_cache_dir or default_validation_cache_dir
+        self.validation_scheduler = validation_scheduler or ValidationScheduler(
+            cache_dir=self.validation_cache_dir,
+            max_workers=max(1, configured_validation_workers),
+            resource_budget=max(1, configured_validation_budget),
+            default_timeout_seconds=self.implementation_timeout,
+        )
         configured_submodules = (
             DEFAULT_WORKTREE_SUBMODULE_PATHS
             if worktree_submodule_paths is None
@@ -2198,6 +2229,7 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         changed_submodule_paths: Sequence[str] | None = None,
+        validation_result: dict[str, Any] | None = None,
     ) -> tuple[Any, dict[str, Any]]:
         """Durably hand a validated implementation to the repo-wide merge train.
 
@@ -2226,6 +2258,31 @@ class PortalImplementationDaemon:
             metadata["changed_submodule_paths"] = sorted(
                 {str(path).strip("/") for path in changed_submodule_paths if str(path).strip("/")}
             )
+        if validation_result is not None:
+            metadata["validation_proof"] = {
+                "attempted": bool(validation_result.get("attempted")),
+                "passed": bool(validation_result.get("passed")),
+                "returncode": int(validation_result.get("returncode") or 0),
+                "target_commit": str(validation_result.get("target_commit") or ""),
+                "selection": validation_result.get("selection") or {},
+                "stages": validation_result.get("stages") or [],
+                "results": [
+                    {
+                        key: item.get(key)
+                        for key in (
+                            "command",
+                            "returncode",
+                            "cache_hit",
+                            "cache_key",
+                            "stage",
+                            "started_at",
+                            "finished_at",
+                        )
+                    }
+                    for item in validation_result.get("results", [])
+                    if isinstance(item, dict)
+                ],
+            }
         if work_order is not None:
             metadata["bundle_work_order"] = work_order.to_dict()
         request = self.merge_queue.enqueue(
@@ -2306,6 +2363,26 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "branch_rehydration": branch_rehydration,
             }
+        validation_proof = metadata.get("validation_proof")
+        if isinstance(validation_proof, dict):
+            selection = validation_proof.get("selection")
+            selection_scope = (
+                str(selection.get("scope") or "") if isinstance(selection, dict) else ""
+            )
+            if not validation_proof.get("passed") or selection_scope != "pre_merge":
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": int(validation_proof.get("returncode") or 1),
+                    "reason": "validation_failed",
+                    "branch": branch_name,
+                    "validation_result": validation_proof,
+                    "validation_gate_reason": (
+                        "validation_did_not_pass"
+                        if not validation_proof.get("passed")
+                        else "broad_pre_merge_scope_missing"
+                    ),
+                }
         raw_changed_submodule_paths = metadata.get("changed_submodule_paths")
         changed_submodule_paths = (
             {
@@ -2709,6 +2786,7 @@ class PortalImplementationDaemon:
                             changed_submodule_paths=self._committed_submodule_paths(
                                 commit_result.get("submodule_results") or []
                             ),
+                            validation_result=validation_result,
                         )
                         try:
                             train_result = self._consume_one_merge_candidate()
@@ -3981,73 +4059,90 @@ class PortalImplementationDaemon:
                 "reason": "no_commands",
             }
 
-        results: list[dict[str, Any]] = []
+        commands: list[str] = []
+        normalization_notes: list[str] = []
+        for raw_command in task.validation:
+            command, notes = self._normalize_validation_command(raw_command)
+            commands.append(command)
+            normalization_notes.extend(notes)
+
+        # Validation is the last gate before a candidate is committed/enqueued
+        # (or before an in-place task is marked complete).  Impact selection is
+        # still recorded and used for staging, but every unrelated targeted
+        # check is escalated into the broad pre-merge stage here.
+        result = self.validation_scheduler.run(
+            commands,
+            workspace_path=workspace_path,
+            require_full_validation=True,
+            scope="pre_merge",
+            runner=self._validation_command_runner,
+        )
+
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as log_fh:
             log_fh.write("\nValidation:\n")
-            for raw_command in task.validation:
-                command, normalization_notes = self._normalize_validation_command(raw_command)
-                for note in normalization_notes:
-                    log_fh.write(f"[validation normalized] {note}\n")
-                started_at = utc_now()
-                log_fh.write(f"$ {command}\n")
-                log_fh.flush()
-                try:
-                    completed = subprocess.run(
-                        ["/bin/bash", "-lc", command],
-                        cwd=workspace_path,
-                        text=True,
-                        stdin=subprocess.DEVNULL,
-                        stdout=log_fh,
-                        stderr=subprocess.STDOUT,
-                        timeout=self.implementation_timeout,
-                        check=False,
-                    )
-                except subprocess.TimeoutExpired:
-                    results.append(
-                        {
-                            "command": command,
-                            "started_at": started_at,
-                            "finished_at": utc_now(),
-                            "returncode": 124,
-                            "timed_out": True,
-                        }
-                    )
+            for note in normalization_notes:
+                log_fh.write(f"[validation normalized] {note}\n")
+            selection = result.get("selection")
+            if isinstance(selection, dict):
+                log_fh.write(
+                    "[validation selection] "
+                    f"scope={selection.get('scope')} changed={selection.get('changed_files', [])} "
+                    f"escalated={selection.get('escalated', False)}\n"
+                )
+            for command_result in result.get("results", []):
+                if not isinstance(command_result, dict):
+                    continue
+                cache_label = " cache-hit" if command_result.get("cache_hit") else ""
+                stage = str(command_result.get("stage") or "validation")
+                log_fh.write(f"$ {command_result.get('command', '')} [{stage}{cache_label}]\n")
+                output = command_result.get("output")
+                if output:
+                    log_fh.write(str(output))
+                    if not str(output).endswith("\n"):
+                        log_fh.write("\n")
+                if command_result.get("timed_out"):
                     log_fh.write(f"[validation timed out] timeout={self.implementation_timeout}\n")
-                    log_fh.flush()
-                    return {
-                        "attempted": True,
-                        "passed": False,
-                        "returncode": 124,
-                        "results": results,
-                        "failed_command": command,
-                        "error": "timeout",
-                    }
-                result = {
-                    "command": command,
-                    "raw_command": raw_command,
-                    "started_at": started_at,
-                    "finished_at": utc_now(),
-                    "returncode": completed.returncode,
-                }
-                results.append(result)
-                if completed.returncode != 0:
-                    log_fh.write(f"[validation failed] returncode={completed.returncode}\n")
-                    log_fh.flush()
-                    return {
-                        "attempted": True,
-                        "passed": False,
-                        "returncode": completed.returncode,
-                        "results": results,
-                        "failed_command": command,
-                    }
-            log_fh.write("[validation passed]\n")
+                elif int(command_result.get("returncode") or 0) != 0:
+                    log_fh.write(
+                        f"[validation failed] returncode={command_result.get('returncode')}\n"
+                    )
+                # Command output belongs in the attempt log, not the durable
+                # daemon state/event stream or merge-queue receipt.
+                command_result.pop("output", None)
+            log_fh.write("[validation passed]\n" if result.get("passed") else "[validation stopped]\n")
             log_fh.flush()
+        return result
+
+    @staticmethod
+    def _validation_command_runner(
+        *,
+        spec: Any,
+        workspace_path: Path,
+        timeout_seconds: float,
+        environment: dict[str, str],
+    ) -> dict[str, Any]:
+        """Run one command through the daemon's patchable subprocess seam."""
+
+        started_at = utc_now()
+        completed = subprocess.run(
+            ["/bin/bash", "-lc", str(spec.command)],
+            cwd=workspace_path,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout_seconds,
+            check=False,
+            env=environment,
+        )
         return {
-            "attempted": True,
-            "passed": True,
-            "returncode": 0,
-            "results": results,
+            "command": str(spec.command),
+            "raw_command": str(spec.raw_command or spec.command),
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "returncode": int(completed.returncode),
+            "output": completed.stdout or "",
         }
 
     @staticmethod
@@ -9983,6 +10078,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--implementation-timeout", type=float, default=DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS)
     parser.add_argument(
+        "--validation-max-workers",
+        type=int,
+        default=None,
+        help=(
+            "Maximum validation subprocesses per stage. Defaults to "
+            f"${VALIDATION_MAX_WORKERS_ENV} or {DEFAULT_VALIDATION_MAX_WORKERS}."
+        ),
+    )
+    parser.add_argument(
+        "--validation-resource-budget",
+        type=int,
+        default=None,
+        help=(
+            "Weighted validation resource budget. Defaults to "
+            f"${VALIDATION_RESOURCE_BUDGET_ENV} or validation-max-workers."
+        ),
+    )
+    parser.add_argument(
         "--no-ephemeral-worktree",
         action="store_true",
         help="Run the implementation command in the main checkout instead of an isolated temporary git worktree",
@@ -10068,6 +10181,8 @@ def main(argv: list[str] | None = None) -> None:
         merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
+        validation_max_workers=args.validation_max_workers,
+        validation_resource_budget=args.validation_resource_budget,
     )
     while True:
         result = daemon.run_once()
