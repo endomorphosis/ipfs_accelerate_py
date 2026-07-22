@@ -11,7 +11,7 @@ import subprocess
 import sys
 import threading
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -187,7 +187,14 @@ class BundleLaneSpec:
     max_provider_latency_ms: int = 0
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
-        payload = asdict(self)
+        payload: dict[str, Any] = {}
+        for definition in fields(self):
+            value = getattr(self, definition.name)
+            if isinstance(value, dict):
+                value = dict(value)
+            elif isinstance(value, list):
+                value = list(value)
+            payload[definition.name] = value
         for key in ("todo_path", "state_dir", "worktree_root", "log_path"):
             path = Path(payload[key])
             payload[key] = repo_relative_path(repo_root, path) if repo_root is not None else str(path)
@@ -1373,6 +1380,11 @@ class DynamicBundleScheduler:
         self._last_scheduler_snapshot: SchedulerSnapshot | None = None
         self._last_resource_snapshot: ResourceScheduleSnapshot | None = None
         self._event_source_cache: dict[Path, tuple[int, int, list[dict[str, Any]]]] = {}
+        self._plan_cache: tuple[
+            tuple[Path, ...],
+            tuple[tuple[str, int, int], ...],
+            tuple[BundleLaneSpec, ...],
+        ] | None = None
 
     @property
     def running_count(self) -> int:
@@ -1446,7 +1458,33 @@ class DynamicBundleScheduler:
         )
         return LaneResourceRequirements.from_mapping(payload)
 
+    def _plan_source_revision(self, paths: Sequence[Path]) -> tuple[tuple[str, int, int], ...]:
+        """Return the cheap source revision that makes a lane plan reusable."""
+
+        revisions: list[tuple[str, int, int]] = []
+        for path in paths:
+            try:
+                stat = path.stat()
+            except OSError:
+                revisions.append((str(path), -1, -1))
+            else:
+                revisions.append((str(path), stat.st_mtime_ns, stat.st_size))
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        revisions.append((f"git:{head.stdout.strip() if head.returncode == 0 else ''}", 0, 0))
+        return tuple(revisions)
+
     def _plan(self) -> list[BundleLaneSpec]:
+        if self._plan_cache is not None:
+            cached_paths, cached_revision, cached_lanes = self._plan_cache
+            if self._plan_source_revision(cached_paths) == cached_revision:
+                return list(cached_lanes)
+
         allowed = {
             "task_prefix", "implement", "daemon_interval", "stale_seconds",
             "check_interval", "max_restarts", "implementation_timeout",
@@ -1459,7 +1497,7 @@ class DynamicBundleScheduler:
             "worktree_submodule_paths", "log_level",
         }
         options = {key: value for key, value in self.lane_options.items() if key in allowed}
-        return plan_bundle_lanes(
+        lanes = plan_bundle_lanes(
             bundle_index_path=self.bundle_index_path,
             repo_root=self.repo_root,
             state_root=self.state_root,
@@ -1468,6 +1506,22 @@ class DynamicBundleScheduler:
             max_lanes=None,
             **options,
         )
+        source_paths = tuple(
+            sorted(
+                {
+                    self.bundle_index_path,
+                    self.bundle_index_path.with_suffix(".duckdb"),
+                    *(lane.todo_path for lane in lanes),
+                },
+                key=str,
+            )
+        )
+        self._plan_cache = (
+            source_paths,
+            self._plan_source_revision(source_paths),
+            tuple(lanes),
+        )
+        return lanes
 
     @staticmethod
     def _default_process_alive(handle: Any) -> bool:

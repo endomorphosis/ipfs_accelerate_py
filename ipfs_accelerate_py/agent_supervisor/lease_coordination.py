@@ -16,7 +16,7 @@ import sqlite3
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -414,7 +414,9 @@ class TaskLeaseState:
         return self.state == "ready"
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = {definition.name: getattr(self, definition.name) for definition in fields(self)}
+        payload["bundle"] = dict(self.bundle)
+        return payload
 
 
 class LeaseCoordinator:
