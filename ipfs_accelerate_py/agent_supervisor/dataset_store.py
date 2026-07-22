@@ -7,8 +7,13 @@ import os
 import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from enum import Enum
+from hashlib import sha256
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
+
+
+SCAN_DETAILS_ARTIFACT_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,41 @@ class DatasetArtifact:
         payload["deleted_paths"] = list(self.deleted_paths)
         payload["cache_hit_ratio"] = self.cache_hit_ratio
         return payload
+
+
+@dataclass(frozen=True)
+class DatasetScanDetailsArtifact:
+    """Content-addressed reference to complete per-path scan diagnostics."""
+
+    artifact_id: str
+    scan_id: str
+    jsonl_path: Path
+    manifest_path: Path
+    detail_count: int
+    sha256: str
+    byte_count: int
+    reason_counts: Mapping[str, int]
+    created_at: str
+    schema_version: int = SCAN_DETAILS_ARTIFACT_SCHEMA_VERSION
+
+    @property
+    def row_count(self) -> int:
+        return self.detail_count
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "artifact_id": self.artifact_id,
+            "scan_id": self.scan_id,
+            "jsonl_path": str(self.jsonl_path),
+            "manifest_path": str(self.manifest_path),
+            "detail_count": self.detail_count,
+            "row_count": self.detail_count,
+            "sha256": self.sha256,
+            "byte_count": self.byte_count,
+            "reason_counts": dict(sorted(self.reason_counts.items())),
+            "created_at": self.created_at,
+        }
 
 
 class ObjectiveDatasetStore:
@@ -190,21 +230,161 @@ class ObjectiveDatasetStore:
             return {}
         return dict(value) if isinstance(value, dict) else {}
 
+    def persist_scan_details(
+        self,
+        *,
+        scan_id: str,
+        details: Iterable[Mapping[str, Any]],
+        metadata: Mapping[str, Any] | None = None,
+    ) -> DatasetScanDetailsArtifact:
+        """Persist an immutable, content-addressed JSONL diagnostic artifact."""
+
+        normalized_scan_id = str(scan_id or "").strip()
+        if not normalized_scan_id:
+            raise ValueError("scan_id must not be empty")
+        rows: list[dict[str, Any]] = []
+        for index, detail in enumerate(details):
+            if not isinstance(detail, Mapping):
+                raise TypeError(f"scan detail at index {index} must be a mapping")
+            projected = _json_compatible(detail)
+            if not isinstance(projected, dict):  # pragma: no cover - mapping invariant
+                raise TypeError(f"scan detail at index {index} must project to an object")
+            rows.append(projected)
+
+        detail_bytes = "".join(
+            json.dumps(row, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
+            for row in rows
+        ).encode("utf-8")
+        content_sha256 = sha256(detail_bytes).hexdigest()
+        safe_id = _safe_dataset_id(normalized_scan_id)
+        details_root = self.root / "scan-details"
+        basename = f"{safe_id}-{content_sha256}"
+        jsonl_path = details_root / f"{basename}.jsonl"
+        manifest_path = details_root / f"{basename}.manifest.json"
+        latest_path = details_root / f"{safe_id}.latest.json"
+        created_at = datetime.now(timezone.utc).isoformat()
+        reason_counts: dict[str, int] = {}
+        for row in rows:
+            reason = str(row.get("reason_code") or row.get("reason") or "unspecified").strip()
+            reason_counts[reason or "unspecified"] = reason_counts.get(reason or "unspecified", 0) + 1
+
+        artifact = DatasetScanDetailsArtifact(
+            artifact_id=f"sha256:{content_sha256}",
+            scan_id=normalized_scan_id,
+            jsonl_path=jsonl_path,
+            manifest_path=manifest_path,
+            detail_count=len(rows),
+            sha256=content_sha256,
+            byte_count=len(detail_bytes),
+            reason_counts=reason_counts,
+            created_at=created_at,
+        )
+        manifest = artifact.to_dict()
+        manifest["metadata"] = _json_compatible(metadata or {})
+        _atomic_write_bytes(jsonl_path, detail_bytes)
+        manifest_text = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        _atomic_write_text(manifest_path, manifest_text)
+        _atomic_write_text(latest_path, manifest_text)
+        return artifact
+
+    def load_scan_details(
+        self,
+        scan: str | Path | Mapping[str, Any] | DatasetScanDetailsArtifact,
+    ) -> list[dict[str, Any]]:
+        path = self._scan_details_jsonl_path(scan)
+        if path is None:
+            return []
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        rows: list[dict[str, Any]] = []
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(value, dict):
+                rows.append(value)
+        return rows
+
+    def load_scan_details_manifest(
+        self,
+        scan: str | Path | Mapping[str, Any] | DatasetScanDetailsArtifact,
+    ) -> dict[str, Any]:
+        if isinstance(scan, DatasetScanDetailsArtifact):
+            path: Path | None = scan.manifest_path
+        elif isinstance(scan, Mapping):
+            raw_path = scan.get("manifest_path")
+            path = Path(str(raw_path)) if raw_path else None
+        elif isinstance(scan, Path):
+            path = scan if scan.name.endswith(".json") else None
+        else:
+            path = self.root / "scan-details" / f"{_safe_dataset_id(scan)}.latest.json"
+        if path is None:
+            return {}
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError):
+            return {}
+        return dict(value) if isinstance(value, dict) else {}
+
+    def _scan_details_jsonl_path(
+        self,
+        scan: str | Path | Mapping[str, Any] | DatasetScanDetailsArtifact,
+    ) -> Path | None:
+        if isinstance(scan, DatasetScanDetailsArtifact):
+            return scan.jsonl_path
+        if isinstance(scan, Mapping):
+            raw_path = scan.get("jsonl_path") or scan.get("path")
+            return Path(str(raw_path)) if raw_path else None
+        if isinstance(scan, Path):
+            return scan
+        manifest = self.load_scan_details_manifest(scan)
+        raw_path = manifest.get("jsonl_path")
+        return Path(str(raw_path)) if raw_path else None
+
 
 def _atomic_write_text(path: Path, value: str) -> None:
+    _atomic_write_bytes(path, value.encode("utf-8"))
+
+
+def _atomic_write_bytes(path: Path, value: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
     )
     temporary_path = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        with os.fdopen(descriptor, "wb") as handle:
             handle.write(value)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def _json_compatible(value: Any) -> Any:
+    if hasattr(value, "__dataclass_fields__") and not isinstance(value, type):
+        return _json_compatible(asdict(value))
+    if isinstance(value, Enum):
+        return _json_compatible(value.value)
+    if isinstance(value, datetime):
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc).isoformat()
+        return value.astimezone(timezone.utc).isoformat()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _json_compatible(item) for key, item in value.items()}
+    if isinstance(value, (set, frozenset)):
+        return [_json_compatible(item) for item in sorted(value, key=repr)]
+    if isinstance(value, (list, tuple)):
+        return [_json_compatible(item) for item in value]
+    return value
 
 
 def _nonnegative_int(value: Any, default: int = 0) -> int:
