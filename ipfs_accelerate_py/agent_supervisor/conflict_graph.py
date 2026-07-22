@@ -160,6 +160,7 @@ class ConflictSurface:
     files: list[str] = field(default_factory=list)
     changed_paths: list[str] = field(default_factory=list)
     ast_symbols: list[str] = field(default_factory=list)
+    global_ast_symbols: list[str] | None = None
     interfaces: list[str] = field(default_factory=list)
     submodules: list[str] = field(default_factory=list)
     generated_artifacts: list[str] = field(default_factory=list)
@@ -169,6 +170,8 @@ class ConflictSurface:
     def __post_init__(self) -> None:
         if not self.task_cid:
             object.__setattr__(self, "task_cid", self.task_id)
+        if self.global_ast_symbols is None:
+            object.__setattr__(self, "global_ast_symbols", list(self.ast_symbols))
 
     @property
     def all_paths(self) -> list[str]:
@@ -257,9 +260,16 @@ def build_conflict_surface(
         ],
         repo_root,
     )
-    ast_symbols = _normalized_terms(
+    declared_ast_symbols = _normalized_terms(
         _field_items(sources, ("ast_symbols", "predicted_symbols", "symbols", "ast_query"))
     )
+    has_explicit_global_symbols = any("global_ast_symbols" in source for source in sources)
+    global_ast_symbols = (
+        _normalized_terms(_field_items(sources, ("global_ast_symbols",)))
+        if has_explicit_global_symbols
+        else list(declared_ast_symbols)
+    )
+    ast_symbols = list(declared_ast_symbols)
     if repo_root is not None:
         discovered: set[str] = set(ast_symbols)
         for relative in files:
@@ -308,6 +318,7 @@ def build_conflict_surface(
         files=files,
         changed_paths=normalized_changed_paths,
         ast_symbols=ast_symbols,
+        global_ast_symbols=global_ast_symbols,
         interfaces=interfaces,
         submodules=submodules,
         generated_artifacts=generated,
@@ -317,7 +328,8 @@ def build_conflict_surface(
             for key, value in root.items()
             if key
             not in {
-                "files", "predicted_files", "outputs", "changed_paths", "ast_symbols", "interfaces",
+                "files", "predicted_files", "outputs", "changed_paths", "ast_symbols",
+                "global_ast_symbols", "interfaces",
                 "submodules", "generated_artifacts", "allow_concurrent_with",
             }
         },
@@ -355,6 +367,9 @@ def _merge_duplicate_surfaces(
         files=sorted(set(left.files) | set(right.files)),
         changed_paths=sorted(set(left.changed_paths) | set(right.changed_paths)),
         ast_symbols=sorted(set(left.ast_symbols) | set(right.ast_symbols)),
+        global_ast_symbols=sorted(
+            set(left.global_ast_symbols or []) | set(right.global_ast_symbols or [])
+        ),
         interfaces=sorted(set(left.interfaces) | set(right.interfaces)),
         submodules=sorted(set(left.submodules) | set(right.submodules)),
         generated_artifacts=sorted(
@@ -736,8 +751,13 @@ def _make_edge(
         overlaps["cross_surface_paths"] = cross_paths
         predicted += float(weights["files"]) * len(cross_paths)
 
+    ast_symbol_values = (
+        (left.ast_symbols, right.ast_symbols)
+        if all_path_overlap
+        else (left.global_ast_symbols or [], right.global_ast_symbols or [])
+    )
     for surface, left_values, right_values in (
-        ("ast_symbols", left.ast_symbols, right.ast_symbols),
+        ("ast_symbols", *ast_symbol_values),
         ("interfaces", left.interfaces, right.interfaces),
     ):
         shared = sorted(set(left_values) & set(right_values))

@@ -359,12 +359,16 @@ def _bundle_conflict_task(
 
     bundle_key = str(payload.get("bundle_key") or "objective/general")
     profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
+    conflict_policy = str(payload.get("conflict_policy") or "")
+    ast_symbols = member_values("ast_symbols", "symbols")
+    file_scoped_ast = "allow independent file bundles" in conflict_policy.lower()
     return {
         "task_id": bundle_key,
         "task_cid": str(profile_g.get("task_cid") or payload.get("task_cid") or ""),
         "outputs": member_values("outputs", "files", "predicted_files"),
         "changed_paths": member_values("changed_paths", "actual_changed_paths"),
-        "ast_symbols": member_values("ast_symbols", "symbols"),
+        "ast_symbols": ast_symbols,
+        "global_ast_symbols": [] if file_scoped_ast else ast_symbols,
         "ast_query": ", ".join(member_values("ast_query")),
         "interfaces": member_values(
             "interfaces", "interface_contracts", "provides_interfaces", "requires_interfaces",
@@ -380,9 +384,24 @@ def _bundle_conflict_task(
             "member_task_ids": [
                 str(task.get("task_id")) for task in members if task.get("task_id")
             ],
-            "conflict_policy": str(payload.get("conflict_policy") or ""),
+            "conflict_policy": conflict_policy,
         },
     }
+
+
+def _excluded_bundle_keys(bundle_index_path: Path) -> set[str]:
+    """Return execution units retained only as dependency metadata."""
+
+    try:
+        payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if not isinstance(payload, dict):
+        return set()
+    value = payload.get("excluded_bundle_keys")
+    if isinstance(value, dict):
+        return {str(key) for key, excluded in value.items() if excluded and str(key).strip()}
+    return set(_string_list(value))
 
 
 def _conflict_graph_inputs(bundle_index_path: Path) -> dict[str, Any]:
@@ -766,6 +785,12 @@ def plan_bundle_lanes(
 
     lanes: list[BundleLaneSpec] = []
     bundle_payloads = build_bundle_task_payloads(bundle_index_path)
+    excluded_bundle_keys = _excluded_bundle_keys(bundle_index_path)
+    bundle_payloads = [
+        payload
+        for payload in bundle_payloads
+        if str(payload.get("bundle_key") or "objective/general") not in excluded_bundle_keys
+    ]
     conflict_annotations = _bundle_conflict_annotations(
         bundle_payloads,
         bundle_index_path=bundle_index_path,

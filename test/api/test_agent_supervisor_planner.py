@@ -238,6 +238,44 @@ def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_cap
     assert lanes[0].schedule_score == 8_030_920
 
 
+def test_bundle_lane_planner_skips_explicitly_excluded_execution_units(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    index_path.write_text(
+        json.dumps({"excluded_bundle_keys": ["bundle/excluded"]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: [
+            {
+                "bundle_key": "bundle/included",
+                "todo_path": "included.md",
+                "tasks": [{"task_id": "INCLUDED"}],
+                "profile_g": {"task_cid": "cid-included"},
+            },
+            {
+                "bundle_key": "bundle/excluded",
+                "todo_path": "excluded.md",
+                "tasks": [{"task_id": "EXCLUDED"}],
+                "profile_g": {"task_cid": "cid-excluded"},
+            },
+        ],
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+    )
+
+    assert [lane.bundle_key for lane in lanes] == ["bundle/included"]
+
+
 def test_bundle_index_enrichment_maps_member_edges_to_bundle_execution_cids(
     tmp_path: Path,
 ) -> None:

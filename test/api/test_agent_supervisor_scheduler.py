@@ -13,6 +13,7 @@ from typing import Any
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
+from ipfs_accelerate_py.agent_supervisor.resource_scheduler import HostResourceSnapshot
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 
 _MANIFEST_GRAPH_FIELDS = {
@@ -112,6 +113,24 @@ def _scheduler(
 ) -> DynamicBundleScheduler:
     repo = tmp_path / "repo"
     repo.mkdir(exist_ok=True)
+
+    def host_resource_source(
+        _state_root: Path,
+        *,
+        active_workers: int,
+        worker_limit: int,
+        active_phase: str,
+    ) -> HostResourceSnapshot:
+        return HostResourceSnapshot(
+            cpu_percent=10,
+            memory_percent=10,
+            disk_percent=10,
+            active_phase=active_phase,
+            active_workers=active_workers,
+            worker_limit=worker_limit,
+            available_worker_capacity=max(0, worker_limit - active_workers),
+        )
+
     return DynamicBundleScheduler(
         bundle_index_path=index,
         repo_root=repo,
@@ -124,6 +143,7 @@ def _scheduler(
         claimant_did=claimant,
         launcher=launcher,
         process_alive=launcher.alive,
+        host_resource_source=host_resource_source,
         poll_interval=0,
         task_prefix="T-",
     )

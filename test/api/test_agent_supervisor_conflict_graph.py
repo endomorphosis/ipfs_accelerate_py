@@ -76,6 +76,7 @@ class CapabilityRouter:
         "CapabilityRouter",
         "CapabilityRouter.dispatch",
     }.issubset(surface.ast_symbols)
+    assert surface.global_ast_symbols == ["CapabilityRouter.dispatch", "RuntimeContract"]
     assert surface.interfaces == ["RequestEnvelope@2", "RuntimeAPI@1"]
     assert surface.submodules == ["external/runtime"]
     assert surface.generated_artifacts == ["generated/runtime.schema.json"]
@@ -174,6 +175,67 @@ def test_conflict_graph_covers_all_surface_types_and_colors_only_blocking_edges(
     assert _decision(graph, "cid-base", "cid-disjoint").action == "co_locate"
     assert all(decision.explanation.strip() for decision in graph.decisions)
     assert json.loads(json.dumps(graph.to_dict()))["assignments"]
+
+
+def test_discovered_ast_names_are_file_scoped_across_disjoint_outputs(tmp_path: Path) -> None:
+    for name in ("alpha.py", "beta.py"):
+        path = tmp_path / "src" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "from datetime import datetime\n\nclass Service:\n    def __init__(self):\n        self.at = datetime.now()\n",
+            encoding="utf-8",
+        )
+
+    graph = materialize_task_conflict_graph(
+        [
+            {"task_id": "ALPHA", "task_cid": "cid-alpha", "outputs": ["src/alpha.py"]},
+            {"task_id": "BETA", "task_cid": "cid-beta", "outputs": ["src/beta.py"]},
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert graph.edges == []
+    assert _decision(graph, "cid-alpha", "cid-beta").action == "co_locate"
+
+
+def test_file_isolated_bundle_policy_scopes_generated_ast_terms(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payloads = [
+        {
+            "bundle_key": f"bundle/{name}",
+            "todo_path": f"{name}.md",
+            "conflict_policy": (
+                "serialize findings for the same file; allow independent file bundles "
+                "to run concurrently"
+            ),
+            "tasks": [
+                {
+                    "task_id": name.upper(),
+                    "outputs": [f"src/{name}.py"],
+                    "ast_symbols": ["__init__", "datetime.datetime"],
+                }
+            ],
+            "profile_g": {"task_cid": f"cid-{name}"},
+        }
+        for name in ("alpha", "beta")
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+    )
+
+    assert len(lanes) == 2
+    assert all(not lane.conflicting_task_ids for lane in lanes)
 
 
 def test_actual_diffs_and_conflict_receipts_increase_future_pair_weight(tmp_path: Path) -> None:
