@@ -14,6 +14,9 @@ from .todo_daemon.implementation_daemon import PortalTask
 ACTIVE_GOAL_STATUSES = {"active", "todo", "open", "reopened"}
 OPEN_TASK_STATUSES = {"todo", "ready", "in_progress"}
 JANITOR_RECEIPT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.v1"
+JANITOR_COMPLETION_GATE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.completion_gate.v1"
+)
 LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE = "launch Playwright validation gate"
 LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
     "(test ! -f swissknife/package.json || npm --prefix swissknife run test:e2e:meta-glasses) && "
@@ -229,6 +232,155 @@ def _is_materialized_janitor_block(task: PortalTask) -> bool:
     )
 
 
+def _goal_descendants(goals: Sequence[ObjectiveGoal]) -> dict[str, list[str]]:
+    """Return every descendant for each goal, tolerating malformed cycles."""
+
+    children: dict[str, list[str]] = {goal.goal_id: [] for goal in goals if goal.goal_id}
+    for goal in goals:
+        for parent_id in goal.parent_goal_ids:
+            if parent_id in children and goal.goal_id not in children[parent_id]:
+                children[parent_id].append(goal.goal_id)
+
+    descendants: dict[str, list[str]] = {}
+    for goal_id in children:
+        pending = list(children[goal_id])
+        seen = {goal_id}
+        result: list[str] = []
+        while pending:
+            child_id = pending.pop(0)
+            if child_id in seen:
+                continue
+            seen.add(child_id)
+            result.append(child_id)
+            pending.extend(children.get(child_id, ()))
+        descendants[goal_id] = result
+    return descendants
+
+
+def _completion_gate_receipt(
+    goal: ObjectiveGoal,
+    *,
+    decision: Any,
+    descendants: Sequence[str],
+    goals_by_id: Mapping[str, ObjectiveGoal],
+    completion_decisions: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a persisted completion decision instead of trusting status.
+
+    The decision and gate shapes are intentionally checked at this boundary.
+    A claimed top-level ``passed`` flag cannot conceal a failed check, missing
+    evidence snapshot, or a descendant which has since become inconclusive or
+    reopened.
+    """
+
+    payload = dict(decision) if isinstance(decision, Mapping) else {}
+    raw_gate = payload.get("completion_gate")
+    gate = dict(raw_gate) if isinstance(raw_gate, Mapping) else {}
+    raw_checks = gate.get("checks")
+    checks = [dict(item) for item in raw_checks if isinstance(item, Mapping)] if isinstance(raw_checks, list) else []
+    evaluated_evidence = gate.get("evaluated_evidence")
+    evidence = dict(evaluated_evidence) if isinstance(evaluated_evidence, Mapping) else {}
+    reasons: list[str] = []
+
+    def reject(reason: str) -> None:
+        if reason not in reasons:
+            reasons.append(reason)
+
+    if not payload:
+        reject("completion_gate_missing")
+    else:
+        for reason_code in payload.get("reason_codes", ()):
+            if str(reason_code):
+                reject(str(reason_code))
+        state = str(payload.get("state") or payload.get("next_state") or "").strip().lower()
+        if payload.get("verified") is not True or state != "verified_complete":
+            reject("completion_decision_not_verified")
+        if not gate:
+            reject("completion_gate_missing")
+        else:
+            gate_reason_codes = [str(item) for item in gate.get("reason_codes", ()) if str(item)]
+            for reason_code in gate_reason_codes:
+                reject(reason_code)
+            if gate.get("passed") is not True:
+                reject("completion_gate_failed")
+            if not checks:
+                reject("completion_gate_checks_missing")
+            else:
+                failed_checks = [check for check in checks if check.get("passed") is not True]
+                for check in failed_checks:
+                    reason_code = str(check.get("reason_code") or "").strip()
+                    if reason_code:
+                        reject(reason_code)
+                if failed_checks:
+                    reject("completion_gate_check_failed")
+            if not evidence:
+                reject("completion_gate_evidence_missing")
+
+    descendant_receipts: list[dict[str, Any]] = []
+    for child_id in descendants:
+        child = goals_by_id.get(child_id)
+        if child is None:
+            continue
+        child_state = child.lifecycle_state_value
+        child_decision = completion_decisions.get(child_id)
+        child_payload = dict(child_decision) if isinstance(child_decision, Mapping) else {}
+        child_gate = child_payload.get("completion_gate")
+        child_gate_payload = dict(child_gate) if isinstance(child_gate, Mapping) else {}
+        child_checks = child_gate_payload.get("checks")
+        child_checks_valid = bool(
+            isinstance(child_checks, list)
+            and child_checks
+            and all(isinstance(check, Mapping) and check.get("passed") is True for check in child_checks)
+        )
+        child_evidence = child_gate_payload.get("evaluated_evidence")
+        # A heap may contain verified descendants written before completion
+        # decision artifacts existed. Preserve that compatibility only when
+        # no child decision is supplied; a supplied decision is authoritative
+        # and must itself contain a passing gate.
+        child_passed = bool(
+            child_state == "verified_complete"
+            and (
+                not child_payload
+                or (
+                    child_payload.get("verified") is True
+                    and child_gate_payload.get("passed") is True
+                    and child_checks_valid
+                    and isinstance(child_evidence, Mapping)
+                    and bool(child_evidence)
+                )
+            )
+        )
+        child_receipt = {
+            "goal_id": child_id,
+            "state": child_state,
+            "passed": child_passed,
+            "reason_codes": list(child_gate_payload.get("reason_codes") or ()),
+            "evaluated_evidence": child_evidence if isinstance(child_evidence, Mapping) else {},
+        }
+        descendant_receipts.append(child_receipt)
+        if not child_passed:
+            reject(
+                "descendant_reopened"
+                if child_state == "reopened"
+                else (
+                    "descendant_analysis_inconclusive"
+                    if child_state == "analysis_inconclusive"
+                    else "descendant_completion_unverified"
+                )
+            )
+
+    return {
+        "schema": JANITOR_COMPLETION_GATE_RECEIPT_SCHEMA,
+        "goal_id": goal.goal_id,
+        "passed": not reasons,
+        "reason_codes": reasons,
+        "state": goal.lifecycle_state_value,
+        "decision": payload,
+        "evaluated_evidence": evidence,
+        "descendants": descendant_receipts,
+    }
+
+
 def registered_goal_ids_from_bundle_index(payload: Mapping[str, Any]) -> list[str]:
     """Return active dynamic goal IDs declared by an authoritative bundle index."""
 
@@ -275,6 +427,7 @@ def reconcile_objective_task_strategy(
     now: str,
     mission_terms: Sequence[str] = DEFAULT_MISSION_TERMS,
     registered_goal_ids: Sequence[str] = (),
+    completion_decisions: Mapping[str, Any] | None = None,
     max_blocked_tasks: int = 50,
     max_deprioritized_tasks: int = 50,
     max_reopened_goals: int = 12,
@@ -282,6 +435,42 @@ def reconcile_objective_task_strategy(
     """Return a strategy update that keeps todo work aligned with active goals."""
 
     goals_by_id = {goal.goal_id: goal for goal in goals if goal.goal_id}
+    supplied_completion_decisions = completion_decisions
+    if supplied_completion_decisions is None:
+        strategy_decisions = strategy.get("objective_completion_decisions")
+        supplied_completion_decisions = (
+            strategy_decisions if isinstance(strategy_decisions, Mapping) else {}
+        )
+    descendants_by_goal = _goal_descendants(goals)
+    completion_gate_receipts = {
+        goal_id: _completion_gate_receipt(
+            goal,
+            decision=supplied_completion_decisions.get(goal_id),
+            descendants=descendants_by_goal.get(goal_id, ()),
+            goals_by_id=goals_by_id,
+            completion_decisions=supplied_completion_decisions,
+        )
+        for goal_id, goal in goals_by_id.items()
+        if goal.lifecycle_state_value == "verified_complete"
+        and goal_id in supplied_completion_decisions
+    }
+
+    def completion_proven(goal_id: str) -> bool:
+        receipt = completion_gate_receipts.get(goal_id)
+        # Legacy objective heaps have no persisted decision artifact. Their
+        # established verified status remains compatible. Once a decision is
+        # supplied, however, it is authoritative and evaluated fail closed.
+        return receipt is None or receipt.get("passed") is True
+
+    def completion_failure_reason(goal_ids: Sequence[str]) -> str:
+        reason_codes = [
+            str(code)
+            for goal_id in goal_ids
+            for code in completion_gate_receipts.get(goal_id, {}).get("reason_codes", ())
+            if str(code)
+        ]
+        return reason_codes[0] if reason_codes else "completion_gate_missing"
+
     tasks_by_id = {task.task_id: task for task in tasks if task.task_id}
     heap_active_goal_ids = {goal.goal_id for goal in goals if goal.is_schedulable}
     dynamic_goal_ids = set(_unique(registered_goal_ids))
@@ -339,6 +528,7 @@ def reconcile_objective_task_strategy(
             continue
         if known_goal_ids and all(
             goals_by_id[goal_id].lifecycle_state_value == "verified_complete"
+            and completion_proven(goal_id)
             for goal_id in known_goal_ids
         ):
             remove_receipts.append(
@@ -354,6 +544,11 @@ def reconcile_objective_task_strategy(
             )
             continue
         reason = "goal_not_active"
+        if known_goal_ids and all(
+            goals_by_id[goal_id].lifecycle_state_value == "verified_complete"
+            for goal_id in known_goal_ids
+        ):
+            reason = completion_failure_reason(known_goal_ids)
         missing_goal_ids = [goal_id for goal_id in goal_ids if goal_id not in goals_by_id]
         if missing_goal_ids and len(missing_goal_ids) == len(goal_ids):
             reason = "orphaned_goal_reference"
@@ -405,9 +600,15 @@ def reconcile_objective_task_strategy(
             reason = "goal_not_active"
             if goal_known and all(
                 goals_by_id[goal_id].lifecycle_state_value == "verified_complete"
+                and completion_proven(goal_id)
                 for goal_id in goal_known
             ):
                 reason = "goal_completed"
+            elif goal_known and all(
+                goals_by_id[goal_id].lifecycle_state_value == "verified_complete"
+                for goal_id in goal_known
+            ):
+                reason = completion_failure_reason(goal_known)
             elif goal_missing and not goal_known:
                 reason = "orphaned_goal_reference"
             block_receipts.append(
@@ -527,6 +728,15 @@ def reconcile_objective_task_strategy(
     updated_strategy["objective_task_janitor_heap_active_goal_ids"] = sorted(heap_active_goal_ids)
     updated_strategy["objective_task_janitor_registered_goal_ids"] = sorted(dynamic_goal_ids)
     updated_strategy["objective_task_janitor_heap_schedule_goal_ids"] = scheduled_goal_ids
+    updated_strategy["objective_task_janitor_completion_gate_receipts"] = [
+        completion_gate_receipts[goal_id] for goal_id in sorted(completion_gate_receipts)
+    ]
+    updated_strategy["objective_task_janitor_completion_gate_passed_goal_ids"] = sorted(
+        goal_id for goal_id, receipt in completion_gate_receipts.items() if receipt["passed"]
+    )
+    updated_strategy["objective_task_janitor_completion_gate_failed_goal_ids"] = sorted(
+        goal_id for goal_id, receipt in completion_gate_receipts.items() if not receipt["passed"]
+    )
     updated_strategy["objective_task_janitor_last_run_at"] = now
     updated_strategy["objective_task_janitor_last_run_summary"] = {
         "blocked_count": len(blocked_task_ids),
@@ -536,6 +746,12 @@ def reconcile_objective_task_strategy(
         "reopened_goal_count": len(reopened_goal_ids),
         "active_goal_count": len(active_goal_ids),
         "scheduled_goal_count": len(scheduled_goal_ids),
+        "completion_gate_passed_count": sum(
+            1 for receipt in completion_gate_receipts.values() if receipt["passed"]
+        ),
+        "completion_gate_failed_count": sum(
+            1 for receipt in completion_gate_receipts.values() if not receipt["passed"]
+        ),
     }
 
     comparable_keys = (
@@ -551,6 +767,9 @@ def reconcile_objective_task_strategy(
         "objective_task_janitor_active_goal_ids",
         "objective_task_janitor_heap_active_goal_ids",
         "objective_task_janitor_registered_goal_ids",
+        "objective_task_janitor_completion_gate_receipts",
+        "objective_task_janitor_completion_gate_passed_goal_ids",
+        "objective_task_janitor_completion_gate_failed_goal_ids",
     )
     changed = any(strategy.get(key) != updated_strategy.get(key) for key in comparable_keys)
     return {
@@ -569,4 +788,13 @@ def reconcile_objective_task_strategy(
         "critical_goal_ids": sorted(critical_goal_ids),
         "open_goal_ids": sorted(open_goal_ids),
         "validation_gate_goal_ids": validation_gate_goal_ids,
+        "completion_gate_receipts": updated_strategy[
+            "objective_task_janitor_completion_gate_receipts"
+        ],
+        "completion_gate_passed_goal_ids": updated_strategy[
+            "objective_task_janitor_completion_gate_passed_goal_ids"
+        ],
+        "completion_gate_failed_goal_ids": updated_strategy[
+            "objective_task_janitor_completion_gate_failed_goal_ids"
+        ],
     }

@@ -266,6 +266,9 @@ class ValidationReceiptCoverage:
     observed_at: str
     provenance_cid: str
     explanation: str
+    outcome: str = "unknown"
+    reason_code: str = "validation_result_unsupported"
+    fresh: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -289,6 +292,7 @@ class AcceptanceCoverage:
     interfaces: list[str] = field(default_factory=list)
     validation_commands: list[str] = field(default_factory=list)
     validation_receipt_ids: list[str] = field(default_factory=list)
+    unverified_validation_commands: list[str] = field(default_factory=list)
     provenance_cids: list[str] = field(default_factory=list)
     missing_surfaces: list[str] = field(default_factory=list)
     edge_ids: list[str] = field(default_factory=list)
@@ -517,18 +521,108 @@ class GoalCoverageMap:
         """
 
         selected = [item for item in self.criteria if item.goal_id == str(goal_id)]
+        criterion_ids = {item.criterion_id for item in selected}
+        selected_edges = [item for item in self.edges if item.criterion_id in criterion_ids]
+        receipt_ids = {
+            receipt_id
+            for item in selected
+            for receipt_id in item.validation_receipt_ids
+        }
+        selected_receipts = [item for item in self.receipts if item.receipt_id in receipt_ids]
+        selected_findings = [
+            item for item in self.finding_assignments if item.goal_id == str(goal_id)
+        ]
+        unverified = [item for item in selected if not item.verified]
+        verified = bool(selected) and not unverified
+        fail_reasons: list[dict[str, Any]] = []
+        if not selected:
+            fail_reasons.append(
+                {
+                    "code": "mandatory_coverage_missing",
+                    "criterion_ids": [],
+                    "message": "No mandatory acceptance criteria were present in the coverage map.",
+                }
+            )
+        for item in unverified:
+            fail_reasons.append(
+                {
+                    "code": f"criterion_{item.status.value}",
+                    "criterion_ids": [item.criterion_id],
+                    "message": item.explanation,
+                }
+            )
+        for receipt in selected_receipts:
+            if receipt.status is CoverageStatus.VERIFIED:
+                continue
+            fail_reasons.append(
+                {
+                    "code": receipt.reason_code,
+                    "criterion_ids": [
+                        item.criterion_id
+                        for item in selected
+                        if receipt.receipt_id in item.validation_receipt_ids
+                    ],
+                    "receipt_ids": [receipt.receipt_id],
+                    "message": receipt.explanation,
+                }
+            )
+        # Preserve deterministic first occurrence while allowing one receipt
+        # reason to explain multiple criterion-level failures.
+        deduplicated_reasons: list[dict[str, Any]] = []
+        seen_reason_keys: set[tuple[str, tuple[str, ...], tuple[str, ...]]] = set()
+        for reason in fail_reasons:
+            key = (
+                str(reason["code"]),
+                tuple(reason.get("criterion_ids", ())),
+                tuple(reason.get("receipt_ids", ())),
+            )
+            if key not in seen_reason_keys:
+                seen_reason_keys.add(key)
+                deduplicated_reasons.append(reason)
+        fail_reasons = deduplicated_reasons
+        stale_receipt_ids = [item.receipt_id for item in selected_receipts if not item.fresh]
+        tree_mismatch_receipt_ids = [
+            item.receipt_id
+            for item in selected_receipts
+            if self.repository_tree
+            and item.repository_tree != self.repository_tree
+        ]
+        freshness = {
+            "evaluated_at": self.evaluated_at,
+            "all_receipts_fresh": bool(selected_receipts) and not stale_receipt_ids,
+            "stale_receipt_ids": stale_receipt_ids,
+        }
+        binding = {
+            "repository_tree": self.repository_tree,
+            "all_receipts_bound": bool(selected_receipts) and not tree_mismatch_receipt_ids,
+            "tree_mismatch_receipt_ids": tree_mismatch_receipt_ids,
+        }
+        evaluated_evidence = {
+            "criteria": [item.to_dict() for item in selected],
+            "edges": [item.to_dict() for item in selected_edges],
+            "validation_receipts": [item.to_dict() for item in selected_receipts],
+            "finding_assignments": [item.to_dict() for item in selected_findings],
+            "freshness": freshness,
+            "binding": binding,
+        }
         return {
             "schema": "ipfs_accelerate_py.agent_supervisor.goal_coverage.gate.v1",
             "graph_id": self.graph_id,
             "goal_id": str(goal_id),
             "evaluated_at": self.evaluated_at,
             "repository_tree": self.repository_tree,
-            "criteria": [item.to_dict() for item in selected],
+            "freshness": freshness,
+            "binding": binding,
+            "criteria": evaluated_evidence["criteria"],
             "criterion_count": len(selected),
-            "verified": bool(selected) and all(item.verified for item in selected),
-            "unverified_criterion_ids": [
-                item.criterion_id for item in selected if not item.verified
-            ],
+            "mandatory_criterion_count": len(selected),
+            "verified": verified,
+            "passed": verified,
+            "pass_reasons": ["all_mandatory_criteria_verified"] if verified else [],
+            "fail_reasons": fail_reasons,
+            "reason_codes": [item["code"] for item in fail_reasons],
+            "unverified_criterion_ids": [item.criterion_id for item in unverified],
+            "evaluated_evidence": evaluated_evidence,
         }
 
 
@@ -644,7 +738,21 @@ def normalize_validation_receipt(
     provenance = str(_first(sources, ("provenance_cid", "receipt_cid", "cid", "evidence_cid")) or "").strip()
     tree = str(_first(sources, ("repository_tree", "tree_id", "tree_identity")) or "").strip()
     observed = _utc(_first(sources, ("observed_at", "finished_at", "generated_at", "created_at", "timestamp")))
-    passed = _bool(_first(sources, ("validation_passed", "passed", "success", "status")))
+    explicit_result: Any = None
+    for source in sources:
+        for name in ("validation_passed", "passed", "success"):
+            if name in source and source.get(name) is not None:
+                explicit_result = source.get(name)
+                break
+        if explicit_result is not None:
+            break
+    raw_outcome = str(_first(sources, ("terminal_reason", "outcome", "result", "status")) or "").strip()
+    outcome = re.sub(r"[\s-]+", "_", raw_outcome.casefold())
+    passed = _bool(explicit_result) if explicit_result is not None else (
+        True if outcome in {"pass", "passed", "success", "succeeded", "ok"} else
+        False if outcome in {"fail", "failed", "failure", "error"} else
+        None
+    )
     contradictory = _bool(_first(sources, ("contradictory", "contradicted"))) is True
     contradiction_text = str(_first(sources, ("contradiction", "failure_reason", "error")) or "").strip()
     freshness = _freshness_bool(_first(sources, ("freshness", "fresh", "is_fresh")))
@@ -652,18 +760,42 @@ def normalize_validation_receipt(
 
     status: CoverageStatus | None = None
     explanation = ""
-    if contradictory or contradiction_text or passed is False:
+    reason_code = ""
+    non_proof_outcomes = {
+        "cancelled",
+        "canceled",
+        "duplicate",
+        "duplicate_only",
+        "generated",
+        "partial",
+        "skipped",
+        "timed_out",
+        "timeout",
+        "unattempted",
+        "unsupported",
+    }
+    failed_outcomes = {"fail", "failed", "failure", "error"}
+    if contradictory or contradiction_text or passed is False or outcome in failed_outcomes:
         status = CoverageStatus.CONTRADICTED
         explanation = contradiction_text or "validation receipt explicitly contradicts the claimed coverage"
+        reason_code = "validation_failed"
+    elif outcome in non_proof_outcomes:
+        status = CoverageStatus.WEAKLY_INFERRED
+        canonical_outcome = "timed_out" if outcome == "timeout" else outcome
+        explanation = f"validation outcome {canonical_outcome!r} is not successful completion proof"
+        reason_code = f"validation_{canonical_outcome}"
     elif repository_tree and tree and tree != repository_tree:
         status = CoverageStatus.CONTRADICTED
         explanation = f"receipt repository tree {tree!r} does not match current tree {repository_tree!r}"
+        reason_code = "repository_tree_mismatch"
     elif freshness is False or (fresh_until is not None and fresh_until < evaluated_at):
         status = CoverageStatus.STALE
         explanation = "validation receipt is explicitly stale or expired"
+        reason_code = "validation_evidence_stale"
     elif observed is not None and max_age_seconds >= 0 and observed + timedelta(seconds=max_age_seconds) < evaluated_at:
         status = CoverageStatus.STALE
         explanation = f"validation receipt is older than {max_age_seconds} seconds"
+        reason_code = "validation_evidence_stale"
     current_enough = bool(
         freshness is True
         or (fresh_until is not None and fresh_until >= evaluated_at)
@@ -675,6 +807,7 @@ def normalize_validation_receipt(
     if status is None and passed is True and provenance and (not repository_tree or tree == repository_tree) and current_enough:
         status = CoverageStatus.VERIFIED
         explanation = "successful, current validation receipt has provenance"
+        reason_code = "validation_verified"
     elif status is None:
         status = CoverageStatus.WEAKLY_INFERRED
         missing = []
@@ -687,6 +820,7 @@ def normalize_validation_receipt(
         if not current_enough:
             missing.append("freshness evidence")
         explanation = "validation receipt lacks " + ", ".join(missing or ["complete verification metadata"])
+        reason_code = "validation_evidence_incomplete"
 
     identity = raw or {
         "task_id": task_id,
@@ -705,6 +839,9 @@ def normalize_validation_receipt(
         observed_at=observed.isoformat() if observed else "",
         provenance_cid=provenance,
         explanation=explanation,
+        outcome=outcome or ("passed" if passed is True else "failed" if passed is False else "unknown"),
+        reason_code=reason_code,
+        fresh=current_enough and status is not CoverageStatus.STALE,
         raw=raw,
     )
 
@@ -775,12 +912,14 @@ def _criterion_status(
 ) -> tuple[CoverageStatus, str]:
     if any(receipt.status is CoverageStatus.CONTRADICTED for receipt in receipts):
         return CoverageStatus.CONTRADICTED, "one or more validation receipts contradict the claimed criterion coverage"
-    if not missing and any(receipt.status is CoverageStatus.VERIFIED for receipt in receipts):
-        return CoverageStatus.VERIFIED, "every required implementation surface has current provenance-backed validation proof"
     if any(receipt.status is CoverageStatus.STALE for receipt in receipts):
-        return CoverageStatus.STALE, "no current proof supersedes the stale validation evidence"
+        return CoverageStatus.STALE, "one or more evaluated validation receipts are stale"
     if "tasks" in missing:
         return CoverageStatus.UNCOVERED, "no task covers this acceptance criterion"
+    if any(receipt.status is CoverageStatus.WEAKLY_INFERRED for receipt in receipts):
+        return CoverageStatus.WEAKLY_INFERRED, "one or more evaluated validation receipts are partial or unsupported"
+    if not missing and receipts and all(receipt.status is CoverageStatus.VERIFIED for receipt in receipts):
+        return CoverageStatus.VERIFIED, "every required implementation surface has current provenance-backed validation proof"
     return CoverageStatus.WEAKLY_INFERRED, "coverage is partial or lacks current provenance-backed validation proof"
 
 
@@ -844,6 +983,15 @@ def build_goal_coverage_map(
             relevant_receipts = [
                 receipt for receipt in normalized_receipts if _receipt_relevant(receipt, criterion, set(task_ids))
             ]
+            unverified_commands = [
+                command
+                for command in commands
+                if not any(
+                    receipt.status is CoverageStatus.VERIFIED
+                    and _normalized(receipt.command) == _normalized(command)
+                    for receipt in relevant_receipts
+                )
+            ]
             provenance = sorted({receipt.provenance_cid for receipt in relevant_receipts if receipt.provenance_cid})
             dimension_values: dict[CoverageSurface, list[str]] = {
                 CoverageSurface.TASK: task_ids,
@@ -865,7 +1013,7 @@ def build_goal_coverage_map(
                 missing.append("symbols_or_interfaces")
             if not commands:
                 missing.append("validation_commands")
-            if not relevant_receipts:
+            if not relevant_receipts or unverified_commands:
                 missing.append("validation_receipts")
             if not provenance:
                 missing.append("receipt_provenance")
@@ -966,6 +1114,7 @@ def build_goal_coverage_map(
                     interfaces=interfaces,
                     validation_commands=commands,
                     validation_receipt_ids=sorted(receipt.receipt_id for receipt in relevant_receipts),
+                    unverified_validation_commands=unverified_commands,
                     provenance_cids=provenance,
                     missing_surfaces=missing,
                     edge_ids=sorted(set(criterion_edge_ids)),

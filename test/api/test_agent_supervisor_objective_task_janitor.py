@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+    completion_gate_receipts_from_decisions,
+    load_goal_completion_gate_records,
+)
 from ipfs_accelerate_py.agent_supervisor.objective_graph import ObjectiveGoal
 from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
     JANITOR_RECEIPT_SCHEMA,
@@ -253,6 +258,43 @@ def _goal_task(goal_id: str = "G1") -> PortalTask:
     )
 
 
+def _passing_completion_decision(*, evaluated_children=None):
+    evaluated_evidence = {
+        "acceptance_criteria": ["criterion one"],
+        "coverage": {
+            "criteria": [{"criterion": "criterion one", "status": "verified"}]
+        },
+        "validation_evidence": [{"valid": True, "evidence": {"provenance_cid": "bafy-proof"}}],
+        "analyzer_health": {"status": "healthy"},
+        "exhaustion_quorum": {"satisfied": True, "member_count": 2},
+        "analysis_result": {"terminal_reason": "exhausted", "safe_for_completion_reasoning": True},
+        "child_goals": list(evaluated_children or []),
+    }
+    return {
+        "state": "verified_complete",
+        "verified": True,
+        "reason_codes": [],
+        "actionable_reasons": [],
+        "completion_gate": {
+            "passed": True,
+            "reason_codes": [],
+            "actionable_reasons": [],
+            "checks": [
+                {"name": name, "passed": True, "reason_code": "", "evidence": {}}
+                for name in (
+                    "mandatory_coverage",
+                    "required_validations",
+                    "analyzer_health",
+                    "exhaustion_quorum",
+                    "analysis_terminal_state",
+                    "child_goals",
+                )
+            ],
+            "evaluated_evidence": evaluated_evidence,
+        },
+    }
+
+
 def test_reopened_goal_remains_schedulable_and_keeps_linked_work_open():
     result = reconcile_objective_task_strategy(
         goals=[ObjectiveGoal("G1", "Regressed objective", {"status": "reopened", "priority": "P0"})],
@@ -278,3 +320,113 @@ def test_verified_goal_retires_linked_work_as_completed(status: str):
 
     assert result["blocked_task_ids"] == ["AUTO-010"]
     assert result["receipts"][0]["retired_task_reason"] == "goal_completed"
+
+
+def test_supplied_failed_completion_gate_cannot_be_hidden_by_verified_status():
+    decision = _passing_completion_decision()
+    decision["completion_gate"]["passed"] = False
+    decision["completion_gate"]["reason_codes"] = ["analyzer_unhealthy"]
+    decision["completion_gate"]["checks"][2] = {
+        "name": "analyzer_health",
+        "passed": False,
+        "reason_code": "analyzer_unhealthy",
+        "evidence": {"status": "partial"},
+    }
+
+    result = reconcile_objective_task_strategy(
+        goals=[ObjectiveGoal("G1", "Unproven objective", {"status": "verified_complete"})],
+        tasks=[_goal_task()],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+        completion_decisions={"G1": decision},
+    )
+
+    assert result["blocked_task_ids"] == ["AUTO-010"]
+    assert result["receipts"][0]["retired_task_reason"] == "analyzer_unhealthy"
+    assert result["completion_gate_failed_goal_ids"] == ["G1"]
+    gate_receipt = result["completion_gate_receipts"][0]
+    assert gate_receipt["passed"] is False
+    assert "analyzer_unhealthy" in gate_receipt["reason_codes"]
+    assert "completion_gate_failed" in gate_receipt["reason_codes"]
+    assert gate_receipt["evaluated_evidence"] == decision["completion_gate"]["evaluated_evidence"]
+
+
+def test_passing_completion_gate_allows_prior_janitor_block_to_be_removed():
+    task = replace(
+        _goal_task(),
+        status="blocked",
+        metadata={
+            "goal id": "G1",
+            "blocked reason": "Retired by objective-task janitor because goal_not_active.",
+        },
+    )
+    prior_receipt = {
+        "schema": JANITOR_RECEIPT_SCHEMA,
+        "action": "block",
+        "task_id": task.task_id,
+    }
+
+    result = reconcile_objective_task_strategy(
+        goals=[ObjectiveGoal("G1", "Proven objective", {"status": "verified_complete"})],
+        tasks=[task],
+        strategy={
+            "blocked_tasks": [task.task_id],
+            "objective_task_janitor_receipts": [prior_receipt],
+        },
+        now="2026-07-22T00:00:00+00:00",
+        completion_decisions={"G1": _passing_completion_decision()},
+    )
+
+    assert result["removed_task_ids"] == ["AUTO-010"]
+    assert result["completion_gate_passed_goal_ids"] == ["G1"]
+    assert result["completion_gate_receipts"][0]["passed"] is True
+
+
+def test_parent_gate_does_not_hide_reopened_descendant():
+    child = {"goal_id": "G1.S1", "state": "verified_complete", "verified": True}
+    result = reconcile_objective_task_strategy(
+        goals=[
+            ObjectiveGoal("G1", "Parent", {"status": "verified_complete"}),
+            ObjectiveGoal("G1.S1", "Regressed child", {"status": "reopened", "parents": "G1"}),
+        ],
+        tasks=[_goal_task("G1")],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+        completion_decisions={
+            "G1": _passing_completion_decision(evaluated_children=[child]),
+        },
+    )
+
+    receipt = result["completion_gate_receipts"][0]
+    assert receipt["passed"] is False
+    assert "descendant_reopened" in receipt["reason_codes"]
+    assert receipt["descendants"] == [
+        {
+            "goal_id": "G1.S1",
+            "state": "reopened",
+            "passed": False,
+            "reason_codes": [],
+            "evaluated_evidence": {},
+        }
+    ]
+    assert result["receipts"][0]["retired_task_reason"] == "descendant_reopened"
+
+
+def test_gate_artifact_loader_rejects_malformed_per_goal_record(tmp_path):
+    artifact = tmp_path / "completion-gate.json"
+    artifact.write_text(json.dumps({"goals": {"G1": "passed"}}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="record for 'G1' must be an object"):
+        load_goal_completion_gate_records(artifact)
+
+
+def test_daemon_gate_receipt_rechecks_internal_checks_and_preserves_exact_evidence():
+    decision = _passing_completion_decision()
+    decision["completion_gate"]["checks"][3]["passed"] = False
+    decision["completion_gate"]["checks"][3]["reason_code"] = "exhaustion_quorum_unsatisfied"
+
+    receipt = completion_gate_receipts_from_decisions({"G1": decision})["G1"]
+
+    assert receipt["passed"] is False
+    assert "completion_gate_check_failed" in receipt["reason_codes"]
+    assert receipt["evaluated_evidence"] == decision["completion_gate"]["evaluated_evidence"]

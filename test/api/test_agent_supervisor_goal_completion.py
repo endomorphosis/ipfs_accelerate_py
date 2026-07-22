@@ -49,6 +49,9 @@ def _evaluate(
 ) -> GoalCompletionDecision:
     gate: dict[str, object] = {
         "coverage": {
+            "verified": True,
+            "repository_tree": CURRENT_TREE,
+            "evaluated_at": NOW.isoformat(),
             "criteria": [{
                 "criterion": "The public API returns a verified result.",
                 "status": "verified",
@@ -60,6 +63,24 @@ def _evaluate(
             "required_members": 2,
             "member_count": 2,
             "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+            "members": [
+                {
+                    "member_id": "normal-member",
+                    "evidence_channel": "exhaustive",
+                    "receipt_cid": "bafy-normal-scan",
+                    "scan_mode": "exhaustive",
+                    "finished_at": (NOW - timedelta(minutes=3)).isoformat(),
+                    "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+                },
+                {
+                    "member_id": "audit-member",
+                    "evidence_channel": "audit",
+                    "receipt_cid": "bafy-audit-scan",
+                    "scan_mode": "audit",
+                    "finished_at": (NOW - timedelta(minutes=2)).isoformat(),
+                    "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+                },
+            ],
         },
     }
     gate.update(gate_overrides or {})
@@ -76,17 +97,40 @@ def _evaluate(
 
 
 def _tracker_gate(identity, criterion: str = "criterion one") -> dict[str, object]:
+    evaluated_at = datetime.now(timezone.utc)
+    binding = {
+        "repository_id": identity.repository_id,
+        "tree_id": identity.tree_id,
+    }
     return {
-        "coverage": {"criteria": [{"criterion": criterion, "status": "verified"}]},
+        "coverage": {
+            "verified": True,
+            "repository_tree": identity.tree_id,
+            "evaluated_at": evaluated_at.isoformat(),
+            "criteria": [{"criterion": criterion, "status": "verified"}],
+        },
         "analyzer_health": {"status": "healthy"},
         "exhaustion_quorum": {
             "satisfied": True,
             "required_members": 2,
             "member_count": 2,
-            "binding": {
-                "repository_id": identity.repository_id,
-                "tree_id": identity.tree_id,
-            },
+            "binding": binding,
+            "members": [
+                {
+                    "member_id": "normal-member",
+                    "evidence_channel": "exhaustive",
+                    "receipt_cid": "bafy-normal-scan",
+                    "finished_at": evaluated_at.isoformat(),
+                    "binding": binding,
+                },
+                {
+                    "member_id": "audit-member",
+                    "evidence_channel": "audit",
+                    "receipt_cid": "bafy-audit-scan",
+                    "finished_at": evaluated_at.isoformat(),
+                    "binding": binding,
+                },
+            ],
         },
     }
 
@@ -213,6 +257,172 @@ def test_completion_gate_rejects_nonqualifying_analysis_proof(
     assert decision.verified is False
     assert reason_code in decision.reason_codes
     assert decision.to_dict()["completion_gate"]["evaluated_evidence"]
+
+
+def test_completion_gate_rejects_healthy_but_explicitly_unsafe_analyzer() -> None:
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={
+            "analyzer_health": {
+                "status": "healthy",
+                "healthy": True,
+                "safe_for_completion_reasoning": False,
+            }
+        },
+    )
+
+    assert decision.verified is False
+    assert "analyzer_completion_unsafe" in decision.reason_codes
+
+
+@pytest.mark.parametrize(
+    ("coverage_override", "reason_code"),
+    [
+        ({"verified": False}, "coverage_unverified"),
+        ({"reason_codes": ["contradicted_surface"]}, "coverage_unverified"),
+        ({"repository_tree": "sha256:old-tree"}, "coverage_tree_mismatch"),
+        ({"evaluated_at": (NOW - timedelta(hours=2)).isoformat()}, "coverage_stale"),
+        ({"evaluated_at": ["malformed"]}, "coverage_stale"),
+    ],
+)
+def test_completion_gate_rejects_contradictory_stale_or_malformed_coverage(
+    coverage_override: dict[str, object], reason_code: str
+) -> None:
+    coverage: dict[str, object] = {
+        "verified": True,
+        "repository_tree": CURRENT_TREE,
+        "evaluated_at": NOW.isoformat(),
+        "criteria": [{
+            "acceptance_criterion": "The public API returns a verified result.",
+            "status": "verified",
+        }],
+    }
+    coverage.update(coverage_override)
+
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={"coverage": coverage},
+    )
+
+    assert decision.verified is False
+    assert reason_code in decision.reason_codes
+
+
+@pytest.mark.parametrize(
+    "terminal_status",
+    ["partial", "skipped", "failed", "timed_out", "duplicate_only", "unsupported"],
+)
+def test_failed_terminal_validation_cannot_be_overridden_by_positive_summary(
+    terminal_status: str,
+) -> None:
+    decision = _evaluate([
+        _complete_evidence(
+            validation_passed=True,
+            validation_receipt={"status": terminal_status, "passed": True},
+        )
+    ])
+
+    assert decision.verified is False
+    assert "failed_validation" in decision.reason_codes
+
+
+@pytest.mark.parametrize(
+    "quorum_override",
+    [
+        {
+            "satisfied": True,
+            "required_members": 2,
+            "member_count": 2,
+            "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+        },
+        {
+            "satisfied": True,
+            "required_members": 2,
+            "member_count": 2,
+            "members": [],
+            "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+        },
+        {
+            "satisfied": True,
+            "quorum_met": False,
+            "required_members": 1,
+            "member_count": 1,
+            "members": [{
+                "member_id": "one",
+                "evidence_channel": "audit",
+                "receipt_cid": "bafy-one",
+                "finished_at": NOW.isoformat(),
+                "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+            }],
+            "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+        },
+    ],
+)
+def test_forged_or_contradictory_quorum_summary_fails_closed(
+    quorum_override: dict[str, object],
+) -> None:
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={"exhaustion_quorum": quorum_override},
+    )
+
+    assert decision.verified is False
+    assert any(code.startswith("exhaustion_quorum_") for code in decision.reason_codes)
+
+
+def test_nested_audit_receipt_is_normalized_without_losing_exact_input() -> None:
+    nested_analysis = {
+        "receipt": {
+            "terminal_reason": "exhausted",
+            "safe_for_completion_reasoning": True,
+            "receipt_cid": "bafy-audit-analysis",
+        },
+        "counts": {"novel": 0, "changed": 0},
+    }
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={"analysis_result": nested_analysis},
+    )
+
+    assert decision.verified is True
+    gate = decision.to_dict()["completion_gate"]
+    assert gate["evaluated_evidence"]["analysis_result"] == nested_analysis
+    assert "analysis_completion_safe" in gate["pass_reason_codes"]
+
+
+def test_parent_gate_recursively_rejects_hidden_reopened_descendant() -> None:
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={
+            "child_goals": [{
+                "goal_id": "G1.S1",
+                "state": "verified_complete",
+                "verified": True,
+                "completion_gate": {
+                    "passed": True,
+                    "evaluated_evidence": {
+                        "child_goals": [{
+                            "goal_id": "G1.S1.S1",
+                            "state": "reopened",
+                            "verified": False,
+                        }]
+                    },
+                },
+            }]
+        },
+    )
+
+    assert decision.verified is False
+    assert "child_reopened" in decision.reason_codes
+    children_check = next(
+        check for check in decision.gate.checks if check.name == "child_goals"
+    )
+    assert children_check.evidence["unverified_children"][0]["goal_id"] == "G1.S1.S1"
 
 
 @pytest.mark.parametrize("child_state", [GoalState.ANALYSIS_INCONCLUSIVE, GoalState.REOPENED])

@@ -39,6 +39,7 @@ from .backlog_refinery import (
 from .dataset_store import DatasetAuditSnapshotArtifact, ObjectiveDatasetStore
 from .scan_receipts import (
     DEFAULT_EXHAUSTION_QUORUM_SIZE,
+    DEFAULT_SCAN_FRESHNESS_SECONDS,
     ExhaustionBinding,
     ExhaustionQuorumResult,
     RefillScanResult,
@@ -465,24 +466,180 @@ class AuditScanResult:
             "snapshot_artifact": self.snapshot_artifact.to_dict() if self.snapshot_artifact else None,
         }
 
-    def completion_gate_evidence(self) -> dict[str, Any]:
-        """Project audit proof without allowing callers to manufacture safety."""
+    def completion_gate_evidence(
+        self,
+        *,
+        evaluated_at: datetime | str | None = None,
+        max_age_seconds: float = DEFAULT_SCAN_FRESHNESS_SECONDS,
+    ) -> dict[str, Any]:
+        """Return the exact, fail-closed audit proof consumed by completion.
 
+        A receipt's safety bit is necessary but deliberately insufficient.
+        This projection rechecks the terminal state, analyzer health, complete
+        exhaustive coverage, actionable findings, binding, quorum, and the age
+        of both the receipt and every quorum member.  It never infers success
+        from an empty or duplicate-only result.
+        """
+
+        if max_age_seconds < 0:
+            raise ValueError("max_age_seconds must be non-negative")
+
+        def utc(value: datetime | str | None) -> datetime | None:
+            if isinstance(value, datetime):
+                parsed = value
+            else:
+                text = str(value or "").strip()
+                if not text:
+                    return None
+                if text.endswith("Z"):
+                    text = f"{text[:-1]}+00:00"
+                try:
+                    parsed = datetime.fromisoformat(text)
+                except ValueError:
+                    return None
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+
+        instant = utc(evaluated_at) or datetime.now(timezone.utc)
         receipt = self.receipt.to_dict()
         metadata = receipt.get("metadata") if isinstance(receipt.get("metadata"), Mapping) else {}
+        health = dict(metadata.get("analyzer_health") or {})
+        quorum = self.quorum.to_dict()
+        binding = self.binding.to_dict()
+        terminal_reason = str(receipt.get("terminal_reason") or "").strip().lower()
+        health_status = str(health.get("status") or "").strip().lower()
+        coverage_complete = metadata.get("coverage_complete") is True
+        exhaustive = metadata.get("exhaustive") is True
+        summary = metadata.get("audit_summary")
+        summary = summary if isinstance(summary, Mapping) else {}
+        actionable_count = int(summary.get("novel", 0) or 0) + int(summary.get("changed", 0) or 0)
+
+        finished_at = utc(receipt.get("finished_at"))
+        receipt_age = (instant - finished_at).total_seconds() if finished_at is not None else None
+        receipt_fresh = bool(
+            finished_at is not None
+            and receipt_age is not None
+            and -1.0 <= receipt_age <= float(max_age_seconds)
+        )
+        stale_member_ids: list[str] = []
+        for member in quorum.get("members", ()):
+            if not isinstance(member, Mapping):
+                stale_member_ids.append("[invalid-member]")
+                continue
+            member_finished = utc(member.get("finished_at"))
+            member_age = (
+                (instant - member_finished).total_seconds()
+                if member_finished is not None
+                else None
+            )
+            if member_age is None or member_age < -1.0 or member_age > float(max_age_seconds):
+                stale_member_ids.append(str(member.get("member_id") or "[missing-member-id]"))
+        quorum_fresh = bool(quorum.get("members")) and not stale_member_ids
+
+        reason_codes: list[str] = []
+        if terminal_reason != ScanTerminalReason.EXHAUSTED.value:
+            reason_codes.append(f"analysis_{terminal_reason or 'terminal_state_missing'}")
+        if self.receipt.safe_for_completion_reasoning is not True:
+            reason_codes.append("analysis_not_completion_safe")
+        if health_status != AnalyzerHealthStatus.HEALTHY.value:
+            reason_codes.append("analyzer_health_missing" if not health_status else "analyzer_unhealthy")
+        if not coverage_complete:
+            reason_codes.append("coverage_incomplete")
+        if not exhaustive:
+            reason_codes.append("analysis_not_exhaustive")
+        if actionable_count:
+            reason_codes.append("actionable_audit_findings")
+        if self.quorum.satisfied is not True:
+            reason_codes.append("exhaustion_quorum_unsatisfied")
+        if self.quorum.binding != self.binding:
+            reason_codes.append("exhaustion_quorum_binding_mismatch")
+        if not receipt_fresh:
+            reason_codes.append("audit_evidence_stale")
+        if not quorum_fresh:
+            reason_codes.append("exhaustion_quorum_evidence_stale")
+        if receipt.get("error"):
+            reason_codes.append("analysis_error")
+        escalation = metadata.get("analysis_escalation")
+        if isinstance(escalation, Mapping) and escalation.get("exhaustion_eligible") is not True:
+            reason_codes.append("analysis_escalation_ineligible")
+        reason_codes = list(dict.fromkeys(reason_codes))
+        passed = not reason_codes
+
+        # The health safety flag describes this exact health observation in
+        # context; it is not a replacement for the receipt or quorum verdict.
+        health["safe_for_completion_reasoning"] = bool(
+            health_status == AnalyzerHealthStatus.HEALTHY.value
+            and coverage_complete
+            and exhaustive
+        )
+        freshness = {
+            "evaluated_at": instant.isoformat(),
+            "max_age_seconds": float(max_age_seconds),
+            "receipt_finished_at": finished_at.isoformat() if finished_at else "",
+            "receipt_age_seconds": receipt_age,
+            "receipt_fresh": receipt_fresh,
+            "quorum_fresh": quorum_fresh,
+            "stale_member_ids": stale_member_ids,
+        }
+        evaluated_evidence = {
+            "receipt": receipt,
+            "analyzer_health": health,
+            "exhaustion_quorum": quorum,
+            "binding": binding,
+            "freshness": freshness,
+            "audit_records": [item.to_dict() for item in self.records],
+            "inventory": self.inventory.details_dict(),
+        }
         return {
             "schema": "ipfs_accelerate_py.agent_supervisor.audit_completion_gate.v1",
+            "passed": passed,
+            "pass_reasons": ["healthy_fresh_exhaustive_quorum_satisfied"] if passed else [],
+            "fail_reasons": [
+                {"code": code, "message": _audit_gate_reason(code)} for code in reason_codes
+            ],
+            "reason_codes": reason_codes,
+            "terminal_reason": terminal_reason,
+            "status": terminal_reason,
+            "receipt": receipt,
             "analysis_result": receipt,
-            "analyzer_health": dict(metadata.get("analyzer_health") or {}),
-            "exhaustion_quorum": self.quorum.to_dict(),
-            "binding": self.binding.to_dict(),
-            "safe_for_completion_reasoning": bool(
-                self.receipt.safe_for_completion_reasoning and self.quorum.satisfied
-            ),
+            "analyzer_health": health,
+            "exhaustion_quorum": quorum,
+            "binding": binding,
+            "repository_id": binding.get("repository_id", ""),
+            "repository_tree": binding.get("tree_id", ""),
+            "coverage_complete": coverage_complete,
+            "exhaustive": exhaustive,
+            "actionable_finding_count": actionable_count,
+            "freshness": freshness,
+            "safe_for_completion_reasoning": passed,
+            "evaluated_evidence": evaluated_evidence,
         }
 
 
 AuditScanReport = AuditScanResult
+
+
+_AUDIT_GATE_REASON_MESSAGES: Mapping[str, str] = {
+    "analysis_not_completion_safe": "The receipt was not explicitly marked safe for completion reasoning.",
+    "analyzer_health_missing": "The receipt does not contain an analyzer health verdict.",
+    "analyzer_unhealthy": "The analyzer health verdict is not healthy.",
+    "coverage_incomplete": "The analyzer did not cover its complete configured inventory.",
+    "analysis_not_exhaustive": "The scan was not exhaustive.",
+    "actionable_audit_findings": "The audit contains novel or changed actionable findings.",
+    "exhaustion_quorum_unsatisfied": "The configured independent exhaustion quorum is not satisfied.",
+    "exhaustion_quorum_binding_mismatch": "The quorum is not bound to this audit repository snapshot.",
+    "audit_evidence_stale": "The audit receipt is missing a current completion timestamp or is stale.",
+    "exhaustion_quorum_evidence_stale": "At least one required quorum member is missing a current timestamp or is stale.",
+    "analysis_error": "The audit receipt contains an analysis error.",
+    "analysis_escalation_ineligible": "The bounded escalation result is inconclusive or ineligible for exhaustion proof.",
+}
+
+
+def _audit_gate_reason(code: str) -> str:
+    if code.startswith("analysis_") and code not in _AUDIT_GATE_REASON_MESSAGES:
+        return f"The audit terminal state {code.removeprefix('analysis_')!r} cannot prove completion."
+    return _AUDIT_GATE_REASON_MESSAGES.get(code, "The audit evidence cannot prove completion.")
 
 
 def _audit_scope_id(repository_id: str) -> str:
