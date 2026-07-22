@@ -1167,7 +1167,7 @@ class PortalImplementationDaemon:
             deprioritized_task_ids=strategy_deprioritized_task_ids,
         )
         merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
-        periodic_maintenance = self._periodic_maintenance()
+        self._periodic_maintenance()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
         unresolved_merge_failure_task_ids = set(unresolved_merge_failures)
         transient_merge_deferrals = self._transient_merge_deferrals_by_task(skip_task_ids=merge_skip_task_ids)
@@ -3280,6 +3280,32 @@ class PortalImplementationDaemon:
         status = self._run_git(["status", "--porcelain"], cwd=worktree_path).stdout.strip()
         staged_status = self._staged_worktree_status(worktree_path)
         if not staged_status:
+            if self._submodule_results_have_commits(submodule_results):
+                self._run_git(
+                    [
+                        "-c",
+                        "user.name=Implementation Daemon",
+                        "-c",
+                        "user.email=implementation-daemon@example.invalid",
+                        "commit",
+                        "--allow-empty",
+                        "-m",
+                        f"{task.task_id}: {task.title or 'implementation attempt'}",
+                        "-m",
+                        f"Attempt: {attempt}",
+                        "-m",
+                        "Handoff: committed submodule changes",
+                    ],
+                    cwd=worktree_path,
+                )
+                commit_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
+                return {
+                    "committed": True,
+                    "commit": commit_ref,
+                    "reason": "submodule_only",
+                    "status": status,
+                    "submodule_results": submodule_results,
+                }
             result: dict[str, Any] = {"committed": False, "reason": "no_changes"}
             if status:
                 result["status"] = status
@@ -3309,6 +3335,16 @@ class PortalImplementationDaemon:
         if submodule_results:
             result["submodule_results"] = submodule_results
         return result
+
+    @classmethod
+    def _submodule_results_have_commits(cls, results: Sequence[dict[str, Any]]) -> bool:
+        for result in results:
+            if result.get("committed", False):
+                return True
+            nested = result.get("nested_submodule_results")
+            if isinstance(nested, list) and cls._submodule_results_have_commits(nested):
+                return True
+        return False
 
     def _commit_worktree_submodule_changes(
         self,
@@ -5074,6 +5110,24 @@ class PortalImplementationDaemon:
 
         if not baseline_ref:
             return True
+        tree_entry = subprocess.run(
+            ["git", "ls-tree", baseline_ref, "--", relative],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if tree_entry.returncode != 0:
+            return True
+        exact_gitlink = any(
+            line.startswith("160000 ") and line.partition("\t")[2] == relative
+            for line in tree_entry.stdout.splitlines()
+        )
+        # A configured path may point through a parent submodule to a deeper
+        # repository. The root tree cannot express that nested branch change,
+        # so it must be reconciled conservatively instead of being skipped.
+        if not exact_gitlink:
+            return True
         # ``git diff --quiet`` returns 1 for a normal, positive finding. Do
         # not route it through ``_run_git``, which correctly treats any
         # non-zero status as an operational failure for mutating commands.
@@ -5205,7 +5259,15 @@ class PortalImplementationDaemon:
                 )
                 continue
             dirty = self._run_git(["status", "--porcelain"], cwd=source).stdout.strip()
-            if dirty:
+            dirty_paths = self._dirty_status_paths(dirty)
+            changed_paths = self._branch_changed_paths_in_repo(
+                source,
+                submodule_branch,
+                base_ref=default_branch,
+            )
+            dirty_overlap = self._overlapping_paths(dirty_paths, changed_paths)
+            preserved_dirty_paths = sorted(set(dirty_paths) - set(dirty_overlap))
+            if dirty_overlap:
                 llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
                     workspace=source,
                     task=task,
@@ -5216,11 +5278,19 @@ class PortalImplementationDaemon:
                     merge_stdout="",
                     merge_stderr="",
                     reason="submodule_checkout_dirty",
-                    dirty_paths=self._dirty_status_paths(dirty),
+                    dirty_paths=dirty_overlap,
                 )
                 if llm_merge_resolver.get("applied", False):
                     dirty = self._run_git(["status", "--porcelain"], cwd=source).stdout.strip()
-                if not dirty:
+                    dirty_paths = self._dirty_status_paths(dirty)
+                    changed_paths = self._branch_changed_paths_in_repo(
+                        source,
+                        submodule_branch,
+                        base_ref=default_branch,
+                    )
+                    dirty_overlap = self._overlapping_paths(dirty_paths, changed_paths)
+                    preserved_dirty_paths = sorted(set(dirty_paths) - set(dirty_overlap))
+                if not dirty_overlap:
                     self._record_event(
                         "submodule_checkout_blocker_resolved",
                         {
@@ -5240,7 +5310,8 @@ class PortalImplementationDaemon:
                         "merged": False,
                         "reason": "submodule_checkout_dirty",
                         "status": dirty,
-                        "dirty_paths": self._dirty_status_paths(dirty),
+                        "dirty_paths": dirty_overlap,
+                        "preserved_dirty_paths": preserved_dirty_paths,
                         "llm_merge_resolver": llm_merge_resolver,
                     }
                     results.append(result)
@@ -5389,6 +5460,8 @@ class PortalImplementationDaemon:
                 result["llm_merge_commit_result"] = llm_merge_commit_result
             if nested_gitlink_repair:
                 result["nested_gitlink_repair"] = nested_gitlink_repair
+            if preserved_dirty_paths:
+                result["preserved_dirty_paths"] = preserved_dirty_paths
             if merge.returncode == 0:
                 result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
                 # Post-merge validation: ensure submodule is in a healthy state
@@ -6605,6 +6678,46 @@ class PortalImplementationDaemon:
         if result.returncode != 0:
             return set()
         return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+    @staticmethod
+    def _branch_changed_paths_in_repo(
+        repo_path: Path,
+        branch_name: str,
+        *,
+        base_ref: str,
+    ) -> set[str] | None:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"{base_ref}...{branch_name}"],
+            cwd=repo_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+    @staticmethod
+    def _paths_overlap(left: str, right: str) -> bool:
+        left = left.rstrip("/")
+        right = right.rstrip("/")
+        return left == right or left.startswith(f"{right}/") or right.startswith(f"{left}/")
+
+    @classmethod
+    def _overlapping_paths(
+        cls,
+        dirty_paths: Sequence[str],
+        changed_paths: set[str] | None,
+    ) -> list[str]:
+        if changed_paths is None:
+            return sorted(set(dirty_paths))
+        return sorted(
+            {
+                dirty
+                for dirty in dirty_paths
+                if any(cls._paths_overlap(dirty, changed) for changed in changed_paths)
+            }
+        )
 
     def _branch_merge_base(self, branch_name: str, target_branch: str) -> str:
         result = subprocess.run(

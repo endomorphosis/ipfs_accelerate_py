@@ -15,16 +15,20 @@ DEFAULT_CHECKOUT_MUTATION_LOCK_NAME = "implementation-main-merge.lock"
 def git_common_dir(repo_root: Path) -> Path:
     """Return the repository common git directory for a checkout."""
 
-    result = subprocess.run(
-        ["git", "rev-parse", "--git-common-dir"],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0 or not result.stdout.strip():
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
         return repo_root / ".git"
-    path = Path(result.stdout.strip())
+    stdout = result.stdout or ""
+    if result.returncode != 0 or not stdout.strip():
+        return repo_root / ".git"
+    path = Path(stdout.strip())
     return path if path.is_absolute() else repo_root / path
 
 

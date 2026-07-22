@@ -3698,6 +3698,63 @@ def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     return repo, submodule
 
 
+def test_implementation_daemon_creates_parent_handoff_for_submodule_only_commit(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["outer/inner"],
+    )
+    submodule_results = [
+        {
+            "path": "outer/inner",
+            "committed": True,
+            "commit": "a" * 40,
+        }
+    ]
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_submodule_changes",
+        lambda *_args, **_kwargs: submodule_results,
+    )
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        PortalTask(
+            task_id="AUTO-120",
+            title="Commit nested implementation",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["committed"] is True
+    assert result["reason"] == "submodule_only"
+    assert result["submodule_results"] == submodule_results
+    assert result["commit"] != baseline
+    assert _git(repo, "diff", "--quiet", baseline, result["commit"]) == ""
+
+
 def _seed_parent_with_divergent_gitlinks(
     tmp_path: Path,
     *,
@@ -4175,6 +4232,67 @@ def test_implementation_daemon_detects_changed_submodule_gitlink_without_error(t
     ) is True
 
 
+def test_implementation_daemon_treats_nested_configured_path_as_changed(tmp_path):
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "branch", "implementation/auto-119")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child/nested/target"],
+    )
+
+    assert daemon._root_submodule_changed_in_task(
+        "implementation/auto-119",
+        baseline_ref,
+        "libs/child/nested/target",
+    ) is True
+
+
+def test_implementation_daemon_merges_submodule_with_nonoverlapping_dirty_paths(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    parent_branch = "implementation/auto-121"
+    submodule_branch = daemon._submodule_worktree_branch_name(parent_branch, "libs/child")
+    _git(submodule, "checkout", "-b", submodule_branch)
+    (submodule / "task-owned.txt").write_text("task work\n", encoding="utf-8")
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "AUTO-121: task work")
+    task_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "main")
+    (submodule / "child.txt").write_text("preserved local dirt\n", encoding="utf-8")
+
+    results = daemon._merge_submodule_branches_to_main(
+        parent_branch,
+        task=PortalTask(
+            task_id="AUTO-121",
+            title="Merge around local dirt",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert results[0]["merged"] is True
+    assert results[0]["preserved_dirty_paths"] == ["child.txt"]
+    assert _git(submodule, "merge-base", "--is-ancestor", task_commit, "main") == ""
+    assert (submodule / "child.txt").read_text(encoding="utf-8") == "preserved local dirt\n"
+
+
 def test_implementation_daemon_preserves_nested_tmp_and_allows_unchanged_dirty_submodule(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     (repo / "README.md").write_text("base\n", encoding="utf-8")
@@ -4313,7 +4431,7 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     _git(submodule, "commit", "-m", "AUTO-116: child change")
     submodule_commit = _git(submodule, "rev-parse", "HEAD")
     _git(submodule, "checkout", "main")
-    (submodule / "child.txt").write_text("temporarily dirty\n", encoding="utf-8")
+    (submodule / "feature.txt").write_text("temporarily dirty\n", encoding="utf-8")
 
     state_dir = tmp_path / "supervisor-state"
     daemon = TodoImplementationDaemon(
@@ -4343,7 +4461,7 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
     assert "libs/child" in checkpoint["failed_submodules"]
 
-    _git(submodule, "restore", "child.txt")
+    (submodule / "feature.txt").unlink()
     daemon._record_event(
         "implementation_finished",
         {
