@@ -21,7 +21,7 @@ import tempfile
 from dataclasses import asdict, dataclass, field, is_dataclass
 from hashlib import sha1
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Mapping, MutableMapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 
 DEFAULT_SURFACE_WEIGHTS: dict[str, float] = {
@@ -321,6 +321,49 @@ def build_conflict_surface(
                 "submodules", "generated_artifacts", "allow_concurrent_with",
             }
         },
+    )
+
+
+def _merge_duplicate_surfaces(
+    left: ConflictSurface,
+    right: ConflictSurface,
+) -> ConflictSurface:
+    """Coalesce aliases that resolve to the same canonical task identity."""
+
+    if left.task_cid != right.task_cid:
+        raise ValueError("cannot merge conflict surfaces with different task CIDs")
+
+    ordered = sorted(
+        (left, right),
+        key=lambda surface: (
+            surface.task_id,
+            json.dumps(surface.metadata, sort_keys=True, default=str),
+        ),
+    )
+    representative = ordered[0]
+    aliases = {
+        left.task_id,
+        right.task_id,
+        *[str(value) for value in left.metadata.get("task_id_aliases", [])],
+        *[str(value) for value in right.metadata.get("task_id_aliases", [])],
+    }
+    metadata = dict(representative.metadata)
+    metadata["task_id_aliases"] = sorted(alias for alias in aliases if alias)
+    return ConflictSurface(
+        task_id=representative.task_id,
+        task_cid=representative.task_cid,
+        files=sorted(set(left.files) | set(right.files)),
+        changed_paths=sorted(set(left.changed_paths) | set(right.changed_paths)),
+        ast_symbols=sorted(set(left.ast_symbols) | set(right.ast_symbols)),
+        interfaces=sorted(set(left.interfaces) | set(right.interfaces)),
+        submodules=sorted(set(left.submodules) | set(right.submodules)),
+        generated_artifacts=sorted(
+            set(left.generated_artifacts) | set(right.generated_artifacts)
+        ),
+        allow_concurrent_with=sorted(
+            set(left.allow_concurrent_with) | set(right.allow_concurrent_with)
+        ),
+        metadata=metadata,
     )
 
 
@@ -871,22 +914,32 @@ def materialize_task_conflict_graph(
     learned = history if isinstance(history, ConflictWeightHistory) else ConflictWeightHistory.from_dict(history)
     diffs = _branch_diff_map(branch_diffs)
     surfaces: dict[str, ConflictSurface] = {}
+    observed_paths_by_cid: dict[str, set[str]] = {}
     for task in tasks:
         surface = build_conflict_surface(task, repo_root=repo_root)
         observed_paths = diffs.get(surface.task_cid, []) + diffs.get(surface.task_id, [])
         if observed_paths:
             normalized = _normalized_paths([*surface.changed_paths, *observed_paths], repo_root)
             surface = ConflictSurface(**{**asdict(surface), "changed_paths": normalized})
-            learned.observe_diff(surface.task_cid, observed_paths, repo_root=repo_root)
+            observed_paths_by_cid.setdefault(surface.task_cid, set()).update(
+                _normalized_paths(observed_paths, repo_root)
+            )
         if surface.task_cid in surfaces:
-            raise ValueError(f"duplicate conflict-graph task CID: {surface.task_cid}")
+            surface = _merge_duplicate_surfaces(surfaces[surface.task_cid], surface)
         surfaces[surface.task_cid] = surface
+
+    for task_cid, observed_paths in observed_paths_by_cid.items():
+        learned.observe_diff(task_cid, observed_paths, repo_root=repo_root)
 
     receipts = _receipts(conflict_receipts)
     identity_aliases = {
         identity: surface.task_cid
         for surface in surfaces.values()
-        for identity in {surface.task_id, surface.task_cid}
+        for identity in {
+            surface.task_id,
+            surface.task_cid,
+            *[str(value) for value in surface.metadata.get("task_id_aliases", [])],
+        }
     }
     for receipt in receipts:
         left, right = _receipt_pair(receipt)

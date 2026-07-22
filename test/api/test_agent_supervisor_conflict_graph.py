@@ -233,6 +233,48 @@ def test_actual_diffs_and_conflict_receipts_increase_future_pair_weight(tmp_path
     assert "historical_task_pair" in decision.explanation
 
 
+def test_duplicate_canonical_tasks_are_coalesced_conservatively(tmp_path: Path) -> None:
+    tasks = [
+        {
+            "task_id": "REF-064",
+            "task_cid": "cid-shared",
+            "predicted_files": ["src/later.py"],
+            "ast_symbols": ["Later.run"],
+        },
+        {
+            "task_id": "REF-057",
+            "task_cid": "cid-shared",
+            "predicted_files": ["src/earlier.py"],
+            "ast_symbols": ["Earlier.run"],
+        },
+    ]
+
+    graph = materialize_task_conflict_graph(
+        tasks,
+        repo_root=tmp_path,
+        branch_diffs={
+            "REF-057": ["src/observed-earlier.py"],
+            "REF-064": ["src/observed-later.py"],
+        },
+    )
+
+    assert list(graph.surfaces) == ["cid-shared"]
+    surface = graph.surfaces["cid-shared"]
+    assert surface.task_id == "REF-057"
+    assert surface.files == ["src/earlier.py", "src/later.py"]
+    assert surface.changed_paths == [
+        "src/observed-earlier.py",
+        "src/observed-later.py",
+    ]
+    assert {"Earlier.run", "Later.run"}.issubset(surface.ast_symbols)
+    assert surface.metadata["task_id_aliases"] == ["REF-057", "REF-064"]
+    assert graph.history.observation_count == 1
+    assert graph.history.path_weights == {
+        "src/observed-earlier.py": 1.0,
+        "src/observed-later.py": 1.0,
+    }
+
+
 def test_bundle_lane_planner_projects_blocking_edges_but_honors_overrides(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
