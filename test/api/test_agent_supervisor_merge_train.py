@@ -106,6 +106,91 @@ def test_queue_combines_priority_with_age_fairness(tmp_path: Path) -> None:
     assert claimed.request_id == old.request_id
 
 
+def test_pending_request_does_not_expire_without_consumer_claim(tmp_path: Path) -> None:
+    now = [0.0]
+    queue = MergeQueue(tmp_path / "queue", clock=lambda: now[0], max_age_seconds=10)
+    request = queue.enqueue(
+        branch_name="implementation/waiting",
+        task_id="WAITING",
+        commit_sha="a" * 40,
+    )
+
+    now[0] = 60.0
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+
+    assert claimed is not None
+    assert claimed.request_id == request.request_id
+    assert claimed.status == "processing"
+    assert claimed.attempt == 1
+    assert claimed.failure_count == 0
+
+
+def test_queue_can_revive_false_positive_quarantine(tmp_path: Path) -> None:
+    now = [10.0]
+    queue = MergeQueue(tmp_path / "queue", clock=lambda: now[0])
+    request = queue.enqueue(
+        branch_name="implementation/recoverable",
+        task_id="RECOVERABLE",
+        commit_sha="b" * 40,
+    )
+    quarantine_path = queue.quarantine(
+        request,
+        reason="pending request exceeded max age",
+    )
+    assert quarantine_path is not None and quarantine_path.exists()
+
+    now[0] = 20.0
+    revived = queue.revive_quarantined(
+        request.request_id,
+        reason="host resumed after suspension",
+        reset_failures=True,
+    )
+
+    assert revived is not None
+    assert revived.status == "pending"
+    assert revived.attempt == 1
+    assert revived.failure_count == 0
+    assert revived.failure_reason == ""
+    assert revived.file_path is not None and revived.file_path.parent == queue.pending_dir
+    assert not quarantine_path.exists()
+    assert revived.metadata["revivals"] == [
+        {
+            "at": 20.0,
+            "reason": "host resumed after suspension",
+            "previous_enqueued_at": 10.0,
+            "previous_failure_count": 1,
+            "previous_failure_reason": "pending request exceeded max age",
+        }
+    ]
+
+
+def test_expired_processing_claim_is_recovered(tmp_path: Path) -> None:
+    now = [10.0]
+    queue = MergeQueue(
+        tmp_path / "queue",
+        clock=lambda: now[0],
+        max_age_seconds=10,
+        max_attempts=3,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/abandoned",
+        task_id="ABANDONED",
+        commit_sha="c" * 40,
+    )
+    first_claim = queue.dequeue(consumer_id="worker-that-exited")
+    assert first_claim is not None
+
+    now[0] = 30.0
+    recovered = queue.dequeue(consumer_id="replacement-worker")
+
+    assert recovered is not None
+    assert recovered.request_id == request.request_id
+    assert recovered.status == "processing"
+    assert recovered.attempt == 2
+    assert recovered.failure_count == 1
+    assert recovered.failure_reason == "consumer claim expired; request recovered"
+
+
 def test_train_rebases_candidate_on_latest_target_and_updates_target(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     base = _git(repo, "rev-parse", "HEAD")

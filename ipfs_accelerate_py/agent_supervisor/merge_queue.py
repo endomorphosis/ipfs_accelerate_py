@@ -608,6 +608,69 @@ class MergeQueue:
         assert row is not None
         return self._write_stage_receipt(self._request_from_row(row))
 
+    def revive_quarantined(
+        self,
+        request: MergeRequest | str,
+        reason: str = "",
+        *,
+        reset_failures: bool = False,
+    ) -> MergeRequest | None:
+        """Return a quarantined request to pending after operator review.
+
+        The operation is atomic and idempotent.  A revival record is retained
+        in request metadata so administrative recovery does not erase why the
+        candidate was quarantined.  ``reset_failures`` is intended for false
+        positives such as a host suspension while a request was still pending.
+        """
+
+        request_id = request.request_id if isinstance(request, MergeRequest) else str(request)
+        now = self._clock()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?", (request_id,)
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            if str(row["status"]) != "quarantined":
+                connection.commit()
+                return self._request_from_row(row)
+
+            request_metadata = json.loads(row["metadata_json"] or "{}")
+            request_metadata.setdefault("revivals", []).append(
+                {
+                    "at": now,
+                    "reason": str(reason),
+                    "previous_enqueued_at": float(row["enqueued_at"]),
+                    "previous_failure_count": int(row["failure_count"]),
+                    "previous_failure_reason": str(row["failure_reason"]),
+                }
+            )
+            failure_count = 0 if reset_failures else int(row["failure_count"])
+            attempt = 1 if reset_failures else int(row["attempt"])
+            connection.execute(
+                """UPDATE merge_requests SET status='pending', enqueued_at=?, attempt=?,
+                   failure_count=?, failure_reason='', metadata_json=?, claimed_at=0,
+                   consumer_id='', finished_at=0, updated_at=? WHERE request_id=?""",
+                (
+                    now,
+                    attempt,
+                    failure_count,
+                    json.dumps(request_metadata, sort_keys=True, separators=(",", ":")),
+                    now,
+                    request_id,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?", (request_id,)
+            ).fetchone()
+            connection.commit()
+        assert row is not None
+        revived = self._request_from_row(row)
+        receipt_path = self._write_stage_receipt(revived)
+        return replace(revived, file_path=receipt_path)
+
     def get(self, request_id: str) -> MergeRequest | None:
         """Return the current durable request by id."""
 
@@ -686,7 +749,12 @@ class MergeQueue:
         return False
 
     def _purge_stale(self) -> int:
-        """Recover abandoned claims and quarantine requests beyond their bounds."""
+        """Recover abandoned consumer claims that exceeded their lease bound.
+
+        Pending requests have no consumer lease and therefore do not expire.
+        Queue capacity and explicit cancellation bound their lifetime.  This
+        distinction also keeps a suspended host from quarantining valid work.
+        """
 
         if self.max_age_seconds <= 0:
             return 0
@@ -695,16 +763,15 @@ class MergeQueue:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
-                "SELECT * FROM merge_requests WHERE status IN ('pending','processing')"
+                "SELECT * FROM merge_requests WHERE status='processing'"
             ).fetchall()
             for row in rows:
-                status = str(row["status"])
                 reference_time = float(row["claimed_at"] or row["enqueued_at"])
                 if now - reference_time <= self.max_age_seconds:
                     continue
                 attempt = int(row["attempt"])
                 failure_count = int(row["failure_count"])
-                if status == "processing" and attempt < self.max_attempts:
+                if attempt < self.max_attempts:
                     new_status = "pending"
                     new_attempt = attempt + 1
                     failure_count += 1
@@ -714,7 +781,7 @@ class MergeQueue:
                     new_status = "quarantined"
                     new_attempt = attempt
                     failure_count = max(1, failure_count)
-                    reason = f"{status} request exceeded max age"
+                    reason = "processing request exceeded max age"
                     finished_at = now
                 connection.execute(
                     """UPDATE merge_requests SET status=?, attempt=?, failure_count=?,
