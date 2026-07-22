@@ -33,6 +33,7 @@ from ..persistent_task_queue import PersistentTaskQueue
 from ..task_identity import TaskIdentity, canonical_task_identity
 from ..git_gc import GitGarbageCollector
 from ..merge_checkpoint import MergeCheckpoint
+from ..merge_queue import MergeQueue
 from ..validation_commands import split_validation_commands
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
@@ -799,6 +800,8 @@ class PortalImplementationDaemon:
         merged_worktree_cleanup_max: int | None = None,
         task_shard_count: int = 1,
         task_shard_index: int = 0,
+        merge_queue: MergeQueue | None = None,
+        merge_queue_dir: Path | None = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -839,6 +842,12 @@ class PortalImplementationDaemon:
         self.task_shard_index = int(task_shard_index)
         if self.task_shard_index < 0 or self.task_shard_index >= self.task_shard_count:
             raise ValueError("task_shard_index must be in range [0, task_shard_count)")
+        # Lane state directories are intentionally isolated, so the merge train
+        # cannot live next to ``state_path``.  The git common directory is shared
+        # by every worktree and supervisor lane for this repository.
+        default_merge_queue_dir = checkout_mutation_lock_path(self.repo_root).parent / "agent-merge-train"
+        self.merge_queue_dir = merge_queue_dir or default_merge_queue_dir
+        self.merge_queue = merge_queue or MergeQueue(self.merge_queue_dir)
         configured_submodules = (
             DEFAULT_WORKTREE_SUBMODULE_PATHS
             if worktree_submodule_paths is None
@@ -1115,6 +1124,18 @@ class PortalImplementationDaemon:
         if not tasks:
             return self._record_empty_backlog_state(reason="no_tasks_found")
         aliases_by_cid = self._register_task_identities(tasks)
+        merge_train_progress: dict[str, Any] | None = None
+        try:
+            merge_train_progress = self._consume_one_merge_candidate()
+        except Exception as exc:
+            self._record_event(
+                "merge_train_consumer_deferred",
+                {
+                    "reason": "merge_train_consumer_unavailable",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                },
+            )
         previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         now = utc_now()
@@ -1152,6 +1173,8 @@ class PortalImplementationDaemon:
         transient_merge_deferrals = self._transient_merge_deferrals_by_task(skip_task_ids=merge_skip_task_ids)
         transient_merge_deferral_task_ids = set(transient_merge_deferrals)
         recent_outcomes = self._latest_implementation_finished_by_task()
+        queued_merge_task_ids = self._pending_queued_merge_task_ids(recent_outcomes)
+        quarantined_merge_task_ids = self._quarantined_queued_merge_task_ids(recent_outcomes)
         successfully_merged_task_ids = self._successfully_merged_task_ids()
         merged_status_repair: dict[str, Any] = {}
         stale_merged_completed_task_ids = [
@@ -1219,6 +1242,12 @@ class PortalImplementationDaemon:
                 continue
             if task.task_id in transient_merge_deferral_task_ids:
                 resolved_statuses[task.task_id] = "waiting"
+                continue
+            if task.task_id in queued_merge_task_ids:
+                resolved_statuses[task.task_id] = "waiting"
+                continue
+            if task.task_id in quarantined_merge_task_ids:
+                resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in unresolved_merge_failure_task_ids:
                 resolved_statuses[task.task_id] = "blocked"
@@ -1418,6 +1447,7 @@ class PortalImplementationDaemon:
             "merged_status_repair": merged_status_repair,
             "active_task_claims": sorted(active_task_claims),
             "canonical_task_count": len(aliases_by_cid),
+            "merge_train_progress": merge_train_progress,
         }
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
@@ -2057,6 +2087,188 @@ class PortalImplementationDaemon:
             return set()
         return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
+    def _enqueue_merge_candidate(
+        self,
+        *,
+        branch_name: str,
+        implementation_commit: str,
+        baseline_ref: str,
+        worktree_path: Path,
+        task: PortalTask,
+        attempt: int,
+    ) -> tuple[Any, dict[str, Any]]:
+        """Durably hand a validated implementation to the repo-wide merge train.
+
+        This is the only merge handoff used by implementation lanes.  The
+        canonical task identity and immutable implementation commit form the
+        queue's deduplication key; the remaining metadata is sufficient for a
+        train consumer to reproduce the daemon's historical merge lifecycle.
+        """
+
+        identity = self._identity_for_task(task)
+        work_order = self._bundle_work_order_for_task(task)
+        metadata = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@1",
+            "baseline_ref": baseline_ref,
+            "implementation_commit": implementation_commit,
+            "worktree_path": str(worktree_path),
+            "todo_path": str(self.todo_path),
+            "state_path": str(self.state_path),
+            "strategy_path": str(self.strategy_path),
+            "events_path": str(self.events_path),
+            "repo_root": str(self.repo_root),
+            "task_header_prefix": self.task_header_prefix,
+            "task": asdict(task),
+        }
+        if work_order is not None:
+            metadata["bundle_work_order"] = work_order.to_dict()
+        request = self.merge_queue.enqueue(
+            branch_name=branch_name,
+            task_id=task.task_id,
+            priority=task.priority,
+            lane_id=f"{os.getpid()}:{self.task_shard_index}",
+            attempt=attempt,
+            metadata=metadata,
+            commit_sha=implementation_commit,
+            canonical_task_id=identity.canonical_task_cid,
+            canonical_task_key=identity.canonical_task_key,
+        )
+        result = {
+            "attempted": False,
+            "merged": False,
+            "queued": True,
+            "reason": "merge_queued",
+            "request_id": str(request.request_id),
+            "branch": branch_name,
+            "implementation_commit": implementation_commit,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "queue_dir": str(self.merge_queue_dir),
+        }
+        self._record_event(
+            "merge_candidate_enqueued",
+            {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "branch": branch_name,
+                "baseline_ref": baseline_ref,
+                "implementation_commit": implementation_commit,
+                "worktree_path": str(worktree_path),
+                **result,
+            },
+        )
+        return request, result
+
+    @staticmethod
+    def _portal_task_from_merge_request(request: Any) -> PortalTask:
+        task_payload = request.metadata.get("task") if isinstance(request.metadata, dict) else {}
+        if not isinstance(task_payload, dict):
+            task_payload = {}
+        field_names = set(PortalTask.__dataclass_fields__)
+        values = {key: value for key, value in task_payload.items() if key in field_names}
+        values.setdefault("task_id", str(request.task_id or ""))
+        values.setdefault("title", "queued implementation merge")
+        values.setdefault("status", "todo")
+        values.setdefault("completion", "manual")
+        values.setdefault("priority", str(request.priority or "P2"))
+        values.setdefault("track", "ops")
+        return PortalTask(**values)
+
+    def _merge_train_callback(self, request: Any) -> dict[str, Any]:
+        """Adapt one durable queue request to the daemon's mature merge path."""
+
+        metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        task = self._portal_task_from_merge_request(request)
+        result = self._merge_branch_to_main(
+            str(request.branch_name),
+            task,
+            int(request.attempt or 0),
+            baseline_ref=str(metadata.get("baseline_ref") or ""),
+        )
+        if result.get("merged"):
+            worktree_path_text = str(metadata.get("worktree_path") or "")
+            cleanup_result = (
+                self._cleanup_merged_worktree(Path(worktree_path_text), str(request.branch_name))
+                if worktree_path_text
+                else {}
+            )
+            result["cleanup_result"] = cleanup_result
+            if cleanup_result and not cleanup_result.get("cleaned", False):
+                result["merged"] = False
+                result["reason"] = "merge_cleanup_failed"
+                result["returncode"] = 1
+            else:
+                completion_daemon = self
+                request_todo_path = Path(str(metadata.get("todo_path") or self.todo_path))
+                if request_todo_path != self.todo_path:
+                    request_state_path = Path(str(metadata.get("state_path") or self.state_path))
+                    completion_daemon = PortalImplementationDaemon(
+                        todo_path=request_todo_path,
+                        state_path=request_state_path,
+                        strategy_path=Path(str(metadata.get("strategy_path") or request_state_path.parent / "strategy.json")),
+                        events_path=Path(str(metadata.get("events_path") or request_state_path.parent / "events.jsonl")),
+                        repo_root=self.repo_root,
+                        task_header_prefix=str(metadata.get("task_header_prefix") or self.task_header_prefix),
+                        implement=False,
+                        worktree_root=self.worktree_root,
+                        worktree_submodule_paths=self.worktree_submodule_paths,
+                        merge_queue=self.merge_queue,
+                        merge_queue_dir=self.merge_queue_dir,
+                    )
+                bundle_payload = metadata.get("bundle_work_order")
+                if isinstance(bundle_payload, dict):
+                    task_ids = [
+                        str(item)
+                        for item in [
+                            bundle_payload.get("primary_task_id"),
+                            *(bundle_payload.get("covered_task_ids") or []),
+                        ]
+                        if str(item or "")
+                    ]
+                    todo_update_result = completion_daemon._mark_tasks_completed_in_todo(
+                        task_ids,
+                        primary_task_id=str(bundle_payload.get("primary_task_id") or task.task_id),
+                        completion_reason="bundle_work_order",
+                        bundle_work_order=bundle_payload,
+                    )
+                else:
+                    todo_update_result = completion_daemon._mark_task_completed_in_todo(task.task_id)
+                completion_daemon._record_task_queue_outcome(task, 0)
+                result["todo_update_result"] = todo_update_result
+        return result
+
+    @staticmethod
+    def _merge_train_result_request_id(result: dict[str, Any]) -> str:
+        request = result.get("request")
+        request_id = result.get("request_id")
+        if not request_id and isinstance(request, dict):
+            request_id = request.get("request_id")
+        return str(request_id or "")
+
+    def _consume_one_merge_candidate(self) -> dict[str, Any] | None:
+        """Opportunistically advance one item while respecting the train lease."""
+
+        from ..merge_train import MergeTrain
+
+        train = MergeTrain(
+            repo_root=self.repo_root,
+            queue=self.merge_queue,
+            target_branch=self._main_branch_name(),
+            max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
+            merge_callback=self._merge_train_callback,
+        )
+        return train.run_once()
+
+    @staticmethod
+    def _merge_train_result_is_integrated(result: dict[str, Any]) -> bool:
+        status = str(result.get("status") or result.get("reason") or "").strip().lower()
+        merge_result = result.get("merge_result")
+        return (
+            status in {"merged", "already_merged", "deduplicated", "completed"}
+            or bool(result.get("merged"))
+            or (isinstance(merge_result, dict) and bool(merge_result.get("merged")))
+        )
+
     def _run_implementation_in_ephemeral_worktree(
         self,
         *,
@@ -2161,21 +2373,58 @@ class PortalImplementationDaemon:
                     if implementation_commit:
                         self._mark_active_phase(
                             state,
-                            phase="merging",
+                            phase="merge_queue",
                             phase_detail=branch_name,
                             worktree_path=worktree_path,
                             branch_name=branch_name,
                         )
-                        merge_result = self._merge_branch_to_main(
-                            branch_name,
-                            task,
-                            attempt,
+                        request, merge_result = self._enqueue_merge_candidate(
+                            branch_name=branch_name,
+                            implementation_commit=implementation_commit,
                             baseline_ref=baseline_ref,
+                            worktree_path=worktree_path,
+                            task=task,
+                            attempt=attempt,
                         )
-                        if merge_result.get("merged"):
-                            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
-                        else:
-                            returncode = int(merge_result.get("returncode") or 1)
+                        try:
+                            train_result = self._consume_one_merge_candidate()
+                        except Exception as exc:
+                            # Enqueue has already committed the durable handoff;
+                            # a busy or temporarily unhealthy consumer must not
+                            # turn the lane into a merge polling loop.
+                            train_result = {
+                                "status": "deferred",
+                                "reason": "merge_train_consumer_unavailable",
+                                "exception_type": type(exc).__name__,
+                                "error": str(exc)[-4000:],
+                            }
+                            self._record_event(
+                                "merge_train_consumer_deferred",
+                                {
+                                    "task_id": task.task_id,
+                                    "attempt": attempt,
+                                    "request_id": str(request.request_id),
+                                    **train_result,
+                                },
+                            )
+                        if train_result is not None:
+                            merge_result["train_result"] = train_result
+                            consumed_request_id = self._merge_train_result_request_id(train_result)
+                            if (
+                                consumed_request_id == str(request.request_id)
+                                and self._merge_train_result_is_integrated(train_result)
+                            ):
+                                callback_result = train_result.get("merge_result")
+                                if isinstance(callback_result, dict):
+                                    merge_result.update(callback_result)
+                                merge_result.update(
+                                    {
+                                        "queued": False,
+                                        "merged": True,
+                                        "reason": str(train_result.get("status") or "merged"),
+                                        "request_id": str(request.request_id),
+                                    }
+                                )
                     elif commit_result.get("reason") == "no_changes":
                         cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
@@ -2250,21 +2499,32 @@ class PortalImplementationDaemon:
         state.last_implementation_commit = implementation_commit
         state.last_merge_started_at = str(merge_result.get("started_at") or "")
         state.last_merge_finished_at = str(merge_result.get("finished_at") or "")
-        state.last_merge_branch = branch_name if merge_result.get("merged") or merge_result.get("attempted") else ""
+        state.last_merge_branch = (
+            branch_name
+            if merge_result.get("merged") or merge_result.get("attempted") or merge_result.get("queued")
+            else ""
+        )
         state.last_merge_commit = str(merge_result.get("merge_commit") or "")
         state.last_merge_returncode = (
             int(merge_result["returncode"]) if merge_result.get("returncode") is not None else None
         )
-        state.last_merge_error = str(merge_result.get("stderr") or merge_result.get("reason") or "")
-        if returncode == 0:
+        state.last_merge_error = (
+            ""
+            if merge_result.get("queued")
+            else str(merge_result.get("stderr") or merge_result.get("reason") or "")
+        )
+        if returncode == 0 and (not implementation_commit or merge_result.get("merged")):
             todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
-        self._record_task_queue_outcome(
-            task,
-            returncode,
-            reason=str(exception_result.get("message") or merge_result.get("reason") or "implementation_failed"),
-        )
+        # Queueing is a successful implementation handoff, but not task
+        # completion.  The train consumer records the terminal merge outcome.
+        if not merge_result.get("queued"):
+            self._record_task_queue_outcome(
+                task,
+                returncode,
+                reason=str(exception_result.get("message") or merge_result.get("reason") or "implementation_failed"),
+            )
         result = {
             "task_id": task.task_id,
             "attempt": attempt,
@@ -7335,6 +7595,46 @@ class PortalImplementationDaemon:
                 latest[task_id] = event
         return latest
 
+    def _pending_queued_merge_task_ids(
+        self,
+        latest_results: dict[str, dict[str, Any]] | None = None,
+    ) -> set[str]:
+        """Return tasks handed to the train whose commit is not integrated yet."""
+
+        target_branch = self._main_branch_name()
+        pending: set[str] = set()
+        for task_id, event in (latest_results or self._latest_implementation_finished_by_task()).items():
+            merge_result = event.get("merge_result") or {}
+            if not isinstance(merge_result, dict) or not merge_result.get("queued"):
+                continue
+            request_id = str(merge_result.get("request_id") or "")
+            request = self.merge_queue.get(request_id) if request_id and hasattr(self.merge_queue, "get") else None
+            if request is not None and str(getattr(request, "status", "")) == "quarantined":
+                continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
+                pending.add(task_id)
+        return pending
+
+    def _quarantined_queued_merge_task_ids(
+        self,
+        latest_results: dict[str, dict[str, Any]] | None = None,
+    ) -> set[str]:
+        """Return queued tasks whose bounded train attempts are exhausted."""
+
+        quarantined: set[str] = set()
+        if not hasattr(self.merge_queue, "get"):
+            return quarantined
+        for task_id, event in (latest_results or self._latest_implementation_finished_by_task()).items():
+            merge_result = event.get("merge_result") or {}
+            if not isinstance(merge_result, dict) or not merge_result.get("queued"):
+                continue
+            request_id = str(merge_result.get("request_id") or "")
+            request = self.merge_queue.get(request_id) if request_id else None
+            if request is not None and str(getattr(request, "status", "")) == "quarantined":
+                quarantined.add(task_id)
+        return quarantined
+
     def _successfully_merged_task_ids(self) -> set[str]:
         task_ids: set[str] = set()
         target_branch = self._main_branch_name()
@@ -7346,7 +7646,12 @@ class PortalImplementationDaemon:
             implementation_commit = str(event.get("implementation_commit") or "")
             if event_type == "implementation_finished":
                 merge_result = event.get("merge_result") or {}
-                if not isinstance(merge_result, dict) or not merge_result.get("merged"):
+                if not isinstance(merge_result, dict):
+                    continue
+                # A lane can finish while its request remains queued.  Commit
+                # ancestry is the durable proof a later train consumer landed
+                # it, even when that consumer wrote to another lane's event log.
+                if not merge_result.get("merged") and not merge_result.get("queued"):
                     continue
             elif event_type == "merge_reconciled":
                 if not event.get("resolved"):
@@ -8304,6 +8609,15 @@ Rules:
         recent_outcomes: dict[str, dict[str, Any]],
     ) -> PortalTask | None:
         ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        # The durable queue is authoritative across isolated lane state dirs.
+        # Consult both canonical and display identities for compatibility with
+        # queue records written before canonical task ids were introduced.
+        ready = [
+            task
+            for task in ready
+            if not self.merge_queue.has_pending_for_task(self._canonical_ref(task))
+            and not self.merge_queue.has_pending_for_task(task.task_id)
+        ]
         strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
         if strict_deprioritized:
             ready = [task for task in ready if task.task_id not in strict_deprioritized]
