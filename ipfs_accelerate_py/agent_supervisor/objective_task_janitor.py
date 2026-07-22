@@ -89,6 +89,7 @@ GUARDRAIL_REPAIR_MARKERS = (
 )
 DYNAMIC_GOAL_REGISTRATION_VALUES = {"active", "dynamic", "registered"}
 COMPLETED_TASK_STATUSES = {"complete", "completed", "done", "succeeded"}
+JANITOR_BLOCKED_REASON_MARKER = "objective-task janitor"
 
 
 @dataclass(frozen=True)
@@ -219,6 +220,13 @@ def _janitor_owned_task_ids(receipts: Sequence[Mapping[str, Any]], action: str) 
     }
 
 
+def _is_materialized_janitor_block(task: PortalTask) -> bool:
+    return (
+        task.status == "blocked"
+        and JANITOR_BLOCKED_REASON_MARKER in task.metadata.get("blocked reason", "").lower()
+    )
+
+
 def registered_goal_ids_from_bundle_index(payload: Mapping[str, Any]) -> list[str]:
     """Return active dynamic goal IDs declared by an authoritative bundle index."""
 
@@ -303,7 +311,11 @@ def reconcile_objective_task_strategy(
 
     unblock_receipts: list[ObjectiveTaskJanitorReceipt] = []
     remove_receipts: list[ObjectiveTaskJanitorReceipt] = []
-    for task_id in previously_blocked:
+    retained_block_receipts: list[ObjectiveTaskJanitorReceipt] = []
+    materialized_janitor_blocks = {
+        task.task_id for task in tasks if task.task_id and _is_materialized_janitor_block(task)
+    }
+    for task_id in sorted(previously_blocked | materialized_janitor_blocks):
         task = tasks_by_id.get(task_id)
         if task is None:
             continue
@@ -335,6 +347,22 @@ def reconcile_objective_task_strategy(
                     track=task.track,
                 )
             )
+            continue
+        reason = "goal_not_active"
+        missing_goal_ids = [goal_id for goal_id in goal_ids if goal_id not in goals_by_id]
+        if missing_goal_ids and len(missing_goal_ids) == len(goal_ids):
+            reason = "orphaned_goal_reference"
+        retained_block_receipts.append(
+            ObjectiveTaskJanitorReceipt(
+                task_id=task.task_id,
+                action="block",
+                retired_task_reason=reason,
+                goal_ids=goal_ids,
+                title=task.title,
+                priority=task.priority,
+                track=task.track,
+            )
+        )
 
     unblocked_task_ids = [receipt.task_id for receipt in unblock_receipts]
     removed_task_ids = [receipt.task_id for receipt in remove_receipts]
@@ -353,7 +381,7 @@ def reconcile_objective_task_strategy(
         if task is not None and task.status not in OPEN_TASK_STATUSES
     )
     open_goal_ids: set[str] = set()
-    block_receipts: list[ObjectiveTaskJanitorReceipt] = []
+    block_receipts: list[ObjectiveTaskJanitorReceipt] = list(retained_block_receipts)
     deprioritize_receipts: list[ObjectiveTaskJanitorReceipt] = []
 
     for task in open_tasks:

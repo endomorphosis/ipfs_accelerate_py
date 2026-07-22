@@ -16,6 +16,17 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 
 
 def _dynamic_task(*, status: str = "todo") -> PortalTask:
+    metadata = {
+        "goal id": "codebase/runtime/src-runtime",
+        "graph parents": "codebase/runtime",
+        "candidate kind": "codebase_scan",
+        "goal registration": "dynamic",
+    }
+    if status == "blocked":
+        metadata["blocked reason"] = (
+            "Retired by objective-task janitor during launch steering because "
+            "orphaned_goal_reference."
+        )
     return PortalTask(
         task_id="AUTO-002",
         title="Resolve code annotation in src/runtime.py:2",
@@ -23,12 +34,7 @@ def _dynamic_task(*, status: str = "todo") -> PortalTask:
         completion="manual",
         priority="P1",
         track="runtime",
-        metadata={
-            "goal id": "codebase/runtime/src-runtime",
-            "graph parents": "codebase/runtime",
-            "candidate kind": "codebase_scan",
-            "goal registration": "dynamic",
-        },
+        metadata=metadata,
     )
 
 
@@ -125,6 +131,32 @@ def test_registered_dynamic_goal_unblocks_prior_janitor_retirement():
     assert result["receipts"][0]["action"] == "unblock"
 
 
+def test_registered_dynamic_goal_recovers_materialized_block_without_receipt():
+    result = reconcile_objective_task_strategy(
+        goals=[],
+        tasks=[_dynamic_task(status="blocked")],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+        registered_goal_ids=["codebase/runtime", "codebase/runtime/src-runtime"],
+    )
+
+    assert result["unblocked_task_ids"] == ["AUTO-002"]
+    assert result["strategy"]["blocked_tasks"] == []
+
+
+def test_unresolved_materialized_block_retains_janitor_ownership():
+    result = reconcile_objective_task_strategy(
+        goals=[],
+        tasks=[_dynamic_task(status="blocked")],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+    )
+
+    assert result["blocked_task_ids"] == ["AUTO-002"]
+    assert result["strategy"]["blocked_tasks"] == ["AUTO-002"]
+    assert result["receipts"][0]["retired_task_reason"] == "orphaned_goal_reference"
+
+
 def test_supervisor_loads_bundle_registry_and_materializes_unblock(tmp_path):
     todo_path = tmp_path / "todo.md"
     objective_path = tmp_path / "objective.md"
@@ -183,22 +215,7 @@ def test_supervisor_loads_bundle_registry_and_materializes_unblock(tmp_path):
         ),
         encoding="utf-8",
     )
-    strategy_path.write_text(
-        json.dumps(
-            {
-                "blocked_tasks": ["AUTO-002"],
-                "objective_task_janitor_receipts": [
-                    {
-                        "schema": JANITOR_RECEIPT_SCHEMA,
-                        "action": "block",
-                        "task_id": "AUTO-002",
-                        "retired_task_reason": "orphaned_goal_reference",
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+    strategy_path.write_text("{}\n", encoding="utf-8")
     supervisor = PortalImplementationSupervisor(
         PortalSupervisorConfig(
             todo_path=todo_path,
