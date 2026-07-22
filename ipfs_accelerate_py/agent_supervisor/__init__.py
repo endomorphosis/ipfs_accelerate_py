@@ -80,6 +80,8 @@ from .objective_tracker import (
 )
 from .goal_completion import (
     CompletionEvidence,
+    CompletionGateCheck,
+    CompletionGateResult,
     EvidenceValidationResult,
     GoalCompletionDecision,
     GoalLifecycle,
@@ -88,6 +90,7 @@ from .goal_completion import (
     IllegalGoalTransition,
     IllegalGoalTransitionError,
     evaluate_goal_completion,
+    evaluate_completion_gate,
     legal_goal_transitions,
     normalize_goal_state,
     validate_completion_evidence,
@@ -410,6 +413,9 @@ __all__ = [
     "record_objective_backlog_findings",
     "record_retry_budget_findings",
     "reconcile_objective_goal_completion",
+    "CompletionGateCheck",
+    "CompletionGateResult",
+    "evaluate_completion_gate",
     "evaluate_goal_completion",
     "legal_goal_transitions",
     "normalize_goal_state",

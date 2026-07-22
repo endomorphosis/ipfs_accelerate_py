@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     GoalState,
     IllegalGoalTransitionError,
     evaluate_goal_completion,
+    evaluate_completion_gate,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     completion_tree_identity,
@@ -44,7 +45,24 @@ def _evaluate(
     *,
     tasks_complete: bool = True,
     current_state: GoalState = GoalState.ACTIVE,
+    gate_overrides: dict[str, object] | None = None,
 ) -> GoalCompletionDecision:
+    gate: dict[str, object] = {
+        "coverage": {
+            "criteria": [{
+                "criterion": "The public API returns a verified result.",
+                "status": "verified",
+            }]
+        },
+        "analyzer_health": {"status": "healthy"},
+        "exhaustion_quorum": {
+            "satisfied": True,
+            "required_members": 2,
+            "member_count": 2,
+            "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+        },
+    }
+    gate.update(gate_overrides or {})
     return evaluate_goal_completion(
         current_state=current_state,
         acceptance_criteria=["The public API returns a verified result."],
@@ -53,7 +71,24 @@ def _evaluate(
         repository_tree=CURRENT_TREE,
         now=NOW,
         freshness_seconds=3600,
+        **gate,
     )
+
+
+def _tracker_gate(identity, criterion: str = "criterion one") -> dict[str, object]:
+    return {
+        "coverage": {"criteria": [{"criterion": criterion, "status": "verified"}]},
+        "analyzer_health": {"status": "healthy"},
+        "exhaustion_quorum": {
+            "satisfied": True,
+            "required_members": 2,
+            "member_count": 2,
+            "binding": {
+                "repository_id": identity.repository_id,
+                "tree_id": identity.tree_id,
+            },
+        },
+    }
 
 
 def test_goal_state_contract_names_every_required_lifecycle_state() -> None:
@@ -154,6 +189,42 @@ def test_fresh_complete_evidence_verifies_after_provisional_transition() -> None
     assert decision.verified is True
     assert not decision.actionable_reasons
     assert decision.evidence_results[0].evidence == evidence
+
+
+@pytest.mark.parametrize(
+    ("gate_overrides", "reason_code"),
+    [
+        ({"coverage": {"criteria": [{"criterion": "The public API returns a verified result.", "status": "stale"}]}}, "coverage_unverified"),
+        ({"analyzer_health": {"status": "partial"}}, "analyzer_unhealthy"),
+        ({"exhaustion_quorum": {"satisfied": False, "members": [], "duplicates": [{"reason": "duplicate_evidence_channel"}]}}, "exhaustion_quorum_unsatisfied"),
+        ({"analysis_result": {"terminal_reason": "timed_out", "safe_for_completion_reasoning": False}}, "analysis_not_completion_safe"),
+    ],
+)
+def test_completion_gate_rejects_nonqualifying_analysis_proof(
+    gate_overrides: dict[str, object], reason_code: str
+) -> None:
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides=gate_overrides,
+    )
+
+    assert decision.state is GoalState.PROVISIONALLY_COMPLETE
+    assert decision.verified is False
+    assert reason_code in decision.reason_codes
+    assert decision.to_dict()["completion_gate"]["evaluated_evidence"]
+
+
+@pytest.mark.parametrize("child_state", [GoalState.ANALYSIS_INCONCLUSIVE, GoalState.REOPENED])
+def test_parent_completion_cannot_hide_nonverified_child(child_state: GoalState) -> None:
+    decision = _evaluate(
+        [_complete_evidence()],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        gate_overrides={"child_goals": [{"goal_id": "G1.S1", "state": child_state.value, "verified": False}]},
+    )
+
+    assert decision.verified is False
+    assert "child" in " ".join(decision.reason_codes)
 
 
 @pytest.mark.parametrize(
@@ -314,6 +385,7 @@ def test_objective_tracker_persists_provisional_then_verified_state(tmp_path) ->
         objective_path=objective_path,
         todo_path=todo_path,
         completion_evidence_records={"G10.S3": [evidence]},
+        completion_gate_records={"G10.S3": _tracker_gate(identity)},
     )
 
     assert provisional.provisional_goal_ids == ["G10.S3"]
@@ -324,6 +396,7 @@ def test_objective_tracker_persists_provisional_then_verified_state(tmp_path) ->
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
+        completion_gate_records={"G10.S3": _tracker_gate(identity)},
     )
 
     assert verified.verified_goal_ids == ["G10.S3"]
@@ -355,7 +428,50 @@ def test_objective_tracker_never_verifies_task_drain_without_evidence(tmp_path) 
 
     assert result.provisional_goal_ids == ["G10.S3"]
     assert result.verified_goal_ids == []
-    assert result.decisions["G10.S3"]["reason_codes"] == [
-        "missing_criterion_evidence",
-        "verification_evidence_incomplete",
+    assert result.decisions["G10.S3"]["reason_codes"][0] == "missing_criterion_evidence"
+    assert "coverage_missing" in result.decisions["G10.S3"]["reason_codes"]
+    assert "exhaustion_quorum_missing" in result.decisions["G10.S3"]["reason_codes"]
+
+
+def test_objective_tracker_automatically_aggregates_descendant_state(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G1 Parent
+
+- Status: provisionally_complete
+- Acceptance: parent criterion
+- Validation: true
+
+## G1.S1 Child
+
+- Status: reopened
+- Parents: G1
+- Acceptance: child criterion
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    identity = completion_tree_identity(repo, objective_path=objective_path)
+    evidence = _complete_evidence(
+        acceptance_criterion="parent criterion",
+        repository_tree=identity.tree_id,
+        observed_at=datetime.now(timezone.utc),
+    )
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        completion_evidence_records={"G1": [evidence]},
+        completion_gate_records={"G1": _tracker_gate(identity, "parent criterion")},
+    )
+
+    parent = result.decisions["G1"]
+    assert parent["verified"] is False
+    assert "child_reopened" in parent["reason_codes"]
+    assert parent["completion_gate"]["evaluated_evidence"]["child_goals"] == [
+        {"goal_id": "G1.S1", "state": "reopened", "verified": False}
     ]

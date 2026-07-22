@@ -566,6 +566,7 @@ class GoalCompletionDecision:
     evidence_results: tuple[EvidenceValidationResult, ...]
     reason_codes: tuple[str, ...]
     actionable_reasons: tuple[str, ...]
+    gate: "CompletionGateResult | None" = None
     schema_version: int = GOAL_COMPLETION_SCHEMA_VERSION
 
     @property
@@ -600,7 +601,227 @@ class GoalCompletionDecision:
             "actionable_reasons": list(self.actionable_reasons),
             "evidence": [item.to_dict() for item in self.evidence],
             "evidence_results": [result.to_dict() for result in self.evidence_results],
+            "completion_gate": self.gate.to_dict() if self.gate is not None else None,
         }
+
+
+def _mapping_value(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        if isinstance(payload, Mapping):
+            return {str(key): _json_value(item) for key, item in payload.items()}
+    return {"value": _json_value(value)}
+
+
+@dataclass(frozen=True)
+class CompletionGateCheck:
+    """One independently inspectable fail-closed completion requirement."""
+
+    name: str
+    passed: bool
+    reason_code: str = ""
+    reason: str = ""
+    evidence: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "passed": self.passed,
+            "reason_code": self.reason_code,
+            "reason": self.reason,
+            "evidence": _json_value(self.evidence),
+        }
+
+
+@dataclass(frozen=True)
+class CompletionGateResult:
+    """Machine-readable verdict and the exact evidence evaluated."""
+
+    passed: bool
+    checks: tuple[CompletionGateCheck, ...]
+    evaluated_evidence: Mapping[str, Any]
+    schema_version: int = GOAL_COMPLETION_SCHEMA_VERSION
+
+    @property
+    def reason_codes(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(check.reason_code for check in self.checks if check.reason_code))
+
+    @property
+    def actionable_reasons(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(check.reason for check in self.checks if check.reason))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "ipfs_accelerate_py.agent_supervisor.completion_gate.v1",
+            "schema_version": self.schema_version,
+            "passed": self.passed,
+            "reason_codes": list(self.reason_codes),
+            "actionable_reasons": list(self.actionable_reasons),
+            "checks": [check.to_dict() for check in self.checks],
+            "evaluated_evidence": _json_value(self.evaluated_evidence),
+        }
+
+
+def evaluate_completion_gate(
+    *,
+    acceptance_criteria: Sequence[str] | str | None,
+    evidence_results: Sequence[EvidenceValidationResult] = (),
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    child_goals: Sequence[Any] = (),
+    analysis_result: Any = None,
+    repository_tree: str = "",
+    repository_id: str = "",
+) -> CompletionGateResult:
+    """Evaluate coverage, validation, health, quorum, and descendants.
+
+    Inputs accept typed domain records or their persisted mapping forms.  Any
+    absent, unsupported, partial, stale, skipped, failed, timed-out, or
+    duplicate-only proof fails closed.
+    """
+
+    criteria = _acceptance_criteria(acceptance_criteria)
+    coverage_payload = _mapping_value(coverage)
+    health_payload = _mapping_value(analyzer_health)
+    quorum_payload = _mapping_value(exhaustion_quorum)
+    analysis_payload = _mapping_value(analysis_result)
+    child_payloads = [_mapping_value(item) for item in child_goals]
+    result_payloads = [item.to_dict() for item in evidence_results]
+    checks: list[CompletionGateCheck] = []
+
+    coverage_rows = coverage_payload.get("criteria")
+    if not isinstance(coverage_rows, list):
+        coverage_rows = []
+    by_criterion = {
+        _criterion_key(row.get("criterion")): row
+        for row in coverage_rows
+        if isinstance(row, Mapping) and str(row.get("criterion") or "").strip()
+    }
+    missing_coverage = [criterion for criterion in criteria if _criterion_key(criterion) not in by_criterion]
+    unverified_coverage = [
+        criterion
+        for criterion in criteria
+        if _criterion_key(criterion) in by_criterion
+        and str(by_criterion[_criterion_key(criterion)].get("status") or "").lower() != "verified"
+    ]
+    coverage_ok = bool(criteria) and not missing_coverage and not unverified_coverage
+    coverage_code = "" if coverage_ok else (
+        "coverage_missing" if not coverage_rows or missing_coverage else "coverage_unverified"
+    )
+    checks.append(CompletionGateCheck(
+        "mandatory_coverage",
+        coverage_ok,
+        coverage_code,
+        "" if coverage_ok else "Map every mandatory acceptance criterion to verified implementation and validation proof.",
+        {"missing_criteria": missing_coverage, "unverified_criteria": unverified_coverage, "coverage": coverage_payload},
+    ))
+
+    validation_ok = bool(criteria) and all(
+        any(
+            item.valid and _criterion_key(item.evidence.acceptance_criterion) == _criterion_key(criterion)
+            for item in evidence_results
+        )
+        for criterion in criteria
+    )
+    checks.append(CompletionGateCheck(
+        "required_validations",
+        validation_ok,
+        "" if validation_ok else "validation_evidence_incomplete",
+        "" if validation_ok else "Every mandatory criterion requires a fresh, passing validation receipt.",
+        {"results": result_payloads},
+    ))
+
+    health_status = str(
+        health_payload.get("status")
+        or health_payload.get("health")
+        or ("healthy" if health_payload.get("healthy") is True else "")
+    ).strip().lower()
+    health_ok = health_status == "healthy"
+    checks.append(CompletionGateCheck(
+        "analyzer_health",
+        health_ok,
+        "" if health_ok else ("analyzer_health_missing" if not health_status else "analyzer_unhealthy"),
+        "" if health_ok else "Require an explicit healthy analyzer result; partial or unsupported analysis cannot verify completion.",
+        health_payload,
+    ))
+
+    quorum_ok = quorum_payload.get("satisfied") is True or quorum_payload.get("quorum_met") is True
+    binding = quorum_payload.get("binding") if isinstance(quorum_payload.get("binding"), Mapping) else {}
+    binding_mismatch: list[str] = []
+    if quorum_payload and repository_tree and str(binding.get("tree_id") or "") != repository_tree:
+        binding_mismatch.append("tree_id")
+    if quorum_payload and repository_id and str(binding.get("repository_id") or "") != repository_id:
+        binding_mismatch.append("repository_id")
+    quorum_ok = bool(quorum_ok and not binding_mismatch)
+    declared_quorum = quorum_payload.get("satisfied") is True or quorum_payload.get("quorum_met") is True
+    if quorum_ok:
+        quorum_code = ""
+    elif declared_quorum and binding_mismatch:
+        quorum_code = "exhaustion_quorum_binding_mismatch"
+    elif not quorum_payload:
+        quorum_code = "exhaustion_quorum_missing"
+    else:
+        quorum_code = "exhaustion_quorum_unsatisfied"
+    checks.append(CompletionGateCheck(
+        "exhaustion_quorum",
+        quorum_ok,
+        quorum_code,
+        "" if quorum_ok else "Require the configured number of independent, healthy exhaustive receipts bound to the current repository tree.",
+        {"binding_mismatch": binding_mismatch, "quorum": quorum_payload},
+    ))
+
+    unsafe_analysis = False
+    if analysis_payload:
+        terminal = str(analysis_payload.get("terminal_reason") or analysis_payload.get("status") or "").lower()
+        safe = analysis_payload.get("safe_for_completion_reasoning")
+        unsafe_analysis = safe is not True or terminal not in {"exhausted", "healthy_exhausted"}
+    checks.append(CompletionGateCheck(
+        "analysis_terminal_state",
+        not unsafe_analysis,
+        "analysis_not_completion_safe" if unsafe_analysis else "",
+        "Analysis was partial, skipped, failed, timed out, duplicate-only, or unsupported." if unsafe_analysis else "",
+        analysis_payload,
+    ))
+
+    bad_children: list[dict[str, Any]] = []
+    for child in child_payloads:
+        state = str(child.get("state") or child.get("next_state") or "").lower()
+        verified = child.get("verified") is True or state == GoalState.VERIFIED_COMPLETE.value
+        if not verified:
+            bad_children.append(child)
+    child_ok = not bad_children
+    child_code = ""
+    if bad_children:
+        states = {str(item.get("state") or item.get("next_state") or "").lower() for item in bad_children}
+        child_code = "child_analysis_inconclusive" if GoalState.ANALYSIS_INCONCLUSIVE.value in states else (
+            "child_reopened" if GoalState.REOPENED.value in states else "child_unverified"
+        )
+    checks.append(CompletionGateCheck(
+        "child_goals",
+        child_ok,
+        child_code,
+        "" if child_ok else "Every descendant must remain verified; parent aggregation cannot hide an inconclusive or reopened child.",
+        {"children": child_payloads, "unverified_children": bad_children},
+    ))
+
+    evaluated = {
+        "acceptance_criteria": list(criteria),
+        "coverage": coverage_payload,
+        "validation_evidence": result_payloads,
+        "analyzer_health": health_payload,
+        "exhaustion_quorum": quorum_payload,
+        "analysis_result": analysis_payload,
+        "child_goals": child_payloads,
+        "repository_tree": repository_tree,
+        "repository_id": repository_id,
+    }
+    return CompletionGateResult(all(check.passed for check in checks), tuple(checks), evaluated)
 
 
 def _acceptance_criteria(values: Sequence[str] | str | None) -> tuple[str, ...]:
@@ -635,6 +856,12 @@ def evaluate_goal_completion(
     freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     analysis_inconclusive: bool = False,
     blocked_reason: str = "",
+    coverage: Any = None,
+    analyzer_health: Any = None,
+    exhaustion_quorum: Any = None,
+    child_goals: Sequence[Any] = (),
+    analysis_result: Any = None,
+    require_completion_gate: bool = True,
 ) -> GoalCompletionDecision:
     """Evaluate a goal without ever inferring verification from task status.
 
@@ -695,7 +922,22 @@ def evaluate_goal_completion(
                 for code, reason in zip(item.reason_codes, item.actionable_reasons):
                     add_reason(code, f"{criterion}: {reason}")
 
-    all_valid = bool(criteria) and not missing and not invalid
+    gate = evaluate_completion_gate(
+        acceptance_criteria=criteria,
+        evidence_results=results,
+        coverage=coverage,
+        analyzer_health=analyzer_health,
+        exhaustion_quorum=exhaustion_quorum,
+        child_goals=child_goals,
+        analysis_result=analysis_result,
+        repository_tree=repository_tree,
+        repository_id=repository_id,
+    ) if require_completion_gate else None
+    if gate is not None:
+        for check in gate.checks:
+            if not check.passed and check.reason_code:
+                add_reason(check.reason_code, check.reason)
+    all_valid = bool(criteria) and not missing and not invalid and (gate is None or gate.passed)
     verified = bool(tasks_complete and all_valid and previous is GoalState.PROVISIONALLY_COMPLETE)
 
     if blocked_reason:
@@ -747,6 +989,7 @@ def evaluate_goal_completion(
         evidence_results=results,
         reason_codes=tuple(reason_codes),
         actionable_reasons=tuple(reasons),
+        gate=gate,
     )
 
 
@@ -758,6 +1001,8 @@ assess_goal_completion = evaluate_goal_completion
 
 __all__ = [
     "CompletionDecision",
+    "CompletionGateCheck",
+    "CompletionGateResult",
     "CompletionEvidence",
     "DEFAULT_CLOCK_SKEW_SECONDS",
     "DEFAULT_EVIDENCE_FRESHNESS_SECONDS",
@@ -773,6 +1018,7 @@ __all__ = [
     "LEGAL_GOAL_TRANSITIONS",
     "assess_goal_completion",
     "evaluate_goal_completion",
+    "evaluate_completion_gate",
     "is_schedulable_goal_state",
     "is_terminal_goal_state",
     "legal_goal_transitions",

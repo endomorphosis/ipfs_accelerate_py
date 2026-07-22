@@ -472,6 +472,7 @@ def reconcile_objective_goal_completion(
     completion_evidence_records: Mapping[
         str, Sequence[CompletionEvidence | Mapping[str, Any]]
     ] | None = None,
+    completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
     now: str | None = None,
     evidence_freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
 ) -> ObjectiveCompletionResult:
@@ -496,6 +497,7 @@ def reconcile_objective_goal_completion(
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
     supplied_records = completion_evidence_records or {}
+    supplied_gate_records = completion_gate_records or {}
     candidate_goals = []
     persisted_records: dict[str, list[CompletionEvidence]] = {}
     for goal in goals:
@@ -557,6 +559,29 @@ def reconcile_objective_goal_completion(
     completion_boards.extend(todo_boards or ())
     open_goal_ids = open_goal_ids_from_todo_boards(completion_boards)
     repository_identity = completion_tree_identity(repo_root, objective_path=objective_path)
+    hierarchy = goal_graph(goals)
+    goals_by_id = {item.goal_id: item for item in goals if item.goal_id}
+
+    def descendant_states(goal_id: str) -> list[dict[str, Any]]:
+        pending = list(hierarchy.get("children", {}).get(goal_id, ()))
+        seen: set[str] = set()
+        descendants: list[dict[str, Any]] = []
+        while pending:
+            child_id = str(pending.pop(0))
+            if not child_id or child_id in seen:
+                continue
+            seen.add(child_id)
+            child = goals_by_id.get(child_id)
+            if child is not None:
+                state = child.lifecycle_state_value
+                descendants.append({
+                    "goal_id": child_id,
+                    "state": state,
+                    "verified": state == GoalState.VERIFIED_COMPLETE.value,
+                })
+            pending.extend(hierarchy.get("children", {}).get(child_id, ()))
+        return descendants
+
     for goal in candidate_goals:
         current_state = normalize_goal_state(goal.status)
         tasks_complete = goal.goal_id not in open_goal_ids
@@ -607,6 +632,17 @@ def reconcile_objective_goal_completion(
             repository_id=repository_identity.repository_id,
             now=now,
             freshness_seconds=evidence_freshness_seconds,
+            coverage=supplied_gate_records.get(goal.goal_id, {}).get("coverage"),
+            analyzer_health=supplied_gate_records.get(goal.goal_id, {}).get("analyzer_health"),
+            exhaustion_quorum=supplied_gate_records.get(goal.goal_id, {}).get("exhaustion_quorum"),
+            child_goals=[
+                *descendant_states(goal.goal_id),
+                *supplied_gate_records.get(goal.goal_id, {}).get("child_goals", ()),
+            ],
+            analysis_result=supplied_gate_records.get(goal.goal_id, {}).get("analysis_result"),
+            analysis_inconclusive=bool(
+                supplied_gate_records.get(goal.goal_id, {}).get("analysis_inconclusive", False)
+            ),
         )
         decisions[goal.goal_id] = decision.to_dict()
         goal_evidence = {

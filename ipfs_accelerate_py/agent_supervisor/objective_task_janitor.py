@@ -9,7 +9,9 @@ from typing import Any, Mapping, Sequence
 from .objective_graph import ObjectiveGoal, objective_heap_schedule
 from .todo_daemon.implementation_daemon import PortalTask
 
-ACTIVE_GOAL_STATUSES = {"active", "todo", "open"}
+# Compatibility export; lifecycle decisions below use ObjectiveGoal's
+# canonical state helpers so reopened and verified_complete are not lost.
+ACTIVE_GOAL_STATUSES = {"active", "todo", "open", "reopened"}
 OPEN_TASK_STATUSES = {"todo", "ready", "in_progress"}
 JANITOR_RECEIPT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.v1"
 LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE = "launch Playwright validation gate"
@@ -195,7 +197,7 @@ def _is_worktree_cleanup_backlog_task(task: PortalTask) -> bool:
 def _critical_goal_ids(goals: Sequence[ObjectiveGoal], mission_terms: Sequence[str]) -> set[str]:
     critical: set[str] = set()
     for goal in goals:
-        if goal.status not in ACTIVE_GOAL_STATUSES:
+        if not goal.is_schedulable:
             continue
         fields = goal.fields
         track = str(fields.get("track") or "").strip().lower()
@@ -281,7 +283,7 @@ def reconcile_objective_task_strategy(
 
     goals_by_id = {goal.goal_id: goal for goal in goals if goal.goal_id}
     tasks_by_id = {task.task_id: task for task in tasks if task.task_id}
-    heap_active_goal_ids = {goal.goal_id for goal in goals if goal.status in ACTIVE_GOAL_STATUSES}
+    heap_active_goal_ids = {goal.goal_id for goal in goals if goal.is_schedulable}
     dynamic_goal_ids = set(_unique(registered_goal_ids))
     active_goal_ids = heap_active_goal_ids | dynamic_goal_ids
     scheduled_goal_ids = [
@@ -335,7 +337,10 @@ def reconcile_objective_task_strategy(
                 )
             )
             continue
-        if known_goal_ids and all(goals_by_id[goal_id].status == "completed" for goal_id in known_goal_ids):
+        if known_goal_ids and all(
+            goals_by_id[goal_id].lifecycle_state_value == "verified_complete"
+            for goal_id in known_goal_ids
+        ):
             remove_receipts.append(
                 ObjectiveTaskJanitorReceipt(
                     task_id=task.task_id,
@@ -398,7 +403,10 @@ def reconcile_objective_task_strategy(
         codebase_scan_task = _is_codebase_scan_backlog_task(task)
         if goal_known or goal_missing:
             reason = "goal_not_active"
-            if goal_known and all(goals_by_id[goal_id].status == "completed" for goal_id in goal_known):
+            if goal_known and all(
+                goals_by_id[goal_id].lifecycle_state_value == "verified_complete"
+                for goal_id in goal_known
+            ):
                 reason = "goal_completed"
             elif goal_missing and not goal_known:
                 reason = "orphaned_goal_reference"

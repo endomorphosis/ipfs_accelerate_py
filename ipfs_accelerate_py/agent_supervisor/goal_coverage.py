@@ -508,6 +508,29 @@ class GoalCoverageMap:
             "objective_graph": self.to_objective_graph().to_dict(),
         }
 
+    def completion_gate_evidence(self, goal_id: str) -> dict[str, Any]:
+        """Return the exact criterion proof consumed by the completion gate.
+
+        Keeping this projection here prevents completion consumers from
+        reinterpreting graph edges or accidentally treating a weak inference
+        as verified coverage.
+        """
+
+        selected = [item for item in self.criteria if item.goal_id == str(goal_id)]
+        return {
+            "schema": "ipfs_accelerate_py.agent_supervisor.goal_coverage.gate.v1",
+            "graph_id": self.graph_id,
+            "goal_id": str(goal_id),
+            "evaluated_at": self.evaluated_at,
+            "repository_tree": self.repository_tree,
+            "criteria": [item.to_dict() for item in selected],
+            "criterion_count": len(selected),
+            "verified": bool(selected) and all(item.verified for item in selected),
+            "unverified_criterion_ids": [
+                item.criterion_id for item in selected if not item.verified
+            ],
+        }
+
 
 def acceptance_criteria_for_goal(goal: Any) -> list[str]:
     """Return explicit mandatory criteria, falling back to required evidence."""

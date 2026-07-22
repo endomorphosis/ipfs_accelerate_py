@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.objective_graph import ObjectiveGoal
 from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
     JANITOR_RECEIPT_SCHEMA,
@@ -237,3 +239,42 @@ def test_supervisor_loads_bundle_registry_and_materializes_unblock(tmp_path):
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "- Status: todo" in todo_text
     assert "- Blocked reason:" not in todo_text
+
+
+def _goal_task(goal_id: str = "G1") -> PortalTask:
+    return PortalTask(
+        task_id="AUTO-010",
+        title="Implement reopened objective",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="runtime",
+        metadata={"goal id": goal_id},
+    )
+
+
+def test_reopened_goal_remains_schedulable_and_keeps_linked_work_open():
+    result = reconcile_objective_task_strategy(
+        goals=[ObjectiveGoal("G1", "Regressed objective", {"status": "reopened", "priority": "P0"})],
+        tasks=[_goal_task()],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+    )
+
+    assert result["blocked_task_ids"] == []
+    assert result["active_goal_ids"] == ["G1"]
+    assert result["scheduled_goal_ids"] == ["G1"]
+    assert result["open_goal_ids"] == ["G1"]
+
+
+@pytest.mark.parametrize("status", ["verified_complete", "completed"])
+def test_verified_goal_retires_linked_work_as_completed(status: str):
+    result = reconcile_objective_task_strategy(
+        goals=[ObjectiveGoal("G1", "Done objective", {"status": status})],
+        tasks=[_goal_task()],
+        strategy={},
+        now="2026-07-22T00:00:00+00:00",
+    )
+
+    assert result["blocked_task_ids"] == ["AUTO-010"]
+    assert result["receipts"][0]["retired_task_reason"] == "goal_completed"

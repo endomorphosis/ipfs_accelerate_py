@@ -465,6 +465,22 @@ class AuditScanResult:
             "snapshot_artifact": self.snapshot_artifact.to_dict() if self.snapshot_artifact else None,
         }
 
+    def completion_gate_evidence(self) -> dict[str, Any]:
+        """Project audit proof without allowing callers to manufacture safety."""
+
+        receipt = self.receipt.to_dict()
+        metadata = receipt.get("metadata") if isinstance(receipt.get("metadata"), Mapping) else {}
+        return {
+            "schema": "ipfs_accelerate_py.agent_supervisor.audit_completion_gate.v1",
+            "analysis_result": receipt,
+            "analyzer_health": dict(metadata.get("analyzer_health") or {}),
+            "exhaustion_quorum": self.quorum.to_dict(),
+            "binding": self.binding.to_dict(),
+            "safe_for_completion_reasoning": bool(
+                self.receipt.safe_for_completion_reasoning and self.quorum.satisfied
+            ),
+        }
+
 
 AuditScanReport = AuditScanResult
 

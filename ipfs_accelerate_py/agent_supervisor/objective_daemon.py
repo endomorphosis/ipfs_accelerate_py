@@ -442,6 +442,24 @@ def discovery_fingerprints(discovery_dir: Path) -> set[str]:
     return fingerprints
 
 
+def load_goal_completion_gate_records(path: Path | None) -> dict[str, dict[str, Any]]:
+    """Load a persisted per-goal gate artifact, failing closed on bad shapes."""
+
+    if path is None or not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError("goal completion gate artifact must be a JSON object")
+    raw = payload.get("goals", payload)
+    if not isinstance(raw, Mapping):
+        raise ValueError("goal completion gate artifact 'goals' must be an object")
+    return {
+        str(goal_id): dict(record)
+        for goal_id, record in raw.items()
+        if str(goal_id).strip() and isinstance(record, Mapping)
+    }
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate autonomous-agent todos from an objective goal heap")
     parser.add_argument("--repo-root", type=Path, default=default_repo_root())
@@ -503,6 +521,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "Extra todo board that can keep objective goals open while referenced work is pending. "
             "Use 'path::TASK-' or 'path::## TASK-' and repeat for shared cross-track boards."
         ),
+    )
+    parser.add_argument(
+        "--objective-goal-completion-gate-path",
+        type=Path,
+        default=None,
+        help="JSON artifact containing coverage, analyzer health, exhaustion quorum, and child proof per goal.",
     )
     parser.add_argument(
         "--seed-interoperability-goals",
@@ -667,6 +691,11 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     completed_goal_ids: list[str] = []
     objective_completed_goal_count = 0
     objective_completion_validation_results: dict[str, Any] = {}
+    objective_completion_decisions: dict[str, Any] = {}
+    completion_gate_path = getattr(args, "objective_goal_completion_gate_path", None)
+    if completion_gate_path is not None and not completion_gate_path.is_absolute():
+        completion_gate_path = (repo_root / completion_gate_path).resolve()
+    completion_gate_records = load_goal_completion_gate_records(completion_gate_path)
     goal_completion_todo_boards = parse_goal_completion_todo_boards(
         getattr(args, "objective_goal_completion_todo_board", []) or [],
         repo_root=repo_root,
@@ -679,10 +708,12 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             todo_path=todo_path,
             task_header_prefix=args.task_prefix,
             todo_boards=goal_completion_todo_boards,
+            completion_gate_records=completion_gate_records,
         )
         completed_goal_ids = completion.completed_goal_ids
         objective_completed_goal_count = completion.completed_goal_count
         objective_completion_validation_results = completion.validation_results
+        objective_completion_decisions = completion.decisions
 
     refined_goal_ids: list[str] = []
     if getattr(args, "refine_objective_heap", False) and objective_path.exists():
@@ -873,6 +904,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             for path, prefix in goal_completion_todo_boards
         ],
         "objective_completion_validation_results": objective_completion_validation_results,
+        "objective_completion_decisions": objective_completion_decisions,
+        "objective_goal_completion_gate_path": (
+            repo_relative_path(repo_root, completion_gate_path) if completion_gate_path else ""
+        ),
         "refined_goal_ids": refined_goal_ids,
         "objective_goal_count": graph_payload["goal_count"],
         "objective_active_goal_count": graph_payload["active_goal_count"],
