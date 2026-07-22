@@ -1760,6 +1760,13 @@ class DynamicBundleScheduler:
                     )
 
                 reaped = self._reap(coordinator)
+                for lane in registered:
+                    if lane.task_cid in self._running or self._disposition(lane):
+                        continue
+                    coordinator.requeue_exhausted_blocked(
+                        lane.task_cid,
+                        reason="bundle_board_reopened",
+                    )
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),

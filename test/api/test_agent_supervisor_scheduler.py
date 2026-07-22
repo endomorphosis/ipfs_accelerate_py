@@ -276,6 +276,13 @@ def test_settled_boards_release_capacity_without_starting_workers(tmp_path: Path
     assert blocked["counts"]["active"] == 0
     assert any(item["bundle_key"].endswith("t-2") for item in blocked["blocked"])
 
+    blocked_shard.write_text("- [ ] Task checkbox-1: T-2 reopened\n", encoding="utf-8")
+    reopened = scheduler.reconcile_once()
+
+    assert reopened["counts"]["active"] == 1
+    assert launcher.starts[-1][0].task_ids == ["T-2"]
+    assert launcher.starts[-1][1].attempt == 1
+
 
 def test_explicit_terminal_status_uses_the_configured_task_prefix(tmp_path: Path) -> None:
     repo = tmp_path / "repo"

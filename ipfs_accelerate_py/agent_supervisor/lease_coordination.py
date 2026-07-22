@@ -678,6 +678,53 @@ class LeaseCoordinator:
 
         return [self.register_bundle(bundle, created_at_ms=created_at_ms) for bundle in bundles]
 
+    def requeue_exhausted_blocked(self, task_cid: str, *, reason: str) -> bool:
+        """Reset a blocked attempt budget after authoritative work is reopened.
+
+        This operation is deliberately narrow: it cannot disturb accepted or
+        completed leases, and only resets an exhausted lease whose last
+        terminal receipt classified the work as blocked.
+        """
+
+        normalized_reason = str(reason or "authoritative_source_reopened").strip().replace(" ", "_")
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                resolved_task_cid = self._resolve_task_cid(connection, task_cid)
+                if resolved_task_cid is None:
+                    connection.commit()
+                    return False
+                row = connection.execute(
+                    """SELECT t.bundle_json, l.state, l.attempt, l.release_reason
+                       FROM tasks AS t
+                       JOIN leases AS l ON l.task_cid=t.task_cid
+                       WHERE t.task_cid=?""",
+                    (resolved_task_cid,),
+                ).fetchone()
+                if row is None:
+                    connection.commit()
+                    return False
+                exhausted = int(row["attempt"] or 0) >= self._max_attempts(row)
+                blocked_receipt = str(row["release_reason"] or "").startswith("receipt:") and str(
+                    row["release_reason"] or ""
+                ).endswith(":blocked")
+                if row["state"] not in {"released", "expired"} or not exhausted or not blocked_receipt:
+                    connection.commit()
+                    return False
+                connection.execute(
+                    """UPDATE leases
+                       SET state='released', attempt=0, retry_not_before_ms=0,
+                           release_reason=?
+                       WHERE task_cid=?""",
+                    (f"requeued:{normalized_reason}"[:256], resolved_task_cid),
+                )
+                connection.commit()
+                return True
+            except Exception:
+                connection.rollback()
+                raise
+
     @staticmethod
     def _resolve_task_cid(connection: sqlite3.Connection, task_cid: str) -> str | None:
         row = connection.execute(
@@ -890,7 +937,7 @@ class LeaseCoordinator:
         )
 
     @staticmethod
-    def _max_attempts(task: sqlite3.Row) -> int:
+    def _max_attempts(task: sqlite3.Row | Mapping[str, Any]) -> int:
         bundle = json.loads(task["bundle_json"])
         return max(1, int(bundle.get("max_attempts") or 3))
 
