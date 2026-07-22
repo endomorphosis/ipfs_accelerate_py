@@ -1110,6 +1110,16 @@ class DynamicBundleScheduler:
     def _default_lane_disposition(self, lane: BundleLaneSpec) -> str:
         """Project a fully settled shard board to a bundle disposition."""
 
+        try:
+            markdown = lane.todo_path.read_text(encoding="utf-8")
+        except OSError:
+            markdown = ""
+        from .todo_daemon.implementation_daemon import parse_task_file
+
+        task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
+        portal_tasks = parse_task_file(lane.todo_path, task_prefix) if markdown else []
+        portal_task_ids = {str(task.task_id) for task in portal_tasks}
+
         state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -1121,20 +1131,23 @@ class DynamicBundleScheduler:
             blocked_count = _schedule_int(state, "blocked_count")
             waiting_count = _schedule_int(state, "waiting_count")
             active = bool(state.get("implementation_in_progress") or state.get("active_task_id"))
-            if task_count > 0 and not active and waiting_count == 0:
+            state_task_ids = {
+                str(task_id)
+                for task_id in (state.get("task_identities") or {})
+            }
+            state_matches_board = not portal_tasks or (
+                state_task_ids == portal_task_ids
+                if state_task_ids
+                else task_count == len(portal_tasks)
+            )
+            if state_matches_board and task_count > 0 and not active and waiting_count == 0:
                 if completed_count >= task_count:
                     return "completed"
                 if completed_count + blocked_count >= task_count:
                     return "blocked"
 
-        try:
-            markdown = lane.todo_path.read_text(encoding="utf-8")
-        except OSError:
+        if not markdown:
             return ""
-        from .todo_daemon.implementation_daemon import parse_task_file
-
-        task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
-        portal_tasks = parse_task_file(lane.todo_path, task_prefix)
         if portal_tasks:
             if all(task.status == "completed" for task in portal_tasks):
                 return "completed"

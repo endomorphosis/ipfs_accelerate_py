@@ -300,6 +300,56 @@ def test_explicit_terminal_status_uses_the_configured_task_prefix(tmp_path: Path
     assert settled["counts"]["completed"] == 1
 
 
+def test_stale_terminal_state_does_not_settle_a_refilled_bundle(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "title": "Prior work", "paths": ["prior.py"]},
+        {"task_id": "T-2", "title": "Refilled work", "paths": ["refilled.py"]},
+    ]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": bundle}}),
+        encoding="utf-8",
+    )
+    shard = repo / "bundles" / "t-1.todo.md"
+    shard.parent.mkdir(parents=True)
+    shard.write_text(
+        "- [x] Task checkbox-1: T-1 complete\n\n"
+        "## T-1 Prior work\n\n"
+        "- Status: completed\n\n"
+        "- [ ] Task checkbox-2: T-2 newly refilled\n\n"
+        "## T-2 Refilled work\n\n"
+        "- Status: todo\n",
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    lane = scheduler._plan()[0]
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (lane.state_dir / f"{lane.state_prefix}_task_state.json").write_text(
+        json.dumps(
+            {
+                "task_count": 1,
+                "completed_count": 1,
+                "blocked_count": 0,
+                "waiting_count": 0,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "task_identities": {"T-1": {"display_task_id": "T-1"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    active = scheduler.reconcile_once()
+
+    assert len(launcher.starts) == 1
+    assert active["counts"]["active"] == 1
+    assert active["counts"]["completed"] == 0
+
+
 def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"
