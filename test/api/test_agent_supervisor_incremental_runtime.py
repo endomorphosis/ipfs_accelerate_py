@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from hashlib import sha256
 import subprocess
 import time
 from dataclasses import asdict
 from pathlib import Path
 
+from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+    CodebaseScanInventory,
+    scan_codebase_findings,
+)
 from ipfs_accelerate_py.agent_supervisor.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor import objective_graph
 from ipfs_accelerate_py.agent_supervisor.objective_graph import scan_objective_gaps
@@ -69,6 +74,111 @@ def _seed_objective_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "seed incremental objective")
     return repo, objective, tmp_path / "datasets"
+
+
+def test_scan_details_are_content_addressed_durable_and_fully_recoverable(tmp_path: Path) -> None:
+    store = ObjectiveDatasetStore(tmp_path / "datasets")
+    details = [
+        {
+            "kind": "excluded_file",
+            "path": "vendor/generated.bundle.js",
+            "reason_code": "excluded_path_part",
+            "matched_part": "vendor",
+        },
+        {
+            "kind": "parser_failure",
+            "path": "src/broken.py",
+            "reason_code": "python_syntax_error",
+            "error": "SyntaxError: invalid syntax at line 7",
+            "line": 7,
+        },
+    ]
+
+    first = store.persist_scan_details(
+        scan_id="refill/tree:one",
+        details=details,
+        metadata={"scan_mode": "exhaustive", "repository": Path("/repo")},
+    )
+    assert first.detail_count == first.row_count == 2
+    assert first.artifact_id == f"sha256:{first.sha256}"
+    assert first.sha256 == sha256(first.jsonl_path.read_bytes()).hexdigest()
+    assert first.byte_count == first.jsonl_path.stat().st_size
+    assert first.reason_counts == {
+        "excluded_path_part": 1,
+        "python_syntax_error": 1,
+    }
+    assert store.load_scan_details(first) == details
+    assert store.load_scan_details(first.to_dict()) == details
+    assert store.load_scan_details("refill/tree:one") == details
+    first_manifest = store.load_scan_details_manifest(first)
+    assert first_manifest["artifact_id"] == first.artifact_id
+    assert first_manifest["metadata"] == {
+        "repository": "/repo",
+        "scan_mode": "exhaustive",
+    }
+
+    # A subsequent incremental pass updates the logical latest pointer but
+    # leaves the exhaustive pass's full diagnostic artifact addressable.
+    incremental_details = [
+        {
+            "kind": "excluded_file",
+            "path": "dist/output.js",
+            "reason_code": "excluded_path_part",
+            "matched_part": "dist",
+        }
+    ]
+    second = store.persist_scan_details(
+        scan_id="refill/tree:one",
+        details=incremental_details,
+        metadata={"scan_mode": "incremental"},
+    )
+    assert second.artifact_id != first.artifact_id
+    assert store.load_scan_details("refill/tree:one") == incremental_details
+    assert store.load_scan_details(first) == details
+    assert first.jsonl_path.exists()
+    assert first.manifest_path.exists()
+
+
+def test_incremental_and_exhaustive_codebase_scans_report_same_coverage_dimensions(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "coverage-repo"
+    _init_repo(repo)
+    (repo / "first.py").write_text("# TODO: repair first path\n", encoding="utf-8")
+    (repo / "second.py").write_text("# TODO: repair second path\n", encoding="utf-8")
+    (repo / "asset.bin").write_bytes(b"not eligible\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed coverage dimensions")
+
+    incremental = scan_codebase_findings(
+        repo,
+        max_findings=1,
+        exhaustive=False,
+        return_inventory=True,
+    )
+    exhaustive = scan_codebase_findings(
+        repo,
+        max_findings=1,
+        exhaustive=True,
+        return_inventory=True,
+    )
+    assert isinstance(incremental, CodebaseScanInventory)
+    assert isinstance(exhaustive, CodebaseScanInventory)
+    expected_dimensions = {
+        "git_roots",
+        "tracked_files",
+        "eligible_files",
+        "parsed_files",
+        "cache_hits",
+        "excluded_files",
+        "parser_failures",
+    }
+    assert set(incremental.coverage_dict()) == expected_dimensions
+    assert set(exhaustive.coverage_dict()) == expected_dimensions
+    assert incremental.complete is False
+    assert exhaustive.complete is True
+    assert exhaustive.coverage_dict()["tracked_files"] == 3
+    assert exhaustive.coverage_dict()["excluded_files"] == 1
 
 
 def test_ast_and_evidence_snapshots_reparse_only_changed_blobs(tmp_path: Path, monkeypatch) -> None:
