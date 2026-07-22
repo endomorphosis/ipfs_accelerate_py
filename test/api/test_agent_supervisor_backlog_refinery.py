@@ -525,6 +525,7 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "- Bundle: codebase/runtime/src-runtime" in todo_text
     assert "- AST symbols:" in todo_text
+    assert "- AST symbol scope: file" in todo_text
     assert "route_request" in todo_text
     index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
     member = index["bundles"]["codebase/runtime/src-runtime"]["tasks"][0]
@@ -532,6 +533,95 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
     assert member["goal_registration"] == "dynamic"
     assert member["paths"] == ["src/runtime.py"]
     assert "route_request" in member["ast_symbols"]
+    assert member["ast_symbol_scope"] == "file"
+
+
+def test_codebase_scan_synchronizes_fingerprints_across_strategy_files(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text("# TODO: prove shared scan identity\n", encoding="utf-8")
+    _write_todo(todo_path)
+    _git(repo, "add", "todo.md", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed repo")
+
+    first = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=repo / "state" / "first.json",
+        discovery_dir=discovery_dir,
+        repo_root=repo,
+        task_prefix="AUTO-",
+        max_findings=1,
+        force=True,
+    )
+    second_strategy = repo / "state" / "second.json"
+    second = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=second_strategy,
+        discovery_dir=discovery_dir,
+        repo_root=repo,
+        task_prefix="AUTO-",
+        max_findings=1,
+        force=True,
+    )
+
+    assert len(first) == 1
+    assert second == []
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert todo_text.count("## AUTO-002") == 1
+    assert "## AUTO-003" not in todo_text
+    synchronized = json.loads(second_strategy.read_text(encoding="utf-8"))
+    assert any(
+        first[0]["fingerprint"].startswith(item)
+        for item in synchronized["codebase_scan_seen_fingerprints"]
+    )
+
+
+def test_codebase_scan_retires_later_duplicate_vector_tasks(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Original finding
+
+- Status: todo
+- Completion: manual
+- Candidate kind: codebase_scan
+- Todo vector key: abcdef1234567890
+
+## AUTO-002 Duplicate finding
+
+- Status: todo
+- Completion: manual
+- Candidate kind: codebase_scan
+- Todo vector key: abcdef1234567890
+""",
+        encoding="utf-8",
+    )
+    strategy_path = repo / "state" / "strategy.json"
+
+    findings = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=repo / "discovery",
+        repo_root=repo,
+        task_prefix="AUTO-",
+        max_findings=0,
+    )
+
+    assert findings == []
+    todo_text = todo_path.read_text(encoding="utf-8")
+    duplicate_block = todo_text.split("## AUTO-002", 1)[1]
+    assert "- Status: completed" in duplicate_block
+    assert "- Completion: deduplicated:AUTO-001" in duplicate_block
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["codebase_scan_duplicate_tasks_retired"] == {"AUTO-002": "AUTO-001"}
 
 
 def test_codebase_scan_reserves_ids_from_discovery_artifacts(tmp_path):

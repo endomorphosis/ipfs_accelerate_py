@@ -1411,6 +1411,7 @@ def materialize_task_dependency_dag(
 
     for index, task in enumerate(raw_tasks):
         task_id = str(task.get("task_id") or task.get("id") or "").strip()
+        task_status = str(task.get("status") or "todo").strip().lower()
         provided_cid = str(task.get("canonical_task_cid") or task.get("task_cid") or "").strip()
         if provided_cid:
             cid = provided_cid
@@ -1450,6 +1451,22 @@ def materialize_task_dependency_dag(
             )
             cid = identity.canonical_task_cid
         if cid in nodes:
+            aliases[task_id] = cid
+            existing = nodes[cid]
+            aliases_metadata = dict(existing.metadata)
+            aliases_metadata["task_id_aliases"] = sorted(
+                {
+                    existing.task_id,
+                    task_id,
+                    *[str(value) for value in aliases_metadata.get("task_id_aliases", [])],
+                }
+            )
+            nodes[cid] = replace(existing, metadata=aliases_metadata)
+            if (
+                existing.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+                or task_status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            ):
+                continue
             add_repair(
                 "duplicate_task",
                 cid,
@@ -1469,7 +1486,7 @@ def materialize_task_dependency_dag(
             task_cid=cid,
             task_id=task_id,
             goal_id=str(task.get("goal_id") or "").strip(),
-            status=str(task.get("status") or "todo").strip().lower(),
+            status=task_status,
             objective_priority=configured_priority,
             created_at_ms=_task_created_at_ms(task),
             estimated_duration=_task_duration(task),

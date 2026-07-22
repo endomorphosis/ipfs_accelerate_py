@@ -361,7 +361,10 @@ def _bundle_conflict_task(
     profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
     conflict_policy = str(payload.get("conflict_policy") or "")
     ast_symbols = member_values("ast_symbols", "symbols")
-    file_scoped_ast = "allow independent file bundles" in conflict_policy.lower()
+    ast_symbol_scopes = {item.lower() for item in member_values("ast_symbol_scope")}
+    file_scoped_ast = bool(ast_symbol_scopes & {"file", "path", "local"}) or (
+        "allow independent file bundles" in conflict_policy.lower()
+    )
     return {
         "task_id": bundle_key,
         "task_cid": str(profile_g.get("task_cid") or payload.get("task_cid") or ""),

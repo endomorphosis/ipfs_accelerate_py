@@ -177,6 +177,32 @@ def test_cycle_and_missing_dependency_emit_bounded_repairs_without_blocking_inde
     ).claimable
 
 
+def test_terminal_duplicate_alias_does_not_block_its_live_canonical_task() -> None:
+    graph = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "REF-084",
+                "canonical_task_cid": "cid-finding",
+                "status": "todo",
+            },
+            {
+                "task_id": "REF-091",
+                "canonical_task_cid": "cid-finding",
+                "status": "completed",
+            },
+        ]
+    )
+
+    assert graph.repair_evidence == []
+    assert graph.invalid_task_cids == []
+    assert graph.nodes["cid-finding"].status == "todo"
+    assert graph.nodes["cid-finding"].metadata["task_id_aliases"] == [
+        "REF-084",
+        "REF-091",
+    ]
+    assert graph.schedule[0].claimable is True
+
+
 def test_bundle_lane_planner_prioritizes_ready_critical_path_before_applying_capacity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

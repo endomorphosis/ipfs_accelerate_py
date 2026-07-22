@@ -35,6 +35,7 @@ from .objective_graph import (
     LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND,
     LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE,
     LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS,
+    SUCCESSFUL_MERGE_RECEIPT_STATUSES,
     bundle_path,
     generate_objective_todos,
     repo_relative_path,
@@ -1592,13 +1593,17 @@ def scan_codebase_findings(
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
 ) -> list[CodebaseFinding]:
     findings: list[CodebaseFinding] = []
-    seen = {str(item) for item in seen_fingerprints if str(item).strip()}
+    seen = {str(item).strip().lower() for item in seen_fingerprints if str(item).strip()}
+
+    def already_seen(fingerprint: str) -> bool:
+        return any(fingerprint == item or fingerprint.startswith(item) for item in seen)
+
     for git_root in discover_git_worktrees(repo_root, skip_prefixes=skip_prefixes):
         for path in tracked_files(git_root):
             if not file_is_scan_candidate(path, repo_root=repo_root, skip_prefixes=skip_prefixes):
                 continue
             for finding in scan_findings_in_file(path, repo_root=repo_root):
-                if finding.fingerprint in seen:
+                if already_seen(finding.fingerprint):
                     continue
                 if len(findings) < max_findings:
                     findings.append(finding)
@@ -1669,6 +1674,7 @@ def codebase_scan_task_block(
             "- Conflict policy: serialize findings for the same file; allow independent file bundles to run concurrently",
             f"- Predicted files: {finding.root_relative_path}",
             f"- AST symbols: {', '.join(ast_symbols)}",
+            "- AST symbol scope: file",
             f"- Goal id: {bundle_key}",
             f"- Missing evidence: {finding.summary}",
             f"- Merge key: {bundle_key}",
@@ -4023,6 +4029,105 @@ def release_completed_guardrail_blocks(
     return releases
 
 
+def codebase_scan_fingerprint_hints(
+    todo_text: str,
+    *,
+    discovery_dir: Path,
+) -> set[str]:
+    """Collect durable full or prefix fingerprints shared by all supervisors."""
+
+    hints: set[str] = set()
+    for _start, _end, block in task_blocks_with_spans(todo_text):
+        if not re.search(r"^- Candidate kind:\s*codebase_scan\s*$", block, flags=re.MULTILINE):
+            continue
+        match = re.search(
+            r"^- Todo vector key:\s*([0-9a-f]{8,40})\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if match:
+            hints.add(match.group(1).lower())
+    try:
+        artifact_names = (path.name for path in discovery_dir.glob("*-codebase-scan-*.md"))
+        for name in artifact_names:
+            match = re.search(r"-codebase-scan-([0-9a-f]{8,40})\.md$", name, flags=re.IGNORECASE)
+            if match:
+                hints.add(match.group(1).lower())
+    except OSError:
+        pass
+    return hints
+
+
+def retire_duplicate_codebase_scan_tasks(
+    todo_path: Path,
+    *,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+) -> dict[str, str]:
+    """Complete later codebase-scan aliases that share one vector identity."""
+
+    retired: dict[str, str] = {}
+    with locked_taskboard(todo_path) as taskboard:
+        todo_text = taskboard.read()
+        by_vector_key: dict[str, list[tuple[str, str]]] = {}
+        prefix = task_id_prefix(task_prefix)
+        for _start, _end, block in task_blocks_with_spans(todo_text):
+            heading = re.match(rf"^##\s+({re.escape(prefix)}\S*)", block)
+            if heading is None or not re.search(
+                r"^- Candidate kind:\s*codebase_scan\s*$",
+                block,
+                flags=re.MULTILINE,
+            ):
+                continue
+            vector_key = re.search(
+                r"^- Todo vector key:\s*(\S+)\s*$",
+                block,
+                flags=re.MULTILINE,
+            )
+            status = re.search(r"^- Status:\s*(\S+)\s*$", block, flags=re.MULTILINE)
+            if vector_key is None:
+                continue
+            by_vector_key.setdefault(vector_key.group(1).lower(), []).append(
+                (heading.group(1), status.group(1).lower() if status else "todo")
+            )
+
+        for records in by_vector_key.values():
+            if len(records) < 2:
+                continue
+            keeper = records[0][0]
+            for task_id, status in records[1:]:
+                if status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES:
+                    retired[task_id] = keeper
+        if not retired:
+            return {}
+
+        updated, updated_task_ids = mark_task_statuses_in_todo_text(
+            todo_text,
+            list(retired),
+            task_prefix=task_prefix,
+            status="completed",
+        )
+        if not updated_task_ids:
+            return {}
+        for task_id in updated_task_ids:
+            block_pattern = re.compile(
+                rf"(^##\s+{re.escape(task_id)}(?:\s|$).*?)(?=^##\s+\S+|\Z)",
+                flags=re.MULTILINE | re.DOTALL,
+            )
+
+            def mark_completion(match: re.Match[str], *, keeper: str = retired[task_id]) -> str:
+                return re.sub(
+                    r"^- Completion:.*$",
+                    f"- Completion: deduplicated:{keeper}",
+                    match.group(1),
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+
+            updated = block_pattern.sub(mark_completion, updated, count=1)
+        replace_locked_taskboard(taskboard, updated)
+    return {task_id: retired[task_id] for task_id in updated_task_ids}
+
+
 def record_codebase_scan_findings(
     *,
     todo_path: Path,
@@ -4044,10 +4149,32 @@ def record_codebase_scan_findings(
 ) -> list[dict[str, Any]]:
     """Feed a todo board with static codebase findings when backlog runs low."""
 
-    if max_findings <= 0 or not todo_path.exists():
+    if not todo_path.exists():
         return []
+    retired_duplicates = retire_duplicate_codebase_scan_tasks(
+        todo_path,
+        task_prefix=task_prefix,
+    )
     todo_text = todo_path.read_text(encoding="utf-8")
     strategy = load_strategy(strategy_path)
+    strategy_seen = {
+        str(item)
+        for item in strategy.get("codebase_scan_seen_fingerprints", [])
+        if str(item).strip()
+    }
+    shared_seen = codebase_scan_fingerprint_hints(
+        todo_text,
+        discovery_dir=discovery_dir,
+    )
+    seen = strategy_seen | shared_seen
+    strategy["codebase_scan_seen_fingerprints"] = sorted(seen)
+    if retired_duplicates:
+        strategy["codebase_scan_duplicate_tasks_retired"] = retired_duplicates
+        strategy["last_codebase_scan_duplicate_retirement_at"] = utc_now()
+    if max_findings <= 0:
+        if retired_duplicates or seen != strategy_seen:
+            write_json(strategy_path, strategy)
+        return []
     should_scan, mode, current_open, task_count = should_refill_backlog(
         todo_text=todo_text,
         state_path=state_path,
@@ -4060,9 +4187,10 @@ def record_codebase_scan_findings(
         force=force,
     )
     if not should_scan:
+        if retired_duplicates or seen != strategy_seen:
+            write_json(strategy_path, strategy)
         return []
 
-    seen = {str(item) for item in strategy.get("codebase_scan_seen_fingerprints", []) if str(item).strip()}
     findings = scan_codebase_findings(
         repo_root,
         max_findings=max_findings,
@@ -4088,6 +4216,18 @@ def record_codebase_scan_findings(
 
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read()
+        latest_seen = codebase_scan_fingerprint_hints(
+            todo_text,
+            discovery_dir=discovery_dir,
+        )
+        findings = [
+            finding
+            for finding in findings
+            if not any(
+                finding.fingerprint == item or finding.fingerprint.startswith(item)
+                for item in latest_seen
+            )
+        ]
         reserved_task_ids = task_ids_from_artifact_names(
             discovery_dir,
             task_prefix=task_prefix,
@@ -4160,6 +4300,7 @@ def record_codebase_scan_findings(
                             "outputs": [finding.root_relative_path],
                             "predicted_files": [finding.root_relative_path],
                             "ast_symbols": ast_symbols,
+                            "ast_symbol_scope": "file",
                             "generated_artifacts": [repo_relative_path(repo_root, discovery_path)],
                             "depends_on": list(depends_on),
                             "bundle_strategy": "codebase_file_ast",
