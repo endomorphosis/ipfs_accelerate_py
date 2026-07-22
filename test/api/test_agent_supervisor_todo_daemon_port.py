@@ -3751,6 +3751,7 @@ def test_implementation_daemon_creates_parent_handoff_for_submodule_only_commit(
     assert result["committed"] is True
     assert result["reason"] == "submodule_only"
     assert result["submodule_results"] == submodule_results
+    assert daemon._committed_submodule_paths(submodule_results) == ["outer/inner"]
     assert result["commit"] != baseline
     assert _git(repo, "diff", "--quiet", baseline, result["commit"]) == ""
 
@@ -4146,6 +4147,56 @@ def test_implementation_daemon_reconciles_nested_submodule_gitlink_inside_recove
     assert [item["path"] for item in nested_results] == ["libs/child/nested/grand"]
     assert nested_results[0]["merged"] is True
     assert _git(grand, "merge-base", "--is-ancestor", later_commit, "main") == ""
+
+    # Ephemeral setup creates branches in every recursive submodule. Only
+    # repositories that produced task-owned commits may enter merge handling.
+    filtered_parent_branch = "implementation/auto-118"
+    filtered_child_branch = daemon._submodule_worktree_branch_name(
+        filtered_parent_branch,
+        "libs/child",
+    )
+    _git(child, "checkout", "-b", filtered_child_branch)
+    (child / "filtered.txt").write_text("selected child work\n", encoding="utf-8")
+    _git(child, "add", "filtered.txt")
+    _git(child, "commit", "-m", "AUTO-118: selected child work")
+    filtered_child_commit = _git(child, "rev-parse", "HEAD")
+    _git(child, "checkout", "main")
+
+    unrelated_grand_branch = daemon._submodule_worktree_branch_name(
+        filtered_parent_branch,
+        "libs/child/nested/grand",
+    )
+    _git(grand, "checkout", "-b", unrelated_grand_branch)
+    (grand / "unrelated.txt").write_text("unrelated grandchild work\n", encoding="utf-8")
+    _git(grand, "add", "unrelated.txt")
+    _git(grand, "commit", "-m", "unrelated grandchild work")
+    unrelated_grand_commit = _git(grand, "rev-parse", "HEAD")
+    _git(grand, "checkout", "main")
+    grand_main_before = _git(grand, "rev-parse", "main")
+
+    filtered_results = daemon._merge_submodule_branches_to_main(
+        filtered_parent_branch,
+        task=PortalTask(
+            task_id="AUTO-118",
+            title="Merge only repositories changed by this task",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+        changed_submodule_paths={"libs/child"},
+    )
+
+    assert [item["path"] for item in filtered_results] == ["libs/child"]
+    assert _git(child, "merge-base", "--is-ancestor", filtered_child_commit, "main") == ""
+    assert _git(grand, "rev-parse", "main") == grand_main_before
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", unrelated_grand_commit, "main"],
+        cwd=grand,
+        capture_output=True,
+        check=False,
+    ).returncode != 0
 
 
 def test_implementation_daemon_skips_unrelated_submodule_branch_when_gitlink_is_unchanged(tmp_path):

@@ -2096,6 +2096,7 @@ class PortalImplementationDaemon:
         worktree_path: Path,
         task: PortalTask,
         attempt: int,
+        changed_submodule_paths: Sequence[str] | None = None,
     ) -> tuple[Any, dict[str, Any]]:
         """Durably hand a validated implementation to the repo-wide merge train.
 
@@ -2120,6 +2121,10 @@ class PortalImplementationDaemon:
             "task_header_prefix": self.task_header_prefix,
             "task": asdict(task),
         }
+        if changed_submodule_paths is not None:
+            metadata["changed_submodule_paths"] = sorted(
+                {str(path).strip("/") for path in changed_submodule_paths if str(path).strip("/")}
+            )
         if work_order is not None:
             metadata["bundle_work_order"] = work_order.to_dict()
         request = self.merge_queue.enqueue(
@@ -2179,11 +2184,22 @@ class PortalImplementationDaemon:
 
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
         task = self._portal_task_from_merge_request(request)
+        raw_changed_submodule_paths = metadata.get("changed_submodule_paths")
+        changed_submodule_paths = (
+            {
+                str(path).strip("/")
+                for path in raw_changed_submodule_paths
+                if str(path).strip("/")
+            }
+            if isinstance(raw_changed_submodule_paths, list)
+            else None
+        )
         result = self._merge_branch_to_main(
             str(request.branch_name),
             task,
             int(request.attempt or 0),
             baseline_ref=str(metadata.get("baseline_ref") or ""),
+            changed_submodule_paths=changed_submodule_paths,
         )
         if result.get("merged"):
             worktree_path_text = str(metadata.get("worktree_path") or "")
@@ -2385,6 +2401,9 @@ class PortalImplementationDaemon:
                             worktree_path=worktree_path,
                             task=task,
                             attempt=attempt,
+                            changed_submodule_paths=self._committed_submodule_paths(
+                                commit_result.get("submodule_results") or []
+                            ),
                         )
                         try:
                             train_result = self._consume_one_merge_candidate()
@@ -3346,6 +3365,21 @@ class PortalImplementationDaemon:
                 return True
         return False
 
+    @classmethod
+    def _committed_submodule_paths(cls, results: Sequence[dict[str, Any]]) -> list[str]:
+        """Return exact repositories that produced task-owned commits."""
+
+        paths: set[str] = set()
+        for result in results:
+            if result.get("committed", False):
+                path = str(result.get("path") or "").strip("/")
+                if path:
+                    paths.add(path)
+            nested = result.get("nested_submodule_results")
+            if isinstance(nested, list):
+                paths.update(cls._committed_submodule_paths(nested))
+        return sorted(paths)
+
     def _commit_worktree_submodule_changes(
         self,
         worktree_path: Path,
@@ -4007,6 +4041,7 @@ class PortalImplementationDaemon:
         attempt: int,
         *,
         baseline_ref: str = "",
+        changed_submodule_paths: set[str] | None = None,
     ) -> dict[str, Any]:
         started_at = utc_now()
         self._preserve_generated_nested_worktree_directories()
@@ -4319,6 +4354,7 @@ class PortalImplementationDaemon:
                     task=task,
                     attempt=attempt,
                     baseline_ref=baseline_ref,
+                    changed_submodule_paths=changed_submodule_paths,
                 )
             elif removed_untracked:
                 self._restore_removed_untracked_paths(removed_untracked, cwd=merge_workspace)
@@ -5082,6 +5118,7 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         baseline_ref: str = "",
+        changed_submodule_paths: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         return self._merge_submodule_branches_to_main_in_repo(
             repo_path=self.repo_root,
@@ -5090,6 +5127,7 @@ class PortalImplementationDaemon:
             task=task,
             attempt=attempt,
             baseline_ref=baseline_ref,
+            changed_submodule_paths=changed_submodule_paths,
         )
 
     def _root_submodule_changed_in_task(
@@ -5151,6 +5189,7 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         baseline_ref: str = "",
+        changed_submodule_paths: set[str] | None = None,
         checkpoint: MergeCheckpoint | None = None,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
@@ -5180,6 +5219,20 @@ class PortalImplementationDaemon:
         for relative in relatives:
             full_relative = f"{parent_relative.rstrip('/')}/{relative}" if parent_relative else relative
             source = (self.repo_root / full_relative).resolve()
+            merge_current_submodule = (
+                changed_submodule_paths is None or full_relative in changed_submodule_paths
+            )
+            has_changed_descendant = bool(
+                changed_submodule_paths
+                and any(
+                    path.startswith(f"{full_relative.rstrip('/')}/")
+                    for path in changed_submodule_paths
+                )
+            )
+            if changed_submodule_paths is not None and not (
+                merge_current_submodule or has_changed_descendant
+            ):
+                continue
             # Skip submodules already merged in a previous checkpoint
             if checkpoint.is_already_merged(full_relative):
                 results.append(checkpoint.merged_submodules[full_relative])
@@ -5192,12 +5245,27 @@ class PortalImplementationDaemon:
                             task=task,
                             attempt=attempt,
                             baseline_ref=baseline_ref,
+                            changed_submodule_paths=changed_submodule_paths,
                             checkpoint=checkpoint,
                         )
                     )
                 continue
             submodule_branch = self._submodule_worktree_branch_name(branch_name, full_relative)
             if not self._is_git_worktree(source):
+                continue
+            if not merge_current_submodule:
+                results.extend(
+                    self._merge_submodule_branches_to_main_in_repo(
+                        repo_path=source,
+                        branch_name=branch_name,
+                        parent_relative=full_relative,
+                        task=task,
+                        attempt=attempt,
+                        baseline_ref=baseline_ref,
+                        changed_submodule_paths=changed_submodule_paths,
+                        checkpoint=checkpoint,
+                    )
+                )
                 continue
             if (
                 not parent_relative
@@ -5229,6 +5297,7 @@ class PortalImplementationDaemon:
                         task=task,
                         attempt=attempt,
                         baseline_ref=baseline_ref,
+                        changed_submodule_paths=changed_submodule_paths,
                         checkpoint=checkpoint,
                     )
                 )
@@ -5254,6 +5323,7 @@ class PortalImplementationDaemon:
                         task=task,
                         attempt=attempt,
                         baseline_ref=baseline_ref,
+                        changed_submodule_paths=changed_submodule_paths,
                         checkpoint=checkpoint,
                     )
                 )
@@ -5485,6 +5555,7 @@ class PortalImplementationDaemon:
                         task=task,
                         attempt=attempt,
                         baseline_ref=baseline_ref,
+                        changed_submodule_paths=changed_submodule_paths,
                         checkpoint=checkpoint,
                     )
                 )
