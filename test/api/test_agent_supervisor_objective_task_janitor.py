@@ -165,6 +165,67 @@ def test_unresolved_materialized_block_retains_janitor_ownership():
     assert result["receipts"][0]["retired_task_reason"] == "orphaned_goal_reference"
 
 
+def _legacy_off_mission_scan_task() -> PortalTask:
+    return PortalTask(
+        task_id="AUTO-051",
+        title="Review swallowed exception path in adversarial_harness/harness.py:49",
+        status="blocked",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+        outputs=["adversarial_harness/harness.py"],
+        acceptance="Codebase scan filed this finding.",
+        metadata={
+            "blocked reason": (
+                "Deferred by objective-task janitor during launch steering because "
+                "off_mission_codebase_scan_task."
+            )
+        },
+    )
+
+
+def test_changed_mission_scope_unblocks_legacy_deferred_scan_task():
+    task = _legacy_off_mission_scan_task()
+    prior_receipt = {
+        "schema": JANITOR_RECEIPT_SCHEMA,
+        "action": "block",
+        "task_id": task.task_id,
+        "retired_task_reason": "goal_not_active",
+    }
+
+    result = reconcile_objective_task_strategy(
+        goals=[],
+        tasks=[task],
+        strategy={
+            "blocked_tasks": [task.task_id],
+            "objective_task_janitor_receipts": [prior_receipt],
+        },
+        now="2026-07-22T00:00:00+00:00",
+        mission_terms=["adversarial_harness"],
+    )
+
+    assert result["blocked_task_ids"] == []
+    assert result["unblocked_task_ids"] == [task.task_id]
+    assert result["strategy"]["blocked_tasks"] == []
+    assert result["receipts"][0]["retired_task_reason"] == "task_now_matches_mission_scope"
+
+
+def test_legacy_deferred_scan_task_stays_blocked_outside_mission_scope():
+    task = _legacy_off_mission_scan_task()
+
+    result = reconcile_objective_task_strategy(
+        goals=[],
+        tasks=[task],
+        strategy={"blocked_tasks": [task.task_id]},
+        now="2026-07-22T00:00:00+00:00",
+        mission_terms=["unrelated-area"],
+    )
+
+    assert result["unblocked_task_ids"] == []
+    assert result["blocked_task_ids"] == [task.task_id]
+    assert result["receipts"][0]["retired_task_reason"] == "off_mission_codebase_scan_task"
+
+
 def test_supervisor_loads_bundle_registry_and_materializes_unblock(tmp_path):
     todo_path = tmp_path / "todo.md"
     objective_path = tmp_path / "objective.md"

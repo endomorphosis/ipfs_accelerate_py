@@ -202,6 +202,27 @@ def _is_worktree_cleanup_backlog_task(task: PortalTask) -> bool:
     return any(marker in haystack for marker in WORKTREE_CLEANUP_BACKLOG_MARKERS)
 
 
+def _off_mission_task_reason(
+    task: PortalTask,
+    task_text: str,
+    mission_terms: Sequence[str],
+) -> str:
+    """Return the current policy reason for deferring an unscoped task."""
+
+    mission_aligned = task.priority == "P0" or _matches_any_term(task_text, mission_terms)
+    if _is_generated_objective_task(task) and not mission_aligned:
+        return "off_mission_objective_generated_task"
+    if (
+        _is_codebase_scan_backlog_task(task)
+        and not _is_mission_critical_codebase_scan_task(task, task_text, mission_terms)
+        and not _is_guardrail_repair_task(task)
+    ):
+        return "off_mission_codebase_scan_task"
+    if _is_worktree_cleanup_backlog_task(task) and not mission_aligned:
+        return "off_mission_worktree_cleanup_task"
+    return ""
+
+
 def _critical_goal_ids(goals: Sequence[ObjectiveGoal], mission_terms: Sequence[str]) -> set[str]:
     critical: set[str] = set()
     for goal in goals:
@@ -796,6 +817,41 @@ def reconcile_objective_task_strategy(
                 )
             )
             continue
+        blocked_reason = task.metadata.get("blocked reason", "").lower()
+        was_off_mission = (
+            task_id in previously_deprioritized or "off_mission_" in blocked_reason
+        )
+        if not goal_ids and was_off_mission:
+            current_reason = _off_mission_task_reason(
+                task,
+                _task_haystack(task),
+                mission_terms,
+            )
+            if not current_reason:
+                unblock_receipts.append(
+                    ObjectiveTaskJanitorReceipt(
+                        task_id=task.task_id,
+                        action="unblock",
+                        retired_task_reason="task_now_matches_mission_scope",
+                        goal_ids=goal_ids,
+                        title=task.title,
+                        priority=task.priority,
+                        track=task.track,
+                    )
+                )
+                continue
+            retained_block_receipts.append(
+                ObjectiveTaskJanitorReceipt(
+                    task_id=task.task_id,
+                    action="block",
+                    retired_task_reason=current_reason,
+                    goal_ids=goal_ids,
+                    title=task.title,
+                    priority=task.priority,
+                    track=task.track,
+                )
+            )
+            continue
         if known_goal_ids and all(
             goals_by_id[goal_id].lifecycle_state_value == "verified_complete"
             and completion_proven(goal_id)
@@ -864,8 +920,6 @@ def reconcile_objective_task_strategy(
         goal_known = [goal_id for goal_id in goal_ids if goal_id in goals_by_id]
         goal_missing = [goal_id for goal_id in goal_ids if goal_id not in goals_by_id]
         task_text = _task_haystack(task)
-        mission_aligned = task.priority == "P0" or _matches_any_term(task_text, mission_terms)
-        codebase_scan_task = _is_codebase_scan_backlog_task(task)
         if goal_known or goal_missing:
             reason = "goal_not_active"
             if goal_known and all(
@@ -894,44 +948,13 @@ def reconcile_objective_task_strategy(
             )
             continue
 
-        if _is_generated_objective_task(task) and not mission_aligned:
+        off_mission_reason = _off_mission_task_reason(task, task_text, mission_terms)
+        if off_mission_reason:
             deprioritize_receipts.append(
                 ObjectiveTaskJanitorReceipt(
                     task_id=task.task_id,
                     action="deprioritize",
-                    retired_task_reason="off_mission_objective_generated_task",
-                    goal_ids=goal_ids,
-                    title=task.title,
-                    priority=task.priority,
-                    track=task.track,
-                )
-            )
-            continue
-
-        if (
-            codebase_scan_task
-            and not _is_mission_critical_codebase_scan_task(task, task_text, mission_terms)
-            and not _is_guardrail_repair_task(task)
-        ):
-            deprioritize_receipts.append(
-                ObjectiveTaskJanitorReceipt(
-                    task_id=task.task_id,
-                    action="deprioritize",
-                    retired_task_reason="off_mission_codebase_scan_task",
-                    goal_ids=goal_ids,
-                    title=task.title,
-                    priority=task.priority,
-                    track=task.track,
-                )
-            )
-            continue
-
-        if _is_worktree_cleanup_backlog_task(task) and not mission_aligned:
-            deprioritize_receipts.append(
-                ObjectiveTaskJanitorReceipt(
-                    task_id=task.task_id,
-                    action="deprioritize",
-                    retired_task_reason="off_mission_worktree_cleanup_task",
+                    retired_task_reason=off_mission_reason,
                     goal_ids=goal_ids,
                     title=task.title,
                     priority=task.priority,
