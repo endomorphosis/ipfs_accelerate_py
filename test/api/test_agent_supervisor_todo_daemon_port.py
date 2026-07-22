@@ -4706,6 +4706,7 @@ def test_implementation_daemon_records_nested_gitlink_chain_and_preserves_local_
     (repo / "local.txt").write_text("base\n", encoding="utf-8")
     _git(repo, "add", "local.txt")
     _git(repo, "commit", "-m", "record nested baseline")
+    parent_commit_before_leaf_merge = _git(parent, "rev-parse", "HEAD")
 
     leaf = parent / "nested" / "leaf"
     _git(leaf, "checkout", "main")
@@ -4724,7 +4725,7 @@ def test_implementation_daemon_records_nested_gitlink_chain_and_preserves_local_
         strategy_path=state_dir / "strategy.json",
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
-        worktree_submodule_paths=["libs/child/nested/leaf"],
+        worktree_submodule_paths=["libs/child"],
     )
     task = PortalTask(
         task_id="AUTO-122",
@@ -4738,6 +4739,11 @@ def test_implementation_daemon_records_nested_gitlink_chain_and_preserves_local_
     result = daemon._record_merged_submodule_gitlinks(
         repo,
         [
+            {
+                "path": "libs/child",
+                "merged": True,
+                "commit": parent_commit_before_leaf_merge,
+            },
             {
                 "path": "libs/child/nested/leaf",
                 "merged": True,

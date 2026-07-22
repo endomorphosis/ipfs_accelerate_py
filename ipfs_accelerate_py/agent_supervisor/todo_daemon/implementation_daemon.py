@@ -4855,6 +4855,11 @@ class PortalImplementationDaemon:
         staged at each level; unrelated unstaged work remains untouched.
         """
 
+        managed_roots = tuple(
+            path.strip().strip("/")
+            for path in self.worktree_submodule_paths
+            if path.strip().strip("/")
+        )
         expected_commits: dict[str, str] = {}
         for item in submodule_merge_results:
             relative = str(item.get("path") or "").strip().strip("/")
@@ -4864,7 +4869,10 @@ class PortalImplementationDaemon:
                 or not relative
                 or not commit
                 or not self._repo_relative_path_safe(relative)
-                or relative not in self.worktree_submodule_paths
+                or not any(
+                    relative == root or relative.startswith(f"{root}/")
+                    for root in managed_roots
+                )
             ):
                 continue
             checkout = workspace / relative
@@ -4873,6 +4881,19 @@ class PortalImplementationDaemon:
             current = self._run_git(["rev-parse", "HEAD"], cwd=checkout).stdout.strip()
             if current == commit:
                 expected_commits[relative] = commit
+
+        # A descendant chain records every containing gitlink up to the root.
+        # Its parent result therefore names the pre-propagation commit and must
+        # not be replayed after the descendant has advanced that parent.
+        expected_commits = {
+            relative: commit
+            for relative, commit in expected_commits.items()
+            if not any(
+                other.startswith(f"{relative}/")
+                for other in expected_commits
+                if other != relative
+            )
+        }
 
         if not expected_commits:
             return {
