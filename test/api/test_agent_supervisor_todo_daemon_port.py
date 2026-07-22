@@ -7775,6 +7775,47 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     loop_config = TodoImplementationSupervisor(config).build_supervisor_loop_config()
 
     assert loop_config.status_static_fields["worktree_no_child_stall_seconds"] == 42
+    assert loop_config.watchdog_stale_after_seconds >= (
+        config.implementation_timeout + max(30.0, config.check_interval * 2.0)
+    )
+
+
+def test_implementation_supervisor_treats_legal_ir_runs_as_bounded_active_children(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_supervisor as implementation_supervisor_module,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: 1234)
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "cmdline": (
+                    "bash",
+                    "scripts/ops/legal_ir/run_legal_ir_8h_canary.sh",
+                )
+            }
+        ],
+    )
+
+    assert supervisor._active_validation_subprocess_exists() is True
 
 
 def test_implementation_supervisor_repairs_stale_active_state_after_rewrite(tmp_path):
