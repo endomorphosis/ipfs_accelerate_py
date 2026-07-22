@@ -3934,6 +3934,89 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
 
 
+def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/ref-042-resolver"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "resolved.txt").write_text("resolved\n", encoding="utf-8")
+    _git(repo, "add", "resolved.txt")
+    _git(repo, "commit", "-m", "REF-042: resolved implementation")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-042 Verify nested merge\n\n- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    def resolver_integrates_only_root(selected_branch, *_args, **_kwargs):
+        _git(repo, "merge", "--no-ff", "--no-edit", selected_branch)
+        return {
+            "attempted": True,
+            "merged": False,
+            "returncode": 1,
+            "reason": "resolver_committed_merge",
+            "submodule_merge_results": [],
+        }
+
+    monkeypatch.setattr(daemon, "_merge_branch_to_main", resolver_integrates_only_root)
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-042",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "REF-042",
+                "title": "Verify nested merge",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["returncode"] == 2
+    assert result["reason"] == "changed_submodule_merge_unverified"
+    assert result["missing_changed_submodule_paths"] == ["libs/child"]
+    assert result["submodule_verification"] == {
+        "verified": False,
+        "expected_paths": ["libs/child"],
+        "reported_paths": [],
+        "previous_reason": "resolver_committed_merge",
+    }
+    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
 def _seed_parent_with_divergent_gitlinks(
     tmp_path: Path,
     *,

@@ -2329,17 +2329,42 @@ class PortalImplementationDaemon:
             if isinstance(raw_submodule_merge_results, list)
             else []
         )
+        reported_submodule_paths = {
+            str(item.get("path") or "").strip("/")
+            for item in submodule_merge_results
+            if isinstance(item, dict) and str(item.get("path") or "").strip("/")
+        }
+        missing_changed_submodule_paths = sorted(
+            set(changed_submodule_paths or ()) - reported_submodule_paths
+        )
         failed_submodules = [
             item
             for item in submodule_merge_results
             if isinstance(item, dict) and not item.get("merged", False)
         ]
+        if missing_changed_submodule_paths:
+            previous_reason = str(result.get("reason") or "submodule_merge_results_missing")
+            result.update(
+                {
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "changed_submodule_merge_unverified",
+                    "missing_changed_submodule_paths": missing_changed_submodule_paths,
+                    "submodule_verification": {
+                        "verified": False,
+                        "expected_paths": sorted(changed_submodule_paths or ()),
+                        "reported_paths": sorted(reported_submodule_paths),
+                        "previous_reason": previous_reason,
+                    },
+                }
+            )
         target_branch = self._main_branch_name()
         if (
             not result.get("merged", False)
             and implementation_commit
             and not result.get("submodule_merge_failed", False)
             and not failed_submodules
+            and not missing_changed_submodule_paths
             and self._git_ref_is_ancestor(implementation_commit, target_branch)
         ):
             previous_reason = str(result.get("reason") or "merge_callback_failed")
