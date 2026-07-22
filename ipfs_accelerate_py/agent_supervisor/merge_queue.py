@@ -712,6 +712,59 @@ class MergeQueue:
             self._write_stage_receipt(request)
         return len(changed)
 
+    def recover_abandoned_train_claims(self) -> int:
+        """Recover claims left by a crashed process-safe merge train.
+
+        Callers must hold the merge train's repo-wide consumer lock. Once that
+        lock is acquired, no live ``merge-train:*`` consumer can still own a
+        processing row, so waiting for the general queue age timeout only
+        wastes throughput. Claims from other queue consumers are untouched.
+        """
+
+        now = self._clock()
+        changed: list[MergeRequest] = []
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                "SELECT * FROM merge_requests WHERE status='processing' AND consumer_id LIKE 'merge-train:%'"
+            ).fetchall()
+            for row in rows:
+                attempt = int(row["attempt"])
+                failure_count = int(row["failure_count"]) + 1
+                if attempt < self.max_attempts:
+                    status = "pending"
+                    next_attempt = attempt + 1
+                    finished_at = 0.0
+                    reason = "merge train consumer exited; claim recovered"
+                else:
+                    status = "quarantined"
+                    next_attempt = attempt
+                    finished_at = now
+                    reason = "merge train consumer exited on final attempt"
+                connection.execute(
+                    """UPDATE merge_requests SET status=?, attempt=?, failure_count=?,
+                       failure_reason=?, claimed_at=0, consumer_id='', finished_at=?,
+                       updated_at=? WHERE request_id=? AND status='processing'""",
+                    (
+                        status,
+                        next_attempt,
+                        failure_count,
+                        reason,
+                        finished_at,
+                        now,
+                        row["request_id"],
+                    ),
+                )
+                updated = connection.execute(
+                    "SELECT * FROM merge_requests WHERE request_id=?", (row["request_id"],)
+                ).fetchone()
+                if updated is not None:
+                    changed.append(self._request_from_row(updated))
+            connection.commit()
+        for request in changed:
+            self._write_stage_receipt(request)
+        return len(changed)
+
     def status(self) -> dict[str, Any]:
         """Return an authoritative stage summary suitable for daemon status."""
 

@@ -140,6 +140,34 @@ def test_train_callback_runs_when_root_candidate_is_already_merged(tmp_path: Pat
     assert queue.get(request.request_id).status == "completed"  # type: ignore[union-attr]
 
 
+def test_train_immediately_recovers_a_claim_abandoned_by_dead_consumer(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/ref-016",
+        task_id="REF-016",
+        canonical_task_id="canonical-ref-016",
+        commit_sha=candidate,
+    )
+    abandoned = queue.dequeue(consumer_id="merge-train:999999:dead")
+    assert abandoned is not None and abandoned.status == "processing"
+    callbacks: list[str] = []
+
+    result = MergeTrain(
+        repo,
+        queue,
+        merge_callback=lambda claimed: callbacks.append(claimed.request_id) or {"merged": True},
+    ).run_once()
+
+    assert result is not None and result["status"] == "merged"
+    assert callbacks == [request.request_id]
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "completed"
+    assert stored.attempt == 2
+    assert stored.failure_count == 1
+
+
 def test_bounded_train_failures_create_durable_quarantine_receipt(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _git(repo, "switch", "-c", "implementation/broken")

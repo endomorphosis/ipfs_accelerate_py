@@ -154,6 +154,7 @@ class MergeTrain:
         with self._consumer_lease() as acquired:
             if not acquired:
                 return None
+            self._recover_abandoned_claims()
             request = self._dequeue()
             if request is None:
                 return None
@@ -176,6 +177,7 @@ class MergeTrain:
         with self._consumer_lease() as acquired:
             if not acquired:
                 return results
+            self._recover_abandoned_claims()
             while max_items is None or len(results) < int(max_items):
                 request = self._dequeue()
                 if request is None:
@@ -184,6 +186,12 @@ class MergeTrain:
         return results
 
     run = drain
+
+    def _recover_abandoned_claims(self) -> int:
+        recover = getattr(self.queue, "recover_abandoned_train_claims", None)
+        if not callable(recover):
+            return 0
+        return int(recover() or 0)
 
     def status(self) -> dict[str, Any]:
         queue_status = self.queue.status() if hasattr(self.queue, "status") else {}
