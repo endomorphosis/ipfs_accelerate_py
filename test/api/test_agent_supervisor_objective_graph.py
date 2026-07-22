@@ -25,7 +25,11 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     main as merge_resolver_main,
     run_configured_merge_resolver_cli,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import materialize_task_dependency_dag
+from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    materialize_task_dependency_dag,
+    materialize_task_planning_graph,
+    objective_finding_conflict_record,
+)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -412,6 +416,8 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     index_path = bundle_dir / "index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
     assert index["bundles"]["objective/ops/root"]["tasks"][0]["task_id"] == "ACCEL-002"
+    assert index["task_conflict_graph"]["surfaces"]
+    assert index["task_planning_graph"]["planning_decisions"] == []
     dataset_manifest = bundle_dir.parent / "objective_datasets" / "accel-objective-ast.manifest.json"
     assert dataset_manifest.exists()
     dataset_payload = json.loads(dataset_manifest.read_text(encoding="utf-8"))
@@ -421,6 +427,7 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     payloads = build_bundle_task_payloads(index_path)
     assert payloads[0]["bundle_key"] == "objective/ops/root"
     assert payloads[0]["todo_path"].endswith("objective-ops-root.todo.md")
+    assert payloads[0]["task_conflict_graph"]["surfaces"]
 
     submitted: list[dict[str, object]] = []
 
@@ -799,3 +806,71 @@ def test_task_dependency_dag_handles_long_generated_chains_without_recursion():
     assert len(graph.schedule) == 1_250
     assert graph.schedule[0].task_cid == "cid-0"
     assert graph.schedule[0].critical_path_length == 1_250
+
+
+def test_objective_findings_preserve_complete_conflict_surface_metadata(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G100 Conflict-aware objective
+
+- Status: active
+- Priority: P0
+- Track: runtime
+- Goal: Add a generated runtime interface.
+- Evidence: missing_runtime_contract
+- Outputs: src/runtime_router.py, test/runtime_router_test.py
+- Predicted files: schemas/runtime.json
+- AST query: CapabilityRouter.dispatch_task, RuntimeAdapter
+- Interfaces: RuntimeAPI@2
+- Submodules: vendor/runtime
+- Generated artifacts: dist/runtime-schema.json
+- Allow concurrent with: TASK-SAFE
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+
+    finding = scan_objective_gaps(repo, objective_path=objective_path, max_findings=1)[0]
+    record = objective_finding_conflict_record("AUTO-100", finding)
+
+    assert finding.predicted_files == [
+        "src/runtime_router.py",
+        "test/runtime_router_test.py",
+        "schemas/runtime.json",
+    ]
+    assert finding.ast_symbols == ["CapabilityRouter.dispatch_task", "RuntimeAdapter"]
+    assert finding.interfaces == ["RuntimeAPI@2"]
+    assert finding.submodules == ["vendor/runtime"]
+    assert finding.generated_artifacts == ["dist/runtime-schema.json"]
+    assert record["files"] == finding.predicted_files
+    assert record["allow_concurrent_with"] == ["TASK-SAFE"]
+
+
+def test_task_planning_graph_combines_dependency_readiness_and_conflict_coloring():
+    planning = materialize_task_planning_graph(
+        [
+            {
+                "task_id": "TASK-A",
+                "task_cid": "cid-a",
+                "predicted_files": ["src/shared.py"],
+                "ast_symbols": ["Shared.update"],
+            },
+            {
+                "task_id": "TASK-B",
+                "task_cid": "cid-b",
+                "depends_on": ["TASK-A"],
+                "predicted_files": ["src/shared.py"],
+                "ast_symbols": ["Shared.update"],
+            },
+        ],
+        now=10_000,
+    )
+
+    assert planning.claimable_task_cids == ["cid-a"]
+    assert set(planning.conflict_graph.surfaces) == {"cid-a", "cid-b"}
+    assert len(planning.conflict_graph.lanes) == 2
+    payload = planning.to_dict()
+    assert payload["dependency_dag"]["claimable_task_cids"] == ["cid-a"]
+    assert payload["planning_decisions"]
