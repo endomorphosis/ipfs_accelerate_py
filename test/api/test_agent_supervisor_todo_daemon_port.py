@@ -3062,6 +3062,25 @@ def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
     assert not pid_alive(pid)
 
 
+def test_pid_alive_treats_an_unreaped_zombie_as_stopped():
+    process = subprocess.Popen([sys.executable, "-c", "pass"])
+    try:
+        deadline = time.monotonic() + 5
+        proc_stat = Path(f"/proc/{process.pid}/stat")
+        while time.monotonic() < deadline:
+            try:
+                state = proc_stat.read_text(encoding="utf-8").rsplit(")", 1)[1].strip()[0]
+            except (OSError, IndexError):
+                state = ""
+            if state == "Z":
+                break
+            time.sleep(0.01)
+        assert state == "Z"
+        assert not pid_alive(process.pid)
+    finally:
+        process.wait(timeout=5)
+
+
 def test_multi_supervisor_runner_cleans_stale_daemon_pid_marker(tmp_path):
     worker = tmp_path / "worker.py"
     stale_pid = 999_999_999

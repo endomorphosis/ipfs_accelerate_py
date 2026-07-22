@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
+import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,6 +13,7 @@ from typing import Any
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 
 _MANIFEST_GRAPH_FIELDS = {
     "conflict_graph",
@@ -480,3 +485,68 @@ def test_leased_lane_publishes_terminal_and_blocked_projection(tmp_path: Path) -
             eligible_task_cids=(blocked_grant.task_cid,),
             requested_lease_ms=5_000,
         ) is None
+
+
+def test_leased_lane_signal_terminates_detached_descendants(tmp_path: Path) -> None:
+    coordination = tmp_path / "coordination.sqlite3"
+    marker = tmp_path / "descendant.pid"
+    bundle = {
+        "bundle_key": "objective/test/process-tree",
+        "tasks": [{"task_id": "T-PROCESS-TREE"}],
+    }
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(bundle)
+        grant = coordinator.claim_ready(
+            "did:web:worker.example",
+            eligible_task_cids=(registered["task_cid"],),
+            requested_lease_ms=300_000,
+        )
+    assert grant is not None
+    child_script = (
+        "import pathlib,subprocess,sys,time;"
+        "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],"
+        "start_new_session=True);"
+        "pathlib.Path(sys.argv[1]).write_text(str(child.pid));"
+        "time.sleep(60)"
+    )
+    wrapper = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.leased_lane",
+            "--coordination-path",
+            str(coordination),
+            "--grant-json",
+            json.dumps(grant.to_dict()),
+            "--lease-ms",
+            "300000",
+            "--heartbeat-interval",
+            "0.05",
+            "--",
+            sys.executable,
+            "-c",
+            child_script,
+            str(marker),
+        ]
+    )
+    descendant_pid = 0
+    try:
+        deadline = time.monotonic() + 30
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert marker.exists()
+        descendant_pid = int(marker.read_text(encoding="utf-8"))
+        assert pid_alive(descendant_pid)
+
+        wrapper.send_signal(signal.SIGTERM)
+        wrapper.wait(timeout=15)
+        deadline = time.monotonic() + 5
+        while pid_alive(descendant_pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not pid_alive(descendant_pid)
+    finally:
+        if wrapper.poll() is None:
+            wrapper.kill()
+            wrapper.wait(timeout=5)
+        if descendant_pid and pid_alive(descendant_pid):
+            os.kill(descendant_pid, signal.SIGKILL)

@@ -236,10 +236,20 @@ def supervisor_maintenance_snapshot(
 
 def pid_alive(pid: Any) -> bool:
     try:
-        os.kill(int(pid), 0)
-        return True
+        process_id = int(pid)
+        os.kill(process_id, 0)
     except Exception:
         return False
+    try:
+        stat = Path(f"/proc/{process_id}/stat").read_text(encoding="utf-8")
+        closing_parenthesis = stat.rfind(")")
+        if closing_parenthesis >= 0:
+            state = stat[closing_parenthesis + 2 :].split(" ", 1)[0]
+            if state == "Z":
+                return False
+    except (OSError, UnicodeError):
+        pass
+    return True
 
 
 def read_pid_file(path: Optional[Path]) -> Optional[int]:

@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .lease_coordination import LeaseCoordinator, LeaseError, LeaseGrant
+from .todo_daemon.core import terminate_pid_tree
 
 logger = logging.getLogger(__name__)
 
@@ -93,12 +94,7 @@ def _terminate_child(process: subprocess.Popen[Any], *, timeout: float = 5.0) ->
 
     if process.poll() is not None:
         return
-    try:
-        process.terminate()
-    except ProcessLookupError:
-        # The process exited between poll() and terminate().  wait() below
-        # still reaps it and establishes the scheduler's execution fence.
-        pass
+    terminate_pid_tree(process.pid, grace_seconds=timeout)
     try:
         process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -257,13 +253,8 @@ def run_leased_lane_result(
         def stop_child(signum: int, _frame: object) -> None:
             nonlocal stopping_signal
             stopping_signal = signum
-            # Signal handlers must stay small.  The polling loop performs the
-            # blocking kill/wait fence before it writes a terminal receipt.
-            if process.poll() is None:
-                try:
-                    process.terminate()
-                except ProcessLookupError:
-                    pass
+            # The polling loop must capture and terminate the whole descendant
+            # tree before the immediate child can exit and orphan its daemon.
 
         handlers_installed = threading.current_thread() is threading.main_thread()
         old_term: Any = None
@@ -281,6 +272,9 @@ def run_leased_lane_result(
                 # operator configured a heartbeat interval longer than it.
                 delay = min(max(0.05, float(heartbeat_interval)), max(0.05, until_renewal))
                 time.sleep(delay)
+                if stopping_signal is not None:
+                    _terminate_child(process)
+                    break
                 if process.poll() is not None:
                     break
                 try:
