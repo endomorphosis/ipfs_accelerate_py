@@ -106,11 +106,13 @@ def test_llama_cpp_server_command_prefers_local_model_path():
 def test_llama_cpp_config_defaults_exact_leanstral_hf_file(monkeypatch):
     monkeypatch.delenv("IPFS_ACCELERATE_LLAMA_CPP_MODEL_REF", raising=False)
     monkeypatch.delenv("IPFS_ACCELERATE_LLAMA_CPP_HF_FILE", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_LLAMA_CPP_CONTEXT_SIZE", raising=False)
 
     config = llama_cpp_utils.config_from_env()
 
     assert config.model_ref == llama_cpp_utils.DEFAULT_LEANSTRAL_MODEL_REF
     assert config.hf_file == llama_cpp_utils.DEFAULT_LEANSTRAL_FILENAME
+    assert config.context_size == 8096
 
 
 def test_llama_cpp_config_does_not_reuse_leanstral_file_for_other_models(monkeypatch):
