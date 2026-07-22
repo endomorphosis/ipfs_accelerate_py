@@ -32,6 +32,14 @@ from .scheduler_metrics import (
     scheduler_state_events,
     write_scheduler_snapshot,
 )
+from .resource_scheduler import (
+    HostResourceSnapshot,
+    LaneResourceRequirements,
+    ResourcePolicy,
+    ResourceScheduleSnapshot,
+    ResourceScheduler,
+    sample_host_resources,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +88,12 @@ class BundleLaneSpec:
     conflicting_task_ids: list[str] = field(default_factory=list)
     conflict_decisions: list[dict[str, Any]] = field(default_factory=list)
     conflict_surface: dict[str, Any] = field(default_factory=dict)
+    resource_class: str = "cpu-small"
+    required_capabilities: list[str] = field(default_factory=list)
+    llm_provider: str = ""
+    required_context_tokens: int = 0
+    token_budget: int = 0
+    max_provider_latency_ms: int = 0
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
         payload = asdict(self)
@@ -204,6 +218,78 @@ def _mapping_list(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, (list, tuple)):
         return []
     return [dict(item) for item in value if isinstance(item, dict)]
+
+
+def _first_nonempty(payloads: Sequence[dict[str, Any]], *keys: str) -> Any:
+    for payload in payloads:
+        for key in keys:
+            value = payload.get(key)
+            if value not in (None, "", [], {}):
+                return value
+    return None
+
+
+def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize planner/router resource metadata without requiring one schema."""
+
+    profile = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
+    task_spec = profile.get("task") if isinstance(profile.get("task"), dict) else {}
+    selection = profile.get("selection") if isinstance(profile.get("selection"), dict) else {}
+    tasks = _mapping_list(payload.get("tasks"))
+    # Member requirements precede the adapter's compatibility defaults. This
+    # prevents a synthesized ``cpu-small`` TaskSpec from masking an explicit
+    # GPU/resource request on the underlying work item.
+    sources = [payload, *tasks, task_spec, selection]
+    capabilities: list[str] = []
+    for source in sources:
+        for key in ("required_capabilities", "capabilities", "required_tools"):
+            value = source.get(key)
+            if isinstance(value, str):
+                candidates = value.split(",")
+            elif isinstance(value, (list, tuple, set, frozenset)):
+                candidates = value
+            else:
+                continue
+            capabilities.extend(str(item).strip() for item in candidates if str(item).strip())
+
+    def maximum(*keys: str) -> int:
+        values = [_schedule_int(source, key) for source in sources for key in keys]
+        return max(values, default=0)
+
+    return {
+        "resource_class": str(
+            _first_nonempty(sources, "resource_class", "worker_resource_class") or "cpu-small"
+        ),
+        "required_capabilities": list(dict.fromkeys(capabilities)),
+        "llm_provider": str(
+            _first_nonempty(
+                sources,
+                "llm_provider",
+                "provider_id",
+                "provider",
+                "effective_provider_name",
+            )
+            or ""
+        ),
+        "required_context_tokens": maximum(
+            "required_context_tokens",
+            "context_tokens",
+            "compact_context_tokens",
+            "estimated_compact_context_tokens",
+            "prompt_tokens",
+        ),
+        "token_budget": maximum(
+            "token_budget",
+            "estimated_tokens",
+            "max_tokens",
+            "max_new_tokens",
+        ),
+        "max_provider_latency_ms": maximum(
+            "max_provider_latency_ms",
+            "max_latency_ms",
+            "latency_budget_ms",
+        ),
+    }
 
 
 _TERMINAL_CONFLICT_TASK_STATUSES = frozenset(
@@ -697,6 +783,7 @@ def plan_bundle_lanes(
             if isinstance(item, dict) and item.get("task_id")
         ]
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
+        resource_fields = _resource_lane_fields(payload)
         command = implementation_supervisor_command(
             todo_path=todo_path,
             state_dir=state_dir,
@@ -753,6 +840,7 @@ def plan_bundle_lanes(
                 conflicting_task_ids=_string_list(conflict_annotation.get("conflicting_task_ids")),
                 conflict_decisions=_mapping_list(conflict_annotation.get("conflict_decisions")),
                 conflict_surface=dict(conflict_annotation.get("conflict_surface") or {}),
+                **resource_fields,
             )
         )
     lanes.sort(key=_lane_schedule_key)
@@ -904,6 +992,12 @@ def _spawn_accepted_lane(
         str(heartbeat_interval),
         "--capacity-millionths",
         str(capacity_millionths),
+        "--resource-class",
+        lane.resource_class,
+        "--provider-id",
+        lane.llm_provider,
+        "--phase-state-path",
+        str(lane.state_dir / f"{lane.state_prefix}_task_state.json"),
         "--",
         *lane.command,
     ]
@@ -1041,6 +1135,11 @@ class DynamicBundleScheduler:
         launcher: Callable[[BundleLaneSpec, Any], Any] | None = None,
         process_alive: Callable[[Any], bool] | None = None,
         lane_disposition: Callable[[BundleLaneSpec], str | bool] | None = None,
+        resource_scheduler: ResourceScheduler | None = None,
+        host_resource_source: Callable[..., HostResourceSnapshot | dict[str, Any]] | None = None,
+        provider_capacity_source: Callable[..., Any] | None = None,
+        provider_capacity_path: Path | None = None,
+        resource_policy: ResourcePolicy | dict[str, Any] | None = None,
         **lane_options: Any,
     ) -> None:
         if int(max_lanes) < 1:
@@ -1066,17 +1165,101 @@ class DynamicBundleScheduler:
         self._launcher = launcher or self._default_launcher
         self._process_alive = process_alive or self._default_process_alive
         self._lane_disposition = lane_disposition or self._default_lane_disposition
+        if resource_scheduler is not None:
+            self.resource_scheduler = resource_scheduler
+        else:
+            policy_values = dict(resource_policy or {}) if isinstance(resource_policy, dict) else None
+            if policy_values is not None:
+                policy_values["max_lanes"] = self.max_lanes
+                policy = ResourcePolicy.from_mapping(policy_values)
+            elif isinstance(resource_policy, ResourcePolicy):
+                policy = replace(resource_policy, max_lanes=self.max_lanes)
+            else:
+                policy = ResourcePolicy(max_lanes=self.max_lanes)
+            self.resource_scheduler = ResourceScheduler(policy)
+        self._host_resource_source = host_resource_source or sample_host_resources
+        self._provider_capacity_source = provider_capacity_source
+        self.provider_capacity_path = Path(provider_capacity_path).resolve() if provider_capacity_path else None
         self._running: dict[str, RunningBundleLane] = {}
         self._stop_event = threading.Event()
         self._lock = threading.RLock()
         self._cycle = 0
         self._last_discovery_error = ""
         self._last_scheduler_snapshot: SchedulerSnapshot | None = None
+        self._last_resource_snapshot: ResourceScheduleSnapshot | None = None
         self._event_source_cache: dict[Path, tuple[int, int, list[dict[str, Any]]]] = {}
 
     @property
     def running_count(self) -> int:
         return len(self._running)
+
+    def _sample_host_resources(self) -> HostResourceSnapshot | dict[str, Any]:
+        source = self._host_resource_source
+        try:
+            return source(
+                self.state_root,
+                active_workers=len(self._running),
+                worker_limit=self.max_lanes,
+                active_phase="scheduler",
+            )
+        except TypeError:
+            return source()
+
+    def _provider_capacities(self, coordinator: LeaseCoordinator) -> Any:
+        """Read injected/file/fenced-heartbeat provider telemetry in that order."""
+
+        if self._provider_capacity_source is not None:
+            try:
+                return self._provider_capacity_source()
+            except TypeError:
+                return self._provider_capacity_source(self)
+
+        configured_path = self.provider_capacity_path
+        if configured_path is None:
+            env_path = os.environ.get("IPFS_ACCELERATE_LLM_ROUTER_CAPACITY_PATH", "").strip()
+            if env_path:
+                configured_path = Path(env_path)
+        if configured_path is not None:
+            try:
+                payload = json.loads(configured_path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict) and isinstance(payload.get("providers"), (dict, list)):
+                    return payload["providers"]
+                return payload
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.warning("Could not read provider capacity %s: %s", configured_path, exc)
+                return ()
+
+        env_json = os.environ.get("IPFS_ACCELERATE_LLM_ROUTER_CAPACITY_JSON", "").strip()
+        if env_json:
+            try:
+                payload = json.loads(env_json)
+                return payload.get("providers", payload) if isinstance(payload, dict) else payload
+            except json.JSONDecodeError as exc:
+                logger.warning("Invalid IPFS_ACCELERATE_LLM_ROUTER_CAPACITY_JSON: %s", exc)
+                return ()
+
+        advertised: list[dict[str, Any]] = []
+        for heartbeat in coordinator.latest_heartbeats():
+            capacity = heartbeat.get("provider_capacity")
+            if not isinstance(capacity, dict):
+                continue
+            item = dict(capacity)
+            item.setdefault("provider_id", heartbeat.get("provider_id"))
+            advertised.append(item)
+        return advertised
+
+    @staticmethod
+    def _lane_resource_requirement(lane: BundleLaneSpec) -> LaneResourceRequirements:
+        payload = lane.to_dict()
+        payload.update(
+            {
+                "lane_id": lane.task_cid or lane.bundle_key,
+                "provider_id": lane.llm_provider,
+                "context_tokens": lane.required_context_tokens,
+                "max_provider_latency_ms": lane.max_provider_latency_ms,
+            }
+        )
+        return LaneResourceRequirements.from_mapping(payload)
 
     def _plan(self) -> list[BundleLaneSpec]:
         allowed = {
@@ -1448,6 +1631,21 @@ class DynamicBundleScheduler:
         self._last_scheduler_snapshot = current_snapshot
         snapshot_payload = current_snapshot.to_dict()
         decision_snapshot_payload = decision_state.to_dict()
+        resource_snapshot_payload = (
+            self._last_resource_snapshot.to_dict()
+            if self._last_resource_snapshot is not None
+            else None
+        )
+        if resource_snapshot_payload is not None:
+            # Per-lane admission evidence is already retained beside the
+            # scheduler decision. Keep the authoritative live resource view
+            # compact enough for long-running manifests.
+            resource_snapshot_payload.pop("decisions", None)
+            resource_snapshot_payload.pop("admitted_lane_ids", None)
+            resource_snapshot_payload.pop("policy", None)
+            resource_snapshot_payload.pop("observed_at_ms", None)
+            resource_snapshot_payload.pop("configured_max_lanes", None)
+            resource_snapshot_payload.pop("available_slots", None)
         payload: dict[str, Any] = {
             "schema": "ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler@1",
             "generated_at": utc_now(),
@@ -1458,6 +1656,16 @@ class DynamicBundleScheduler:
             "bundle_index_path": repo_relative_path(self.repo_root, self.bundle_index_path),
             "coordination_path": repo_relative_path(self.repo_root, self.coordination_path),
             "capacity": self.max_lanes,
+            "effective_capacity": (
+                self._last_resource_snapshot.effective_slots
+                if self._last_resource_snapshot is not None
+                else self.max_lanes
+            ),
+            "available_worker_capacity": (
+                self._last_resource_snapshot.available_slots
+                if self._last_resource_snapshot is not None
+                else max(0, self.max_lanes - len(active_lanes))
+            ),
             "planned_count": len(discovered),
             "started_count": len(active_lanes),
             "running_count": len(active_lanes),
@@ -1470,6 +1678,11 @@ class DynamicBundleScheduler:
                 "blocked": len(blocked),
                 "completed": len(completed),
                 "capacity": self.max_lanes,
+                "effective_capacity": (
+                    self._last_resource_snapshot.effective_slots
+                    if self._last_resource_snapshot is not None
+                    else self.max_lanes
+                ),
             },
             "scheduler_snapshot": snapshot_payload,
             "scheduler_snapshot_id": current_snapshot.snapshot_id,
@@ -1484,6 +1697,12 @@ class DynamicBundleScheduler:
                 "metrics_path": repo_relative_path(self.repo_root, self.decision_metrics_path),
             },
             "scheduler_decisions": [dict(item) for item in decisions],
+            "resource_schedule": resource_snapshot_payload,
+            "backpressure_reasons": (
+                list(self._last_resource_snapshot.backpressure_reasons)
+                if self._last_resource_snapshot is not None
+                else []
+            ),
             "conflict_graph": _lane_conflict_manifest(discovered),
             "lanes": active_lanes,
             "ready": ready,
@@ -1543,17 +1762,49 @@ class DynamicBundleScheduler:
                 decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
                 snapshot_ready = set(ready_task_cids(decision_snapshot))
                 decisions: list[dict[str, Any]] = []
-                free_slots = max(0, self.max_lanes - len(self._running))
+                dispositions = {
+                    lane.task_cid: self._disposition(lane)
+                    for lane in registered
+                    if lane.task_cid not in self._running and lane.task_cid in snapshot_ready
+                }
+                resource_candidates = [
+                    lane
+                    for lane in registered
+                    if lane.task_cid not in self._running
+                    and lane.task_cid in snapshot_ready
+                    and not dispositions.get(lane.task_cid)
+                    and not any(
+                        _lanes_conflict(lane, running.spec)
+                        for running in self._running.values()
+                    )
+                ]
+                try:
+                    host_resources = self._sample_host_resources()
+                except Exception:
+                    logger.exception("Host resource sampling failed; retaining configured bounds")
+                    host_resources = HostResourceSnapshot(
+                        active_workers=len(self._running),
+                        worker_limit=self.max_lanes,
+                        available_worker_capacity=max(0, self.max_lanes - len(self._running)),
+                    )
+                try:
+                    provider_capacities = self._provider_capacities(coordinator)
+                except Exception:
+                    logger.exception("Provider capacity sampling failed")
+                    provider_capacities = ()
+                resource_snapshot = self.resource_scheduler.schedule(
+                    [self._lane_resource_requirement(lane) for lane in resource_candidates],
+                    host=host_resources,
+                    providers=provider_capacities,
+                    path=self.state_root,
+                    active_workers=len(self._running),
+                )
+                self._last_resource_snapshot = resource_snapshot
+                resource_decisions = {
+                    lane.task_cid: decision
+                    for lane, decision in zip(resource_candidates, resource_snapshot.decisions)
+                }
                 for lane in registered:
-                    if free_slots <= 0:
-                        decisions.append({
-                            "task_cid": lane.task_cid,
-                            "bundle_key": lane.bundle_key,
-                            "decision": "deferred",
-                            "reason": "capacity",
-                            "snapshot_id": decision_snapshot.snapshot_id,
-                        })
-                        continue
                     if lane.task_cid in self._running:
                         decisions.append({
                             "task_cid": lane.task_cid,
@@ -1584,6 +1835,40 @@ class DynamicBundleScheduler:
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
                         continue
+                    disposition = dispositions.get(lane.task_cid, "")
+                    if disposition:
+                        grant = coordinator.claim_ready(
+                            self.claimant_did,
+                            requested_lease_ms=self.lease_ms,
+                            eligible_task_cids=(lane.task_cid,),
+                        )
+                        if grant is not None:
+                            try:
+                                self._settle_grant(coordinator, grant, disposition=disposition)
+                            except LeaseError:
+                                pass
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "settled" if grant is not None else "deferred",
+                            "reason": disposition if grant is not None else "lease_unavailable",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
+                        continue
+                    admission = resource_decisions.get(lane.task_cid)
+                    if admission is None or not admission.admitted:
+                        evidence = admission.to_dict() if admission is not None else {}
+                        reasons = list(admission.reasons) if admission is not None else ["resource_capacity"]
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            "reason": reasons[0],
+                            "backpressure_reasons": reasons,
+                            "resource_admission": evidence,
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
+                        continue
                     grant = coordinator.claim_ready(
                         self.claimant_did,
                         requested_lease_ms=self.lease_ms,
@@ -1598,20 +1883,8 @@ class DynamicBundleScheduler:
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
                         continue
-                    disposition = self._disposition(lane)
-                    if disposition:
-                        try:
-                            self._settle_grant(coordinator, grant, disposition=disposition)
-                        except LeaseError:
-                            pass
-                        decisions.append({
-                            "task_cid": lane.task_cid,
-                            "bundle_key": lane.bundle_key,
-                            "decision": "settled",
-                            "reason": disposition,
-                            "snapshot_id": decision_snapshot.snapshot_id,
-                        })
-                        continue
+                    if admission.provider_id and admission.provider_id != lane.llm_provider:
+                        lane = replace(lane, llm_provider=admission.provider_id)
                     try:
                         handle = self._launcher(lane, grant)
                     except Exception:
@@ -1640,9 +1913,9 @@ class DynamicBundleScheduler:
                         "bundle_key": lane.bundle_key,
                         "decision": "launched",
                         "reason": "ready_capacity",
+                        "resource_admission": admission.to_dict(),
                         "snapshot_id": decision_snapshot.snapshot_id,
                     })
-                    free_slots -= 1
 
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
@@ -1781,6 +2054,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lease-ms", type=int, default=60_000)
     parser.add_argument("--heartbeat-interval", type=float, default=5.0)
     parser.add_argument("--capacity-millionths", type=int, default=1_000_000)
+    parser.add_argument("--max-cpu-percent", type=int, default=90)
+    parser.add_argument("--max-memory-percent", type=int, default=90)
+    parser.add_argument("--max-disk-percent", type=int, default=95)
+    parser.add_argument("--minimum-memory-available-bytes", type=int, default=0)
+    parser.add_argument("--minimum-disk-available-bytes", type=int, default=0)
+    parser.add_argument("--maximum-provider-latency-ms", type=int, default=120_000)
+    parser.add_argument("--provider-quota-reserve", type=int, default=0)
+    parser.add_argument("--provider-token-reserve", type=int, default=0)
+    parser.add_argument("--provider-capacity-path", type=Path, default=None)
+    parser.add_argument(
+        "--allow-missing-provider-telemetry",
+        action="store_true",
+        help="Allow provider-dependent lanes when no capacity monitor is available",
+    )
     return parser
 
 
@@ -1827,6 +2114,19 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             heartbeat_interval=getattr(args, "heartbeat_interval", 5.0),
             capacity_millionths=getattr(args, "capacity_millionths", 1_000_000),
             poll_interval=getattr(args, "poll_interval", 5.0),
+            provider_capacity_path=getattr(args, "provider_capacity_path", None),
+            resource_policy={
+                "max_lanes": getattr(args, "max_lanes", 1) or 1,
+                "max_cpu_percent": getattr(args, "max_cpu_percent", 90),
+                "max_memory_percent": getattr(args, "max_memory_percent", 90),
+                "max_disk_percent": getattr(args, "max_disk_percent", 95),
+                "minimum_memory_available_bytes": getattr(args, "minimum_memory_available_bytes", 0),
+                "minimum_disk_available_bytes": getattr(args, "minimum_disk_available_bytes", 0),
+                "maximum_provider_latency_ms": getattr(args, "maximum_provider_latency_ms", 120_000),
+                "provider_quota_reserve": getattr(args, "provider_quota_reserve", 0),
+                "provider_token_reserve": getattr(args, "provider_token_reserve", 0),
+                "require_provider_telemetry": not getattr(args, "allow_missing_provider_telemetry", False),
+            },
             **lane_options,
         )
         return scheduler.run(max_cycles=1 if getattr(args, "once", False) else None)
