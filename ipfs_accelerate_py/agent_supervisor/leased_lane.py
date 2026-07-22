@@ -20,7 +20,7 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -89,6 +89,90 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _resource_measurements(
+    sampler: Callable[..., Any] | None,
+    *,
+    active_phase: str,
+    occupied_workers: int,
+) -> dict[str, Any]:
+    """Return a best-effort, integer-only heartbeat resource projection."""
+
+    try:
+        if sampler is None:
+            from .resource_scheduler import sample_host_resources
+
+            snapshot = sample_host_resources(
+                Path.cwd(),
+                active_workers=occupied_workers,
+                worker_limit=1,
+                active_phase=active_phase,
+            )
+        else:
+            try:
+                snapshot = sampler(
+                    active_workers=occupied_workers,
+                    worker_limit=1,
+                    active_phase=active_phase,
+                )
+            except TypeError:
+                snapshot = sampler()
+        values = snapshot.to_dict() if hasattr(snapshot, "to_dict") else dict(snapshot)
+    except Exception:
+        # Resource telemetry must never cause a healthy, fenced child to lose
+        # its lease.  Explicit occupancy still makes the heartbeat useful.
+        logger.debug("Could not sample lane resources", exc_info=True)
+        values = {}
+
+    aliases = {
+        "cpu_millionths": ("cpu_millionths", "cpu_utilization_millionths"),
+        "cpu_percent": ("cpu_percent",),
+        "memory_percent": ("memory_percent",),
+        "disk_percent": ("disk_percent",),
+        "memory_used_bytes": ("memory_used_bytes",),
+        "memory_available_bytes": ("memory_available_bytes", "available_memory_bytes"),
+        "memory_total_bytes": ("memory_total_bytes", "total_memory_bytes"),
+        "disk_used_bytes": ("disk_used_bytes",),
+        "disk_available_bytes": ("disk_available_bytes", "available_disk_bytes"),
+        "disk_total_bytes": ("disk_total_bytes", "total_disk_bytes"),
+    }
+    result: dict[str, Any] = {
+        "active_phase": active_phase,
+        "occupied_workers": int(occupied_workers),
+        "available_workers": max(0, 1 - int(occupied_workers)),
+    }
+    for target, candidates in aliases.items():
+        for candidate in candidates:
+            value = values.get(candidate)
+            if value is not None:
+                try:
+                    result[target] = int(value)
+                except (TypeError, ValueError):
+                    pass
+                break
+    return result
+
+
+def _active_phase(state_path: Path | None, default: str) -> str:
+    if state_path is None:
+        return default
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return default
+    if not isinstance(state, dict):
+        return default
+    explicit = str(state.get("active_phase") or "").strip()
+    if explicit:
+        return explicit[:64]
+    if state.get("implementation_in_progress") or state.get("active_task_id"):
+        return "implementation"
+    if int(state.get("ready_count") or 0) > 0:
+        return "ready"
+    if int(state.get("blocked_count") or 0) > 0:
+        return "blocked"
+    return default
+
+
 def _terminate_child(process: subprocess.Popen[Any], *, timeout: float = 5.0) -> None:
     """Terminate a child and do not return while it can still execute work."""
 
@@ -137,6 +221,10 @@ def run_leased_lane_result(
     lease_ms: int,
     heartbeat_interval: float,
     capacity_millionths: int = 1_000_000,
+    resource_class: str = "",
+    provider_id: str = "",
+    resource_sampler: Callable[..., Any] | None = None,
+    phase_state_path: Path | None = None,
 ) -> LeasedLaneResult:
     """Run ``command`` and return its fenced, terminal lease disposition.
 
@@ -159,7 +247,17 @@ def run_leased_lane_result(
     with LeaseCoordinator(coordination_path) as coordinator:
         try:
             grant = coordinator.validate(grant)
-            coordinator.heartbeat(grant, capacity_millionths=capacity_millionths)
+            coordinator.heartbeat(
+                grant,
+                capacity_millionths=capacity_millionths,
+                resource_class=resource_class,
+                provider_id=provider_id,
+                **_resource_measurements(
+                    resource_sampler,
+                    active_phase=_active_phase(phase_state_path, "starting"),
+                    occupied_workers=1,
+                ),
+            )
         except LeaseError as exc:
             logger.warning("Refused to start fenced lane %s: %s", grant.task_cid, exc)
             return LeasedLaneResult(
@@ -287,6 +385,13 @@ def run_leased_lane_result(
                         grant,
                         capacity_millionths=capacity_millionths,
                         now_ms=now,
+                        resource_class=resource_class,
+                        provider_id=provider_id,
+                        **_resource_measurements(
+                            resource_sampler,
+                            active_phase=_active_phase(phase_state_path, "executing"),
+                            occupied_workers=1,
+                        ),
                     )
                 except LeaseError as exc:
                     logger.error("Fencing daemon lane after lease loss: %s", exc)
@@ -347,6 +452,20 @@ def run_leased_lane_result(
                 else "failed"
             )
             try:
+                # Publish a final live-capacity observation before the receipt
+                # closes the lease.  The lane slot can be reassigned as soon as
+                # its child exits, regardless of terminal task disposition.
+                coordinator.heartbeat(
+                    grant,
+                    capacity_millionths=0,
+                    resource_class=resource_class,
+                    provider_id=provider_id,
+                    **_resource_measurements(
+                        resource_sampler,
+                        active_phase="idle",
+                        occupied_workers=0,
+                    ),
+                )
                 receipt = coordinator.receipt(
                     grant,
                     status=receipt_status,
@@ -416,6 +535,10 @@ def run_leased_lane(
     lease_ms: int,
     heartbeat_interval: float,
     capacity_millionths: int = 1_000_000,
+    resource_class: str = "",
+    provider_id: str = "",
+    resource_sampler: Callable[..., Any] | None = None,
+    phase_state_path: Path | None = None,
 ) -> int:
     """Compatibility wrapper returning the guarded command's lane exit code."""
 
@@ -426,6 +549,10 @@ def run_leased_lane(
         lease_ms=lease_ms,
         heartbeat_interval=heartbeat_interval,
         capacity_millionths=capacity_millionths,
+        resource_class=resource_class,
+        provider_id=provider_id,
+        resource_sampler=resource_sampler,
+        phase_state_path=phase_state_path,
     ).exit_code
 
 
@@ -436,6 +563,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lease-ms", type=int, default=60_000)
     parser.add_argument("--heartbeat-interval", type=float, default=5.0)
     parser.add_argument("--capacity-millionths", type=int, default=1_000_000)
+    parser.add_argument("--resource-class", default="")
+    parser.add_argument("--provider-id", default="")
+    parser.add_argument("--phase-state-path", type=Path, default=None)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
@@ -453,6 +583,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         lease_ms=args.lease_ms,
         heartbeat_interval=args.heartbeat_interval,
         capacity_millionths=args.capacity_millionths,
+        resource_class=args.resource_class,
+        provider_id=args.provider_id,
+        phase_state_path=args.phase_state_path,
     )
 
 

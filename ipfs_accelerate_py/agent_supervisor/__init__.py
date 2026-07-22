@@ -79,6 +79,13 @@ __all__ = [
     "BundleWriteResult",
     "BundleLaneSpec",
     "DynamicBundleScheduler",
+    "AdmissionDecision",
+    "HostResourceSnapshot",
+    "LaneResourceRequirements",
+    "ProviderCapacity",
+    "ResourcePolicy",
+    "ResourceScheduleSnapshot",
+    "ResourceScheduler",
     "ActionContractCodegenConfig",
     "ActionContractSyncSpec",
     "ActionContractSyncTarget",
@@ -249,6 +256,9 @@ __all__ = [
     "parse_todo_vector_records",
     "plan_semantic_ast_bundles",
     "plan_bundle_lanes",
+    "normalize_provider_capacities",
+    "normalize_provider_capacity",
+    "sample_host_resources",
     "schedule_critical_path",
     "prefixed_bootstrap_path_spec",
     "prefixed_bootstrap_path_specs",
@@ -440,6 +450,21 @@ def __getattr__(name: str):
         from . import bundle_supervisor
 
         return getattr(bundle_supervisor, name)
+    if name in {
+        "AdmissionDecision",
+        "HostResourceSnapshot",
+        "LaneResourceRequirements",
+        "ProviderCapacity",
+        "ResourcePolicy",
+        "ResourceScheduleSnapshot",
+        "ResourceScheduler",
+        "normalize_provider_capacities",
+        "normalize_provider_capacity",
+        "sample_host_resources",
+    }:
+        from . import resource_scheduler
+
+        return getattr(resource_scheduler, name)
     if name in {
         "TaskIdentity",
         "canonical_bundle_identity",

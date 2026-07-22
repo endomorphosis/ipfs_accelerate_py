@@ -1349,11 +1349,86 @@ class LeaseCoordinator:
                 conn.rollback()
                 raise
 
-    def heartbeat(self, grant: LeaseGrant, *, capacity_millionths: int, ttl_ms: int = 15_000, now_ms: int | None = None) -> dict[str, Any]:
+    def heartbeat(
+        self,
+        grant: LeaseGrant,
+        *,
+        capacity_millionths: int,
+        ttl_ms: int = 15_000,
+        now_ms: int | None = None,
+        active_phase: str | None = None,
+        cpu_millionths: int | None = None,
+        cpu_percent: int | None = None,
+        memory_percent: int | None = None,
+        disk_percent: int | None = None,
+        memory_used_bytes: int | None = None,
+        memory_available_bytes: int | None = None,
+        memory_total_bytes: int | None = None,
+        disk_used_bytes: int | None = None,
+        disk_available_bytes: int | None = None,
+        disk_total_bytes: int | None = None,
+        occupied_workers: int | None = None,
+        available_workers: int | None = None,
+        resource_class: str | None = None,
+        provider_id: str | None = None,
+        provider_capacity: Mapping[str, Any] | None = None,
+        detail: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Publish a live, fenced worker heartbeat.
+
+        Resource measurements use integers so the resulting Profile G artifact
+        remains canonical DAG-JSON.  Callers that sample fractional percentages
+        should use fixed-point units (``cpu_millionths`` is one million for one
+        fully occupied CPU).  Optional provider and detail mappings are retained
+        in ``payload_json`` without widening the stable SQLite table.
+        """
+
+        def optional_integer(name: str, value: int | None) -> int | None:
+            if value is None:
+                return None
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{name} must be an integer")
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
+            return value
+
+        def optional_text(name: str, value: str | None) -> str | None:
+            if value is None:
+                return None
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be a string")
+            return value
+
         now = self._clock_ms() if now_ms is None else int(now_ms)
-        capacity = int(capacity_millionths)
+        capacity = optional_integer("capacity_millionths", capacity_millionths)
+        assert capacity is not None  # Required by the public signature.
         if not 0 <= capacity <= 1_000_000:
             raise ValueError("capacity_millionths must be in [0, 1000000]")
+        ttl = optional_integer("ttl_ms", ttl_ms)
+        assert ttl is not None
+        measurements = {
+            "cpu_millionths": optional_integer("cpu_millionths", cpu_millionths),
+            "cpu_percent": optional_integer("cpu_percent", cpu_percent),
+            "memory_percent": optional_integer("memory_percent", memory_percent),
+            "disk_percent": optional_integer("disk_percent", disk_percent),
+            "memory_used_bytes": optional_integer("memory_used_bytes", memory_used_bytes),
+            "memory_available_bytes": optional_integer("memory_available_bytes", memory_available_bytes),
+            "memory_total_bytes": optional_integer("memory_total_bytes", memory_total_bytes),
+            "disk_used_bytes": optional_integer("disk_used_bytes", disk_used_bytes),
+            "disk_available_bytes": optional_integer("disk_available_bytes", disk_available_bytes),
+            "disk_total_bytes": optional_integer("disk_total_bytes", disk_total_bytes),
+            "occupied_workers": optional_integer("occupied_workers", occupied_workers),
+            "available_workers": optional_integer("available_workers", available_workers),
+        }
+        text_fields = {
+            "active_phase": optional_text("active_phase", active_phase),
+            "resource_class": optional_text("resource_class", resource_class),
+            "provider_id": optional_text("provider_id", provider_id),
+        }
+        if provider_capacity is not None and not isinstance(provider_capacity, Mapping):
+            raise ValueError("provider_capacity must be a mapping")
+        if detail is not None and not isinstance(detail, Mapping):
+            raise ValueError("detail must be a mapping")
         with self._lock:
             conn = self._connection
             conn.execute("BEGIN IMMEDIATE")
@@ -1363,7 +1438,16 @@ class LeaseCoordinator:
                            "task_cid": grant.task_cid, "goal_cid": grant.goal_cid, "subgoal_cid": grant.subgoal_cid,
                            "claim_cid": grant.claim_cid, "claimant_did": grant.claimant_did,
                            "fencing_token": grant.fencing_token, "capacity_millionths": capacity,
-                           "expires_at_ms": min(grant.lease_expires_at_ms, now + int(ttl_ms))}
+                           "expires_at_ms": min(grant.lease_expires_at_ms, now + ttl)}
+                payload.update({key: value for key, value in measurements.items() if value is not None})
+                payload.update({key: value for key, value in text_fields.items() if value is not None})
+                if provider_capacity is not None:
+                    payload["provider_capacity"] = dict(provider_capacity)
+                if detail is not None:
+                    payload["detail"] = dict(detail)
+                # Validate the complete payload before touching either artifact
+                # table. This rejects nested floats and unsupported containers.
+                canonical_profile_g_bytes(payload)
                 cid = self._put_artifact(conn, "DaemonHeartbeat", payload)
                 conn.execute("INSERT OR REPLACE INTO heartbeats VALUES(?,?,?,?,?,?,?,?)",
                              (cid, grant.task_cid, grant.claimant_did, grant.fencing_token, now, payload["expires_at_ms"], capacity, json.dumps(payload, sort_keys=True)))
@@ -1372,6 +1456,78 @@ class LeaseCoordinator:
             except Exception:
                 conn.rollback()
                 raise
+
+    def latest_heartbeats(
+        self,
+        *,
+        task_cids: Iterable[str] | None = None,
+        provider_id: str | None = None,
+        include_expired: bool = False,
+        now_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return the newest heartbeat for each task.
+
+        Expired advertisements are excluded by default so callers cannot use a
+        dead worker's resource or provider capacity for admission decisions.
+        Historical inspection may opt in with ``include_expired=True``.
+        ``provider_id`` matches the explicit provider telemetry identifier, not
+        the lease claimant DID; legacy heartbeats therefore do not match it.
+        """
+
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        selected = None if task_cids is None else {str(item) for item in task_cids}
+        if selected == set():
+            return []
+        if provider_id is not None and not isinstance(provider_id, str):
+            raise ValueError("provider_id must be a string")
+        with self._lock:
+            query = "SELECT * FROM heartbeats"
+            clauses: list[str] = []
+            parameters: list[Any] = []
+            if not include_expired:
+                clauses.append("expires_at_ms>?")
+                parameters.append(now)
+            if selected is not None:
+                placeholders = ",".join("?" for _item in selected)
+                clauses.append(f"task_cid IN ({placeholders})")
+                parameters.extend(sorted(selected))
+            if clauses:
+                query += " WHERE " + " AND ".join(clauses)
+            query += " ORDER BY observed_at_ms DESC, heartbeat_cid DESC"
+            rows = self._connection.execute(query, parameters).fetchall()
+
+        latest: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            task_cid = str(row["task_cid"])
+            if task_cid in latest:
+                continue
+            try:
+                payload = json.loads(str(row["payload_json"]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if provider_id is not None and payload.get("provider_id") != provider_id:
+                continue
+            payload["heartbeat_cid"] = str(row["heartbeat_cid"])
+            latest[task_cid] = payload
+        return [latest[task_cid] for task_cid in sorted(latest)]
+
+    def latest_heartbeat(
+        self,
+        task_cid: str,
+        *,
+        include_expired: bool = False,
+        now_ms: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Return the newest current heartbeat for one task, if any."""
+
+        items = self.latest_heartbeats(
+            task_cids=(task_cid,),
+            include_expired=include_expired,
+            now_ms=now_ms,
+        )
+        return items[0] if items else None
 
     def receipt(
         self, grant: LeaseGrant, *, status: str, output: Mapping[str, Any] | None = None,
