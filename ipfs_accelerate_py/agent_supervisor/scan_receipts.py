@@ -78,6 +78,414 @@ class ScanMode(str, Enum):
     LEGACY = "legacy"
 
 
+class ScanSkipReason(str, Enum):
+    """Bounded reason codes for file exclusions and parser failures.
+
+    Detailed exception messages belong in the referenced scan-details
+    artifact, never in ``reason_code``.  Keeping this vocabulary bounded makes
+    receipts safe to aggregate as metrics without accidental high-cardinality
+    labels.
+    """
+
+    # Inventory and policy exclusions.
+    EXCLUDED_PREFIX = "excluded_prefix"
+    EXCLUDED_DIRECTORY = "excluded_directory"
+    GENERATED_ARTIFACT = "generated_artifact"
+    TODO_BOARD = "todo_board"
+    UNSUPPORTED_SUFFIX = "unsupported_suffix"
+    STAT_FAILED = "stat_failed"
+    NOT_REGULAR_FILE = "not_regular_file"
+    FILE_TOO_LARGE = "file_too_large"
+    UNSAFE_GIT_PATH = "unsafe_git_path"
+    MISSING_FILE = "missing_file"
+    # Parser/inventory failures.
+    GIT_INVENTORY_FAILED = "git_inventory_failed"
+    READ_FAILED = "read_failed"
+    DECODE_FAILED = "decode_failed"
+    SYNTAX_ERROR = "syntax_error"
+    PARSER_UNAVAILABLE = "parser_unavailable"
+    PARSER_TIMED_OUT = "parser_timed_out"
+    PARSER_FAILED = "parser_failed"
+
+    @property
+    def is_parser_failure(self) -> bool:
+        return self in _PARSER_FAILURE_REASONS
+
+    @property
+    def is_exclusion(self) -> bool:
+        return not self.is_parser_failure
+
+
+_PARSER_FAILURE_REASONS = frozenset(
+    {
+        ScanSkipReason.GIT_INVENTORY_FAILED,
+        ScanSkipReason.READ_FAILED,
+        ScanSkipReason.DECODE_FAILED,
+        ScanSkipReason.SYNTAX_ERROR,
+        ScanSkipReason.PARSER_UNAVAILABLE,
+        ScanSkipReason.PARSER_TIMED_OUT,
+        ScanSkipReason.PARSER_FAILED,
+    }
+)
+
+MAX_REPRESENTATIVE_PATHS_PER_REASON = 20
+
+
+def _count(value: Any, *, field_name: str) -> int:
+    """Return a strict non-negative integer receipt count."""
+
+    if isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a non-negative integer")
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"{field_name} must be a non-negative integer") from exc
+    if normalized < 0 or (isinstance(value, float) and not value.is_integer()):
+        raise ValueError(f"{field_name} must be a non-negative integer")
+    return normalized
+
+
+@dataclass(frozen=True)
+class ScanCoverageCounts:
+    """Inventory and parser coverage dimensions shared by every scan mode."""
+
+    git_roots: int = 0
+    tracked_files: int = 0
+    eligible_files: int = 0
+    parsed_files: int = 0
+    cache_hits: int = 0
+    excluded_files: int = 0
+    parser_failures: int = 0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "git_roots",
+            "tracked_files",
+            "eligible_files",
+            "parsed_files",
+            "cache_hits",
+            "excluded_files",
+            "parser_failures",
+        ):
+            object.__setattr__(self, name, _count(getattr(self, name), field_name=name))
+        if self.eligible_files > self.tracked_files:
+            raise ValueError("eligible_files cannot exceed tracked_files")
+        if self.excluded_files > self.tracked_files:
+            raise ValueError("excluded_files cannot exceed tracked_files")
+        if self.eligible_files + self.excluded_files > self.tracked_files:
+            raise ValueError("eligible_files plus excluded_files cannot exceed tracked_files")
+        if self.parsed_files + self.cache_hits + self.parser_failures > self.eligible_files:
+            raise ValueError(
+                "parsed_files plus cache_hits plus parser_failures cannot exceed eligible_files"
+            )
+
+    @property
+    def inventoried_files(self) -> int:
+        return self.eligible_files + self.excluded_files
+
+    @property
+    def unclassified_tracked_files(self) -> int:
+        return self.tracked_files - self.inventoried_files
+
+    @property
+    def unparsed_eligible_files(self) -> int:
+        return max(
+            0,
+            self.eligible_files
+            - self.parsed_files
+            - self.cache_hits
+            - self.parser_failures,
+        )
+
+    @property
+    def is_inventory_complete(self) -> bool:
+        return self.unclassified_tracked_files == 0
+
+    # Explicit count aliases ease migration from existing ``*_file_count``
+    # instrumentation without changing the concise serialized vocabulary.
+    git_root_count = property(lambda self: self.git_roots)
+    tracked_file_count = property(lambda self: self.tracked_files)
+    eligible_file_count = property(lambda self: self.eligible_files)
+    parsed_file_count = property(lambda self: self.parsed_files)
+    cache_hit_count = property(lambda self: self.cache_hits)
+    excluded_file_count = property(lambda self: self.excluded_files)
+    parser_failure_count = property(lambda self: self.parser_failures)
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "git_roots": self.git_roots,
+            "tracked_files": self.tracked_files,
+            "eligible_files": self.eligible_files,
+            "parsed_files": self.parsed_files,
+            "cache_hits": self.cache_hits,
+            "excluded_files": self.excluded_files,
+            "parser_failures": self.parser_failures,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ScanCoverageCounts":
+        return cls(**{name: payload.get(name, 0) for name in cls.__dataclass_fields__})
+
+
+@dataclass(frozen=True)
+class CandidateAccounting:
+    """A lossless disposition funnel for every raw analyzer candidate.
+
+    ``seen_candidates`` were already represented by durable fingerprints;
+    ``deduplicated_candidates`` collided within this scan or during the final
+    taskboard lock; and ``rejected_candidates`` covers bounded output limits or
+    policy validation.  Every raw candidate must have exactly one disposition.
+    """
+
+    raw_candidates: int = 0
+    seen_candidates: int = 0
+    deduplicated_candidates: int = 0
+    rejected_candidates: int = 0
+    appended_tasks: int = 0
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            object.__setattr__(self, name, _count(getattr(self, name), field_name=name))
+        if not self.is_balanced:
+            raise ValueError(
+                "candidate accounting is unbalanced: raw_candidates must equal "
+                "seen_candidates + deduplicated_candidates + rejected_candidates + "
+                "appended_tasks"
+            )
+
+    @property
+    def accounted_candidates(self) -> int:
+        return (
+            self.seen_candidates
+            + self.deduplicated_candidates
+            + self.rejected_candidates
+            + self.appended_tasks
+        )
+
+    @property
+    def novel_candidates(self) -> int:
+        return self.raw_candidates - self.seen_candidates
+
+    @property
+    def is_balanced(self) -> bool:
+        return self.raw_candidates == self.accounted_candidates
+
+    def to_dict(self) -> dict[str, int]:
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateAccounting":
+        return cls(**{name: payload.get(name, 0) for name in cls.__dataclass_fields__})
+
+
+@dataclass(frozen=True)
+class ScanReasonSummary:
+    """Bounded receipt projection for paths sharing one reason code."""
+
+    reason_code: ScanSkipReason
+    count: int
+    representative_paths: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        try:
+            reason = (
+                self.reason_code
+                if isinstance(self.reason_code, ScanSkipReason)
+                else ScanSkipReason(str(self.reason_code))
+            )
+        except ValueError as exc:
+            raise ValueError(f"unknown scan skip reason: {self.reason_code!r}") from exc
+        object.__setattr__(self, "reason_code", reason)
+        object.__setattr__(self, "count", _count(self.count, field_name="count"))
+        if isinstance(self.representative_paths, (str, bytes, bytearray)):
+            raise TypeError("representative_paths must be a sequence of paths")
+        paths = tuple(str(path).strip() for path in self.representative_paths if str(path).strip())
+        if len(paths) != len(set(paths)):
+            raise ValueError("representative_paths must not contain duplicates")
+        if len(paths) > MAX_REPRESENTATIVE_PATHS_PER_REASON:
+            raise ValueError(
+                "representative_paths exceeds the bounded receipt limit of "
+                f"{MAX_REPRESENTATIVE_PATHS_PER_REASON}"
+            )
+        if len(paths) > self.count:
+            raise ValueError("representative_paths cannot outnumber the summarized records")
+        object.__setattr__(self, "representative_paths", paths)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "reason_code": self.reason_code.value,
+            "count": self.count,
+            "representative_paths": list(self.representative_paths),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ScanReasonSummary":
+        return cls(
+            reason_code=payload.get("reason_code", ""),
+            count=payload.get("count", 0),
+            representative_paths=tuple(payload.get("representative_paths") or ()),
+        )
+
+
+@dataclass(frozen=True)
+class ScanDetailsArtifact:
+    """Reference to the durable, unbounded per-path scan detail artifact."""
+
+    artifact_id: str = ""
+    scan_id: str = ""
+    path: str = ""
+    manifest_path: str = ""
+    detail_count: int = 0
+    content_id: str = ""
+    sha256: str = ""
+    byte_count: int = 0
+    dataset_id: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "artifact_id", "scan_id", "path", "manifest_path", "content_id", "sha256",
+            "dataset_id",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        object.__setattr__(self, "detail_count", _count(self.detail_count, field_name="detail_count"))
+        object.__setattr__(self, "byte_count", _count(self.byte_count, field_name="byte_count"))
+        object.__setattr__(self, "metadata", dict(self.metadata or {}))
+        if not (self.path or self.manifest_path or self.content_id):
+            raise ValueError("scan details artifact requires a durable path or content_id")
+
+    @property
+    def jsonl_path(self) -> str:
+        return self.path
+
+    @property
+    def row_count(self) -> int:
+        return self.detail_count
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = dict(self.metadata)
+        payload.update(
+            {
+                "artifact_id": self.artifact_id,
+                "scan_id": self.scan_id,
+                "path": self.path,
+                "jsonl_path": self.path,
+                "manifest_path": self.manifest_path,
+                "detail_count": self.detail_count,
+                "row_count": self.detail_count,
+                "content_id": self.content_id,
+                "sha256": self.sha256,
+                "byte_count": self.byte_count,
+                "dataset_id": self.dataset_id,
+            }
+        )
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ScanDetailsArtifact":
+        known = {
+            "artifact_id", "scan_id", "path", "jsonl_path", "manifest_path",
+            "detail_count", "row_count", "content_id", "cid", "sha256",
+            "byte_count", "dataset_id",
+        }
+        return cls(
+            artifact_id=str(payload.get("artifact_id") or payload.get("scan_id") or ""),
+            scan_id=str(payload.get("scan_id") or ""),
+            path=str(payload.get("path") or payload.get("jsonl_path") or ""),
+            manifest_path=str(payload.get("manifest_path") or ""),
+            detail_count=payload.get("detail_count", payload.get("row_count", 0)),
+            content_id=str(payload.get("content_id") or payload.get("cid") or ""),
+            sha256=str(payload.get("sha256") or ""),
+            byte_count=payload.get("byte_count", 0),
+            dataset_id=str(payload.get("dataset_id") or ""),
+            metadata={key: value for key, value in payload.items() if key not in known},
+        )
+
+
+@dataclass(frozen=True)
+class ScanAccounting:
+    """Typed coverage, issue summaries, artifact, and candidate funnel."""
+
+    coverage: ScanCoverageCounts = field(default_factory=ScanCoverageCounts)
+    candidates: CandidateAccounting = field(default_factory=CandidateAccounting)
+    exclusions: tuple[ScanReasonSummary, ...] = ()
+    parser_failure_reasons: tuple[ScanReasonSummary, ...] = ()
+    details_artifact: ScanDetailsArtifact | None = None
+
+    def __post_init__(self) -> None:
+        coverage = (
+            self.coverage
+            if isinstance(self.coverage, ScanCoverageCounts)
+            else ScanCoverageCounts.from_dict(self.coverage)
+        )
+        candidates = (
+            self.candidates
+            if isinstance(self.candidates, CandidateAccounting)
+            else CandidateAccounting.from_dict(self.candidates)
+        )
+        exclusions = tuple(
+            item if isinstance(item, ScanReasonSummary) else ScanReasonSummary.from_dict(item)
+            for item in self.exclusions
+        )
+        failures = tuple(
+            item if isinstance(item, ScanReasonSummary) else ScanReasonSummary.from_dict(item)
+            for item in self.parser_failure_reasons
+        )
+        artifact = self.details_artifact
+        if artifact is not None and not isinstance(artifact, ScanDetailsArtifact):
+            artifact = ScanDetailsArtifact.from_dict(artifact)
+        if any(item.reason_code.is_parser_failure for item in exclusions):
+            raise ValueError("exclusions contain a parser-failure reason code")
+        if any(not item.reason_code.is_parser_failure for item in failures):
+            raise ValueError("parser_failure_reasons contain an exclusion reason code")
+        if sum(item.count for item in exclusions) != coverage.excluded_files:
+            raise ValueError("exclusion reason counts do not match excluded_files")
+        if sum(item.count for item in failures) != coverage.parser_failures:
+            raise ValueError("parser failure reason counts do not match parser_failures")
+        issue_count = coverage.excluded_files + coverage.parser_failures
+        if issue_count and artifact is None:
+            raise ValueError("excluded files and parser failures require a details artifact")
+        if artifact is not None and artifact.detail_count < issue_count:
+            raise ValueError("details artifact does not contain every exclusion and parser failure")
+        object.__setattr__(self, "coverage", coverage)
+        object.__setattr__(self, "candidates", candidates)
+        object.__setattr__(self, "exclusions", exclusions)
+        object.__setattr__(self, "parser_failure_reasons", failures)
+        object.__setattr__(self, "details_artifact", artifact)
+
+    @property
+    def is_balanced(self) -> bool:
+        return self.candidates.is_balanced
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "coverage": self.coverage.to_dict(),
+            "candidate_accounting": self.candidates.to_dict(),
+            "reason_summaries": {
+                "exclusions": [item.to_dict() for item in self.exclusions],
+                "parser_failures": [item.to_dict() for item in self.parser_failure_reasons],
+            },
+            "details_artifact": (
+                self.details_artifact.to_dict() if self.details_artifact is not None else None
+            ),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ScanAccounting":
+        summaries = payload.get("reason_summaries") or {}
+        return cls(
+            coverage=payload.get("coverage") or {},
+            candidates=payload.get("candidate_accounting", payload.get("candidates")) or {},
+            exclusions=tuple(summaries.get("exclusions") or payload.get("exclusions") or ()),
+            parser_failure_reasons=tuple(
+                summaries.get("parser_failures")
+                or payload.get("parser_failure_reasons")
+                or ()
+            ),
+            details_artifact=(payload.get("details_artifact") or None),
+        )
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -269,6 +677,7 @@ class RefillScanResult(Generic[T]):
     safe_for_completion_reasoning: bool = False
     error: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    accounting: ScanAccounting | None = None
     schema_version: int = REFILL_SCAN_RESULT_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -313,7 +722,20 @@ class RefillScanResult(Generic[T]):
         if isinstance(self.items, (str, bytes, bytearray)):
             raise TypeError("items must be a sequence of generated records")
         object.__setattr__(self, "items", tuple(self.items))
-        object.__setattr__(self, "metadata", dict(self.metadata or {}))
+        metadata = dict(self.metadata or {})
+        object.__setattr__(self, "metadata", metadata)
+
+        accounting = self.accounting
+        if accounting is None and (
+            "coverage" in metadata
+            or "candidate_accounting" in metadata
+            or "reason_summaries" in metadata
+            or "details_artifact" in metadata
+        ):
+            accounting = ScanAccounting.from_dict(metadata)
+        elif accounting is not None and not isinstance(accounting, ScanAccounting):
+            accounting = ScanAccounting.from_dict(accounting)
+        object.__setattr__(self, "accounting", accounting)
 
         item_count = len(self.items)
         if reason is ScanTerminalReason.GENERATED and item_count == 0:
@@ -326,6 +748,10 @@ class RefillScanResult(Generic[T]):
         if self.safe_for_completion_reasoning and reason is not ScanTerminalReason.EXHAUSTED:
             raise ValueError(
                 "only an exhausted scan may be marked safe_for_completion_reasoning"
+            )
+        if accounting is not None and accounting.candidates.appended_tasks != item_count:
+            raise ValueError(
+                "candidate accounting appended_tasks does not match generated item count"
             )
 
         normalized_error = str(self.error or "").strip() or None
@@ -371,6 +797,79 @@ class RefillScanResult(Generic[T]):
     def duration_seconds(self) -> float:
         return (self.finished_at - self.started_at).total_seconds()
 
+    @property
+    def coverage(self) -> ScanCoverageCounts:
+        """Coverage counters, with an all-zero projection for legacy receipts."""
+
+        return self.accounting.coverage if self.accounting is not None else ScanCoverageCounts()
+
+    @property
+    def candidate_accounting(self) -> CandidateAccounting:
+        """Candidate funnel, with an all-zero projection for legacy receipts."""
+
+        return self.accounting.candidates if self.accounting is not None else CandidateAccounting()
+
+    @property
+    def git_roots(self) -> int:
+        return self.coverage.git_roots
+
+    @property
+    def tracked_files(self) -> int:
+        return self.coverage.tracked_files
+
+    @property
+    def eligible_files(self) -> int:
+        return self.coverage.eligible_files
+
+    @property
+    def parsed_files(self) -> int:
+        return self.coverage.parsed_files
+
+    @property
+    def cache_hits(self) -> int:
+        return self.coverage.cache_hits
+
+    @property
+    def excluded_files(self) -> int:
+        return self.coverage.excluded_files
+
+    @property
+    def parser_failures(self) -> int:
+        return self.coverage.parser_failures
+
+    @property
+    def raw_candidates(self) -> int:
+        return self.candidate_accounting.raw_candidates
+
+    @property
+    def seen_candidates(self) -> int:
+        return self.candidate_accounting.seen_candidates
+
+    @property
+    def deduplicated_candidates(self) -> int:
+        return self.candidate_accounting.deduplicated_candidates
+
+    @property
+    def rejected_candidates(self) -> int:
+        return self.candidate_accounting.rejected_candidates
+
+    @property
+    def appended_tasks(self) -> int:
+        return self.candidate_accounting.appended_tasks
+
+    @property
+    def reason_summaries(self) -> Mapping[str, tuple[ScanReasonSummary, ...]]:
+        if self.accounting is None:
+            return {"exclusions": (), "parser_failures": ()}
+        return {
+            "exclusions": self.accounting.exclusions,
+            "parser_failures": self.accounting.parser_failure_reasons,
+        }
+
+    @property
+    def details_artifact(self) -> ScanDetailsArtifact | None:
+        return self.accounting.details_artifact if self.accounting is not None else None
+
     def __bool__(self) -> bool:
         raise TypeError(
             "RefillScanResult has no truth value; inspect terminal_reason, "
@@ -397,7 +896,8 @@ class RefillScanResult(Generic[T]):
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable contract envelope."""
 
-        return {
+        accounting = self.accounting.to_dict() if self.accounting is not None else None
+        payload = {
             "schema_version": self.schema_version,
             "contract_version": self.schema_version,
             "version": self.schema_version,
@@ -415,7 +915,14 @@ class RefillScanResult(Generic[T]):
             "safe_for_completion_reasoning": self.safe_for_completion_reasoning,
             "error": self.error,
             "metadata": _json_value(self.metadata),
+            "accounting": _json_value(accounting),
         }
+        if accounting is not None:
+            # Flat aliases keep event/metrics consumers simple while the
+            # nested representation remains the authoritative typed contract.
+            payload.update(accounting["coverage"])
+            payload.update(accounting["candidate_accounting"])
+        return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "RefillScanResult[Any]":
@@ -434,6 +941,11 @@ class RefillScanResult(Generic[T]):
         declared_count = payload.get("generated_count")
         if declared_count is not None and int(declared_count) != len(items):
             raise ValueError("generated_count does not match the number of items")
+        accounting_payload = payload.get("accounting")
+        if accounting_payload is None and (
+            "coverage" in payload or "candidate_accounting" in payload
+        ):
+            accounting_payload = payload
         return cls(
             schema_version=int(schema_version),
             terminal_reason=payload.get("terminal_reason", payload.get("reason")),
@@ -449,6 +961,11 @@ class RefillScanResult(Generic[T]):
             ),
             error=payload.get("error"),
             metadata=payload.get("metadata") or {},
+            accounting=(
+                ScanAccounting.from_dict(accounting_payload)
+                if isinstance(accounting_payload, Mapping)
+                else None
+            ),
         )
 
 
@@ -464,6 +981,7 @@ def build_scan_result(
     safe_for_completion_reasoning: bool = False,
     error: str | None = None,
     metadata: Mapping[str, Any] | None = None,
+    accounting: ScanAccounting | Mapping[str, Any] | None = None,
 ) -> RefillScanResult[T]:
     """Build a scan receipt using the repository's current git identity."""
 
@@ -480,6 +998,7 @@ def build_scan_result(
         safe_for_completion_reasoning=safe_for_completion_reasoning,
         error=error,
         metadata=metadata or {},
+        accounting=accounting,
     )
 
 
@@ -632,13 +1151,20 @@ create_scan_result = build_scan_result
 
 
 __all__ = [
+    "CandidateAccounting",
     "CONTRACT_VERSION",
     "LegacyScanResultAdapter",
+    "MAX_REPRESENTATIVE_PATHS_PER_REASON",
     "REFILL_SCAN_RESULT_SCHEMA_VERSION",
     "RepositoryTreeIdentity",
     "SCHEMA_VERSION",
+    "ScanAccounting",
+    "ScanCoverageCounts",
+    "ScanDetailsArtifact",
     "ScanMode",
+    "ScanReasonSummary",
     "ScanResult",
+    "ScanSkipReason",
     "ScanTerminalReason",
     "TerminalReason",
     "RefillScanResult",

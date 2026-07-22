@@ -20,7 +20,7 @@ import re
 import shlex
 import subprocess
 import time
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from hashlib import sha1
 from pathlib import Path
@@ -42,7 +42,7 @@ from .objective_graph import (
     repo_relative_path,
     safe_bundle_key,
 )
-from .scan_receipts import RefillScanResult, ScanTerminalReason, build_scan_result
+from .scan_receipts import RefillScanResult, ScanAccounting, ScanTerminalReason, build_scan_result
 from .todo_daemon.implementation_daemon import (
     is_retry_budget_repair_task,
     parse_task_file,
@@ -96,6 +96,7 @@ DEFAULT_RECONCILIATION_GUARDRAIL_MAX_FINDINGS = int(
 DEFAULT_TASK_ID_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = "## AUTO-"
 CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
+CODEBASE_SCAN_REASON_SAMPLE_LIMIT = 10
 CODEBASE_SCAN_MAX_FILE_BYTES = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144"))
 CODEBASE_SCAN_SUFFIXES = {
     ".cjs",
@@ -170,6 +171,85 @@ class CodebaseFinding:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass
+class CodebaseScanInventory:
+    """Auditable coverage and candidate funnel for one codebase scan.
+
+    ``excluded_files`` and ``parser_failures`` retain every path for the
+    durable details artifact.  Receipts project those collections to bounded
+    reason summaries so their size does not grow with the repository.
+    """
+
+    findings: list[CodebaseFinding] = field(default_factory=list)
+    git_roots: list[str] = field(default_factory=list)
+    tracked_file_count: int = 0
+    eligible_file_count: int = 0
+    parsed_file_count: int = 0
+    cache_hit_count: int = 0
+    excluded_files: list[dict[str, str]] = field(default_factory=list)
+    parser_failures: list[dict[str, str]] = field(default_factory=list)
+    raw_candidate_count: int = 0
+    seen_candidate_count: int = 0
+    deduplicated_candidate_count: int = 0
+    rejected_candidate_count: int = 0
+    complete: bool = True
+
+    @property
+    def excluded_file_count(self) -> int:
+        return len(self.excluded_files)
+
+    @property
+    def parser_failure_count(self) -> int:
+        return len(self.parser_failures)
+
+    def coverage_dict(self) -> dict[str, int]:
+        return {
+            "git_roots": len(self.git_roots),
+            "tracked_files": self.tracked_file_count,
+            "eligible_files": self.eligible_file_count,
+            "parsed_files": self.parsed_file_count,
+            "cache_hits": self.cache_hit_count,
+            "excluded_files": self.excluded_file_count,
+            "parser_failures": self.parser_failure_count,
+        }
+
+    def reason_summaries(self) -> dict[str, list[dict[str, Any]]]:
+        def summarize(records: Sequence[Mapping[str, str]]) -> list[dict[str, Any]]:
+            grouped: dict[str, list[str]] = {}
+            for record in records:
+                grouped.setdefault(str(record["reason_code"]), []).append(str(record["path"]))
+            return [
+                {
+                    "reason_code": reason_code,
+                    "count": len(paths),
+                    "representative_paths": paths[:CODEBASE_SCAN_REASON_SAMPLE_LIMIT],
+                }
+                for reason_code, paths in sorted(grouped.items())
+            ]
+
+        return {
+            "exclusions": summarize(self.excluded_files),
+            "parser_failures": summarize(self.parser_failures),
+        }
+
+    def details_dict(self) -> dict[str, Any]:
+        return {
+            "analyzer_version": CODEBASE_SCAN_ANALYZER_VERSION,
+            "coverage": self.coverage_dict(),
+            "git_roots": list(self.git_roots),
+            "excluded_files": list(self.excluded_files),
+            "parser_failures": list(self.parser_failures),
+            "candidate_accounting": {
+                "raw_candidates": self.raw_candidate_count,
+                "seen_candidates": self.seen_candidate_count,
+                "deduplicated_candidates": self.deduplicated_candidate_count,
+                "selected_candidates": len(self.findings),
+                "rejected_candidates": self.rejected_candidate_count,
+            },
+            "coverage_complete": self.complete,
+        }
 
 
 def utc_now() -> str:
@@ -1442,20 +1522,46 @@ def file_is_scan_candidate(
     repo_root: Path,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
 ) -> bool:
-    if codebase_scan_path_skipped(path, repo_root=repo_root, skip_prefixes=skip_prefixes):
-        return False
-    if "-codebase-scan-" in path.name or "retry-budget" in path.name:
-        return False
-    if path.name == "todo.md" or path.name.endswith(".todo.md"):
-        return False
-    if path.suffix.lower() not in CODEBASE_SCAN_SUFFIXES:
-        return False
+    return not codebase_scan_file_exclusion_reason(
+        path,
+        repo_root=repo_root,
+        skip_prefixes=skip_prefixes,
+    )
+
+
+def codebase_scan_file_exclusion_reason(
+    path: Path,
+    *,
+    repo_root: Path,
+    skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+) -> str:
+    """Return a stable, bounded reason code when ``path`` is ineligible."""
+
     try:
-        if path.stat().st_size > CODEBASE_SCAN_MAX_FILE_BYTES:
-            return False
+        relative = path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except (OSError, ValueError):
+        relative = path.as_posix()
+    if any(relative == prefix.rstrip("/") or relative.startswith(prefix) for prefix in skip_prefixes):
+        return "excluded_prefix"
+    if any(part in CODEBASE_SCAN_SKIP_PARTS for part in path.parts):
+        return "excluded_directory"
+    if "-codebase-scan-" in path.name or "retry-budget" in path.name:
+        return "generated_artifact"
+    if path.name == "todo.md" or path.name.endswith(".todo.md"):
+        return "todo_board"
+    if path.suffix.lower() not in CODEBASE_SCAN_SUFFIXES:
+        return "unsupported_suffix"
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return "missing_file"
     except OSError:
-        return False
-    return True
+        return "stat_failed"
+    if path.is_symlink() or not path.is_file():
+        return "not_regular_file"
+    if stat.st_size > CODEBASE_SCAN_MAX_FILE_BYTES:
+        return "file_too_large"
+    return ""
 
 
 def scan_fingerprint(*, kind: str, root_relative_path: str, line_number: int, snippet: str) -> str:
@@ -1528,12 +1634,20 @@ def annotation_followup_marker(line: str) -> str:
     return ""
 
 
-def scan_findings_in_file(path: Path, *, repo_root: Path) -> list[CodebaseFinding]:
+def _scan_findings_in_file(
+    path: Path,
+    *,
+    repo_root: Path,
+) -> tuple[list[CodebaseFinding], dict[str, str] | None]:
     root_relative = root_relative_path(repo_root, path)
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return []
+    except OSError as exc:
+        return [], {
+            "path": root_relative,
+            "reason_code": "read_failed",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
     findings: list[CodebaseFinding] = []
     in_fenced_block = False
     scan_fences = path.suffix.lower() in {".md", ".rst"}
@@ -1584,6 +1698,13 @@ def scan_findings_in_file(path: Path, *, repo_root: Path) -> list[CodebaseFindin
                 validation=scan_validation_for_path(root_relative),
             )
         )
+    return findings, None
+
+
+def scan_findings_in_file(path: Path, *, repo_root: Path) -> list[CodebaseFinding]:
+    """Parse one eligible file, retaining the historical list-only API."""
+
+    findings, _failure = _scan_findings_in_file(path, repo_root=repo_root)
     return findings
 
 
@@ -1594,27 +1715,93 @@ def scan_codebase_findings(
     seen_fingerprints: Iterable[str] = (),
     exhaustive: bool = False,
     skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
-) -> list[CodebaseFinding]:
-    findings: list[CodebaseFinding] = []
+    return_inventory: bool = False,
+) -> list[CodebaseFinding] | CodebaseScanInventory:
+    """Scan tracked files for candidates, optionally returning full accounting.
+
+    The default remains the original list API.  Receipt-producing callers use
+    ``return_inventory=True`` so skipped paths and failures are never collapsed
+    into the same empty result as a genuinely clean scan.
+    """
+
+    inventory = CodebaseScanInventory()
     seen = {str(item).strip().lower() for item in seen_fingerprints if str(item).strip()}
+    selected_fingerprints: set[str] = set()
 
     def already_seen(fingerprint: str) -> bool:
         return any(fingerprint == item or fingerprint.startswith(item) for item in seen)
 
-    for git_root in discover_git_worktrees(repo_root, skip_prefixes=skip_prefixes):
-        for path in tracked_files(git_root):
-            if not file_is_scan_candidate(path, repo_root=repo_root, skip_prefixes=skip_prefixes):
+    git_roots = [
+        path
+        for path in discover_git_worktrees(repo_root, skip_prefixes=skip_prefixes)
+        if path.is_dir()
+    ]
+    inventory.git_roots = [root_relative_path(repo_root, path) or "." for path in git_roots]
+    eligible_paths: list[Path] = []
+    for git_root in git_roots:
+        try:
+            result = subprocess.run(
+                ["git", "ls-files", "-z"],
+                cwd=git_root,
+                capture_output=True,
+                check=False,
+            )
+        except (FileNotFoundError, OSError) as exc:
+            if not git_root.exists():
                 continue
-            for finding in scan_findings_in_file(path, repo_root=repo_root):
-                if already_seen(finding.fingerprint):
-                    continue
-                if len(findings) < max_findings:
-                    findings.append(finding)
-                    seen.add(finding.fingerprint)
-                    continue
-                if not exhaustive:
-                    return findings
-    return findings
+            raise RuntimeError(f"git inventory failed for {git_root}: {exc}") from exc
+        if result.returncode != 0:
+            raise RuntimeError(
+                "git inventory failed for "
+                f"{git_root}: {result.stderr.decode('utf-8', errors='replace')[-1000:]}"
+            )
+        for raw_path in result.stdout.split(b"\0"):
+            if not raw_path:
+                continue
+            inventory.tracked_file_count += 1
+            relative = raw_path.decode("utf-8", errors="surrogateescape")
+            if not repo_relative_path_safe(relative):
+                inventory.excluded_files.append(
+                    {"path": relative, "reason_code": "unsafe_git_path"}
+                )
+                continue
+            path = git_root / relative
+            reason = codebase_scan_file_exclusion_reason(
+                path,
+                repo_root=repo_root,
+                skip_prefixes=skip_prefixes,
+            )
+            if reason:
+                inventory.excluded_files.append(
+                    {"path": root_relative_path(repo_root, path), "reason_code": reason}
+                )
+                continue
+            inventory.eligible_file_count += 1
+            eligible_paths.append(path)
+
+    for path in eligible_paths:
+        file_findings, failure = _scan_findings_in_file(path, repo_root=repo_root)
+        if failure is not None:
+            inventory.parser_failures.append(failure)
+            continue
+        inventory.parsed_file_count += 1
+        for finding in file_findings:
+            inventory.raw_candidate_count += 1
+            if already_seen(finding.fingerprint):
+                inventory.seen_candidate_count += 1
+                continue
+            if finding.fingerprint in selected_fingerprints:
+                inventory.deduplicated_candidate_count += 1
+                continue
+            if len(inventory.findings) < max_findings:
+                inventory.findings.append(finding)
+                selected_fingerprints.add(finding.fingerprint)
+                continue
+            inventory.rejected_candidate_count += 1
+            if not exhaustive:
+                inventory.complete = False
+                return inventory if return_inventory else inventory.findings
+    return inventory if return_inventory else inventory.findings
 
 
 def write_codebase_scan_discovery(
@@ -4131,6 +4318,116 @@ def retire_duplicate_codebase_scan_tasks(
     return {task_id: retired[task_id] for task_id in updated_task_ids}
 
 
+def persist_codebase_scan_inventory(
+    inventory: CodebaseScanInventory,
+    *,
+    repo_root: Path,
+    discovery_dir: Path,
+    dataset_dir: Path | None,
+    started_at: datetime,
+    appended_tasks: int,
+    late_deduplicated_candidates: int,
+) -> dict[str, Any]:
+    """Persist unbounded per-path scan details and return its artifact record."""
+
+    from .dataset_store import ObjectiveDatasetStore
+
+    scan_key = sha1(
+        f"{repo_root.resolve()}\0{started_at.isoformat()}\0{time.time_ns()}".encode("utf-8")
+    ).hexdigest()[:16]
+    scan_id = f"codebase-scan-{started_at.strftime('%Y%m%dT%H%M%S')}-{scan_key}"
+    detail_rows = [
+        {"detail_kind": "excluded_file", **record}
+        for record in inventory.excluded_files
+    ] + [
+        {"detail_kind": "parser_failure", **record}
+        for record in inventory.parser_failures
+    ]
+    final_deduplicated = inventory.deduplicated_candidate_count + late_deduplicated_candidates
+    candidate_accounting = {
+        "raw_candidates": inventory.raw_candidate_count,
+        "seen_candidates": inventory.seen_candidate_count,
+        "deduplicated_candidates": final_deduplicated,
+        "rejected_candidates": inventory.rejected_candidate_count,
+        "appended_tasks": appended_tasks,
+    }
+    artifact = ObjectiveDatasetStore(dataset_dir or discovery_dir).persist_scan_details(
+        scan_id=scan_id,
+        details=detail_rows,
+        metadata={
+            "analyzer_version": CODEBASE_SCAN_ANALYZER_VERSION,
+            "repo_root": str(repo_root.resolve()),
+            "started_at": started_at.isoformat(),
+            "coverage": inventory.coverage_dict(),
+            "git_roots": list(inventory.git_roots),
+            "coverage_complete": inventory.complete,
+            "reason_summaries": inventory.reason_summaries(),
+            "candidate_accounting": candidate_accounting,
+        },
+    )
+    return artifact.to_dict()
+
+
+def codebase_scan_accounting_metadata(
+    inventory: CodebaseScanInventory,
+    *,
+    appended_tasks: int,
+    late_deduplicated_candidates: int = 0,
+    details_artifact: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the stable JSON projection used by receipts and artifacts."""
+
+    deduplicated = inventory.deduplicated_candidate_count + late_deduplicated_candidates
+    candidates = {
+        "raw_candidates": inventory.raw_candidate_count,
+        "seen_candidates": inventory.seen_candidate_count,
+        "deduplicated_candidates": deduplicated,
+        "rejected_candidates": inventory.rejected_candidate_count,
+        "appended_tasks": appended_tasks,
+    }
+    accounted = sum(
+        candidates[key]
+        for key in (
+            "seen_candidates",
+            "deduplicated_candidates",
+            "rejected_candidates",
+            "appended_tasks",
+        )
+    )
+    if accounted != inventory.raw_candidate_count:
+        raise ValueError(
+            "unbalanced codebase candidate accounting: "
+            f"raw={inventory.raw_candidate_count}, accounted={accounted}"
+        )
+    coverage = inventory.coverage_dict()
+    return {
+        "coverage": coverage,
+        "candidate_accounting": candidates,
+        "reason_summaries": inventory.reason_summaries(),
+        "details_artifact": dict(details_artifact or {}),
+        "coverage_complete": inventory.complete,
+        # Flat aliases make operational JSON queries and mixed-version stores
+        # straightforward while typed consumers use receipt.accounting.
+        **coverage,
+        **candidates,
+    }
+
+
+def empty_codebase_scan_accounting_metadata() -> dict[str, Any]:
+    """Accounting dimensions for attempts which stop before inventory."""
+
+    return codebase_scan_accounting_metadata(
+        CodebaseScanInventory(),
+        appended_tasks=0,
+    )
+
+
+def typed_codebase_scan_accounting(metadata: Mapping[str, Any]) -> ScanAccounting:
+    """Validate the JSON projection against the public receipt contract."""
+
+    return ScanAccounting.from_dict(metadata)
+
+
 def record_codebase_scan_findings(
     *,
     todo_path: Path,
@@ -4139,6 +4436,7 @@ def record_codebase_scan_findings(
     discovery_dir: Path,
     repo_root: Path,
     bundle_dir: Path | None = None,
+    dataset_dir: Path | None = None,
     task_prefix: str = DEFAULT_TASK_ID_PREFIX,
     depends_on: Sequence[str] = (),
     min_open_tasks: int = DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS,
@@ -4161,7 +4459,10 @@ def record_codebase_scan_findings(
             repo_root,
             started_at,
             error=f"todo board does not exist: {todo_path}",
-            metadata={"missing_input": "todo_path"},
+            metadata={
+                **empty_codebase_scan_accounting_metadata(),
+                "missing_input": "todo_path",
+            },
         )
     retired_duplicates = retire_duplicate_codebase_scan_tasks(
         todo_path,
@@ -4192,7 +4493,10 @@ def record_codebase_scan_findings(
             CODEBASE_SCAN_ANALYZER_VERSION,
             repo_root,
             started_at,
-            metadata={"cause": "non_positive_max_findings"},
+            metadata={
+                **empty_codebase_scan_accounting_metadata(),
+                "cause": "non_positive_max_findings",
+            },
         )
     should_scan, mode, current_open, task_count = should_refill_backlog(
         todo_text=todo_text,
@@ -4219,17 +4523,25 @@ def record_codebase_scan_findings(
             CODEBASE_SCAN_ANALYZER_VERSION,
             repo_root,
             started_at,
-            metadata={"open_task_count": current_open, "task_count": task_count},
+            metadata={
+                **empty_codebase_scan_accounting_metadata(),
+                "open_task_count": current_open,
+                "task_count": task_count,
+            },
         )
 
     try:
-        findings = scan_codebase_findings(
+        inventory = scan_codebase_findings(
             repo_root,
             max_findings=max_findings,
             seen_fingerprints=seen,
             exhaustive=mode.endswith("drained_exhaustive"),
             skip_prefixes=skip_prefixes,
+            return_inventory=True,
         )
+        if not isinstance(inventory, CodebaseScanInventory):  # pragma: no cover - defensive
+            raise TypeError("instrumented codebase scan did not return inventory")
+        findings = inventory.findings
     except TimeoutError as exc:
         return build_scan_result(
             ScanTerminalReason.TIMED_OUT,
@@ -4238,6 +4550,7 @@ def record_codebase_scan_findings(
             repo_root,
             started_at,
             error=str(exc) or type(exc).__name__,
+            metadata=empty_codebase_scan_accounting_metadata(),
         )
     except Exception as exc:
         logger.exception("Codebase refill scan failed")
@@ -4248,6 +4561,7 @@ def record_codebase_scan_findings(
             repo_root,
             started_at,
             error=f"{type(exc).__name__}: {exc}",
+            metadata=empty_codebase_scan_accounting_metadata(),
         )
     strategy["last_codebase_scan_at"] = utc_now()
     strategy["last_codebase_scan_mode"] = mode
@@ -4255,22 +4569,21 @@ def record_codebase_scan_findings(
         strategy["last_drained_codebase_scan_task_count"] = task_count
     strategy["codebase_scan_seen_fingerprints"] = sorted(seen | {finding.fingerprint for finding in findings})
     if not findings:
-        duplicate_candidates = (
-            scan_codebase_findings(
-                repo_root,
-                max_findings=1,
-                seen_fingerprints=(),
-                exhaustive=mode.endswith("exhaustive"),
-                skip_prefixes=skip_prefixes,
-            )
-            if seen
-            else []
+        details_artifact = persist_codebase_scan_inventory(
+            inventory,
+            repo_root=repo_root,
+            discovery_dir=discovery_dir,
+            dataset_dir=dataset_dir,
+            started_at=started_at,
+            appended_tasks=0,
+            late_deduplicated_candidates=0,
         )
-        terminal_reason = (
-            ScanTerminalReason.DUPLICATE_ONLY
-            if duplicate_candidates
-            else ScanTerminalReason.EXHAUSTED
-        )
+        if inventory.parser_failure_count or not inventory.complete:
+            terminal_reason = ScanTerminalReason.PARTIAL
+        elif inventory.raw_candidate_count:
+            terminal_reason = ScanTerminalReason.DUPLICATE_ONLY
+        else:
+            terminal_reason = ScanTerminalReason.EXHAUSTED
         strategy["last_codebase_scan_findings"] = []
         write_json(strategy_path, strategy)
         return build_scan_result(
@@ -4282,9 +4595,19 @@ def record_codebase_scan_findings(
             safe_for_completion_reasoning=(
                 terminal_reason is ScanTerminalReason.EXHAUSTED
                 and mode.endswith("exhaustive")
+                and inventory.complete
+                and not inventory.parser_failure_count
             ),
             metadata={
-                "duplicate_candidate_count": len(duplicate_candidates),
+                **codebase_scan_accounting_metadata(
+                    inventory,
+                    appended_tasks=0,
+                    details_artifact=details_artifact,
+                ),
+                "duplicate_candidate_count": (
+                    inventory.seen_candidate_count
+                    + inventory.deduplicated_candidate_count
+                ),
                 "open_task_count": current_open,
                 "task_count": task_count,
             },
@@ -4412,6 +4735,16 @@ def record_codebase_scan_findings(
                 records=bundle_records,
             )
         )
+    late_deduplicated_candidates = detected_count - len(appended)
+    details_artifact = persist_codebase_scan_inventory(
+        inventory,
+        repo_root=repo_root,
+        discovery_dir=discovery_dir,
+        dataset_dir=dataset_dir,
+        started_at=started_at,
+        appended_tasks=len(appended),
+        late_deduplicated_candidates=late_deduplicated_candidates,
+    )
     strategy["last_codebase_scan_findings"] = appended
     write_json(strategy_path, strategy)
     if commit_outputs:
@@ -4424,7 +4757,12 @@ def record_codebase_scan_findings(
         if commit_results:
             strategy["last_codebase_scan_commit_results"] = commit_results
             write_json(strategy_path, strategy)
-    reason = ScanTerminalReason.GENERATED if appended else ScanTerminalReason.DUPLICATE_ONLY
+    if inventory.parser_failure_count or not inventory.complete:
+        reason = ScanTerminalReason.PARTIAL
+    elif appended:
+        reason = ScanTerminalReason.GENERATED
+    else:
+        reason = ScanTerminalReason.DUPLICATE_ONLY
     return build_scan_result(
         reason,
         mode,
@@ -4433,6 +4771,12 @@ def record_codebase_scan_findings(
         started_at,
         appended,
         metadata={
+            **codebase_scan_accounting_metadata(
+                inventory,
+                appended_tasks=len(appended),
+                late_deduplicated_candidates=late_deduplicated_candidates,
+                details_artifact=details_artifact,
+            ),
             "detected_count": detected_count,
             "duplicate_count": detected_count - len(appended),
             "open_task_count": current_open,
@@ -4719,6 +5063,8 @@ def record_configured_codebase_scan_findings(
     repo_root: Path,
     bundle_dir: Path | None = None,
     default_bundle_dir: Path | None = None,
+    dataset_dir: Path | None = None,
+    default_dataset_dir: Path | None = None,
     task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
     depends_on_if_present: Sequence[str] = (),
     min_open_tasks: int = DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS,
@@ -4742,6 +5088,9 @@ def record_configured_codebase_scan_findings(
         bundle_dir=bundle_dir
         or default_bundle_dir
         or repo_root / "data" / "agent_supervisor" / "objective_bundles",
+        dataset_dir=dataset_dir
+        or default_dataset_dir
+        or repo_root / "data" / "agent_supervisor" / "objective_datasets",
         task_prefix=task_id_prefix(task_header_prefix_value),
         depends_on=task_dependencies_if_present(
             todo_path,
@@ -4911,6 +5260,8 @@ class ConfiguredCodebaseScanRecorder:
     commit_subject: str = "Agent: record codebase scan backlog findings"
     bundle_dir: Path | None = None
     default_bundle_dir: Path | None = None
+    dataset_dir: Path | None = None
+    default_dataset_dir: Path | None = None
     prepare_environment: Callable[[], None] | None = None
 
     def __call__(self, **overrides: Any) -> RefillScanResult[dict[str, Any]]:
@@ -5167,6 +5518,7 @@ def build_namespace_codebase_scan_recorder(
         strategy_path=Path(strategy_path),
         discovery_dir=namespace_paths.discovery_dir,
         default_bundle_dir=namespace_paths.objective_bundle_dir,
+        default_dataset_dir=namespace_paths.objective_dataset_dir,
         task_header_prefix_value=task_header_prefix_value,
         depends_on_if_present=tuple(depends_on_if_present),
         min_open_tasks=min_open_tasks,

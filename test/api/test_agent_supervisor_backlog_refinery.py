@@ -6,6 +6,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ipfs_accelerate_py.agent_supervisor import backlog_refinery
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     ConfiguredBacklogRecorderBundle,
     ConfiguredCodebaseScanRecorder,
@@ -29,6 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     scan_codebase_findings,
     write_reconciliation_guardrail_discovery_path,
 )
+from ipfs_accelerate_py.agent_supervisor.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
 from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
     REFILL_SCAN_RESULT_SCHEMA_VERSION,
@@ -587,6 +589,146 @@ def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["last_codebase_scan_findings"][0]["follow_up_task_id"] == "AUTO-002"
     assert Path(findings[0]["discovery_path"]).exists()
+
+
+def test_codebase_scan_receipt_accounts_inventory_candidates_and_durable_details(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "discovery"
+    dataset_dir = repo / "datasets"
+    (repo / "first.py").write_text("# TODO: repair first path\n", encoding="utf-8")
+    (repo / "second.py").write_text("# TODO: repair second path\n", encoding="utf-8")
+    (repo / "asset.bin").write_bytes(b"not an eligible source file\n")
+    _write_todo(todo_path)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed instrumented scan")
+
+    limited = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        dataset_dir=dataset_dir,
+        repo_root=repo,
+        max_findings=1,
+        force=True,
+    )
+
+    assert limited.terminal_reason is ScanTerminalReason.PARTIAL
+    assert limited.coverage.to_dict() == {
+        "git_roots": 1,
+        "tracked_files": 4,
+        "eligible_files": 2,
+        "parsed_files": 2,
+        "cache_hits": 0,
+        "excluded_files": 2,
+        "parser_failures": 0,
+    }
+    assert limited.candidate_accounting.to_dict() == {
+        "raw_candidates": 2,
+        "seen_candidates": 0,
+        "deduplicated_candidates": 0,
+        "rejected_candidates": 1,
+        "appended_tasks": 1,
+    }
+    assert limited.candidate_accounting.is_balanced
+    assert limited.details_artifact is not None
+    summaries = {
+        summary.reason_code.value: summary
+        for summary in limited.reason_summaries["exclusions"]
+    }
+    assert set(summaries) == {"todo_board", "unsupported_suffix"}
+    assert summaries["todo_board"].representative_paths == ("todo.md",)
+    assert summaries["unsupported_suffix"].representative_paths == ("asset.bin",)
+    details = ObjectiveDatasetStore(dataset_dir).load_scan_details(
+        limited.details_artifact.to_dict()
+    )
+    assert {(row["path"], row["reason_code"]) for row in details} == {
+        ("asset.bin", "unsupported_suffix"),
+        ("todo.md", "todo_board"),
+    }
+    assert RefillScanResult.from_dict(limited.to_dict()) == limited
+
+    # The next pass observes the first task as durable history and accounts
+    # for it separately from the second candidate that becomes a new task.
+    complete = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        dataset_dir=dataset_dir,
+        repo_root=repo,
+        max_findings=1,
+        force=True,
+    )
+    assert complete.terminal_reason is ScanTerminalReason.GENERATED
+    assert complete.raw_candidates == 2
+    assert complete.seen_candidates == 1
+    assert complete.deduplicated_candidates == 0
+    assert complete.rejected_candidates == 0
+    assert complete.appended_tasks == 1
+    assert complete.candidate_accounting.is_balanced
+
+
+def test_codebase_scan_parser_failure_is_partial_reason_coded_and_durable(
+    tmp_path,
+    monkeypatch,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "discovery"
+    dataset_dir = repo / "datasets"
+    (repo / "healthy.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (repo / "unreadable.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _write_todo(todo_path)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed parser failure scan")
+
+    real_scan = backlog_refinery._scan_findings_in_file
+
+    def fail_one_file(path, *, repo_root):
+        if path.name == "unreadable.py":
+            return [], {
+                "path": "unreadable.py",
+                "reason_code": "read_failed",
+                "error": "PermissionError: fixture denied access",
+            }
+        return real_scan(path, repo_root=repo_root)
+
+    monkeypatch.setattr(backlog_refinery, "_scan_findings_in_file", fail_one_file)
+    receipt = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        dataset_dir=dataset_dir,
+        repo_root=repo,
+        max_findings=5,
+        force=True,
+    )
+
+    assert receipt.terminal_reason is ScanTerminalReason.PARTIAL
+    assert receipt.safe_for_completion_reasoning is False
+    assert receipt.eligible_files == 2
+    assert receipt.parsed_files == 1
+    assert receipt.parser_failures == 1
+    assert receipt.coverage.unparsed_eligible_files == 0
+    failures = receipt.reason_summaries["parser_failures"]
+    assert len(failures) == 1
+    assert failures[0].reason_code.value == "read_failed"
+    assert failures[0].representative_paths == ("unreadable.py",)
+    assert receipt.details_artifact is not None
+    details = ObjectiveDatasetStore(dataset_dir).load_scan_details(
+        receipt.details_artifact.to_dict()
+    )
+    assert any(
+        row.get("path") == "unreadable.py"
+        and row.get("reason_code") == "read_failed"
+        and "PermissionError" in row.get("error", "")
+        for row in details
+    )
 
 
 def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
