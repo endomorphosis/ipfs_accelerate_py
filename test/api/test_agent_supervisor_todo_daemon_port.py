@@ -6787,6 +6787,39 @@ def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_pa
     assert reason == ""
 
 
+def test_implementation_supervisor_honors_configured_worker_stall_threshold(
+    tmp_path, monkeypatch
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    now = datetime.now(timezone.utc)
+    started = now - timedelta(seconds=150)
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        state_dir=repo / "state",
+        stale_seconds=3600,
+        implementation_log_stall_seconds=300,
+    )
+    supervisor = TodoImplementationSupervisor(config)
+    monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: 999999999)
+    state = TodoTaskState(
+        active_task_id="AUTO-001",
+        active_phase="merge_resolver",
+        active_phase_detail="post-resolver cleanup",
+        active_phase_started_at=started.isoformat(),
+        heartbeat_at=now.isoformat(),
+        last_progress_at=now.isoformat(),
+    )
+
+    stuck, reason = supervisor.is_stuck(state, now_ts=now.timestamp())
+
+    assert stuck is False
+    assert reason == ""
+
+
 def test_implementation_supervisor_repairs_stale_merge_resolver_without_worker(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
