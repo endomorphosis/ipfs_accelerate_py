@@ -44,6 +44,10 @@ from .objective_tracker import (
 
 logger = logging.getLogger(__name__)
 
+OBJECTIVE_COMPLETION_GATE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.objective_daemon.completion_gate.v1"
+)
+
 
 def _plan_value_dict(value: Any) -> dict[str, Any]:
     """Return a JSON-safe mapping for a structured planning value."""
@@ -453,11 +457,119 @@ def load_goal_completion_gate_records(path: Path | None) -> dict[str, dict[str, 
     raw = payload.get("goals", payload)
     if not isinstance(raw, Mapping):
         raise ValueError("goal completion gate artifact 'goals' must be an object")
-    return {
-        str(goal_id): dict(record)
-        for goal_id, record in raw.items()
-        if str(goal_id).strip() and isinstance(record, Mapping)
-    }
+    records: dict[str, dict[str, Any]] = {}
+    for goal_id, record in raw.items():
+        normalized_goal_id = str(goal_id).strip()
+        if not normalized_goal_id:
+            raise ValueError("goal completion gate artifact contains an empty goal id")
+        if not isinstance(record, Mapping):
+            raise ValueError(
+                f"goal completion gate record for {normalized_goal_id!r} must be an object"
+            )
+        normalized = dict(record)
+        for field_name in ("coverage", "analyzer_health", "exhaustion_quorum", "analysis_result"):
+            value = normalized.get(field_name)
+            if value is not None and not isinstance(value, Mapping):
+                raise ValueError(
+                    f"goal completion gate record {normalized_goal_id!r} field "
+                    f"{field_name!r} must be an object"
+                )
+        child_goals = normalized.get("child_goals")
+        if child_goals is not None and (
+            not isinstance(child_goals, list)
+            or any(not isinstance(item, Mapping) for item in child_goals)
+        ):
+            raise ValueError(
+                f"goal completion gate record {normalized_goal_id!r} field "
+                "'child_goals' must be a list of objects"
+            )
+        if "analysis_inconclusive" in normalized and not isinstance(
+            normalized["analysis_inconclusive"], bool
+        ):
+            raise ValueError(
+                f"goal completion gate record {normalized_goal_id!r} field "
+                "'analysis_inconclusive' must be a boolean"
+            )
+        records[normalized_goal_id] = normalized
+    return records
+
+
+def completion_gate_receipts_from_decisions(
+    decisions: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Project completion decisions into exact, machine-readable receipts.
+
+    This deliberately rechecks the serialized shape. A producer cannot make a
+    malformed or internally contradictory record pass merely by setting one
+    top-level boolean.
+    """
+
+    receipts: dict[str, dict[str, Any]] = {}
+    for goal_id in sorted(str(item) for item in decisions):
+        raw_decision = decisions.get(goal_id)
+        decision = dict(raw_decision) if isinstance(raw_decision, Mapping) else {}
+        raw_gate = decision.get("completion_gate")
+        gate = dict(raw_gate) if isinstance(raw_gate, Mapping) else {}
+        raw_checks = gate.get("checks")
+        checks = (
+            [dict(item) for item in raw_checks if isinstance(item, Mapping)]
+            if isinstance(raw_checks, list)
+            else []
+        )
+        reasons = [
+            str(item)
+            for item in [
+                *(decision.get("reason_codes") or ()),
+                *(gate.get("reason_codes") or ()),
+            ]
+            if str(item)
+        ]
+        if not decision:
+            reasons.append("completion_decision_malformed")
+        if not gate:
+            reasons.append("completion_gate_missing")
+        elif not checks:
+            reasons.append("completion_gate_checks_missing")
+        elif any(check.get("passed") is not True for check in checks):
+            reasons.append("completion_gate_check_failed")
+        evaluated_evidence = gate.get("evaluated_evidence")
+        if not isinstance(evaluated_evidence, Mapping):
+            reasons.append("completion_gate_evidence_missing")
+            evaluated_evidence = {}
+        state = str(decision.get("state") or decision.get("next_state") or "")
+        gate_reason_codes = [str(item) for item in gate.get("reason_codes", ()) if str(item)]
+        passed = bool(
+            decision.get("verified") is True
+            and state == "verified_complete"
+            and gate.get("passed") is True
+            and checks
+            and all(check.get("passed") is True for check in checks)
+            and evaluated_evidence
+            and not gate_reason_codes
+            and not decision.get("reason_codes")
+        )
+        if not passed and not reasons:
+            reasons.append("completion_gate_failed")
+        receipts[goal_id] = {
+            "schema": OBJECTIVE_COMPLETION_GATE_RECEIPT_SCHEMA,
+            "goal_id": goal_id,
+            "passed": passed,
+            "state": state,
+            "reason_codes": list(dict.fromkeys(reasons)),
+            "actionable_reasons": list(
+                dict.fromkeys(
+                    str(item)
+                    for item in [
+                        *(decision.get("actionable_reasons") or ()),
+                        *(gate.get("actionable_reasons") or ()),
+                    ]
+                    if str(item)
+                )
+            ),
+            "checks": checks,
+            "evaluated_evidence": dict(evaluated_evidence),
+        }
+    return receipts
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -905,6 +1017,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         ],
         "objective_completion_validation_results": objective_completion_validation_results,
         "objective_completion_decisions": objective_completion_decisions,
+        "objective_completion_gate_inputs": completion_gate_records,
+        "objective_completion_gate_receipts": completion_gate_receipts_from_decisions(
+            objective_completion_decisions
+        ),
         "objective_goal_completion_gate_path": (
             repo_relative_path(repo_root, completion_gate_path) if completion_gate_path else ""
         ),

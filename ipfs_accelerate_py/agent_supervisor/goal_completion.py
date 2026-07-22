@@ -294,24 +294,46 @@ class EvidenceValidationResult:
 
 
 def _validation_passed(evidence: CompletionEvidence) -> bool | None:
-    if evidence.validation_passed is not None:
-        return _bool_value(evidence.validation_passed)
+    declared = (
+        _bool_value(evidence.validation_passed)
+        if evidence.validation_passed is not None
+        else None
+    )
     receipt = evidence.validation_receipt
     if not isinstance(receipt, Mapping):
-        return None
-    if "passed" in receipt:
-        return _bool_value(receipt["passed"])
-    if "returncode" in receipt:
-        try:
-            return int(receipt["returncode"]) == 0 and bool(receipt.get("attempted", True))
-        except (TypeError, ValueError):
-            return False
-    status = str(receipt.get("status", receipt.get("terminal_reason", ""))).strip().lower()
-    if status in {"passed", "pass", "succeeded", "success", "verified", "completed"}:
-        return True
-    if status in {"failed", "failure", "timed_out", "timeout", "cancelled", "skipped", "unattempted"}:
+        return declared
+    # A positive convenience flag must never override a terminal failure in
+    # the receipt it summarizes.  Persisted records occasionally contain both
+    # during interrupted status updates, and completion must fail closed.
+    attempted = _bool_value(receipt.get("attempted")) if "attempted" in receipt else None
+    if attempted is False:
         return False
-    return None
+    for flag in ("timed_out", "cancelled", "canceled", "skipped", "partial"):
+        if _bool_value(receipt.get(flag)) is True:
+            return False
+    receipt_result: bool | None = None
+    if "passed" in receipt:
+        receipt_result = _bool_value(receipt["passed"])
+    elif "returncode" in receipt:
+        try:
+            receipt_result = int(receipt["returncode"]) == 0 and attempted is not False
+        except (TypeError, ValueError):
+            receipt_result = False
+    status = str(receipt.get("status", receipt.get("terminal_reason", ""))).strip().lower()
+    if status in {"passed", "pass", "succeeded", "success", "verified", "ok"}:
+        status_result: bool | None = True
+    elif status in {
+        "failed", "failure", "error", "timed_out", "timeout", "cancelled",
+        "canceled", "skipped", "unattempted", "partial", "duplicate_only",
+        "duplicate-only", "unsupported", "disabled", "cooldown",
+    }:
+        status_result = False
+    else:
+        status_result = None
+    outcomes = [item for item in (declared, receipt_result, status_result) if item is not None]
+    if False in outcomes:
+        return False
+    return True if True in outcomes else None
 
 
 def _bool_value(value: object) -> bool | None:
@@ -618,6 +640,32 @@ def _mapping_value(value: Any) -> dict[str, Any]:
     return {"value": _json_value(value)}
 
 
+def _gate_datetime(value: Any) -> datetime | None:
+    """Best-effort timestamp parsing for untrusted persisted gate proof."""
+
+    try:
+        return _utc_datetime(value, field_name="completion gate timestamp")
+    except (TypeError, ValueError):
+        return None
+
+
+def _gate_count(value: Any) -> int | None:
+    """Return a non-negative integer without accepting booleans or fractions."""
+
+    if isinstance(value, bool):
+        return None
+    try:
+        count = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    try:
+        if float(value) != count:
+            return None
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return count if count >= 0 else None
+
+
 @dataclass(frozen=True)
 class CompletionGateCheck:
     """One independently inspectable fail-closed completion requirement."""
@@ -627,6 +675,16 @@ class CompletionGateCheck:
     reason_code: str = ""
     reason: str = ""
     evidence: Mapping[str, Any] = field(default_factory=dict)
+    pass_code: str = ""
+    pass_reason: str = ""
+
+    @property
+    def outcome_code(self) -> str:
+        return self.pass_code if self.passed else self.reason_code
+
+    @property
+    def outcome_reason(self) -> str:
+        return self.pass_reason if self.passed else self.reason
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -634,6 +692,8 @@ class CompletionGateCheck:
             "passed": self.passed,
             "reason_code": self.reason_code,
             "reason": self.reason,
+            "outcome_code": self.outcome_code,
+            "outcome_reason": self.outcome_reason,
             "evidence": _json_value(self.evidence),
         }
 
@@ -655,12 +715,22 @@ class CompletionGateResult:
     def actionable_reasons(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(check.reason for check in self.checks if check.reason))
 
+    @property
+    def pass_reason_codes(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(check.pass_code for check in self.checks if check.passed and check.pass_code))
+
+    @property
+    def fail_reason_codes(self) -> tuple[str, ...]:
+        return self.reason_codes
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": "ipfs_accelerate_py.agent_supervisor.completion_gate.v1",
             "schema_version": self.schema_version,
             "passed": self.passed,
             "reason_codes": list(self.reason_codes),
+            "pass_reason_codes": list(self.pass_reason_codes),
+            "fail_reason_codes": list(self.fail_reason_codes),
             "actionable_reasons": list(self.actionable_reasons),
             "checks": [check.to_dict() for check in self.checks],
             "evaluated_evidence": _json_value(self.evaluated_evidence),
@@ -670,7 +740,7 @@ class CompletionGateResult:
 def evaluate_completion_gate(
     *,
     acceptance_criteria: Sequence[str] | str | None,
-    evidence_results: Sequence[EvidenceValidationResult] = (),
+    evidence_results: Sequence[EvidenceValidationResult | Mapping[str, Any]] = (),
     coverage: Any = None,
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
@@ -678,6 +748,9 @@ def evaluate_completion_gate(
     analysis_result: Any = None,
     repository_tree: str = "",
     repository_id: str = "",
+    now: datetime | str | None = None,
+    freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
 ) -> CompletionGateResult:
     """Evaluate coverage, validation, health, quorum, and descendants.
 
@@ -687,113 +760,350 @@ def evaluate_completion_gate(
     """
 
     criteria = _acceptance_criteria(acceptance_criteria)
+    current = _now(now)
+    max_age = timedelta(seconds=max(0.0, float(freshness_seconds)))
+    clock_skew = timedelta(seconds=max(0.0, float(clock_skew_seconds)))
     coverage_payload = _mapping_value(coverage)
     health_payload = _mapping_value(analyzer_health)
     quorum_payload = _mapping_value(exhaustion_quorum)
     analysis_payload = _mapping_value(analysis_result)
     child_payloads = [_mapping_value(item) for item in child_goals]
+    raw_result_payloads = [_mapping_value(item) for item in evidence_results]
+    normalized_results: list[EvidenceValidationResult] = []
+    for item in evidence_results:
+        if isinstance(item, EvidenceValidationResult):
+            normalized_results.append(item)
+            continue
+        source = item.get("evidence", item) if isinstance(item, Mapping) else {}
+        try:
+            record = CompletionEvidence.from_dict(source if isinstance(source, Mapping) else {})
+            normalized_results.append(
+                validate_completion_evidence(
+                    record,
+                    repository_tree=repository_tree,
+                    repository_id=repository_id,
+                    now=current,
+                    freshness_seconds=freshness_seconds,
+                    clock_skew_seconds=clock_skew_seconds,
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            placeholder = CompletionEvidence(
+                acceptance_criterion="",
+                metadata={"malformed_evidence": _json_value(source), "error": str(exc)},
+            )
+            normalized_results.append(
+                EvidenceValidationResult(
+                    placeholder,
+                    False,
+                    ("malformed_evidence",),
+                    ("Repair or regenerate the malformed persisted completion evidence.",),
+                )
+            )
+    evidence_results = tuple(normalized_results)
     result_payloads = [item.to_dict() for item in evidence_results]
     checks: list[CompletionGateCheck] = []
+
+    def add_check(
+        name: str,
+        passed: bool,
+        fail_code: str,
+        fail_reason: str,
+        check_evidence: Mapping[str, Any],
+        pass_code: str,
+        pass_reason: str,
+    ) -> None:
+        checks.append(
+            CompletionGateCheck(
+                name=name,
+                passed=passed,
+                reason_code="" if passed else fail_code,
+                reason="" if passed else fail_reason,
+                evidence=check_evidence,
+                pass_code=pass_code,
+                pass_reason=pass_reason,
+            )
+        )
 
     coverage_rows = coverage_payload.get("criteria")
     if not isinstance(coverage_rows, list):
         coverage_rows = []
-    by_criterion = {
-        _criterion_key(row.get("criterion")): row
-        for row in coverage_rows
-        if isinstance(row, Mapping) and str(row.get("criterion") or "").strip()
-    }
+    by_criterion: dict[str, list[Mapping[str, Any]]] = {}
+    for row in coverage_rows:
+        if not isinstance(row, Mapping):
+            continue
+        # AcceptanceCoverage.to_dict() uses ``criterion``.  The aliases make
+        # the gate tolerant of earlier graph projections without weakening
+        # the required exact normalized-text match.
+        criterion_text = row.get(
+            "criterion",
+            row.get("acceptance_criterion", row.get("acceptance", "")),
+        )
+        key = _criterion_key(criterion_text)
+        if key:
+            by_criterion.setdefault(key, []).append(row)
     missing_coverage = [criterion for criterion in criteria if _criterion_key(criterion) not in by_criterion]
     unverified_coverage = [
         criterion
         for criterion in criteria
         if _criterion_key(criterion) in by_criterion
-        and str(by_criterion[_criterion_key(criterion)].get("status") or "").lower() != "verified"
+        and not all(
+            str(row.get("status") or "").strip().lower() == "verified"
+            and ("verified" not in row or _bool_value(row.get("verified")) is True)
+            for row in by_criterion[_criterion_key(criterion)]
+        )
     ]
-    coverage_ok = bool(criteria) and not missing_coverage and not unverified_coverage
-    coverage_code = "" if coverage_ok else (
-        "coverage_missing" if not coverage_rows or missing_coverage else "coverage_unverified"
+    coverage_tree = str(coverage_payload.get("repository_tree") or coverage_payload.get("tree_id") or "")
+    coverage_tree_mismatch = bool(repository_tree and coverage_tree != repository_tree)
+    coverage_declared_false = (
+        "verified" in coverage_payload
+        and _bool_value(coverage_payload.get("verified")) is not True
     )
-    checks.append(CompletionGateCheck(
+    coverage_declared_reasons = coverage_payload.get("reason_codes")
+    coverage_declared_reasons = (
+        list(coverage_declared_reasons)
+        if isinstance(coverage_declared_reasons, (list, tuple))
+        else []
+    )
+    coverage_evaluated_at_value = coverage_payload.get("evaluated_at")
+    coverage_evaluated_at = _gate_datetime(coverage_evaluated_at_value)
+    has_coverage_time = coverage_evaluated_at_value is not None and coverage_evaluated_at_value != ""
+    coverage_fresh = has_coverage_time
+    coverage_freshness_error = ""
+    if not has_coverage_time:
+        coverage_freshness_error = "missing"
+    else:
+        if coverage_evaluated_at is None:
+            coverage_fresh = False
+            coverage_freshness_error = "malformed"
+        elif coverage_evaluated_at > current + clock_skew:
+            coverage_fresh = False
+            coverage_freshness_error = "future"
+        elif current - coverage_evaluated_at > max_age:
+            coverage_fresh = False
+            coverage_freshness_error = "stale"
+    coverage_ok = bool(criteria) and not missing_coverage and not unverified_coverage
+    coverage_ok = bool(coverage_ok and not coverage_declared_false and not coverage_declared_reasons)
+    coverage_ok = bool(coverage_ok and not coverage_tree_mismatch and coverage_fresh)
+    if not coverage_rows or missing_coverage:
+        coverage_code = "coverage_missing"
+    elif unverified_coverage or coverage_declared_false or coverage_declared_reasons:
+        coverage_code = "coverage_unverified"
+    elif coverage_tree_mismatch:
+        coverage_code = "coverage_tree_mismatch"
+    else:
+        coverage_code = "coverage_stale"
+    add_check(
         "mandatory_coverage",
         coverage_ok,
         coverage_code,
-        "" if coverage_ok else "Map every mandatory acceptance criterion to verified implementation and validation proof.",
-        {"missing_criteria": missing_coverage, "unverified_criteria": unverified_coverage, "coverage": coverage_payload},
-    ))
+        "Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.",
+        {
+            "missing_criteria": missing_coverage,
+            "unverified_criteria": unverified_coverage,
+            "tree_mismatch": coverage_tree_mismatch,
+            "freshness_error": coverage_freshness_error,
+            "declared_verified": coverage_payload.get("verified"),
+            "declared_reason_codes": coverage_declared_reasons,
+            "coverage": coverage_payload,
+        },
+        "coverage_verified",
+        "Every mandatory acceptance criterion has fresh, verified coverage.",
+    )
 
-    validation_ok = bool(criteria) and all(
+    each_criterion_valid = bool(criteria) and all(
         any(
             item.valid and _criterion_key(item.evidence.acceptance_criterion) == _criterion_key(criterion)
             for item in evidence_results
         )
         for criterion in criteria
     )
-    checks.append(CompletionGateCheck(
+    invalid_results = [item.to_dict() for item in evidence_results if not item.valid]
+    # The exact submitted evidence set is authoritative.  A fresh receipt
+    # cannot mask a stale, failed, or contradictory receipt submitted beside
+    # it for the same decision.
+    validation_ok = bool(each_criterion_valid and evidence_results and not invalid_results)
+    add_check(
         "required_validations",
         validation_ok,
-        "" if validation_ok else "validation_evidence_incomplete",
-        "" if validation_ok else "Every mandatory criterion requires a fresh, passing validation receipt.",
-        {"results": result_payloads},
-    ))
+        "validation_evidence_incomplete",
+        "Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.",
+        {"results": result_payloads, "invalid_results": invalid_results},
+        "validations_verified",
+        "Every mandatory criterion has fresh, passing validation evidence.",
+    )
 
     health_status = str(
         health_payload.get("status")
         or health_payload.get("health")
         or ("healthy" if health_payload.get("healthy") is True else "")
     ).strip().lower()
-    health_ok = health_status == "healthy"
-    checks.append(CompletionGateCheck(
+    health_declared = _bool_value(health_payload.get("healthy")) if "healthy" in health_payload else None
+    health_safe = (
+        _bool_value(health_payload.get("safe_for_completion_reasoning"))
+        if "safe_for_completion_reasoning" in health_payload
+        else None
+    )
+    health_ok = (
+        health_status == "healthy"
+        and ("healthy" not in health_payload or health_declared is True)
+        and (
+            "safe_for_completion_reasoning" not in health_payload
+            or health_safe is True
+        )
+    )
+    if not health_status:
+        health_code = "analyzer_health_missing"
+    elif health_status != "healthy" or health_declared is False:
+        health_code = "analyzer_unhealthy"
+    else:
+        health_code = "analyzer_completion_unsafe"
+    add_check(
         "analyzer_health",
         health_ok,
-        "" if health_ok else ("analyzer_health_missing" if not health_status else "analyzer_unhealthy"),
-        "" if health_ok else "Require an explicit healthy analyzer result; partial or unsupported analysis cannot verify completion.",
+        health_code,
+        "Require an explicitly healthy analyzer that is safe for completion reasoning.",
         health_payload,
-    ))
+        "analyzer_healthy",
+        "Analyzer health is explicitly healthy and completion-safe.",
+    )
 
-    quorum_ok = quorum_payload.get("satisfied") is True or quorum_payload.get("quorum_met") is True
+    declared_values = [
+        _bool_value(quorum_payload[key])
+        for key in ("satisfied", "quorum_met")
+        if key in quorum_payload
+    ]
+    declared_quorum = bool(declared_values) and all(item is True for item in declared_values)
     binding = quorum_payload.get("binding") if isinstance(quorum_payload.get("binding"), Mapping) else {}
     binding_mismatch: list[str] = []
     if quorum_payload and repository_tree and str(binding.get("tree_id") or "") != repository_tree:
         binding_mismatch.append("tree_id")
     if quorum_payload and repository_id and str(binding.get("repository_id") or "") != repository_id:
         binding_mismatch.append("repository_id")
-    quorum_ok = bool(quorum_ok and not binding_mismatch)
-    declared_quorum = quorum_payload.get("satisfied") is True or quorum_payload.get("quorum_met") is True
-    if quorum_ok:
-        quorum_code = ""
+    required_members = _gate_count(quorum_payload.get("required_members", quorum_payload.get("required")))
+    members_present = "members" in quorum_payload or "eligible_members" in quorum_payload
+    raw_members = quorum_payload.get("members", quorum_payload.get("eligible_members", ()))
+    members = list(raw_members) if isinstance(raw_members, (list, tuple)) else []
+    declared_member_count = _gate_count(quorum_payload.get("member_count", quorum_payload.get("count")))
+    member_count = len(members) if declared_member_count is None and members_present else declared_member_count
+    quorum_inconsistencies: list[str] = []
+    if required_members is None or required_members < 1:
+        quorum_inconsistencies.append("invalid_required_members")
+    if member_count is None:
+        quorum_inconsistencies.append("missing_member_count")
+    if members_present and not isinstance(raw_members, (list, tuple)):
+        quorum_inconsistencies.append("invalid_members")
+    if not members:
+        quorum_inconsistencies.append("missing_quorum_members")
+    if members_present and declared_member_count is not None and declared_member_count != len(members):
+        quorum_inconsistencies.append("member_count_mismatch")
+    if required_members is not None and member_count is not None and member_count < required_members:
+        quorum_inconsistencies.append("insufficient_members")
+    member_ids: list[str] = []
+    channels: list[str] = []
+    stale_members: list[str] = []
+    for index, member in enumerate(members):
+        if not isinstance(member, Mapping):
+            quorum_inconsistencies.append(f"invalid_member:{index}")
+            continue
+        member_id = str(member.get("member_id") or "").strip()
+        channel = str(member.get("evidence_channel") or member.get("independence_key") or "").strip()
+        receipt_cid = str(member.get("receipt_cid") or "").strip()
+        if not member_id or not channel or not receipt_cid:
+            quorum_inconsistencies.append(f"incomplete_member:{index}")
+        member_ids.append(member_id)
+        channels.append(channel)
+        member_binding = member.get("binding") if isinstance(member.get("binding"), Mapping) else {}
+        if not member_binding:
+            quorum_inconsistencies.append(f"missing_member_binding:{index}")
+        elif binding and any(
+            str(member_binding.get(key) or "") != str(binding.get(key) or "")
+            for key in ("repository_id", "tree_id", "analyzer_version", "configuration_revision", "objective_revision")
+            if binding.get(key)
+        ):
+            quorum_inconsistencies.append(f"member_binding_mismatch:{index}")
+        finished_value = member.get("finished_at")
+        finished_at = _gate_datetime(finished_value)
+        if finished_value is None or finished_value == "" or finished_at is None:
+            stale_members.append(member_id or str(index))
+        elif finished_at > current + clock_skew or current - finished_at > max_age:
+            stale_members.append(member_id or str(index))
+    if len(set(member_ids)) != len(member_ids):
+        quorum_inconsistencies.append("duplicate_member_id")
+    if len(set(channels)) != len(channels):
+        quorum_inconsistencies.append("duplicate_evidence_channel")
+    if stale_members:
+        quorum_inconsistencies.append("stale_quorum_members")
+    quorum_ok = bool(
+        quorum_payload
+        and declared_quorum
+        and not binding_mismatch
+        and not quorum_inconsistencies
+    )
+    if not quorum_payload:
+        quorum_code = "exhaustion_quorum_missing"
     elif declared_quorum and binding_mismatch:
         quorum_code = "exhaustion_quorum_binding_mismatch"
-    elif not quorum_payload:
-        quorum_code = "exhaustion_quorum_missing"
+    elif declared_quorum and quorum_inconsistencies:
+        quorum_code = "exhaustion_quorum_inconsistent"
     else:
         quorum_code = "exhaustion_quorum_unsatisfied"
-    checks.append(CompletionGateCheck(
+    add_check(
         "exhaustion_quorum",
         quorum_ok,
         quorum_code,
-        "" if quorum_ok else "Require the configured number of independent, healthy exhaustive receipts bound to the current repository tree.",
-        {"binding_mismatch": binding_mismatch, "quorum": quorum_payload},
-    ))
+        "Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.",
+        {
+            "binding_mismatch": binding_mismatch,
+            "inconsistencies": quorum_inconsistencies,
+            "stale_members": stale_members,
+            "quorum": quorum_payload,
+        },
+        "exhaustion_quorum_satisfied",
+        "The configured exhaustion quorum is satisfied by independent proof.",
+    )
 
     unsafe_analysis = False
-    if analysis_payload:
-        terminal = str(analysis_payload.get("terminal_reason") or analysis_payload.get("status") or "").lower()
-        safe = analysis_payload.get("safe_for_completion_reasoning")
+    effective_analysis = analysis_payload
+    if isinstance(analysis_payload.get("receipt"), Mapping):
+        effective_analysis = dict(analysis_payload["receipt"])
+    terminal = ""
+    safe: bool | None = None
+    if effective_analysis:
+        terminal = str(effective_analysis.get("terminal_reason") or effective_analysis.get("status") or "").strip().lower().replace("-", "_")
+        safe = _bool_value(effective_analysis.get("safe_for_completion_reasoning"))
         unsafe_analysis = safe is not True or terminal not in {"exhausted", "healthy_exhausted"}
-    checks.append(CompletionGateCheck(
+    add_check(
         "analysis_terminal_state",
         not unsafe_analysis,
-        "analysis_not_completion_safe" if unsafe_analysis else "",
-        "Analysis was partial, skipped, failed, timed out, duplicate-only, or unsupported." if unsafe_analysis else "",
-        analysis_payload,
-    ))
+        "analysis_not_completion_safe",
+        "Analysis was partial, skipped, failed, timed out, duplicate-only, unsupported, or not explicitly completion-safe.",
+        {"analysis": analysis_payload, "effective_terminal_reason": terminal, "effective_safe": safe},
+        "analysis_completion_safe" if effective_analysis else "analysis_not_supplied",
+        "Analysis proof is exhausted and completion-safe." if effective_analysis else "No optional standalone analysis result was supplied; quorum proof remains authoritative.",
+    )
 
     bad_children: list[dict[str, Any]] = []
-    for child in child_payloads:
+    descendants: list[dict[str, Any]] = []
+
+    def collect_descendants(values: Sequence[dict[str, Any]]) -> None:
+        for child in values:
+            descendants.append(child)
+            gate_value = child.get("completion_gate", child.get("gate"))
+            gate_value = gate_value if isinstance(gate_value, Mapping) else {}
+            evaluated_value = gate_value.get("evaluated_evidence")
+            evaluated_value = evaluated_value if isinstance(evaluated_value, Mapping) else {}
+            nested = evaluated_value.get("child_goals", child.get("child_goals", ()))
+            if isinstance(nested, (list, tuple)):
+                collect_descendants([_mapping_value(item) for item in nested])
+
+    collect_descendants(child_payloads)
+    for child in descendants:
         state = str(child.get("state") or child.get("next_state") or "").lower()
-        verified = child.get("verified") is True or state == GoalState.VERIFIED_COMPLETE.value
-        if not verified:
+        gate_value = child.get("completion_gate", child.get("gate"))
+        gate_value = gate_value if isinstance(gate_value, Mapping) else {}
+        verified = child.get("verified") is True and state == GoalState.VERIFIED_COMPLETE.value
+        if not verified or gate_value.get("passed") is False:
             bad_children.append(child)
     child_ok = not bad_children
     child_code = ""
@@ -802,24 +1112,28 @@ def evaluate_completion_gate(
         child_code = "child_analysis_inconclusive" if GoalState.ANALYSIS_INCONCLUSIVE.value in states else (
             "child_reopened" if GoalState.REOPENED.value in states else "child_unverified"
         )
-    checks.append(CompletionGateCheck(
+    add_check(
         "child_goals",
         child_ok,
         child_code,
-        "" if child_ok else "Every descendant must remain verified; parent aggregation cannot hide an inconclusive or reopened child.",
-        {"children": child_payloads, "unverified_children": bad_children},
-    ))
+        "Every descendant must remain verified; parent aggregation cannot hide an inconclusive or reopened child.",
+        {"children": child_payloads, "descendants": descendants, "unverified_children": bad_children},
+        "descendants_verified",
+        "Every supplied child and descendant remains verified.",
+    )
 
     evaluated = {
         "acceptance_criteria": list(criteria),
         "coverage": coverage_payload,
-        "validation_evidence": result_payloads,
+        "validation_evidence": raw_result_payloads,
         "analyzer_health": health_payload,
         "exhaustion_quorum": quorum_payload,
         "analysis_result": analysis_payload,
         "child_goals": child_payloads,
         "repository_tree": repository_tree,
         "repository_id": repository_id,
+        "evaluated_at": current.isoformat(),
+        "freshness_seconds": max(0.0, float(freshness_seconds)),
     }
     return CompletionGateResult(all(check.passed for check in checks), tuple(checks), evaluated)
 
@@ -854,6 +1168,7 @@ def evaluate_goal_completion(
     repository_id: str = "",
     now: datetime | str | None = None,
     freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
     analysis_inconclusive: bool = False,
     blocked_reason: str = "",
     coverage: Any = None,
@@ -882,6 +1197,7 @@ def evaluate_goal_completion(
             repository_id=repository_id,
             now=now,
             freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
         )
         for item in records
     )
@@ -932,6 +1248,9 @@ def evaluate_goal_completion(
         analysis_result=analysis_result,
         repository_tree=repository_tree,
         repository_id=repository_id,
+        now=now,
+        freshness_seconds=freshness_seconds,
+        clock_skew_seconds=clock_skew_seconds,
     ) if require_completion_gate else None
     if gate is not None:
         for check in gate.checks:
