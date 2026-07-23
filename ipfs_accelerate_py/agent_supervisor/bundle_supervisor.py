@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 COORDINATION_COMPACTION_INTERVAL_CYCLES = 10
 COORDINATION_COMPACTION_MIN_BYTES = 64 * 1024 * 1024
+SCHEDULER_GC_INTERVAL_CYCLES = 10
 
 _MANIFEST_REFERENCED_BUNDLE_FIELDS = frozenset(
     {
@@ -2548,7 +2549,8 @@ class DynamicBundleScheduler:
         try:
             while not self._stop_event.is_set() and not (external_stop and external_stop.is_set()):
                 payload = self.reconcile_once()
-                gc.collect()
+                if cycles % SCHEDULER_GC_INTERVAL_CYCLES == 0:
+                    gc.collect()
                 cycles += 1
                 if max_cycles is not None and cycles >= int(max_cycles):
                     break
