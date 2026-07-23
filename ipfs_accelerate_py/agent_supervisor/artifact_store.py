@@ -21,6 +21,8 @@ from typing import Any, Iterable, Mapping, Sequence
 
 BUNDLE_INDEX_KIND = "bundle_planning_index"
 SCHEDULER_MANIFEST_KIND = "scheduler_manifest"
+CODE_EVIDENCE_GRAPH_KIND = "code_evidence_graph"
+EVIDENCE_GRAPH_KIND = CODE_EVIDENCE_GRAPH_KIND
 QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.queryable_artifact@2"
 MAX_QUERY_ROWS = 1_000
 
@@ -117,6 +119,16 @@ def _atomic_write_text(path: Path, text: str) -> None:
 
 
 def _artifact_kind(payload: Mapping[str, Any]) -> str:
+    schema = str(payload.get("schema") or "")
+    if (
+        schema == "ipfs_accelerate_py.agent_supervisor.code-evidence-graph@1"
+        or (
+            isinstance(payload.get("nodes"), list)
+            and isinstance(payload.get("edges"), list)
+            and str(payload.get("graph_id") or "").startswith("graph-")
+        )
+    ):
+        return CODE_EVIDENCE_GRAPH_KIND
     if isinstance(payload.get("bundles"), Mapping):
         return BUNDLE_INDEX_KIND
     if any(key in payload for key in ("lanes", "tasks", "scheduler_state", "counts")):
@@ -367,12 +379,131 @@ def _manifest_schema(connection: Any) -> None:
     )
 
 
+def _code_evidence_graph_schema(connection: Any) -> None:
+    connection.execute("""
+        CREATE TABLE evidence_nodes (
+            node_id VARCHAR PRIMARY KEY,
+            node_kind VARCHAR NOT NULL,
+            record_key VARCHAR NOT NULL,
+            provenance VARCHAR NOT NULL,
+            authoritative BOOLEAN NOT NULL,
+            task_id VARCHAR,
+            tree_id VARCHAR,
+            symbol VARCHAR,
+            obligation_id VARCHAR,
+            assurance VARCHAR,
+            freshness VARCHAR,
+            payload_json VARCHAR NOT NULL
+        )
+        """)
+    connection.execute("""
+        CREATE TABLE evidence_edges (
+            edge_id VARCHAR PRIMARY KEY,
+            source_node_id VARCHAR NOT NULL,
+            target_node_id VARCHAR NOT NULL,
+            edge_kind VARCHAR NOT NULL,
+            provenance VARCHAR NOT NULL,
+            provenance_record_id VARCHAR NOT NULL,
+            authoritative BOOLEAN NOT NULL,
+            payload_json VARCHAR NOT NULL
+        )
+        """)
+    connection.execute("""
+        CREATE TABLE graph_records (
+            record_type VARCHAR NOT NULL,
+            record_id VARCHAR NOT NULL,
+            record_ordinal BIGINT NOT NULL,
+            payload_json VARCHAR NOT NULL,
+            PRIMARY KEY (record_type, record_id)
+        )
+        """)
+    for statement in (
+        "CREATE INDEX evidence_nodes_kind_idx ON evidence_nodes(node_kind)",
+        "CREATE INDEX evidence_nodes_task_idx ON evidence_nodes(task_id)",
+        "CREATE INDEX evidence_nodes_tree_idx ON evidence_nodes(tree_id)",
+        "CREATE INDEX evidence_nodes_symbol_idx ON evidence_nodes(symbol)",
+        "CREATE INDEX evidence_nodes_obligation_idx ON evidence_nodes(obligation_id)",
+        "CREATE INDEX evidence_nodes_assurance_idx ON evidence_nodes(assurance)",
+        "CREATE INDEX evidence_nodes_freshness_idx ON evidence_nodes(freshness)",
+        "CREATE INDEX evidence_edges_source_idx ON evidence_edges(source_node_id)",
+        "CREATE INDEX evidence_edges_target_idx ON evidence_edges(target_node_id)",
+        "CREATE INDEX evidence_edges_kind_idx ON evidence_edges(edge_kind)",
+    ):
+        connection.execute(statement)
+
+    # Stable, narrow query surfaces.  Both the concise ``*_index`` spellings
+    # and explicit ``code_evidence_*`` aliases are kept for callers composing
+    # SQL across multiple supervisor artifact kinds.
+    connection.execute(
+        "CREATE VIEW task_index AS SELECT * FROM evidence_nodes "
+        "WHERE node_kind = 'task'"
+    )
+    connection.execute(
+        "CREATE VIEW tree_index AS SELECT * FROM evidence_nodes "
+        "WHERE node_kind = 'tree'"
+    )
+    connection.execute(
+        "CREATE VIEW symbol_index AS SELECT * FROM evidence_nodes "
+        "WHERE node_kind = 'symbol'"
+    )
+    connection.execute(
+        "CREATE VIEW obligation_index AS SELECT * FROM evidence_nodes "
+        "WHERE node_kind = 'obligation'"
+    )
+    connection.execute(
+        "CREATE VIEW assurance_index AS SELECT node_id, node_kind, task_id, "
+        "obligation_id, assurance, authoritative, payload_json FROM evidence_nodes "
+        "WHERE assurance <> ''"
+    )
+    connection.execute(
+        "CREATE VIEW freshness_index AS SELECT node_id, node_kind, task_id, "
+        "obligation_id, freshness, authoritative, payload_json FROM evidence_nodes "
+        "WHERE freshness <> ''"
+    )
+    connection.execute(
+        "CREATE VIEW dependency_index AS SELECT * FROM evidence_edges "
+        "WHERE edge_kind = 'depends_on'"
+    )
+    connection.execute(
+        "CREATE VIEW authoritative_evidence_edges AS SELECT * FROM evidence_edges "
+        "WHERE authoritative"
+    )
+    for alias, source in (
+        ("graph_nodes", "evidence_nodes"),
+        ("graph_edges", "evidence_edges"),
+        ("tasks", "task_index"),
+        ("trees", "tree_index"),
+        ("symbols", "symbol_index"),
+        ("obligations", "obligation_index"),
+        ("assurances", "assurance_index"),
+        ("freshness", "freshness_index"),
+        ("dependencies", "dependency_index"),
+        ("graph_tasks", "task_index"),
+        ("graph_trees", "tree_index"),
+        ("graph_symbols", "symbol_index"),
+        ("graph_obligations", "obligation_index"),
+        ("graph_assurance", "assurance_index"),
+        ("graph_freshness", "freshness_index"),
+        ("graph_dependencies", "dependency_index"),
+        ("code_evidence_tasks", "task_index"),
+        ("code_evidence_trees", "tree_index"),
+        ("code_evidence_symbols", "symbol_index"),
+        ("code_evidence_obligations", "obligation_index"),
+        ("code_evidence_assurance", "assurance_index"),
+        ("code_evidence_freshness", "freshness_index"),
+        ("code_evidence_dependencies", "dependency_index"),
+    ):
+        connection.execute(f"CREATE VIEW {alias} AS SELECT * FROM {source}")
+
+
 def _top_level_fields(
     payload: Mapping[str, Any], kind: str
 ) -> Iterable[tuple[str, str]]:
     excluded = (
         {"bundles"}
         if kind == BUNDLE_INDEX_KIND
+        else {"nodes", "edges"}
+        if kind == CODE_EVIDENCE_GRAPH_KIND
         else {
             "blocked",
             "completed",
@@ -697,6 +828,69 @@ def _populate_manifest_tables(connection: Any, payload: Mapping[str, Any]) -> No
             )
 
 
+def _populate_code_evidence_graph_tables(
+    connection: Any, payload: Mapping[str, Any]
+) -> None:
+    # Decode through the graph contract before persistence.  This rejects
+    # forged identities and any enrichment-originated authoritative edge.
+    from .code_evidence_graph import CodeEvidenceGraph
+
+    graph = CodeEvidenceGraph.from_dict(payload)
+    node_rows: list[tuple[Any, ...]] = []
+    graph_rows: list[tuple[Any, ...]] = []
+    for ordinal, node in enumerate(graph.nodes):
+        item = node.to_dict()
+        text = _json_text(item)
+        node_rows.append(
+            (
+                node.node_id,
+                node.kind.value,
+                node.record_key,
+                node.provenance.value,
+                node.authoritative,
+                node.task_id,
+                node.tree_id,
+                node.symbol,
+                node.obligation_id,
+                node.assurance,
+                node.freshness,
+                text,
+            )
+        )
+        graph_rows.append(("node", node.node_id, ordinal, text))
+    edge_rows: list[tuple[Any, ...]] = []
+    for ordinal, edge in enumerate(graph.edges):
+        item = edge.to_dict()
+        text = _json_text(item)
+        edge_rows.append(
+            (
+                edge.edge_id,
+                edge.source,
+                edge.target,
+                edge.kind.value,
+                edge.provenance.value,
+                edge.provenance_record_id,
+                edge.authoritative,
+                text,
+            )
+        )
+        graph_rows.append(("edge", edge.edge_id, ordinal, text))
+    if node_rows:
+        connection.executemany(
+            "INSERT INTO evidence_nodes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            node_rows,
+        )
+    if edge_rows:
+        connection.executemany(
+            "INSERT INTO evidence_edges VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            edge_rows,
+        )
+    if graph_rows:
+        connection.executemany(
+            "INSERT INTO graph_records VALUES (?, ?, ?, ?)", graph_rows
+        )
+
+
 def _table_descriptions(kind: str) -> dict[str, str]:
     common = {
         "artifact_catalog": "Artifact identity, source freshness, and schema version.",
@@ -713,6 +907,44 @@ def _table_descriptions(kind: str) -> dict[str, str]:
             "conflict_edges": "Normalized conflict graph edges.",
             "planning_decisions": "Normalized conflict-planning decisions.",
             "open_bundle_tasks": "View of bundle tasks that are not terminal or blocked.",
+        }
+    if kind == CODE_EVIDENCE_GRAPH_KIND:
+        return {
+            **common,
+            "evidence_nodes": "Canonical graph nodes with indexed task, tree, symbol, obligation, assurance, and freshness fields.",
+            "evidence_edges": "Canonical provenance edges and their derived authority.",
+            "graph_records": "Lossless canonical node and edge records used for projection round trips.",
+            "task_index": "Task nodes.",
+            "tree_index": "Repository tree nodes.",
+            "symbol_index": "Qualified AST symbol nodes.",
+            "obligation_index": "Code proof obligation nodes.",
+            "assurance_index": "Evidence records with an assurance projection.",
+            "freshness_index": "Evidence records with a freshness projection.",
+            "dependency_index": "Task and proof dependency edges.",
+            "authoritative_evidence_edges": "Gate-relevant edges derived from trusted record boundaries.",
+            "graph_nodes": "Compatibility alias for evidence_nodes.",
+            "graph_edges": "Compatibility alias for evidence_edges.",
+            "tasks": "Compatibility alias for task_index.",
+            "trees": "Compatibility alias for tree_index.",
+            "symbols": "Compatibility alias for symbol_index.",
+            "obligations": "Compatibility alias for obligation_index.",
+            "assurances": "Compatibility alias for assurance_index.",
+            "freshness": "Compatibility alias for freshness_index.",
+            "dependencies": "Compatibility alias for dependency_index.",
+            "graph_tasks": "Compatibility alias for task_index.",
+            "graph_trees": "Compatibility alias for tree_index.",
+            "graph_symbols": "Compatibility alias for symbol_index.",
+            "graph_obligations": "Compatibility alias for obligation_index.",
+            "graph_assurance": "Compatibility alias for assurance_index.",
+            "graph_freshness": "Compatibility alias for freshness_index.",
+            "graph_dependencies": "Compatibility alias for dependency_index.",
+            "code_evidence_tasks": "Compatibility alias for task_index.",
+            "code_evidence_trees": "Compatibility alias for tree_index.",
+            "code_evidence_symbols": "Compatibility alias for symbol_index.",
+            "code_evidence_obligations": "Compatibility alias for obligation_index.",
+            "code_evidence_assurance": "Compatibility alias for assurance_index.",
+            "code_evidence_freshness": "Compatibility alias for freshness_index.",
+            "code_evidence_dependencies": "Compatibility alias for dependency_index.",
         }
     return {
         **common,
@@ -759,6 +991,9 @@ def _write_duckdb(
             elif kind == SCHEDULER_MANIFEST_KIND:
                 _manifest_schema(connection)
                 _populate_manifest_tables(connection, payload)
+            elif kind == CODE_EVIDENCE_GRAPH_KIND:
+                _code_evidence_graph_schema(connection)
+                _populate_code_evidence_graph_tables(connection, payload)
             else:
                 raise ValueError(f"unsupported query artifact kind: {kind}")
             connection.execute(
@@ -839,6 +1074,23 @@ def write_scheduler_manifest_artifact(
         payload,
         kind=SCHEDULER_MANIFEST_KIND,
         database_payload=database_payload,
+    )
+
+
+def write_code_evidence_graph_artifact(
+    path: Path | str, payload: Any
+) -> dict[str, Any]:
+    """Write a validated code-evidence graph to paired JSON and DuckDB files."""
+
+    from .code_evidence_graph import CodeEvidenceGraph
+
+    graph = (
+        payload
+        if isinstance(payload, CodeEvidenceGraph)
+        else CodeEvidenceGraph.from_dict(payload)
+    )
+    return write_queryable_artifact(
+        path, graph.to_dict(), kind=CODE_EVIDENCE_GRAPH_KIND
     )
 
 
@@ -1016,6 +1268,67 @@ def read_bundle_index_artifact(path: Path | str) -> dict[str, Any]:
     return read_bundle_index_projection(path, field_names=field_names)
 
 
+def read_code_evidence_graph_projection(path: Path | str) -> dict[str, Any]:
+    """Reconstruct canonical graph records from either artifact representation."""
+
+    database_path = ensure_query_database(path, kind=CODE_EVIDENCE_GRAPH_KIND)
+    duckdb = _duckdb_module()
+    connection = duckdb.connect(str(database_path), read_only=True)
+    try:
+        rows = connection.execute(
+            "SELECT record_type, payload_json FROM graph_records "
+            "ORDER BY record_type DESC, record_ordinal, record_id"
+        ).fetchall()
+        fields = {
+            str(name): _json_value(str(value))
+            for name, value in connection.execute(
+                "SELECT field_name, value_json FROM artifact_fields"
+            ).fetchall()
+        }
+    finally:
+        connection.close()
+    nodes: list[Any] = []
+    edges: list[Any] = []
+    for record_type, value in rows:
+        (nodes if str(record_type) == "node" else edges).append(
+            _json_value(str(value))
+        )
+    from .code_evidence_graph import CodeEvidenceGraph
+
+    graph = CodeEvidenceGraph.from_dict({**fields, "nodes": nodes, "edges": edges})
+    return graph.to_dict()
+
+
+def read_code_evidence_graph_artifact(path: Path | str) -> dict[str, Any]:
+    """Compatibility spelling for the lossless graph projection reader."""
+
+    return read_code_evidence_graph_projection(path)
+
+
+def read_code_evidence_graph(path: Path | str) -> Any:
+    """Return a typed graph reconstructed from JSON or DuckDB."""
+
+    from .code_evidence_graph import CodeEvidenceGraph
+
+    return CodeEvidenceGraph.from_dict(read_code_evidence_graph_projection(path))
+
+
+def canonical_code_evidence_graph_records(
+    path: Path | str,
+) -> dict[str, list[dict[str, Any]]]:
+    """Read only the canonical records used to compare graph projections."""
+
+    return read_code_evidence_graph(path).canonical_records()
+
+
+# Concise compatibility spellings for callers whose artifact type is already
+# clear from context.
+write_evidence_graph_artifact = write_code_evidence_graph_artifact
+read_evidence_graph_artifact = read_code_evidence_graph_artifact
+read_evidence_graph_projection = read_code_evidence_graph_projection
+canonical_evidence_graph_records = canonical_code_evidence_graph_records
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, (datetime, date)):
         return value.isoformat()
@@ -1093,6 +1406,18 @@ def query_artifact(
         "truncated": truncated,
         "limit": row_limit,
     }
+
+
+def query_code_evidence_graph(
+    path: Path | str,
+    **query: Any,
+) -> dict[str, Any]:
+    """Execute one bounded query against a code-evidence graph artifact."""
+
+    supplied_kind = query.pop("kind", CODE_EVIDENCE_GRAPH_KIND)
+    if supplied_kind != CODE_EVIDENCE_GRAPH_KIND:
+        raise ValueError("code evidence graph queries require code_evidence_graph kind")
+    return query_artifact(path, kind=CODE_EVIDENCE_GRAPH_KIND, **query)
 
 
 def artifact_schema(path: Path | str) -> dict[str, Any]:
