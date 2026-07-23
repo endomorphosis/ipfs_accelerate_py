@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+import duckdb
 from datetime import datetime
 from pathlib import Path
 
@@ -403,7 +403,7 @@ def test_attestation_delete_and_tamper_leave_kernel_cache_intact(
     assert cache.lookup(_key()).receipt == _receipt()
 
     assert cache.put_attestation(_key(), _record())
-    connection = sqlite3.connect(cache.db_path)
+    connection = duckdb.connect(str(cache.db_path))
     try:
         connection.execute(
             "UPDATE proof_attestation_entries SET backend_id='backend:forged'"

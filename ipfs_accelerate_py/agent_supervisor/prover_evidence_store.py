@@ -12,7 +12,7 @@ Three properties are deliberately enforced here:
 * cache admission is re-evaluated on every lookup.  Expired, invalidated,
   model-only, non-conformant, inconclusive, or insufficient-assurance receipts
   are retained for audit but never promoted to a stronger cache hit.
-* a SQLite fenced lease and outcome channel deduplicate expensive equivalent
+* a DuckDB fenced lease and outcome channel deduplicate expensive equivalent
   requests between threads, processes, and separately constructed supervisors.
 
 The raw durable receipt is not a dashboard interface.  ``project`` writes a
@@ -26,8 +26,6 @@ import hashlib
 import json
 import os
 import re
-import sqlite3
-import tempfile
 import threading
 import time
 import uuid
@@ -37,6 +35,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final, TypeVar
 
+from .duckdb_state import (
+    DuckDBConnection,
+    DuckDBRow,
+    initialize_duckdb_database,
+    open_duckdb_connection,
+    resolve_duckdb_path,
+)
 from .formal_verification_contracts import (
     AssuranceLevel,
     ContractValidationError,
@@ -710,7 +715,7 @@ T = TypeVar("T")
 
 
 class ProverEvidenceStore:
-    """SQLite receipt store and cross-supervisor single-flight coordinator."""
+    """DuckDB receipt store and cross-supervisor single-flight coordinator."""
 
     def __init__(
         self,
@@ -718,24 +723,24 @@ class ProverEvidenceStore:
         *,
         default_ttl_seconds: int = DEFAULT_EVIDENCE_TTL_SECONDS,
         clock: Callable[[], float] = time.time,
-        sqlite_timeout_seconds: int = 30,
+        duckdb_timeout_seconds: int = 30,
+        sqlite_timeout_seconds: int | None = None,
     ) -> None:
         if isinstance(default_ttl_seconds, bool) or default_ttl_seconds <= 0:
             raise ValueError("default_ttl_seconds must be positive")
-        if path is None:
-            root = Path(tempfile.mkdtemp(prefix="prover-evidence-store-"))
-            self.path = root / "prover_evidence.sqlite3"
-        else:
-            supplied = Path(path)
-            self.path = (
-                supplied
-                if supplied.suffix.lower() in {".db", ".sqlite", ".sqlite3"}
-                else supplied / "prover_evidence.sqlite3"
-            )
+        self.path, self._legacy_path = resolve_duckdb_path(
+            path,
+            default_filename="prover_evidence.duckdb",
+            temporary_prefix="prover-evidence-store-",
+        )
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.default_ttl_seconds = int(default_ttl_seconds)
         self._clock = clock
-        self._sqlite_timeout_seconds = int(sqlite_timeout_seconds)
+        self._duckdb_timeout_seconds = int(
+            sqlite_timeout_seconds
+            if sqlite_timeout_seconds is not None
+            else duckdb_timeout_seconds
+        )
         self._initialize()
 
     @property
@@ -745,37 +750,38 @@ class ProverEvidenceStore:
     def _now_ms(self) -> int:
         return int(self._clock() * 1000)
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(
-            str(self.path),
-            timeout=self._sqlite_timeout_seconds,
-            isolation_level=None,
+    def _connect(self) -> DuckDBConnection:
+        return open_duckdb_connection(
+            self.path,
+            timeout_seconds=self._duckdb_timeout_seconds,
         )
-        connection.row_factory = sqlite3.Row
-        connection.execute(f"PRAGMA busy_timeout={self._sqlite_timeout_seconds * 1000}")
-        connection.execute("PRAGMA foreign_keys=ON")
-        return connection
 
     def _initialize(self) -> None:
-        connection = self._connect()
-        try:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.executescript(
-                """
+        initialize_duckdb_database(
+            self.path,
+            legacy_sqlite_path=self._legacy_path,
+            timeout_seconds=self._duckdb_timeout_seconds,
+            table_names=(
+                "prover_evidence_receipts",
+                "prover_evidence_invalidations",
+                "prover_evidence_flights",
+                "prover_evidence_flight_outcomes",
+            ),
+            schema_sql="""
                 CREATE TABLE IF NOT EXISTS prover_evidence_receipts (
                     receipt_id TEXT PRIMARY KEY,
                     key_id TEXT NOT NULL,
                     key_json TEXT NOT NULL,
                     receipt_json TEXT NOT NULL,
-                    created_at_ms INTEGER NOT NULL,
-                    expires_at_ms INTEGER NOT NULL
+                    created_at_ms BIGINT NOT NULL,
+                    expires_at_ms BIGINT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS prover_evidence_key_idx
                     ON prover_evidence_receipts(key_id, created_at_ms DESC);
                 CREATE TABLE IF NOT EXISTS prover_evidence_invalidations (
                     invalidation_id TEXT PRIMARY KEY,
                     receipt_id TEXT NOT NULL,
-                    invalidated_at_ms INTEGER NOT NULL,
+                    invalidated_at_ms BIGINT NOT NULL,
                     reason TEXT NOT NULL,
                     invalidated_by_receipt_id TEXT NOT NULL,
                     FOREIGN KEY(receipt_id)
@@ -787,27 +793,21 @@ class ProverEvidenceStore:
                     key_id TEXT PRIMARY KEY,
                     owner_id TEXT NOT NULL,
                     token TEXT NOT NULL,
-                    fencing_token INTEGER NOT NULL,
-                    acquired_at_ms INTEGER NOT NULL,
-                    expires_at_ms INTEGER NOT NULL
+                    fencing_token BIGINT NOT NULL,
+                    acquired_at_ms BIGINT NOT NULL,
+                    expires_at_ms BIGINT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS prover_evidence_flight_outcomes (
                     key_id TEXT PRIMARY KEY,
-                    fencing_token INTEGER NOT NULL,
+                    fencing_token BIGINT NOT NULL,
                     status TEXT NOT NULL,
                     outcome_json TEXT NOT NULL,
                     outcome_digest TEXT NOT NULL,
-                    created_at_ms INTEGER NOT NULL,
-                    expires_at_ms INTEGER NOT NULL
+                    created_at_ms BIGINT NOT NULL,
+                    expires_at_ms BIGINT NOT NULL
                 );
-                """
-            )
-        finally:
-            connection.close()
-        try:
-            os.chmod(self.path, 0o600)
-        except OSError:
-            pass
+                """,
+        )
 
     @staticmethod
     def _key(value: ProverEvidenceKey | Mapping[str, Any]) -> ProverEvidenceKey:
@@ -913,7 +913,7 @@ class ProverEvidenceStore:
 
     store = put
 
-    def _decode(self, row: sqlite3.Row) -> ProverEvidenceReceipt:
+    def _decode(self, row: DuckDBRow) -> ProverEvidenceReceipt:
         value = json.loads(str(row["receipt_json"]))
         receipt = ProverEvidenceReceipt.from_dict(value)
         if (
@@ -1030,7 +1030,7 @@ class ProverEvidenceStore:
 
     def _invalidate_in_transaction(
         self,
-        connection: sqlite3.Connection,
+        connection: DuckDBConnection,
         receipt_id: str,
         *,
         reason: str,

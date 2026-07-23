@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+import duckdb
 import threading
 import time
 from pathlib import Path
@@ -311,7 +311,7 @@ def test_cache_poisoning_and_malformed_receipts_are_quarantined(
     cache = FormalVerificationCache(tmp_path)
     assert cache.put(_key(), _receipt()).stored
 
-    connection = sqlite3.connect(cache.db_path)
+    connection = duckdb.connect(str(cache.db_path))
     try:
         encoded = connection.execute(
             "SELECT entry_json FROM proof_cache_entries WHERE key_id=?",

@@ -3,7 +3,7 @@
 The scheduler has four deliberately small trust and coordination boundaries:
 
 * :class:`ProofPlan` remains the immutable source of graph structure;
-* SQLite transactions provide cross-thread/process leases and fencing tokens;
+* lock-aware DuckDB transactions provide process leases and fencing tokens;
 * provider work is cooperative-cancellable and never trusted merely because
   its callback returned successfully; and
 * conclusive receipts are deduplicated by ``(plan_id, obligation_id)`` before
@@ -21,8 +21,6 @@ import asyncio
 import inspect
 import json
 import os
-import sqlite3
-import tempfile
 import threading
 import time
 import uuid
@@ -34,6 +32,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
+from .duckdb_state import (
+    DuckDBConnection,
+    DuckDBRow,
+    initialize_duckdb_database,
+    open_duckdb_connection,
+    resolve_duckdb_path,
+)
 from .formal_verification_contracts import (
     AttemptStatus,
     ContractValidationError,
@@ -514,45 +519,44 @@ class _ProofStateStore:
         path: str | os.PathLike[str] | None,
         *,
         clock: Callable[[], float],
-        sqlite_timeout_seconds: int = 30,
+        duckdb_timeout_seconds: int = 30,
     ) -> None:
-        if path is None:
-            root = Path(tempfile.mkdtemp(prefix="proof-scheduler-"))
-            self.path = root / "proof_scheduler.sqlite3"
-        else:
-            supplied = Path(path)
-            self.path = (
-                supplied
-                if supplied.suffix.lower() in {".db", ".sqlite", ".sqlite3"}
-                else supplied / "proof_scheduler.sqlite3"
-            )
+        self.path, self._legacy_path = resolve_duckdb_path(
+            path,
+            default_filename="proof_scheduler.duckdb",
+            temporary_prefix="proof-scheduler-",
+        )
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._clock = clock
-        self._timeout = sqlite_timeout_seconds
+        self._timeout = duckdb_timeout_seconds
         self._initialize()
 
     def _now_ms(self) -> int:
         return int(self._clock() * 1000)
 
-    def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(
-            str(self.path), timeout=self._timeout, isolation_level=None
+    def connect(self) -> DuckDBConnection:
+        return open_duckdb_connection(
+            self.path,
+            timeout_seconds=self._timeout,
         )
-        connection.row_factory = sqlite3.Row
-        connection.execute(f"PRAGMA busy_timeout={self._timeout * 1000}")
-        connection.execute("PRAGMA foreign_keys=ON")
-        return connection
 
     def _initialize(self) -> None:
-        connection = self.connect()
-        try:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.executescript(
-                """
+        initialize_duckdb_database(
+            self.path,
+            legacy_sqlite_path=self._legacy_path,
+            timeout_seconds=self._timeout,
+            table_names=(
+                "proof_plans",
+                "proof_nodes",
+                "proof_leases",
+                "proof_attempts",
+                "proof_receipts",
+            ),
+            schema_sql="""
                 CREATE TABLE IF NOT EXISTS proof_plans (
                     plan_id TEXT PRIMARY KEY,
                     plan_json TEXT NOT NULL,
-                    created_at_ms INTEGER NOT NULL
+                    created_at_ms BIGINT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS proof_nodes (
                     plan_id TEXT NOT NULL,
@@ -561,7 +565,7 @@ class _ProofStateStore:
                     attempt_id TEXT NOT NULL DEFAULT '',
                     reason_code TEXT NOT NULL DEFAULT '',
                     cancellation_requested INTEGER NOT NULL DEFAULT 0,
-                    updated_at_ms INTEGER NOT NULL,
+                    updated_at_ms BIGINT NOT NULL,
                     PRIMARY KEY(plan_id, step_id),
                     FOREIGN KEY(plan_id) REFERENCES proof_plans(plan_id)
                 );
@@ -570,11 +574,11 @@ class _ProofStateStore:
                     step_id TEXT NOT NULL,
                     owner_id TEXT NOT NULL,
                     token TEXT NOT NULL,
-                    fencing_token INTEGER NOT NULL,
-                    acquired_at_ms INTEGER NOT NULL,
-                    heartbeat_at_ms INTEGER NOT NULL,
-                    expires_at_ms INTEGER NOT NULL,
-                    released_at_ms INTEGER,
+                    fencing_token BIGINT NOT NULL,
+                    acquired_at_ms BIGINT NOT NULL,
+                    heartbeat_at_ms BIGINT NOT NULL,
+                    expires_at_ms BIGINT NOT NULL,
+                    released_at_ms BIGINT,
                     release_reason TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY(plan_id, step_id)
                 );
@@ -585,7 +589,7 @@ class _ProofStateStore:
                     plan_id TEXT NOT NULL,
                     step_id TEXT NOT NULL,
                     attempt_json TEXT NOT NULL,
-                    created_at_ms INTEGER NOT NULL
+                    created_at_ms BIGINT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS proof_attempts_plan_step
                     ON proof_attempts(plan_id, step_id, created_at_ms);
@@ -595,19 +599,12 @@ class _ProofStateStore:
                     obligation_id TEXT NOT NULL,
                     receipt_json TEXT NOT NULL,
                     authoritative INTEGER NOT NULL,
-                    created_at_ms INTEGER NOT NULL
+                    created_at_ms BIGINT NOT NULL
                 );
-                CREATE UNIQUE INDEX IF NOT EXISTS proof_one_authoritative_receipt
-                    ON proof_receipts(plan_id, obligation_id)
-                    WHERE authoritative = 1;
-                """
-            )
-        finally:
-            connection.close()
-        try:
-            os.chmod(self.path, 0o600)
-        except OSError:
-            pass
+                CREATE INDEX IF NOT EXISTS proof_authoritative_receipts
+                    ON proof_receipts(plan_id, obligation_id, authoritative);
+                """,
+        )
 
     def register_plan(self, plan: ProofPlan) -> None:
         encoded = canonical_json(plan.to_dict())
@@ -665,7 +662,7 @@ class _ProofStateStore:
             raise ValueError("durable proof plan was not found")
         return ProofPlan.from_dict(json.loads(str(row["plan_json"])))
 
-    def _expire_locked(self, connection: sqlite3.Connection, plan_id: str) -> None:
+    def _expire_locked(self, connection: DuckDBConnection, plan_id: str) -> None:
         now = self._now_ms()
         rows = connection.execute(
             """
@@ -711,7 +708,7 @@ class _ProofStateStore:
         finally:
             connection.close()
 
-    def node_rows(self, plan_id: str) -> list[sqlite3.Row]:
+    def node_rows(self, plan_id: str) -> list[DuckDBRow]:
         connection = self.connect()
         try:
             return connection.execute(
@@ -2282,13 +2279,13 @@ class ProofScheduler:
             metadata={**running.metadata, **dict(result.metadata)},
         )
 
-    def _invoke(
+    def _prepare_invocation(
         self,
         step: ProofPlanStep,
         lease: _Lease,
         token: CancellationToken,
         resource_lease: ResourceAdmissionLease | None,
-    ) -> tuple[ProofStepResult, ProofAttempt]:
+    ) -> tuple[ProofExecutionContext, ProofAttempt]:
         dependency_attempts, dependency_receipts = self._dependency_context(step)
         context = ProofExecutionContext(
             plan=self.plan,
@@ -2305,6 +2302,21 @@ class ProofScheduler:
         )
         running = self._running_attempt(step, lease, context)
         self._store.set_attempt(self.plan.plan_id, step.step_id, running)
+        return context, running
+
+    def _invoke(
+        self,
+        step: ProofPlanStep,
+        lease: _Lease,
+        token: CancellationToken,
+        resource_lease: ResourceAdmissionLease | None,
+        prepared: tuple[ProofExecutionContext, ProofAttempt] | None = None,
+    ) -> tuple[ProofStepResult, ProofAttempt]:
+        context, running = (
+            prepared
+            if prepared is not None
+            else self._prepare_invocation(step, lease, token, resource_lease)
+        )
         if token.cancelled:
             result = ProofStepResult(
                 status=AttemptStatus.CANCELLED,
@@ -2511,8 +2523,16 @@ class ProofScheduler:
                             + ", ".join(sorted(selected_unfinished))
                         )
 
+                admitted: list[
+                    tuple[
+                        ProofPlanStep,
+                        _Lease,
+                        CancellationToken,
+                        ResourceAdmissionLease,
+                    ]
+                ] = []
                 for scheduled in ready:
-                    if len(futures) >= self.max_parallel:
+                    if len(futures) + len(admitted) >= self.max_parallel:
                         break
                     with self._cancel_lock:
                         if self._cancelled:
@@ -2521,7 +2541,7 @@ class ProofScheduler:
                         running_step
                         for running_step, _lease, _token, _resource_lease
                         in futures.values()
-                    ]
+                    ] + [item[0] for item in admitted]
                     stage_limit = self.config.stage_limits.get(
                         scheduled.step.stage.value
                     )
@@ -2579,15 +2599,71 @@ class ProofScheduler:
                     token = CancellationToken()
                     with self._cancel_lock:
                         self._tokens[scheduled.step_id] = token
+                    admitted.append(
+                        (scheduled.step, lease, token, resource_lease)
+                    )
+
+                # Claim the whole ready batch before callbacks can finish and
+                # release their leases. This keeps short independent proof
+                # steps parallel even when opening durable state is slower
+                # than the callbacks themselves.
+                prepared_admissions = []
+                try:
+                    for step, lease, token, resource_lease in admitted:
+                        prepared_admissions.append(
+                            (
+                                step,
+                                lease,
+                                token,
+                                resource_lease,
+                                self._prepare_invocation(
+                                    step,
+                                    lease,
+                                    token,
+                                    resource_lease,
+                                ),
+                            )
+                        )
+                except BaseException:
+                    # No callbacks have been submitted yet, so return the
+                    # complete admission batch to READY and release every
+                    # local resource grant before propagating the error.
+                    for step, lease, token, resource_lease in admitted:
+                        token.cancel()
+                        with self._cancel_lock:
+                            self._tokens.pop(step.step_id, None)
+                        try:
+                            self._store.finish(
+                                self.plan.plan_id,
+                                lease,
+                                state=ProofNodeState.READY,
+                                attempt_id="",
+                                reason_code="preparation_aborted",
+                            )
+                        except Exception:
+                            # Preserve the preparation error. Expiry recovery
+                            # remains the fallback if durable cleanup fails.
+                            pass
+                        finally:
+                            self.resource_scheduler.release(resource_lease)
+                    raise
+                for (
+                    step,
+                    lease,
+                    token,
+                    resource_lease,
+                    prepared,
+                ) in prepared_admissions:
                     future = pool.submit(
                         self._invoke,
-                        scheduled.step,
+                        step,
                         lease,
                         token,
                         resource_lease,
+                        prepared,
                     )
                     futures[future] = (
-                        scheduled.step,
+                        step,
                         lease,
                         token,
                         resource_lease,

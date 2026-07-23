@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import sqlite3
 import threading
 import time
 from pathlib import Path
+
+import duckdb
+import pytest
 
 from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     AttemptStatus,
@@ -210,6 +212,42 @@ def test_stage_and_resource_class_limits_refine_global_parallelism(tmp_path: Pat
     assert global_peak == 2
 
 
+def test_preparation_failure_releases_entire_admission_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(
+        _step("translate-a", ProofStage.TRANSLATE),
+        _step("translate-b", ProofStage.TRANSLATE),
+        max_parallel=2,
+    )
+    scheduler = ProofScheduler(
+        plan,
+        lambda step: None,
+        state_path=tmp_path,
+        max_parallel=2,
+    )
+    original_prepare = scheduler._prepare_invocation
+    preparation_count = 0
+
+    def fail_second_preparation(*args, **kwargs):
+        nonlocal preparation_count
+        preparation_count += 1
+        if preparation_count == 2:
+            raise RuntimeError("preparation failed")
+        return original_prepare(*args, **kwargs)
+
+    monkeypatch.setattr(scheduler, "_prepare_invocation", fail_second_preparation)
+
+    with pytest.raises(RuntimeError, match="preparation failed"):
+        scheduler.run()
+
+    snapshot = scheduler.snapshot()
+    assert snapshot.active_leases == 0
+    assert scheduler.resource_scheduler.active_leases == ()
+    assert {node.state for node in snapshot.nodes} == {ProofNodeState.READY}
+
+
 def test_conclusive_portfolio_receipt_cancels_redundant_attempt(tmp_path: Path) -> None:
     fast = _step(
         "fast-kernel",
@@ -256,7 +294,7 @@ def test_conclusive_portfolio_receipt_cancels_redundant_attempt(tmp_path: Path) 
     assert len(result.authoritative_receipts) == 1
     assert result.authoritative_receipts[0].authoritative_verdict is ProofVerdict.PROVED
 
-    connection = sqlite3.connect(tmp_path / "proof_scheduler.sqlite3")
+    connection = duckdb.connect(str(tmp_path / "proof_scheduler.duckdb"))
     try:
         authoritative_count = connection.execute(
             "SELECT COUNT(*) FROM proof_receipts WHERE authoritative=1"
@@ -327,7 +365,7 @@ def test_restart_requeues_an_expired_fenced_lease(tmp_path: Path) -> None:
     initial = ProofScheduler(plan, lambda step: None, state_path=tmp_path)
     db_path = initial.db_path
     now_ms = int(time.time() * 1000)
-    connection = sqlite3.connect(db_path)
+    connection = duckdb.connect(str(db_path))
     try:
         connection.execute(
             """
@@ -366,7 +404,7 @@ def test_restart_requeues_an_expired_fenced_lease(tmp_path: Path) -> None:
 
     assert calls == 1
     assert result.states["translate"] is ProofNodeState.SUCCEEDED
-    connection = sqlite3.connect(db_path)
+    connection = duckdb.connect(str(db_path))
     try:
         lease = connection.execute(
             "SELECT fencing_token, release_reason FROM proof_leases "

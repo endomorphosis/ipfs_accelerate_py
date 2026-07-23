@@ -10,7 +10,6 @@ or a terminal receipt after a takeover.
 from __future__ import annotations
 
 import base64
-import fcntl
 import hashlib
 import json
 import os
@@ -24,6 +23,12 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Iterator
 
+from .duckdb_state import (
+    DuckDBConnection as _DuckConnection,
+    DuckDBCursor as _DuckCursor,
+    DuckDBRow as _DuckRow,
+    exclusive_file_lock as _exclusive_file_lock,
+)
 from .task_identity import canonical_bundle_identity
 
 MIN_LEASE_MS = 5_000
@@ -41,136 +46,6 @@ MAX_PERSISTED_HEARTBEATS_PER_LEASE = 8
 SMALL_STORE_FULL_ARTIFACT_LIMIT = 10_000
 
 
-class _DuckRow(Mapping[str, Any]):
-    """Small sqlite3.Row-compatible view over one DuckDB result row."""
-
-    def __init__(self, columns: Iterable[str], values: Iterable[Any]) -> None:
-        self._columns = tuple(str(column) for column in columns)
-        self._values = tuple(values)
-        self._positions = {
-            column: index for index, column in enumerate(self._columns)
-        }
-
-    def __getitem__(self, key: str | int) -> Any:
-        if isinstance(key, int):
-            return self._values[key]
-        return self._values[self._positions[str(key)]]
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._columns)
-
-    def __len__(self) -> int:
-        return len(self._columns)
-
-
-class _DuckCursor:
-    """Materialize DuckDB rows before another statement reuses the connection."""
-
-    def __init__(self, connection: Any) -> None:
-        description = connection.description or ()
-        self._columns = tuple(str(item[0]) for item in description)
-        self._rows = list(connection.fetchall()) if description else []
-        self._offset = 0
-        self.rowcount = -1
-        if (
-            len(self._columns) == 1
-            and self._columns[0].lower() == "count"
-            and len(self._rows) == 1
-            and isinstance(self._rows[0][0], int)
-        ):
-            self.rowcount = int(self._rows[0][0])
-            self._rows = []
-
-    def fetchone(self) -> _DuckRow | None:
-        if self._offset >= len(self._rows):
-            return None
-        values = self._rows[self._offset]
-        self._offset += 1
-        return _DuckRow(self._columns, values)
-
-    def fetchall(self) -> list[_DuckRow]:
-        rows = [
-            _DuckRow(self._columns, values)
-            for values in self._rows[self._offset :]
-        ]
-        self._offset = len(self._rows)
-        return rows
-
-    def __iter__(self) -> Iterator[_DuckRow]:
-        return iter(self.fetchall())
-
-
-class _DuckConnection:
-    """Compatibility adapter for the coordinator's existing transaction code."""
-
-    def __init__(self, connection: Any) -> None:
-        self._connection = connection
-        self._transaction_active = False
-        self._context_depth = 0
-
-    def execute(
-        self,
-        sql: str,
-        parameters: Iterable[Any] | Mapping[str, Any] | None = None,
-    ) -> _DuckCursor:
-        statement = str(sql)
-        normalized = " ".join(statement.strip().upper().split())
-        if normalized == "BEGIN IMMEDIATE":
-            statement = "BEGIN TRANSACTION"
-            normalized = statement.upper()
-        if parameters is None:
-            self._connection.execute(statement)
-        else:
-            self._connection.execute(statement, parameters)
-        if normalized.startswith("BEGIN"):
-            self._transaction_active = True
-        elif normalized in {"COMMIT", "ROLLBACK"}:
-            self._transaction_active = False
-        return _DuckCursor(self._connection)
-
-    def executemany(
-        self,
-        sql: str,
-        parameters: Iterable[Iterable[Any]],
-    ) -> _DuckCursor:
-        self._connection.executemany(sql, parameters)
-        return _DuckCursor(self._connection)
-
-    def executescript(self, sql: str) -> _DuckCursor:
-        self._connection.execute(sql)
-        return _DuckCursor(self._connection)
-
-    def commit(self) -> None:
-        if self._transaction_active:
-            self._connection.commit()
-            self._transaction_active = False
-
-    def rollback(self) -> None:
-        if self._transaction_active:
-            self._connection.rollback()
-            self._transaction_active = False
-
-    def close(self) -> None:
-        try:
-            self.rollback()
-        finally:
-            self._connection.close()
-
-    def __enter__(self) -> _DuckConnection:
-        if self._context_depth == 0 and not self._transaction_active:
-            self.execute("BEGIN TRANSACTION")
-        self._context_depth += 1
-        return self
-
-    def __exit__(self, exc_type: Any, _exc: Any, _traceback: Any) -> None:
-        self._context_depth = max(0, self._context_depth - 1)
-        if self._context_depth == 0:
-            if exc_type is None:
-                self.commit()
-            else:
-                self.rollback()
-
-
 def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
     """Open one flock-serialized DuckDB connection for a public operation."""
 
@@ -180,35 +55,6 @@ def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
             return method(self, *args, **kwargs)
 
     return wrapped
-
-
-@contextmanager
-def _exclusive_file_lock(
-    lock_path: Path,
-    *,
-    timeout_seconds: float,
-) -> Iterator[None]:
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = lock_path.open("a+b")
-    acquired = False
-    deadline = time.monotonic() + float(timeout_seconds)
-    try:
-        while True:
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                acquired = True
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        f"timed out acquiring coordination lock: {lock_path}"
-                    )
-                time.sleep(0.01)
-        yield
-    finally:
-        if acquired:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        handle.close()
 
 
 def _duckdb_path_literal(path: Path) -> str:
@@ -651,7 +497,10 @@ class LeaseCoordinator:
                 duckdb_connection.execute(
                     f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
                 )
-                self._connection = _DuckConnection(duckdb_connection)
+                self._connection = _DuckConnection.wrap(
+                    duckdb_connection,
+                    transaction_on_context=True,
+                )
                 self._operation_state.depth = 1
                 try:
                     yield

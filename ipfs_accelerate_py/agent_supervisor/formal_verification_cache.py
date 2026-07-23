@@ -6,7 +6,7 @@ evidence, and all semantic/execution bindings are checked against the cache
 key.  Provider status text and claimed assurance are never used to admit an
 entry.
 
-SQLite supplies the small transactional boundary needed by parallel
+DuckDB supplies the lock-aware transactional boundary needed by parallel
 supervisors.  In addition to durable proof receipts, the database contains a
 short-lived single-flight lease and outcome channel.  The latter lets threads
 and processes share one active expensive computation without treating its
@@ -18,8 +18,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sqlite3
-import tempfile
 import threading
 import time
 import uuid
@@ -30,6 +28,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final, TypeVar
 
+from .duckdb_state import (
+    DuckDBConnection,
+    DuckDBRow,
+    initialize_duckdb_database,
+    open_duckdb_connection,
+    resolve_duckdb_path,
+)
 from .formal_verification_contracts import (
     AssuranceLevel,
     CodeProofObligation,
@@ -814,30 +819,29 @@ class FormalVerificationCache:
         *,
         default_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
         clock: Callable[[], float] = time.time,
-        sqlite_timeout_seconds: int = 30,
+        duckdb_timeout_seconds: int = 30,
+        sqlite_timeout_seconds: int | None = None,
         attestation_verifier: Callable[[Any], bool] | None = None,
     ) -> None:
         if isinstance(default_ttl_seconds, bool) or default_ttl_seconds <= 0:
             raise ValueError("default_ttl_seconds must be a positive integer")
-        if sqlite_timeout_seconds <= 0:
-            raise ValueError("sqlite_timeout_seconds must be positive")
-        if path is None:
-            root = Path(
-                tempfile.mkdtemp(prefix="formal-verification-cache-")
-            )
-            self.path = root / "cache.sqlite3"
-        else:
-            supplied = Path(path)
-            self.path = (
-                supplied
-                if supplied.suffix.lower() in {".db", ".sqlite", ".sqlite3"}
-                else supplied / "formal_verification_cache.sqlite3"
-            )
+        timeout_seconds = (
+            sqlite_timeout_seconds
+            if sqlite_timeout_seconds is not None
+            else duckdb_timeout_seconds
+        )
+        if timeout_seconds <= 0:
+            raise ValueError("duckdb_timeout_seconds must be positive")
+        self.path, self._legacy_path = resolve_duckdb_path(
+            path,
+            default_filename="formal_verification_cache.duckdb",
+            temporary_prefix="formal-verification-cache-",
+        )
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.default_ttl_seconds = int(default_ttl_seconds)
         self._clock = clock
         self._attestation_verifier = attestation_verifier
-        self._sqlite_timeout_seconds = sqlite_timeout_seconds
+        self._duckdb_timeout_seconds = int(timeout_seconds)
         self._schema_lock = threading.Lock()
         self._initialize()
 
@@ -848,30 +852,31 @@ class FormalVerificationCache:
     def _now_ms(self) -> int:
         return int(self._clock() * 1000)
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(
-            str(self.path),
-            timeout=self._sqlite_timeout_seconds,
-            isolation_level=None,
+    def _connect(self) -> DuckDBConnection:
+        return open_duckdb_connection(
+            self.path,
+            timeout_seconds=self._duckdb_timeout_seconds,
         )
-        connection.row_factory = sqlite3.Row
-        connection.execute(f"PRAGMA busy_timeout={self._sqlite_timeout_seconds * 1000}")
-        connection.execute("PRAGMA foreign_keys=ON")
-        return connection
 
     def _initialize(self) -> None:
         with self._schema_lock:
-            connection = self._connect()
-            try:
-                connection.execute("PRAGMA journal_mode=WAL")
-                connection.executescript(
-                    """
+            initialize_duckdb_database(
+                self.path,
+                legacy_sqlite_path=self._legacy_path,
+                timeout_seconds=self._duckdb_timeout_seconds,
+                table_names=(
+                    "proof_cache_entries",
+                    "proof_attestation_entries",
+                    "proof_single_flights",
+                    "proof_flight_outcomes",
+                ),
+                schema_sql="""
                     CREATE TABLE IF NOT EXISTS proof_cache_entries (
                         key_id TEXT PRIMARY KEY,
                         key_json TEXT NOT NULL,
                         entry_json TEXT NOT NULL,
-                        created_at_ms INTEGER NOT NULL,
-                        expires_at_ms INTEGER NOT NULL
+                        created_at_ms BIGINT NOT NULL,
+                        expires_at_ms BIGINT NOT NULL
                     );
                     CREATE INDEX IF NOT EXISTS proof_cache_expiry_idx
                         ON proof_cache_entries(expires_at_ms);
@@ -887,11 +892,9 @@ class FormalVerificationCache:
                         verification_key_id TEXT NOT NULL,
                         formal_policy_id TEXT NOT NULL,
                         entry_json TEXT NOT NULL,
-                        stored_at_ms INTEGER NOT NULL,
-                        expires_at_ms INTEGER NOT NULL,
-                        ipfs_cid TEXT NOT NULL DEFAULT '',
-                        FOREIGN KEY(key_id) REFERENCES proof_cache_entries(key_id)
-                            ON DELETE CASCADE
+                        stored_at_ms BIGINT NOT NULL,
+                        expires_at_ms BIGINT NOT NULL,
+                        ipfs_cid TEXT NOT NULL DEFAULT ''
                     );
                     CREATE INDEX IF NOT EXISTS proof_attestation_receipt_idx
                         ON proof_attestation_entries(proof_receipt_id);
@@ -901,29 +904,23 @@ class FormalVerificationCache:
                         key_id TEXT PRIMARY KEY,
                         owner_id TEXT NOT NULL,
                         token TEXT NOT NULL,
-                        fencing_token INTEGER NOT NULL,
-                        acquired_at_ms INTEGER NOT NULL,
-                        expires_at_ms INTEGER NOT NULL
+                        fencing_token BIGINT NOT NULL,
+                        acquired_at_ms BIGINT NOT NULL,
+                        expires_at_ms BIGINT NOT NULL
                     );
                     CREATE INDEX IF NOT EXISTS proof_flight_expiry_idx
                         ON proof_single_flights(expires_at_ms);
                     CREATE TABLE IF NOT EXISTS proof_flight_outcomes (
                         key_id TEXT PRIMARY KEY,
-                        fencing_token INTEGER NOT NULL,
+                        fencing_token BIGINT NOT NULL,
                         status TEXT NOT NULL,
                         outcome_json TEXT NOT NULL,
                         outcome_digest TEXT NOT NULL,
-                        created_at_ms INTEGER NOT NULL,
-                        expires_at_ms INTEGER NOT NULL
+                        created_at_ms BIGINT NOT NULL,
+                        expires_at_ms BIGINT NOT NULL
                     );
-                    """
-                )
-            finally:
-                connection.close()
-        try:
-            os.chmod(self.path, 0o600)
-        except OSError:
-            pass
+                    """,
+            )
 
     def _coerce_key(self, key: ProofCacheKey | Mapping[str, Any]) -> ProofCacheKey:
         return key if isinstance(key, ProofCacheKey) else ProofCacheKey.from_dict(key)
@@ -1263,7 +1260,7 @@ class FormalVerificationCache:
         self,
         key: ProofCacheKey,
         receipt: ProofReceipt,
-        row: sqlite3.Row,
+        row: DuckDBRow,
     ) -> tuple[AttestationCacheEntry | None, tuple[str, ...]]:
         try:
             payload = _strict_json_loads(str(row["entry_json"]))
@@ -1485,7 +1482,7 @@ class FormalVerificationCache:
         return self.lookup_attestation(key, **requirements).record
 
     def _decode_entry(
-        self, key: ProofCacheKey, row: sqlite3.Row
+        self, key: ProofCacheKey, row: DuckDBRow
     ) -> tuple[ProofCacheEntry | None, tuple[str, ...]]:
         try:
             stored_key_payload = _strict_json_loads(str(row["key_json"]))
@@ -1668,11 +1665,20 @@ class FormalVerificationCache:
         cache_key = self._coerce_key(key)
         connection = self._connect()
         try:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "DELETE FROM proof_attestation_entries WHERE key_id=?",
+                (cache_key.key_id,),
+            )
             cursor = connection.execute(
                 "DELETE FROM proof_cache_entries WHERE key_id=?",
                 (cache_key.key_id,),
             )
+            connection.commit()
             return cursor.rowcount > 0
+        except BaseException:
+            connection.rollback()
+            raise
         finally:
             connection.close()
 
@@ -1706,6 +1712,16 @@ class FormalVerificationCache:
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                DELETE FROM proof_attestation_entries
+                WHERE key_id IN (
+                    SELECT key_id FROM proof_cache_entries
+                    WHERE expires_at_ms<=?
+                )
+                """,
+                (now,),
+            )
             connection.execute(
                 "DELETE FROM proof_attestation_entries WHERE expires_at_ms<=?",
                 (now,),
@@ -1763,7 +1779,7 @@ class FormalVerificationCache:
                 )
             # A completed leader releases its lease immediately, but its
             # bounded outcome remains the rendezvous point for callers which
-            # were concurrent yet reached SQLite just after that release.
+            # were concurrent yet reached DuckDB just after that release.
             # Treating it as a follower generation closes the late-arrival
             # duplicate-execution race without turning the outcome into a
             # trusted proof-cache entry.

@@ -9,7 +9,6 @@ import json
 import os
 import signal
 import shlex
-import sqlite3
 import subprocess
 import tempfile
 import time
@@ -20,6 +19,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
+from .duckdb_state import (
+    DuckDBConnection,
+    initialize_duckdb_database,
+    open_duckdb_connection,
+)
 from .event_log import read_jsonl_events
 
 
@@ -125,7 +129,7 @@ class ResolverClaim:
 class MergeResolverRegistry:
     """Durable, fenced registry for conflict resolver attempts.
 
-    Acquisition is serialized by an immediate SQLite transaction.  Thus two
+    Acquisition is serialized by a lock-aware DuckDB transaction. Thus two
     daemon processes can observe the same event concurrently, but at most one
     receives a claim.  Abandoned claims can be recovered after their lease;
     once the configured attempt bound is reached the conflict is terminally
@@ -142,16 +146,18 @@ class MergeResolverRegistry:
     ) -> None:
         self.state_dir = Path(state_dir)
         self.state_dir.mkdir(parents=True, exist_ok=True)
-        self.database_path = self.state_dir / "merge_resolver.sqlite3"
+        self.database_path = self.state_dir / "merge_resolver.duckdb"
+        self._legacy_database_path = self.state_dir / "merge_resolver.sqlite3"
         self.quarantine_dir = self.state_dir / "merge_resolver_quarantine"
         self.quarantine_dir.mkdir(parents=True, exist_ok=True)
         self.max_attempts = max(1, int(max_attempts))
         self.lease_timeout_seconds = max(1.0, float(lease_timeout_seconds))
         self._clock = clock or time.time
-        with self._connect() as connection:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.executescript(
-                """
+        initialize_duckdb_database(
+            self.database_path,
+            legacy_sqlite_path=self._legacy_database_path,
+            table_names=("conflict_resolutions",),
+            schema_sql="""
                 CREATE TABLE IF NOT EXISTS conflict_resolutions (
                     fingerprint TEXT PRIMARY KEY,
                     state TEXT NOT NULL,
@@ -168,14 +174,11 @@ class MergeResolverRegistry:
                 );
                 CREATE INDEX IF NOT EXISTS conflict_resolutions_state
                   ON conflict_resolutions(state, lease_expires_at);
-                """
-            )
+                """,
+        )
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(str(self.database_path), timeout=30, isolation_level=None)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout=30000")
-        return connection
+    def _connect(self) -> DuckDBConnection:
+        return open_duckdb_connection(self.database_path)
 
     def acquire(
         self,

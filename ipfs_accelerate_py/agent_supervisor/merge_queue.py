@@ -1,7 +1,7 @@
 """Durable, deduplicating merge queue for implementation lanes.
 
-The queue is deliberately process safe.  Producers may be independent daemon
-processes, but only one consumer can atomically claim a request.  SQLite is the
+The queue is deliberately process safe. Producers may be independent daemon
+processes, but only one consumer can atomically claim a request. DuckDB is the
 authoritative index and small JSON files are retained as human-readable stage
 receipts.  A request is idempotent when both its canonical task identity and
 source commit match an existing request, including a completed or quarantined
@@ -13,13 +13,19 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sqlite3
 import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
+
+from .duckdb_state import (
+    DuckDBConnection,
+    DuckDBRow,
+    initialize_duckdb_database,
+    open_duckdb_connection,
+)
 
 
 _PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -186,7 +192,7 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 class MergeQueue:
-    """SQLite-backed priority queue with atomic claims and bounded retries.
+    """DuckDB-backed priority queue with atomic claims and bounded retries.
 
     ``priority_aging_seconds`` promotes an old request by one priority tier for
     every elapsed interval.  This keeps P0 ahead under ordinary load while
@@ -210,7 +216,8 @@ class MergeQueue:
         self.completed_dir = self.queue_dir / "completed"
         self.failed_dir = self.queue_dir / "failed"  # compatibility projection
         self.quarantine_dir = self.queue_dir / "quarantine"
-        self.database_path = self.queue_dir / "merge_queue.sqlite3"
+        self.database_path = self.queue_dir / "merge_queue.duckdb"
+        self._legacy_database_path = self.queue_dir / "merge_queue.sqlite3"
         self.max_age_seconds = max(0.0, float(max_age_seconds))
         self.max_queue_size = max(1, int(max_queue_size))
         self.priority_aging_seconds = max(0.0, float(priority_aging_seconds))
@@ -227,18 +234,22 @@ class MergeQueue:
         self._init_database()
         self._import_legacy_files()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(str(self.database_path), timeout=30, isolation_level=None)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout=30000")
-        connection.execute("PRAGMA foreign_keys=ON")
-        return connection
+    def _connect(self) -> DuckDBConnection:
+        return open_duckdb_connection(self.database_path)
 
     def _init_database(self) -> None:
-        with self._connect() as connection:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.executescript(
-                """
+        initialize_duckdb_database(
+            self.database_path,
+            legacy_sqlite_path=self._legacy_database_path,
+            table_names=("merge_requests",),
+            value_transform=lambda table, column, value: (
+                None
+                if table == "merge_requests"
+                and column == "dedupe_key"
+                and not str(value or "")
+                else value
+            ),
+            schema_sql="""
                 CREATE TABLE IF NOT EXISTS merge_requests (
                     request_id TEXT PRIMARY KEY,
                     branch_name TEXT NOT NULL,
@@ -251,7 +262,7 @@ class MergeQueue:
                     commit_sha TEXT NOT NULL,
                     canonical_task_id TEXT NOT NULL,
                     canonical_task_key TEXT NOT NULL,
-                    dedupe_key TEXT NOT NULL,
+                    dedupe_key TEXT,
                     status TEXT NOT NULL,
                     claimed_at REAL NOT NULL DEFAULT 0,
                     consumer_id TEXT NOT NULL DEFAULT '',
@@ -261,14 +272,14 @@ class MergeQueue:
                     updated_at REAL NOT NULL
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS merge_requests_dedupe
-                  ON merge_requests(dedupe_key) WHERE dedupe_key <> '';
+                  ON merge_requests(dedupe_key);
                 CREATE INDEX IF NOT EXISTS merge_requests_stage_order
                   ON merge_requests(status, enqueued_at);
-                """
-            )
+                """,
+        )
 
     def _import_legacy_files(self) -> None:
-        """Import pre-SQLite queue files once, preserving their original stage."""
+        """Import legacy JSON queue files once, preserving their original stage."""
 
         stage_dirs = (
             ("pending", self.pending_dir),
@@ -296,7 +307,13 @@ class MergeQueue:
                 connection.rollback()
                 raise
 
-    def _insert(self, connection: sqlite3.Connection, request: MergeRequest, *, ignore: bool) -> None:
+    def _insert(
+        self,
+        connection: DuckDBConnection,
+        request: MergeRequest,
+        *,
+        ignore: bool,
+    ) -> None:
         verb = "INSERT OR IGNORE" if ignore else "INSERT"
         connection.execute(
             f"""{verb} INTO merge_requests (
@@ -317,7 +334,7 @@ class MergeQueue:
                 request.commit_sha,
                 request.canonical_task_id,
                 request.canonical_task_key,
-                request.dedupe_key,
+                request.dedupe_key or None,
                 request.status,
                 request.claimed_at,
                 request.consumer_id,
@@ -396,7 +413,7 @@ class MergeQueue:
                     )
                 self._insert(connection, request, ignore=False)
                 connection.commit()
-            except sqlite3.IntegrityError:
+            except Exception:
                 connection.rollback()
                 if not request.dedupe_key:
                     raise
@@ -406,10 +423,6 @@ class MergeQueue:
                 if row is None:
                     raise
                 return self._request_from_row(row)
-            except Exception:
-                if connection.in_transaction:
-                    connection.rollback()
-                raise
         receipt_path = self._write_stage_receipt(request)
         return replace(request, file_path=receipt_path)
 
@@ -450,7 +463,7 @@ class MergeQueue:
         receipt_path = self._write_stage_receipt(claimed)
         return replace(claimed, file_path=receipt_path)
 
-    def _fairness_key(self, row: sqlite3.Row, now: float) -> tuple[int, float, str]:
+    def _fairness_key(self, row: DuckDBRow, now: float) -> tuple[int, float, str]:
         base = _PRIORITY_ORDER.get(str(row["priority"]), _PRIORITY_ORDER["P2"])
         if self.priority_aging_seconds > 0:
             promotions = int(max(0.0, now - float(row["enqueued_at"])) / self.priority_aging_seconds)
@@ -882,7 +895,7 @@ class MergeQueue:
             "max_attempts": self.max_attempts,
         }
 
-    def _request_from_row(self, row: sqlite3.Row) -> MergeRequest:
+    def _request_from_row(self, row: DuckDBRow) -> MergeRequest:
         status = str(row["status"])
         payload = {
             "request_id": row["request_id"],

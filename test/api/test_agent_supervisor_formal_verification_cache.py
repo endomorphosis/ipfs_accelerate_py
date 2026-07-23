@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import multiprocessing
-import sqlite3
+import duckdb
 import threading
 import time
 from pathlib import Path
@@ -232,7 +232,7 @@ def test_malformed_and_binding_poisoned_entries_have_reason_codes(
     )
 
     assert cache.put(_key(), _receipt())
-    connection = sqlite3.connect(cache.db_path)
+    connection = duckdb.connect(str(cache.db_path))
     try:
         raw = connection.execute(
             "SELECT entry_json FROM proof_cache_entries"
