@@ -1250,9 +1250,10 @@ def _spawn_accepted_lane(
         *lane.command,
     ]
     env = os.environ.copy()
-    package_root = repo_root / "ipfs_datasets_py" / "ipfs_accelerate_py"
-    if package_root.exists():
-        env["PYTHONPATH"] = str(package_root) + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = _bundle_lane_pythonpath(
+        repo_root,
+        existing=env.get("PYTHONPATH", ""),
+    )
     handle = lane.log_path.open("ab")
     try:
         process = subprocess.Popen(
@@ -1269,6 +1270,18 @@ def _spawn_accepted_lane(
     pid_path = lane.state_dir / f"{lane.state_prefix}_bundle_supervisor.pid"
     pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
     return process, guarded_command, pid_path
+
+
+def _bundle_lane_pythonpath(repo_root: Path, *, existing: str = "") -> str:
+    """Keep child lanes on the same agent-supervisor implementation as the parent."""
+
+    runtime_package_root = Path(__file__).resolve().parents[2]
+    legacy_package_root = repo_root / "ipfs_datasets_py" / "ipfs_accelerate_py"
+    entries = [str(runtime_package_root)]
+    if legacy_package_root.exists():
+        entries.append(str(legacy_package_root.resolve()))
+    entries.extend(item for item in existing.split(os.pathsep) if item)
+    return os.pathsep.join(dict.fromkeys(entries))
 
 
 def check_lane_health(

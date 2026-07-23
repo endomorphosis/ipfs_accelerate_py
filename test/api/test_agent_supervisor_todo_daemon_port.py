@@ -21,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     run_objective_daemon,
 )
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+    _bundle_lane_pythonpath,
     bundle_member_completion_receipts,
     build_arg_parser as build_bundle_arg_parser,
     plan_bundle_lanes,
@@ -11974,6 +11975,18 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     )
     assert lanes[0].command.count("--worktree-submodule-path") == 1
     assert "ipfs_datasets_py/ipfs_accelerate_py" in lanes[0].command
+
+
+def test_bundle_lane_pythonpath_prefers_running_supervisor_package(tmp_path):
+    repo = tmp_path / "repo"
+    legacy = repo / "ipfs_datasets_py" / "ipfs_accelerate_py"
+    legacy.mkdir(parents=True)
+
+    entries = _bundle_lane_pythonpath(repo, existing="/existing/package").split(os.pathsep)
+
+    assert entries[0] == str(Path(__file__).resolve().parents[2])
+    assert entries[1] == str(legacy.resolve())
+    assert entries[2] == "/existing/package"
 
 
 def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
