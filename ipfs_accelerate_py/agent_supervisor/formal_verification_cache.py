@@ -39,6 +39,7 @@ from .formal_verification_contracts import (
     ProofReceipt,
     ProofVerdict,
     ResourceBudget,
+    bounded_rejection_reason,
     assurance_satisfies,
     canonical_json,
 )
@@ -479,6 +480,14 @@ class CacheLookupResult:
     def reason_code(self) -> str:
         return self.reason_codes[0] if self.reason_codes else ""
 
+    @property
+    def actionable_reason(self) -> str:
+        return (
+            bounded_rejection_reason(self.reason_code)
+            if self.reason_code
+            else ""
+        )
+
 
 @dataclass(frozen=True)
 class CacheStoreResult:
@@ -489,6 +498,18 @@ class CacheStoreResult:
 
     def __bool__(self) -> bool:
         return self.stored
+
+    @property
+    def reason_code(self) -> str:
+        return self.reason_codes[0] if self.reason_codes else ""
+
+    @property
+    def actionable_reason(self) -> str:
+        return (
+            bounded_rejection_reason(self.reason_code)
+            if self.reason_code
+            else ""
+        )
 
 
 @dataclass(frozen=True)
@@ -532,6 +553,14 @@ class AttestationCacheLookupResult:
     def reason_code(self) -> str:
         return self.reason_codes[0] if self.reason_codes else ""
 
+    @property
+    def actionable_reason(self) -> str:
+        return (
+            bounded_rejection_reason(self.reason_code)
+            if self.reason_code
+            else ""
+        )
+
 
 @dataclass(frozen=True)
 class AttestationCacheStoreResult:
@@ -542,6 +571,18 @@ class AttestationCacheStoreResult:
 
     def __bool__(self) -> bool:
         return self.stored
+
+    @property
+    def reason_code(self) -> str:
+        return self.reason_codes[0] if self.reason_codes else ""
+
+    @property
+    def actionable_reason(self) -> str:
+        return (
+            bounded_rejection_reason(self.reason_code)
+            if self.reason_code
+            else ""
+        )
 
 
 @dataclass(frozen=True)
@@ -588,6 +629,52 @@ def _strict_json_loads(value: str) -> Any:
     return json.loads(value, object_pairs_hook=pairs)
 
 
+_PRIVATE_FLIGHT_FIELDS = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "authorization",
+        "credential",
+        "hidden_witness",
+        "password",
+        "private_key",
+        "private_witness",
+        "refresh_token",
+        "secret",
+        "session_token",
+        "witness",
+    }
+)
+
+
+def _contains_private_flight_material(value: Any) -> bool:
+    """Inspect field names only; never inspect or reflect secret values."""
+
+    if isinstance(value, Mapping):
+        for raw_key, item in value.items():
+            key = str(raw_key).strip().lower().replace("-", "_")
+            if any(
+                key == marker
+                or key.endswith("_" + marker)
+                or marker in key
+                for marker in _PRIVATE_FLIGHT_FIELDS
+            ):
+                return True
+            if _contains_private_flight_material(item):
+                return True
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(_contains_private_flight_material(item) for item in value)
+    return False
+
+
+def _single_flight_public_value(value: Any) -> Any:
+    normalized = _json_value(value, field_name="single-flight outcome")
+    if _contains_private_flight_material(normalized):
+        raise ValueError(bounded_rejection_reason("private_material"))
+    return normalized
+
+
 def _component_identifier(value: Any, *names: str) -> str:
     if isinstance(value, str):
         return value
@@ -628,11 +715,14 @@ def _binding_reasons(key: ProofCacheKey, receipt: ProofReceipt) -> set[str]:
     reasons: set[str] = set()
 
     expected_obligation = _obligation_identifier(key.obligation)
-    if expected_obligation and expected_obligation != receipt.obligation_id:
+    if not expected_obligation or expected_obligation != receipt.obligation_id:
         reasons.add(CacheRejectionReason.BINDING_MISMATCH.value)
 
     expected_premises = _premise_identifiers(key.premises)
-    if expected_premises and expected_premises != tuple(sorted(receipt.premise_ids)):
+    if (
+        len(expected_premises) != len(key.premises)
+        or expected_premises != tuple(sorted(receipt.premise_ids))
+    ):
         reasons.add(CacheRejectionReason.BINDING_MISMATCH.value)
 
     bindings = (
@@ -653,7 +743,7 @@ def _binding_reasons(key: ProofCacheKey, receipt: ProofReceipt) -> set[str]:
     )
     for component, actual, names in bindings:
         expected = _component_identifier(component, *names)
-        if expected and expected != actual:
+        if not expected or expected != actual:
             reasons.add(CacheRejectionReason.BINDING_MISMATCH.value)
 
     solver_ids: tuple[str, ...] = ()
@@ -665,6 +755,8 @@ def _binding_reasons(key: ProofCacheKey, receipt: ProofReceipt) -> set[str]:
     if expected_solver and expected_solver != receipt.solver_id:
         reasons.add(CacheRejectionReason.BINDING_MISMATCH.value)
     elif solver_ids and receipt.solver_id not in solver_ids:
+        reasons.add(CacheRejectionReason.BINDING_MISMATCH.value)
+    elif not expected_solver and not solver_ids:
         reasons.add(CacheRejectionReason.BINDING_MISMATCH.value)
 
     try:
@@ -1669,6 +1761,32 @@ class FormalVerificationCache:
                     expires_at_ms=int(row["expires_at_ms"]),
                     acquired=False,
                 )
+            # A completed leader releases its lease immediately, but its
+            # bounded outcome remains the rendezvous point for callers which
+            # were concurrent yet reached SQLite just after that release.
+            # Treating it as a follower generation closes the late-arrival
+            # duplicate-execution race without turning the outcome into a
+            # trusted proof-cache entry.
+            completed = connection.execute(
+                """
+                SELECT fencing_token, created_at_ms, expires_at_ms
+                FROM proof_flight_outcomes
+                WHERE key_id=? AND expires_at_ms>?
+                """,
+                (cache_key.key_id, now),
+            ).fetchone()
+            if completed is not None:
+                connection.commit()
+                return SingleFlightLease(
+                    cache=self,
+                    key=cache_key,
+                    owner_id="completed-outcome",
+                    token="",
+                    fencing_token=int(completed["fencing_token"]),
+                    acquired_at_ms=int(completed["created_at_ms"]),
+                    expires_at_ms=int(completed["expires_at_ms"]),
+                    acquired=False,
+                )
             fencing = int(row["fencing_token"]) + 1 if row is not None else 1
             expires = now + lease_seconds * 1000
             connection.execute(
@@ -1792,7 +1910,11 @@ class FormalVerificationCache:
         envelope = {
             "schema_version": FORMAL_VERIFICATION_FLIGHT_SCHEMA,
             "status": status,
-            "value": _json_value(value, field_name="single-flight outcome"),
+            "value": (
+                _single_flight_public_value(value)
+                if status == "ok"
+                else _json_value(value, field_name="single-flight error")
+            ),
         }
         encoded = canonical_json(envelope)
         digest = f"sha256:{hashlib.sha256(encoded.encode('utf-8')).hexdigest()}"
@@ -1876,15 +1998,19 @@ class FormalVerificationCache:
             ):
                 raise ValueError("single-flight outcome envelope mismatch")
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise SingleFlightExecutionError("single-flight outcome is malformed") from exc
+            raise SingleFlightExecutionError(
+                bounded_rejection_reason("single_flight_execution_failed")
+            ) from exc
         if row["status"] == "error":
             error = payload.get("value")
-            message = (
-                str(error.get("message"))
+            reason_code = (
+                str(error.get("reason_code"))
                 if isinstance(error, Mapping)
-                else str(error)
+                else "single_flight_execution_failed"
             )
-            raise SingleFlightExecutionError(message or "single-flight leader failed")
+            raise SingleFlightExecutionError(
+                bounded_rejection_reason(reason_code)
+            )
         return True, payload.get("value")
 
     def single_flight(
@@ -1961,12 +2087,20 @@ class FormalVerificationCache:
                     heartbeat_stop.set()
                     heartbeat_thread.join()
                     try:
+                        cancelled = type(exc).__name__ in {
+                            "CancelledError",
+                            "GeneratorExit",
+                            "KeyboardInterrupt",
+                        }
                         self._publish_outcome(
                             lease,
                             status="error",
                             value={
-                                "type": type(exc).__name__,
-                                "message": str(exc),
+                                "reason_code": (
+                                    "single_flight_cancelled"
+                                    if cancelled
+                                    else "single_flight_execution_failed"
+                                ),
                             },
                             ttl_seconds=outcome_ttl_seconds,
                         )
@@ -2008,7 +2142,7 @@ class FormalVerificationCache:
                 time.sleep(poll_interval_seconds)
             if time.monotonic() >= deadline:
                 raise SingleFlightTimeout(
-                    f"timed out waiting for proof work {cache_key.key_id}"
+                    bounded_rejection_reason("single_flight_timeout")
                 )
 
     execute_single_flight = single_flight

@@ -42,6 +42,58 @@ RESOURCE_BUDGET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-resource-bud
 ASSURANCE_ASSESSMENT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/assurance-assessment@1"
 )
+MAX_REJECTION_REASON_CHARS = 256
+
+# Canonical proof contracts are durable/public artifacts.  Private proving
+# inputs must remain in backend-owned memory and must never be smuggled into a
+# receipt through an otherwise open-ended metadata field.
+_PRIVATE_FIELD_MARKERS = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "authorization",
+        "cookie",
+        "credential",
+        "hidden_witness",
+        "password",
+        "private_key",
+        "private_premise",
+        "private_witness",
+        "refresh_token",
+        "secret",
+        "session_token",
+        "witness",
+    }
+)
+
+_REJECTION_ACTIONS = {
+    "artifact_rejected": "rebuild the artifact from its typed canonical contract",
+    "attestation_binding_mismatch": "recreate the attestation for the exact receipt and key",
+    "attestation_cache_miss": "run current attestation verification",
+    "attestation_reverification_failed": "rerun the cryptographic verifier with pinned inputs",
+    "attestation_reverification_required": "replay the pinned cryptographic verifier",
+    "cache_binding_mismatch": "recompute the proof for the exact current inputs",
+    "cache_miss": "run independent verification for the current inputs",
+    "changed_premises": "recompute the proof with the current premise set",
+    "expired_attestation_entry": "recreate the attestation with a current verification key",
+    "freshness_requirement_not_satisfied": "recompute evidence for the current inputs",
+    "malformed_attestation_entry": "discard the attestation and rerun verification",
+    "malformed_cache_entry": "discard the entry and rerun independent verification",
+    "malformed_proof_receipt": "rebuild the receipt from independently checked evidence",
+    "partial_cache_entry": "finish independent verification before caching",
+    "poisoned_attestation_entry": "quarantine the attestation and rerun verification",
+    "poisoned_cache_entry": "quarantine the entry and rerun independent verification",
+    "private_material": "remove private witness material from the public artifact",
+    "required_assurance_not_satisfied": "run the independent verifier required by policy",
+    "simulated_attestation": "use a production cryptographic backend and current key",
+    "single_flight_cancelled": "retry proof work from a fresh fail-closed attempt",
+    "single_flight_execution_failed": "inspect the leader locally and retry verification",
+    "single_flight_timeout": "retry or increase the bounded proof-work timeout",
+    "solver_only_cache_entry": "run an independent trusted kernel before promotion",
+    "stale_candidate_tree": "recompute the proof for the current repository tree",
+    "stale_cache_entry": "recompute proof evidence for the current inputs",
+    "toolchain_drift": "recompute the proof with the current locked toolchain",
+}
 
 
 class ContractValidationError(ValueError):
@@ -241,6 +293,31 @@ def _canonical_value(value: Any) -> Any:
     )
 
 
+def bounded_rejection_reason(code: Any, detail: Any = None) -> str:
+    """Return a bounded, actionable, secret-free public rejection reason.
+
+    ``detail`` is deliberately ignored.  Raw prover output and exception text
+    can contain source, credentials, or hidden witnesses and therefore belong
+    only in access-controlled local diagnostics.  Unknown codes collapse to a
+    generic reason instead of reflecting attacker-controlled text.
+    """
+
+    raw_code = getattr(code, "value", code)
+    normalized = (
+        raw_code[:96].strip().lower()
+        if isinstance(raw_code, str)
+        else ""
+    )
+    if normalized not in _REJECTION_ACTIONS:
+        normalized = "artifact_rejected"
+    reason = "%s: %s" % (normalized, _REJECTION_ACTIONS[normalized])
+    return reason[:MAX_REJECTION_REASON_CHARS]
+
+
+# Compatibility spelling for callers which emphasize the public projection.
+actionable_rejection_reason = bounded_rejection_reason
+
+
 def canonical_json_bytes(value: Any) -> bytes:
     """Encode deterministic DAG-JSON-compatible UTF-8 bytes."""
 
@@ -313,7 +390,32 @@ def _mapping(value: Any, *, field_name: str) -> Dict[str, Any]:
         raise ContractValidationError("%s must be a mapping" % field_name)
     normalized = _canonical_value(value)
     assert isinstance(normalized, dict)
+    if _contains_private_material(normalized):
+        raise ContractValidationError(
+            bounded_rejection_reason("private_material")
+        )
     return normalized
+
+
+def _contains_private_material(value: Any) -> bool:
+    """Detect private fields recursively without inspecting or echoing values."""
+
+    if isinstance(value, Mapping):
+        for raw_key, item in value.items():
+            key = str(raw_key).strip().lower().replace("-", "_")
+            if any(
+                key == marker
+                or key.endswith("_" + marker)
+                or marker in key
+                for marker in _PRIVATE_FIELD_MARKERS
+            ):
+                return True
+            if _contains_private_material(item):
+                return True
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(_contains_private_material(item) for item in value)
+    return False
 
 
 def _nonnegative_int(value: Any, *, field_name: str) -> int:
@@ -325,10 +427,35 @@ def _nonnegative_int(value: Any, *, field_name: str) -> int:
 
 
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
+    if not isinstance(payload, Mapping):
+        raise ContractValidationError("contract payload must be an object")
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
         raise ContractValidationError(
-            "unsupported schema %r; expected %s" % (supplied, expected)
+            "unsupported contract schema; use %s" % expected
+        )
+
+
+def _contract_version(payload: Mapping[str, Any]) -> None:
+    supplied = payload.get("contract_version")
+    if supplied not in (None, CONTRACT_VERSION):
+        raise ContractValidationError(
+            "unsupported proof contract version; rebuild with the current contract"
+        )
+
+
+def _reject_unknown_fields(
+    payload: Mapping[str, Any],
+    allowed: Iterable[str],
+    *,
+    artifact_name: str,
+) -> None:
+    """Fail closed without reflecting attacker-controlled field names."""
+
+    if set(payload).difference(allowed):
+        raise ContractValidationError(
+            "%s contains unsupported fields; rebuild its canonical payload"
+            % artifact_name
         )
 
 
@@ -976,7 +1103,26 @@ class ProofEvidence(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofEvidence":
         _schema(payload, cls.SCHEMA)
-        return cls(
+        _reject_unknown_fields(
+            payload,
+            {
+                "schema",
+                "kind",
+                "authority",
+                "verdict",
+                "artifact_id",
+                "subject_id",
+                "verifier_id",
+                "freshness",
+                "independent",
+                "simulated",
+                "metadata",
+                "evidence_id",
+                "content_id",
+            },
+            artifact_name="proof evidence",
+        )
+        result = cls(
             kind=payload.get("kind", EvidenceKind.UNKNOWN),
             authority=payload.get("authority", EvidenceAuthority.UNKNOWN),
             verdict=payload.get("verdict", EvidenceVerdict.UNKNOWN),
@@ -988,6 +1134,12 @@ class ProofEvidence(CanonicalContract):
             simulated=payload.get("simulated", False),
             metadata=payload.get("metadata") or {},
         )
+        claimed_id = payload.get("evidence_id") or payload.get("content_id")
+        if claimed_id and claimed_id != result.evidence_id:
+            raise ContractValidationError(
+                "proof evidence content identity does not match payload"
+            )
+        return result
 
 
 def _evidence(value: Any) -> ProofEvidence:
@@ -1396,6 +1548,35 @@ class ProofAttempt(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofAttempt":
         _schema(payload, cls.SCHEMA)
+        _contract_version(payload)
+        _reject_unknown_fields(
+            payload,
+            {
+                "schema",
+                "contract_version",
+                "plan_id",
+                "step_id",
+                "obligation_id",
+                "repository_tree_id",
+                "provider_id",
+                "stage",
+                "status",
+                "evidence",
+                "input_ids",
+                "output_ids",
+                "started_at",
+                "finished_at",
+                "resource_usage",
+                "error_code",
+                "error_message",
+                "provider_claimed_assurance",
+                "authoritative_assurance",
+                "metadata",
+                "attempt_id",
+                "content_id",
+            },
+            artifact_name="proof attempt",
+        )
         result = cls(
             plan_id=payload.get("plan_id", ""),
             step_id=payload.get("step_id", ""),
@@ -1726,6 +1907,45 @@ class ProofReceipt(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofReceipt":
         _schema(payload, cls.SCHEMA)
+        _contract_version(payload)
+        _reject_unknown_fields(
+            payload,
+            {
+                "schema",
+                "contract_version",
+                "obligation_id",
+                "plan_id",
+                "attempt_id",
+                "repository_id",
+                "repository_tree_id",
+                "ast_scope_ids",
+                "premise_ids",
+                "translator_id",
+                "solver_id",
+                "kernel_id",
+                "toolchain_id",
+                "theorem_registry_id",
+                "policy_id",
+                "resource_budget",
+                "verdict",
+                "evidence",
+                "provider_id",
+                "provider_claimed_assurance",
+                "freshness",
+                "kernel_receipt_id",
+                "started_at",
+                "finished_at",
+                "resource_usage",
+                "authoritative_verdict",
+                "authoritative_assurance",
+                "assurance_reason_codes",
+                "authoritative_evidence_ids",
+                "metadata",
+                "receipt_id",
+                "content_id",
+            },
+            artifact_name="proof receipt",
+        )
         result = cls(
             obligation_id=payload.get("obligation_id", ""),
             plan_id=payload.get("plan_id", ""),
@@ -1775,6 +1995,13 @@ class ProofReceipt(CanonicalContract):
             raise ContractValidationError(
                 "receipt assurance reason codes do not match derived evidence"
             )
+        supplied_evidence_ids = payload.get("authoritative_evidence_ids")
+        if supplied_evidence_ids is not None and _ids(
+            supplied_evidence_ids, field_name="authoritative_evidence_ids"
+        ) != result.assurance_assessment.evidence_ids:
+            raise ContractValidationError(
+                "receipt authoritative evidence IDs do not match derived evidence"
+            )
         claimed_id = payload.get("receipt_id") or payload.get("content_id")
         if claimed_id and claimed_id != result.receipt_id:
             raise ContractValidationError("receipt content identity does not match payload")
@@ -1792,6 +2019,7 @@ __all__ = [
     "PROOF_RECEIPT_SCHEMA",
     "RESOURCE_BUDGET_SCHEMA",
     "SCHEMA_VERSION",
+    "MAX_REJECTION_REASON_CHARS",
     "AssuranceAssessment",
     "AssuranceLevel",
     "AttemptStatus",
@@ -1816,6 +2044,8 @@ __all__ = [
     "ResourceBudget",
     "assess_assurance",
     "assurance_satisfies",
+    "actionable_rejection_reason",
+    "bounded_rejection_reason",
     "canonical_json",
     "canonical_json_bytes",
     "content_identity",
