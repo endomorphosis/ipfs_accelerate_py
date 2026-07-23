@@ -1588,6 +1588,68 @@ class ProofReceipt(CanonicalContract):
     def satisfies(self, required: AssuranceLevel) -> bool:
         return assurance_satisfies(self.authoritative_assurance, required)
 
+    def completion_reference(
+        self,
+        required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    ) -> Dict[str, Any]:
+        """Return the fail-closed projection consumed by completion gates.
+
+        The projection deliberately carries both the provider-independent
+        verdict and assurance.  Callers must not infer either value from task
+        status, validation success, or ``provider_claimed_assurance``.  The
+        canonical receipt is included so a persisted completion record can
+        re-derive every projected value instead of trusting mutable summary
+        fields.
+        """
+
+        required = _enum(
+            required_assurance,
+            AssuranceLevel,
+            field_name="required_assurance",
+        )
+        verdict = self.authoritative_verdict
+        assurance = self.authoritative_assurance
+        fresh = self.freshness is EvidenceFreshness.CURRENT
+        satisfied = bool(
+            verdict is ProofVerdict.PROVED
+            and fresh
+            and assurance_satisfies(assurance, required)
+        )
+        reasons: List[str] = []
+        if verdict is not ProofVerdict.PROVED:
+            reasons.append("proof_verdict_%s" % verdict.value)
+        if not fresh:
+            reasons.append("proof_receipt_stale")
+        if not assurance_satisfies(assurance, required):
+            reasons.append("required_assurance_not_satisfied")
+        if satisfied:
+            reasons.append("required_assurance_satisfied")
+        return _canonical_value(
+            {
+                "schema": "ipfs_accelerate_py/agent-supervisor/proof-completion-reference@1",
+                "obligation_id": self.obligation_id,
+                "proof_receipt_id": self.receipt_id,
+                "repository_id": self.repository_id,
+                "repository_tree_id": self.repository_tree_id,
+                "required_assurance": required,
+                "authoritative_assurance": assurance,
+                "authoritative_verdict": verdict,
+                "freshness": self.freshness,
+                "provenance_id": self.receipt_id,
+                "assurance_satisfied": satisfied,
+                "reason_codes": reasons,
+                "receipt": self.to_dict(),
+            }
+        )
+
+    def satisfies_completion(
+        self,
+        required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    ) -> bool:
+        """Whether this receipt alone satisfies a completion proof demand."""
+
+        return bool(self.completion_reference(required_assurance)["assurance_satisfied"])
+
     @property
     def is_kernel_verified(self) -> bool:
         """Whether this is a current proved receipt accepted by its kernel.
