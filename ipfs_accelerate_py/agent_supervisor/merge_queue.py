@@ -256,7 +256,7 @@ class MergeQueue:
                     task_id TEXT NOT NULL,
                     priority TEXT NOT NULL,
                     lane_id TEXT NOT NULL,
-                    enqueued_at REAL NOT NULL,
+                    enqueued_at DOUBLE NOT NULL,
                     attempt INTEGER NOT NULL,
                     metadata_json TEXT NOT NULL,
                     commit_sha TEXT NOT NULL,
@@ -264,12 +264,12 @@ class MergeQueue:
                     canonical_task_key TEXT NOT NULL,
                     dedupe_key TEXT,
                     status TEXT NOT NULL,
-                    claimed_at REAL NOT NULL DEFAULT 0,
+                    claimed_at DOUBLE NOT NULL DEFAULT 0,
                     consumer_id TEXT NOT NULL DEFAULT '',
                     failure_count INTEGER NOT NULL DEFAULT 0,
                     failure_reason TEXT NOT NULL DEFAULT '',
-                    finished_at REAL NOT NULL DEFAULT 0,
-                    updated_at REAL NOT NULL
+                    finished_at DOUBLE NOT NULL DEFAULT 0,
+                    updated_at DOUBLE NOT NULL
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS merge_requests_dedupe
                   ON merge_requests(dedupe_key);

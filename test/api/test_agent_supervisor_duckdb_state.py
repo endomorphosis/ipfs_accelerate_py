@@ -10,6 +10,7 @@ from ipfs_accelerate_py.agent_supervisor.duckdb_state import (
     open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue
+from ipfs_accelerate_py.agent_supervisor.merge_resolver import MergeResolverRegistry
 
 
 def test_legacy_sqlite_tables_are_migrated_once_without_mutating_source(
@@ -61,6 +62,8 @@ def test_merge_queue_migrates_legacy_sqlite_and_keeps_deduplication(
     queue_dir.mkdir()
     source = queue_dir / "merge_queue.sqlite3"
     dedupe_key = hashlib.sha256(b"task-key-1\0abc123").hexdigest()
+    enqueued_at = 1_784_690_172.5146759
+    finished_at = 1_784_690_175.7506707
     legacy = sqlite3.connect(source)
     legacy.executescript(
         """
@@ -91,11 +94,11 @@ def test_merge_queue_migrates_legacy_sqlite_and_keeps_deduplication(
         """
         INSERT INTO merge_requests VALUES (
             'legacy-request', 'implementation/ref-1', 'REF-1', 'P1', 'lane-a',
-            10.0, 1, '{}', 'abc123', 'task-cid-1', 'task-key-1',
-            ?, 'completed', 0, '', 0, '', 11.0, 11.0
+            ?, 1, '{}', 'abc123', 'task-cid-1', 'task-key-1',
+            ?, 'completed', 0, '', 0, '', ?, ?
         )
         """,
-        (dedupe_key,),
+        (enqueued_at, dedupe_key, finished_at, finished_at),
     )
     legacy.commit()
     legacy.close()
@@ -113,4 +116,54 @@ def test_merge_queue_migrates_legacy_sqlite_and_keeps_deduplication(
     assert queue.database_path.name == "merge_queue.duckdb"
     assert is_sqlite_database(source)
     assert migrated is not None and migrated.status == "completed"
+    assert migrated.enqueued_at == enqueued_at
     assert duplicate.request_id == "legacy-request"
+
+
+def test_merge_resolver_migration_preserves_epoch_precision(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "merge-resolver"
+    state_dir.mkdir()
+    source = state_dir / "merge_resolver.sqlite3"
+    acquired_at = 1_784_698_207.9501562
+    lease_expires_at = 1_784_699_107.1251562
+    updated_at = 1_784_698_426.730546
+    legacy = sqlite3.connect(source)
+    legacy.executescript(
+        """
+        CREATE TABLE conflict_resolutions (
+            fingerprint TEXT PRIMARY KEY,
+            state TEXT NOT NULL,
+            owner_id TEXT NOT NULL DEFAULT '',
+            token TEXT NOT NULL DEFAULT '',
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            acquired_at REAL NOT NULL DEFAULT 0,
+            lease_expires_at REAL NOT NULL DEFAULT 0,
+            updated_at REAL NOT NULL,
+            last_error TEXT NOT NULL DEFAULT '',
+            event_json TEXT NOT NULL DEFAULT '{}',
+            outcome_json TEXT NOT NULL DEFAULT '{}',
+            receipt_path TEXT NOT NULL DEFAULT ''
+        );
+        """
+    )
+    legacy.execute(
+        """
+        INSERT INTO conflict_resolutions VALUES (
+            'conflict-1', 'failed', 'resolver-1', 'token-1', 1,
+            ?, ?, ?, 'merge failed', '{}', '{}', ''
+        )
+        """,
+        (acquired_at, lease_expires_at, updated_at),
+    )
+    legacy.commit()
+    legacy.close()
+
+    registry = MergeResolverRegistry(state_dir)
+    migrated = registry.status("conflict-1")
+
+    assert registry.database_path.name == "merge_resolver.duckdb"
+    assert is_sqlite_database(source)
+    assert migrated["acquired_at"] == acquired_at
+    assert migrated["lease_expires_at"] == lease_expires_at
