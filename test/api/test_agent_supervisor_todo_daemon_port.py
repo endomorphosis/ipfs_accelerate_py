@@ -1191,6 +1191,31 @@ def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
     assert "wallet_interface/ui/tracked.css" not in paths
 
 
+def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    first = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "lanes" / "first" / "task_state.json",
+        strategy_path=repo / "lanes" / "first" / "strategy.json",
+        events_path=repo / "lanes" / "first" / "events.jsonl",
+        repo_root=repo,
+    )
+    second = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "lanes" / "second" / "task_state.json",
+        strategy_path=repo / "lanes" / "second" / "strategy.json",
+        events_path=repo / "lanes" / "second" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    expected = repo / "data" / "agent_supervisor" / "gc_state.json"
+    assert first.git_gc.state_path == expected
+    assert second.git_gc.state_path == expected
+
+
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
