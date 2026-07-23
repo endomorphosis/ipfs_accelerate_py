@@ -163,6 +163,7 @@ class PortalSupervisorConfig:
     generated_dirty_repair_max_paths: int = 200
     generated_dirty_repair_stale_lock_seconds: float = 300.0
     generated_dirty_repair_paths: tuple[Path, ...] = field(default_factory=tuple)
+    external_reservation_manifest_paths: tuple[Path, ...] = field(default_factory=tuple)
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -5253,6 +5254,8 @@ class PortalImplementationSupervisor:
                 str(int(self.config.task_shard_index)),
             ]
         )
+        for path in self.config.external_reservation_manifest_paths:
+            command.extend(["--external-reservation-manifest-path", str(path)])
         return command
 
     def _managed_daemon_pid_path(self) -> Path:
@@ -5707,6 +5710,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Zero-based deterministic task-selection shard index for this supervisor lane.",
     )
     parser.add_argument(
+        "--external-reservation-manifest-path",
+        type=Path,
+        action="append",
+        default=[],
+        help="Repeatable bundle scheduler manifest whose running execution slices reserve tasks.",
+    )
+    parser.add_argument(
         "--no-retry-budget-guardrail",
         dest="retry_budget_guardrail_enabled",
         action="store_false",
@@ -6118,6 +6128,9 @@ def supervisor_config_from_args(
         daemon_merged_worktree_cleanup_max=args.daemon_merged_worktree_cleanup_max,
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
+        external_reservation_manifest_paths=tuple(
+            args.external_reservation_manifest_path or ()
+        ),
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
         retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,
