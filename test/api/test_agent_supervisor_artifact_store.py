@@ -278,6 +278,12 @@ def test_large_todo_vector_index_omits_repeated_record_evidence(
     assert rendered["query_artifact"]["duckdb_path"] == (
         "objective_bundles/index.duckdb"
     )
+    rewritten = write_todo_vector_index_artifact(
+        index_path=index_path,
+        payload=rendered,
+    )
+    assert rewritten["records"][0]["conflict_surface"]["ast_record_count"] == 1
+    assert rewritten["records"][0]["conflict_surface"]["metadata_field_count"] == 1
 
 
 def test_scheduler_manifest_normalizes_rows_and_bounds_query_output(

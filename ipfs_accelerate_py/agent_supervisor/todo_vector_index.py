@@ -1629,12 +1629,14 @@ def write_todo_vector_index_artifact(
                 compact_surface = dict(surface)
                 ast_records = compact_surface.pop("ast_records", None)
                 metadata = compact_surface.pop("metadata", None)
-                compact_surface["ast_record_count"] = (
-                    len(ast_records) if isinstance(ast_records, list) else 0
-                )
-                compact_surface["metadata_field_count"] = (
-                    len(metadata) if isinstance(metadata, Mapping) else 0
-                )
+                if isinstance(ast_records, list):
+                    compact_surface["ast_record_count"] = len(ast_records)
+                else:
+                    compact_surface.setdefault("ast_record_count", 0)
+                if isinstance(metadata, Mapping):
+                    compact_surface["metadata_field_count"] = len(metadata)
+                else:
+                    compact_surface.setdefault("metadata_field_count", 0)
                 record["conflict_surface"] = compact_surface
             compact_records.append(record)
         rendered["records"] = compact_records
