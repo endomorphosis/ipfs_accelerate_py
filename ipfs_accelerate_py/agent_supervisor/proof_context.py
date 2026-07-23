@@ -30,6 +30,12 @@ PROOF_CONTEXT_QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.proof-context-
 PROOF_CONTEXT_LIMITS_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.proof-context-limits@1"
 )
+PROOF_PLANNING_CONTEXT_CAPSULE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.proof-planning-context-capsule@1"
+)
+PROOF_PLANNING_CONTEXT_LIMITS_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.proof-planning-context-limits@1"
+)
 
 DEFAULT_MAX_CONTEXT_ROWS = 96
 DEFAULT_MAX_CONTEXT_BYTES = 48 * 1024
@@ -41,6 +47,14 @@ DEFAULT_MAX_SOURCE_BYTES = 16 * 1024
 DEFAULT_MAX_PROOF_TRANSCRIPTS = 4
 DEFAULT_MAX_PROOF_TRANSCRIPT_BYTES = 2 * 1024
 DEFAULT_MAX_PROOF_TRANSCRIPT_BYTES_TOTAL = 6 * 1024
+DEFAULT_MAX_PLANNING_CANDIDATES = 8
+DEFAULT_MAX_PLANNING_OBLIGATIONS = 32
+DEFAULT_MAX_REJECTED_ALTERNATIVES = 8
+DEFAULT_MAX_REJECTION_RATIONALE_BYTES = 1024
+DEFAULT_MAX_PLANNING_DEPENDENCIES = 32
+DEFAULT_MAX_PLANNING_RESOURCE_CLASSES = 16
+DEFAULT_MAX_PLANNING_CONTEXT_BYTES = 16 * 1024
+DEFAULT_MAX_PLANNING_CONTEXT_TOKENS = 4 * 1024
 
 
 class ProofContextError(ValueError):
@@ -571,6 +585,39 @@ class ProofContextCapsule:
     def render_for_leanstral(self) -> str:
         return self.to_prompt()
 
+    def to_planning_context(
+        self,
+        *,
+        candidates: Sequence[Any] = (),
+        evaluation: Any = None,
+        available_resource_classes: Sequence[str] | str = (),
+        proof_critical_path: Sequence[str] | str = (),
+        limits: "ProofPlanningContextLimits | None" = None,
+        token_counter: Callable[[str], int] = estimate_context_tokens,
+    ) -> "ProofPlanningContextCapsule":
+        """Project this graph capsule into the smaller planner/router contract.
+
+        The projection deliberately does not retain source excerpts, proof
+        transcripts, arbitrary graph fields, or model suggestions.  It is
+        therefore safe to pass to a planning router without making the
+        router's prompt grow with the repository evidence graph.
+        """
+
+        return build_proof_planning_context_capsule(
+            self,
+            candidates=candidates,
+            evaluation=evaluation,
+            available_resource_classes=available_resource_classes,
+            proof_critical_path=proof_critical_path,
+            limits=limits,
+            token_counter=token_counter,
+        )
+
+    def for_router(self, **kwargs: Any) -> "ProofPlanningContextCapsule":
+        """Compatibility spelling for :meth:`to_planning_context`."""
+
+        return self.to_planning_context(**kwargs)
+
     @classmethod
     def from_dict(
         cls,
@@ -662,6 +709,726 @@ class ProofContextCapsule:
         if not isinstance(payload, Mapping):
             raise ProofContextError("proof context JSON must contain an object")
         return cls.from_dict(payload, token_counter=token_counter)
+
+
+@dataclass(frozen=True)
+class ProofPlanningContextLimits:
+    """Hard limits for the proof projection supplied to a plan router."""
+
+    max_candidates: int = DEFAULT_MAX_PLANNING_CANDIDATES
+    max_obligations: int = DEFAULT_MAX_PLANNING_OBLIGATIONS
+    max_rejected_alternatives: int = DEFAULT_MAX_REJECTED_ALTERNATIVES
+    max_rationale_bytes: int = DEFAULT_MAX_REJECTION_RATIONALE_BYTES
+    max_dependencies: int = DEFAULT_MAX_PLANNING_DEPENDENCIES
+    max_resource_classes: int = DEFAULT_MAX_PLANNING_RESOURCE_CLASSES
+    max_bytes: int = DEFAULT_MAX_PLANNING_CONTEXT_BYTES
+    max_tokens: int = DEFAULT_MAX_PLANNING_CONTEXT_TOKENS
+
+    def __post_init__(self) -> None:
+        for name in (
+            "max_candidates",
+            "max_obligations",
+            "max_rejected_alternatives",
+            "max_dependencies",
+            "max_resource_classes",
+        ):
+            value = int(getattr(self, name))
+            if value < 0:
+                raise ProofContextError(f"{name} must be non-negative")
+            object.__setattr__(self, name, value)
+        for name in ("max_rationale_bytes", "max_bytes", "max_tokens"):
+            value = int(getattr(self, name))
+            if value <= 0:
+                raise ProofContextError(f"{name} must be positive")
+            if name == "max_rationale_bytes" and value < 5:
+                raise ProofContextError(
+                    "max_rationale_bytes must fit a JSON rationale envelope"
+                )
+            object.__setattr__(self, name, value)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PROOF_PLANNING_CONTEXT_LIMITS_SCHEMA,
+            "max_candidates": self.max_candidates,
+            "max_obligations": self.max_obligations,
+            "max_rejected_alternatives": self.max_rejected_alternatives,
+            "max_rationale_bytes": self.max_rationale_bytes,
+            "max_dependencies": self.max_dependencies,
+            "max_resource_classes": self.max_resource_classes,
+            "max_bytes": self.max_bytes,
+            "max_tokens": self.max_tokens,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofPlanningContextLimits":
+        schema = str(
+            payload.get("schema") or PROOF_PLANNING_CONTEXT_LIMITS_SCHEMA
+        )
+        if schema != PROOF_PLANNING_CONTEXT_LIMITS_SCHEMA:
+            raise ProofContextError(
+                f"unsupported proof planning context limits schema: {schema}"
+            )
+        return cls(
+            max_candidates=int(
+                payload.get("max_candidates", DEFAULT_MAX_PLANNING_CANDIDATES)
+            ),
+            max_obligations=int(
+                payload.get("max_obligations", DEFAULT_MAX_PLANNING_OBLIGATIONS)
+            ),
+            max_rejected_alternatives=int(
+                payload.get(
+                    "max_rejected_alternatives",
+                    DEFAULT_MAX_REJECTED_ALTERNATIVES,
+                )
+            ),
+            max_rationale_bytes=int(
+                payload.get(
+                    "max_rationale_bytes",
+                    DEFAULT_MAX_REJECTION_RATIONALE_BYTES,
+                )
+            ),
+            max_dependencies=int(
+                payload.get(
+                    "max_dependencies",
+                    DEFAULT_MAX_PLANNING_DEPENDENCIES,
+                )
+            ),
+            max_resource_classes=int(
+                payload.get(
+                    "max_resource_classes",
+                    DEFAULT_MAX_PLANNING_RESOURCE_CLASSES,
+                )
+            ),
+            max_bytes=int(
+                payload.get("max_bytes", DEFAULT_MAX_PLANNING_CONTEXT_BYTES)
+            ),
+            max_tokens=int(
+                payload.get("max_tokens", DEFAULT_MAX_PLANNING_CONTEXT_TOKENS)
+            ),
+        )
+
+
+def _finite_non_negative_number(value: Any, *, label: str) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ProofContextError(f"{label} must be a finite non-negative number") from exc
+    if result < 0 or result == float("inf") or result != result:
+        raise ProofContextError(f"{label} must be a finite non-negative number")
+    return result
+
+
+def _unit_interval_number(value: Any, *, label: str) -> float:
+    result = _finite_non_negative_number(value, label=label)
+    if result > 1:
+        raise ProofContextError(f"{label} must be between 0 and 1")
+    return result
+
+
+def _planning_mapping(value: Any, *, default_key: str = "value") -> dict[str, Any]:
+    """Normalize a declared delta while rejecting arbitrary object graphs."""
+
+    if isinstance(value, Mapping):
+        return _public_mapping(value)
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return {
+            str(index): _public_value(item)
+            for index, item in enumerate(value[:64])
+        }
+    if value in (None, ""):
+        return {}
+    return {default_key: _public_value(value)}
+
+
+def _planning_declarations(value: Any) -> tuple[str, ...]:
+    if isinstance(value, Mapping):
+        # Mapping inputs are accepted at the adapter boundary, but the router
+        # receives only stable declaration identifiers.
+        return _strings(value.keys())
+    return _strings(value)
+
+
+@dataclass(frozen=True)
+class PlanningObligationContext:
+    """Minimal verifier-derived state needed to schedule one obligation."""
+
+    obligation_id: str
+    status: str = "unknown"
+    support_status: str = "unknown"
+    required_assurance: str = ""
+    freshness: str = ""
+    dependencies: tuple[str, ...] = ()
+    reusable_receipt_ids: tuple[str, ...] = ()
+    unsupported_semantics: tuple[str, ...] = ()
+    fallback_checks: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        obligation_id = str(self.obligation_id or "").strip()
+        if not obligation_id:
+            raise ProofContextError("planning obligation_id is required")
+        object.__setattr__(self, "obligation_id", obligation_id)
+        for name in (
+            "status",
+            "support_status",
+            "required_assurance",
+            "freshness",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        for name in (
+            "dependencies",
+            "reusable_receipt_ids",
+            "unsupported_semantics",
+            "fallback_checks",
+        ):
+            object.__setattr__(self, name, _strings(getattr(self, name)))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "obligation_id": self.obligation_id,
+            "status": self.status,
+            "support_status": self.support_status,
+            "required_assurance": self.required_assurance,
+            "freshness": self.freshness,
+            "dependencies": list(self.dependencies),
+            "reusable_receipt_ids": list(self.reusable_receipt_ids),
+            "unsupported_semantics": list(self.unsupported_semantics),
+            "fallback_checks": list(self.fallback_checks),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanningObligationContext":
+        return cls(
+            obligation_id=str(payload.get("obligation_id") or ""),
+            status=str(payload.get("status") or "unknown"),
+            support_status=str(payload.get("support_status") or "unknown"),
+            required_assurance=str(payload.get("required_assurance") or ""),
+            freshness=str(payload.get("freshness") or ""),
+            dependencies=tuple(payload.get("dependencies") or ()),
+            reusable_receipt_ids=tuple(
+                payload.get("reusable_receipt_ids") or ()
+            ),
+            unsupported_semantics=tuple(
+                payload.get("unsupported_semantics") or ()
+            ),
+            fallback_checks=tuple(payload.get("fallback_checks") or ()),
+        )
+
+
+@dataclass(frozen=True)
+class PlanningCandidateContext:
+    """Allowlisted proof-aware candidate declaration exposed to the router."""
+
+    candidate_id: str
+    obligation_impact: tuple[str, ...]
+    required_assurance: str
+    proof_cost: float
+    cache_likelihood: float
+    dependencies: tuple[str, ...]
+    expected_evidence_delta: tuple[str, ...]
+    resource_classes: tuple[str, ...] = ()
+    proof_critical_path: float = 0.0
+    downstream_unlock_value: float = 0.0
+    risk: float = 0.0
+    freshness: float = 1.0
+
+    def __post_init__(self) -> None:
+        candidate_id = str(self.candidate_id or "").strip()
+        if not candidate_id:
+            raise ProofContextError("planning candidate_id is required")
+        object.__setattr__(self, "candidate_id", candidate_id)
+        impact = _planning_declarations(self.obligation_impact)
+        if not impact:
+            raise ProofContextError("planning candidate obligation_impact is required")
+        object.__setattr__(self, "obligation_impact", impact)
+        assurance = str(self.required_assurance or "").strip()
+        if not assurance:
+            raise ProofContextError("planning candidate required_assurance is required")
+        object.__setattr__(self, "required_assurance", assurance)
+        object.__setattr__(
+            self,
+            "proof_cost",
+            _finite_non_negative_number(self.proof_cost, label="proof_cost"),
+        )
+        object.__setattr__(
+            self,
+            "cache_likelihood",
+            _unit_interval_number(self.cache_likelihood, label="cache_likelihood"),
+        )
+        object.__setattr__(
+            self,
+            "risk",
+            _unit_interval_number(self.risk, label="risk"),
+        )
+        object.__setattr__(
+            self,
+            "freshness",
+            _unit_interval_number(self.freshness, label="freshness"),
+        )
+        object.__setattr__(
+            self,
+            "proof_critical_path",
+            _finite_non_negative_number(
+                self.proof_critical_path,
+                label="proof_critical_path",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "downstream_unlock_value",
+            _finite_non_negative_number(
+                self.downstream_unlock_value,
+                label="downstream_unlock_value",
+            ),
+        )
+        object.__setattr__(self, "dependencies", _strings(self.dependencies))
+        delta = _planning_declarations(self.expected_evidence_delta)
+        if not delta:
+            raise ProofContextError(
+                "planning candidate expected_evidence_delta is required"
+            )
+        object.__setattr__(self, "expected_evidence_delta", delta)
+        object.__setattr__(
+            self, "resource_classes", _strings(self.resource_classes)
+        )
+
+    @property
+    def branch_id(self) -> str:
+        """Compatibility with general plan-branch evaluators."""
+
+        return self.candidate_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "candidate_id": self.candidate_id,
+            "obligation_impact": list(self.obligation_impact),
+            "required_assurance": self.required_assurance,
+            "proof_cost": self.proof_cost,
+            "cache_likelihood": self.cache_likelihood,
+            "dependencies": list(self.dependencies),
+            "expected_evidence_delta": list(self.expected_evidence_delta),
+            "resource_classes": list(self.resource_classes),
+            "proof_critical_path": self.proof_critical_path,
+            "downstream_unlock_value": self.downstream_unlock_value,
+            "risk": self.risk,
+            "freshness": self.freshness,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanningCandidateContext":
+        nested_candidate = payload.get("candidate")
+        if isinstance(nested_candidate, Mapping):
+            payload = nested_candidate
+        return cls(
+            candidate_id=str(
+                payload.get("candidate_id")
+                or payload.get("branch_id")
+                or payload.get("plan_id")
+                or ""
+            ),
+            obligation_impact=_planning_declarations(
+                payload.get("obligation_impact")
+            ),
+            required_assurance=str(payload.get("required_assurance") or ""),
+            proof_cost=payload.get(
+                "proof_cost", payload.get("estimated_proof_cost", 0)
+            ),
+            cache_likelihood=payload.get("cache_likelihood", 0),
+            dependencies=tuple(payload.get("dependencies") or ()),
+            expected_evidence_delta=_planning_declarations(
+                payload.get("expected_evidence_delta")
+            ),
+            resource_classes=tuple(
+                payload.get("resource_classes")
+                or payload.get("available_resource_classes")
+                or ()
+            ),
+            proof_critical_path=payload.get("proof_critical_path", 0),
+            downstream_unlock_value=payload.get(
+                "downstream_unlock_value", 0
+            ),
+            risk=payload.get("risk", 0),
+            freshness=payload.get("freshness", 1),
+        )
+
+
+@dataclass(frozen=True)
+class RejectedPlanAlternative:
+    """A rejected candidate identity with its bounded durable rationale."""
+
+    candidate_id: str
+    rationale: tuple[str, ...]
+    score_millionths: int | None = None
+
+    def __post_init__(self) -> None:
+        candidate_id = str(self.candidate_id or "").strip()
+        if not candidate_id:
+            raise ProofContextError("rejected alternative candidate_id is required")
+        rationale = _strings(self.rationale)
+        if not rationale:
+            raise ProofContextError("rejected alternative rationale is required")
+        object.__setattr__(self, "candidate_id", candidate_id)
+        object.__setattr__(self, "rationale", rationale)
+        if self.score_millionths is not None:
+            object.__setattr__(
+                self, "score_millionths", int(self.score_millionths)
+            )
+
+    @property
+    def reason(self) -> str:
+        return "; ".join(self.rationale)
+
+    @property
+    def rationale_bytes(self) -> int:
+        return len(_canonical_json(list(self.rationale)).encode("utf-8"))
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "candidate_id": self.candidate_id,
+            "rationale": list(self.rationale),
+        }
+        if self.score_millionths is not None:
+            result["score_millionths"] = self.score_millionths
+        return result
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RejectedPlanAlternative":
+        rationale = payload.get("rationale")
+        if rationale is None:
+            rationale = payload.get("reason")
+        return cls(
+            candidate_id=str(
+                payload.get("candidate_id") or payload.get("branch_id") or ""
+            ),
+            rationale=_strings(rationale),
+            score_millionths=(
+                int(payload["score_millionths"])
+                if payload.get("score_millionths") is not None
+                else None
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ProofPlanningContextUsage:
+    bytes: int = 0
+    tokens: int = 0
+    candidates: int = 0
+    obligations: int = 0
+    rejected_alternatives: int = 0
+    rationale_bytes: int = 0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "bytes",
+            "tokens",
+            "candidates",
+            "obligations",
+            "rejected_alternatives",
+            "rationale_bytes",
+        ):
+            value = int(getattr(self, name))
+            if value < 0:
+                raise ProofContextError(
+                    "proof planning context usage values must be non-negative"
+                )
+            object.__setattr__(self, name, value)
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "bytes": self.bytes,
+            "tokens": self.tokens,
+            "candidates": self.candidates,
+            "obligations": self.obligations,
+            "rejected_alternatives": self.rejected_alternatives,
+            "rationale_bytes": self.rationale_bytes,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofPlanningContextUsage":
+        return cls(
+            **{
+                name: int(payload.get(name) or 0)
+                for name in (
+                    "bytes",
+                    "tokens",
+                    "candidates",
+                    "obligations",
+                    "rejected_alternatives",
+                    "rationale_bytes",
+                )
+            }
+        )
+
+
+@dataclass(frozen=True)
+class ProofPlanningContextCapsule:
+    """Small immutable proof projection and the only router-facing payload."""
+
+    task_id: str
+    source_capsule_id: str
+    limits: ProofPlanningContextLimits
+    obligations: tuple[PlanningObligationContext, ...] = ()
+    candidates: tuple[PlanningCandidateContext, ...] = ()
+    selected_candidate_id: str = ""
+    rejected_alternatives: tuple[RejectedPlanAlternative, ...] = ()
+    proof_critical_path: tuple[str, ...] = ()
+    available_resource_classes: tuple[str, ...] = ()
+    required_fallback_checks: tuple[str, ...] = ()
+    source_truncated: bool = False
+    usage: ProofPlanningContextUsage = field(
+        default_factory=ProofPlanningContextUsage
+    )
+    truncated: bool = False
+    omitted: Mapping[str, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        task_id = str(self.task_id or "").strip()
+        source_capsule_id = str(self.source_capsule_id or "").strip()
+        if not task_id:
+            raise ProofContextError("proof planning context task_id is required")
+        if not source_capsule_id:
+            raise ProofContextError(
+                "proof planning context source_capsule_id is required"
+            )
+        if not isinstance(self.limits, ProofPlanningContextLimits):
+            raise ProofContextError(
+                "proof planning context limits must be ProofPlanningContextLimits"
+            )
+        object.__setattr__(self, "task_id", task_id)
+        object.__setattr__(self, "source_capsule_id", source_capsule_id)
+        for name, item_type in (
+            ("obligations", PlanningObligationContext),
+            ("candidates", PlanningCandidateContext),
+            ("rejected_alternatives", RejectedPlanAlternative),
+        ):
+            values = tuple(getattr(self, name))
+            if not all(isinstance(item, item_type) for item in values):
+                raise ProofContextError(
+                    f"proof planning context {name} has an invalid entry"
+                )
+            object.__setattr__(self, name, values)
+        candidate_ids = [item.candidate_id for item in self.candidates]
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise ProofContextError("proof planning candidate ids must be unique")
+        rejected_ids = [
+            item.candidate_id for item in self.rejected_alternatives
+        ]
+        if len(rejected_ids) != len(set(rejected_ids)):
+            raise ProofContextError(
+                "rejected proof planning candidate ids must be unique"
+            )
+        selected = str(self.selected_candidate_id or "").strip()
+        if selected and selected not in candidate_ids:
+            raise ProofContextError(
+                "selected_candidate_id must identify a retained candidate"
+            )
+        object.__setattr__(self, "selected_candidate_id", selected)
+        for name in (
+            "proof_critical_path",
+            "available_resource_classes",
+            "required_fallback_checks",
+        ):
+            object.__setattr__(self, name, _strings(getattr(self, name)))
+        if not isinstance(self.usage, ProofPlanningContextUsage):
+            raise ProofContextError(
+                "proof planning context usage must be ProofPlanningContextUsage"
+            )
+        object.__setattr__(
+            self,
+            "omitted",
+            {
+                str(name): int(value)
+                for name, value in self.omitted.items()
+                if int(value) >= 0
+            },
+        )
+
+    @property
+    def capsule_id(self) -> str:
+        payload = self._dict(include_identity=False)
+        payload["usage"] = {
+            **self.usage.to_dict(),
+            "bytes": 0,
+            "tokens": 0,
+        }
+        digest = hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+        return f"proof-planning-context:sha256:{digest}"
+
+    def _dict(self, *, include_identity: bool) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "schema": PROOF_PLANNING_CONTEXT_CAPSULE_SCHEMA,
+            "task_id": self.task_id,
+            "source_capsule_id": self.source_capsule_id,
+            "limits": self.limits.to_dict(),
+            "obligations": [item.to_dict() for item in self.obligations],
+            "candidates": [item.to_dict() for item in self.candidates],
+            "selected_candidate_id": self.selected_candidate_id,
+            "rejected_alternatives": [
+                item.to_dict() for item in self.rejected_alternatives
+            ],
+            "proof_critical_path": list(self.proof_critical_path),
+            "available_resource_classes": list(
+                self.available_resource_classes
+            ),
+            "required_fallback_checks": list(self.required_fallback_checks),
+            "source_truncated": self.source_truncated,
+            "usage": self.usage.to_dict(),
+            "truncated": self.truncated,
+            "omitted": dict(sorted(self.omitted.items())),
+        }
+        if include_identity:
+            result["capsule_id"] = self.capsule_id
+        return result
+
+    def to_dict(self) -> dict[str, Any]:
+        return self._dict(include_identity=True)
+
+    def to_json(self) -> str:
+        return _canonical_json(self.to_dict())
+
+    def to_prompt(self) -> str:
+        """Return the already-bounded router payload without loading more data."""
+
+        return self.to_json()
+
+    render_for_router = to_prompt
+    render_for_codex = to_prompt
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        token_counter: Callable[[str], int] = estimate_context_tokens,
+    ) -> "ProofPlanningContextCapsule":
+        schema = str(payload.get("schema") or "")
+        if schema != PROOF_PLANNING_CONTEXT_CAPSULE_SCHEMA:
+            raise ProofContextError(
+                f"unsupported proof planning context schema: {schema}"
+            )
+        limits_payload = payload.get("limits")
+        usage_payload = payload.get("usage")
+        if not isinstance(limits_payload, Mapping) or not isinstance(
+            usage_payload, Mapping
+        ):
+            raise ProofContextError(
+                "proof planning context limits and usage must be mappings"
+            )
+        result = cls(
+            task_id=str(payload.get("task_id") or ""),
+            source_capsule_id=str(payload.get("source_capsule_id") or ""),
+            limits=ProofPlanningContextLimits.from_dict(limits_payload),
+            obligations=tuple(
+                PlanningObligationContext.from_dict(item)
+                for item in payload.get("obligations") or ()
+            ),
+            candidates=tuple(
+                PlanningCandidateContext.from_dict(item)
+                for item in payload.get("candidates") or ()
+            ),
+            selected_candidate_id=str(
+                payload.get("selected_candidate_id") or ""
+            ),
+            rejected_alternatives=tuple(
+                RejectedPlanAlternative.from_dict(item)
+                for item in payload.get("rejected_alternatives") or ()
+            ),
+            proof_critical_path=tuple(
+                payload.get("proof_critical_path") or ()
+            ),
+            available_resource_classes=tuple(
+                payload.get("available_resource_classes") or ()
+            ),
+            required_fallback_checks=tuple(
+                payload.get("required_fallback_checks") or ()
+            ),
+            source_truncated=bool(payload.get("source_truncated")),
+            usage=ProofPlanningContextUsage.from_dict(usage_payload),
+            truncated=bool(payload.get("truncated")),
+            omitted=payload.get("omitted") or {},
+        )
+        claimed_id = str(payload.get("capsule_id") or "")
+        if claimed_id and claimed_id != result.capsule_id:
+            raise ProofContextError(
+                "proof planning context identity does not match payload"
+            )
+        text = result.to_json()
+        byte_count = len(text.encode("utf-8"))
+        token_count = int(token_counter(text))
+        if byte_count != result.usage.bytes:
+            raise ProofContextError(
+                "proof planning context byte usage does not match payload"
+            )
+        if token_count != result.usage.tokens:
+            raise ProofContextError(
+                "proof planning context token usage does not match payload"
+            )
+        result._validate_limits()
+        return result
+
+    @classmethod
+    def from_json(
+        cls,
+        text: str,
+        *,
+        token_counter: Callable[[str], int] = estimate_context_tokens,
+    ) -> "ProofPlanningContextCapsule":
+        try:
+            payload = json.loads(text)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ProofContextError(
+                "proof planning context JSON is malformed"
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise ProofContextError(
+                "proof planning context JSON must contain an object"
+            )
+        return cls.from_dict(payload, token_counter=token_counter)
+
+    def _validate_limits(self) -> None:
+        if len(self.candidates) > self.limits.max_candidates:
+            raise ProofContextBudgetError(
+                "proof planning context exceeds its candidate limit"
+            )
+        if len(self.obligations) > self.limits.max_obligations:
+            raise ProofContextBudgetError(
+                "proof planning context exceeds its obligation limit"
+            )
+        if (
+            len(self.rejected_alternatives)
+            > self.limits.max_rejected_alternatives
+        ):
+            raise ProofContextBudgetError(
+                "proof planning context exceeds its rejected alternative limit"
+            )
+        if any(
+            item.rationale_bytes > self.limits.max_rationale_bytes
+            for item in self.rejected_alternatives
+        ):
+            raise ProofContextBudgetError(
+                "proof planning context exceeds its rationale limit"
+            )
+        if len(self.proof_critical_path) > self.limits.max_dependencies:
+            raise ProofContextBudgetError(
+                "proof planning context exceeds its dependency limit"
+            )
+        if (
+            len(self.available_resource_classes)
+            > self.limits.max_resource_classes
+        ):
+            raise ProofContextBudgetError(
+                "proof planning context exceeds its resource class limit"
+            )
+        if self.usage.bytes > self.limits.max_bytes:
+            raise ProofContextBudgetError(
+                "proof planning context exceeds its byte limit"
+            )
+        if self.usage.tokens > self.limits.max_tokens:
+            raise ProofContextBudgetError(
+                "proof planning context exceeds its token limit"
+            )
 
 
 def _canonical_json(value: Any) -> str:
@@ -1481,6 +2248,508 @@ class ProofContextBuilder:
         return capsule
 
 
+def _object_mapping(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        if isinstance(payload, Mapping):
+            return payload
+    raise ProofContextError(
+        f"proof planning value must be mapping-like, got {type(value).__name__}"
+    )
+
+
+def _candidate_context(value: Any) -> PlanningCandidateContext:
+    if isinstance(value, PlanningCandidateContext):
+        return value
+    nested = getattr(value, "candidate", None)
+    if nested is not None:
+        return _candidate_context(nested)
+    return PlanningCandidateContext.from_dict(_object_mapping(value))
+
+
+def _planning_obligations(
+    capsule: ProofContextCapsule,
+) -> tuple[PlanningObligationContext, ...]:
+    records: dict[str, dict[str, Any]] = {}
+    proof_receipts: dict[str, set[str]] = {}
+    proof_freshness: dict[str, str] = {}
+    proof_status: dict[str, str] = {}
+    for entry in capsule.trusted_facts:
+        fields = entry.fields
+        obligation_id = str(fields.get("obligation_id") or "").strip()
+        normalized_kind = entry.kind.strip().casefold().replace("-", "_")
+        if normalized_kind in {
+            "obligation",
+            "proof_obligation",
+            "code_proof_obligation",
+        } and obligation_id:
+            records[obligation_id] = {
+                "obligation_id": obligation_id,
+                "status": str(fields.get("status") or "unknown"),
+                "support_status": str(
+                    fields.get("support_status") or "unknown"
+                ),
+                "required_assurance": str(
+                    fields.get("required_assurance") or ""
+                ),
+                "freshness": str(fields.get("freshness") or ""),
+                "dependencies": _strings(fields.get("premise_ids")),
+                "unsupported_semantics": _strings(
+                    fields.get("unsupported_semantics")
+                ),
+                "fallback_checks": _strings(
+                    (
+                        *_strings(fields.get("fallback_checks")),
+                        *_strings(fields.get("fallback_tests")),
+                        *_strings(fields.get("required_tests")),
+                    )
+                ),
+            }
+        elif normalized_kind in {
+            "proof",
+            "proof_receipt",
+            "formal_proof_receipt",
+            "receipt",
+        } and obligation_id:
+            record = records.setdefault(
+                obligation_id,
+                {
+                    "obligation_id": obligation_id,
+                    "status": "unknown",
+                    "support_status": "supported",
+                    "required_assurance": str(
+                        fields.get("required_assurance")
+                        or fields.get("authoritative_assurance")
+                        or fields.get("assurance")
+                        or ""
+                    ),
+                    "freshness": str(fields.get("freshness") or ""),
+                    "dependencies": (),
+                    "unsupported_semantics": (),
+                    "fallback_checks": (),
+                },
+            )
+            if not record["required_assurance"]:
+                record["required_assurance"] = str(
+                    fields.get("required_assurance")
+                    or fields.get("authoritative_assurance")
+                    or fields.get("assurance")
+                    or ""
+                )
+            verdict = str(
+                fields.get("verdict") or fields.get("status") or ""
+            ).lower()
+            freshness = str(fields.get("freshness") or "").lower()
+            receipt_id = str(
+                fields.get("receipt_id")
+                or fields.get("proof_id")
+                or entry.record_id
+            ).strip()
+            if verdict in {"proved", "passed", "verified", "valid"} and freshness in {
+                "",
+                "current",
+                "fresh",
+                "valid",
+            }:
+                proof_receipts.setdefault(obligation_id, set()).add(receipt_id)
+            if freshness:
+                proof_freshness[obligation_id] = freshness
+            if verdict:
+                proof_status[obligation_id] = verdict
+    for entry in capsule.unsupported_semantics:
+        obligation_id = str(entry.fields.get("obligation_id") or "").strip()
+        if not obligation_id:
+            continue
+        record = records.setdefault(
+            obligation_id,
+            {
+                "obligation_id": obligation_id,
+                "status": "unknown",
+                "support_status": "unsupported",
+                "required_assurance": "",
+                "freshness": "",
+                "dependencies": (),
+                "unsupported_semantics": (),
+                "fallback_checks": (),
+            },
+        )
+        record["support_status"] = str(
+            entry.fields.get("support_status") or "unsupported"
+        )
+        record["unsupported_semantics"] = _strings(
+            (
+                *_strings(record.get("unsupported_semantics")),
+                *_strings(entry.fields.get("reasons")),
+            )
+        )
+    results: list[PlanningObligationContext] = []
+    for obligation_id in sorted(records):
+        record = records[obligation_id]
+        status = proof_status.get(obligation_id) or str(record["status"])
+        freshness = proof_freshness.get(obligation_id) or str(record["freshness"])
+        results.append(
+            PlanningObligationContext(
+                obligation_id=obligation_id,
+                status=status,
+                support_status=str(record["support_status"]),
+                required_assurance=str(record["required_assurance"]),
+                freshness=freshness,
+                dependencies=tuple(record["dependencies"]),
+                reusable_receipt_ids=tuple(
+                    sorted(proof_receipts.get(obligation_id, ()))
+                ),
+                unsupported_semantics=tuple(record["unsupported_semantics"]),
+                fallback_checks=tuple(record["fallback_checks"]),
+            )
+        )
+    return tuple(results)
+
+
+def _evaluation_value(evaluation: Any, name: str, default: Any) -> Any:
+    if evaluation is None:
+        return default
+    if isinstance(evaluation, Mapping):
+        return evaluation.get(name, default)
+    return getattr(evaluation, name, default)
+
+
+def _candidate_identity(value: Any) -> str:
+    if isinstance(value, PlanningCandidateContext):
+        return value.candidate_id
+    nested_value = getattr(value, "candidate", None)
+    if nested_value is not None:
+        return _candidate_identity(nested_value)
+    payload = _object_mapping(value)
+    nested_candidate = payload.get("candidate")
+    if isinstance(nested_candidate, Mapping):
+        payload = nested_candidate
+    nested = payload.get("branch")
+    if isinstance(nested, Mapping):
+        payload = nested
+    return str(
+        payload.get("candidate_id")
+        or payload.get("branch_id")
+        or payload.get("plan_id")
+        or ""
+    ).strip()
+
+
+def _with_planning_usage(
+    capsule: ProofPlanningContextCapsule,
+    *,
+    token_counter: Callable[[str], int],
+) -> ProofPlanningContextCapsule:
+    result = capsule
+    for _ in range(8):
+        text = result.to_json()
+        usage = ProofPlanningContextUsage(
+            bytes=len(text.encode("utf-8")),
+            tokens=int(token_counter(text)),
+            candidates=len(result.candidates),
+            obligations=len(result.obligations),
+            rejected_alternatives=len(result.rejected_alternatives),
+            rationale_bytes=sum(
+                item.rationale_bytes for item in result.rejected_alternatives
+            ),
+        )
+        updated = replace(result, usage=usage)
+        if updated.usage == result.usage:
+            return updated
+        result = updated
+    return result
+
+
+def build_proof_planning_context_capsule(
+    proof_context: ProofContextCapsule,
+    *,
+    candidates: Sequence[Any] = (),
+    evaluation: Any = None,
+    available_resource_classes: Sequence[str] | str = (),
+    proof_critical_path: Sequence[str] | str = (),
+    limits: ProofPlanningContextLimits | None = None,
+    token_counter: Callable[[str], int] = estimate_context_tokens,
+) -> ProofPlanningContextCapsule:
+    """Build the bounded proof-only projection passed to a planning router.
+
+    ``evaluation`` may be a :class:`PlanEvaluation`-like object or mapping.
+    When present, its selected and rejected candidates are used to retain the
+    chosen identity, score, and every rationale that fits the explicit
+    rejection budget.  No source, transcript, arbitrary evidence field, or
+    untrusted graph suggestion crosses this boundary.
+    """
+
+    if not isinstance(proof_context, ProofContextCapsule):
+        raise ProofContextError("proof_context must be a ProofContextCapsule")
+    if not callable(token_counter):
+        raise ProofContextError("token_counter must be callable")
+    budget = limits or ProofPlanningContextLimits()
+    normalized_candidates = [_candidate_context(item) for item in candidates]
+    selected_value = _evaluation_value(evaluation, "selected", None)
+    rejected_values = tuple(_evaluation_value(evaluation, "rejected", ()) or ())
+    if not normalized_candidates and selected_value is not None:
+        normalized_candidates = [
+            _candidate_context(item)
+            for item in (selected_value, *rejected_values)
+        ]
+    selected_id = (
+        _candidate_identity(selected_value) if selected_value is not None else ""
+    )
+    candidate_by_id: dict[str, PlanningCandidateContext] = {}
+    for candidate in normalized_candidates:
+        if candidate.candidate_id in candidate_by_id:
+            raise ProofContextError(
+                f"duplicate proof planning candidate_id: {candidate.candidate_id}"
+            )
+        candidate_by_id[candidate.candidate_id] = candidate
+    if selected_id and selected_id not in candidate_by_id:
+        candidate = _candidate_context(selected_value)
+        candidate_by_id[candidate.candidate_id] = candidate
+
+    # The selected alternative gets first claim on the finite candidate
+    # budget; remaining candidates are ordered canonically.
+    candidate_order = sorted(
+        candidate_by_id.values(),
+        key=lambda item: (
+            0 if item.candidate_id == selected_id else 1,
+            item.candidate_id,
+        ),
+    )
+    candidate_omitted = max(0, len(candidate_order) - budget.max_candidates)
+    candidate_order = candidate_order[: budget.max_candidates]
+    candidate_dependency_omitted = sum(
+        max(0, len(item.dependencies) - budget.max_dependencies)
+        for item in candidate_order
+    )
+    candidate_resource_omitted = sum(
+        max(0, len(item.resource_classes) - budget.max_resource_classes)
+        for item in candidate_order
+    )
+    candidate_order = [
+        replace(
+            item,
+            dependencies=item.dependencies[: budget.max_dependencies],
+            resource_classes=item.resource_classes[
+                : budget.max_resource_classes
+            ],
+        )
+        for item in candidate_order
+    ]
+    if selected_id and all(
+        item.candidate_id != selected_id for item in candidate_order
+    ):
+        raise ProofContextBudgetError(
+            "proof planning limits cannot contain the selected candidate"
+        )
+
+    obligations = list(_planning_obligations(proof_context))
+    obligation_omitted = max(0, len(obligations) - budget.max_obligations)
+    obligations = obligations[: budget.max_obligations]
+    obligations = [
+        replace(
+            item,
+            dependencies=item.dependencies[: budget.max_dependencies],
+        )
+        for item in obligations
+    ]
+
+    scores = _evaluation_value(evaluation, "scores", {}) or {}
+    rationales = _evaluation_value(evaluation, "rationales", {}) or {}
+    if not isinstance(scores, Mapping):
+        scores = {}
+    if not isinstance(rationales, Mapping):
+        rationales = {}
+    rejected: list[RejectedPlanAlternative] = []
+    rejected_omitted = 0
+    minimum_rationale_bytes = len(_canonical_json(["x"]).encode("utf-8"))
+    if rejected_values and budget.max_rationale_bytes < minimum_rationale_bytes:
+        raise ProofContextBudgetError(
+            "proof planning rationale limit is too small to retain a rejection reason"
+        )
+    for value in rejected_values:
+        candidate_id = _candidate_identity(value)
+        if not candidate_id:
+            raise ProofContextError(
+                "evaluated rejected candidate has no stable identity"
+            )
+        rationale = _strings(rationales.get(candidate_id))
+        value_payload = _object_mapping(value)
+        if not rationale:
+            rationale = _strings(
+                value_payload.get("rationale") or value_payload.get("reason")
+            )
+        if not rationale:
+            raise ProofContextError(
+                f"rejected candidate {candidate_id!r} has no rationale"
+            )
+        joined_rationale = "; ".join(rationale)
+        rationale_text, was_truncated = _truncate_utf8(
+            joined_rationale,
+            max(1, budget.max_rationale_bytes - 4),
+        )
+        # JSON quoting can expand quotes and backslashes.  Reduce the public
+        # reason until the serialized rationale, not merely its raw text,
+        # satisfies the per-alternative limit.
+        while True:
+            bounded_rationale = (rationale_text or "x",)
+            measured_rationale = RejectedPlanAlternative(
+                candidate_id=candidate_id,
+                rationale=bounded_rationale,
+            ).rationale_bytes
+            if measured_rationale <= budget.max_rationale_bytes:
+                break
+            raw = rationale_text.encode("utf-8")
+            reduction = max(1, measured_rationale - budget.max_rationale_bytes)
+            shortened = raw[:-reduction].decode(
+                "utf-8", errors="ignore"
+            )
+            if not shortened or shortened == rationale_text:
+                rationale_text = "x"
+            else:
+                rationale_text = shortened
+            was_truncated = True
+        if len(rejected) >= budget.max_rejected_alternatives:
+            rejected_omitted += 1
+            continue
+        rejected.append(
+            RejectedPlanAlternative(
+                candidate_id=candidate_id,
+                rationale=bounded_rationale,
+                score_millionths=(
+                    int(scores[candidate_id])
+                    if candidate_id in scores
+                    else (
+                        int(value_payload["score_millionths"])
+                        if value_payload.get("score_millionths") is not None
+                        else None
+                    )
+                ),
+            )
+        )
+        rejected_omitted += int(was_truncated)
+
+    critical_path = _strings(proof_critical_path)
+    if not critical_path:
+        critical_path = tuple(
+            item.obligation_id
+            for item in obligations
+            if item.status.lower() not in {"proved", "passed", "verified", "valid"}
+        )
+    path_omitted = max(0, len(critical_path) - budget.max_dependencies)
+    critical_path = critical_path[: budget.max_dependencies]
+    resource_classes = _strings(available_resource_classes)[
+        : budget.max_resource_classes
+    ]
+    resource_omitted = max(
+        0,
+        len(_strings(available_resource_classes)) - len(resource_classes),
+    )
+    omitted = {
+        "obligations": obligation_omitted,
+        "candidates": candidate_omitted,
+        "rejected_alternatives": rejected_omitted,
+        "proof_critical_path": path_omitted,
+        "available_resource_classes": resource_omitted,
+        "candidate_dependencies": candidate_dependency_omitted,
+        "candidate_resource_classes": candidate_resource_omitted,
+        "fallback_checks": 0,
+    }
+    result = ProofPlanningContextCapsule(
+        task_id=proof_context.query.task_id,
+        source_capsule_id=proof_context.capsule_id,
+        limits=budget,
+        proof_critical_path=critical_path,
+        available_resource_classes=resource_classes,
+        source_truncated=proof_context.truncated,
+        truncated=proof_context.truncated or any(omitted.values()),
+        omitted=omitted,
+    )
+
+    def fits(value: ProofPlanningContextCapsule) -> bool:
+        measured = _with_planning_usage(value, token_counter=token_counter)
+        return (
+            measured.usage.bytes <= budget.max_bytes
+            and measured.usage.tokens <= budget.max_tokens
+        )
+
+    if not fits(result):
+        raise ProofContextBudgetError(
+            "proof planning byte/token limits are too small for the mandatory envelope"
+        )
+
+    # Fallback requirements and the selected candidate are fail-closed inputs,
+    # so they precede optional obligation/candidate/rejection detail.
+    for check in proof_context.required_fallback_checks:
+        candidate = replace(
+            result,
+            required_fallback_checks=(
+                *result.required_fallback_checks,
+                check,
+            ),
+        )
+        if not fits(candidate):
+            raise ProofContextBudgetError(
+                "proof planning limits cannot contain required fallback checks"
+            )
+        result = candidate
+    for obligation in obligations:
+        candidate = replace(result, obligations=(*result.obligations, obligation))
+        if fits(candidate):
+            result = candidate
+        else:
+            omitted["obligations"] += 1
+            result = replace(result, truncated=True, omitted=omitted)
+    for plan_candidate in candidate_order:
+        candidate = replace(
+            result,
+            candidates=(*result.candidates, plan_candidate),
+            selected_candidate_id=(
+                selected_id
+                if plan_candidate.candidate_id == selected_id
+                else result.selected_candidate_id
+            ),
+        )
+        if fits(candidate):
+            result = candidate
+        elif plan_candidate.candidate_id == selected_id:
+            raise ProofContextBudgetError(
+                "proof planning limits cannot contain the selected candidate"
+            )
+        else:
+            omitted["candidates"] += 1
+            result = replace(result, truncated=True, omitted=omitted)
+    for alternative in rejected:
+        candidate = replace(
+            result,
+            rejected_alternatives=(
+                *result.rejected_alternatives,
+                alternative,
+            ),
+        )
+        if fits(candidate):
+            result = candidate
+        else:
+            omitted["rejected_alternatives"] += 1
+            result = replace(result, truncated=True, omitted=omitted)
+
+    result = replace(result, omitted=omitted)
+    result = _with_planning_usage(result, token_counter=token_counter)
+    result._validate_limits()
+    if selected_id and result.selected_candidate_id != selected_id:
+        raise ProofContextBudgetError(
+            "proof planning limits cannot retain the selected candidate"
+        )
+    return result
+
+
+build_planning_proof_context_capsule = build_proof_planning_context_capsule
+generate_proof_planning_context_capsule = build_proof_planning_context_capsule
+PlanningProofContext = ProofPlanningContextCapsule
+PlanningProofContextCapsule = ProofPlanningContextCapsule
+
+
 def build_proof_context_capsule(
     graph_path: Path | str,
     query: ProofContextQuery | None = None,
@@ -1508,15 +2777,29 @@ __all__ = [
     "DEFAULT_MAX_CONTEXT_ROWS",
     "DEFAULT_MAX_CONTEXT_TOKENS",
     "DEFAULT_MAX_GRAPH_HOPS",
+    "DEFAULT_MAX_PLANNING_CANDIDATES",
+    "DEFAULT_MAX_PLANNING_CONTEXT_BYTES",
+    "DEFAULT_MAX_PLANNING_CONTEXT_TOKENS",
+    "DEFAULT_MAX_PLANNING_DEPENDENCIES",
+    "DEFAULT_MAX_PLANNING_OBLIGATIONS",
+    "DEFAULT_MAX_PLANNING_RESOURCE_CLASSES",
     "DEFAULT_MAX_PROOF_TRANSCRIPT_BYTES",
     "DEFAULT_MAX_PROOF_TRANSCRIPT_BYTES_TOTAL",
     "DEFAULT_MAX_PROOF_TRANSCRIPTS",
+    "DEFAULT_MAX_REJECTED_ALTERNATIVES",
+    "DEFAULT_MAX_REJECTION_RATIONALE_BYTES",
     "DEFAULT_MAX_SOURCE_BYTES",
     "DEFAULT_MAX_SOURCE_EXCERPT_BYTES",
     "DEFAULT_MAX_SOURCE_EXCERPTS",
     "PROOF_CONTEXT_CAPSULE_SCHEMA",
     "PROOF_CONTEXT_LIMITS_SCHEMA",
     "PROOF_CONTEXT_QUERY_SCHEMA",
+    "PROOF_PLANNING_CONTEXT_CAPSULE_SCHEMA",
+    "PROOF_PLANNING_CONTEXT_LIMITS_SCHEMA",
+    "PlanningCandidateContext",
+    "PlanningObligationContext",
+    "PlanningProofContext",
+    "PlanningProofContextCapsule",
     "ProofContextBudget",
     "ProofContextBudgetError",
     "ProofContextBuilder",
@@ -1526,9 +2809,16 @@ __all__ = [
     "ProofContextQuery",
     "ProofContextTarget",
     "ProofContextUsage",
+    "ProofPlanningContextCapsule",
+    "ProofPlanningContextLimits",
+    "ProofPlanningContextUsage",
     "ProofTranscriptExcerpt",
+    "RejectedPlanAlternative",
     "SourceExcerpt",
+    "build_planning_proof_context_capsule",
     "build_proof_context_capsule",
+    "build_proof_planning_context_capsule",
     "estimate_context_tokens",
     "generate_proof_context_capsule",
+    "generate_proof_planning_context_capsule",
 ]
