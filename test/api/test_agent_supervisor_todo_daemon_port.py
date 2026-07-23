@@ -10876,7 +10876,7 @@ def test_implementation_daemon_prefers_retry_repair_for_blocked_source(tmp_path)
     assert selected.task_id == "ACCEL-002"
 
 
-def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_path):
+def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -10888,6 +10888,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
 - Status: todo
 - Priority: P1
 - Track: runtime
+- Bundle: objective/runtime/shard-a
 - Outputs: src/bridge.py
 - Validation: test -f src/bridge.py
 - Work item count: 3
@@ -10902,6 +10903,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
 - Status: todo
 - Priority: P1
 - Track: runtime
+- Bundle: objective/runtime/shard-a
 - Outputs: src/bridge.py
 - Validation: test -f src/bridge.py
 - Work item count: 3
@@ -10916,6 +10918,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
 - Status: todo
 - Priority: P1
 - Track: runtime
+- Bundle: objective/runtime/shard-a
 - Outputs: src/bridge.py
 - Validation: test -f src/bridge.py
 - Work item count: 6
@@ -10927,6 +10930,19 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
 - Goal packet work item count: 6
 - Candidate kind: goal_packet_aggregate
 - Acceptance: Add the shared packet proof.
+
+## ACCEL-004 Close another bundle gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Bundle: objective/runtime/shard-b
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Goal packet: goal_packet/runtime/src/abc
+- Goal packet role: packet_member
+- Candidate kind: aggregate
+- Acceptance: Add proof in another explicit bundle.
 """,
         encoding="utf-8",
     )
@@ -10939,6 +10955,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
                     {
                         "task_id": "ACCEL-001",
                         "title": "Close scheduler gap",
+                        "bundle_key": "objective/runtime/shard-a",
                         "candidate_kind": "aggregate",
                         "goal_packet_key": "goal_packet/runtime/src/abc",
                         "goal_packet_role": "packet_anchor",
@@ -10949,6 +10966,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
                     {
                         "task_id": "ACCEL-002",
                         "title": "Close fallback gap",
+                        "bundle_key": "objective/runtime/shard-a",
                         "candidate_kind": "aggregate",
                         "goal_packet_key": "goal_packet/runtime/src/abc",
                         "goal_packet_role": "packet_member",
@@ -10959,6 +10977,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
                     {
                         "task_id": "ACCEL-003",
                         "title": "Close packet aggregate",
+                        "bundle_key": "objective/runtime/shard-a",
                         "candidate_kind": "goal_packet_aggregate",
                         "merge_role": "packet_aggregate",
                         "merge_family": "goal_packet/runtime/src/abc",
@@ -10968,13 +10987,39 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
                         "goal_packet_work_item_count": 6,
                         "work_item_count": 6,
                     },
+                    {
+                        "task_id": "ACCEL-004",
+                        "title": "Close another bundle gap",
+                        "bundle_key": "objective/runtime/shard-b",
+                        "candidate_kind": "aggregate",
+                        "goal_packet_key": "goal_packet/runtime/src/abc",
+                        "goal_packet_role": "packet_member",
+                        "goal_packet_work_item_count": 6,
+                        "work_item_count": 1,
+                    },
+                    {
+                        "task_id": "ACCEL-005",
+                        "title": "Missing from the current shard",
+                        "bundle_key": "objective/runtime/shard-a",
+                        "candidate_kind": "aggregate",
+                        "goal_packet_key": "goal_packet/runtime/src/abc",
+                        "goal_packet_role": "packet_member",
+                        "goal_packet_work_item_count": 6,
+                        "work_item_count": 1,
+                    },
                 ],
                 "execution_packets": [
                     {
                         "packet_key": "execution_packet/runtime/src/abc",
                         "primary_task_id": "ACCEL-003",
-                        "active_task_ids": ["ACCEL-001", "ACCEL-002", "ACCEL-003"],
-                        "work_item_count_total": 12,
+                        "active_task_ids": [
+                            "ACCEL-001",
+                            "ACCEL-002",
+                            "ACCEL-003",
+                            "ACCEL-004",
+                            "ACCEL-005",
+                        ],
+                        "work_item_count_total": 14,
                     }
                 ],
             }
@@ -11010,6 +11055,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
         "ACCEL-001": "completed",
         "ACCEL-002": "completed",
         "ACCEL-003": "completed",
+        "ACCEL-004": "todo",
     }
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "todo_status_updated"

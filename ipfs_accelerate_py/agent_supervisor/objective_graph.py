@@ -4125,15 +4125,16 @@ def objective_goal_packet_key(findings: Sequence[ObjectiveFinding]) -> str:
     return f"goal_packet/{track}/{root}/{digest}"
 
 
-def _goal_packet_group_key(finding: ObjectiveFinding) -> tuple[str, tuple[str, ...], str]:
+def _goal_packet_group_key(finding: ObjectiveFinding) -> tuple[str, tuple[str, ...], str, str]:
     family = tuple(sorted(finding.parent_goal_ids or [finding.goal_id]))
-    return (finding.track, family, finding_conflict_root(finding))
+    explicit_bundle = finding.bundle_key if finding.bundle_explicit else ""
+    return (finding.track, family, finding_conflict_root(finding), explicit_bundle)
 
 
 def assign_goal_subgoal_packets(findings: Sequence[ObjectiveFinding]) -> list[ObjectiveFinding]:
     """Annotate findings with packet metadata for sibling goal/subgoal work."""
 
-    groups: dict[tuple[str, tuple[str, ...], str], list[ObjectiveFinding]] = {}
+    groups: dict[tuple[str, tuple[str, ...], str, str], list[ObjectiveFinding]] = {}
     for finding in findings:
         groups.setdefault(_goal_packet_group_key(finding), []).append(finding)
 

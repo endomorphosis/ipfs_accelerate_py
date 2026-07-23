@@ -31,6 +31,9 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_goal_completion_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    ObjectiveFinding,
+    add_goal_packet_aggregate_findings,
+    assign_goal_subgoal_packets,
     evidence_index,
     materialize_task_dependency_dag,
     materialize_task_planning_graph,
@@ -845,6 +848,77 @@ def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
     assert len({finding.bundle_key for finding in findings}) == 1
     assert findings[0].bundle_key.startswith("objective/runtime/src/semantic-")
     assert findings[0].parallel_lane == findings[0].bundle_key
+
+
+def test_goal_packets_respect_explicit_bundles_and_preserve_implicit_grouping():
+    def finding(goal_id: str, bundle_key: str, *, explicit: bool) -> ObjectiveFinding:
+        return ObjectiveFinding(
+            fingerprint=f"fingerprint-{goal_id}",
+            goal_id=goal_id,
+            title=f"{goal_id} gap",
+            summary=f"{goal_id} summary",
+            priority="P1",
+            track="runtime",
+            missing_evidence=[f"missing-{goal_id}"],
+            present_evidence={},
+            evidence_methods=["exact"],
+            objective_path="objective-heap.md",
+            outputs=["src/bridge.py"],
+            validation="true",
+            parent_goal_ids=["VAIOS-G100"],
+            bundle_key=bundle_key,
+            parallel_lane=bundle_key,
+            bundle_explicit=explicit,
+            work_item_count=1,
+        )
+
+    explicit_findings = [
+        finding("VAIOS-G101", "objective/runtime/shard-a", explicit=True),
+        finding("VAIOS-G102", "objective/runtime/shard-a", explicit=True),
+        finding("VAIOS-G103", "objective/runtime/shard-b", explicit=True),
+        finding("VAIOS-G104", "objective/runtime/shard-b", explicit=True),
+    ]
+    packeted = assign_goal_subgoal_packets(explicit_findings)
+
+    packets_by_bundle = {
+        bundle_key: {
+            item.goal_packet_key
+            for item in packeted
+            if item.bundle_key == bundle_key
+        }
+        for bundle_key in ("objective/runtime/shard-a", "objective/runtime/shard-b")
+    }
+    assert all(len(packet_keys) == 1 for packet_keys in packets_by_bundle.values())
+    assert packets_by_bundle["objective/runtime/shard-a"] != packets_by_bundle["objective/runtime/shard-b"]
+    assert {
+        tuple(item.goal_packet_goal_ids)
+        for item in packeted
+        if item.bundle_key == "objective/runtime/shard-a"
+    } == {("VAIOS-G101", "VAIOS-G102")}
+    assert {
+        tuple(item.goal_packet_goal_ids)
+        for item in packeted
+        if item.bundle_key == "objective/runtime/shard-b"
+    } == {("VAIOS-G103", "VAIOS-G104")}
+
+    expanded = add_goal_packet_aggregate_findings(packeted, max_findings=6)
+    aggregates = [item for item in expanded if item.candidate_kind == "goal_packet_aggregate"]
+    assert {
+        (item.bundle_key, tuple(item.goal_packet_goal_ids))
+        for item in aggregates
+    } == {
+        ("objective/runtime/shard-a", ("VAIOS-G101", "VAIOS-G102")),
+        ("objective/runtime/shard-b", ("VAIOS-G103", "VAIOS-G104")),
+    }
+
+    implicit = assign_goal_subgoal_packets(
+        [
+            finding("VAIOS-G201", "objective/runtime/semantic-a", explicit=False),
+            finding("VAIOS-G202", "objective/runtime/semantic-b", explicit=False),
+        ]
+    )
+    assert implicit[0].goal_packet_key
+    assert implicit[0].goal_packet_key == implicit[1].goal_packet_key
 
 
 def test_objective_graph_appends_playwright_validation_for_launch_goals(tmp_path):

@@ -10284,6 +10284,11 @@ class PortalImplementationDaemon:
                 "execution_packets": execution_packets[:2],
                 "aggregate_primary": aggregate_primary,
                 "covered_packet_task_ids": covered_packet_task_ids,
+                "covered_packet_records": {
+                    task_id: by_task[task_id]
+                    for task_id in covered_packet_task_ids
+                    if task_id in by_task
+                },
             }
         return None
 
@@ -10293,15 +10298,44 @@ class PortalImplementationDaemon:
         context = self._load_todo_vector_context(task)
         if context is None or not context.get("aggregate_primary"):
             return None
-        covered_task_ids = [
+        candidate_task_ids = [
             str(task_id).strip()
             for task_id in context.get("covered_packet_task_ids", [])
             if str(task_id).strip() and str(task_id).strip() != task.task_id
         ]
-        if not covered_task_ids:
+        if not candidate_task_ids:
             return None
         record = context.get("record")
         if not isinstance(record, dict):
+            return None
+        covered_records = context.get("covered_packet_records")
+        if not isinstance(covered_records, dict):
+            covered_records = {}
+        try:
+            shard_tasks = {
+                shard_task.task_id: shard_task
+                for shard_task in parse_task_file(self.todo_path, self.task_header_prefix)
+            }
+        except OSError:
+            return None
+        primary_bundle_key = (
+            self._task_metadata_value(task, "bundle")
+            or str(record.get("bundle_key") or "").strip()
+        )
+        covered_task_ids: list[str] = []
+        for task_id in candidate_task_ids:
+            shard_task = shard_tasks.get(task_id)
+            candidate_record = covered_records.get(task_id)
+            if shard_task is None or not isinstance(candidate_record, dict):
+                continue
+            candidate_bundle_key = (
+                self._task_metadata_value(shard_task, "bundle")
+                or str(candidate_record.get("bundle_key") or "").strip()
+            )
+            if primary_bundle_key and candidate_bundle_key != primary_bundle_key:
+                continue
+            covered_task_ids.append(task_id)
+        if not covered_task_ids:
             return None
         packet_key = str(record.get("goal_packet_key") or record.get("merge_family") or "").strip()
         goal_ids = self._compact_value_list(record.get("goal_packet_goal_ids"), limit=24)
