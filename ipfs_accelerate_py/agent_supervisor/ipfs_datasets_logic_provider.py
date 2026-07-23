@@ -16,7 +16,9 @@ The adapter has four deliberately strict properties:
 * solver attempts and candidates are returned with a provenance projection
   that binds them to the obligation, tree, premises, and upstream receipts;
 * a missing/unknown lowering is a typed ``unsupported`` provider response
-  containing the exact configured fallback checks, never a guessed proof.
+  containing the exact configured fallback checks, never a guessed proof; and
+* when a trust-aware cache is supplied, identical portfolio work is guarded by
+  its cross-thread and cross-process single-flight lease.
 
 ATP/SMT candidates remain untrusted.  This provider never maps a portfolio
 verdict to kernel-verified assurance; independent reconstruction is owned by
@@ -44,6 +46,11 @@ from .formal_verification_contracts import (
     CodeProofObligation,
     ResourceBudget,
     canonical_json,
+)
+from .formal_verification_cache import (
+    FormalVerificationCache,
+    ProofCacheKey,
+    build_proof_cache_key,
 )
 from .formal_verification_provider import (
     PROOF_PROVIDER_PROTOCOL_VERSION,
@@ -971,13 +978,35 @@ class IpfsDatasetsLogicProvider:
         policy: HammerSupervisorPolicy | None = None,
         *,
         portfolio_runner: PortfolioRunner | None = None,
+        verification_cache: FormalVerificationCache | None = None,
+        proof_cache: FormalVerificationCache | None = None,
+        cache: FormalVerificationCache | None = None,
     ) -> None:
         self.policy = policy or HammerSupervisorPolicy()
         if not isinstance(self.policy, HammerSupervisorPolicy):
             raise ValueError("policy must be a HammerSupervisorPolicy")
         if portfolio_runner is not None and not callable(portfolio_runner):
             raise ValueError("portfolio_runner must be callable")
+        supplied_caches = [
+            item
+            for item in (verification_cache, proof_cache, cache)
+            if item is not None
+        ]
+        if len({id(item) for item in supplied_caches}) > 1:
+            raise ValueError(
+                "verification_cache, proof_cache, and cache must identify "
+                "the same cache when more than one is supplied"
+            )
+        selected_cache = supplied_caches[0] if supplied_caches else None
+        if selected_cache is not None and not isinstance(
+            selected_cache, FormalVerificationCache
+        ):
+            raise ValueError(
+                "verification_cache must be a FormalVerificationCache"
+            )
         self._portfolio_runner = portfolio_runner
+        self.verification_cache = selected_cache
+        self.proof_cache = selected_cache
 
     def capabilities(self) -> ProofProviderCapability:
         return ProofProviderCapability(
@@ -1004,6 +1033,8 @@ class IpfsDatasetsLogicProvider:
                 "max_premises": self.policy.max_premises,
                 "candidate_authoritative": False,
                 "kernel_reconstruction_required": True,
+                "trust_aware_cache_enabled": self.verification_cache is not None,
+                "cross_process_single_flight": self.verification_cache is not None,
                 "proof_attempted": False,
                 "proof_success": False,
             },
@@ -1215,6 +1246,87 @@ class IpfsDatasetsLogicProvider:
 
         return self._build_bundle(request)
 
+    def _cache_key(
+        self,
+        request: ProviderRequest,
+        bundle: HammerRequestBundle,
+        effective: EffectiveHammerPolicy,
+    ) -> ProofCacheKey:
+        """Bind the complete Hammer execution identity for caching/flight work."""
+
+        payload = request.payload
+        (
+            _hammer,
+            obligation,
+            _runtime_policy,
+            _hammer_request,
+            _premises,
+            _lock_record,
+            _hammer_policy,
+            _portfolio_policy,
+        ) = bundle._runtime
+        solver_versions = bundle.environment_lock.get("solver_versions") or {}
+        corpus_revision = str(
+            bundle.hammer_request.get("corpus_revision")
+            or obligation.metadata.get("corpus_revision")
+            or obligation.repository_tree_id
+        )
+        kernel = payload.get("kernel")
+        if kernel is None:
+            kernel = {
+                "kernel_id": str(
+                    payload.get("kernel_id")
+                    or "independent-kernel-provider-required"
+                ),
+                "kernel_version": str(payload.get("kernel_version") or ""),
+            }
+        toolchain = payload.get("toolchain")
+        if toolchain is None:
+            toolchain = {
+                "toolchain_id": str(
+                    payload.get("toolchain_id")
+                    or bundle.environment_lock.get("lock_id")
+                ),
+                "environment_lock": dict(bundle.environment_lock),
+            }
+        theorem_registry = payload.get("theorem_registry")
+        if theorem_registry is None:
+            theorem_registry = {
+                "theorem_registry_id": str(
+                    payload.get("theorem_registry_id") or corpus_revision
+                ),
+                "corpus_revision": corpus_revision,
+            }
+        return build_proof_cache_key(
+            obligation=obligation.to_dict(),
+            premises=bundle.premises,
+            translator={
+                "translator_id": HAMMER_TRANSLATOR_ID,
+                "adapter_version": self.provider_version,
+                "translation_family": bundle.translation_family,
+            },
+            solver={
+                "solver_ids": list(effective.allowed_solvers),
+                "solver_versions": dict(solver_versions),
+            },
+            kernel=kernel,
+            toolchain=toolchain,
+            theorem_registry=theorem_registry,
+            policy=effective.to_dict(),
+            resource_budget=request.resource_budget.to_dict(),
+            candidate_tree={
+                "candidate_tree_id": obligation.repository_tree_id,
+                "repository_id": obligation.repository_id,
+            },
+        )
+
+    def build_cache_key(self, request: ProviderRequest) -> ProofCacheKey:
+        """Return the exact key used for proof-cache and single-flight work."""
+
+        bundle = self._build_bundle(request)
+        effective = bundle._runtime[2]
+        return self._cache_key(request, bundle, effective)
+
     def _translation_records(
         self,
         hammer: Any,
@@ -1400,14 +1512,33 @@ class IpfsDatasetsLogicProvider:
                 attempt_specs=attempts,
             )
             runner = self._portfolio_runner or self._default_run
-            raw_result = runner(invocation)
-            projected = adapt_hammer_result(raw_result, bundle)
-            projected["environment_lock"] = dict(bundle.environment_lock)
-            projected["portfolio_policy"] = dict(bundle.portfolio_policy)
-            projected["premises"] = [
-                dict(premise) for premise in bundle.premises
-            ]
-            return projected
+
+            def execute_portfolio() -> dict[str, Any]:
+                raw_result = runner(invocation)
+                projected = adapt_hammer_result(raw_result, bundle)
+                projected["environment_lock"] = dict(bundle.environment_lock)
+                projected["portfolio_policy"] = dict(bundle.portfolio_policy)
+                projected["premises"] = [
+                    dict(premise) for premise in bundle.premises
+                ]
+                return projected
+
+            if self.verification_cache is None:
+                return execute_portfolio()
+            cache_key = self._cache_key(request, bundle, effective)
+            shared = self.verification_cache.single_flight(
+                cache_key,
+                execute_portfolio,
+                lease_seconds=max(
+                    1, (effective.timeout_ms + 999) // 1000 + 5
+                ),
+                wait_timeout_seconds=max(
+                    1, (effective.timeout_ms + 999) // 1000 + 30
+                ),
+            )
+            if not isinstance(shared, Mapping):
+                raise ValueError("shared Hammer result must be an object")
+            return dict(shared)
         except ProofProviderError as exc:
             if exc.code is ProviderFailureCode.UNSUPPORTED:
                 return self._unsupported(
@@ -1449,12 +1580,18 @@ def create_ipfs_datasets_logic_provider(
     policy: HammerSupervisorPolicy | None = None,
     *,
     portfolio_runner: PortfolioRunner | None = None,
+    verification_cache: FormalVerificationCache | None = None,
+    proof_cache: FormalVerificationCache | None = None,
+    cache: FormalVerificationCache | None = None,
 ) -> IpfsDatasetsLogicProvider:
     """Entry-point-friendly provider factory without importing Hammer."""
 
     return IpfsDatasetsLogicProvider(
         policy,
         portfolio_runner=portfolio_runner,
+        verification_cache=verification_cache,
+        proof_cache=proof_cache,
+        cache=cache,
     )
 
 
