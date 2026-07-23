@@ -1157,6 +1157,40 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
     assert "agents.max_depth=2" in command
 
 
+def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "agent@example.test"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "config", "user.name", "Agent Test"], cwd=repo, check=True)
+    tracked = repo / "wallet_interface" / "ui" / "tracked.css"
+    tracked.parent.mkdir(parents=True)
+    tracked.write_text("original\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(tracked.relative_to(repo))], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "baseline"], cwd=repo, check=True, capture_output=True)
+    tracked.write_text("local edit\n", encoding="utf-8")
+    untracked = repo / "wallet_interface" / "ui" / "new-context.ts"
+    untracked.write_text("export const context = true;\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    paths = daemon._untracked_worktree_context_paths()
+
+    assert "wallet_interface/ui/new-context.ts" in paths
+    assert "wallet_interface/ui/tracked.css" not in paths
+
+
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
