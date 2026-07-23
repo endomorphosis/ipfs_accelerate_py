@@ -141,6 +141,7 @@ class SupervisorLoop:
         self.last_recycle_reason = ""
         self.last_run_id = ""
         self.last_log_path = ""
+        self._last_worker_status: dict[str, Any] = {}
 
     def _child_spec(self, run_id: str) -> SupervisedChildSpec:
         log_path = supervised_log_path(
@@ -171,6 +172,33 @@ class SupervisorLoop:
             "last_recycle_reason": self.last_recycle_reason,
             **dict(self.config.status_extra_fields),
         }
+        if self._last_worker_status:
+            worker_pids = (
+                list(self._last_worker_status.get("active_worker_pids") or [])
+                if child is not None
+                else []
+            )
+            payload_extra.update(
+                {
+                    "active_worker_count": len(worker_pids),
+                    "active_worker_pids": worker_pids,
+                    "worker_phase": str(self._last_worker_status.get("phase") or ""),
+                    "worker_phase_age_seconds": self._last_worker_status.get(
+                        "phase_age_seconds"
+                    ),
+                    "worker_descendant_count": (
+                        int(self._last_worker_status.get("descendant_count") or 0)
+                        if child is not None
+                        else 0
+                    ),
+                    "stalled_without_active_worker": bool(
+                        child is not None
+                        and self._last_worker_status.get(
+                            "stalled_without_active_worker"
+                        )
+                    ),
+                }
+            )
         if extra:
             payload_extra.update(dict(extra))
         self.status.write(
@@ -225,6 +253,7 @@ class SupervisorLoop:
         except Exception:
             threshold = 0.0
         worker_status = worktree_phase_worker_status(current_status, child.pid, threshold)
+        self._last_worker_status = dict(worker_status)
         if worker_status.get("stalled_without_active_worker"):
             return SupervisorLoopDecision.recycle(
                 "worktree_phase_without_active_child",

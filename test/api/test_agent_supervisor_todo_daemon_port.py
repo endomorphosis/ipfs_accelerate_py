@@ -5227,6 +5227,57 @@ def test_supervisor_loop_retries_child_launch_failures(tmp_path):
     assert status["last_exit_code"] == 127
 
 
+def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+        )
+    )
+    loop._last_worker_status = {
+        "phase": "implementing",
+        "phase_age_seconds": 45.0,
+        "active_worker_pids": [1234, 5678],
+        "active_worker_count": 2,
+        "descendant_count": 4,
+        "stalled_without_active_worker": False,
+    }
+
+    loop._write_status("running", child=SimpleNamespace(pid=99))
+
+    status = json.loads((state_dir / "supervisor_status.json").read_text(encoding="utf-8"))
+    assert status["active_worker_count"] == 2
+    assert status["active_worker_pids"] == [1234, 5678]
+    assert status["worker_phase"] == "implementing"
+    assert status["worker_phase_age_seconds"] == 45.0
+    assert status["worker_descendant_count"] == 4
+    assert status["stalled_without_active_worker"] is False
+
+    loop._write_status("stopped")
+    stopped = json.loads((state_dir / "supervisor_status.json").read_text(encoding="utf-8"))
+    assert stopped["active_worker_count"] == 0
+    assert stopped["active_worker_pids"] == []
+    assert stopped["worker_descendant_count"] == 0
+
+
 def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
