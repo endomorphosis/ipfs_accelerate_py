@@ -32,7 +32,6 @@ from .objective_graph import (
 from .event_log import event_log_sources, read_jsonl_events
 from .scheduler_metrics import (
     SchedulerSnapshot,
-    ready_task_cids,
     scheduler_snapshot,
     scheduler_state_events,
     write_scheduler_snapshot,
@@ -1906,11 +1905,21 @@ class DynamicBundleScheduler:
         decisions: Sequence[dict[str, Any]] = (),
     ) -> dict[str, Any]:
         running_ids = set(self._running)
+        lanes_by_task_cid = {
+            lane.task_cid: lane for lane in discovered if lane.task_cid
+        }
+        lanes_by_bundle_key = {lane.bundle_key: lane for lane in discovered}
         normalized: list[dict[str, Any]] = []
         detailed_tasks: list[dict[str, Any]] = []
         for raw in task_projection:
             detailed = dict(raw)
             detailed["state"] = self._projection_state(detailed)
+            lane = lanes_by_task_cid.get(str(detailed.get("task_cid") or ""))
+            if lane is None:
+                lane = lanes_by_bundle_key.get(str(detailed.get("bundle_key") or ""))
+            if detailed["state"] == "ready" and lane is not None and not lane.claimable:
+                detailed["state"] = "blocked"
+                detailed.setdefault("blocked_reason", "planner_not_claimable")
             detailed_tasks.append(detailed)
             normalized.append(_compact_task_manifest_payload(detailed))
         ready = [item for item in normalized if item["state"] == "ready"]
@@ -2080,7 +2089,18 @@ class DynamicBundleScheduler:
                     include_claimability=True,
                 )
                 decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
-                snapshot_ready = set(ready_task_cids(decision_snapshot))
+                registered_by_task_cid = {
+                    lane.task_cid: lane for lane in registered
+                }
+                snapshot_ready = {
+                    str(item.get("task_cid") or "")
+                    for item in decision_projection
+                    if self._projection_state(item) == "ready"
+                    and (
+                        registered_by_task_cid.get(str(item.get("task_cid") or "")) is None
+                        or registered_by_task_cid[str(item.get("task_cid") or "")].claimable
+                    )
+                }
                 decisions: list[dict[str, Any]] = []
                 running_by_bundle_key = {
                     running.spec.bundle_key: running

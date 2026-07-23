@@ -287,6 +287,38 @@ def test_dependency_blocked_candidate_does_not_consume_admission_capacity(
     assert decision["reason"] == "snapshot_not_ready"
 
 
+def test_planner_blocked_lane_ignores_stale_ready_metric_identity(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    lane = replace(scheduler._plan()[0], claimable=False)
+    scheduler._plan = lambda: [lane]  # type: ignore[method-assign]
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (lane.state_dir / f"{lane.state_prefix}_events.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "scheduler_lane_state",
+                "timestamp": "2099-01-01T00:00:00Z",
+                "phase": "ready",
+                "goal_cid": "stale-goal-identity",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    manifest = scheduler.reconcile_once()
+
+    assert not launcher.starts
+    assert manifest["counts"]["ready"] == 0
+    assert manifest["counts"]["blocked"] == 1
+    assert manifest["scheduler_decisions"][0]["reason"] == "snapshot_not_ready"
+
+
 def test_lease_race_backfills_the_admission_slot_in_the_same_cycle(
     monkeypatch: Any,
     tmp_path: Path,
