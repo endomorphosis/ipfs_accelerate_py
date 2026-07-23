@@ -23,6 +23,7 @@ BUNDLE_INDEX_KIND = "bundle_planning_index"
 SCHEDULER_MANIFEST_KIND = "scheduler_manifest"
 CODE_EVIDENCE_GRAPH_KIND = "code_evidence_graph"
 EVIDENCE_GRAPH_KIND = CODE_EVIDENCE_GRAPH_KIND
+PROOF_METRICS_KIND = "proof_metrics"
 QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.queryable_artifact@2"
 MAX_QUERY_ROWS = 1_000
 MAX_GRAPH_QUERY_HOPS = 8
@@ -121,6 +122,15 @@ def _atomic_write_text(path: Path, text: str) -> None:
 
 def _artifact_kind(payload: Mapping[str, Any]) -> str:
     schema = str(payload.get("schema") or "")
+    if schema.startswith(
+        "ipfs_accelerate_py.agent_supervisor.proof-metrics@"
+    ) or all(
+        key in payload
+        for key in ("obligations", "attempts", "receipts", "cache_outcomes", "metrics")
+    ):
+        # This check must precede the generic scheduler ``counts`` check so a
+        # JSON-only proof artifact can rebuild its DuckDB sidecar correctly.
+        return PROOF_METRICS_KIND
     if schema == "ipfs_accelerate_py.agent_supervisor.code-evidence-graph@1" or (
         isinstance(payload.get("nodes"), list)
         and isinstance(payload.get("edges"), list)
@@ -330,6 +340,17 @@ def _manifest_schema(connection: Any) -> None:
             subgoal_cid VARCHAR,
             lane_id VARCHAR,
             provider_id VARCHAR,
+            repository_tree_id VARCHAR,
+            template_id VARCHAR,
+            resource_class VARCHAR,
+            queue_latency_ms BIGINT,
+            solver_latency_ms BIGINT,
+            kernel_latency_ms BIGINT,
+            model_latency_ms BIGINT,
+            validation_latency_ms BIGINT,
+            merge_latency_ms BIGINT,
+            cancellation_latency_ms BIGINT,
+            cache_latency_ms BIGINT,
             queue_wait_seconds DOUBLE,
             implementation_duration_seconds DOUBLE,
             validation_duration_seconds DOUBLE,
@@ -494,14 +515,247 @@ def _code_evidence_graph_schema(connection: Any) -> None:
         connection.execute(f"CREATE VIEW {alias} AS SELECT * FROM {source}")
 
 
+def _proof_metrics_schema(connection: Any) -> None:
+    """Create the compact, public proof observability query schema."""
+
+    dimensions = """
+        goal_cid VARCHAR NOT NULL,
+        subgoal_cid VARCHAR NOT NULL,
+        task_cid VARCHAR NOT NULL,
+        repository_tree_id VARCHAR NOT NULL,
+        provider_id VARCHAR NOT NULL,
+        template_id VARCHAR NOT NULL,
+        resource_class VARCHAR NOT NULL
+    """
+    connection.execute(f"""
+        CREATE TABLE proof_obligations (
+            {dimensions},
+            obligation_id VARCHAR,
+            plan_id VARCHAR,
+            invariant_class VARCHAR,
+            required_assurance VARCHAR,
+            status VARCHAR,
+            ast_scope_ids_json VARCHAR NOT NULL,
+            premise_count BIGINT NOT NULL,
+            fallback_check_count BIGINT NOT NULL
+        )
+        """)
+    connection.execute(f"""
+        CREATE TABLE proof_attempts (
+            {dimensions},
+            attempt_id VARCHAR,
+            plan_id VARCHAR,
+            step_id VARCHAR,
+            obligation_id VARCHAR,
+            stage VARCHAR,
+            status VARCHAR,
+            started_at VARCHAR,
+            finished_at VARCHAR,
+            duration_ms BIGINT NOT NULL,
+            input_count BIGINT NOT NULL,
+            output_count BIGINT NOT NULL,
+            evidence_count BIGINT NOT NULL,
+            error_code VARCHAR,
+            claimed_assurance VARCHAR,
+            authoritative_assurance VARCHAR,
+            cpu_milliseconds BIGINT NOT NULL,
+            memory_peak_bytes BIGINT NOT NULL,
+            token_count BIGINT NOT NULL
+        )
+        """)
+    connection.execute(f"""
+        CREATE TABLE proof_receipts (
+            {dimensions},
+            receipt_id VARCHAR,
+            plan_id VARCHAR,
+            attempt_id VARCHAR,
+            obligation_id VARCHAR,
+            repository_id VARCHAR,
+            verdict VARCHAR,
+            assurance VARCHAR,
+            authoritative BOOLEAN NOT NULL,
+            freshness VARCHAR,
+            policy_id VARCHAR,
+            translator_id VARCHAR,
+            solver_id VARCHAR,
+            kernel_id VARCHAR,
+            toolchain_id VARCHAR,
+            theorem_registry_id VARCHAR,
+            started_at VARCHAR,
+            finished_at VARCHAR,
+            duration_ms BIGINT NOT NULL,
+            scope_count BIGINT NOT NULL,
+            premise_count BIGINT NOT NULL,
+            evidence_count BIGINT NOT NULL,
+            assurance_reason_codes_json VARCHAR NOT NULL
+        )
+        """)
+    connection.execute(f"""
+        CREATE TABLE proof_dependencies (
+            {dimensions},
+            plan_id VARCHAR,
+            source_step_id VARCHAR,
+            target_step_id VARCHAR,
+            obligation_id VARCHAR,
+            dependency_kind VARCHAR,
+            satisfied BOOLEAN
+        )
+        """)
+    connection.execute(f"""
+        CREATE TABLE proof_cache_outcomes (
+            {dimensions},
+            cache_key VARCHAR,
+            obligation_id VARCHAR,
+            receipt_id VARCHAR,
+            outcome VARCHAR,
+            lookup_latency_ms BIGINT NOT NULL,
+            required_assurance VARCHAR,
+            actual_assurance VARCHAR,
+            fresh BOOLEAN,
+            reason_codes_json VARCHAR NOT NULL,
+            observed_at VARCHAR
+        )
+        """)
+    connection.execute(f"""
+        CREATE TABLE proof_resource_samples (
+            {dimensions},
+            observed_at_ms BIGINT NOT NULL,
+            cpu_percent BIGINT NOT NULL,
+            memory_percent BIGINT NOT NULL,
+            disk_percent BIGINT NOT NULL,
+            memory_used_bytes BIGINT NOT NULL,
+            memory_available_bytes BIGINT NOT NULL,
+            disk_used_bytes BIGINT NOT NULL,
+            disk_available_bytes BIGINT NOT NULL,
+            active_workers BIGINT NOT NULL,
+            available_worker_capacity BIGINT NOT NULL,
+            provider_latency_ms BIGINT NOT NULL,
+            provider_quota_remaining BIGINT NOT NULL,
+            provider_token_budget_remaining BIGINT NOT NULL
+        )
+        """)
+    connection.execute(f"""
+        CREATE TABLE proof_assurance_counts (
+            {dimensions},
+            assurance VARCHAR NOT NULL,
+            receipt_count BIGINT NOT NULL,
+            authoritative_count BIGINT NOT NULL
+        )
+        """)
+    connection.execute(f"""
+        CREATE TABLE proof_metrics (
+            {dimensions},
+            obligation_count BIGINT NOT NULL,
+            attempt_count BIGINT NOT NULL,
+            successful_attempt_count BIGINT NOT NULL,
+            failed_attempt_count BIGINT NOT NULL,
+            receipt_count BIGINT NOT NULL,
+            authoritative_receipt_count BIGINT NOT NULL,
+            dependency_count BIGINT NOT NULL,
+            cache_hit_count BIGINT NOT NULL,
+            cache_miss_count BIGINT NOT NULL,
+            cache_rejection_count BIGINT NOT NULL,
+            resource_sample_count BIGINT NOT NULL,
+            cancellation_count BIGINT NOT NULL,
+            queue_latency_ms BIGINT NOT NULL,
+            solver_latency_ms BIGINT NOT NULL,
+            kernel_latency_ms BIGINT NOT NULL,
+            model_latency_ms BIGINT NOT NULL,
+            validation_latency_ms BIGINT NOT NULL,
+            merge_latency_ms BIGINT NOT NULL,
+            cancellation_latency_ms BIGINT NOT NULL,
+            cache_latency_ms BIGINT NOT NULL,
+            queue_latency_seconds DOUBLE NOT NULL,
+            solver_latency_seconds DOUBLE NOT NULL,
+            kernel_latency_seconds DOUBLE NOT NULL,
+            model_latency_seconds DOUBLE NOT NULL,
+            validation_latency_seconds DOUBLE NOT NULL,
+            merge_latency_seconds DOUBLE NOT NULL,
+            cancellation_latency_seconds DOUBLE NOT NULL,
+            cache_latency_seconds DOUBLE NOT NULL
+        )
+        """)
+    for table in (
+        "proof_obligations",
+        "proof_attempts",
+        "proof_receipts",
+        "proof_dependencies",
+        "proof_cache_outcomes",
+        "proof_resource_samples",
+        "proof_assurance_counts",
+        "proof_metrics",
+    ):
+        connection.execute(
+            f"CREATE INDEX {table}_identity_idx ON {table}"
+            "(goal_cid, subgoal_cid, task_cid, repository_tree_id, "
+            "provider_id, template_id, resource_class)"
+        )
+    for table, identifier in (
+        ("proof_obligations", "obligation_id"),
+        ("proof_attempts", "attempt_id"),
+        ("proof_receipts", "receipt_id"),
+    ):
+        connection.execute(
+            f"CREATE INDEX {table}_{identifier}_idx ON {table}({identifier})"
+        )
+    for alias, source in (
+        ("obligations", "proof_obligations"),
+        ("attempts", "proof_attempts"),
+        ("receipts", "proof_receipts"),
+        ("dependencies", "proof_dependencies"),
+        ("cache_outcomes", "proof_cache_outcomes"),
+        ("resource_samples", "proof_resource_samples"),
+        ("assurance_counts", "proof_assurance_counts"),
+        ("latency_metrics", "proof_metrics"),
+        ("proof_latency_metrics", "proof_metrics"),
+        ("proof_metric_aggregates", "proof_metrics"),
+    ):
+        connection.execute(f"CREATE VIEW {alias} AS SELECT * FROM {source}")
+
+
 def _top_level_fields(
     payload: Mapping[str, Any], kind: str
 ) -> Iterable[tuple[str, str]]:
+    if kind == PROOF_METRICS_KIND:
+        # Proof query databases expose a deliberately closed catalog.  Unknown
+        # extension fields must not become an accidental side channel for a
+        # witness, transcript, prompt, or provider diagnostic.
+        allowed = {
+            "schema",
+            "schema_version",
+            "generated_at",
+            "snapshot_id",
+            "authoritative",
+            "bounded",
+            "contains_hidden_witnesses",
+            "contains_proof_transcripts",
+            "plan_id",
+            "plan_ids",
+            "totals",
+            "source_counts",
+            "query_store",
+        }
+        for key, value in payload.items():
+            if key in allowed:
+                yield str(key), _json_text(value)
+        return
     excluded = (
         {"bundles"}
         if kind == BUNDLE_INDEX_KIND
         else {"nodes", "edges"}
         if kind == CODE_EVIDENCE_GRAPH_KIND
+        else {
+            "obligations",
+            "attempts",
+            "receipts",
+            "dependencies",
+            "cache_outcomes",
+            "resource_samples",
+            "assurance_counts",
+            "metrics",
+            "latency_metrics",
+        }
+        if kind == PROOF_METRICS_KIND
         else {
             "blocked",
             "completed",
@@ -780,7 +1034,9 @@ def _populate_manifest_tables(connection: Any, payload: Mapping[str, Any]) -> No
     metrics = _mapping_items(scheduler_snapshot.get("metrics"))
     if metrics:
         connection.executemany(
-            "INSERT INTO scheduler_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO scheduler_metrics VALUES ("
+            + ", ".join("?" for _ in range(27))
+            + ")",
             [
                 (
                     ordinal,
@@ -797,6 +1053,30 @@ def _populate_manifest_tables(connection: Any, payload: Mapping[str, Any]) -> No
                         or item.get("canonical_provider_id")
                         or ""
                     ),
+                    str(
+                        item.get("repository_tree_id")
+                        or item.get("tree_id")
+                        or item.get("canonical_tree_id")
+                        or "unknown"
+                    ),
+                    str(
+                        item.get("template_id")
+                        or item.get("canonical_template_id")
+                        or "unknown"
+                    ),
+                    str(
+                        item.get("resource_class")
+                        or item.get("canonical_resource_class")
+                        or "unknown"
+                    ),
+                    _as_int(item.get("queue_latency_ms")) or 0,
+                    _as_int(item.get("solver_latency_ms")) or 0,
+                    _as_int(item.get("kernel_latency_ms")) or 0,
+                    _as_int(item.get("model_latency_ms")) or 0,
+                    _as_int(item.get("validation_latency_ms")) or 0,
+                    _as_int(item.get("merge_latency_ms")) or 0,
+                    _as_int(item.get("cancellation_latency_ms")) or 0,
+                    _as_int(item.get("cache_latency_ms")) or 0,
                     _as_float(item.get("queue_wait_seconds")),
                     _as_float(item.get("implementation_duration_seconds")),
                     _as_float(item.get("validation_duration_seconds")),
@@ -944,6 +1224,29 @@ def _table_descriptions(kind: str) -> dict[str, str]:
             "code_evidence_freshness": "Compatibility alias for freshness_index.",
             "code_evidence_dependencies": "Compatibility alias for dependency_index.",
         }
+    if kind == PROOF_METRICS_KIND:
+        descriptions = {
+            **common,
+            "proof_obligations": "Bounded obligation identities and assurance requirements.",
+            "proof_attempts": "Provider attempt status, timing, counts, and numeric resource use.",
+            "proof_receipts": "Public receipt verdict, freshness, and derived assurance projection.",
+            "proof_dependencies": "Normalized proof-plan dependency edges.",
+            "proof_cache_outcomes": "Trust-aware cache hit, miss, rejection, and lookup latency.",
+            "proof_resource_samples": "Bounded host and provider resource measurements.",
+            "proof_assurance_counts": "Receipt counts grouped by canonical dimensions and assurance.",
+            "proof_metrics": "Wide proof latency and throughput aggregates with all dimensions.",
+            "obligations": "Compatibility alias for proof_obligations.",
+            "attempts": "Compatibility alias for proof_attempts.",
+            "receipts": "Compatibility alias for proof_receipts.",
+            "dependencies": "Compatibility alias for proof_dependencies.",
+            "cache_outcomes": "Compatibility alias for proof_cache_outcomes.",
+            "resource_samples": "Compatibility alias for proof_resource_samples.",
+            "assurance_counts": "Compatibility alias for proof_assurance_counts.",
+            "latency_metrics": "Compatibility alias for proof_metrics.",
+            "proof_latency_metrics": "Compatibility alias for proof_metrics.",
+            "proof_metric_aggregates": "Compatibility alias for proof_metrics.",
+        }
+        return descriptions
     return {
         **common,
         "manifest_tasks": "Current scheduler task projection, one task per row.",
@@ -961,6 +1264,202 @@ def _table_descriptions(kind: str) -> dict[str, str]:
     }
 
 
+def _proof_dimensions(row: Mapping[str, Any]) -> tuple[str, ...]:
+    return tuple(
+        str(row.get(name) or "unknown")
+        for name in (
+            "goal_cid",
+            "subgoal_cid",
+            "task_cid",
+            "repository_tree_id",
+            "provider_id",
+            "template_id",
+            "resource_class",
+        )
+    )
+
+
+def _populate_proof_metrics_tables(
+    connection: Any, payload: Mapping[str, Any]
+) -> None:
+    """Populate proof tables from allowlisted public projection fields only."""
+
+    for row in _mapping_items(payload.get("obligations")):
+        connection.execute(
+            "INSERT INTO proof_obligations VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                *_proof_dimensions(row),
+                str(row.get("obligation_id") or ""),
+                str(row.get("plan_id") or ""),
+                str(row.get("invariant_class") or ""),
+                str(row.get("required_assurance") or "unverified"),
+                str(row.get("status") or "planned"),
+                _json_text(_string_values(row.get("ast_scope_ids"))),
+                _as_int(row.get("premise_count")) or 0,
+                _as_int(row.get("fallback_check_count")) or 0,
+            ),
+        )
+    for row in _mapping_items(payload.get("attempts")):
+        connection.execute(
+            "INSERT INTO proof_attempts VALUES ("
+            + ", ".join("?" for _ in range(25))
+            + ")",
+            (
+                *_proof_dimensions(row),
+                str(row.get("attempt_id") or ""),
+                str(row.get("plan_id") or ""),
+                str(row.get("step_id") or ""),
+                str(row.get("obligation_id") or ""),
+                str(row.get("stage") or "unknown"),
+                str(row.get("status") or "unknown"),
+                str(row.get("started_at") or ""),
+                str(row.get("finished_at") or ""),
+                _as_int(row.get("duration_ms")) or 0,
+                _as_int(row.get("input_count")) or 0,
+                _as_int(row.get("output_count")) or 0,
+                _as_int(row.get("evidence_count")) or 0,
+                str(row.get("error_code") or ""),
+                str(row.get("claimed_assurance") or "unverified"),
+                str(row.get("authoritative_assurance") or "unverified"),
+                _as_int(row.get("cpu_milliseconds")) or 0,
+                _as_int(row.get("memory_peak_bytes")) or 0,
+                _as_int(row.get("token_count")) or 0,
+            ),
+        )
+    for row in _mapping_items(payload.get("receipts")):
+        connection.execute(
+            "INSERT INTO proof_receipts VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+            "?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                *_proof_dimensions(row),
+                str(row.get("receipt_id") or ""),
+                str(row.get("plan_id") or ""),
+                str(row.get("attempt_id") or ""),
+                str(row.get("obligation_id") or ""),
+                str(row.get("repository_id") or ""),
+                str(row.get("verdict") or "inconclusive"),
+                str(row.get("assurance") or "unverified"),
+                bool(row.get("authoritative")),
+                str(row.get("freshness") or "unknown"),
+                str(row.get("policy_id") or ""),
+                str(row.get("translator_id") or ""),
+                str(row.get("solver_id") or ""),
+                str(row.get("kernel_id") or ""),
+                str(row.get("toolchain_id") or ""),
+                str(row.get("theorem_registry_id") or ""),
+                str(row.get("started_at") or ""),
+                str(row.get("finished_at") or ""),
+                _as_int(row.get("duration_ms")) or 0,
+                _as_int(row.get("scope_count")) or 0,
+                _as_int(row.get("premise_count")) or 0,
+                _as_int(row.get("evidence_count")) or 0,
+                _json_text(_string_values(row.get("assurance_reason_codes"))),
+            ),
+        )
+    for row in _mapping_items(payload.get("dependencies")):
+        connection.execute(
+            "INSERT INTO proof_dependencies VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                *_proof_dimensions(row),
+                str(row.get("plan_id") or ""),
+                str(row.get("source_step_id") or ""),
+                str(row.get("target_step_id") or ""),
+                str(row.get("obligation_id") or ""),
+                str(row.get("dependency_kind") or "requires"),
+                _as_bool(row.get("satisfied")),
+            ),
+        )
+    for row in _mapping_items(payload.get("cache_outcomes")):
+        connection.execute(
+            "INSERT INTO proof_cache_outcomes VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                *_proof_dimensions(row),
+                str(row.get("cache_key") or ""),
+                str(row.get("obligation_id") or ""),
+                str(row.get("receipt_id") or ""),
+                str(row.get("outcome") or "miss"),
+                _as_int(row.get("lookup_latency_ms")) or 0,
+                str(row.get("required_assurance") or "unverified"),
+                str(row.get("actual_assurance") or "unverified"),
+                _as_bool(row.get("fresh")),
+                _json_text(_string_values(row.get("reason_codes"))),
+                str(row.get("observed_at") or ""),
+            ),
+        )
+    for row in _mapping_items(payload.get("resource_samples")):
+        connection.execute(
+            "INSERT INTO proof_resource_samples VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                *_proof_dimensions(row),
+                _as_int(row.get("observed_at_ms")) or 0,
+                _as_int(row.get("cpu_percent")) or 0,
+                _as_int(row.get("memory_percent")) or 0,
+                _as_int(row.get("disk_percent")) or 0,
+                _as_int(row.get("memory_used_bytes")) or 0,
+                _as_int(row.get("memory_available_bytes")) or 0,
+                _as_int(row.get("disk_used_bytes")) or 0,
+                _as_int(row.get("disk_available_bytes")) or 0,
+                _as_int(row.get("active_workers")) or 0,
+                _as_int(row.get("available_worker_capacity")) or 0,
+                _as_int(row.get("provider_latency_ms")) or 0,
+                _as_int(row.get("provider_quota_remaining")) or 0,
+                _as_int(row.get("provider_token_budget_remaining")) or 0,
+            ),
+        )
+    for row in _mapping_items(payload.get("assurance_counts")):
+        connection.execute(
+            "INSERT INTO proof_assurance_counts VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                *_proof_dimensions(row),
+                str(row.get("assurance") or "unverified"),
+                _as_int(row.get("receipt_count")) or 0,
+                _as_int(row.get("authoritative_count")) or 0,
+            ),
+        )
+    count_fields = (
+        "obligation_count",
+        "attempt_count",
+        "successful_attempt_count",
+        "failed_attempt_count",
+        "receipt_count",
+        "authoritative_receipt_count",
+        "dependency_count",
+        "cache_hit_count",
+        "cache_miss_count",
+        "cache_rejection_count",
+        "resource_sample_count",
+        "cancellation_count",
+    )
+    latency_fields = (
+        "queue_latency",
+        "solver_latency",
+        "kernel_latency",
+        "model_latency",
+        "validation_latency",
+        "merge_latency",
+        "cancellation_latency",
+        "cache_latency",
+    )
+    for row in _mapping_items(payload.get("metrics") or payload.get("latency_metrics")):
+        connection.execute(
+            "INSERT INTO proof_metrics VALUES ("
+            + ", ".join("?" for _ in range(35))
+            + ")",
+            (
+                *_proof_dimensions(row),
+                *(_as_int(row.get(name)) or 0 for name in count_fields),
+                *(_as_int(row.get(f"{name}_ms")) or 0 for name in latency_fields),
+                *(_as_float(row.get(f"{name}_seconds")) or 0.0 for name in latency_fields),
+            ),
+        )
+
+
 def _write_duckdb(
     path: Path,
     payload: Mapping[str, Any],
@@ -971,6 +1470,13 @@ def _write_duckdb(
     source_size: int,
     source_mtime_ns: int,
 ) -> None:
+    if kind == PROOF_METRICS_KIND:
+        from .proof_metrics import ProofMetricsSnapshot
+
+        # Rebuilding a sidecar from JSON is another trust boundary.  Validate
+        # here as well as in the public writer so a hand-edited or stale JSON
+        # file cannot promote private proof material into DuckDB.
+        payload = ProofMetricsSnapshot(payload).to_dict()
     duckdb = _duckdb_module()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(
@@ -992,6 +1498,9 @@ def _write_duckdb(
             elif kind == CODE_EVIDENCE_GRAPH_KIND:
                 _code_evidence_graph_schema(connection)
                 _populate_code_evidence_graph_tables(connection, payload)
+            elif kind == PROOF_METRICS_KIND:
+                _proof_metrics_schema(connection)
+                _populate_proof_metrics_tables(connection, payload)
             else:
                 raise ValueError(f"unsupported query artifact kind: {kind}")
             connection.execute(
@@ -1073,6 +1582,54 @@ def write_scheduler_manifest_artifact(
         kind=SCHEDULER_MANIFEST_KIND,
         database_payload=database_payload,
     )
+
+
+def write_proof_metrics_artifact(
+    path: Path | str, payload: Mapping[str, Any] | Any
+) -> dict[str, Any]:
+    """Write a bounded proof metrics JSON document and DuckDB sidecar.
+
+    Typed :class:`ProofMetricsSnapshot` values and already-projected mappings
+    are accepted.  Arbitrary proof contracts must first pass through
+    ``build_proof_metrics_snapshot`` so raw evidence cannot accidentally be
+    promoted into this public query plane.
+    """
+
+    rendered = (
+        payload.to_dict()
+        if not isinstance(payload, Mapping) and callable(getattr(payload, "to_dict", None))
+        else dict(payload)
+    )
+    schema = str(rendered.get("schema") or "")
+    if not schema.startswith("ipfs_accelerate_py.agent_supervisor.proof-metrics@"):
+        raise ValueError("proof metrics artifacts require a bounded proof-metrics snapshot")
+    from .proof_metrics import ProofMetricsSnapshot
+
+    # Validation is repeated here because callers may use artifact_store
+    # directly with a mapping instead of the typed snapshot wrapper.
+    ProofMetricsSnapshot(rendered)
+    return write_queryable_artifact(path, rendered, kind=PROOF_METRICS_KIND)
+
+
+def read_proof_metrics_artifact(path: Path | str) -> dict[str, Any]:
+    """Read and validate the portable JSON representation of proof metrics."""
+
+    paths = query_artifact_paths(path)
+    payload = json.loads(paths.json_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or _artifact_kind(payload) != PROOF_METRICS_KIND:
+        raise ValueError(f"not a proof metrics artifact: {paths.json_path}")
+    from .proof_metrics import ProofMetricsSnapshot
+
+    return ProofMetricsSnapshot(payload).to_dict()
+
+
+def query_proof_metrics(path: Path | str, **query: Any) -> dict[str, Any]:
+    """Execute one bounded query against a proof metrics artifact."""
+
+    supplied_kind = query.pop("kind", PROOF_METRICS_KIND)
+    if supplied_kind != PROOF_METRICS_KIND:
+        raise ValueError("proof metrics queries require proof_metrics kind")
+    return query_artifact(path, kind=PROOF_METRICS_KIND, **query)
 
 
 def write_code_evidence_graph_artifact(

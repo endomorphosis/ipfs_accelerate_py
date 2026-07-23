@@ -199,7 +199,7 @@ def normalize_metric_identity(
     event: Mapping[str, Any] | None = None,
     defaults: Mapping[str, Any] | None = None,
 ) -> dict[str, str]:
-    """Return the five mandatory canonical metric dimensions.
+    """Return canonical scheduler and proof metric dimensions.
 
     Profile-G CIDs are preferred.  Display identifiers remain useful aliases,
     but they never replace an available canonical identifier.
@@ -241,6 +241,27 @@ def normalize_metric_identity(
             "provider_identity", "provider", "claimant_did", "worker_id",
         ),
     ) or UNKNOWN_IDENTITY
+    tree = _first_text(
+        sources,
+        (
+            "repository_tree_id", "tree_id", "canonical_tree_id",
+            "candidate_tree_id", "git_tree_id",
+        ),
+    ) or UNKNOWN_IDENTITY
+    template = _first_text(
+        sources,
+        (
+            "template_id", "canonical_template_id",
+            "obligation_template_id", "template",
+        ),
+    ) or UNKNOWN_IDENTITY
+    resource_class = _first_text(
+        sources,
+        (
+            "resource_class", "canonical_resource_class",
+            "worker_class", "resource_pool",
+        ),
+    ) or UNKNOWN_IDENTITY
     return {
         "goal_cid": goal,
         "subgoal_cid": subgoal,
@@ -248,6 +269,10 @@ def normalize_metric_identity(
         "canonical_task_cid": task,
         "lane_id": lane,
         "provider_id": provider,
+        "repository_tree_id": tree,
+        "tree_id": tree,
+        "template_id": template,
+        "resource_class": resource_class,
         # Explicit aliases make the canonical nature discoverable to API
         # clients without forcing older clients to rename their dimensions.
         "canonical_goal_id": goal,
@@ -255,16 +280,22 @@ def normalize_metric_identity(
         "canonical_task_id": task,
         "canonical_lane_id": lane,
         "canonical_provider_id": provider,
+        "canonical_tree_id": tree,
+        "canonical_template_id": template,
+        "canonical_resource_class": resource_class,
     }
 
 
-def _identity_key(identity: Mapping[str, str]) -> tuple[str, str, str, str, str]:
+def _identity_key(identity: Mapping[str, str]) -> tuple[str, ...]:
     return (
         identity["goal_cid"],
         identity["subgoal_cid"],
         identity["task_cid"],
         identity["lane_id"],
         identity["provider_id"],
+        identity["repository_tree_id"],
+        identity["template_id"],
+        identity["resource_class"],
     )
 
 
@@ -275,6 +306,23 @@ def _metric_defaults(identity: Mapping[str, str]) -> dict[str, Any]:
         "implementation_duration_seconds": 0.0,
         "validation_duration_seconds": 0.0,
         "merge_wait_seconds": 0.0,
+        "queue_latency_seconds": 0.0,
+        "solver_latency_seconds": 0.0,
+        "kernel_latency_seconds": 0.0,
+        "model_latency_seconds": 0.0,
+        "validation_latency_seconds": 0.0,
+        "merge_latency_seconds": 0.0,
+        "cancellation_latency_seconds": 0.0,
+        "cache_latency_seconds": 0.0,
+        "queue_latency_ms": 0,
+        "solver_latency_ms": 0,
+        "kernel_latency_ms": 0,
+        "model_latency_ms": 0,
+        "validation_latency_ms": 0,
+        "merge_latency_ms": 0,
+        "cancellation_latency_ms": 0,
+        "cache_latency_ms": 0,
+        "cancellations": 0,
         "implementation_attempts": 0,
         "merge_attempts": 0,
         "conflicts": 0,
@@ -1246,7 +1294,7 @@ def scheduler_snapshot(
         if goal_cid:
             diagnostics_by_goal[goal_cid] = diagnostic
 
-    accumulators: dict[tuple[str, str, str, str, str], _Accumulator] = {}
+    accumulators: dict[tuple[str, ...], _Accumulator] = {}
     inherited_by_task: dict[str, dict[str, str]] = {}
     inherited_by_lane: dict[str, dict[str, str]] = {}
 
@@ -1290,6 +1338,31 @@ def scheduler_snapshot(
         tokens, cost = _usage(event)
         current.metrics["tokens"] += tokens
         current.metrics["cost_usd"] += cost
+        # Proof/cache/resource integrations may publish already-measured
+        # latencies.  Consume only explicit non-negative measurements here;
+        # absent timestamp pairs must not produce invented durations.
+        for category in (
+            "queue",
+            "solver",
+            "kernel",
+            "model",
+            "validation",
+            "merge",
+            "cancellation",
+            "cache",
+        ):
+            milliseconds_name = f"{category}_latency_ms"
+            seconds_name = f"{category}_latency_seconds"
+            milliseconds = _number(event.get(milliseconds_name))
+            seconds = _number(event.get(seconds_name))
+            if milliseconds:
+                current.metrics[milliseconds_name] += int(milliseconds)
+                current.metrics[seconds_name] += milliseconds / 1000.0
+            elif seconds:
+                current.metrics[seconds_name] += seconds
+                current.metrics[milliseconds_name] += int(round(seconds * 1000.0))
+        if "cancel" in kind:
+            current.metrics["cancellations"] += 1
 
         phase = _phase_for_event(event, kind)
         if phase:
@@ -1421,6 +1494,26 @@ def scheduler_snapshot(
         metrics["completion_count"] = metrics["completions"]
         metrics["total_tokens"] = metrics["tokens"]
         metrics["total_cost_usd"] = metrics["cost_usd"]
+        # General scheduler lifecycle timings are authoritative aliases for
+        # the corresponding proof-wide categories when no specialized sample
+        # was emitted.
+        if not metrics["queue_latency_ms"]:
+            metrics["queue_latency_seconds"] = metrics["queue_wait_seconds"]
+            metrics["queue_latency_ms"] = int(
+                round(metrics["queue_wait_seconds"] * 1000.0)
+            )
+        if not metrics["validation_latency_ms"]:
+            metrics["validation_latency_seconds"] = metrics[
+                "validation_duration_seconds"
+            ]
+            metrics["validation_latency_ms"] = int(
+                round(metrics["validation_duration_seconds"] * 1000.0)
+            )
+        if not metrics["merge_latency_ms"]:
+            metrics["merge_latency_seconds"] = metrics["merge_wait_seconds"]
+            metrics["merge_latency_ms"] = int(
+                round(metrics["merge_wait_seconds"] * 1000.0)
+            )
         rows.append(dict(metrics))
         state = {
             **current.identity,
@@ -1439,18 +1532,26 @@ def scheduler_snapshot(
 
     dimensions_all = normalize_metric_identity({}, {
         "goal_cid": "all", "subgoal_cid": "all", "task_cid": "all",
-        "lane_id": "all", "provider_id": "all",
+        "lane_id": "all", "provider_id": "all", "repository_tree_id": "all",
+        "template_id": "all", "resource_class": "all",
     })
     totals = _metric_defaults(dimensions_all)
     for row in rows:
         for name in (
             "queue_wait_seconds", "implementation_duration_seconds",
             "validation_duration_seconds", "merge_wait_seconds", "cost_usd",
+            "queue_latency_seconds", "solver_latency_seconds",
+            "kernel_latency_seconds", "model_latency_seconds",
+            "validation_latency_seconds", "merge_latency_seconds",
+            "cancellation_latency_seconds", "cache_latency_seconds",
         ):
             totals[name] += float(row[name])
         for name in (
             "implementation_attempts", "merge_attempts", "conflicts", "retries",
-            "completions", "tokens",
+            "completions", "tokens", "cancellations",
+            "queue_latency_ms", "solver_latency_ms", "kernel_latency_ms",
+            "model_latency_ms", "validation_latency_ms", "merge_latency_ms",
+            "cancellation_latency_ms", "cache_latency_ms",
         ):
             totals[name] += int(row[name])
     totals["conflict_rate"] = (
@@ -1646,6 +1747,18 @@ def ready_task_cids(snapshot: SchedulerSnapshot | Mapping[str, Any]) -> tuple[st
     )
 
 
+# Proof observability uses the same operator-facing module as a discovery
+# surface while keeping its stricter public-projection policy isolated.
+from .proof_metrics import (  # noqa: E402  (intentional late compatibility import)
+    PROOF_METRIC_DIMENSIONS,
+    PROOF_METRICS_SCHEMA,
+    ProofMetricsSnapshot,
+    build_proof_metrics,
+    build_proof_metrics_snapshot,
+    normalize_proof_metric_identity,
+)
+
+
 __all__ = [
     "GOAL_COMPLETION_DIAGNOSTICS_SCHEMA",
     "GOAL_COMPLETION_DIAGNOSTICS_SCHEMA_VERSION",
@@ -1658,11 +1771,17 @@ __all__ = [
     "SCHEDULER_SNAPSHOT_SCHEMA",
     "SCHEDULER_SNAPSHOT_SCHEMA_VERSION",
     "SchedulerSnapshot",
+    "PROOF_METRIC_DIMENSIONS",
+    "PROOF_METRICS_SCHEMA",
+    "ProofMetricsSnapshot",
+    "build_proof_metrics",
+    "build_proof_metrics_snapshot",
     "build_scheduler_snapshot",
     "build_scheduler_snapshot_from_paths",
     "derive_scheduler_snapshot",
     "goal_completion_diagnostics",
     "normalize_metric_identity",
+    "normalize_proof_metric_identity",
     "publish_scheduler_snapshot",
     "project_goal_completion_diagnostics",
     "read_scheduler_snapshot",
