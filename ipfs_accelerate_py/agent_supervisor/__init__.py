@@ -1,5 +1,21 @@
 """Autonomous agent supervisor helpers for objective-driven todo execution."""
 
+from .formal_verification_capabilities import (
+    DEFAULT_CAPABILITY_CACHE_TTL_SECONDS,
+    DEFAULT_CAPABILITY_PROBE_MAX_CHECKS,
+    DEFAULT_CAPABILITY_PROBE_TIMEOUT_SECONDS,
+    FORMAL_VERIFICATION_CAPABILITY_REPORT_VERSION,
+    FORMAL_VERIFICATION_CAPABILITY_SCHEMA_VERSION,
+    CapabilityDimension,
+    CapabilityHealth,
+    CapabilityHealthCheck,
+    FormalVerificationCapabilityProbe,
+    FormalVerificationCapabilityReport,
+    FormalVerificationProbeConfig,
+    FormalVerificationProviderCapability,
+    clear_formal_verification_capability_cache,
+    probe_formal_verification_capabilities,
+)
 from .dataset_store import DatasetArtifact, DatasetAuditSnapshotArtifact, ObjectiveDatasetStore
 from .conflict_graph import (
     ConflictEdge,
