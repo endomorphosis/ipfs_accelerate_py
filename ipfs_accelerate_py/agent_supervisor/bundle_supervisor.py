@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 import os
@@ -2529,6 +2530,7 @@ class DynamicBundleScheduler:
         try:
             while not self._stop_event.is_set() and not (external_stop and external_stop.is_set()):
                 payload = self.reconcile_once()
+                gc.collect()
                 cycles += 1
                 if max_cycles is not None and cycles >= int(max_cycles):
                     break

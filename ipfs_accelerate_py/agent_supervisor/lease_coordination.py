@@ -35,6 +35,8 @@ STRUCTURAL_DEPENDENCY_REPAIR_KINDS = frozenset(
 READY_BUNDLE_TASK_STATUSES = frozenset({"todo", "ready", "needed", "queued", "in_progress"})
 COORDINATION_STORE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.lease-coordination-duckdb@1"
 COORDINATION_LOCK_TIMEOUT_SECONDS = 30.0
+COORDINATION_DUCKDB_MEMORY_LIMIT = "256MB"
+MAX_PERSISTED_HEARTBEATS_PER_LEASE = 8
 SMALL_STORE_FULL_ARTIFACT_LIMIT = 10_000
 
 
@@ -623,9 +625,12 @@ class LeaseCoordinator:
                     raise RuntimeError(
                         "DuckDB is required for lease coordination"
                     ) from exc
-                self._connection = _DuckConnection(
-                    duckdb.connect(str(self.path))
+                duckdb_connection = duckdb.connect(str(self.path))
+                duckdb_connection.execute("SET threads=1")
+                duckdb_connection.execute(
+                    f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
                 )
+                self._connection = _DuckConnection(duckdb_connection)
                 self._operation_state.depth = 1
                 try:
                     yield
@@ -1949,6 +1954,7 @@ class LeaseCoordinator:
                 cid = self._put_artifact(conn, "DaemonHeartbeat", payload)
                 conn.execute("INSERT OR REPLACE INTO heartbeats VALUES(?,?,?,?,?,?,?,?)",
                              (cid, grant.task_cid, grant.claimant_did, grant.fencing_token, now, payload["expires_at_ms"], capacity, json.dumps(payload, sort_keys=True)))
+                self._prune_heartbeat_history(conn, grant)
                 conn.commit()
                 return {**payload, "heartbeat_cid": cid}
             except Exception:
@@ -2076,6 +2082,41 @@ class LeaseCoordinator:
             except Exception:
                 conn.rollback()
                 raise
+
+    @staticmethod
+    def _prune_heartbeat_history(
+        connection: _DuckConnection,
+        grant: LeaseGrant,
+    ) -> None:
+        stale_rows = connection.execute(
+            """SELECT heartbeat_cid
+               FROM (
+                 SELECT heartbeat_cid,
+                        row_number() OVER (
+                          ORDER BY observed_at_ms DESC, heartbeat_cid DESC
+                        ) AS history_rank
+                 FROM heartbeats
+                 WHERE task_cid=? AND fencing_token=?
+               )
+               WHERE history_rank>?""",
+            (
+                grant.task_cid,
+                grant.fencing_token,
+                MAX_PERSISTED_HEARTBEATS_PER_LEASE,
+            ),
+        ).fetchall()
+        stale_cids = [(str(row[0]),) for row in stale_rows]
+        if not stale_cids:
+            return
+        connection.executemany(
+            "DELETE FROM heartbeats WHERE heartbeat_cid=?",
+            stale_cids,
+        )
+        connection.executemany(
+            "DELETE FROM artifacts "
+            "WHERE cid=? AND kind='DaemonHeartbeat'",
+            stale_cids,
+        )
 
     @staticmethod
     def _heartbeat_count(connection: _DuckConnection, grant: LeaseGrant) -> int:

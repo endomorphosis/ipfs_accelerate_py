@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor import artifact_store
 from ipfs_accelerate_py.agent_supervisor.artifact_store import (
     BUNDLE_INDEX_KIND,
     QUERY_SCHEMA,
@@ -301,3 +304,39 @@ def test_json_changes_refresh_the_query_sidecar(tmp_path: Path) -> None:
     )
 
     assert refreshed["rows"] == [{"task_id": "T-3"}]
+
+
+def test_concurrent_sidecar_refresh_is_coalesced(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    json_path = tmp_path / "index.json"
+    write_bundle_index_artifact(json_path, _bundle_index())
+    changed = _bundle_index()
+    changed["source_todo"] = "changed.todo.md"
+    json_path.write_text(json.dumps(changed), encoding="utf-8")
+
+    original = artifact_store._write_duckdb
+    calls = 0
+    calls_lock = threading.Lock()
+
+    def counted_write(*args: object, **kwargs: object) -> None:
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        original(*args, **kwargs)
+
+    monkeypatch.setattr(artifact_store, "_write_duckdb", counted_write)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        paths = list(
+            executor.map(
+                lambda _index: artifact_store.ensure_query_database(
+                    json_path,
+                    kind=BUNDLE_INDEX_KIND,
+                ),
+                range(2),
+            )
+        )
+
+    assert paths == [tmp_path / "index.duckdb"] * 2
+    assert calls == 1

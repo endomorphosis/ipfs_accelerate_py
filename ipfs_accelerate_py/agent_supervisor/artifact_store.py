@@ -9,16 +9,19 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fcntl
 import hashlib
 import json
 import os
 import re
 import threading
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 BUNDLE_INDEX_KIND = "bundle_planning_index"
 SCHEDULER_MANIFEST_KIND = "scheduler_manifest"
@@ -58,6 +61,9 @@ PROOF_ATTESTATION_ARTIFACT_SCHEMA = PROOF_ATTESTATION_STORE_SCHEMA
 QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.queryable_artifact@2"
 MAX_QUERY_ROWS = 1_000
 MAX_GRAPH_QUERY_HOPS = 8
+ARTIFACT_LOCK_TIMEOUT_SECONDS = 300.0
+DUCKDB_ARTIFACT_THREADS = 2
+DUCKDB_ARTIFACT_MEMORY_LIMIT = "1GB"
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _READ_ONLY_SQL = re.compile(r"^(?:select|with|describe|show)\b", re.IGNORECASE)
@@ -95,6 +101,42 @@ def _duckdb_module() -> Any:
             "DuckDB is required for queryable supervisor artifacts"
         ) from exc
     return duckdb
+
+
+def _configure_duckdb_connection(connection: Any) -> Any:
+    """Bound storage work so planning leaves CPU and memory for worker lanes."""
+
+    connection.execute(f"SET threads={DUCKDB_ARTIFACT_THREADS}")
+    connection.execute(f"SET memory_limit='{DUCKDB_ARTIFACT_MEMORY_LIMIT}'")
+    return connection
+
+
+@contextmanager
+def _artifact_write_lock(database_path: Path) -> Iterator[None]:
+    """Serialize paired JSON/DuckDB generations across supervisor processes."""
+
+    lock_path = database_path.with_name(f".{database_path.name}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+b")
+    acquired = False
+    deadline = time.monotonic() + ARTIFACT_LOCK_TIMEOUT_SECONDS
+    try:
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"timed out acquiring query artifact lock: {lock_path}"
+                    )
+                time.sleep(0.01)
+        yield
+    finally:
+        if acquired:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
 
 
 def _json_text(value: Any) -> str:
@@ -1628,7 +1670,9 @@ def _write_duckdb(
     Path(f"{temporary}.wal").unlink(missing_ok=True)
     payload_text = _json_text(payload)
     try:
-        connection = duckdb.connect(str(temporary))
+        connection = _configure_duckdb_connection(
+            duckdb.connect(str(temporary))
+        )
         try:
             connection.execute("BEGIN TRANSACTION")
             try:
@@ -1704,17 +1748,18 @@ def write_queryable_artifact(
     database_rendered = dict(database_payload or rendered)
     database_rendered["query_store"] = dict(rendered["query_store"])
     source_text = json.dumps(rendered, indent=2, sort_keys=True) + "\n"
-    _atomic_write_text(paths.json_path, source_text)
-    source_stat = paths.json_path.stat()
-    _write_duckdb(
-        paths.duckdb_path,
-        database_rendered,
-        kind=resolved_kind,
-        source_path=paths.json_path,
-        source_sha256=hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
-        source_size=source_stat.st_size,
-        source_mtime_ns=source_stat.st_mtime_ns,
-    )
+    with _artifact_write_lock(paths.duckdb_path):
+        _atomic_write_text(paths.json_path, source_text)
+        source_stat = paths.json_path.stat()
+        _write_duckdb(
+            paths.duckdb_path,
+            database_rendered,
+            kind=resolved_kind,
+            source_path=paths.json_path,
+            source_sha256=hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+            source_size=source_stat.st_size,
+            source_mtime_ns=source_stat.st_mtime_ns,
+        )
     return rendered
 
 
@@ -2366,19 +2411,20 @@ def ensure_query_database(path: Path | str, *, kind: str | None = None) -> Path:
             f"expected {kind or actual_kind} {QUERY_SCHEMA} DuckDB artifact, "
             f"found {actual_kind} {actual_schema}: {requested}"
         )
-    if _database_fresh(paths.duckdb_path, paths.json_path, kind):
-        return paths.duckdb_path
-    payload, source_stat, source_sha256 = _read_stable_json(paths.json_path)
-    resolved_kind = kind or _artifact_kind(payload)
-    _write_duckdb(
-        paths.duckdb_path,
-        payload,
-        kind=resolved_kind,
-        source_path=paths.json_path,
-        source_sha256=source_sha256,
-        source_size=source_stat.st_size,
-        source_mtime_ns=source_stat.st_mtime_ns,
-    )
+    with _artifact_write_lock(paths.duckdb_path):
+        if _database_fresh(paths.duckdb_path, paths.json_path, kind):
+            return paths.duckdb_path
+        payload, source_stat, source_sha256 = _read_stable_json(paths.json_path)
+        resolved_kind = kind or _artifact_kind(payload)
+        _write_duckdb(
+            paths.duckdb_path,
+            payload,
+            kind=resolved_kind,
+            source_path=paths.json_path,
+            source_sha256=source_sha256,
+            source_size=source_stat.st_size,
+            source_mtime_ns=source_stat.st_mtime_ns,
+        )
     return paths.duckdb_path
 
 
@@ -2394,7 +2440,9 @@ def read_artifact_fields(
         return {}
     database_path = ensure_query_database(path, kind=kind)
     duckdb = _duckdb_module()
-    connection = duckdb.connect(str(database_path), read_only=True)
+    connection = _configure_duckdb_connection(
+        duckdb.connect(str(database_path), read_only=True)
+    )
     try:
         placeholders = ", ".join("?" for _ in field_names)
         rows = connection.execute(
@@ -2421,7 +2469,9 @@ def read_bundle_index_projection(
 
     database_path = ensure_query_database(path, kind=BUNDLE_INDEX_KIND)
     duckdb = _duckdb_module()
-    connection = duckdb.connect(str(database_path), read_only=True)
+    connection = _configure_duckdb_connection(
+        duckdb.connect(str(database_path), read_only=True)
+    )
     try:
         bundle_expression = "payload_json"
         bundle_parameters: list[str] = []

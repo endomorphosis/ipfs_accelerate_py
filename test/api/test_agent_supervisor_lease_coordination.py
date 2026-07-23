@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
     LeaseCoordinator,
     LeaseExpiredError,
     LeaseQueueBridge,
+    MAX_PERSISTED_HEARTBEATS_PER_LEASE,
     StaleFencingTokenError,
     adapt_goal_bundle,
     migrate_sqlite_coordination_store,
@@ -426,6 +427,49 @@ def test_claim_renew_heartbeat_release_and_receipt_are_fenced(tmp_path: Path) ->
         assert coordinator.active_lease(adapted["task_cid"], now_ms=now + 3_001) is None
         with pytest.raises(LeaseExpiredError):
             coordinator.heartbeat(renewed, capacity_millionths=1, now_ms=now + 3_001)
+
+
+def test_heartbeat_history_is_bounded_per_lease(tmp_path: Path) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    path = tmp_path / "leases.duckdb"
+    now = 1_000
+
+    with LeaseCoordinator(path) as coordinator:
+        registered = coordinator.register_bundle(_bundle(), created_at_ms=now)
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:lane.example",
+            requested_lease_ms=60_000,
+            now_ms=now,
+        )
+        for offset in range(MAX_PERSISTED_HEARTBEATS_PER_LEASE + 4):
+            coordinator.heartbeat(
+                grant,
+                capacity_millionths=500_000,
+                now_ms=now + offset,
+            )
+        latest = coordinator.latest_heartbeat(
+            grant.task_cid,
+            include_expired=True,
+        )
+
+    connection = duckdb.connect(str(path), read_only=True)
+    try:
+        heartbeat_count = connection.execute(
+            "SELECT count(*) FROM heartbeats"
+        ).fetchone()[0]
+        artifact_count = connection.execute(
+            "SELECT count(*) FROM artifacts WHERE kind='DaemonHeartbeat'"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    assert latest is not None
+    assert latest["created_at_ms"] == (
+        now + MAX_PERSISTED_HEARTBEATS_PER_LEASE + 3
+    )
+    assert heartbeat_count == MAX_PERSISTED_HEARTBEATS_PER_LEASE
+    assert artifact_count == MAX_PERSISTED_HEARTBEATS_PER_LEASE
 
 
 def test_expired_lane_is_recovered_with_higher_epoch_and_token(tmp_path: Path) -> None:
