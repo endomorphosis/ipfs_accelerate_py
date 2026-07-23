@@ -931,6 +931,36 @@ class LeaseCoordinator:
                 connection.rollback()
                 raise
 
+    @_coordinator_operation
+    def requeue_completed(self, task_cid: str, *, reason: str) -> bool:
+        """Reopen a completed lease when its authoritative taskboard has work.
+
+        Successful receipts remain immutable audit records, but no longer
+        satisfy dependency gates while the lease is reopened.
+        """
+
+        normalized_reason = str(reason or "authoritative_source_reopened").strip().replace(" ", "_")
+        with self._lock:
+            connection = self._connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                resolved_task_cid = self._resolve_task_cid(connection, task_cid)
+                if resolved_task_cid is None:
+                    connection.commit()
+                    return False
+                updated = connection.execute(
+                    """UPDATE leases
+                       SET state='released', attempt=0, retry_not_before_ms=0,
+                           release_reason=?
+                       WHERE task_cid=? AND state='completed'""",
+                    (f"requeued:{normalized_reason}"[:256], resolved_task_cid),
+                )
+                connection.commit()
+                return updated.rowcount > 0
+            except Exception:
+                connection.rollback()
+                raise
+
     @staticmethod
     def _resolve_task_cid(connection: _DuckConnection, task_cid: str) -> str | None:
         row = connection.execute(
@@ -1042,9 +1072,14 @@ class LeaseCoordinator:
                 "SELECT receipt_cid, payload_json FROM receipts WHERE task_cid=? ORDER BY rowid DESC LIMIT 1",
                 (receipt_task_cid,),
             ).fetchone()
+            lease = connection.execute(
+                "SELECT state FROM leases WHERE task_cid=?",
+                (receipt_task_cid,),
+            ).fetchone()
             receipt_payload = json.loads(receipt["payload_json"]) if receipt is not None else {}
             latest_status = str(receipt_payload.get("status") or "missing")
-            if latest_status == "succeeded":
+            lease_state = str(lease["state"] or "") if lease is not None else "missing"
+            if latest_status == "succeeded" and lease_state == "completed":
                 satisfied.append(dependency_cid)
                 continue
             blocked.append(dependency_cid)
@@ -1055,6 +1090,7 @@ class LeaseCoordinator:
                     "resolved_task_cid": receipt_task_cid,
                     "latest_receipt_cid": str(receipt["receipt_cid"]) if receipt is not None else None,
                     "latest_status": latest_status,
+                    "lease_state": lease_state,
                     "provenance": provenance.get(dependency_cid, []),
                     "repair": "complete and merge the prerequisite successfully before claiming this task",
                 }

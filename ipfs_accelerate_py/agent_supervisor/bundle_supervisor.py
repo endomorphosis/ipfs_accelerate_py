@@ -1812,6 +1812,29 @@ class DynamicBundleScheduler:
             return "blocked"
         return ""
 
+    def _authoritative_lane_has_open_work(self, lane: BundleLaneSpec) -> bool:
+        """Return whether the shard explicitly reopens this execution slice."""
+
+        if not lane.todo_path.exists() or not lane.task_ids:
+            return False
+        from .todo_daemon.implementation_daemon import parse_task_file
+
+        task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
+        try:
+            tasks = parse_task_file(lane.todo_path, task_prefix)
+        except OSError:
+            return False
+        selected_ids = set(lane.task_ids)
+        selected = [
+            task
+            for task in tasks
+            if str(task.task_id) in selected_ids
+        ]
+        return bool(selected) and any(
+            str(task.status).strip().lower() not in {"complete", "completed", "blocked", "on_hold"}
+            for task in selected
+        )
+
     def _disposition(self, lane: BundleLaneSpec) -> str:
         value = self._lane_disposition(lane)
         if value is True:
@@ -2261,6 +2284,11 @@ class DynamicBundleScheduler:
                 for lane in registered:
                     if lane.task_cid in self._running or self._disposition(lane):
                         continue
+                    if self._authoritative_lane_has_open_work(lane):
+                        coordinator.requeue_completed(
+                            lane.task_cid,
+                            reason="bundle_board_reopened",
+                        )
                     coordinator.requeue_exhausted_blocked(
                         lane.task_cid,
                         reason="bundle_board_reopened",
