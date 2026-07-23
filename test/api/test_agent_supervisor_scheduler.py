@@ -114,6 +114,7 @@ def _scheduler(
     claimant: str = "did:web:worker-a.example",
     max_lanes: int = 1,
     manifest_name: str = "manifest.json",
+    external_task_state_paths: tuple[Path, ...] = (),
 ) -> DynamicBundleScheduler:
     repo = tmp_path / "repo"
     repo.mkdir(exist_ok=True)
@@ -148,6 +149,7 @@ def _scheduler(
         launcher=launcher,
         process_alive=launcher.alive,
         host_resource_source=host_resource_source,
+        external_task_state_paths=external_task_state_paths,
         poll_interval=0,
         task_prefix="T-",
     )
@@ -520,6 +522,56 @@ def test_concurrent_serial_and_dynamic_supervisors_publish_one_canonical_result(
     with LeaseCoordinator(coordination) as coordinator:
         assert len(coordinator.list_tasks()) == 1
         assert len(coordinator.list_receipts(winning_grant.task_cid)) == 1
+
+
+def test_external_serial_task_state_fences_then_releases_matching_bundle(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    serial_state = repo / "serial-task-state.json"
+    _write_index(index, "T-1")
+    serial_state.write_text(
+        json.dumps(
+            {
+                "implementation_in_progress": True,
+                "active_phase": "implementing",
+                "active_task_id": "T-1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        external_task_state_paths=(serial_state,),
+    )
+
+    fenced = scheduler.reconcile_once()
+
+    assert launcher.starts == []
+    assert fenced["counts"]["active"] == 0
+    assert fenced["counts"]["blocked"] == 1
+    assert fenced["tasks"][0]["bundle"]["external_active_member_fence"] is True
+
+    serial_state.write_text(
+        json.dumps(
+            {
+                "implementation_in_progress": False,
+                "active_phase": "",
+                "active_task_id": "",
+                "revision_padding": "released",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    released = scheduler.reconcile_once()
+
+    assert len(launcher.starts) == 1
+    assert _active_task_ids(released) == {"T-1"}
 
 
 def test_two_scheduler_processes_with_same_did_do_not_share_one_grant(tmp_path: Path) -> None:

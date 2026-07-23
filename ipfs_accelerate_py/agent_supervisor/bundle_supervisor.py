@@ -1356,6 +1356,7 @@ class DynamicBundleScheduler:
         host_resource_source: Callable[..., HostResourceSnapshot | dict[str, Any]] | None = None,
         provider_capacity_source: Callable[..., Any] | None = None,
         provider_capacity_path: Path | None = None,
+        external_task_state_paths: Sequence[Path | str] = (),
         resource_policy: ResourcePolicy | dict[str, Any] | None = None,
         **lane_options: Any,
     ) -> None:
@@ -1397,6 +1398,9 @@ class DynamicBundleScheduler:
         self._host_resource_source = host_resource_source or sample_host_resources
         self._provider_capacity_source = provider_capacity_source
         self.provider_capacity_path = Path(provider_capacity_path).resolve() if provider_capacity_path else None
+        self.external_task_state_paths = tuple(
+            Path(path).resolve() for path in external_task_state_paths
+        )
         self._running: dict[str, RunningBundleLane] = {}
         self._stop_event = threading.Event()
         self._lock = threading.RLock()
@@ -1504,6 +1508,67 @@ class DynamicBundleScheduler:
         revisions.append((f"git:{head.stdout.strip() if head.returncode == 0 else ''}", 0, 0))
         return tuple(revisions)
 
+    def _external_active_task_ids(self) -> set[str]:
+        active_task_ids: set[str] = set()
+        for path in self.external_task_state_paths:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            active_task_id = str(payload.get("active_task_id") or "").strip()
+            if active_task_id and (
+                payload.get("implementation_in_progress")
+                or str(payload.get("active_phase") or "").strip()
+            ):
+                active_task_ids.add(active_task_id)
+        return active_task_ids
+
+    @staticmethod
+    def _fence_external_active_members(
+        lane: BundleLaneSpec,
+        active_task_ids: set[str],
+    ) -> BundleLaneSpec:
+        payload = dict(lane.queue_payload)
+        active_tasks = [
+            task
+            for task in _mapping_list(payload.get("tasks"))
+            if str(task.get("task_id") or "") in active_task_ids
+        ]
+        if not active_tasks:
+            return lane
+        active_ids = {
+            str(task.get("task_id") or "")
+            for task in active_tasks
+            if str(task.get("task_id") or "")
+        }
+        active_cids = {
+            str(task.get("canonical_task_cid") or task.get("task_cid") or "")
+            for task in active_tasks
+            if str(task.get("canonical_task_cid") or task.get("task_cid") or "")
+        }
+        payload.update(
+            {
+                "claimable": False,
+                "active_member_task_ids": sorted(
+                    set(_string_list(payload.get("active_member_task_ids"))) | active_ids
+                ),
+                "active_member_task_cids": sorted(
+                    set(_string_list(payload.get("active_member_task_cids"))) | active_cids
+                ),
+                "execution_slice_task_ids": [],
+                "execution_slice_task_cids": [],
+                "external_active_member_fence": True,
+            }
+        )
+        return replace(
+            lane,
+            task_ids=[],
+            claimable=False,
+            queue_payload=payload,
+        )
+
     def _plan(self) -> list[BundleLaneSpec]:
         if self._plan_cache is not None:
             cached_paths, cached_revision, cached_lanes = self._plan_cache
@@ -1531,11 +1596,18 @@ class DynamicBundleScheduler:
             max_lanes=None,
             **options,
         )
+        external_active_task_ids = self._external_active_task_ids()
+        if external_active_task_ids:
+            lanes = [
+                self._fence_external_active_members(lane, external_active_task_ids)
+                for lane in lanes
+            ]
         source_paths = tuple(
             sorted(
                 {
                     self.bundle_index_path,
                     self.bundle_index_path.with_suffix(".duckdb"),
+                    *self.external_task_state_paths,
                     *(lane.todo_path for lane in lanes),
                 },
                 key=str,
@@ -2497,6 +2569,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider-token-reserve", type=int, default=0)
     parser.add_argument("--provider-capacity-path", type=Path, default=None)
     parser.add_argument(
+        "--external-task-state-path",
+        type=Path,
+        action="append",
+        default=[],
+        help="Repeatable serial scheduler state file whose active task fences matching bundles.",
+    )
+    parser.add_argument(
         "--allow-missing-provider-telemetry",
         action="store_true",
         help="Allow provider-dependent lanes when no capacity monitor is available",
@@ -2549,6 +2628,9 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             capacity_millionths=getattr(args, "capacity_millionths", 1_000_000),
             poll_interval=getattr(args, "poll_interval", 5.0),
             provider_capacity_path=getattr(args, "provider_capacity_path", None),
+            external_task_state_paths=tuple(
+                getattr(args, "external_task_state_path", ()) or ()
+            ),
             resource_policy={
                 "max_lanes": getattr(args, "max_lanes", 1) or 1,
                 "max_cpu_percent": getattr(args, "max_cpu_percent", 90),
