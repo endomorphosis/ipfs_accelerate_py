@@ -348,6 +348,45 @@ def test_single_flight_deduplicates_serial_and_parallel_supervisors(
     assert calls == 2
 
 
+def test_fresh_outcome_atomically_prevents_reacquiring_a_published_flight(
+    tmp_path: Path,
+) -> None:
+    """Cover the outcome-published/active-lease-deleted observation race."""
+
+    database = tmp_path / "published-outcome.sqlite3"
+    owner_store = ProverEvidenceStore(database)
+    follower_store = ProverEvidenceStore(database)
+    key = _key()
+
+    acquired, token, fencing_token = owner_store._claim_flight(
+        key,
+        owner_id="owner:1",
+        lease_seconds=10,
+    )
+    assert acquired
+    owner_store._publish_flight(
+        key,
+        token=token,
+        fencing_token=fencing_token,
+        status="ok",
+        value={"result_id": "published:1"},
+        outcome_ttl_seconds=10,
+    )
+
+    acquired, token, observed_fence = follower_store._claim_flight(
+        key,
+        owner_id="owner:2",
+        lease_seconds=10,
+    )
+    assert not acquired
+    assert token == ""
+    assert observed_fence == fencing_token
+    assert follower_store._flight_outcome(key) == (
+        {"result_id": "published:1"},
+        fencing_token,
+    )
+
+
 def test_single_flight_heartbeats_a_long_running_prover_owner(
     tmp_path: Path,
 ) -> None:

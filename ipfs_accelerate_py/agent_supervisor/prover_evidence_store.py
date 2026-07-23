@@ -1175,6 +1175,22 @@ class ProverEvidenceStore:
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
+            outcome = connection.execute(
+                """
+                SELECT fencing_token
+                FROM prover_evidence_flight_outcomes
+                WHERE key_id=? AND expires_at_ms>?
+                """,
+                (key.key_id, now),
+            ).fetchone()
+            if outcome is not None:
+                # Publishing an outcome and deleting its active lease is one
+                # transaction.  A follower can observe the deleted lease just
+                # after its preceding outcome poll, then loop back here.  The
+                # durable outcome must be checked under the same lock as lease
+                # acquisition or that follower can become a second owner.
+                connection.commit()
+                return False, "", int(outcome["fencing_token"])
             row = connection.execute(
                 """
                 SELECT fencing_token, expires_at_ms
