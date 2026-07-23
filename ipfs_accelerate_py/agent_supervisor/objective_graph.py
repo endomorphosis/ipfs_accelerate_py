@@ -2849,6 +2849,26 @@ def _record_symbols(row: Mapping[str, Any]) -> list[str]:
     return sorted({str(item).strip().lower() for item in value if str(item).strip()})
 
 
+def _ast_evidence_symbols(symbols: Iterable[Any]) -> set[str]:
+    """Return nonempty token-normalized symbols eligible for AST evidence.
+
+    Symbol extractors intentionally retain short source identifiers for
+    conflict planning, but :func:`objective_tokens` drops one-character and
+    punctuation-only identifiers.  Applying substring matching to those raw
+    values is unsafe: for example, the symbol ``e`` appears in many unrelated
+    objective markers, while ``$`` has no objective-token representation at
+    all.  Normalize both sides of the evidence comparison through the same
+    tokenizer and fail closed when a symbol has no normalized tokens.
+    """
+
+    normalized: set[str] = set()
+    for symbol in symbols:
+        value = " ".join(objective_tokens(str(symbol)))
+        if value:
+            normalized.add(value)
+    return normalized
+
+
 def _ast_evidence_fields(root_relative: str, text: str, symbols: Sequence[str]) -> dict[str, Any]:
     document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
     return {
@@ -3092,6 +3112,7 @@ def evidence_index(
 
     for root_relative, text, symbols, document_tokens, document_embedding in candidates:
         haystack = f"{root_relative}\n{text}".lower()
+        evidence_symbols = _ast_evidence_symbols(symbols)
 
         for term, lowered in lowered_terms.items():
             if len(evidence[term]) >= 3:
@@ -3101,8 +3122,11 @@ def evidence_index(
                 continue
             normalized_symbol = " ".join(objective_tokens(term))
             if normalized_symbol and (
-                normalized_symbol in symbols
-                or any(normalized_symbol in symbol or symbol in normalized_symbol for symbol in symbols)
+                normalized_symbol in evidence_symbols
+                or any(
+                    normalized_symbol in symbol or symbol in normalized_symbol
+                    for symbol in evidence_symbols
+                )
             ):
                 evidence[term].append(f"{root_relative} (ast)")
                 continue

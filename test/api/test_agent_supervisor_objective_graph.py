@@ -31,6 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_goal_completion_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    evidence_index,
     materialize_task_dependency_dag,
     materialize_task_planning_graph,
     objective_fingerprint,
@@ -132,6 +133,89 @@ def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
     assert finding.missing_evidence == ["missing_meta_glasses_contract"]
     assert finding.present_evidence["CapabilityRouter.dispatch_task"] == ["src/runtime_router.py (ast)"]
     assert finding.present_evidence["meta glasses terminal router"][0].startswith("docs/runtime_notes.md (embedding:")
+
+
+def test_hsslev0097b20_empty_symbol_normalizations_are_not_ast_evidence(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    records = [
+        {
+            "root_relative_path": "assets/minified.js",
+            "evidence_text": "const unrelated = true;",
+            "symbols_json": json.dumps(["", " \t", "e", "v", "$"]),
+            "document_tokens_json": "[]",
+            "document_embedding_json": "[]",
+        }
+    ]
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=["HSSLEV0097B20"],
+        embedding_min_score=2.0,
+        records=records,
+    )
+
+    assert evidence == {"HSSLEV0097B20": []}
+
+
+def test_empty_symbol_filter_preserves_nonempty_ast_and_exact_evidence(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    records = [
+        {
+            "root_relative_path": "src/proof.py",
+            "evidence_text": "literal objective receipt",
+            "symbols_json": json.dumps(["e", "$", "CapabilityRouter.dispatch_task"]),
+            "document_tokens_json": "[]",
+            "document_embedding_json": "[]",
+        }
+    ]
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=["CapabilityRouter.dispatch_task", "literal objective receipt"],
+        embedding_min_score=2.0,
+        records=records,
+    )
+
+    assert evidence["CapabilityRouter.dispatch_task"] == ["src/proof.py (ast)"]
+    assert evidence["literal objective receipt"] == ["src/proof.py (exact)"]
+
+
+def test_empty_symbol_only_source_keeps_unique_objective_evidence_missing(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    minified_source = repo / "src" / "minified.js"
+    minified_source.write_text("const e = 1; let v = e; var $ = v;\n", encoding="utf-8")
+    objective_path.write_text(
+        """# Objective Heap
+
+## HSSL-G009 Reject empty AST symbols as objective evidence
+
+- Status: active
+- Parent: HSSL-G000
+- Priority: P0
+- Track: benchmark-protocol
+- Bundle: objective/hssl/supervisor-compatibility
+- Goal: Prevent token-empty AST symbols from satisfying objective evidence.
+- Evidence: HSSLEV0097B20
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/minified.js", "objective-heap.md")
+    _git(repo, "commit", "-m", "seed token-empty AST symbols")
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        embedding_min_score=2.0,
+    )
+
+    assert len(findings) == 1
+    assert findings[0].goal_id == "HSSL-G009"
+    assert findings[0].missing_evidence == ["HSSLEV0097B20"]
+    assert findings[0].present_evidence == {}
 
 
 def test_objective_goal_heap_accepts_package_specific_goal_ids():
