@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     materialize_task_planning_graph,
     objective_fingerprint,
     objective_finding_conflict_record,
+    write_bundle_shards,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     completion_tree_identity,
@@ -935,6 +936,39 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert task_ids == ["queued-1"]
     assert submitted[0]["task_type"] == "codex.todo_bundle"
     assert submitted[0]["payload"]["bundle_key"] == "objective/ops/root"
+
+
+def test_bundle_regeneration_preserves_projected_task_status(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+    )
+    index_path = bundle_dir / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    task = index["bundles"]["objective/ops/root"]["tasks"][0]
+    task["status"] = "completed"
+    index["completed_task_ids"] = [task["task_id"]]
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+    write_bundle_shards(
+        bundle_dir=bundle_dir,
+        repo_root=repo,
+        todo_path=todo_path,
+        records=records,
+    )
+
+    regenerated = json.loads(index_path.read_text(encoding="utf-8"))
+    regenerated_task = regenerated["bundles"]["objective/ops/root"]["tasks"][0]
+    assert regenerated_task["status"] == "completed"
+    assert regenerated["completed_task_ids"] == ["ACCEL-002"]
 
 
 def test_generate_objective_todos_reserves_ids_from_discovery_artifacts(tmp_path):

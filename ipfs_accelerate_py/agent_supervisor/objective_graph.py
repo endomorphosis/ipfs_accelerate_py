@@ -5025,7 +5025,8 @@ def write_bundle_shards(
         for record in bundle_records:
             identity = objective_finding_task_identity(record.task_id, record.finding)
             schedule_record = generated_schedule.get(identity.canonical_task_cid)
-            task_map[record.task_id] = {
+            existing_task = task_map.get(record.task_id, {})
+            task_payload = {
                 **objective_finding_conflict_record(record.task_id, record.finding),
                 "task_id": record.task_id,
                 "canonical_task_key": identity.canonical_task_key,
@@ -5055,6 +5056,10 @@ def write_bundle_shards(
                 "downstream_unlock_value": schedule_record.downstream_unlock_value if schedule_record else 0,
                 "objective_priority": schedule_record.objective_priority if schedule_record else 0,
             }
+            existing_status = str(existing_task.get("status") or "").strip()
+            if existing_status:
+                task_payload["status"] = existing_status
+            task_map[record.task_id] = task_payload
         bundles[key] = {
             "bundle_key": key,
             "shard_path": repo_relative_path(repo_root, bundle_path(bundle_dir, key)),
