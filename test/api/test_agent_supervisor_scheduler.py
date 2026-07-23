@@ -13,6 +13,7 @@ from threading import Barrier
 from typing import Any
 
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
+from ipfs_accelerate_py.agent_supervisor.artifact_store import query_artifact
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
@@ -1165,6 +1166,23 @@ def test_manifest_references_full_planning_graphs_without_embedding_them(tmp_pat
         reference = projected["planning_evidence_ref"]
         assert reference["bundle_key"] == "objective/test/t-1"
         assert set(reference["omitted_fields"]) == _MANIFEST_GRAPH_FIELDS
+    task_row = query_artifact(
+        scheduler.manifest_path,
+        table="manifest_tasks",
+        columns=("payload_json",),
+        limit=1,
+    )["rows"][0]
+    lane_row = query_artifact(
+        scheduler.manifest_path,
+        table="manifest_lanes",
+        columns=("payload_json",),
+        limit=1,
+    )["rows"][0]
+    for row in (task_row, lane_row):
+        projected = json.loads(row["payload_json"])
+        bundle_payload = projected.get("bundle") or projected.get("queue_payload")
+        assert not _MANIFEST_GRAPH_FIELDS.intersection(bundle_payload)
+        assert bundle_payload["planning_evidence_ref"]["bundle_key"] == "objective/test/t-1"
     assert len(json.dumps(index_payload)) > 65_000
     assert len(json.dumps(manifest)) < 30_000
 

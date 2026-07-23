@@ -1607,46 +1607,55 @@ def _write_duckdb(
     try:
         connection = duckdb.connect(str(temporary))
         try:
-            _common_schema(connection)
-            if kind == BUNDLE_INDEX_KIND:
-                _bundle_schema(connection)
-                _populate_bundle_tables(connection, payload)
-            elif kind == SCHEDULER_MANIFEST_KIND:
-                _manifest_schema(connection)
-                _populate_manifest_tables(connection, payload)
-            elif kind == CODE_EVIDENCE_GRAPH_KIND:
-                _code_evidence_graph_schema(connection)
-                _populate_code_evidence_graph_tables(connection, payload)
-            elif kind == PROOF_ATTESTATION_KIND:
-                _proof_attestation_schema(connection)
-                _populate_proof_attestation_tables(connection, payload)
-            elif kind == PROOF_METRICS_KIND:
-                _proof_metrics_schema(connection)
-                _populate_proof_metrics_tables(connection, payload)
-            else:
-                raise ValueError(f"unsupported query artifact kind: {kind}")
-            connection.execute(
-                "INSERT INTO artifact_catalog VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    kind,
-                    QUERY_SCHEMA,
-                    str(source_path),
-                    str(payload.get("generated_at") or ""),
-                    source_sha256,
-                    hashlib.sha256(payload_text.encode("utf-8")).hexdigest(),
-                    source_size,
-                    source_mtime_ns,
-                ),
-            )
-            fields = list(_top_level_fields(payload, kind))
-            if fields:
-                connection.executemany(
-                    "INSERT INTO artifact_fields VALUES (?, ?)", fields
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                _common_schema(connection)
+                if kind == BUNDLE_INDEX_KIND:
+                    _bundle_schema(connection)
+                    _populate_bundle_tables(connection, payload)
+                elif kind == SCHEDULER_MANIFEST_KIND:
+                    _manifest_schema(connection)
+                    _populate_manifest_tables(connection, payload)
+                elif kind == CODE_EVIDENCE_GRAPH_KIND:
+                    _code_evidence_graph_schema(connection)
+                    _populate_code_evidence_graph_tables(connection, payload)
+                elif kind == PROOF_ATTESTATION_KIND:
+                    _proof_attestation_schema(connection)
+                    _populate_proof_attestation_tables(connection, payload)
+                elif kind == PROOF_METRICS_KIND:
+                    _proof_metrics_schema(connection)
+                    _populate_proof_metrics_tables(connection, payload)
+                else:
+                    raise ValueError(f"unsupported query artifact kind: {kind}")
+                connection.execute(
+                    "INSERT INTO artifact_catalog VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        kind,
+                        QUERY_SCHEMA,
+                        str(source_path),
+                        str(payload.get("generated_at") or ""),
+                        source_sha256,
+                        hashlib.sha256(payload_text.encode("utf-8")).hexdigest(),
+                        source_size,
+                        source_mtime_ns,
+                    ),
                 )
-            connection.executemany(
-                "INSERT INTO artifact_tables VALUES (?, ?)",
-                sorted(_table_descriptions(kind).items()),
-            )
+                fields = list(_top_level_fields(payload, kind))
+                if fields:
+                    connection.executemany(
+                        "INSERT INTO artifact_fields VALUES (?, ?)", fields
+                    )
+                connection.executemany(
+                    "INSERT INTO artifact_tables VALUES (?, ?)",
+                    sorted(_table_descriptions(kind).items()),
+                )
+                connection.execute("COMMIT")
+            except BaseException:
+                try:
+                    connection.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
             connection.execute("CHECKPOINT")
         finally:
             connection.close()

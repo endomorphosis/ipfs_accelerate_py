@@ -259,9 +259,9 @@ def _lane_manifest_payload(lane: BundleLaneSpec, *, repo_root: Path) -> dict[str
 
 
 def _lane_database_payload(lane: BundleLaneSpec, *, repo_root: Path) -> dict[str, Any]:
-    """Retain complete lane details in DuckDB while JSON stays prompt-bounded."""
+    """Keep live rows bounded and reference complete planning evidence by key."""
 
-    return lane.to_dict(repo_root=repo_root)
+    return _lane_manifest_payload(lane, repo_root=repo_root)
 
 
 @dataclass
@@ -2055,7 +2055,6 @@ class DynamicBundleScheduler:
         }
         lanes_by_bundle_key = {lane.bundle_key: lane for lane in discovered}
         normalized: list[dict[str, Any]] = []
-        detailed_tasks: list[dict[str, Any]] = []
         for raw in task_projection:
             detailed = dict(raw)
             detailed["state"] = self._projection_state(detailed)
@@ -2065,7 +2064,6 @@ class DynamicBundleScheduler:
             if detailed["state"] == "ready" and lane is not None and not lane.claimable:
                 detailed["state"] = "blocked"
                 detailed.setdefault("blocked_reason", "planner_not_claimable")
-            detailed_tasks.append(detailed)
             normalized.append(_compact_task_manifest_payload(detailed))
         ready = [item for item in normalized if item["state"] == "ready"]
         completed = [item for item in normalized if item["state"] == "completed"]
@@ -2187,7 +2185,7 @@ class DynamicBundleScheduler:
         database_payload = {
             **payload,
             "lanes": detailed_active_lanes,
-            "tasks": detailed_tasks,
+            "tasks": normalized,
         }
         payload = write_scheduler_manifest_artifact(
             self.manifest_path,
