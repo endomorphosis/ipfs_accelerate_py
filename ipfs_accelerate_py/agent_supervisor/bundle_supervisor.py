@@ -1584,11 +1584,39 @@ class DynamicBundleScheduler:
                 str(task_id)
                 for task_id in (state.get("task_identities") or {})
             }
+            try:
+                state_mtime_ns = state_path.stat().st_mtime_ns
+                board_mtime_ns = lane.todo_path.stat().st_mtime_ns
+            except OSError:
+                state_covers_current_board = True
+            else:
+                state_covers_current_board = state_mtime_ns > board_mtime_ns
+                if state_mtime_ns == board_mtime_ns:
+                    projected_statuses = state.get("task_statuses")
+                    if isinstance(projected_statuses, dict):
+                        terminal_aliases = {
+                            "complete": "completed",
+                            "completed": "completed",
+                            "blocked": "blocked",
+                            "on_hold": "blocked",
+                        }
+                        state_covers_current_board = all(
+                            terminal_aliases.get(str(task.status).strip().lower())
+                            not in {"completed", "blocked"}
+                            or terminal_aliases.get(
+                                str(projected_statuses.get(task.task_id) or "").strip().lower()
+                            )
+                            == terminal_aliases.get(str(task.status).strip().lower())
+                            for task in portal_tasks
+                        )
+                    else:
+                        state_covers_current_board = True
             state_matches_board = not portal_tasks or (
                 state_task_ids == portal_task_ids
                 if state_task_ids
                 else task_count == len(portal_tasks)
             )
+            state_matches_board = state_matches_board and state_covers_current_board
             if state_matches_board and task_count > 0 and not active and waiting_count == 0:
                 if completed_count >= task_count:
                     return "completed"

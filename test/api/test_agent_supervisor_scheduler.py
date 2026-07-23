@@ -651,6 +651,65 @@ def test_stale_terminal_state_does_not_settle_a_refilled_bundle(tmp_path: Path) 
     assert active["counts"]["completed"] == 0
 
 
+def test_newer_shard_projection_overrides_stale_blocked_lane_state(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "title": "Recovered prerequisite", "status": "completed"},
+        {
+            "task_id": "T-2",
+            "title": "Released dependent",
+            "status": "todo",
+            "depends_on": ["T-1"],
+        },
+    ]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": bundle}}),
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    lane = scheduler._plan()[0]
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "task_count": 2,
+                "completed_count": 0,
+                "ready_count": 0,
+                "blocked_count": 1,
+                "waiting_count": 1,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "task_statuses": {"T-1": "blocked", "T-2": "waiting"},
+                "task_identities": {
+                    "T-1": {"display_task_id": "T-1"},
+                    "T-2": {"display_task_id": "T-2"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
+    lane.todo_path.write_text(
+        "## T-1 Recovered prerequisite\n\n"
+        "- Status: completed\n\n"
+        "## T-2 Released dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-1\n",
+        encoding="utf-8",
+    )
+
+    active = scheduler.reconcile_once()
+
+    assert len(launcher.starts) == 1
+    assert _active_task_ids(active) == {"T-2"}
+    assert active["counts"]["blocked"] == 0
+
+
 def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"
