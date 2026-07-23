@@ -27,10 +27,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
+from datetime import datetime, timezone
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, Final
 
 from .formal_verification_contracts import (
@@ -59,6 +65,10 @@ SUPPORTED_RECONSTRUCTION_SCHEMA_VERSIONS: Final = frozenset({"1.0.0"})
 SUPPORTED_KERNEL_TARGETS: Final = ("lean", "coq", "isabelle")
 DEFAULT_MAX_CHECKED_SOURCE_BYTES: Final = 4 * 1024 * 1024
 DEFAULT_MAX_KERNEL_OUTPUT_BYTES: Final = 4 * 1024 * 1024
+DEFAULT_MAX_LEAN_PROOF_BYTES: Final = 512 * 1024
+LEAN_PROOF_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/lean-proof-admission@1"
+)
 
 
 class KernelVerificationError(ContractValidationError):
@@ -98,9 +108,93 @@ class KernelFailureCode(str, Enum):
     DIGEST_MISMATCH = "digest_mismatch"
     STATEMENT_MISMATCH = "statement_mismatch"
     FORBIDDEN_DECLARATION = "forbidden_declaration"
+    FORBIDDEN_IMPORT = "forbidden_import"
     INCOMPLETE_PROOF = "incomplete_proof"
+    THEOREM_SUBSTITUTION = "theorem_substitution"
+    SOURCE_COPY = "source_copy"
     CORRUPT_EVIDENCE = "corrupt_evidence"
     MALFORMED_RECONSTRUCTION = "malformed_reconstruction"
+
+
+@dataclass(frozen=True)
+class LeanProofAdmission:
+    """Deterministic pre-kernel admission of one untrusted Lean proof term.
+
+    Admission is deliberately not proof evidence.  It only records that the
+    model supplied a bounded proof expression which was inserted into the one
+    supervisor-owned hole in an otherwise immutable native theorem.
+    """
+
+    accepted: bool
+    failure_code: KernelFailureCode
+    reason: str
+    proof_sha256: str
+    checked_source_sha256: str
+    checked_source: str = field(repr=False)
+    theorem_id: str = ""
+    declaration_name: str = ""
+    model_artifact_id: str = ""
+    schema: str = LEAN_PROOF_ADMISSION_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != LEAN_PROOF_ADMISSION_SCHEMA:
+            raise KernelVerificationError("unsupported Lean proof admission schema")
+        if not isinstance(self.accepted, bool):
+            raise KernelVerificationError("accepted must be a boolean")
+        object.__setattr__(
+            self,
+            "failure_code",
+            _enum_value(self.failure_code, KernelFailureCode, "failure_code"),
+        )
+        if self.accepted != (self.failure_code is KernelFailureCode.NONE):
+            raise KernelVerificationError(
+                "Lean proof admission status and failure code disagree"
+            )
+        for name in (
+            "reason",
+            "proof_sha256",
+            "checked_source_sha256",
+            "checked_source",
+            "theorem_id",
+            "declaration_name",
+            "model_artifact_id",
+        ):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), field_name=name)
+            )
+        if self.accepted and (
+            not self.proof_sha256
+            or not self.checked_source_sha256
+            or not self.checked_source
+        ):
+            raise KernelVerificationError(
+                "accepted Lean proof admission requires source and digest bindings"
+            )
+
+    @property
+    def assurance(self) -> AssuranceLevel:
+        """Lexical admission never upgrades an untrusted candidate."""
+
+        return AssuranceLevel.UNVERIFIED
+
+    @property
+    def artifact_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "accepted": self.accepted,
+            "failure_code": self.failure_code.value,
+            "reason": self.reason,
+            "proof_sha256": self.proof_sha256,
+            "checked_source_sha256": self.checked_source_sha256,
+            "theorem_id": self.theorem_id,
+            "declaration_name": self.declaration_name,
+            "model_artifact_id": self.model_artifact_id,
+            "assurance": AssuranceLevel.UNVERIFIED.value,
+            "authoritative": False,
+        }
 
 
 @dataclass(frozen=True)
@@ -558,6 +652,272 @@ _INCOMPLETE_PROOFS = {
         r"\b(?:sorry|oops|skip_proof)\b", re.IGNORECASE
     ),
 }
+
+
+_LEAN_PROOF_FORBIDDEN_IMPORT = re.compile(
+    r"(?im)(?:^|[\r\n;])\s*(?:prelude\s+)?import\b"
+)
+_LEAN_PROOF_FORBIDDEN_DECLARATION = re.compile(
+    r"(?im)(?:^|[\r\n;])\s*(?:"
+    r"axiom|constant|theorem|lemma|example|def|opaque|abbrev|instance|"
+    r"inductive|structure|class|namespace|section|end|universe|variable|"
+    r"include|omit|open|export|attribute|set_option|local|scoped|"
+    r"syntax|macro|elab|mutual|prelude|private|protected|noncomputable|"
+    r"partial|unsafe|\#[A-Za-z_]"
+    r")\b"
+)
+_LEAN_PROOF_DECLARATION_ANYWHERE = re.compile(
+    r"(?i)\b(?:axiom|theorem|lemma|unsafe\s+(?:def|theorem)|sorryAx)\b"
+)
+_LEAN_PROOF_INCOMPLETE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_'])(?:sorry|admit|sorryAx)(?![A-Za-z0-9_'])"
+)
+_LEAN_PROOF_SOURCE_MARKERS = re.compile(
+    r"(?im)^\s*(?:diff --git|index [0-9a-f]+\.\.[0-9a-f]+|"
+    r"--- (?:a/|/dev/null)|\+\+\+ (?:b/|/dev/null)|@@ )"
+)
+
+
+def _sha256_text(value: str) -> str:
+    return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _lean_admission_rejection(
+    *,
+    code: KernelFailureCode,
+    reason: str,
+    proof_text: str,
+    theorem_id: str,
+    declaration_name: str,
+    model_artifact_id: str,
+) -> LeanProofAdmission:
+    return LeanProofAdmission(
+        accepted=False,
+        failure_code=code,
+        reason=reason,
+        proof_sha256=_sha256_text(proof_text) if proof_text else "",
+        checked_source_sha256="",
+        checked_source="",
+        theorem_id=theorem_id,
+        declaration_name=declaration_name,
+        model_artifact_id=model_artifact_id,
+    )
+
+
+def admit_lean_proof_text(
+    proof_text: str,
+    native_source: str,
+    *,
+    theorem_id: str = "",
+    declaration_name: str = "",
+    model_artifact_id: str = "",
+    proof_placeholder: str = "sorry",
+    expected_statement: str = "",
+    canonical_source: str = "",
+    max_proof_bytes: int = DEFAULT_MAX_LEAN_PROOF_BYTES,
+) -> LeanProofAdmission:
+    """Insert a bounded proof term into exactly one supervisor-owned hole.
+
+    The model never supplies a declaration or source file.  ``native_source``
+    is the canonical, incomplete Lean declaration owned by the supervisor and
+    must contain exactly one explicit placeholder (``sorry`` by default).
+    Lexical checks are intentionally conservative and precede all kernel work.
+    The local Lean kernel remains authoritative after this admission succeeds.
+    """
+
+    theorem_id = _text(theorem_id, field_name="theorem_id")
+    declaration_name = _text(
+        declaration_name, field_name="declaration_name"
+    )
+    model_artifact_id = _text(
+        model_artifact_id, field_name="model_artifact_id"
+    )
+    if not isinstance(proof_text, str):
+        raise KernelVerificationError("proof_text must be a string")
+    if not isinstance(native_source, str) or not native_source.strip():
+        raise KernelVerificationError("native_source must be a non-empty string")
+    if not isinstance(proof_placeholder, str) or not proof_placeholder:
+        raise KernelVerificationError("proof_placeholder must be a non-empty string")
+    proof = proof_text.strip()
+    if not proof:
+        return _lean_admission_rejection(
+            code=KernelFailureCode.MALFORMED_RECONSTRUCTION,
+            reason="Lean proof text is empty",
+            proof_text="",
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    if (
+        isinstance(max_proof_bytes, bool)
+        or not isinstance(max_proof_bytes, int)
+        or max_proof_bytes <= 0
+    ):
+        raise KernelVerificationError("max_proof_bytes must be a positive integer")
+    if len(proof.encode("utf-8")) > max_proof_bytes:
+        return _lean_admission_rejection(
+            code=KernelFailureCode.MALFORMED_RECONSTRUCTION,
+            reason="Lean proof text exceeds the admission byte limit",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    if "\x00" in proof or any(
+        ord(char) < 32 and char not in "\r\n\t" for char in proof
+    ):
+        return _lean_admission_rejection(
+            code=KernelFailureCode.MALFORMED_RECONSTRUCTION,
+            reason="Lean proof text contains forbidden control characters",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    if _LEAN_PROOF_FORBIDDEN_IMPORT.search(proof) or re.search(
+        r"(?i)(?<![A-Za-z0-9_'])import(?![A-Za-z0-9_'])", proof
+    ):
+        return _lean_admission_rejection(
+            code=KernelFailureCode.FORBIDDEN_IMPORT,
+            reason="Lean proof text cannot add imports",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    if _LEAN_PROOF_INCOMPLETE.search(proof):
+        return _lean_admission_rejection(
+            code=KernelFailureCode.INCOMPLETE_PROOF,
+            reason="Lean proof text contains sorry, admit, or sorryAx",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    if _LEAN_PROOF_FORBIDDEN_DECLARATION.search(
+        proof
+    ) or _LEAN_PROOF_DECLARATION_ANYWHERE.search(proof):
+        return _lean_admission_rejection(
+            code=KernelFailureCode.FORBIDDEN_DECLARATION,
+            reason="Lean proof text contains a declaration or unsafe command",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    if _LEAN_PROOF_SOURCE_MARKERS.search(proof) or proof_placeholder in proof:
+        return _lean_admission_rejection(
+            code=KernelFailureCode.SOURCE_COPY,
+            reason="Lean proof text contains source or patch-copy markers",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    for identity in (theorem_id, declaration_name):
+        if identity and re.search(
+            rf"(?<![A-Za-z0-9_'.]){re.escape(identity)}(?![A-Za-z0-9_'.])",
+            proof,
+        ):
+            return _lean_admission_rejection(
+                code=KernelFailureCode.THEOREM_SUBSTITUTION,
+                reason="Lean proof text references the declaration being defined",
+                proof_text=proof,
+                theorem_id=theorem_id,
+                declaration_name=declaration_name,
+                model_artifact_id=model_artifact_id,
+            )
+    normalized_proof = _normalized_statement(proof)
+    normalized_statement = _normalized_statement(expected_statement)
+    if (
+        normalized_statement
+        and len(normalized_statement) >= 12
+        and normalized_statement in normalized_proof
+    ):
+        return _lean_admission_rejection(
+            code=KernelFailureCode.THEOREM_SUBSTITUTION,
+            reason="Lean proof text copied or substituted the fixed theorem statement",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    source_for_copy_check = canonical_source or native_source
+    for line in source_for_copy_check.splitlines():
+        normalized_line = _normalized_statement(line)
+        if (
+            len(normalized_line) >= 40
+            and normalized_line != proof_placeholder
+            and normalized_line in normalized_proof
+        ):
+            return _lean_admission_rejection(
+                code=KernelFailureCode.SOURCE_COPY,
+                reason="Lean proof text copied canonical source text",
+                proof_text=proof,
+                theorem_id=theorem_id,
+                declaration_name=declaration_name,
+                model_artifact_id=model_artifact_id,
+            )
+    if native_source.count(proof_placeholder) != 1:
+        return _lean_admission_rejection(
+            code=KernelFailureCode.THEOREM_SUBSTITUTION,
+            reason="canonical Lean source must contain exactly one proof placeholder",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    checked_source = native_source.replace(proof_placeholder, proof, 1)
+    if checked_source.count(proof) != 1:
+        return _lean_admission_rejection(
+            code=KernelFailureCode.SOURCE_COPY,
+            reason="proof text must occur exactly once in reconstructed source",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    source_problem = _source_failure(checked_source, KernelTarget.LEAN)
+    if source_problem is not None:
+        return _lean_admission_rejection(
+            code=source_problem[0],
+            reason=source_problem[1],
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    extracted = _extract_statement(checked_source, KernelTarget.LEAN)
+    template_statement = _extract_statement(native_source, KernelTarget.LEAN)
+    if not extracted or extracted != template_statement:
+        return _lean_admission_rejection(
+            code=KernelFailureCode.THEOREM_SUBSTITUTION,
+            reason="proof insertion changed the fixed theorem statement",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    if expected_statement and extracted != _normalized_statement(expected_statement):
+        return _lean_admission_rejection(
+            code=KernelFailureCode.STATEMENT_MISMATCH,
+            reason="canonical Lean declaration does not match the expected statement",
+            proof_text=proof,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
+    return LeanProofAdmission(
+        accepted=True,
+        failure_code=KernelFailureCode.NONE,
+        reason="proof text admitted for independent Lean kernel checking",
+        proof_sha256=_sha256_text(proof),
+        checked_source_sha256=_sha256_text(checked_source),
+        checked_source=checked_source,
+        theorem_id=theorem_id,
+        declaration_name=declaration_name,
+        model_artifact_id=model_artifact_id,
+    )
 
 
 def _source_failure(source: str, target: KernelTarget) -> tuple[KernelFailureCode, str] | None:
@@ -1239,6 +1599,314 @@ def kernel_unavailable_result(
     )
 
 
+def _local_lean_reconstruction_packet(
+    *,
+    checked_source: str,
+    proof_text: str,
+    declaration_name: str,
+    bindings: KernelVerificationBindings,
+    timeout_seconds: float,
+    kernel_runner: Any = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
+    """Execute exact admitted source and return the standard mapper packet."""
+
+    lean_path = shutil.which("lean")
+    if kernel_runner is None and not lean_path:
+        return None
+    executable = str(Path(lean_path).resolve()) if lean_path else "lean"
+    source = checked_source.rstrip() + "\n"
+    if "#print axioms" not in source:
+        if not declaration_name:
+            match = re.search(
+                r"\b(?:theorem|lemma)\s+([A-Za-z_][A-Za-z0-9_'.]*)",
+                source,
+            )
+            declaration_name = match.group(1) if match else ""
+        if not declaration_name:
+            raise KernelVerificationError(
+                "declaration_name is required for Lean axiom inspection"
+            )
+        source += f"\n#print axioms {declaration_name}\n"
+
+    started_at = datetime.now(timezone.utc)
+    command: list[str]
+    stdout: str
+    stderr: str
+    returncode: int
+    timed_out = False
+    version = ""
+    if kernel_runner is not None:
+        raw = kernel_runner(
+            source=source,
+            timeout_seconds=timeout_seconds,
+            declaration_name=declaration_name,
+        )
+        if not isinstance(raw, Mapping):
+            raise KernelVerificationError(
+                "kernel_runner must return a mapping"
+            )
+        command = [
+            str(item)
+            for item in raw.get("command", (executable, "--json", "Reconstruction.lean"))
+        ]
+        stdout = str(raw.get("stdout") or "")
+        stderr = str(raw.get("stderr") or "")
+        returncode = int(raw.get("returncode", 1))
+        timed_out = bool(raw.get("timed_out", False))
+        executable = str(raw.get("executable") or command[0] or executable)
+        version = str(raw.get("version") or "injected-kernel-runner")
+    else:
+        assert lean_path is not None
+        with tempfile.TemporaryDirectory(prefix="lean-proof-gate-") as directory:
+            source_path = Path(directory) / "Reconstruction.lean"
+            source_path.write_text(source, encoding="utf-8")
+            command = [executable, "--json", str(source_path)]
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=directory,
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=timeout_seconds,
+                    check=False,
+                    env={**os.environ, "NO_COLOR": "1"},
+                )
+                stdout = completed.stdout or ""
+                stderr = completed.stderr or ""
+                returncode = int(completed.returncode)
+            except subprocess.TimeoutExpired as exc:
+                stdout = (
+                    exc.stdout.decode("utf-8", errors="replace")
+                    if isinstance(exc.stdout, bytes)
+                    else str(exc.stdout or "")
+                )
+                stderr = (
+                    exc.stderr.decode("utf-8", errors="replace")
+                    if isinstance(exc.stderr, bytes)
+                    else str(exc.stderr or "")
+                )
+                returncode = 124
+                timed_out = True
+        try:
+            version_run = subprocess.run(
+                [executable, "--version"],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=min(5.0, timeout_seconds),
+                check=False,
+            )
+            version = (version_run.stdout or "").strip().splitlines()[0][:256]
+        except (OSError, subprocess.SubprocessError, IndexError):
+            version = "unknown"
+
+    finished_at = datetime.now(timezone.utc)
+    request_id = bindings.request_id
+    candidate_id = bindings.candidate_id
+    reconstruction_id = content_identity(
+        {
+            "request_id": request_id,
+            "candidate_id": candidate_id,
+            "target_itp": "lean",
+            "checked_source": source,
+            "command": command,
+        }
+    )
+    lock_id = content_identity(
+        {
+            "itp": "lean",
+            "itp_version": version or "unknown",
+            "executable": executable,
+        }
+    )
+    source_digest = _upstream_content_digest({"checked_source": source})
+    output_digest = _upstream_content_digest(
+        {"stdout": stdout, "stderr": stderr}
+    )
+    record = {
+        "schema_version": "1.0.0",
+        "reconstruction_id": reconstruction_id,
+        "request_id": request_id,
+        "candidate_id": candidate_id,
+        "target_itp": "lean",
+        "environment_lock_id": lock_id,
+        "kernel_command": " ".join(command),
+        "kernel_accepted": returncode == 0 and not timed_out,
+        "kernel_output_digest": output_digest,
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "failure_reason": (
+            None
+            if returncode == 0 and not timed_out
+            else "Lean kernel timed out"
+            if timed_out
+            else f"Lean kernel exited with status {returncode}"
+        ),
+    }
+    evidence = {
+        "schema_version": "1.0.0",
+        "reconstruction_id": reconstruction_id,
+        "request_id": request_id,
+        "candidate_id": candidate_id,
+        "itp": "lean",
+        "command": command,
+        "checked_source": source,
+        "checked_source_digest": source_digest,
+        "reconstructed_proof_text": proof_text.strip(),
+        "stdout": stdout,
+        "stderr": stderr,
+        "returncode": returncode,
+        "timed_out": timed_out,
+        "wall_time_seconds": str(
+            max(0.0, (finished_at - started_at).total_seconds())
+        ),
+        "raw_output_digest": output_digest,
+    }
+    lock = {
+        "schema_version": "1.0.0",
+        "lock_id": lock_id,
+        "itp": "lean",
+        "itp_version": version or "unknown",
+        "kernel_command_template": "{lean} --json {source_file}",
+        "solver_versions": {},
+        "executable_paths": {"lean": executable},
+        "os_info": os.name,
+        "pinned_at": started_at.isoformat(),
+    }
+    return record, evidence, lock
+
+
+def verify_admitted_lean_proof(
+    admission: LeanProofAdmission,
+    proof_text: str,
+    *,
+    bindings: KernelVerificationBindings,
+    verifier: "IndependentKernelVerifier | None" = None,
+    reconstruction_record: Any = None,
+    reconstruction_evidence: Any = None,
+    environment_lock: Any = None,
+    timeout_seconds: float = 30.0,
+    kernel_runner: Any = None,
+    provider_status: str = "untrusted_model_draft",
+) -> KernelVerificationResult:
+    """Send an admitted model proof through the normal independent mapper."""
+
+    if not isinstance(admission, LeanProofAdmission):
+        raise KernelVerificationError("admission must be LeanProofAdmission")
+    if not isinstance(bindings, KernelVerificationBindings):
+        raise KernelVerificationError("bindings must be KernelVerificationBindings")
+    if not admission.accepted:
+        return _failed_result(
+            target=KernelTarget.LEAN,
+            status=KernelVerificationStatus.REJECTED,
+            failure_code=admission.failure_code,
+            reason=admission.reason,
+            bindings=bindings,
+            record={},
+            evidence_record={},
+            environment_lock={},
+            provider_status=provider_status,
+        )
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or timeout_seconds <= 0
+    ):
+        raise KernelVerificationError("timeout_seconds must be positive")
+    mapper = verifier or IndependentKernelVerifier()
+    supplied = (
+        reconstruction_record is not None,
+        reconstruction_evidence is not None,
+        environment_lock is not None,
+    )
+    if any(supplied) and not all(supplied):
+        raise KernelVerificationError(
+            "reconstruction record, evidence, and environment lock are all required"
+        )
+    if all(supplied):
+        evidence_record = _record(
+            reconstruction_evidence, field_name="reconstruction_evidence"
+        )
+        admitted_sources = {admission.checked_source}
+        if admission.declaration_name and "#print axioms" not in admission.checked_source:
+            admitted_sources.add(
+                admission.checked_source.rstrip()
+                + f"\n\n#print axioms {admission.declaration_name}\n"
+            )
+        if evidence_record.get("checked_source") not in admitted_sources:
+            return _failed_result(
+                target=KernelTarget.LEAN,
+                status=KernelVerificationStatus.REJECTED,
+                failure_code=KernelFailureCode.SOURCE_COPY,
+                reason="kernel packet did not check the exact admitted source",
+                bindings=bindings,
+                record=_record(
+                    reconstruction_record, field_name="reconstruction_record"
+                ),
+                evidence_record=evidence_record,
+                environment_lock=_record(
+                    environment_lock, field_name="environment_lock"
+                ),
+                provider_status=provider_status,
+            )
+        if str(evidence_record.get("reconstructed_proof_text") or "").strip() != (
+            proof_text.strip()
+        ):
+            return _failed_result(
+                target=KernelTarget.LEAN,
+                status=KernelVerificationStatus.REJECTED,
+                failure_code=KernelFailureCode.BINDING_MISMATCH,
+                reason="kernel packet proof text did not match the model artifact",
+                bindings=bindings,
+                record=_record(
+                    reconstruction_record, field_name="reconstruction_record"
+                ),
+                evidence_record=evidence_record,
+                environment_lock=_record(
+                    environment_lock, field_name="environment_lock"
+                ),
+                provider_status=provider_status,
+            )
+        return mapper.verify(
+            reconstruction_record,
+            reconstruction_evidence,
+            environment_lock,
+            bindings=bindings,
+            expected_native_source=admission.checked_source,
+            provider_status=provider_status,
+            independent=True,
+        )
+
+    packet = _local_lean_reconstruction_packet(
+        checked_source=admission.checked_source,
+        proof_text=proof_text,
+        declaration_name=admission.declaration_name,
+        bindings=bindings,
+        timeout_seconds=float(timeout_seconds),
+        kernel_runner=kernel_runner,
+    )
+    if packet is None:
+        return kernel_unavailable_result(
+            target=KernelTarget.LEAN,
+            bindings=bindings,
+            reason="local Lean executable is unavailable",
+            provider_status=provider_status,
+        )
+    record, evidence, lock = packet
+    return mapper.verify(
+        record,
+        evidence,
+        lock,
+        bindings=bindings,
+        expected_native_source=admission.checked_source,
+        provider_status=provider_status,
+        independent=True,
+    )
+
+
 def build_kernel_verified_receipt(
     verification: KernelVerificationResult,
     *,
@@ -1345,6 +2013,53 @@ class IndependentKernelVerifier:
         kwargs.setdefault("policy", self.policy)
         return verify_kernel_reconstruction(*args, **kwargs)
 
+    def verify_lean_proof_text(
+        self,
+        proof_text: str,
+        native_source: str,
+        *,
+        bindings: KernelVerificationBindings,
+        theorem_id: str = "",
+        declaration_name: str = "",
+        model_artifact_id: str = "",
+        proof_placeholder: str = "sorry",
+        expected_statement: str = "",
+        canonical_source: str = "",
+        max_proof_bytes: int = DEFAULT_MAX_LEAN_PROOF_BYTES,
+        reconstruction_record: Any = None,
+        reconstruction_evidence: Any = None,
+        environment_lock: Any = None,
+        timeout_seconds: float = 30.0,
+        kernel_runner: Any = None,
+        provider_status: str = "untrusted_model_draft",
+    ) -> tuple[LeanProofAdmission, KernelVerificationResult]:
+        """Admit and independently check exact model-supplied Lean proof text."""
+
+        admission = admit_lean_proof_text(
+            proof_text,
+            native_source,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+            proof_placeholder=proof_placeholder,
+            expected_statement=expected_statement,
+            canonical_source=canonical_source,
+            max_proof_bytes=max_proof_bytes,
+        )
+        result = verify_admitted_lean_proof(
+            admission,
+            proof_text,
+            bindings=bindings,
+            verifier=self,
+            reconstruction_record=reconstruction_record,
+            reconstruction_evidence=reconstruction_evidence,
+            environment_lock=environment_lock,
+            timeout_seconds=timeout_seconds,
+            kernel_runner=kernel_runner,
+            provider_status=provider_status,
+        )
+        return admission, result
+
     def reconstruct_and_verify(
         self,
         *,
@@ -1410,13 +2125,17 @@ evaluate_reconstruction = verify_kernel_reconstruction
 derive_reconstruction_verdict = derive_verdict
 derive_kernel_verdict = derive_verdict
 create_kernel_receipt = build_kernel_verified_receipt
+admit_leanstral_proof_text = admit_lean_proof_text
+verify_leanstral_proof_text = verify_admitted_lean_proof
 
 
 __all__ = [
     "DEFAULT_MAX_CHECKED_SOURCE_BYTES",
     "DEFAULT_MAX_KERNEL_OUTPUT_BYTES",
+    "DEFAULT_MAX_LEAN_PROOF_BYTES",
     "KERNEL_VERIFICATION_SCHEMA",
     "KERNEL_VERIFICATION_SCHEMA_VERSION",
+    "LEAN_PROOF_ADMISSION_SCHEMA",
     "SUPPORTED_KERNEL_TARGETS",
     "SUPPORTED_RECONSTRUCTION_SCHEMA_VERSIONS",
     "IndependentKernelVerifier",
@@ -1430,6 +2149,9 @@ __all__ = [
     "KernelVerificationResult",
     "KernelVerificationStatus",
     "KernelVerifier",
+    "LeanProofAdmission",
+    "admit_lean_proof_text",
+    "admit_leanstral_proof_text",
     "build_kernel_verified_receipt",
     "create_kernel_receipt",
     "derive_reconstruction_verdict",
@@ -1440,4 +2162,6 @@ __all__ = [
     "map_hammer_reconstruction",
     "map_reconstruction_record",
     "verify_kernel_reconstruction",
+    "verify_admitted_lean_proof",
+    "verify_leanstral_proof_text",
 ]
