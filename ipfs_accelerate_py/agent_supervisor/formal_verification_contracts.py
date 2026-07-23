@@ -114,6 +114,18 @@ class AttemptStatus(str, Enum):
     CANCELLED = "cancelled"
     BLOCKED = "blocked"
 
+    @property
+    def terminal(self) -> bool:
+        """Whether no more execution can occur within this attempt."""
+
+        return self not in {AttemptStatus.PLANNED, AttemptStatus.RUNNING}
+
+    @property
+    def dependency_satisfied(self) -> bool:
+        """Whether dependants may consume this attempt's outputs."""
+
+        return self is AttemptStatus.SUCCEEDED
+
 
 class ProofVerdict(str, Enum):
     """Semantic result of a proof receipt."""
@@ -124,6 +136,12 @@ class ProofVerdict(str, Enum):
     UNSUPPORTED = "unsupported"
     ERROR = "error"
     CANCELLED = "cancelled"
+
+    @property
+    def conclusive(self) -> bool:
+        """Whether the result settles an obligation and can stop a portfolio."""
+
+        return self in {ProofVerdict.PROVED, ProofVerdict.DISPROVED}
 
 
 class EvidenceKind(str, Enum):
@@ -622,12 +640,45 @@ class ProofPlanStep(CanonicalContract):
         object.__setattr__(
             self, "metadata", _mapping(self.metadata, field_name="metadata")
         )
+        dependency_mode = self.metadata.get("dependency_mode", "all")
+        if dependency_mode not in {"all", "any"}:
+            raise ContractValidationError(
+                "proof-plan step dependency_mode must be 'all' or 'any'"
+            )
+        for key in ("portfolio_id", "portfolio_group"):
+            if key in self.metadata and not isinstance(self.metadata[key], str):
+                raise ContractValidationError(
+                    "proof-plan step %s must be a string" % key
+                )
+        priority = self.metadata.get("priority", 0)
+        if isinstance(priority, bool) or not isinstance(priority, int):
+            raise ContractValidationError(
+                "proof-plan step priority must be an integer"
+            )
         if self.step_id in self.depends_on:
             raise ContractValidationError("a proof-plan step cannot depend on itself")
 
     @property
     def node_id(self) -> str:
         return self.step_id
+
+    @property
+    def portfolio_id(self) -> str:
+        """Stable cancellation group declared by plan metadata, if any."""
+
+        value = self.metadata.get("portfolio_id", self.metadata.get("portfolio_group", ""))
+        return value.strip() if isinstance(value, str) else ""
+
+    @property
+    def dependency_mode(self) -> str:
+        """Return ``all`` (default) or ``any`` dependency semantics.
+
+        ``any`` is useful for an explicit portfolio join node.  It does not
+        weaken ordinary proof-plan dependencies, which remain conjunctive.
+        """
+
+        value = self.metadata.get("dependency_mode", "all")
+        return "any" if value == "any" else "all"
 
     def _payload(self) -> Dict[str, Any]:
         return {
@@ -763,6 +814,62 @@ class ProofPlan(CanonicalContract):
     @property
     def dependencies(self) -> Dict[str, Tuple[str, ...]]:
         return {step.step_id: step.depends_on for step in self.steps}
+
+    @property
+    def dependants(self) -> Dict[str, Tuple[str, ...]]:
+        """Reverse dependency edges, deterministically ordered."""
+
+        result: Dict[str, List[str]] = {step.step_id: [] for step in self.steps}
+        for step in self.steps:
+            for dependency in step.depends_on:
+                result[dependency].append(step.step_id)
+        return {key: tuple(sorted(value)) for key, value in result.items()}
+
+    @property
+    def topological_step_ids(self) -> Tuple[str, ...]:
+        """Return a deterministic dependency-first topological ordering."""
+
+        remaining = {step.step_id: set(step.depends_on) for step in self.steps}
+        ordered: List[str] = []
+        while remaining:
+            ready = sorted(
+                step_id for step_id, dependencies in remaining.items() if not dependencies
+            )
+            # The graph was validated at construction; this is defensive
+            # against future alternate constructors.
+            if not ready:
+                raise ContractValidationError("proof-plan dependencies must be acyclic")
+            ordered.extend(ready)
+            for step_id in ready:
+                del remaining[step_id]
+            for dependencies in remaining.values():
+                dependencies.difference_update(ready)
+        return tuple(ordered)
+
+    @property
+    def critical_path_lengths(self) -> Dict[str, int]:
+        """Longest remaining node count from each step to a terminal node."""
+
+        children = self.dependants
+        lengths: Dict[str, int] = {}
+        for step_id in reversed(self.topological_step_ids):
+            lengths[step_id] = 1 + max(
+                (lengths[child] for child in children[step_id]), default=0
+            )
+        return lengths
+
+    @property
+    def downstream_unlock_counts(self) -> Dict[str, int]:
+        """Number of distinct transitive dependants unlocked by each step."""
+
+        children = self.dependants
+        descendants: Dict[str, set[str]] = {}
+        for step_id in reversed(self.topological_step_ids):
+            reachable: set[str] = set(children[step_id])
+            for child in children[step_id]:
+                reachable.update(descendants[child])
+            descendants[step_id] = reachable
+        return {step_id: len(value) for step_id, value in descendants.items()}
 
     def _payload(self) -> Dict[str, Any]:
         return {
