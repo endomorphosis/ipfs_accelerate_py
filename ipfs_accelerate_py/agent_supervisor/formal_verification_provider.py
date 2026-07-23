@@ -611,7 +611,9 @@ def _duration_ms(started: float) -> int:
     return max(0, int((time.monotonic() - started) * 1000))
 
 
-def _exception_failure(exc: BaseException) -> tuple[ProviderFailureCode, str, bool]:
+def _exception_failure(
+    exc: BaseException,
+) -> tuple[ProviderFailureCode, str, bool]:
     if isinstance(exc, ProofProviderError):
         return exc.failure.code, exc.failure.message, exc.failure.retryable
     if isinstance(exc, (MemoryError, RecursionError)):
@@ -636,6 +638,12 @@ def _exception_failure(exc: BaseException) -> tuple[ProviderFailureCode, str, bo
         f"proof provider raised {type(exc).__name__}: {str(exc)[:512]}",
         False,
     )
+
+
+def _exception_details(exc: BaseException) -> Mapping[str, Any]:
+    """Keep typed provider failure metadata across every execution boundary."""
+
+    return exc.failure.details if isinstance(exc, ProofProviderError) else {}
 
 
 def _normalize_provider_result(
@@ -724,6 +732,7 @@ def dispatch_provider_request(
             code,
             message,
             retryable=retryable,
+            details=_exception_details(exc),
             provider_id=provider_id,
             provider_version=provider_version,
             duration_ms=_duration_ms(started),
@@ -884,7 +893,11 @@ class InProcessProofProvider(ProviderClient):
             except BaseException as exc:
                 code, message, retryable = _exception_failure(exc)
                 response = ProviderResponse.failure(
-                    request, code, message, retryable=retryable
+                    request,
+                    code,
+                    message,
+                    retryable=retryable,
+                    details=_exception_details(exc),
                 )
             try:
                 results.put_nowait(response)
@@ -1214,6 +1227,7 @@ class SubprocessProofProvider(ProviderClient):
                 code,
                 message,
                 retryable=retryable,
+                details=_exception_details(exc),
                 duration_ms=_duration_ms(started),
             )
 
