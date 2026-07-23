@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha1
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 REPO_ROOT = Path.cwd()
 
@@ -54,7 +54,11 @@ from .implementation_daemon import (
     write_json_atomic,
     write_text_atomic,
 )
-from .supervisor import descendant_processes, worktree_phase_worker_status
+from .supervisor import (
+    active_codex_exec_workers,
+    descendant_processes,
+    worktree_phase_worker_status,
+)
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
 
@@ -4860,6 +4864,7 @@ class PortalImplementationSupervisor:
         # the authoritative liveness bound.
         if self._implementation_attempt_is_active(state, now_ts=now_ts) and (
             state.active_phase in {"validating", "merge_reconciliation", "merge_resolver"}
+            or self._active_agent_subprocess_exists()
             or self._active_validation_subprocess_exists()
         ):
             return ""
@@ -4883,6 +4888,12 @@ class PortalImplementationSupervisor:
             f"implementation log stalled for active task {state.active_task_id}: "
             f"{age_seconds:.0f}s without output in {log_path}"
         )
+
+    def _active_agent_subprocess_exists(self) -> bool:
+        """Return whether the managed daemon still owns a live agent worker."""
+
+        daemon_pid = self._read_managed_daemon_pid()
+        return bool(daemon_pid and active_codex_exec_workers(daemon_pid))
 
     def _active_validation_subprocess_exists(self) -> bool:
         """Return whether a managed agent is currently running a bounded test command."""
