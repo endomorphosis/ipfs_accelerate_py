@@ -1104,7 +1104,7 @@ def launch_bundle_lanes(
 
     results: list[dict[str, Any]] = []
     active_lanes: list[BundleLaneSpec] = []
-    path = coordination_path or default_state_root(repo_root) / "coordination.sqlite3"
+    path = coordination_path or default_state_root(repo_root) / "coordination.duckdb"
     with LeaseCoordinator(path) as coordinator:
         for lane in lanes:
             blockers = [active.bundle_key for active in active_lanes if _lanes_conflict(lane, active)]
@@ -1358,7 +1358,7 @@ class DynamicBundleScheduler:
     The bundle index is an input stream, not a launch snapshot.  Every
     reconciliation rereads it, durably registers all discovered work, reaps
     lanes that no longer execute, and claims enough ready work to fill the
-    configured capacity.  SQLite leases remain the sole execution authority;
+    configured capacity. DuckDB leases remain the sole execution authority;
     the in-memory process table is only a live-process projection.
     """
 
@@ -1401,7 +1401,7 @@ class DynamicBundleScheduler:
         self.metrics_path = Path(metrics_path or self.state_root / "scheduler_metrics.json").resolve()
         self.decision_metrics_path = self.metrics_path.with_name("scheduler_decision_metrics.json")
         self.coordination_path = Path(
-            coordination_path or self.state_root / "coordination.sqlite3"
+            coordination_path or self.state_root / "coordination.duckdb"
         ).resolve()
         self.max_lanes = int(max_lanes)
         self.claimant_did = str(claimant_did)
@@ -2219,10 +2219,16 @@ class DynamicBundleScheduler:
             launched: list[str] = []
             with LeaseCoordinator(self.coordination_path) as coordinator:
                 registered: list[BundleLaneSpec] = []
-                for lane in discovered:
-                    if not lane.queue_payload:
-                        continue
-                    adapted = coordinator.register_bundle(lane.queue_payload)
+                registration_lanes = [
+                    lane for lane in discovered if lane.queue_payload
+                ]
+                adapted_bundles = coordinator.register_bundles(
+                    lane.queue_payload for lane in registration_lanes
+                )
+                for lane, adapted in zip(
+                    registration_lanes,
+                    adapted_bundles,
+                ):
                     registered.append(
                         replace(
                             lane,

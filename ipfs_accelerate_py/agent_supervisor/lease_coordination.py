@@ -1,24 +1,27 @@
-"""Lease-safe Profile G adapters and coordination for accelerator daemon lanes.
+"""Lease-safe Profile G adapters and DuckDB coordination for daemon lanes.
 
-The coordinator deliberately uses SQLite rather than process-local locks: bundle
-supervisors are separate processes and an accepted lease must be visible to all
-of them.  Every mutating operation checks the accepted claim and fencing token
-inside an immediate transaction, so an expired worker cannot publish progress
+Bundle supervisors are separate processes, while DuckDB permits one external
+writer process at a time. Each operation therefore takes a process-shared file
+lock, opens a short-lived DuckDB connection, and checks the accepted claim and
+fencing token inside one transaction. An expired worker cannot publish progress
 or a terminal receipt after a takeover.
 """
 
 from __future__ import annotations
 
 import base64
+import fcntl
 import hashlib
 import json
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass, fields
+from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .task_identity import canonical_bundle_identity
 
@@ -30,6 +33,150 @@ STRUCTURAL_DEPENDENCY_REPAIR_KINDS = frozenset(
     {"missing_dependency", "dependency_cycle", "duplicate_alias", "duplicate_task"}
 )
 READY_BUNDLE_TASK_STATUSES = frozenset({"todo", "ready", "needed", "queued", "in_progress"})
+COORDINATION_STORE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.lease-coordination-duckdb@1"
+COORDINATION_LOCK_TIMEOUT_SECONDS = 30.0
+SMALL_STORE_FULL_ARTIFACT_LIMIT = 10_000
+
+
+class _DuckRow(Mapping[str, Any]):
+    """Small sqlite3.Row-compatible view over one DuckDB result row."""
+
+    def __init__(self, columns: Iterable[str], values: Iterable[Any]) -> None:
+        self._columns = tuple(str(column) for column in columns)
+        self._values = tuple(values)
+        self._positions = {
+            column: index for index, column in enumerate(self._columns)
+        }
+
+    def __getitem__(self, key: str | int) -> Any:
+        if isinstance(key, int):
+            return self._values[key]
+        return self._values[self._positions[str(key)]]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._columns)
+
+    def __len__(self) -> int:
+        return len(self._columns)
+
+
+class _DuckCursor:
+    """Materialize DuckDB rows before another statement reuses the connection."""
+
+    def __init__(self, connection: Any) -> None:
+        description = connection.description or ()
+        self._columns = tuple(str(item[0]) for item in description)
+        self._rows = list(connection.fetchall()) if description else []
+        self._offset = 0
+        self.rowcount = -1
+        if (
+            len(self._columns) == 1
+            and self._columns[0].lower() == "count"
+            and len(self._rows) == 1
+            and isinstance(self._rows[0][0], int)
+        ):
+            self.rowcount = int(self._rows[0][0])
+            self._rows = []
+
+    def fetchone(self) -> _DuckRow | None:
+        if self._offset >= len(self._rows):
+            return None
+        values = self._rows[self._offset]
+        self._offset += 1
+        return _DuckRow(self._columns, values)
+
+    def fetchall(self) -> list[_DuckRow]:
+        rows = [
+            _DuckRow(self._columns, values)
+            for values in self._rows[self._offset :]
+        ]
+        self._offset = len(self._rows)
+        return rows
+
+    def __iter__(self) -> Iterator[_DuckRow]:
+        return iter(self.fetchall())
+
+
+class _DuckConnection:
+    """Compatibility adapter for the coordinator's existing transaction code."""
+
+    def __init__(self, connection: Any) -> None:
+        self._connection = connection
+        self._transaction_active = False
+        self._context_depth = 0
+
+    def execute(
+        self,
+        sql: str,
+        parameters: Iterable[Any] | Mapping[str, Any] | None = None,
+    ) -> _DuckCursor:
+        statement = str(sql)
+        normalized = " ".join(statement.strip().upper().split())
+        if normalized == "BEGIN IMMEDIATE":
+            statement = "BEGIN TRANSACTION"
+            normalized = statement.upper()
+        if parameters is None:
+            self._connection.execute(statement)
+        else:
+            self._connection.execute(statement, parameters)
+        if normalized.startswith("BEGIN"):
+            self._transaction_active = True
+        elif normalized in {"COMMIT", "ROLLBACK"}:
+            self._transaction_active = False
+        return _DuckCursor(self._connection)
+
+    def executemany(
+        self,
+        sql: str,
+        parameters: Iterable[Iterable[Any]],
+    ) -> _DuckCursor:
+        self._connection.executemany(sql, parameters)
+        return _DuckCursor(self._connection)
+
+    def executescript(self, sql: str) -> _DuckCursor:
+        self._connection.execute(sql)
+        return _DuckCursor(self._connection)
+
+    def commit(self) -> None:
+        if self._transaction_active:
+            self._connection.commit()
+            self._transaction_active = False
+
+    def rollback(self) -> None:
+        if self._transaction_active:
+            self._connection.rollback()
+            self._transaction_active = False
+
+    def close(self) -> None:
+        try:
+            self.rollback()
+        finally:
+            self._connection.close()
+
+    def __enter__(self) -> _DuckConnection:
+        if self._context_depth == 0 and not self._transaction_active:
+            self.execute("BEGIN TRANSACTION")
+        self._context_depth += 1
+        return self
+
+    def __exit__(self, exc_type: Any, _exc: Any, _traceback: Any) -> None:
+        self._context_depth = max(0, self._context_depth - 1)
+        if self._context_depth == 0:
+            if exc_type is None:
+                self.commit()
+            else:
+                self.rollback()
+
+
+def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Open one flock-serialized DuckDB connection for a public operation."""
+
+    @wraps(method)
+    def wrapped(self: LeaseCoordinator, *args: Any, **kwargs: Any) -> Any:
+        with self._database_operation():
+            return method(self, *args, **kwargs)
+
+    return wrapped
 
 
 class LeaseError(RuntimeError):
@@ -425,27 +572,87 @@ class LeaseCoordinator:
     def __init__(self, path: str | Path, *, clock_ms: Callable[[], int] | None = None) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.is_file():
+            with self.path.open("rb") as stream:
+                if stream.read(16) == b"SQLite format 3\0":
+                    raise ValueError(
+                        f"legacy SQLite coordination store requires migration: {self.path}"
+                    )
         self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
         self._lock = threading.RLock()
-        self._connection = sqlite3.connect(str(self.path), timeout=30, check_same_thread=False)
-        self._connection.row_factory = sqlite3.Row
-        self._connection.execute("PRAGMA journal_mode=WAL")
-        self._connection.execute("PRAGMA foreign_keys=ON")
-        self._init_schema()
+        self._operation_state = threading.local()
+        self._connection: _DuckConnection | None = None
+        self._lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with self._database_operation():
+            self._init_schema()
+
+    @contextmanager
+    def _database_operation(self) -> Iterator[None]:
+        """Serialize short-lived DuckDB connections across lane processes."""
+
+        with self._lock:
+            depth = int(getattr(self._operation_state, "depth", 0))
+            if depth:
+                self._operation_state.depth = depth + 1
+                try:
+                    yield
+                finally:
+                    self._operation_state.depth = depth
+                return
+
+            self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+            lock_handle = self._lock_path.open("a+b")
+            deadline = time.monotonic() + COORDINATION_LOCK_TIMEOUT_SECONDS
+            try:
+                while True:
+                    try:
+                        fcntl.flock(
+                            lock_handle.fileno(),
+                            fcntl.LOCK_EX | fcntl.LOCK_NB,
+                        )
+                        break
+                    except BlockingIOError:
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError(
+                                f"timed out acquiring coordination lock: {self._lock_path}"
+                            )
+                        time.sleep(0.01)
+                try:
+                    import duckdb
+                except ImportError as exc:
+                    raise RuntimeError(
+                        "DuckDB is required for lease coordination"
+                    ) from exc
+                self._connection = _DuckConnection(
+                    duckdb.connect(str(self.path))
+                )
+                self._operation_state.depth = 1
+                try:
+                    yield
+                finally:
+                    self._operation_state.depth = 0
+                    connection = self._connection
+                    self._connection = None
+                    if connection is not None:
+                        connection.close()
+            finally:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+                lock_handle.close()
 
     def _init_schema(self) -> None:
+        assert self._connection is not None
         with self._connection:
             self._connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS artifacts (
                   cid TEXT PRIMARY KEY, kind TEXT NOT NULL, payload_json TEXT NOT NULL,
-                  created_at_ms INTEGER NOT NULL
+                  created_at_ms BIGINT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS tasks (
                   task_cid TEXT PRIMARY KEY, goal_cid TEXT NOT NULL, subgoal_cid TEXT NOT NULL,
                   task_id TEXT NOT NULL, bundle_json TEXT NOT NULL,
-                  registered_at_ms INTEGER NOT NULL DEFAULT 0,
-                  updated_at_ms INTEGER NOT NULL DEFAULT 0
+                  registered_at_ms BIGINT NOT NULL DEFAULT 0,
+                  updated_at_ms BIGINT NOT NULL DEFAULT 0
                 );
                 CREATE TABLE IF NOT EXISTS task_aliases (
                   alias_task_cid TEXT PRIMARY KEY, task_cid TEXT NOT NULL
@@ -456,36 +663,39 @@ class LeaseCoordinator:
                   PRIMARY KEY(task_cid, dependency_task_cid)
                 );
                 CREATE TABLE IF NOT EXISTS task_dependency_repairs (
-                  task_cid TEXT NOT NULL, repair_index INTEGER NOT NULL,
+                  task_cid TEXT NOT NULL, repair_index BIGINT NOT NULL,
                   payload_json TEXT NOT NULL,
                   PRIMARY KEY(task_cid, repair_index)
                 );
                 CREATE TABLE IF NOT EXISTS task_dependency_repair_state (
-                  task_cid TEXT PRIMARY KEY, source_count INTEGER NOT NULL,
-                  stored_count INTEGER NOT NULL
+                  task_cid TEXT PRIMARY KEY, source_count BIGINT NOT NULL,
+                  stored_count BIGINT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS leases (
                   task_cid TEXT PRIMARY KEY, claim_cid TEXT NOT NULL, resolution_cid TEXT NOT NULL,
-                  claimant_did TEXT NOT NULL, logical_epoch INTEGER NOT NULL,
-                  fencing_token INTEGER NOT NULL, expires_at_ms INTEGER NOT NULL,
-                  attempt INTEGER NOT NULL, state TEXT NOT NULL, started_at_ms INTEGER NOT NULL,
+                  claimant_did TEXT NOT NULL, logical_epoch BIGINT NOT NULL,
+                  fencing_token BIGINT NOT NULL, expires_at_ms BIGINT NOT NULL,
+                  attempt BIGINT NOT NULL, state TEXT NOT NULL, started_at_ms BIGINT NOT NULL,
                   release_reason TEXT,
-                  retry_not_before_ms INTEGER NOT NULL DEFAULT 0
+                  retry_not_before_ms BIGINT NOT NULL DEFAULT 0
                 );
                 CREATE TABLE IF NOT EXISTS token_history (
-                  task_cid TEXT NOT NULL, fencing_token INTEGER NOT NULL,
+                  task_cid TEXT NOT NULL, fencing_token BIGINT NOT NULL,
                   PRIMARY KEY(task_cid, fencing_token)
                 );
                 CREATE TABLE IF NOT EXISTS heartbeats (
                   heartbeat_cid TEXT PRIMARY KEY, task_cid TEXT NOT NULL, claimant_did TEXT NOT NULL,
-                  fencing_token INTEGER NOT NULL, observed_at_ms INTEGER NOT NULL,
-                  expires_at_ms INTEGER NOT NULL, capacity_millionths INTEGER NOT NULL,
+                  fencing_token BIGINT NOT NULL, observed_at_ms BIGINT NOT NULL,
+                  expires_at_ms BIGINT NOT NULL, capacity_millionths BIGINT NOT NULL,
                   payload_json TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS receipts (
                   receipt_cid TEXT PRIMARY KEY, task_cid TEXT NOT NULL, goal_cid TEXT NOT NULL,
-                  subgoal_cid TEXT NOT NULL, claim_cid TEXT NOT NULL, fencing_token INTEGER NOT NULL,
+                  subgoal_cid TEXT NOT NULL, claim_cid TEXT NOT NULL, fencing_token BIGINT NOT NULL,
                   payload_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS coordination_metadata (
+                  metadata_key TEXT PRIMARY KEY, value_json TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS task_dependencies_dependency_idx
                   ON task_dependencies(dependency_task_cid);
@@ -493,18 +703,18 @@ class LeaseCoordinator:
                   ON receipts(task_cid, receipt_cid);
                 """
             )
-            # REF-036 databases remain valid in place. SQLite only supports
-            # additive migration for this shape, so inspect before altering.
+            # REF-036 databases remain valid after migration. Keep schema
+            # evolution additive so existing DuckDB stores upgrade in place.
             task_columns = {
                 str(row["name"]) for row in self._connection.execute("PRAGMA table_info(tasks)")
             }
             if "registered_at_ms" not in task_columns:
                 self._connection.execute(
-                    "ALTER TABLE tasks ADD COLUMN registered_at_ms INTEGER NOT NULL DEFAULT 0"
+                    "ALTER TABLE tasks ADD COLUMN registered_at_ms BIGINT NOT NULL DEFAULT 0"
                 )
             if "updated_at_ms" not in task_columns:
                 self._connection.execute(
-                    "ALTER TABLE tasks ADD COLUMN updated_at_ms INTEGER NOT NULL DEFAULT 0"
+                    "ALTER TABLE tasks ADD COLUMN updated_at_ms BIGINT NOT NULL DEFAULT 0"
                 )
             lease_columns = {
                 str(row["name"]) for row in self._connection.execute("PRAGMA table_info(leases)")
@@ -513,15 +723,31 @@ class LeaseCoordinator:
                 self._connection.execute("ALTER TABLE leases ADD COLUMN release_reason TEXT")
             if "retry_not_before_ms" not in lease_columns:
                 self._connection.execute(
-                    "ALTER TABLE leases ADD COLUMN retry_not_before_ms INTEGER NOT NULL DEFAULT 0"
+                    "ALTER TABLE leases ADD COLUMN retry_not_before_ms BIGINT NOT NULL DEFAULT 0"
                 )
             self._connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_leases_scheduler_state "
                 "ON leases(state, expires_at_ms, retry_not_before_ms)"
             )
+            self._connection.execute(
+                "INSERT OR REPLACE INTO coordination_metadata VALUES(?,?)",
+                (
+                    "store",
+                    json.dumps(
+                        {
+                            "schema": COORDINATION_STORE_SCHEMA,
+                            "backend": "duckdb",
+                        },
+                        sort_keys=True,
+                    ),
+                ),
+            )
 
     def close(self) -> None:
-        self._connection.close()
+        connection = self._connection
+        if connection is not None:
+            connection.close()
+            self._connection = None
 
     def __enter__(self) -> LeaseCoordinator:
         return self
@@ -529,7 +755,7 @@ class LeaseCoordinator:
     def __exit__(self, *_args: object) -> None:
         self.close()
 
-    def _put_artifact(self, connection: sqlite3.Connection, kind: str, payload: Mapping[str, Any]) -> str:
+    def _put_artifact(self, connection: _DuckConnection, kind: str, payload: Mapping[str, Any]) -> str:
         body = dict(payload)
         cid = profile_g_cid(body)
         connection.execute(
@@ -538,6 +764,7 @@ class LeaseCoordinator:
         )
         return cid
 
+    @_coordinator_operation
     def register_bundle(self, bundle: Mapping[str, Any], *, created_at_ms: int | None = None) -> dict[str, Any]:
         embedded = bundle.get("profile_g")
         adapted = dict(embedded) if isinstance(embedded, Mapping) and embedded.get("task_cid") else adapt_goal_bundle(bundle, created_at_ms=created_at_ms)
@@ -572,19 +799,34 @@ class LeaseCoordinator:
         adapted["task_cid"] = canonical_task_cid
         registered_at = self._clock_ms() if created_at_ms is None else int(created_at_ms)
         attempt_budget_reset = False
+        task_id = ",".join(
+            str(item.get("task_id"))
+            for item in bundle.get("tasks", [])
+            if isinstance(item, Mapping)
+        ) or str(bundle.get("bundle_key") or adapted["task_cid"])
+        bundle_json = json.dumps(dict(bundle), sort_keys=True)
         with self._lock, self._connection:
+            previous_task = self._connection.execute(
+                "SELECT bundle_json FROM tasks WHERE task_cid=?",
+                (canonical_task_cid,),
+            ).fetchone()
+            registration_complete = self._connection.execute(
+                "SELECT 1 FROM task_dependency_repair_state WHERE task_cid=?",
+                (canonical_task_cid,),
+            ).fetchone()
+            if (
+                previous_task is not None
+                and registration_complete is not None
+                and str(previous_task["bundle_json"]) == bundle_json
+            ):
+                adapted["attempt_budget_reset"] = False
+                return adapted
+
             for cid, artifact in adapted["artifacts"].items():
                 self._connection.execute(
                     "INSERT OR IGNORE INTO artifacts VALUES(?,?,?,?)",
                     (cid, str(artifact["schema"]), canonical_profile_g_bytes(artifact).decode("utf-8"), artifact["created_at_ms"]),
                 )
-            task_id = ",".join(
-                str(item.get("task_id")) for item in bundle.get("tasks", []) if isinstance(item, Mapping)
-            ) or str(bundle.get("bundle_key") or adapted["task_cid"])
-            previous_task = self._connection.execute(
-                "SELECT bundle_json FROM tasks WHERE task_cid=?",
-                (canonical_task_cid,),
-            ).fetchone()
             previous_bundle = (
                 json.loads(str(previous_task["bundle_json"]))
                 if previous_task is not None
@@ -610,7 +852,7 @@ class LeaseCoordinator:
                     adapted["goal_cid"],
                     adapted["subgoal_cid"],
                     task_id,
-                    json.dumps(dict(bundle), sort_keys=True),
+                    bundle_json,
                     registered_at,
                     registered_at,
                 ),
@@ -665,6 +907,7 @@ class LeaseCoordinator:
         adapted["attempt_budget_reset"] = attempt_budget_reset
         return adapted
 
+    @_coordinator_operation
     def register_bundles(
         self,
         bundles: Iterable[Mapping[str, Any]],
@@ -678,8 +921,13 @@ class LeaseCoordinator:
         same compatibility path as :meth:`register_bundle`.
         """
 
-        return [self.register_bundle(bundle, created_at_ms=created_at_ms) for bundle in bundles]
+        with self._lock, self._connection:
+            return [
+                self.register_bundle(bundle, created_at_ms=created_at_ms)
+                for bundle in bundles
+            ]
 
+    @_coordinator_operation
     def requeue_exhausted_blocked(self, task_cid: str, *, reason: str) -> bool:
         """Reset a blocked attempt budget after authoritative work is reopened.
 
@@ -728,7 +976,7 @@ class LeaseCoordinator:
                 raise
 
     @staticmethod
-    def _resolve_task_cid(connection: sqlite3.Connection, task_cid: str) -> str | None:
+    def _resolve_task_cid(connection: _DuckConnection, task_cid: str) -> str | None:
         row = connection.execute(
             "SELECT task_cid FROM task_aliases WHERE alias_task_cid=?",
             (task_cid,),
@@ -740,7 +988,7 @@ class LeaseCoordinator:
 
     def _dependency_cycles(
         self,
-        connection: sqlite3.Connection,
+        connection: _DuckConnection,
         task_cid: str,
         *,
         max_nodes: int,
@@ -789,7 +1037,7 @@ class LeaseCoordinator:
 
     def _claimability(
         self,
-        connection: sqlite3.Connection,
+        connection: _DuckConnection,
         task_cid: str,
         *,
         max_evidence: int,
@@ -909,6 +1157,7 @@ class LeaseCoordinator:
             "planner_repair_evidence_count": int(repair_state["source_count"]) if repair_state is not None else 0,
         }
 
+    @_coordinator_operation
     def claimability(self, task_cid: str, *, max_evidence: int = 32) -> dict[str, Any]:
         """Explain whether all prerequisite tasks have successful receipts.
 
@@ -922,7 +1171,7 @@ class LeaseCoordinator:
         with self._lock:
             return self._claimability(self._connection, task_cid, max_evidence=limit)
 
-    def _expire(self, connection: sqlite3.Connection, task_cid: str, now: int) -> None:
+    def _expire(self, connection: _DuckConnection, task_cid: str, now: int) -> None:
         row = connection.execute(
             "SELECT * FROM leases WHERE task_cid=? AND state='accepted' AND expires_at_ms<=?",
             (task_cid, now),
@@ -939,12 +1188,12 @@ class LeaseCoordinator:
         )
 
     @staticmethod
-    def _max_attempts(task: sqlite3.Row | Mapping[str, Any]) -> int:
+    def _max_attempts(task: _DuckRow | Mapping[str, Any]) -> int:
         bundle = json.loads(task["bundle_json"])
         return max(1, int(bundle.get("max_attempts") or 3))
 
     @staticmethod
-    def _execution_scope(task: sqlite3.Row) -> str:
+    def _execution_scope(task: _DuckRow) -> str:
         """Return the stable bundle scope that must have at most one live lease."""
 
         bundle = json.loads(task["bundle_json"])
@@ -952,11 +1201,11 @@ class LeaseCoordinator:
 
     def _active_execution_scope_conflict(
         self,
-        connection: sqlite3.Connection,
-        task: sqlite3.Row,
+        connection: _DuckConnection,
+        task: _DuckRow,
         *,
         now: int,
-    ) -> sqlite3.Row | None:
+    ) -> _DuckRow | None:
         """Find a live lease for another revision of this task's bundle."""
 
         execution_scope = self._execution_scope(task)
@@ -978,8 +1227,8 @@ class LeaseCoordinator:
 
     def _task_projection(
         self,
-        task: sqlite3.Row,
-        lease: sqlite3.Row | None,
+        task: _DuckRow,
+        lease: _DuckRow | None,
         *,
         now: int,
     ) -> TaskLeaseState:
@@ -1032,7 +1281,7 @@ class LeaseCoordinator:
 
     def _projection_with_claimability(
         self,
-        connection: sqlite3.Connection,
+        connection: _DuckConnection,
         state: TaskLeaseState,
         *,
         max_evidence: int,
@@ -1071,6 +1320,7 @@ class LeaseCoordinator:
             result["blocked_reason"] = "dependency_not_ready"
         return result
 
+    @_coordinator_operation
     def list_tasks(
         self,
         *,
@@ -1144,6 +1394,7 @@ class LeaseCoordinator:
                 connection.rollback()
                 raise
 
+    @_coordinator_operation
     def task_state(
         self,
         task_cid: str,
@@ -1188,6 +1439,7 @@ class LeaseCoordinator:
                 connection.rollback()
                 raise
 
+    @_coordinator_operation
     def claim(
         self,
         task_cid: str,
@@ -1229,6 +1481,7 @@ class LeaseCoordinator:
                 conn.rollback()
                 raise
 
+    @_coordinator_operation
     def claim_ready(
         self,
         claimant_did: str,
@@ -1312,6 +1565,7 @@ class LeaseCoordinator:
                 connection.rollback()
                 raise
 
+    @_coordinator_operation
     def steal(
         self,
         task_cid: str,
@@ -1361,8 +1615,8 @@ class LeaseCoordinator:
 
     def _claim_in_transaction(
         self,
-        connection: sqlite3.Connection,
-        task: sqlite3.Row,
+        connection: _DuckConnection,
+        task: _DuckRow,
         claimant_did: str,
         *,
         duration: int,
@@ -1472,7 +1726,7 @@ class LeaseCoordinator:
             attempt,
         )
 
-    def _claim_payload(self, task: sqlite3.Row, claimant: str, epoch: int, attempt: int, duration: int, now: int) -> dict[str, Any]:
+    def _claim_payload(self, task: _DuckRow, claimant: str, epoch: int, attempt: int, duration: int, now: int) -> dict[str, Any]:
         bundle = json.loads(task["bundle_json"])
         correlation = str(bundle.get("correlation_id") or bundle.get("bundle_key") or task["task_id"])[:128]
         return {
@@ -1485,12 +1739,12 @@ class LeaseCoordinator:
             "policy_decision_cid": str(bundle.get("policy_decision_cid") or _link({"decision": "allow"})), "attempt": attempt,
         }
 
-    def _grant(self, lease: sqlite3.Row, task: sqlite3.Row | None = None) -> LeaseGrant:
+    def _grant(self, lease: _DuckRow, task: _DuckRow | None = None) -> LeaseGrant:
         task = task or self._connection.execute("SELECT * FROM tasks WHERE task_cid=?", (lease["task_cid"],)).fetchone()
         assert task is not None
         return LeaseGrant(lease["task_cid"], task["goal_cid"], task["subgoal_cid"], lease["claim_cid"], lease["resolution_cid"], lease["claimant_did"], lease["logical_epoch"], lease["fencing_token"], lease["expires_at_ms"], lease["attempt"])
 
-    def _current(self, connection: sqlite3.Connection, grant: LeaseGrant, now: int) -> sqlite3.Row:
+    def _current(self, connection: _DuckConnection, grant: LeaseGrant, now: int) -> _DuckRow:
         self._expire(connection, grant.task_cid, now)
         row = connection.execute("SELECT * FROM leases WHERE task_cid=?", (grant.task_cid,)).fetchone()
         if row is None or row["state"] != "accepted" or row["expires_at_ms"] <= now:
@@ -1501,6 +1755,7 @@ class LeaseCoordinator:
             raise StaleFencingTokenError("fencing token is stale")
         return row
 
+    @_coordinator_operation
     def validate(self, grant: LeaseGrant, *, now_ms: int | None = None) -> LeaseGrant:
         now = self._clock_ms() if now_ms is None else int(now_ms)
         with self._lock:
@@ -1514,6 +1769,7 @@ class LeaseCoordinator:
                 self._connection.rollback()
                 raise
 
+    @_coordinator_operation
     def renew(self, grant: LeaseGrant, *, requested_lease_ms: int = 60_000, now_ms: int | None = None) -> LeaseGrant:
         duration = int(requested_lease_ms)
         if not MIN_LEASE_MS <= duration <= MAX_LEASE_MS:
@@ -1545,7 +1801,7 @@ class LeaseCoordinator:
                 conn.rollback()
                 raise
 
-    def _resolution_payload(self, row: sqlite3.Row, *, outcome: str, now: int) -> dict[str, Any]:
+    def _resolution_payload(self, row: _DuckRow, *, outcome: str, now: int) -> dict[str, Any]:
         claim = json.loads(self._connection.execute("SELECT payload_json FROM artifacts WHERE cid=?", (row["claim_cid"],)).fetchone()[0])
         return {
             "schema": "mcp++/profile-g/claim-resolution@1", "created_at_ms": now, "parents": [row["resolution_cid"]],
@@ -1556,6 +1812,7 @@ class LeaseCoordinator:
             "coordination_receipt_cid": None, "retry_not_before_ms": 0, "resolver_did": "did:web:ipfs-accelerate.local",
         }
 
+    @_coordinator_operation
     def release(
         self,
         grant: LeaseGrant,
@@ -1589,6 +1846,7 @@ class LeaseCoordinator:
                 conn.rollback()
                 raise
 
+    @_coordinator_operation
     def heartbeat(
         self,
         grant: LeaseGrant,
@@ -1620,7 +1878,7 @@ class LeaseCoordinator:
         remains canonical DAG-JSON.  Callers that sample fractional percentages
         should use fixed-point units (``cpu_millionths`` is one million for one
         fully occupied CPU).  Optional provider and detail mappings are retained
-        in ``payload_json`` without widening the stable SQLite table.
+        in ``payload_json`` without widening the stable DuckDB table.
         """
 
         def optional_integer(name: str, value: int | None) -> int | None:
@@ -1697,6 +1955,7 @@ class LeaseCoordinator:
                 conn.rollback()
                 raise
 
+    @_coordinator_operation
     def latest_heartbeats(
         self,
         *,
@@ -1753,6 +2012,7 @@ class LeaseCoordinator:
             latest[task_cid] = payload
         return [latest[task_cid] for task_cid in sorted(latest)]
 
+    @_coordinator_operation
     def latest_heartbeat(
         self,
         task_cid: str,
@@ -1769,6 +2029,7 @@ class LeaseCoordinator:
         )
         return items[0] if items else None
 
+    @_coordinator_operation
     def receipt(
         self, grant: LeaseGrant, *, status: str, output: Mapping[str, Any] | None = None,
         failure_class: str = "none", started_at_ms: int | None = None, now_ms: int | None = None,
@@ -1817,9 +2078,10 @@ class LeaseCoordinator:
                 raise
 
     @staticmethod
-    def _heartbeat_count(connection: sqlite3.Connection, grant: LeaseGrant) -> int:
+    def _heartbeat_count(connection: _DuckConnection, grant: LeaseGrant) -> int:
         return int(connection.execute("SELECT COUNT(*) FROM heartbeats WHERE task_cid=? AND fencing_token=?", (grant.task_cid, grant.fencing_token)).fetchone()[0])
 
+    @_coordinator_operation
     def active_lease(self, task_cid: str, *, now_ms: int | None = None) -> LeaseGrant | None:
         now = self._clock_ms() if now_ms is None else int(now_ms)
         with self._lock, self._connection:
@@ -1827,15 +2089,503 @@ class LeaseCoordinator:
             row = self._connection.execute("SELECT * FROM leases WHERE task_cid=? AND state='accepted' AND expires_at_ms>?", (task_cid, now)).fetchone()
             return self._grant(row) if row is not None else None
 
+    @_coordinator_operation
     def list_receipts(self, task_cid: str) -> list[dict[str, Any]]:
         rows = self._connection.execute("SELECT * FROM receipts WHERE task_cid=? ORDER BY rowid", (task_cid,)).fetchall()
         return [{"receipt_cid": row["receipt_cid"], "goal_cid": row["goal_cid"], "subgoal_cid": row["subgoal_cid"], "receipt": json.loads(row["payload_json"])} for row in rows]
 
+    @_coordinator_operation
     def get_artifact(self, cid: str) -> dict[str, Any] | None:
         """Return a stored coordination artifact by CID."""
 
         row = self._connection.execute("SELECT payload_json FROM artifacts WHERE cid=?", (cid,)).fetchone()
         return json.loads(row[0]) if row is not None else None
+
+
+_LEGACY_COORDINATION_COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("artifacts", ("cid", "kind", "payload_json", "created_at_ms")),
+    (
+        "tasks",
+        (
+            "task_cid",
+            "goal_cid",
+            "subgoal_cid",
+            "task_id",
+            "bundle_json",
+            "registered_at_ms",
+            "updated_at_ms",
+        ),
+    ),
+    ("task_aliases", ("alias_task_cid", "task_cid")),
+    (
+        "task_dependencies",
+        ("task_cid", "dependency_task_cid", "provenance_json"),
+    ),
+    (
+        "task_dependency_repairs",
+        ("task_cid", "repair_index", "payload_json"),
+    ),
+    (
+        "task_dependency_repair_state",
+        ("task_cid", "source_count", "stored_count"),
+    ),
+    (
+        "leases",
+        (
+            "task_cid",
+            "claim_cid",
+            "resolution_cid",
+            "claimant_did",
+            "logical_epoch",
+            "fencing_token",
+            "expires_at_ms",
+            "attempt",
+            "state",
+            "started_at_ms",
+            "release_reason",
+            "retry_not_before_ms",
+        ),
+    ),
+    ("token_history", ("task_cid", "fencing_token")),
+    (
+        "heartbeats",
+        (
+            "heartbeat_cid",
+            "task_cid",
+            "claimant_did",
+            "fencing_token",
+            "observed_at_ms",
+            "expires_at_ms",
+            "capacity_millionths",
+            "payload_json",
+        ),
+    ),
+    (
+        "receipts",
+        (
+            "receipt_cid",
+            "task_cid",
+            "goal_cid",
+            "subgoal_cid",
+            "claim_cid",
+            "fencing_token",
+            "payload_json",
+        ),
+    ),
+)
+
+
+def migrate_sqlite_coordination_store(
+    source_path: str | Path,
+    target_path: str | Path,
+    *,
+    replace: bool = False,
+    batch_size: int = 512,
+    current_task_cids: Iterable[str] | None = None,
+    heartbeat_history_per_lease: int = 8,
+    preserve_all_history: bool = False,
+) -> dict[str, Any]:
+    """Atomically migrate a bounded legacy SQLite lease store into DuckDB.
+
+    Migration is intentionally explicit. A live SQLite file is never opened as
+    DuckDB, and the source remains untouched for rollback or audit. By default,
+    the latest registration batch, its dependency closure, authoritative lease
+    and receipt rows, and bounded heartbeat history are retained. The legacy
+    source remains the cold audit archive.
+    """
+
+    source = Path(source_path)
+    target = Path(target_path)
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    with source.open("rb") as stream:
+        if stream.read(16) != b"SQLite format 3\0":
+            raise ValueError(f"not a SQLite coordination store: {source}")
+    if target.exists() and not replace:
+        raise FileExistsError(target)
+    limit = int(batch_size)
+    if not 1 <= limit <= 10_000:
+        raise ValueError("batch_size must be in [1, 10000]")
+    heartbeat_limit = int(heartbeat_history_per_lease)
+    if not 0 <= heartbeat_limit <= 10_000:
+        raise ValueError("heartbeat_history_per_lease must be in [0, 10000]")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(
+        f".{target.name}.migration-{threading.get_ident()}.tmp"
+    )
+    temporary.unlink(missing_ok=True)
+    temporary_lock = temporary.with_name(f".{temporary.name}.lock")
+    counts: dict[str, int] = {}
+    source_connection = sqlite3.connect(str(source))
+    source_connection.row_factory = sqlite3.Row
+
+    def table_exists(table: str) -> bool:
+        return (
+            source_connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            is not None
+        )
+
+    def chunks(values: Iterable[str], size: int = 400) -> Iterator[list[str]]:
+        items = sorted({str(value) for value in values if str(value)})
+        for offset in range(0, len(items), size):
+            yield items[offset : offset + size]
+
+    def rows_for_task_cids(
+        table: str,
+        columns: tuple[str, ...],
+        task_ids: set[str],
+    ) -> list[tuple[Any, ...]]:
+        if not task_ids or not table_exists(table):
+            return []
+        selected = ", ".join(columns)
+        rows: list[tuple[Any, ...]] = []
+        for batch in chunks(task_ids):
+            placeholders = ", ".join("?" for _ in batch)
+            rows.extend(
+                tuple(row)
+                for row in source_connection.execute(
+                    f"SELECT {selected} FROM {table} "
+                    f"WHERE task_cid IN ({placeholders})",
+                    batch,
+                ).fetchall()
+            )
+        return rows
+
+    def compact_historical_bundle(raw: str) -> str:
+        if len(raw) <= 1_000_000:
+            return raw
+        try:
+            bundle = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return json.dumps(
+                {
+                    "schema": "ipfs_accelerate_py.agent_supervisor.legacy-bundle-tombstone@1",
+                    "source_bytes": len(raw),
+                },
+                sort_keys=True,
+            )
+        tasks = []
+        for item in bundle.get("tasks", []) if isinstance(bundle, Mapping) else []:
+            if not isinstance(item, Mapping):
+                continue
+            tasks.append(
+                {
+                    key: item[key]
+                    for key in (
+                        "task_id",
+                        "task_cid",
+                        "canonical_task_cid",
+                        "status",
+                        "depends_on",
+                    )
+                    if item.get(key) not in (None, "", [], {})
+                }
+            )
+        return json.dumps(
+            {
+                "schema": "ipfs_accelerate_py.agent_supervisor.legacy-bundle-tombstone@1",
+                "bundle_key": bundle.get("bundle_key")
+                if isinstance(bundle, Mapping)
+                else "",
+                "source_todo": bundle.get("source_todo")
+                if isinstance(bundle, Mapping)
+                else "",
+                "tasks": tasks,
+                "source_bytes": len(raw),
+            },
+            sort_keys=True,
+        )
+
+    try:
+        source_connection.execute("BEGIN")
+        task_columns = dict(_LEGACY_COORDINATION_COLUMNS)["tasks"]
+        retained_task_cids = {
+            str(task_cid)
+            for task_cid in (current_task_cids or ())
+            if str(task_cid)
+        }
+        if table_exists("tasks"):
+            if preserve_all_history:
+                retained_task_cids.update(
+                    str(row[0])
+                    for row in source_connection.execute(
+                        "SELECT task_cid FROM tasks"
+                    ).fetchall()
+                )
+            elif not retained_task_cids:
+                latest = source_connection.execute(
+                    "SELECT max(updated_at_ms) FROM tasks"
+                ).fetchone()[0]
+                if latest is not None:
+                    retained_task_cids.update(
+                        str(row[0])
+                        for row in source_connection.execute(
+                            "SELECT task_cid FROM tasks WHERE updated_at_ms>=?",
+                            (max(0, int(latest) - 60_000),),
+                        ).fetchall()
+                    )
+        if table_exists("leases"):
+            retained_task_cids.update(
+                str(row[0])
+                for row in source_connection.execute(
+                    "SELECT task_cid FROM leases WHERE state='accepted'"
+                ).fetchall()
+            )
+
+        dependency_aliases: set[str] = set()
+        frontier = set(retained_task_cids)
+        while frontier and table_exists("task_dependencies"):
+            discovered_aliases: set[str] = set()
+            for batch in chunks(frontier):
+                placeholders = ", ".join("?" for _ in batch)
+                discovered_aliases.update(
+                    str(row[0])
+                    for row in source_connection.execute(
+                        "SELECT dependency_task_cid FROM task_dependencies "
+                        f"WHERE task_cid IN ({placeholders})",
+                        batch,
+                    ).fetchall()
+                )
+            dependency_aliases.update(discovered_aliases)
+            resolved: set[str] = set()
+            if discovered_aliases and table_exists("task_aliases"):
+                for batch in chunks(discovered_aliases):
+                    placeholders = ", ".join("?" for _ in batch)
+                    resolved.update(
+                        str(row[0])
+                        for row in source_connection.execute(
+                            "SELECT task_cid FROM task_aliases "
+                            f"WHERE alias_task_cid IN ({placeholders})",
+                            batch,
+                        ).fetchall()
+                    )
+            if discovered_aliases and table_exists("tasks"):
+                for batch in chunks(discovered_aliases):
+                    placeholders = ", ".join("?" for _ in batch)
+                    resolved.update(
+                        str(row[0])
+                        for row in source_connection.execute(
+                            "SELECT task_cid FROM tasks "
+                            f"WHERE task_cid IN ({placeholders})",
+                            batch,
+                        ).fetchall()
+                    )
+            frontier = resolved - retained_task_cids
+            retained_task_cids.update(resolved)
+
+        table_rows: dict[str, list[tuple[Any, ...]]] = {}
+        raw_task_rows = rows_for_task_cids(
+            "tasks", task_columns, retained_task_cids
+        )
+        seed_task_cids = {
+            str(task_cid)
+            for task_cid in (current_task_cids or retained_task_cids)
+            if str(task_cid)
+        }
+        task_rows: list[tuple[Any, ...]] = []
+        artifact_cids: set[str] = set()
+        required_aliases = set(retained_task_cids) | dependency_aliases
+        for row in raw_task_rows:
+            values = list(row)
+            task_cid = str(values[0])
+            artifact_cids.update((str(values[1]), str(values[2])))
+            if task_cid not in seed_task_cids:
+                values[4] = compact_historical_bundle(str(values[4]))
+            try:
+                bundle = json.loads(str(values[4]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                bundle = {}
+            profile = (
+                bundle.get("profile_g")
+                if isinstance(bundle, Mapping)
+                and isinstance(bundle.get("profile_g"), Mapping)
+                else {}
+            )
+            for key in (
+                "goal_cid",
+                "subgoal_cid",
+                "plan_branch_cid",
+                "selection_cid",
+                "task_spec_cid",
+            ):
+                if profile.get(key):
+                    artifact_cids.add(str(profile[key]))
+                    required_aliases.add(str(profile[key]))
+            artifacts = profile.get("artifacts")
+            if isinstance(artifacts, Mapping):
+                artifact_cids.update(str(cid) for cid in artifacts)
+            for item in bundle.get("tasks", []) if isinstance(bundle, Mapping) else []:
+                if not isinstance(item, Mapping):
+                    continue
+                for key in ("canonical_task_cid", "task_cid"):
+                    if item.get(key):
+                        required_aliases.add(str(item[key]))
+            task_rows.append(tuple(values))
+        table_rows["tasks"] = task_rows
+
+        alias_columns = dict(_LEGACY_COORDINATION_COLUMNS)["task_aliases"]
+        aliases = rows_for_task_cids(
+            "task_aliases", alias_columns, retained_task_cids
+        )
+        if not preserve_all_history:
+            aliases = [
+                row
+                for row in aliases
+                if str(row[0]) in required_aliases or str(row[0]) == str(row[1])
+            ]
+        table_rows["task_aliases"] = aliases
+        artifact_cids.update(str(row[0]) for row in aliases)
+
+        for table in (
+            "task_dependencies",
+            "task_dependency_repairs",
+            "task_dependency_repair_state",
+            "leases",
+            "token_history",
+            "receipts",
+        ):
+            columns = dict(_LEGACY_COORDINATION_COLUMNS)[table]
+            table_rows[table] = rows_for_task_cids(
+                table, columns, retained_task_cids
+            )
+        for row in table_rows["leases"]:
+            artifact_cids.update((str(row[1]), str(row[2])))
+        for row in table_rows["receipts"]:
+            artifact_cids.update((str(row[0]), str(row[4])))
+
+        heartbeat_columns = dict(_LEGACY_COORDINATION_COLUMNS)["heartbeats"]
+        heartbeats: list[tuple[Any, ...]] = []
+        if retained_task_cids and table_exists("heartbeats"):
+            for batch in chunks(retained_task_cids):
+                placeholders = ", ".join("?" for _ in batch)
+                selected = ", ".join(f"h.{column}" for column in heartbeat_columns)
+                query = (
+                    f"SELECT {selected} FROM ("
+                    "SELECT h.*, row_number() OVER ("
+                    "PARTITION BY h.task_cid, h.fencing_token "
+                    "ORDER BY h.observed_at_ms DESC, h.heartbeat_cid DESC"
+                    ") AS history_rank FROM heartbeats h "
+                    f"WHERE h.task_cid IN ({placeholders})"
+                    ") h LEFT JOIN leases l ON l.task_cid=h.task_cid "
+                    "WHERE h.history_rank<=? OR "
+                    "(l.state='accepted' AND l.fencing_token=h.fencing_token)"
+                )
+                heartbeats.extend(
+                    tuple(row)
+                    for row in source_connection.execute(
+                        query,
+                        [*batch, heartbeat_limit],
+                    ).fetchall()
+                )
+        table_rows["heartbeats"] = heartbeats
+        artifact_cids.update(str(row[0]) for row in heartbeats)
+
+        artifact_columns = dict(_LEGACY_COORDINATION_COLUMNS)["artifacts"]
+        artifacts: list[tuple[Any, ...]] = []
+        artifact_row_count = 0
+        if table_exists("artifacts"):
+            artifact_row_count = int(
+                source_connection.execute(
+                    "SELECT count(*) FROM artifacts"
+                ).fetchone()[0]
+            )
+        retain_all_artifacts = preserve_all_history or (
+            artifact_row_count <= SMALL_STORE_FULL_ARTIFACT_LIMIT
+        )
+        if retain_all_artifacts and artifact_row_count:
+            artifacts = [
+                tuple(row)
+                for row in source_connection.execute(
+                    "SELECT cid, kind, payload_json, created_at_ms FROM artifacts"
+                ).fetchall()
+            ]
+        elif artifact_cids and artifact_row_count:
+            for batch in chunks(artifact_cids):
+                placeholders = ", ".join("?" for _ in batch)
+                artifacts.extend(
+                    tuple(row)
+                    for row in source_connection.execute(
+                        "SELECT cid, kind, payload_json, created_at_ms "
+                        f"FROM artifacts WHERE cid IN ({placeholders})",
+                        batch,
+                    ).fetchall()
+                )
+        table_rows["artifacts"] = artifacts
+
+        with LeaseCoordinator(temporary) as coordinator:
+            with coordinator._database_operation():
+                connection = coordinator._connection
+                assert connection is not None
+                connection.execute("BEGIN TRANSACTION")
+                try:
+                    for table, columns in _LEGACY_COORDINATION_COLUMNS:
+                        selected = ", ".join(columns)
+                        placeholders = ", ".join("?" for _ in columns)
+                        copied = 0
+                        rows = table_rows.get(table, [])
+                        for offset in range(0, len(rows), limit):
+                            batch = rows[offset : offset + limit]
+                            connection.executemany(
+                                f"INSERT OR REPLACE INTO {table} "
+                                f"({selected}) VALUES ({placeholders})",
+                                batch,
+                            )
+                            copied += len(batch)
+                        counts[table] = copied
+                    connection.execute(
+                        "INSERT OR REPLACE INTO coordination_metadata VALUES(?,?)",
+                        (
+                            "legacy_sqlite_migration",
+                            json.dumps(
+                                {
+                                    "schema": COORDINATION_STORE_SCHEMA,
+                                    "source_path": str(source.resolve()),
+                                    "source_bytes": source.stat().st_size,
+                                    "migrated_at_ms": int(time.time() * 1000),
+                                    "preserve_all_history": bool(
+                                        preserve_all_history
+                                    ),
+                                    "retained_task_count": len(
+                                        retained_task_cids
+                                    ),
+                                    "heartbeat_history_per_lease": heartbeat_limit,
+                                    "retained_all_artifacts": retain_all_artifacts,
+                                    "row_counts": counts,
+                                },
+                                sort_keys=True,
+                            ),
+                        ),
+                    )
+                    connection.commit()
+                    connection.execute("CHECKPOINT")
+                except Exception:
+                    connection.rollback()
+                    raise
+        source_connection.rollback()
+        temporary.replace(target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    finally:
+        source_connection.close()
+        temporary_lock.unlink(missing_ok=True)
+
+    return {
+        "schema": COORDINATION_STORE_SCHEMA,
+        "source_path": str(source),
+        "target_path": str(target),
+        "source_bytes": source.stat().st_size,
+        "target_bytes": target.stat().st_size,
+        "retained_task_count": len(retained_task_cids),
+        "heartbeat_history_per_lease": heartbeat_limit,
+        "preserve_all_history": bool(preserve_all_history),
+        "retained_all_artifacts": retain_all_artifacts,
+        "row_counts": counts,
+    }
 
 
 @dataclass(frozen=True)

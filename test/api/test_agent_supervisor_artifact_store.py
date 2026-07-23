@@ -97,8 +97,13 @@ def test_bundle_index_has_equivalent_json_and_duckdb_queries(tmp_path: Path) -> 
 
     projection = read_bundle_index_projection(duckdb_path)
     assert projection["bundles"]["objective/test/one"]["tasks"][1]["task_id"] == "T-2"
+    first_payload = build_bundle_task_payloads(duckdb_path)[0]
+    second_payload = build_bundle_task_payloads(duckdb_path)[0]
+    assert first_payload["bundle_key"] == "objective/test/one"
+    assert first_payload["profile_g"]["goal"]["created_at_ms"] == 1_784_678_400_000
     assert (
-        build_bundle_task_payloads(duckdb_path)[0]["bundle_key"] == "objective/test/one"
+        first_payload["profile_g"]["task_spec_cid"]
+        == second_payload["profile_g"]["task_spec_cid"]
     )
     schema_rows = artifact_schema(json_path)["rows"]
     assert any(

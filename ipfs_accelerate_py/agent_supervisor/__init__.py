@@ -1199,6 +1199,7 @@ __all__ = [
     "TaskIdentity",
     "StaleFencingTokenError",
     "adapt_goal_bundle",
+    "migrate_sqlite_coordination_store",
     "canonical_bundle_identity",
     "canonical_task_identity",
     "invoke_llm_resolver",
@@ -1675,6 +1676,7 @@ def __getattr__(name: str):
         "TaskLeaseState",
         "StaleFencingTokenError",
         "adapt_goal_bundle",
+        "migrate_sqlite_coordination_store",
     }:
         from . import lease_coordination
 

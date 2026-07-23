@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
     LeaseQueueBridge,
     StaleFencingTokenError,
     adapt_goal_bundle,
+    migrate_sqlite_coordination_store,
     profile_g_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
@@ -242,6 +244,87 @@ def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -
                 "did:web:lane-b.example",
                 requested_lease_ms=10_000,
             )
+
+
+def test_identical_registration_is_a_duckdb_noop(tmp_path: Path) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    path = tmp_path / "leases.duckdb"
+    now = [10]
+    payload = _bundle()
+    payload["profile_g"] = adapt_goal_bundle(payload, created_at_ms=1)
+
+    with LeaseCoordinator(path, clock_ms=lambda: now[0]) as coordinator:
+        registered = coordinator.register_bundle(payload)
+        first = coordinator.task_state(registered["task_cid"])
+        now[0] = 20
+        coordinator.register_bundle(payload)
+        second = coordinator.task_state(registered["task_cid"])
+
+    connection = duckdb.connect(str(path), read_only=True)
+    try:
+        artifact_count = connection.execute(
+            "SELECT count(*) FROM artifacts"
+        ).fetchone()[0]
+        alias_count = connection.execute(
+            "SELECT count(*) FROM task_aliases"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    assert artifact_count == 5
+    assert alias_count == 2
+    assert first is not None and second is not None
+    assert first["updated_at_ms"] == second["updated_at_ms"] == 10
+
+
+def test_legacy_sqlite_coordination_store_migrates_to_duckdb(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "legacy.sqlite3"
+    target = tmp_path / "leases.duckdb"
+    connection = sqlite3.connect(source)
+    try:
+        connection.execute(
+            """CREATE TABLE artifacts(
+                 cid TEXT PRIMARY KEY, kind TEXT NOT NULL,
+                 payload_json TEXT NOT NULL, created_at_ms INTEGER NOT NULL
+               )"""
+        )
+        connection.execute(
+            "INSERT INTO artifacts VALUES(?,?,?,?)",
+            ("cid-one", "test", json.dumps({"migrated": True}), 1),
+        )
+        connection.execute(
+            """CREATE TABLE tasks(
+                 task_cid TEXT PRIMARY KEY, goal_cid TEXT NOT NULL,
+                 subgoal_cid TEXT NOT NULL, task_id TEXT NOT NULL,
+                 bundle_json TEXT NOT NULL, registered_at_ms INTEGER NOT NULL,
+                 updated_at_ms INTEGER NOT NULL
+               )"""
+        )
+        connection.execute(
+            "INSERT INTO tasks VALUES(?,?,?,?,?,?,?)",
+            (
+                "task-one",
+                "goal-one",
+                "subgoal-one",
+                "T-1",
+                json.dumps({"bundle_key": "one", "tasks": [{"task_id": "T-1"}]}),
+                1,
+                1,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    migrated = migrate_sqlite_coordination_store(source, target)
+
+    assert migrated["row_counts"]["artifacts"] == 1
+    assert migrated["row_counts"]["tasks"] == 1
+    with LeaseCoordinator(target) as coordinator:
+        assert coordinator.get_artifact("cid-one") == {"migrated": True}
+        assert coordinator.task_state("task-one")["bundle_key"] == "one"
 
 
 def test_reopened_blocked_bundle_resets_exhausted_attempt_budget(tmp_path: Path) -> None:

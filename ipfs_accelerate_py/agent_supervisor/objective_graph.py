@@ -5423,11 +5423,19 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
 
     payload = read_bundle_index_planning_projection(
         bundle_index_path,
-        field_names=("source_todo",),
+        field_names=("source_todo", "generated_at"),
     )
     bundles = payload.get("bundles") if isinstance(payload, Mapping) else {}
     if not isinstance(bundles, Mapping):
         return []
+    profile_created_at_ms = _task_created_at_ms(
+        {"created_at": payload.get("generated_at")}
+    )
+    if profile_created_at_ms <= 0:
+        try:
+            profile_created_at_ms = bundle_index_path.stat().st_mtime_ns // 1_000_000
+        except OSError:
+            profile_created_at_ms = 0
     task_payloads: list[dict[str, Any]] = []
     for key, info in sorted(bundles.items()):
         if not isinstance(info, Mapping):
@@ -5719,7 +5727,10 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
     )
     for rank, task_payload in enumerate(task_payloads):
         task_payload["schedule_rank"] = rank
-        task_payload["profile_g"] = adapt_goal_bundle(_profile_g_safe_planning_value(task_payload))
+        task_payload["profile_g"] = adapt_goal_bundle(
+            _profile_g_safe_planning_value(task_payload),
+            created_at_ms=profile_created_at_ms,
+        )
     return task_payloads
 
 
