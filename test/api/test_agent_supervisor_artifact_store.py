@@ -23,6 +23,9 @@ from ipfs_accelerate_py.agent_supervisor.artifact_store import (
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     build_bundle_task_payloads,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+    write_todo_vector_index_artifact,
+)
 
 
 def _bundle_index() -> dict[str, object]:
@@ -221,6 +224,60 @@ def test_large_bundle_graph_uses_bounded_json_and_complete_duckdb(
     )
     assert len(complete_fields["task_conflict_graph"]["edges"]) == 129
     assert len(complete_fields["todo_coverage_inputs"]["by_task"]) == 129
+
+
+def test_large_todo_vector_index_omits_repeated_record_evidence(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "todo_vector_index.json"
+    graph = {
+        "schema": "test.conflict-graph@1",
+        "edges": [
+            {"left_task_cid": f"left-{ordinal}", "right_task_cid": "right"}
+            for ordinal in range(129)
+        ],
+    }
+    payload = {
+        "schema": "test.todo-vector@1",
+        "bundle_index_path": "objective_bundles/index.json",
+        "records": [
+            {
+                "task_id": "T-1",
+                "vector_key": "vector-1",
+                "coverage_inputs": {"ast_symbols": ["large"]},
+                "conflict_surface": {
+                    "ast_records": [{"symbol": "large"}],
+                    "metadata": {"large": True},
+                    "paths": ["src/module.py"],
+                },
+            }
+        ],
+        "coverage_inputs": {
+            "by_task": {
+                f"T-{ordinal}": {"ast_symbols": ["large"]}
+                for ordinal in range(129)
+            },
+            "criteria": [],
+            "edges": [],
+        },
+        "conflict_graph": graph,
+        "task_conflict_graph": graph,
+    }
+
+    rendered = write_todo_vector_index_artifact(
+        index_path=index_path,
+        payload=payload,
+    )
+
+    record = rendered["records"][0]
+    assert "coverage_inputs" not in record
+    assert record["coverage_input_ref"]["task_id"] == "T-1"
+    assert "ast_records" not in record["conflict_surface"]
+    assert record["conflict_surface"]["ast_record_count"] == 1
+    assert record["conflict_surface"]["paths"] == ["src/module.py"]
+    assert rendered["query_artifact"]["duckdb_path"] == (
+        "objective_bundles/index.duckdb"
+    )
 
 
 def test_scheduler_manifest_normalizes_rows_and_bounds_query_output(

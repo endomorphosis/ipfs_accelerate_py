@@ -1608,6 +1608,36 @@ def write_todo_vector_index_artifact(
     )
     if coverage_inputs:
         rendered["coverage_inputs"] = coverage_inputs
+    if conflict_graph.get("compacted") or coverage_inputs.get("compacted"):
+        compact_records: list[dict[str, Any]] = []
+        for raw_record in rendered.get("records") or []:
+            if not isinstance(raw_record, Mapping):
+                continue
+            record = dict(raw_record)
+            task_id = str(record.get("task_id") or "")
+            vector_key = str(record.get("vector_key") or "")
+            coverage = record.pop("coverage_inputs", None)
+            if isinstance(coverage, Mapping):
+                record["coverage_input_field_count"] = len(coverage)
+                record["coverage_input_ref"] = {
+                    "field": "todo_coverage_inputs",
+                    "task_id": task_id,
+                    "todo_vector_key": vector_key,
+                }
+            surface = record.get("conflict_surface")
+            if isinstance(surface, Mapping):
+                compact_surface = dict(surface)
+                ast_records = compact_surface.pop("ast_records", None)
+                metadata = compact_surface.pop("metadata", None)
+                compact_surface["ast_record_count"] = (
+                    len(ast_records) if isinstance(ast_records, list) else 0
+                )
+                compact_surface["metadata_field_count"] = (
+                    len(metadata) if isinstance(metadata, Mapping) else 0
+                )
+                record["conflict_surface"] = compact_surface
+            compact_records.append(record)
+        rendered["records"] = compact_records
     bundle_index_path = str(rendered.get("bundle_index_path") or "")
     if bundle_index_path and (
         conflict_graph.get("compacted") or coverage_inputs.get("compacted")
