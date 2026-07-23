@@ -1031,6 +1031,8 @@ __all__ = [
     "canonical_graph_records",
     "materialize_code_evidence_graph",
     "query_code_evidence_graph",
+    "query_code_evidence_neighborhood",
+    "query_evidence_neighborhood",
     "read_code_evidence_graph",
     "read_code_evidence_graph_artifact",
     "read_code_evidence_graph_projection",
@@ -1038,6 +1040,24 @@ __all__ = [
     "read_evidence_graph_projection",
     "write_code_evidence_graph_artifact",
     "write_evidence_graph_artifact",
+    "ContextBudget",
+    "ContextCapsule",
+    "ContextEntry",
+    "ContextTrust",
+    "ProofContextBudget",
+    "ProofContextBudgetError",
+    "ProofContextBuilder",
+    "ProofContextCapsule",
+    "ProofContextError",
+    "ProofContextLimits",
+    "ProofContextQuery",
+    "ProofContextTarget",
+    "ProofContextUsage",
+    "ProofTranscriptExcerpt",
+    "SourceExcerpt",
+    "build_proof_context_capsule",
+    "estimate_context_tokens",
+    "generate_proof_context_capsule",
 ]
 
 
@@ -1053,6 +1073,8 @@ def __getattr__(name: str):
         "ensure_query_database",
         "query_artifact",
         "query_code_evidence_graph",
+        "query_code_evidence_neighborhood",
+        "query_evidence_neighborhood",
         "query_artifact_paths",
         "read_artifact_fields",
         "read_bundle_index_artifact",
@@ -1092,6 +1114,29 @@ def __getattr__(name: str):
         from . import code_evidence_graph
 
         return getattr(code_evidence_graph, name)
+    if name in {
+        "ContextBudget",
+        "ContextCapsule",
+        "ContextEntry",
+        "ContextTrust",
+        "ProofContextBudget",
+        "ProofContextBudgetError",
+        "ProofContextBuilder",
+        "ProofContextCapsule",
+        "ProofContextError",
+        "ProofContextLimits",
+        "ProofContextQuery",
+        "ProofContextTarget",
+        "ProofContextUsage",
+        "ProofTranscriptExcerpt",
+        "SourceExcerpt",
+        "build_proof_context_capsule",
+        "estimate_context_tokens",
+        "generate_proof_context_capsule",
+    }:
+        from . import proof_context
+
+        return getattr(proof_context, name)
     if name in {
         "AuditFindingRecord",
         "AuditFindingStatus",
