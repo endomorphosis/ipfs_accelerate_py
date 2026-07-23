@@ -16,6 +16,7 @@ from typing import Any, Iterable, Mapping
 SCAN_DETAILS_ARTIFACT_SCHEMA_VERSION = 1
 AUDIT_SNAPSHOT_SCHEMA_VERSION = 1
 EXHAUSTION_QUORUM_STORE_SCHEMA_VERSION = 1
+PROOF_SCOPE_INDEX_STORE_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,51 @@ class DatasetAuditSnapshotArtifact:
             "byte_count": self.byte_count,
             "created_at": self.created_at,
             "metadata": _json_compatible(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
+class DatasetProofScopeIndexArtifact:
+    """Durable content-addressed proof-scope index snapshot."""
+
+    artifact_id: str
+    index_name: str
+    index_id: str
+    json_path: Path
+    manifest_path: Path
+    sha256: str
+    byte_count: int
+    scope_count: int
+    obligation_count: int
+    receipt_count: int
+    active_obligation_count: int
+    active_receipt_count: int
+    created_at: str
+    schema_version: int = PROOF_SCOPE_INDEX_STORE_SCHEMA_VERSION
+
+    @property
+    def row_count(self) -> int:
+        """Compatibility count for generic dataset artifact consumers."""
+
+        return self.scope_count + self.obligation_count + self.receipt_count
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "artifact_id": self.artifact_id,
+            "index_name": self.index_name,
+            "index_id": self.index_id,
+            "json_path": str(self.json_path),
+            "manifest_path": str(self.manifest_path),
+            "sha256": self.sha256,
+            "byte_count": self.byte_count,
+            "scope_count": self.scope_count,
+            "obligation_count": self.obligation_count,
+            "receipt_count": self.receipt_count,
+            "active_obligation_count": self.active_obligation_count,
+            "active_receipt_count": self.active_receipt_count,
+            "row_count": self.row_count,
+            "created_at": self.created_at,
         }
 
 
@@ -483,6 +529,142 @@ class ObjectiveDatasetStore:
         except (OSError, TypeError, ValueError):
             return {}
         return dict(value) if isinstance(value, dict) else {}
+
+    def persist_proof_scope_index(
+        self,
+        index: Any,
+        *,
+        index_name: str = "proof-scope-index",
+    ) -> DatasetProofScopeIndexArtifact:
+        """Persist an immutable index and atomically advance its latest pointer.
+
+        The import stays local so the general objective dataset store remains
+        usable in reduced installations which do not import proof contracts.
+        """
+
+        from .proof_scope_index import ProofScopeIndex
+
+        if isinstance(index, Mapping):
+            index = ProofScopeIndex.from_dict(index)
+        if not isinstance(index, ProofScopeIndex):
+            raise TypeError("index must be a ProofScopeIndex or index mapping")
+        normalized_name = str(index_name or "").strip()
+        if not normalized_name:
+            raise ValueError("index_name must not be empty")
+
+        payload = index.canonical_dict()
+        encoded = (
+            json.dumps(
+                payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+            )
+            + "\n"
+        ).encode("utf-8")
+        digest = sha256(encoded).hexdigest()
+        safe_name = _safe_dataset_id(normalized_name)
+        directory = self.root / "proof-scope-indexes" / safe_name
+        json_path = directory / f"{digest}.json"
+        manifest_path = directory / f"{digest}.manifest.json"
+        latest_path = self.root / "proof-scope-indexes" / f"{safe_name}.latest.json"
+        created_at = datetime.now(timezone.utc).isoformat()
+
+        if manifest_path.exists():
+            try:
+                existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError):
+                existing = {}
+            if isinstance(existing, Mapping):
+                created_at = str(existing.get("created_at") or created_at)
+
+        artifact = DatasetProofScopeIndexArtifact(
+            artifact_id=f"sha256:{digest}",
+            index_name=normalized_name,
+            index_id=index.index_id,
+            json_path=json_path,
+            manifest_path=manifest_path,
+            sha256=digest,
+            byte_count=len(encoded),
+            scope_count=len(index.scope_records),
+            obligation_count=len(index.obligations),
+            receipt_count=len(index.receipts),
+            active_obligation_count=len(index.active_obligation_ids),
+            active_receipt_count=len(index.active_receipt_ids),
+            created_at=created_at,
+        )
+        manifest_text = json.dumps(
+            artifact.to_dict(), ensure_ascii=False, indent=2, sort_keys=True
+        ) + "\n"
+        if not json_path.exists():
+            _atomic_write_bytes(json_path, encoded)
+        elif json_path.read_bytes() != encoded:
+            raise ValueError(f"proof scope index digest collision at {json_path}")
+        if not manifest_path.exists():
+            _atomic_write_text(manifest_path, manifest_text)
+        else:
+            manifest_text = manifest_path.read_text(encoding="utf-8")
+        _atomic_write_text(latest_path, manifest_text)
+        return artifact
+
+    def load_proof_scope_index(
+        self,
+        index: str | Path | Mapping[str, Any] | DatasetProofScopeIndexArtifact = "proof-scope-index",
+    ) -> Any | None:
+        """Load a proof-scope index by name, artifact, manifest, or JSON path."""
+
+        from .proof_scope_index import ProofScopeIndex
+
+        if isinstance(index, DatasetProofScopeIndexArtifact):
+            path: Path | None = index.json_path
+        elif isinstance(index, Mapping):
+            raw_path = index.get("json_path") or index.get("path")
+            path = Path(str(raw_path)) if raw_path else None
+        elif isinstance(index, Path):
+            if index.name.endswith(".manifest.json"):
+                try:
+                    manifest = json.loads(index.read_text(encoding="utf-8"))
+                except (OSError, TypeError, ValueError):
+                    manifest = {}
+                raw_path = (
+                    manifest.get("json_path")
+                    if isinstance(manifest, Mapping)
+                    else None
+                )
+                path = Path(str(raw_path)) if raw_path else None
+            else:
+                path = index
+        else:
+            manifest = self.load_proof_scope_index_manifest(index)
+            raw_path = manifest.get("json_path")
+            path = Path(str(raw_path)) if raw_path else None
+        if path is None:
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError):
+            return None
+        if not isinstance(payload, Mapping):
+            return None
+        return ProofScopeIndex.from_dict(payload)
+
+    def load_proof_scope_index_manifest(
+        self, index_name: str = "proof-scope-index"
+    ) -> dict[str, Any]:
+        """Return the latest proof-scope index manifest for ``index_name``."""
+
+        path = (
+            self.root
+            / "proof-scope-indexes"
+            / f"{_safe_dataset_id(index_name)}.latest.json"
+        )
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError):
+            return {}
+        return dict(value) if isinstance(value, Mapping) else {}
+
+    # Short spellings for persistence adapters which already establish the
+    # artifact kind in their call site.
+    persist_scope_index = persist_proof_scope_index
+    load_scope_index = load_proof_scope_index
 
     def persist_exhaustion_quorum(self, quorum: Any) -> Path:
         """Atomically persist a bounded quorum projection by repository.
