@@ -320,6 +320,15 @@ class ContradictionEvidence:
     source_receipt: Mapping[str, Any] = field(default_factory=dict)
     scheduled_work: tuple[Mapping[str, Any], ...] = ()
     source_receipt_id: str = ""
+    invalidation_event_id: str = ""
+    changed_inputs: tuple[Mapping[str, Any], ...] = ()
+    affected_obligation_ids: tuple[str, ...] = ()
+    affected_receipt_ids: tuple[str, ...] = ()
+    source_tree: str = ""
+    invalidation_records: tuple[Mapping[str, Any], ...] = ()
+    historical_receipts: tuple[Mapping[str, Any], ...] = ()
+    dependency_edges: tuple[Mapping[str, Any], ...] = ()
+    conflict_edges: tuple[Mapping[str, Any], ...] = ()
     fingerprint: str = ""
     detected_at: datetime | str | None = None
     schema_version: int = GOAL_COMPLETION_SCHEMA_VERSION
@@ -361,6 +370,25 @@ class ContradictionEvidence:
         elif scheduled_input is not None and not isinstance(scheduled_input, (Mapping, Iterable)):
             scheduled_input = ({"value": _json_value(scheduled_input)},)
         scheduled = _mapping_tuple(scheduled_input)
+        event_id = str(
+            self.invalidation_event_id
+            or source.get("event_id")
+            or source.get("invalidation_id")
+            or ""
+        ).strip()
+        changed_inputs = _mapping_tuple(self.changed_inputs)
+        affected_obligations = _string_tuple(self.affected_obligation_ids)
+        affected_receipts = _string_tuple(self.affected_receipt_ids)
+        source_tree = str(
+            self.source_tree
+            or source.get("source_tree")
+            or source.get("source_tree_id")
+            or ""
+        ).strip()
+        invalidation_records = _mapping_tuple(self.invalidation_records)
+        historical_receipts = _mapping_tuple(self.historical_receipts)
+        dependency_edges = _mapping_tuple(self.dependency_edges)
+        conflict_edges = _mapping_tuple(self.conflict_edges)
         identity = {
             "goal_id": goal_id,
             "kind": kind,
@@ -369,6 +397,36 @@ class ContradictionEvidence:
             "source_receipt_id": source_id,
             "source_receipt": source,
         }
+        # Preserve the established contradiction identity for legacy records.
+        # New proof-invalidation provenance is content-addressed as well, but
+        # scheduled replacement work and timestamps remain deliberately
+        # excluded so replay cannot manufacture another contradiction.
+        if any(
+            (
+                event_id,
+                changed_inputs,
+                affected_obligations,
+                affected_receipts,
+                source_tree,
+                invalidation_records,
+                historical_receipts,
+                dependency_edges,
+                conflict_edges,
+            )
+        ):
+            identity.update(
+                {
+                    "invalidation_event_id": event_id,
+                    "changed_inputs": changed_inputs,
+                    "affected_obligation_ids": affected_obligations,
+                    "affected_receipt_ids": affected_receipts,
+                    "source_tree": source_tree,
+                    "invalidation_records": invalidation_records,
+                    "historical_receipts": historical_receipts,
+                    "dependency_edges": dependency_edges,
+                    "conflict_edges": conflict_edges,
+                }
+            )
         object.__setattr__(self, "goal_id", goal_id)
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "summary", " ".join(str(self.summary or "").split()))
@@ -377,6 +435,15 @@ class ContradictionEvidence:
         object.__setattr__(self, "source_receipt", source)
         object.__setattr__(self, "scheduled_work", scheduled)
         object.__setattr__(self, "source_receipt_id", source_id)
+        object.__setattr__(self, "invalidation_event_id", event_id)
+        object.__setattr__(self, "changed_inputs", changed_inputs)
+        object.__setattr__(self, "affected_obligation_ids", affected_obligations)
+        object.__setattr__(self, "affected_receipt_ids", affected_receipts)
+        object.__setattr__(self, "source_tree", source_tree)
+        object.__setattr__(self, "invalidation_records", invalidation_records)
+        object.__setattr__(self, "historical_receipts", historical_receipts)
+        object.__setattr__(self, "dependency_edges", dependency_edges)
+        object.__setattr__(self, "conflict_edges", conflict_edges)
         object.__setattr__(self, "fingerprint", str(self.fingerprint or _stable_fingerprint("contradiction", identity)))
         object.__setattr__(self, "detected_at", _utc_datetime(self.detected_at, field_name="detected_at"))
 
@@ -384,8 +451,14 @@ class ContradictionEvidence:
     def contradiction_id(self) -> str:
         return self.fingerprint
 
+    @property
+    def replacement_tasks(self) -> tuple[Mapping[str, Any], ...]:
+        """Deterministic replacement work scheduled by proof invalidation."""
+
+        return self.scheduled_work
+
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": "ipfs_accelerate_py.agent_supervisor.contradiction.v1",
             "schema_version": self.schema_version,
             "contradiction_id": self.fingerprint,
@@ -400,6 +473,34 @@ class ContradictionEvidence:
             "scheduled_work": _json_value(self.scheduled_work),
             "detected_at": _json_value(self.detected_at),
         }
+        if any(
+            (
+                self.invalidation_event_id,
+                self.changed_inputs,
+                self.affected_obligation_ids,
+                self.affected_receipt_ids,
+                self.source_tree,
+                self.invalidation_records,
+                self.historical_receipts,
+                self.dependency_edges,
+                self.conflict_edges,
+            )
+        ):
+            payload.update(
+                {
+                    "replacement_tasks": _json_value(self.replacement_tasks),
+                    "invalidation_event_id": self.invalidation_event_id,
+                    "changed_inputs": _json_value(self.changed_inputs),
+                    "affected_obligation_ids": list(self.affected_obligation_ids),
+                    "affected_receipt_ids": list(self.affected_receipt_ids),
+                    "source_tree": self.source_tree,
+                    "invalidation_records": _json_value(self.invalidation_records),
+                    "historical_receipts": _json_value(self.historical_receipts),
+                    "dependency_edges": _json_value(self.dependency_edges),
+                    "conflict_edges": _json_value(self.conflict_edges),
+                }
+            )
+        return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ContradictionEvidence":
@@ -415,17 +516,456 @@ class ContradictionEvidence:
             impacted_criteria=payload.get("impacted_criteria", payload.get("criteria", ())) or (),
             invalidated_evidence=payload.get("invalidated_evidence", payload.get("evidence_ids", ())) or (),
             source_receipt=payload.get("source_receipt", payload.get("receipt", {})) or {},
-            scheduled_work=payload.get("scheduled_work", payload.get("newly_scheduled_work", ())) or (),
+            scheduled_work=payload.get(
+                "scheduled_work",
+                payload.get("replacement_tasks", payload.get("newly_scheduled_work", ())),
+            )
+            or (),
             source_receipt_id=str(
                 payload.get(
                     "source_receipt_id",
                     payload.get("finding_id", payload.get("receipt_id", payload.get("receipt_cid", ""))),
                 )
             ),
+            invalidation_event_id=str(
+                payload.get(
+                    "invalidation_event_id",
+                    payload.get("event_id", payload.get("proof_invalidation_id", "")),
+                )
+            ),
+            changed_inputs=payload.get(
+                "changed_inputs", payload.get("invalidated_inputs", ())
+            )
+            or (),
+            affected_obligation_ids=payload.get(
+                "affected_obligation_ids",
+                payload.get("obligation_ids", payload.get("invalidated_obligation_ids", ())),
+            )
+            or (),
+            affected_receipt_ids=payload.get(
+                "affected_receipt_ids",
+                payload.get("receipt_ids", payload.get("invalidated_receipt_ids", ())),
+            )
+            or (),
+            source_tree=str(
+                payload.get(
+                    "source_tree",
+                    payload.get(
+                        "source_tree_id",
+                        payload.get(
+                            "repository_tree",
+                            payload.get("repository_tree_id", payload.get("tree_id", "")),
+                        ),
+                    ),
+                )
+            ),
+            invalidation_records=payload.get(
+                "invalidation_records", payload.get("invalidations", ())
+            )
+            or (),
+            historical_receipts=payload.get(
+                "historical_receipts", payload.get("invalidated_receipts", ())
+            )
+            or (),
+            dependency_edges=payload.get("dependency_edges", ()) or (),
+            conflict_edges=payload.get("conflict_edges", ()) or (),
             fingerprint=str(payload.get("fingerprint", payload.get("contradiction_id", ""))),
             detected_at=payload.get("detected_at"),
             schema_version=int(payload.get("schema_version", GOAL_COMPLETION_SCHEMA_VERSION)),
         )
+
+
+_PROOF_INVALIDATION_EVENT_FIELDS = (
+    "event_id",
+    "invalidation_id",
+    "changed_inputs",
+    "affected_obligation_ids",
+    "affected_receipt_ids",
+    "affected_criteria",
+    "affected_goal_ids",
+    "criteria_by_goal",
+    "bindings",
+    "evidence_bindings",
+    "source_tree",
+    "source_tree_id",
+    "repository_tree",
+    "repository_tree_id",
+    "tree_id",
+    "invalidation_records",
+    "historical_receipts",
+    "replacement_tasks",
+    "dependency_edges",
+    "conflict_edges",
+    "result_index_id",
+    "schema_version",
+)
+
+
+def _proof_invalidation_mapping(value: Any) -> dict[str, Any]:
+    """Project a typed or persisted proof invalidation to a plain mapping."""
+
+    if isinstance(value, Mapping):
+        payload = dict(value)
+    else:
+        to_dict = getattr(value, "to_dict", None)
+        if callable(to_dict):
+            projected = to_dict()
+            if not isinstance(projected, Mapping):
+                raise TypeError("proof invalidation to_dict() must return a mapping")
+            payload = dict(projected)
+        else:
+            payload = {
+                name: getattr(value, name)
+                for name in _PROOF_INVALIDATION_EVENT_FIELDS
+                if hasattr(value, name)
+            }
+            if not payload:
+                raise TypeError(
+                    "proof invalidation must be an event object or mapping"
+                )
+
+    # Accept the orchestration result as a convenience in addition to its
+    # event.  The canonical ProofInvalidationResult uses ``event``; aliases
+    # cover early persisted packet spellings.
+    has_event_fields = any(
+        name in payload
+        for name in (
+            "changed_inputs",
+            "affected_obligation_ids",
+            "affected_receipt_ids",
+            "affected_goal_ids",
+            "affected_criteria",
+        )
+    )
+    if not has_event_fields:
+        for name in ("event", "receipt", "invalidation_event", "invalidation_receipt"):
+            nested = payload.get(name)
+            if nested is not None:
+                return _proof_invalidation_mapping(nested)
+        for name in ("event", "receipt", "invalidation_event", "invalidation_receipt"):
+            nested = getattr(value, name, None)
+            if nested is not None:
+                return _proof_invalidation_mapping(nested)
+    return {str(key): _json_value(item) for key, item in payload.items()}
+
+
+def _proof_invalidation_records(value: Any) -> tuple[dict[str, Any], ...]:
+    """Normalize possibly typed records without losing their payload."""
+
+    if value in (None, ""):
+        return ()
+    if isinstance(value, Mapping):
+        values: Iterable[Any] = (value,)
+    elif isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
+        values = (value,)
+    else:
+        values = value
+    records: list[dict[str, Any]] = []
+    for item in values:
+        if isinstance(item, Mapping):
+            record = dict(item)
+        else:
+            to_dict = getattr(item, "to_dict", None)
+            if callable(to_dict):
+                projected = to_dict()
+                record = dict(projected) if isinstance(projected, Mapping) else {"value": projected}
+            else:
+                record = {
+                    name: getattr(item, name)
+                    for name in (
+                        "goal_id",
+                        "goal_ids",
+                        "criterion_id",
+                        "acceptance_criterion",
+                        "criterion",
+                        "obligation_id",
+                        "receipt_id",
+                        "provenance_id",
+                        "task_id",
+                        "depends_on",
+                        "dependency_ids",
+                        "conflicts_with",
+                        "conflict_ids",
+                    )
+                    if hasattr(item, name)
+                }
+                if not record:
+                    record = {"value": item}
+        records.append({str(key): _json_value(member) for key, member in record.items()})
+    return _mapping_tuple(records)
+
+
+def _proof_invalidation_ids(value: Any, *field_names: str) -> tuple[str, ...]:
+    if value in (None, ""):
+        return ()
+    if isinstance(value, Mapping):
+        values: Iterable[Any] = (value,)
+    elif isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
+        values = (value,)
+    else:
+        values = value
+    result: list[Any] = []
+    for item in values:
+        if isinstance(item, Mapping):
+            selected = next(
+                (item.get(name) for name in field_names if item.get(name) not in (None, "")),
+                "",
+            )
+            result.append(selected)
+        else:
+            result.append(item)
+    return _string_tuple(result)
+
+
+def _goal_ids_from_invalidation_record(record: Mapping[str, Any]) -> tuple[str, ...]:
+    values: list[Any] = []
+    for name in ("goal_id", "affected_goal_id", "owner_goal_id"):
+        if record.get(name) not in (None, ""):
+            values.append(record.get(name))
+    for name in ("goal_ids", "affected_goal_ids", "owner_goal_ids"):
+        value = record.get(name)
+        if isinstance(value, str):
+            values.append(value)
+        elif isinstance(value, Iterable) and not isinstance(value, (bytes, Mapping)):
+            values.extend(value)
+    return _string_tuple(values)
+
+
+def _records_for_invalidation_goal(
+    records: Sequence[Mapping[str, Any]], goal_id: str
+) -> tuple[dict[str, Any], ...]:
+    """Keep records explicitly assigned to a goal plus shared records."""
+
+    return _mapping_tuple(
+        record
+        for record in records
+        if not _goal_ids_from_invalidation_record(record)
+        or goal_id in _goal_ids_from_invalidation_record(record)
+    )
+
+
+def contradictions_from_proof_invalidation(
+    invalidation: Any,
+    *,
+    detected_at: datetime | str | None = None,
+) -> list[ContradictionEvidence]:
+    """Convert one transitive proof invalidation into per-goal contradictions.
+
+    The adapter intentionally uses structural typing.  This keeps
+    :mod:`goal_completion` independent of the proof index while accepting
+    both a typed ``ProofInvalidationEvent`` and its persisted mapping.  Only
+    explicitly affected goals receive contradictions; unrelated completed
+    goals therefore remain stable.
+
+    Event and contradiction identities exclude detection time.  Replaying an
+    identical invalidation yields the same contradiction IDs and replacement
+    task records, allowing :func:`reopen_goal_for_contradictions` to absorb the
+    replay through its existing receipt ledger.
+    """
+
+    payload = _proof_invalidation_mapping(invalidation)
+    changed_inputs = _proof_invalidation_records(
+        payload.get("changed_inputs", payload.get("invalidated_inputs", ()))
+    )
+    obligation_ids = _proof_invalidation_ids(
+        payload.get(
+            "affected_obligation_ids",
+            payload.get("invalidated_obligation_ids", payload.get("obligation_ids", ())),
+        ),
+        "obligation_id",
+        "subject_id",
+        "id",
+    )
+    receipt_ids = _proof_invalidation_ids(
+        payload.get(
+            "affected_receipt_ids",
+            payload.get("invalidated_receipt_ids", payload.get("receipt_ids", ())),
+        ),
+        "receipt_id",
+        "receipt_cid",
+        "provenance_id",
+        "subject_id",
+        "id",
+    )
+    source_tree = str(
+        payload.get(
+            "source_tree",
+            payload.get(
+                "source_tree_id",
+                payload.get(
+                    "repository_tree",
+                    payload.get("repository_tree_id", payload.get("tree_id", "")),
+                ),
+            ),
+        )
+        or ""
+    ).strip()
+    invalidation_records = _proof_invalidation_records(
+        payload.get("invalidation_records", payload.get("invalidations", ()))
+    )
+    historical_receipts = _proof_invalidation_records(
+        payload.get(
+            "historical_receipts",
+            payload.get("invalidated_receipts", payload.get("receipt_history", ())),
+        )
+    )
+    replacement_tasks = _proof_invalidation_records(
+        payload.get(
+            "replacement_tasks",
+            payload.get("scheduled_work", payload.get("newly_scheduled_work", ())),
+        )
+    )
+    dependency_edges = _proof_invalidation_records(payload.get("dependency_edges", ()))
+    conflict_edges = _proof_invalidation_records(payload.get("conflict_edges", ()))
+
+    criterion_records = _proof_invalidation_records(
+        payload.get("affected_criteria", payload.get("criteria", ()))
+    )
+    binding_records = _proof_invalidation_records(
+        payload.get(
+            "evidence_bindings",
+            payload.get("bindings", payload.get("proof_bindings", ())),
+        )
+    )
+    all_bindings = _mapping_tuple((*criterion_records, *binding_records))
+
+    criteria_by_goal: dict[str, set[str]] = {}
+    global_criteria: set[str] = set()
+    goal_ids: set[str] = set(
+        _proof_invalidation_ids(
+            payload.get("affected_goal_ids", payload.get("goal_ids", ())),
+            "goal_id",
+            "id",
+        )
+    )
+    for record in all_bindings:
+        criterion = str(
+            record.get(
+                "acceptance_criterion",
+                record.get("criterion", record.get("criterion_id", record.get("value", ""))),
+            )
+            or ""
+        ).strip()
+        record_goals = _goal_ids_from_invalidation_record(record)
+        goal_ids.update(record_goals)
+        if not criterion:
+            continue
+        if record_goals:
+            for goal_id in record_goals:
+                criteria_by_goal.setdefault(goal_id, set()).add(criterion)
+        else:
+            global_criteria.add(criterion)
+
+    indexed_criteria = payload.get("criteria_by_goal")
+    if isinstance(indexed_criteria, Mapping):
+        for raw_goal_id, raw_criteria in indexed_criteria.items():
+            goal_id = str(raw_goal_id or "").strip()
+            if not goal_id:
+                continue
+            goal_ids.add(goal_id)
+            records = _proof_invalidation_records(raw_criteria)
+            for record in records:
+                criterion = str(
+                    record.get(
+                        "acceptance_criterion",
+                        record.get("criterion", record.get("criterion_id", record.get("value", ""))),
+                    )
+                    or ""
+                ).strip()
+                if criterion:
+                    criteria_by_goal.setdefault(goal_id, set()).add(criterion)
+
+    # Goal-aware replacement records are useful compatibility evidence when a
+    # producer persisted an early packet without affected_goal_ids.
+    for record in replacement_tasks:
+        goal_ids.update(_goal_ids_from_invalidation_record(record))
+
+    event_id = str(
+        payload.get(
+            "event_id",
+            payload.get(
+                "invalidation_id",
+                payload.get("receipt_id", payload.get("content_id", "")),
+            ),
+        )
+        or ""
+    ).strip()
+    if not event_id:
+        event_id = _stable_fingerprint(
+            "proof-invalidation",
+            {
+                "changed_inputs": changed_inputs,
+                "affected_obligation_ids": obligation_ids,
+                "affected_receipt_ids": receipt_ids,
+                "affected_goal_ids": sorted(goal_ids),
+                "affected_criteria": all_bindings,
+                "source_tree": source_tree,
+                "invalidation_records": invalidation_records,
+            },
+        )
+
+    changed_labels = tuple(
+        str(
+            record.get(
+                "key",
+                (
+                    f"{record.get('kind')}:{record.get('value')}"
+                    if record.get("kind") and record.get("value")
+                    else record.get("value", "")
+                ),
+            )
+            or ""
+        ).strip()
+        for record in changed_inputs
+    )
+    changed_summary = ", ".join(item for item in changed_labels if item)
+
+    contradictions: list[ContradictionEvidence] = []
+    for goal_id in sorted(goal_ids, key=lambda item: (item.casefold(), item)):
+        goal_tasks = _records_for_invalidation_goal(replacement_tasks, goal_id)
+        goal_dependency_edges = _records_for_invalidation_goal(dependency_edges, goal_id)
+        goal_conflict_edges = _records_for_invalidation_goal(conflict_edges, goal_id)
+        impacted = _string_tuple(
+            (*global_criteria, *criteria_by_goal.get(goal_id, ()))
+        )
+        summary = (
+            f"Proof evidence for goal {goal_id} was invalidated by semantic change"
+            + (f": {changed_summary}." if changed_summary else ".")
+        )
+        fingerprint = _stable_fingerprint(
+            "proof-invalidation-contradiction",
+            {"event_id": event_id, "goal_id": goal_id},
+        )
+        contradictions.append(
+            ContradictionEvidence(
+                goal_id=goal_id,
+                kind="invalidated_receipt",
+                summary=summary,
+                impacted_criteria=impacted,
+                invalidated_evidence=receipt_ids,
+                source_receipt=payload,
+                source_receipt_id=event_id,
+                scheduled_work=goal_tasks,
+                invalidation_event_id=event_id,
+                changed_inputs=changed_inputs,
+                affected_obligation_ids=obligation_ids,
+                affected_receipt_ids=receipt_ids,
+                source_tree=source_tree,
+                invalidation_records=invalidation_records,
+                historical_receipts=historical_receipts,
+                dependency_edges=goal_dependency_edges,
+                conflict_edges=goal_conflict_edges,
+                fingerprint=fingerprint,
+                detected_at=detected_at,
+            )
+        )
+    return contradictions
+
+
+# Early integration packets used the noun-first spelling.  Keep it as a
+# public alias while documenting contradictions_from_proof_invalidation as
+# the canonical API.
+proof_invalidation_contradictions = contradictions_from_proof_invalidation
 
 
 @dataclass(frozen=True)
@@ -1593,6 +2133,16 @@ def _goal_payloads(goals: Any) -> dict[str, dict[str, Any]]:
         else:
             to_dict = getattr(value, "to_dict", None)
             payload = dict(to_dict()) if callable(to_dict) else dict(vars(value))
+        # ``ObjectiveGoal`` stores markdown fields under ``fields`` and does
+        # not expose a custom serializer.  Flatten that representation at the
+        # lifecycle boundary so direct callers receive the same state/link
+        # behavior as the objective-task janitor's mapping projection.
+        nested_fields = payload.get("fields")
+        if isinstance(nested_fields, Mapping):
+            payload = {
+                **dict(nested_fields),
+                **{key: item for key, item in payload.items() if key != "fields"},
+            }
         goal_id = str(payload.get("goal_id", payload.get("id", ""))).strip()
         if goal_id:
             result[goal_id] = payload
@@ -2961,11 +3511,13 @@ __all__ = [
     "evaluate_goal_completion",
     "evaluate_completion_gate",
     "completion_diagnostics",
+    "contradictions_from_proof_invalidation",
     "is_legacy_completed_goal_state",
     "is_schedulable_goal_state",
     "is_terminal_goal_state",
     "legal_goal_transitions",
     "normalize_goal_state",
+    "proof_invalidation_contradictions",
     "migrate_legacy_goal_completion",
     "reconcile_goal_reopenings",
     "reopen_goal_for_contradictions",

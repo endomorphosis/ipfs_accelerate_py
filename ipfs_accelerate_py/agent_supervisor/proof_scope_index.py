@@ -27,6 +27,10 @@ PROOF_SCOPE_INDEX_SCHEMA_VERSION = 1
 PROOF_SCOPE_INDEX_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-scope-index@1"
 )
+PROOF_INVALIDATION_EVENT_SCHEMA_VERSION = 1
+PROOF_INVALIDATION_EVENT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/proof-invalidation-event@1"
+)
 DEFAULT_MAX_INVALIDATION_REASON_CHAIN = 8
 
 
@@ -41,9 +45,11 @@ class ProofInputKind(str, Enum):
     QUALIFIED_SYMBOL = "qualified_symbol"
     INTERFACE = "interface"
     ASSUMPTION = "assumption"
+    PREMISE = "premise"
     TEMPLATE = "template"
     TOOLCHAIN = "toolchain"
     POLICY = "policy"
+    CONTRADICTION = "contradiction"
 
 
 # Descriptive compatibility spellings used by early callers.
@@ -414,6 +420,349 @@ class InvalidationRecord:
         )
 
 
+@dataclass(frozen=True, order=True)
+class ProofCriterionBinding:
+    """One goal criterion whose completion evidence uses invalidated proof."""
+
+    criterion_id: str
+    acceptance_criterion: str
+    goal_id: str
+    obligation_id: str = ""
+    receipt_id: str = ""
+    source_tree: str = ""
+    provenance_id: str = ""
+
+    def __post_init__(self) -> None:
+        values = {
+            name: str(getattr(self, name) or "").strip()
+            for name in (
+                "criterion_id",
+                "acceptance_criterion",
+                "goal_id",
+                "obligation_id",
+                "receipt_id",
+                "source_tree",
+                "provenance_id",
+            )
+        }
+        if not values["goal_id"]:
+            raise ProofScopeIndexError("proof criterion bindings require goal_id")
+        if not values["acceptance_criterion"]:
+            raise ProofScopeIndexError(
+                "proof criterion bindings require acceptance_criterion"
+            )
+        if not values["criterion_id"]:
+            values["criterion_id"] = _identity(
+                "acceptance-criterion",
+                {
+                    "goal_id": values["goal_id"],
+                    "acceptance_criterion": values["acceptance_criterion"],
+                },
+            )
+        for name, value in values.items():
+            object.__setattr__(self, name, value)
+
+    @property
+    def repository_tree(self) -> str:
+        return self.source_tree
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "criterion_id": self.criterion_id,
+            "acceptance_criterion": self.acceptance_criterion,
+            "goal_id": self.goal_id,
+            "obligation_id": self.obligation_id,
+            "receipt_id": self.receipt_id,
+            "source_tree": self.source_tree,
+            "provenance_id": self.provenance_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofCriterionBinding":
+        return cls(
+            criterion_id=str(payload.get("criterion_id") or ""),
+            acceptance_criterion=str(
+                payload.get(
+                    "acceptance_criterion",
+                    payload.get("criterion", payload.get("acceptance", "")),
+                )
+                or ""
+            ),
+            goal_id=str(payload.get("goal_id") or ""),
+            obligation_id=str(
+                payload.get("obligation_id", payload.get("proof_obligation_id", ""))
+                or ""
+            ),
+            receipt_id=str(
+                payload.get(
+                    "receipt_id",
+                    payload.get(
+                        "proof_receipt_id",
+                        payload.get("formal_proof_receipt_id", ""),
+                    ),
+                )
+                or ""
+            ),
+            source_tree=str(
+                payload.get(
+                    "source_tree",
+                    payload.get(
+                        "repository_tree",
+                        payload.get("repository_tree_id", payload.get("tree_id", "")),
+                    ),
+                )
+                or ""
+            ),
+            provenance_id=str(
+                payload.get(
+                    "provenance_id",
+                    payload.get("provenance_cid", payload.get("receipt_cid", "")),
+                )
+                or ""
+            ),
+        )
+
+
+@dataclass(frozen=True, order=True)
+class ProofInvalidationEdge:
+    """Dependency or conflict edge retained for replacement work."""
+
+    edge_kind: str
+    source_id: str
+    target_id: str
+    metadata_json: str = "{}"
+
+    def __post_init__(self) -> None:
+        kind = str(self.edge_kind or "").strip().lower()
+        source = str(self.source_id or "").strip()
+        target = str(self.target_id or "").strip()
+        if not kind or not source or not target:
+            raise ProofScopeIndexError(
+                "proof invalidation edges require edge_kind, source_id, and target_id"
+            )
+        metadata = self.metadata_json
+        if isinstance(metadata, Mapping):
+            metadata = _canonical_json(metadata)
+        else:
+            metadata = str(metadata or "{}").strip()
+            try:
+                decoded = json.loads(metadata)
+            except (TypeError, ValueError) as exc:
+                raise ProofScopeIndexError(
+                    "proof invalidation edge metadata must be valid JSON"
+                ) from exc
+            if not isinstance(decoded, Mapping):
+                raise ProofScopeIndexError(
+                    "proof invalidation edge metadata must contain an object"
+                )
+            metadata = _canonical_json(decoded)
+        object.__setattr__(self, "edge_kind", kind)
+        object.__setattr__(self, "source_id", source)
+        object.__setattr__(self, "target_id", target)
+        object.__setattr__(self, "metadata_json", metadata)
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        return json.loads(self.metadata_json)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "edge_kind": self.edge_kind,
+            "source_id": self.source_id,
+            "target_id": self.target_id,
+            "metadata": dict(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any], *, default_kind: str = ""
+    ) -> "ProofInvalidationEdge":
+        source_aliases = (
+            "source_id",
+            "source_task_cid",
+            "left_task_cid",
+            "from_id",
+            "source",
+            "from",
+            "left",
+        )
+        target_aliases = (
+            "target_id",
+            "target_task_cid",
+            "right_task_cid",
+            "to_id",
+            "target",
+            "to",
+            "right",
+        )
+        identity_fields = {
+            "edge_kind",
+            "kind",
+            *source_aliases,
+            *target_aliases,
+        }
+        metadata = dict(payload.get("metadata") or {})
+        # Objective dependency/conflict edges carry important audit data
+        # (provenance, overlap, observed weights, allow overrides) beside
+        # their endpoints.  Retain those fields instead of silently reducing
+        # the edge to a bare pair.
+        metadata.update(
+            {
+                str(key): _canonical(value)
+                for key, value in payload.items()
+                if key not in identity_fields and key != "metadata"
+            }
+        )
+        return cls(
+            edge_kind=str(
+                payload.get("edge_kind", payload.get("kind", default_kind)) or ""
+            ),
+            source_id=str(
+                payload.get(
+                    "source_id",
+                    payload.get(
+                        "source_task_cid",
+                        payload.get(
+                            "left_task_cid",
+                            payload.get(
+                                "from_id",
+                                payload.get(
+                                    "source",
+                                    payload.get("from", payload.get("left", "")),
+                                ),
+                            ),
+                        ),
+                    ),
+                )
+                or ""
+            ),
+            target_id=str(
+                payload.get(
+                    "target_id",
+                    payload.get(
+                        "target_task_cid",
+                        payload.get(
+                            "right_task_cid",
+                            payload.get(
+                                "to_id",
+                                payload.get(
+                                    "target",
+                                    payload.get("to", payload.get("right", "")),
+                                ),
+                            ),
+                        ),
+                    ),
+                )
+                or ""
+            ),
+            metadata_json=_canonical_json(metadata),
+        )
+
+
+@dataclass(frozen=True, order=True)
+class ProofReplacementTask:
+    """Deterministic replacement-work projection for one affected criterion."""
+
+    task_id: str
+    goal_id: str
+    criterion_id: str
+    obligation_ids: tuple[str, ...] = ()
+    receipt_ids: tuple[str, ...] = ()
+    depends_on: tuple[str, ...] = ()
+    changed_inputs: tuple[ProofScopeKey, ...] = ()
+    dependency_edges: tuple[ProofInvalidationEdge, ...] = ()
+    conflict_edges: tuple[ProofInvalidationEdge, ...] = ()
+    source_tree: str = ""
+
+    def __post_init__(self) -> None:
+        goal_id = str(self.goal_id or "").strip()
+        criterion_id = str(self.criterion_id or "").strip()
+        if not goal_id or not criterion_id:
+            raise ProofScopeIndexError(
+                "replacement proof tasks require goal_id and criterion_id"
+            )
+        object.__setattr__(self, "goal_id", goal_id)
+        object.__setattr__(self, "criterion_id", criterion_id)
+        object.__setattr__(self, "obligation_ids", _strings(self.obligation_ids))
+        object.__setattr__(self, "receipt_ids", _strings(self.receipt_ids))
+        object.__setattr__(self, "depends_on", _strings(self.depends_on))
+        object.__setattr__(
+            self, "changed_inputs", tuple(sorted(set(self.changed_inputs)))
+        )
+        object.__setattr__(
+            self, "dependency_edges", tuple(sorted(set(self.dependency_edges)))
+        )
+        object.__setattr__(
+            self, "conflict_edges", tuple(sorted(set(self.conflict_edges)))
+        )
+        object.__setattr__(self, "source_tree", str(self.source_tree or "").strip())
+        task_id = str(self.task_id or "").strip()
+        if not task_id:
+            task_id = _identity(
+                "proof-replacement-task",
+                {
+                    "goal_id": goal_id,
+                    "criterion_id": criterion_id,
+                    "obligation_ids": list(self.obligation_ids),
+                    "receipt_ids": list(self.receipt_ids),
+                    "depends_on": list(self.depends_on),
+                    "changed_inputs": [item.to_dict() for item in self.changed_inputs],
+                    "dependency_edges": [
+                        item.to_dict() for item in self.dependency_edges
+                    ],
+                    "conflict_edges": [item.to_dict() for item in self.conflict_edges],
+                    "source_tree": self.source_tree,
+                },
+            )
+        object.__setattr__(self, "task_id", task_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "task_id": self.task_id,
+            "goal_id": self.goal_id,
+            "criterion_id": self.criterion_id,
+            "obligation_ids": list(self.obligation_ids),
+            "receipt_ids": list(self.receipt_ids),
+            "depends_on": list(self.depends_on),
+            "changed_inputs": [item.to_dict() for item in self.changed_inputs],
+            "dependency_edges": [item.to_dict() for item in self.dependency_edges],
+            "conflict_edges": [item.to_dict() for item in self.conflict_edges],
+            "source_tree": self.source_tree,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofReplacementTask":
+        return cls(
+            task_id=str(payload.get("task_id") or ""),
+            goal_id=str(payload.get("goal_id") or ""),
+            criterion_id=str(payload.get("criterion_id") or ""),
+            obligation_ids=tuple(payload.get("obligation_ids", ())),
+            receipt_ids=tuple(
+                payload.get("receipt_ids", payload.get("invalidated_receipt_ids", ()))
+            ),
+            depends_on=tuple(
+                payload.get(
+                    "depends_on",
+                    payload.get("dependency_ids", payload.get("dependencies", ())),
+                )
+            ),
+            changed_inputs=tuple(
+                _scope_key(item) for item in payload.get("changed_inputs", ())
+            ),
+            dependency_edges=tuple(
+                ProofInvalidationEdge.from_dict(item, default_kind="dependency")
+                for item in payload.get("dependency_edges", ())
+            ),
+            conflict_edges=tuple(
+                ProofInvalidationEdge.from_dict(item, default_kind="conflict")
+                for item in payload.get("conflict_edges", ())
+            ),
+            source_tree=str(
+                payload.get("source_tree", payload.get("repository_tree", "")) or ""
+            ),
+        )
+
+
 def _strings_preserving_order(value: Iterable[Any]) -> tuple[str, ...]:
     result: list[str] = []
     seen: set[str] = set()
@@ -464,6 +813,233 @@ class ProofScopeIndexStats:
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofScopeIndexStats":
         names = cls.__dataclass_fields__
         return cls(**{name: max(0, int(payload.get(name, 0))) for name in names})
+
+
+@dataclass(frozen=True)
+class ProofInvalidationEvent:
+    """Content-addressed audit event for one semantic invalidation."""
+
+    changed_inputs: tuple[ProofScopeKey, ...]
+    affected_obligation_ids: tuple[str, ...]
+    affected_receipt_ids: tuple[str, ...]
+    affected_criteria: tuple[ProofCriterionBinding, ...]
+    affected_goal_ids: tuple[str, ...]
+    source_tree: str
+    invalidation_records: tuple[InvalidationRecord, ...]
+    historical_receipts: tuple[IndexedReceipt, ...]
+    dependency_edges: tuple[ProofInvalidationEdge, ...] = ()
+    conflict_edges: tuple[ProofInvalidationEdge, ...] = ()
+    replacement_tasks: tuple[ProofReplacementTask, ...] = ()
+    result_index_id: str = ""
+    schema_version: int = PROOF_INVALIDATION_EVENT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if int(self.schema_version) != PROOF_INVALIDATION_EVENT_SCHEMA_VERSION:
+            raise ProofScopeIndexError(
+                "unsupported proof invalidation event schema version "
+                f"{self.schema_version}"
+            )
+        changed = tuple(sorted(set(self.changed_inputs)))
+        source_tree = str(self.source_tree or "").strip()
+        result_index_id = str(self.result_index_id or "").strip()
+        if not changed:
+            raise ProofScopeIndexError(
+                "proof invalidation events require at least one changed input"
+            )
+        if not source_tree:
+            raise ProofScopeIndexError(
+                "proof invalidation events require an immutable source_tree identity"
+            )
+        if not result_index_id:
+            raise ProofScopeIndexError(
+                "proof invalidation events require result_index_id"
+            )
+        object.__setattr__(self, "changed_inputs", changed)
+        object.__setattr__(
+            self, "affected_obligation_ids", _strings(self.affected_obligation_ids)
+        )
+        object.__setattr__(
+            self, "affected_receipt_ids", _strings(self.affected_receipt_ids)
+        )
+        object.__setattr__(
+            self, "affected_criteria", tuple(sorted(set(self.affected_criteria)))
+        )
+        object.__setattr__(
+            self, "affected_goal_ids", _strings(self.affected_goal_ids)
+        )
+        object.__setattr__(self, "source_tree", source_tree)
+        object.__setattr__(
+            self,
+            "invalidation_records",
+            tuple(
+                sorted(
+                    _dedupe_invalidations(self.invalidation_records),
+                    key=lambda item: item.invalidation_id,
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "historical_receipts",
+            tuple(sorted(self.historical_receipts, key=lambda item: item.receipt_id)),
+        )
+        object.__setattr__(
+            self, "dependency_edges", tuple(sorted(set(self.dependency_edges)))
+        )
+        object.__setattr__(
+            self, "conflict_edges", tuple(sorted(set(self.conflict_edges)))
+        )
+        object.__setattr__(
+            self, "replacement_tasks", tuple(sorted(set(self.replacement_tasks)))
+        )
+        object.__setattr__(self, "result_index_id", result_index_id)
+        object.__setattr__(self, "schema_version", int(self.schema_version))
+        if not {item.goal_id for item in self.affected_criteria}.issubset(
+            self.affected_goal_ids
+        ):
+            raise ProofScopeIndexError(
+                "affected_goal_ids must include every affected criterion goal"
+            )
+        retained_ids = {item.receipt_id for item in self.historical_receipts}
+        if not set(self.affected_receipt_ids).issubset(retained_ids):
+            raise ProofScopeIndexError(
+                "historical_receipts must retain every affected indexed receipt"
+            )
+
+    @property
+    def event_id(self) -> str:
+        return _identity("proof-invalidation-event", self._content_dict())
+
+    @property
+    def invalidation_id(self) -> str:
+        return self.event_id
+
+    @property
+    def source_tree_id(self) -> str:
+        return self.source_tree
+
+    @property
+    def repository_tree(self) -> str:
+        return self.source_tree
+
+    @property
+    def repository_tree_id(self) -> str:
+        return self.source_tree
+
+    @property
+    def affected_criterion_ids(self) -> tuple[str, ...]:
+        return tuple(sorted({item.criterion_id for item in self.affected_criteria}))
+
+    def _content_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PROOF_INVALIDATION_EVENT_SCHEMA,
+            "schema_version": self.schema_version,
+            "changed_inputs": [item.to_dict() for item in self.changed_inputs],
+            "affected_obligation_ids": list(self.affected_obligation_ids),
+            "affected_receipt_ids": list(self.affected_receipt_ids),
+            "affected_criteria": [item.to_dict() for item in self.affected_criteria],
+            "affected_goal_ids": list(self.affected_goal_ids),
+            "source_tree": self.source_tree,
+            "invalidation_records": [
+                item.to_dict() for item in self.invalidation_records
+            ],
+            "historical_receipts": [
+                item.to_dict() for item in self.historical_receipts
+            ],
+            "dependency_edges": [item.to_dict() for item in self.dependency_edges],
+            "conflict_edges": [item.to_dict() for item in self.conflict_edges],
+            "replacement_tasks": [item.to_dict() for item in self.replacement_tasks],
+            "result_index_id": self.result_index_id,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._content_dict(), "event_id": self.event_id}
+
+    def canonical_dict(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    def to_json(self, *, indent: int | None = 2) -> str:
+        return json.dumps(
+            self.canonical_dict(), ensure_ascii=False, indent=indent, sort_keys=True
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofInvalidationEvent":
+        schema = payload.get("schema")
+        if schema not in (None, "", PROOF_INVALIDATION_EVENT_SCHEMA):
+            raise ProofScopeIndexError(
+                f"unsupported proof invalidation event schema {schema!r}"
+            )
+        event = cls(
+            changed_inputs=tuple(
+                _scope_key(item) for item in payload.get("changed_inputs", ())
+            ),
+            affected_obligation_ids=tuple(
+                payload.get("affected_obligation_ids", ())
+            ),
+            affected_receipt_ids=tuple(payload.get("affected_receipt_ids", ())),
+            affected_criteria=tuple(
+                ProofCriterionBinding.from_dict(item)
+                for item in payload.get("affected_criteria", ())
+            ),
+            affected_goal_ids=tuple(payload.get("affected_goal_ids", ())),
+            source_tree=str(
+                payload.get(
+                    "source_tree",
+                    payload.get(
+                        "source_tree_id",
+                        payload.get(
+                            "repository_tree",
+                            payload.get("repository_tree_id", payload.get("tree_id", "")),
+                        ),
+                    ),
+                )
+                or ""
+            ),
+            invalidation_records=tuple(
+                InvalidationRecord.from_dict(item)
+                for item in payload.get("invalidation_records", ())
+            ),
+            historical_receipts=tuple(
+                IndexedReceipt.from_dict(item)
+                for item in payload.get("historical_receipts", ())
+            ),
+            dependency_edges=tuple(
+                ProofInvalidationEdge.from_dict(item, default_kind="dependency")
+                for item in payload.get("dependency_edges", ())
+            ),
+            conflict_edges=tuple(
+                ProofInvalidationEdge.from_dict(item, default_kind="conflict")
+                for item in payload.get("conflict_edges", ())
+            ),
+            replacement_tasks=tuple(
+                ProofReplacementTask.from_dict(item)
+                for item in payload.get("replacement_tasks", ())
+            ),
+            result_index_id=str(payload.get("result_index_id") or ""),
+            schema_version=int(
+                payload.get(
+                    "schema_version", PROOF_INVALIDATION_EVENT_SCHEMA_VERSION
+                )
+            ),
+        )
+        claimed = str(
+            payload.get("event_id", payload.get("invalidation_id", "")) or ""
+        )
+        if claimed and claimed != event.event_id:
+            raise ProofScopeIndexError(
+                "proof invalidation event identity does not match payload"
+            )
+        return event
+
+    @classmethod
+    def from_json(cls, value: str | bytes) -> "ProofInvalidationEvent":
+        payload = json.loads(value)
+        if not isinstance(payload, Mapping):
+            raise ProofScopeIndexError(
+                "proof invalidation event JSON must contain an object"
+            )
+        return cls.from_dict(payload)
 
 
 @dataclass(frozen=True)
@@ -660,6 +1236,36 @@ class ProofScopeIndex:
             max_reason_chain=max_reason_chain,
         )
 
+    def invalidate_evidence(
+        self,
+        changed_inputs: Iterable[Any],
+        *,
+        source_tree: str = "",
+        source_tree_id: str = "",
+        repository_tree: str = "",
+        repository_tree_id: str = "",
+        completion_evidence: Any = (),
+        completion_evidence_by_goal: Mapping[str, Any] | None = None,
+        dependency_edges: Iterable[Any] = (),
+        conflict_edges: Iterable[Any] = (),
+        max_reason_chain: int = DEFAULT_MAX_INVALIDATION_REASON_CHAIN,
+    ) -> "ProofInvalidationResult":
+        """Invalidate proof and return its goal/criterion audit transaction."""
+
+        return invalidate_proof_evidence(
+            self,
+            changed_inputs,
+            source_tree=source_tree,
+            source_tree_id=source_tree_id,
+            repository_tree=repository_tree,
+            repository_tree_id=repository_tree_id,
+            completion_evidence=completion_evidence,
+            completion_evidence_by_goal=completion_evidence_by_goal,
+            dependency_edges=dependency_edges,
+            conflict_edges=conflict_edges,
+            max_reason_chain=max_reason_chain,
+        )
+
     @property
     def scope_index(self) -> Mapping[str, ScopeDependents]:
         keys = {key for item in self.obligations for key in item.scope_keys}
@@ -724,6 +1330,80 @@ class ProofScopeIndex:
         return cls.from_dict(payload)
 
 
+@dataclass(frozen=True)
+class ProofInvalidationResult:
+    """Atomic result: the invalidated index and its immutable audit event."""
+
+    index: ProofScopeIndex
+    event: ProofInvalidationEvent
+
+    def __post_init__(self) -> None:
+        if self.event.result_index_id != self.index.index_id:
+            raise ProofScopeIndexError(
+                "proof invalidation event does not identify its result index"
+            )
+
+    @property
+    def receipt(self) -> ProofInvalidationEvent:
+        return self.event
+
+    @property
+    def invalidation_event(self) -> ProofInvalidationEvent:
+        return self.event
+
+    @property
+    def result_id(self) -> str:
+        return self.event.event_id
+
+    def __iter__(self):
+        # Supports ``index, event = invalidate_proof_evidence(...)`` while the
+        # named properties remain clearer for serialized bridges.
+        yield self.index
+        yield self.event
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "result_id": self.result_id,
+            "index": self.index.to_dict(),
+            "event": self.event.to_dict(),
+        }
+
+    def to_json(self, *, indent: int | None = 2) -> str:
+        return json.dumps(
+            self.to_dict(), ensure_ascii=False, indent=indent, sort_keys=True
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofInvalidationResult":
+        index_payload = payload.get("index")
+        event_payload = payload.get("event", payload.get("receipt"))
+        if not isinstance(index_payload, Mapping) or not isinstance(
+            event_payload, Mapping
+        ):
+            raise ProofScopeIndexError(
+                "proof invalidation results require index and event objects"
+            )
+        result = cls(
+            index=ProofScopeIndex.from_dict(index_payload),
+            event=ProofInvalidationEvent.from_dict(event_payload),
+        )
+        claimed = str(payload.get("result_id") or "")
+        if claimed and claimed != result.result_id:
+            raise ProofScopeIndexError(
+                "proof invalidation result identity does not match payload"
+            )
+        return result
+
+    @classmethod
+    def from_json(cls, value: str | bytes) -> "ProofInvalidationResult":
+        payload = json.loads(value)
+        if not isinstance(payload, Mapping):
+            raise ProofScopeIndexError(
+                "proof invalidation result JSON must contain an object"
+            )
+        return cls.from_dict(payload)
+
+
 def _unique(records: Iterable[Any], name: str, noun: str) -> None:
     seen: set[str] = set()
     for record in records:
@@ -758,11 +1438,20 @@ def _dimension_values(record: Mapping[str, Any]) -> dict[ProofInputKind, set[str
         ProofInputKind.ASSUMPTION: (
             "assumption", "assumptions", "assumption_id", "assumption_ids",
         ),
+        ProofInputKind.PREMISE: (
+            "premise", "premises", "premise_id", "premise_ids",
+        ),
         ProofInputKind.TEMPLATE: ("template", "templates", "template_id", "template_ids"),
         ProofInputKind.TOOLCHAIN: (
             "toolchain", "toolchains", "toolchain_id", "toolchain_ids",
         ),
         ProofInputKind.POLICY: ("policy", "policies", "policy_id", "policy_ids"),
+        ProofInputKind.CONTRADICTION: (
+            "contradiction",
+            "contradictions",
+            "contradiction_id",
+            "contradiction_ids",
+        ),
     }
     for kind, names in aliases.items():
         for source in (record, metadata):
@@ -805,6 +1494,9 @@ def _scope_key(value: Any) -> ProofScopeKey:
     if isinstance(value, ProofScopeKey):
         return value
     if isinstance(value, Mapping):
+        kind = str(value.get("kind", value.get("scope_kind", "")) or "").strip()
+        if kind == "symbol":
+            value = {**dict(value), "kind": ProofInputKind.QUALIFIED_SYMBOL.value}
         return ProofScopeKey.from_dict(value)
     if isinstance(value, Sequence) and not isinstance(
         value, (str, bytes, bytearray)
@@ -814,6 +1506,8 @@ def _scope_key(value: Any) -> ProofScopeKey:
         return ProofScopeKey(ProofInputKind(value[0]), str(value[1]))
     if isinstance(value, str):
         kind, separator, item = value.partition(":")
+        if kind == "symbol":
+            kind = ProofInputKind.QUALIFIED_SYMBOL.value
         if separator and kind in {candidate.value for candidate in ProofInputKind}:
             return ProofScopeKey(ProofInputKind(kind), item)
     raise ProofScopeIndexError(
@@ -1053,6 +1747,7 @@ def _normalize_obligation(
     # assumption keys and never create dangling graph edges.
     premise_ids = _many(record, "premise_ids")
     keys.update(ProofScopeKey(ProofInputKind.ASSUMPTION, item) for item in premise_ids)
+    keys.update(ProofScopeKey(ProofInputKind.PREMISE, item) for item in premise_ids)
     dependencies.update(premise_ids)
     dependencies.discard(obligation_id)
     return IndexedObligation(
@@ -1090,6 +1785,7 @@ def _normalize_receipt(
             keys.update(scope.keys)
     for premise in _many(record, "premise_ids"):
         keys.add(ProofScopeKey(ProofInputKind.ASSUMPTION, premise))
+        keys.add(ProofScopeKey(ProofInputKind.PREMISE, premise))
     return IndexedReceipt(
         receipt_id=receipt_id,
         obligation_id=obligation_id,
@@ -1563,6 +2259,342 @@ def invalidate_proof_scope_inputs(
     )
 
 
+def _completion_evidence_rows(
+    completion_evidence: Any,
+    completion_evidence_by_goal: Mapping[str, Any] | None,
+) -> tuple[tuple[str, Mapping[str, Any]], ...]:
+    """Normalize typed, flat, and goal-keyed completion evidence inputs."""
+
+    rows: list[tuple[str, Mapping[str, Any]]] = []
+
+    def append(value: Any, goal_hint: str = "") -> None:
+        if value is None:
+            return
+        if isinstance(value, Mapping):
+            record = _record(value)
+            nested = record.get("evidence")
+            if isinstance(nested, Mapping):
+                merged = dict(nested)
+                for name in ("goal_id", "criterion_id"):
+                    if name not in merged and name in record:
+                        merged[name] = record[name]
+                record = _canonical(merged)
+            evidence_names = {
+                "acceptance_criterion",
+                "criterion",
+                "obligation_id",
+                "proof_obligation_id",
+                "proof_receipt_id",
+                "formal_proof_receipt_id",
+                "proof_receipt",
+                "provenance_cid",
+            }
+            if evidence_names.intersection(record):
+                metadata = _metadata(record)
+                goal_id = str(
+                    record.get("goal_id")
+                    or metadata.get("goal_id")
+                    or goal_hint
+                    or ""
+                ).strip()
+                rows.append((goal_id, record))
+                return
+            # A mapping without evidence fields is treated as goal -> records.
+            for goal_id, records in sorted(record.items(), key=lambda item: str(item[0])):
+                for item in _iter_records(records):
+                    append(item, str(goal_id))
+            return
+        if hasattr(value, "to_dict") or (
+            is_dataclass(value) and not isinstance(value, type)
+        ):
+            append(_record(value), goal_hint)
+            return
+        for item in _iter_records(value):
+            if item is value:
+                raise TypeError(
+                    f"completion evidence must be record-like, got {type(value)!r}"
+                )
+            append(item, goal_hint)
+
+    append(completion_evidence)
+    if completion_evidence_by_goal:
+        append(completion_evidence_by_goal)
+    return tuple(
+        sorted(
+            rows,
+            key=lambda item: (
+                item[0],
+                _canonical_json(item[1]),
+            ),
+        )
+    )
+
+
+def _criterion_binding(
+    goal_id: str, record: Mapping[str, Any]
+) -> ProofCriterionBinding | None:
+    metadata = _metadata(record)
+    criterion = _first(
+        record, "acceptance_criterion", "criterion", "acceptance"
+    )
+    if not goal_id or not criterion:
+        return None
+    embedded_receipt = record.get("proof_receipt")
+    if not isinstance(embedded_receipt, Mapping):
+        embedded_receipt = {}
+    obligation_id = _first(
+        record, "obligation_id", "proof_obligation_id", "formal_obligation_id"
+    ) or _first(embedded_receipt, "obligation_id")
+    receipt_id = _first(
+        record,
+        "proof_receipt_id",
+        "formal_proof_receipt_id",
+        "trusted_proof_receipt_id",
+    ) or _first(embedded_receipt, "receipt_id", "proof_id", "content_id")
+    source_tree = _first(
+        record,
+        "repository_tree",
+        "repository_tree_id",
+        "source_tree",
+        "tree_id",
+        "tree_identity",
+    ) or _first(embedded_receipt, "repository_tree_id", "repository_tree", "tree_id")
+    criterion_id = _first(record, "criterion_id") or _first(metadata, "criterion_id")
+    provenance_id = _first(
+        record, "provenance_id", "provenance_cid", "receipt_cid", "cid"
+    )
+    return ProofCriterionBinding(
+        criterion_id=criterion_id,
+        acceptance_criterion=criterion,
+        goal_id=goal_id,
+        obligation_id=obligation_id,
+        receipt_id=receipt_id,
+        source_tree=source_tree,
+        provenance_id=provenance_id,
+    )
+
+
+def _invalidation_edge(value: Any, *, default_kind: str) -> ProofInvalidationEdge:
+    if isinstance(value, ProofInvalidationEdge):
+        if value.edge_kind == default_kind:
+            return value
+        return ProofInvalidationEdge(
+            edge_kind=default_kind,
+            source_id=value.source_id,
+            target_id=value.target_id,
+            metadata_json=value.metadata_json,
+        )
+    if isinstance(value, Mapping) or hasattr(value, "to_dict") or (
+        is_dataclass(value) and not isinstance(value, type)
+    ):
+        return ProofInvalidationEdge.from_dict(
+            _record(value), default_kind=default_kind
+        )
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        if len(value) not in (2, 3):
+            raise ProofScopeIndexError(
+                "proof invalidation edge sequences require source, target, "
+                "and optional metadata"
+            )
+        return ProofInvalidationEdge(
+            edge_kind=default_kind,
+            source_id=str(value[0]),
+            target_id=str(value[1]),
+            metadata_json=_canonical_json(value[2] if len(value) == 3 else {}),
+        )
+    raise ProofScopeIndexError(
+        "proof invalidation edges must be mappings or source/target sequences"
+    )
+
+
+def invalidate_proof_evidence(
+    index: ProofScopeIndex | Mapping[str, Any],
+    changed_inputs: Iterable[Any],
+    *,
+    source_tree: str = "",
+    source_tree_id: str = "",
+    repository_tree: str = "",
+    repository_tree_id: str = "",
+    completion_evidence: Any = (),
+    completion_evidence_by_goal: Mapping[str, Any] | None = None,
+    dependency_edges: Iterable[Any] = (),
+    conflict_edges: Iterable[Any] = (),
+    max_reason_chain: int = DEFAULT_MAX_INVALIDATION_REASON_CHAIN,
+) -> ProofInvalidationResult:
+    """Atomically invalidate proof and project affected goal evidence.
+
+    The returned event is derived from content only.  Repeating an identical
+    transaction against its already-invalidated result returns the same index
+    and event identities, while all original indexed receipts remain embedded
+    in the event and available in the index for audit.
+    """
+
+    if not isinstance(index, ProofScopeIndex):
+        index = ProofScopeIndex.from_dict(index)
+    keys = tuple(sorted({_scope_key(value) for value in changed_inputs}))
+    if not keys:
+        raise ProofScopeIndexError(
+            "invalidate_proof_evidence requires at least one changed input"
+        )
+    changed_index = invalidate_proof_scope_inputs(
+        index, keys, max_reason_chain=max_reason_chain
+    )
+
+    obligation_ids: set[str] = set()
+    receipt_ids: set[str] = set()
+    for key in keys:
+        dependents = index.dependents(key)
+        obligation_ids.update(dependents.obligation_ids)
+        receipt_ids.update(dependents.receipt_ids)
+    # Keep only concrete indexed receipt identities.  The index's invalidation
+    # history may also mention receipts from prior complete snapshots.
+    indexed_receipts = {
+        item.receipt_id: item
+        for item in index.receipts
+        if item.receipt_id in receipt_ids
+    }
+    receipt_ids = set(indexed_receipts)
+
+    bindings: set[ProofCriterionBinding] = set()
+    for goal_id, record in _completion_evidence_rows(
+        completion_evidence, completion_evidence_by_goal
+    ):
+        binding = _criterion_binding(goal_id, record)
+        if binding is None:
+            continue
+        if (
+            binding.obligation_id in obligation_ids
+            or binding.receipt_id in receipt_ids
+        ):
+            bindings.add(binding)
+
+    supplied_trees = {
+        str(item).strip()
+        for item in (
+            source_tree,
+            source_tree_id,
+            repository_tree,
+            repository_tree_id,
+        )
+        if str(item or "").strip()
+    }
+    if len(supplied_trees) > 1:
+        raise ProofScopeIndexError(
+            "source_tree aliases identify different trees"
+        )
+    resolved_tree = next(iter(supplied_trees), "")
+    if not resolved_tree:
+        evidence_trees = {item.source_tree for item in bindings if item.source_tree}
+        if len(evidence_trees) == 1:
+            resolved_tree = next(iter(evidence_trees))
+        elif len(evidence_trees) > 1:
+            raise ProofScopeIndexError(
+                "affected completion evidence spans multiple source trees; "
+                "supply source_tree explicitly"
+            )
+    if not resolved_tree:
+        raise ProofScopeIndexError(
+            "source_tree is required when completion evidence cannot identify it"
+        )
+
+    dependency_set = {
+        _invalidation_edge(item, default_kind="dependency")
+        for item in dependency_edges
+    }
+    # Obligation graph edges are part of the invalidated scope even when a
+    # caller does not redundantly project them from its task graph.
+    for obligation in index.obligations:
+        if obligation.obligation_id not in obligation_ids:
+            continue
+        for dependency_id in obligation.dependency_ids:
+            if dependency_id in obligation_ids:
+                dependency_set.add(
+                    ProofInvalidationEdge(
+                        edge_kind="dependency",
+                        source_id=obligation.obligation_id,
+                        target_id=dependency_id,
+                        metadata_json=_canonical_json(
+                            {"origin": "proof_scope_index"}
+                        ),
+                    )
+                )
+    conflict_set = {
+        _invalidation_edge(item, default_kind="conflict")
+        for item in conflict_edges
+    }
+    # Every directly bound semantic input is a conflict surface for bounded
+    # replacement work, even when the caller has no separately materialized
+    # task-conflict graph.  Transitive dependents remain represented by the
+    # obligation dependency edges above.
+    for obligation in index.obligations:
+        if obligation.obligation_id not in obligation_ids:
+            continue
+        for key in keys:
+            if key in obligation.scope_keys:
+                conflict_set.add(
+                    ProofInvalidationEdge(
+                        edge_kind="semantic_scope",
+                        source_id=obligation.obligation_id,
+                        target_id=f"scope:{key.key}",
+                        metadata_json=_canonical_json(
+                            {
+                                "origin": "proof_scope_index",
+                                "changed_input": key.to_dict(),
+                            }
+                        ),
+                    )
+                )
+
+    relevant_records = tuple(
+        item
+        for item in changed_index.invalidations
+        if item.subject_id in obligation_ids | receipt_ids
+        and item.changed_input in keys
+    )
+    sorted_bindings = tuple(sorted(bindings))
+    dependency_tuple = tuple(sorted(dependency_set))
+    conflict_tuple = tuple(sorted(conflict_set))
+    replacements = tuple(
+        ProofReplacementTask(
+            task_id="",
+            goal_id=binding.goal_id,
+            criterion_id=binding.criterion_id,
+            obligation_ids=(binding.obligation_id,)
+            if binding.obligation_id
+            else (),
+            receipt_ids=(binding.receipt_id,) if binding.receipt_id else (),
+            depends_on=tuple(
+                edge.target_id
+                for edge in dependency_tuple
+                if not binding.obligation_id
+                or edge.source_id == binding.obligation_id
+            ),
+            changed_inputs=keys,
+            dependency_edges=dependency_tuple,
+            conflict_edges=conflict_tuple,
+            source_tree=resolved_tree,
+        )
+        for binding in sorted_bindings
+    )
+    event = ProofInvalidationEvent(
+        changed_inputs=keys,
+        affected_obligation_ids=tuple(obligation_ids),
+        affected_receipt_ids=tuple(receipt_ids),
+        affected_criteria=sorted_bindings,
+        affected_goal_ids=tuple(item.goal_id for item in sorted_bindings),
+        source_tree=resolved_tree,
+        invalidation_records=relevant_records,
+        historical_receipts=tuple(indexed_receipts.values()),
+        dependency_edges=dependency_tuple,
+        conflict_edges=conflict_tuple,
+        replacement_tasks=replacements,
+        result_index_id=changed_index.index_id,
+    )
+    return ProofInvalidationResult(index=changed_index, event=event)
+
+
 def rebuild_proof_scope_index(**kwargs: Any) -> ProofScopeIndex:
     """Compatibility wrapper for :func:`build_proof_scope_index`."""
 
@@ -1580,6 +2612,7 @@ def update_proof_scope_index(
 ProofScopeDependencyIndex = ProofScopeIndex
 ProofScopeIndexRecord = ScopeDependents
 ScopeIndex = ProofScopeIndex
+ProofInvalidationReceipt = ProofInvalidationEvent
 
 
 __all__ = [
@@ -1588,9 +2621,17 @@ __all__ = [
     "IndexedReceipt",
     "IndexedScopeRecord",
     "InvalidationRecord",
+    "PROOF_INVALIDATION_EVENT_SCHEMA",
+    "PROOF_INVALIDATION_EVENT_SCHEMA_VERSION",
     "PROOF_SCOPE_INDEX_SCHEMA",
     "PROOF_SCOPE_INDEX_SCHEMA_VERSION",
     "ProofInputKind",
+    "ProofCriterionBinding",
+    "ProofInvalidationEdge",
+    "ProofInvalidationEvent",
+    "ProofInvalidationReceipt",
+    "ProofInvalidationResult",
+    "ProofReplacementTask",
     "ProofScopeBlobRecord",
     "ProofScopeDependencyIndex",
     "ProofScopeDimension",
@@ -1603,6 +2644,7 @@ __all__ = [
     "ScopeIndex",
     "ScopeKind",
     "build_proof_scope_index",
+    "invalidate_proof_evidence",
     "invalidate_proof_scope_inputs",
     "rebuild_proof_scope_index",
     "update_proof_scope_index",
