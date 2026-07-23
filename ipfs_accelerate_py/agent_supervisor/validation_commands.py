@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import re
 import shlex
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from enum import IntEnum
+from enum import Enum, IntEnum
 from pathlib import PurePosixPath
 from typing import Iterable, Sequence
 
@@ -35,6 +36,14 @@ class ValidationStage(IntEnum):
         return self.name.lower()
 
 
+class ValidationRequirementKind(str, Enum):
+    """Kind of reviewed fallback validation declared by an obligation."""
+
+    FOCUSED_TEST = "focused_test"
+    STATIC_CHECK = "static_check"
+    MANUAL_REVIEW = "manual_review"
+
+
 @dataclass(frozen=True)
 class ValidationCommand:
     """One atomic shell validation command and its scheduling metadata."""
@@ -48,9 +57,76 @@ class ValidationCommand:
     cacheable: bool = True
     timeout_seconds: float | None = None
     ordinal: int = 0
+    validation_id: str = ""
+    requirement_kind: ValidationRequirementKind | None = None
 
     def with_stage(self, stage: ValidationStage) -> "ValidationCommand":
         return replace(self, stage=stage)
+
+
+@dataclass(frozen=True)
+class DeclaredValidation:
+    """A stable fallback declaration and its optional executable command."""
+
+    validation_id: str
+    kind: ValidationRequirementKind
+    command: ValidationCommand | None = None
+    declaration: str = ""
+    reason: str = ""
+
+    @property
+    def executable(self) -> bool:
+        return self.command is not None
+
+    @property
+    def manual_review_required(self) -> bool:
+        return self.kind is ValidationRequirementKind.MANUAL_REVIEW
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "validation_id": self.validation_id,
+            "kind": self.kind.value,
+            "declaration": self.declaration or self.validation_id,
+            "executable": self.executable,
+            "command": self.command.command if self.command is not None else "",
+            "stage": self.command.stage.label if self.command is not None else "",
+            "reason": self.reason,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, object]) -> "DeclaredValidation":
+        """Restore a declaration without treating its ID as executable text."""
+
+        validation_id = str(payload.get("validation_id") or "").strip()
+        if not validation_id:
+            raise ValueError("validation_id is required")
+        try:
+            kind = ValidationRequirementKind(
+                str(payload.get("kind") or "").strip().lower()
+            )
+        except ValueError as exc:
+            raise ValueError("unsupported validation requirement kind") from exc
+        raw_command = str(payload.get("command") or "").strip()
+        command = None
+        if raw_command and kind is not ValidationRequirementKind.MANUAL_REVIEW:
+            command = classify_validation_command(raw_command)
+            command = replace(
+                command,
+                validation_id=validation_id,
+                requirement_kind=kind,
+                stage=(
+                    ValidationStage.CHEAP
+                    if kind is ValidationRequirementKind.STATIC_CHECK
+                    else ValidationStage.TARGETED
+                ),
+            )
+        return cls(
+            validation_id=validation_id,
+            kind=kind,
+            command=command,
+            declaration=str(payload.get("declaration") or validation_id),
+            reason=str(payload.get("reason") or ""),
+        )
 
 
 @dataclass(frozen=True)
@@ -139,6 +215,20 @@ _GLOBAL_IMPACT_NAMES = frozenset(
     }
 )
 _DEPENDENCY_SUFFIXES = (".lock", ".lock.json")
+_DECLARATION_PREFIXES = {
+    "pytest": ValidationRequirementKind.FOCUSED_TEST,
+    "test": ValidationRequirementKind.FOCUSED_TEST,
+    "unittest": ValidationRequirementKind.FOCUSED_TEST,
+    "focused-test": ValidationRequirementKind.FOCUSED_TEST,
+    "focused_test": ValidationRequirementKind.FOCUSED_TEST,
+    "static": ValidationRequirementKind.STATIC_CHECK,
+    "lint": ValidationRequirementKind.STATIC_CHECK,
+    "typecheck": ValidationRequirementKind.STATIC_CHECK,
+    "manual": ValidationRequirementKind.MANUAL_REVIEW,
+    "review": ValidationRequirementKind.MANUAL_REVIEW,
+    "manual-review": ValidationRequirementKind.MANUAL_REVIEW,
+    "manual_review": ValidationRequirementKind.MANUAL_REVIEW,
+}
 
 
 def normalize_validation_command_text(value: str) -> str:
@@ -279,6 +369,143 @@ def classify_validation_command(
     )
 
 
+def parse_validation_declaration(
+    value: str | ValidationCommand | DeclaredValidation,
+    *,
+    command_catalog: Mapping[str, str | ValidationCommand] | None = None,
+) -> DeclaredValidation:
+    """Parse a reviewed fallback declaration without guessing a shell command.
+
+    Named declarations such as ``pytest:lease-fence`` are resolved only
+    through ``command_catalog``.  This keeps provider/template text from
+    becoming executable shell input.  Unknown declarations conservatively
+    require manual review.
+    """
+
+    if isinstance(value, DeclaredValidation):
+        return value
+    if isinstance(value, ValidationCommand):
+        kind = value.requirement_kind or (
+            ValidationRequirementKind.STATIC_CHECK
+            if value.stage is ValidationStage.CHEAP
+            else ValidationRequirementKind.FOCUSED_TEST
+        )
+        validation_id = value.validation_id or value.command
+        return DeclaredValidation(
+            validation_id=validation_id,
+            kind=kind,
+            command=replace(
+                value,
+                validation_id=validation_id,
+                requirement_kind=kind,
+            ),
+            declaration=validation_id,
+            reason="executable_validation_command",
+        )
+
+    declaration = normalize_validation_command_text(str(value))
+    if not declaration:
+        raise ValueError("validation declaration must not be empty")
+    prefix, separator, suffix = declaration.partition(":")
+    declared_kind = (
+        _DECLARATION_PREFIXES.get(prefix.strip().lower()) if separator else None
+    )
+    if separator and not suffix.strip():
+        raise ValueError("validation declaration suffix must not be empty")
+
+    resolved: str | ValidationCommand | None = None
+    if command_catalog is not None:
+        resolved = command_catalog.get(declaration)
+    command: ValidationCommand | None = None
+    if resolved is not None:
+        command = (
+            resolved
+            if isinstance(resolved, ValidationCommand)
+            else classify_validation_command(str(resolved))
+        )
+    elif declared_kind is None and (
+        _TEST_RUNNER_RE.search(declaration)
+        or any(pattern.search(declaration) for pattern in _CHEAP_PATTERNS)
+    ):
+        # Direct commands remain supported for todo-board compatibility.
+        command = classify_validation_command(declaration)
+        declared_kind = (
+            ValidationRequirementKind.STATIC_CHECK
+            if command.stage is ValidationStage.CHEAP
+            else ValidationRequirementKind.FOCUSED_TEST
+        )
+
+    if declared_kind is None:
+        declared_kind = ValidationRequirementKind.MANUAL_REVIEW
+        reason = "unknown_validation_declaration_requires_manual_review"
+    elif declared_kind is ValidationRequirementKind.MANUAL_REVIEW:
+        # A catalog cannot turn an explicit human decision into automation.
+        command = None
+        reason = "declared_manual_review"
+    elif command is None:
+        reason = "declared_validation_requires_catalog_resolution"
+    else:
+        reason = "declared_validation_resolved"
+
+    if command is not None:
+        command = replace(
+            command,
+            validation_id=declaration,
+            requirement_kind=declared_kind,
+            stage=(
+                ValidationStage.CHEAP
+                if declared_kind is ValidationRequirementKind.STATIC_CHECK
+                else ValidationStage.TARGETED
+            ),
+        )
+    return DeclaredValidation(
+        validation_id=declaration,
+        kind=declared_kind,
+        command=command,
+        declaration=declaration,
+        reason=reason,
+    )
+
+
+def build_declared_validations(
+    declarations: Iterable[str | ValidationCommand | DeclaredValidation],
+    *,
+    command_catalog: Mapping[str, str | ValidationCommand] | None = None,
+) -> tuple[DeclaredValidation, ...]:
+    """Return stable declarations, de-duplicated by validation identity."""
+
+    result: list[DeclaredValidation] = []
+    seen: set[str] = set()
+    for value in declarations:
+        declaration = parse_validation_declaration(
+            value, command_catalog=command_catalog
+        )
+        if declaration.validation_id in seen:
+            continue
+        seen.add(declaration.validation_id)
+        result.append(declaration)
+    return tuple(result)
+
+
+def build_focused_validation_commands(
+    declarations: Iterable[str | ValidationCommand | DeclaredValidation],
+    *,
+    command_catalog: Mapping[str, str | ValidationCommand] | None = None,
+) -> tuple[ValidationCommand, ...]:
+    """Resolve executable focused/static declarations for the scheduler."""
+
+    commands = tuple(
+        declaration.command
+        for declaration in build_declared_validations(
+            declarations, command_catalog=command_catalog
+        )
+        if declaration.command is not None
+    )
+    return tuple(
+        replace(command, ordinal=index) for index, command in enumerate(commands)
+    )
+
+
 def build_validation_commands(commands: Iterable[str | ValidationCommand]) -> tuple[ValidationCommand, ...]:
     """Build stable command specs, preserving list order and duplicate commands."""
 
@@ -400,3 +627,5 @@ def select_validation_commands(
 # Compatibility-friendly aliases for callers using more explicit nouns.
 ValidationCommandSpec = ValidationCommand
 select_impacted_validations = select_validation_commands
+FallbackValidationKind = ValidationRequirementKind
+ValidationDeclaration = DeclaredValidation
