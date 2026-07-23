@@ -1210,11 +1210,59 @@ class FormalVerificationCapabilityProbe:
         )
 
     def _probe_leanstral(self) -> FormalVerificationProviderCapability:
+        adapter = self._package(
+            "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
+            name="Leanstral proof-provider adapter",
+            dimension=CapabilityDimension.PROVIDER,
+            required=True,
+            missing_reason=(
+                "the capability-isolated Leanstral proof-provider adapter is unavailable"
+            ),
+        )
+        model_service = self._package(
+            "ipfs_accelerate_py.llm_router",
+            name="llm_router model service",
+            dimension=CapabilityDimension.PROVIDER,
+            required=True,
+            missing_reason=(
+                "llm_router is unavailable; no isolated Leanstral model route can run"
+            ),
+        )
         package = self._package(
             "ipfs_datasets_py.logic.modal.leanstral",
             name="Leanstral integration",
-            required=True,
-            missing_reason="Leanstral integration package is not importable",
+            missing_reason=(
+                "Leanstral legal-modal integration is unavailable; the isolated "
+                "provider remains importable but legal-modal prompt construction "
+                "is degraded"
+            ),
+        )
+        codec = self._package(
+            "ipfs_datasets_py.logic.modal.codec",
+            name="legal modal codec",
+            missing_reason=(
+                "legal modal codec is unavailable; Leanstral drafts cannot be "
+                "bound to codec-produced canonical source"
+            ),
+        )
+        spacy = self._package(
+            "spacy",
+            name="spaCy",
+            distribution="spacy",
+            dimension=CapabilityDimension.OPTIONAL_DEPENDENCY,
+            missing_reason=(
+                "spaCy is not installed; Leanstral legal-language preprocessing "
+                "is degraded"
+            ),
+        )
+        spacy_model = self._package(
+            self.config.spacy_model,
+            name=f"spaCy model {self.config.spacy_model}",
+            dimension=CapabilityDimension.MODEL,
+            missing_reason=(
+                f"spaCy model weights {self.config.spacy_model!r} are unavailable; "
+                "Leanstral legal-language preprocessing is degraded"
+            ),
         )
         transformers = self._package(
             "transformers",
@@ -1261,22 +1309,29 @@ class FormalVerificationCapabilityProbe:
                 "a local kernel check"
             ),
         )
-        if not package.available:
-            status = CapabilityHealth.UNAVAILABLE
-            reason = package.reason
-        elif (
-            model.available
+        inference_ready = (
+            adapter.available
+            and model_service.available
+            and package.available
+            and codec.available
+            and spacy.available
+            and spacy_model.available
+            and model.available
             and transformers.available
             and torch.available
-            and lean.available
-        ):
+        )
+        if inference_ready and lean.available:
             status = CapabilityHealth.AVAILABLE
-            reason = "local Leanstral model and Lean checking toolchain are discoverable"
+            reason = (
+                "isolated Leanstral inference dependencies and the separate Lean "
+                "kernel-checking toolchain are discoverable"
+            )
         else:
             status = CapabilityHealth.DEGRADED
             reason = (
-                "Leanstral orchestration is discoverable, but local model weights, "
-                "inference dependencies, or the Lean checker are incomplete"
+                "the Leanstral provider is available only as a degraded capability; "
+                "one or more model-service, legal-modal, spaCy, codec, model, or "
+                "separate kernel dependencies are unavailable"
             )
         return self._component(
             "leanstral",
@@ -1285,9 +1340,14 @@ class FormalVerificationCapabilityProbe:
             reason,
             (
                 self._provider_check("leanstral", status, reason),
+                adapter,
+                model_service,
                 package,
+                codec,
                 model,
                 lean,
+                spacy_model,
+                spacy,
                 transformers,
                 torch,
             ),
