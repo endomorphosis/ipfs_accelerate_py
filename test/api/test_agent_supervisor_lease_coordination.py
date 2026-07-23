@@ -452,6 +452,12 @@ def test_heartbeat_history_is_bounded_per_lease(tmp_path: Path) -> None:
             grant.task_cid,
             include_expired=True,
         )
+        before_compaction = path.stat().st_size
+        compaction = coordinator.compact()
+        latest_after_compaction = coordinator.latest_heartbeat(
+            grant.task_cid,
+            include_expired=True,
+        )
 
     connection = duckdb.connect(str(path), read_only=True)
     try:
@@ -468,8 +474,11 @@ def test_heartbeat_history_is_bounded_per_lease(tmp_path: Path) -> None:
     assert latest["created_at_ms"] == (
         now + MAX_PERSISTED_HEARTBEATS_PER_LEASE + 3
     )
+    assert latest_after_compaction == latest
     assert heartbeat_count == MAX_PERSISTED_HEARTBEATS_PER_LEASE
     assert artifact_count == MAX_PERSISTED_HEARTBEATS_PER_LEASE
+    assert compaction["source_bytes"] == before_compaction
+    assert compaction["target_bytes"] < compaction["source_bytes"]
 
 
 def test_expired_lane_is_recovered_with_higher_epoch_and_token(tmp_path: Path) -> None:

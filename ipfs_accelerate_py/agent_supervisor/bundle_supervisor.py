@@ -50,6 +50,9 @@ from .todo_daemon.supervisor import active_codex_exec_workers
 
 logger = logging.getLogger(__name__)
 
+COORDINATION_COMPACTION_INTERVAL_CYCLES = 10
+COORDINATION_COMPACTION_MIN_BYTES = 64 * 1024 * 1024
+
 _MANIFEST_REFERENCED_BUNDLE_FIELDS = frozenset(
     {
         "conflict_graph",
@@ -1437,6 +1440,7 @@ class DynamicBundleScheduler:
         self._lock = threading.RLock()
         self._cycle = 0
         self._last_discovery_error = ""
+        self._last_coordination_compaction: dict[str, Any] = {}
         self._last_scheduler_snapshot: SchedulerSnapshot | None = None
         self._last_resource_snapshot: ResourceScheduleSnapshot | None = None
         self._event_source_cache: dict[Path, tuple[int, int, list[dict[str, Any]]]] = {}
@@ -2129,6 +2133,9 @@ class DynamicBundleScheduler:
             "repo_root": str(self.repo_root),
             "bundle_index_path": repo_relative_path(self.repo_root, self.bundle_index_path),
             "coordination_path": repo_relative_path(self.repo_root, self.coordination_path),
+            "coordination_compaction": dict(
+                self._last_coordination_compaction
+            ),
             "capacity": self.max_lanes,
             "effective_capacity": (
                 self._last_resource_snapshot.effective_slots
@@ -2494,6 +2501,17 @@ class DynamicBundleScheduler:
                     include_claimability=True,
                 )
                 current_snapshot = self._build_scheduler_snapshot(registered, projection)
+                if (
+                    self._cycle % COORDINATION_COMPACTION_INTERVAL_CYCLES == 0
+                    and self.coordination_path.stat().st_size
+                    >= COORDINATION_COMPACTION_MIN_BYTES
+                ):
+                    try:
+                        self._last_coordination_compaction = coordinator.compact()
+                    except Exception:
+                        logger.exception(
+                            "Could not compact DuckDB coordination store"
+                        )
             return self._write_live_manifest(
                 discovered=discovered,
                 task_projection=projection,

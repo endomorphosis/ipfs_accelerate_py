@@ -13,6 +13,7 @@ import base64
 import fcntl
 import hashlib
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -179,6 +180,39 @@ def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
             return method(self, *args, **kwargs)
 
     return wrapped
+
+
+@contextmanager
+def _exclusive_file_lock(
+    lock_path: Path,
+    *,
+    timeout_seconds: float,
+) -> Iterator[None]:
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+b")
+    acquired = False
+    deadline = time.monotonic() + float(timeout_seconds)
+    try:
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"timed out acquiring coordination lock: {lock_path}"
+                    )
+                time.sleep(0.01)
+        yield
+    finally:
+        if acquired:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
+def _duckdb_path_literal(path: Path) -> str:
+    return "'" + str(path).replace("'", "''") + "'"
 
 
 class LeaseError(RuntimeError):
@@ -602,23 +636,10 @@ class LeaseCoordinator:
                     self._operation_state.depth = depth
                 return
 
-            self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-            lock_handle = self._lock_path.open("a+b")
-            deadline = time.monotonic() + COORDINATION_LOCK_TIMEOUT_SECONDS
-            try:
-                while True:
-                    try:
-                        fcntl.flock(
-                            lock_handle.fileno(),
-                            fcntl.LOCK_EX | fcntl.LOCK_NB,
-                        )
-                        break
-                    except BlockingIOError:
-                        if time.monotonic() >= deadline:
-                            raise TimeoutError(
-                                f"timed out acquiring coordination lock: {self._lock_path}"
-                            )
-                        time.sleep(0.01)
+            with _exclusive_file_lock(
+                self._lock_path,
+                timeout_seconds=COORDINATION_LOCK_TIMEOUT_SECONDS,
+            ):
                 try:
                     import duckdb
                 except ImportError as exc:
@@ -640,9 +661,6 @@ class LeaseCoordinator:
                     self._connection = None
                     if connection is not None:
                         connection.close()
-            finally:
-                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
-                lock_handle.close()
 
     def _init_schema(self) -> None:
         assert self._connection is not None
@@ -753,6 +771,90 @@ class LeaseCoordinator:
         if connection is not None:
             connection.close()
             self._connection = None
+
+    def compact(self) -> dict[str, Any]:
+        """Atomically rewrite live rows into a compact DuckDB store."""
+
+        with self._lock:
+            if int(getattr(self._operation_state, "depth", 0)):
+                raise RuntimeError(
+                    "coordination compaction cannot run inside a database operation"
+                )
+            with _exclusive_file_lock(
+                self._lock_path,
+                timeout_seconds=COORDINATION_LOCK_TIMEOUT_SECONDS,
+            ):
+                source_bytes = self.path.stat().st_size
+                temporary = self.path.with_name(
+                    f".{self.path.name}.compact-{os.getpid()}-"
+                    f"{threading.get_ident()}.tmp"
+                )
+                temporary.unlink(missing_ok=True)
+                Path(f"{temporary}.wal").unlink(missing_ok=True)
+                try:
+                    try:
+                        import duckdb
+                    except ImportError as exc:
+                        raise RuntimeError(
+                            "DuckDB is required for lease coordination"
+                        ) from exc
+                    connection = duckdb.connect(":memory:")
+                    try:
+                        connection.execute("SET threads=1")
+                        connection.execute(
+                            f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
+                        )
+                        connection.execute(
+                            "ATTACH "
+                            f"{_duckdb_path_literal(self.path)} "
+                            "AS source_store (READ_ONLY)"
+                        )
+                        connection.execute(
+                            "ATTACH "
+                            f"{_duckdb_path_literal(temporary)} "
+                            "AS target_store"
+                        )
+                        connection.execute(
+                            "COPY FROM DATABASE source_store TO target_store"
+                        )
+                        connection.execute("DETACH target_store")
+                        connection.execute("DETACH source_store")
+                    finally:
+                        connection.close()
+                    compacted = duckdb.connect(str(temporary))
+                    try:
+                        compacted.execute("SET threads=1")
+                        compacted.execute(
+                            f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
+                        )
+                        compacted.execute(
+                            "INSERT OR REPLACE INTO coordination_metadata "
+                            "VALUES(?,?)",
+                            (
+                                "last_compaction",
+                                json.dumps(
+                                    {
+                                        "compacted_at_ms": self._clock_ms(),
+                                        "source_bytes": source_bytes,
+                                    },
+                                    sort_keys=True,
+                                ),
+                            ),
+                        )
+                        compacted.execute("CHECKPOINT")
+                    finally:
+                        compacted.close()
+                    target_bytes = temporary.stat().st_size
+                    os.replace(temporary, self.path)
+                finally:
+                    temporary.unlink(missing_ok=True)
+                    Path(f"{temporary}.wal").unlink(missing_ok=True)
+                return {
+                    "source_bytes": source_bytes,
+                    "target_bytes": target_bytes,
+                    "reclaimed_bytes": max(0, source_bytes - target_bytes),
+                    "compacted_at_ms": self._clock_ms(),
+                }
 
     def __enter__(self) -> LeaseCoordinator:
         return self
