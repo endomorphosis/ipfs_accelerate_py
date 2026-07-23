@@ -19,6 +19,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 
 PLAN_EVALUATOR_VERSION = "objective-plan-evaluator-v1"
+PROOF_AWARE_PLAN_EVALUATOR_VERSION = "proof-aware-plan-evaluator-v1"
 OBJECTIVE_WORK_EVALUATOR_VERSION = "objective-work-evaluator-v1"
 _BRANCH_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
@@ -676,6 +677,610 @@ def evaluate_plan_branches(
         scores={item.branch.branch_id: item.score_millionths for item in ranked},
         rationales={item.branch.branch_id: item.rationale for item in ranked},
     )
+
+
+# Proof-aware plan evaluation -----------------------------------------------------
+
+
+def _enum_string(value: Any, field_name: str) -> str:
+    """Return the public value of an enum-like plan declaration."""
+
+    return _required_string(getattr(value, "value", value), field_name)
+
+
+@dataclass(frozen=True)
+class ProofAwarePlanCandidate:
+    """A plan branch with the proof work needed to make it complete.
+
+    The proof declaration intentionally lives beside, rather than inside,
+    :class:`PlanBranch`.  Existing routers and persisted plan artifacts remain
+    readable while proof-aware callers cross a strict boundary that requires
+    every proof scheduling dimension.  ``candidate_id`` is derived from the
+    already validated branch identity; a model cannot provide two identities
+    for one plan.
+    """
+
+    branch: PlanBranch
+    obligation_impact: tuple[str, ...]
+    required_assurance: str
+    proof_cost: float
+    cache_likelihood: float
+    dependencies: tuple[str, ...]
+    expected_evidence_delta: tuple[str, ...]
+    resource_classes: tuple[str, ...]
+    proof_critical_path: float = 0.0
+    downstream_unlock_value: float = 0.0
+    risk: float | None = None
+    freshness: float = 1.0
+
+    def __post_init__(self) -> None:
+        branch = (
+            self.branch
+            if isinstance(self.branch, PlanBranch)
+            else PlanBranch.from_dict(self.branch)
+        )
+        object.__setattr__(self, "branch", branch)
+        object.__setattr__(
+            self,
+            "obligation_impact",
+            _string_tuple(self.obligation_impact, "obligation_impact"),
+        )
+        object.__setattr__(
+            self,
+            "required_assurance",
+            _enum_string(self.required_assurance, "required_assurance"),
+        )
+        object.__setattr__(
+            self,
+            "proof_cost",
+            _number(self.proof_cost, "proof_cost", minimum=0.0),
+        )
+        object.__setattr__(
+            self,
+            "cache_likelihood",
+            _number(
+                self.cache_likelihood,
+                "cache_likelihood",
+                minimum=0.0,
+                maximum=1.0,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "dependencies",
+            _string_tuple(self.dependencies, "dependencies", allow_empty=True),
+        )
+        object.__setattr__(
+            self,
+            "expected_evidence_delta",
+            _string_tuple(
+                self.expected_evidence_delta,
+                "expected_evidence_delta",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "resource_classes",
+            _string_tuple(self.resource_classes, "resource_classes"),
+        )
+        for name in ("proof_critical_path", "downstream_unlock_value"):
+            object.__setattr__(
+                self,
+                name,
+                _number(getattr(self, name), name, minimum=0.0),
+            )
+        candidate_risk = branch.risk if self.risk is None else self.risk
+        object.__setattr__(
+            self,
+            "risk",
+            _number(candidate_risk, "risk", minimum=0.0, maximum=1.0),
+        )
+        object.__setattr__(
+            self,
+            "freshness",
+            _number(self.freshness, "freshness", minimum=0.0, maximum=1.0),
+        )
+
+    @property
+    def candidate_id(self) -> str:
+        return self.branch.branch_id
+
+    @property
+    def branch_id(self) -> str:
+        """Compatibility identity for scheduler code that handles branches."""
+
+        return self.candidate_id
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofAwarePlanCandidate":
+        if not isinstance(payload, Mapping):
+            raise PlanBranchValidationError(
+                "each proof-aware plan candidate must be a JSON object"
+            )
+        allowed = {
+            "candidate_id",
+            "branch",
+            "plan_branch",
+            "obligation_impact",
+            "obligation_impacts",
+            "required_assurance",
+            "proof_cost",
+            "cache_likelihood",
+            "cache_hit_likelihood",
+            "dependencies",
+            "depends_on",
+            "expected_evidence_delta",
+            "evidence_delta",
+            "resource_classes",
+            "required_resource_classes",
+            "proof_critical_path",
+            "proof_critical_path_length",
+            "downstream_unlock_value",
+            "risk",
+            "freshness",
+        }
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise PlanBranchValidationError(
+                "unknown proof-aware plan candidate fields: "
+                + ", ".join(unknown)
+            )
+        branch_value = _first(payload, "branch", "plan_branch")
+        candidate = cls(
+            branch=(
+                branch_value
+                if isinstance(branch_value, PlanBranch)
+                else PlanBranch.from_dict(branch_value)
+            ),
+            obligation_impact=_first(
+                payload, "obligation_impact", "obligation_impacts"
+            ),
+            required_assurance=_first(payload, "required_assurance"),
+            proof_cost=_first(payload, "proof_cost"),
+            cache_likelihood=_first(
+                payload, "cache_likelihood", "cache_hit_likelihood"
+            ),
+            dependencies=_first(payload, "dependencies", "depends_on"),
+            expected_evidence_delta=_first(
+                payload, "expected_evidence_delta", "evidence_delta"
+            ),
+            resource_classes=_first(
+                payload, "resource_classes", "required_resource_classes"
+            ),
+            proof_critical_path=payload.get(
+                "proof_critical_path",
+                payload.get("proof_critical_path_length", 0.0),
+            ),
+            downstream_unlock_value=payload.get("downstream_unlock_value", 0.0),
+            risk=payload.get("risk"),
+            freshness=payload.get("freshness", 1.0),
+        )
+        supplied_id = str(payload.get("candidate_id") or "").strip()
+        if supplied_id and supplied_id != candidate.candidate_id:
+            raise PlanBranchValidationError(
+                "proof-aware candidate_id must match branch.branch_id"
+            )
+        return candidate
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "candidate_id": self.candidate_id,
+            "branch": (
+                self.branch.to_profile_g_dict()
+                if profile_g
+                else self.branch.to_dict()
+            ),
+            "obligation_impact": list(self.obligation_impact),
+            "required_assurance": self.required_assurance,
+            "dependencies": list(self.dependencies),
+            "expected_evidence_delta": list(self.expected_evidence_delta),
+            "resource_classes": list(self.resource_classes),
+        }
+        metrics = {
+            "proof_cost": self.proof_cost,
+            "cache_likelihood": self.cache_likelihood,
+            "proof_critical_path": self.proof_critical_path,
+            "downstream_unlock_value": self.downstream_unlock_value,
+            "risk": self.risk,
+            "freshness": self.freshness,
+        }
+        if profile_g:
+            payload.update(
+                {
+                    f"{name}_millionths": _to_millionths(value)
+                    for name, value in metrics.items()
+                }
+            )
+        else:
+            payload.update(metrics)
+        return payload
+
+    def to_profile_g_dict(self) -> dict[str, Any]:
+        return self.to_dict(profile_g=True)
+
+
+@dataclass(frozen=True)
+class ProofPlanningWeights:
+    """Deterministic scoring weights for proof-aware plans."""
+
+    proof_critical_path: float = 0.20
+    downstream_unlock_value: float = 0.18
+    risk: float = 0.14
+    freshness: float = 0.12
+    resource_availability: float = 0.12
+    cache_likelihood: float = 0.10
+    proof_cost: float = 0.07
+    evidence_delta: float = 0.05
+    dependency_readiness: float = 0.02
+
+    def __post_init__(self) -> None:
+        total = Decimal(0)
+        for name in self.__dataclass_fields__:
+            value = _number(getattr(self, name), name, minimum=0.0)
+            object.__setattr__(self, name, value)
+            total += Decimal(str(value))
+        if total <= 0:
+            raise ValueError("at least one proof planning weight must be positive")
+
+    @property
+    def total(self) -> Decimal:
+        return sum(
+            (Decimal(str(getattr(self, name))) for name in self.__dataclass_fields__),
+            Decimal(0),
+        )
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        payload = asdict(self)
+        if profile_g:
+            return {
+                f"{name}_millionths": _to_millionths(value)
+                for name, value in payload.items()
+            }
+        return payload
+
+
+@dataclass(frozen=True)
+class ProofAwarePlanPolicy:
+    """Scheduler observations used to rank proof plans.
+
+    Empty availability/dependency observations mean "not reported", not
+    "nothing exists".  This keeps evaluation useful before live telemetry is
+    attached and avoids turning absence of scheduler context into invented
+    negative evidence.
+    """
+
+    available_resource_classes: tuple[str, ...] = ()
+    satisfied_dependencies: tuple[str, ...] = ()
+    weights: ProofPlanningWeights = ProofPlanningWeights()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "available_resource_classes",
+            _string_tuple(
+                self.available_resource_classes,
+                "available_resource_classes",
+                allow_empty=True,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "satisfied_dependencies",
+            _string_tuple(
+                self.satisfied_dependencies,
+                "satisfied_dependencies",
+                allow_empty=True,
+            ),
+        )
+        weights = (
+            self.weights
+            if isinstance(self.weights, ProofPlanningWeights)
+            else ProofPlanningWeights(**dict(self.weights))
+        )
+        object.__setattr__(self, "weights", weights)
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        return {
+            "available_resource_classes": list(self.available_resource_classes),
+            "satisfied_dependencies": list(self.satisfied_dependencies),
+            "weights": self.weights.to_dict(profile_g=profile_g),
+        }
+
+
+# A slightly shorter name reads better in generic scheduler configuration.
+ProofPlanningPolicy = ProofAwarePlanPolicy
+
+
+@dataclass(frozen=True)
+class EvaluatedProofAwarePlan:
+    """One proof-aware alternative with its complete decision trace."""
+
+    candidate: ProofAwarePlanCandidate
+    score_millionths: int
+    rationale: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        candidate = (
+            self.candidate
+            if isinstance(self.candidate, ProofAwarePlanCandidate)
+            else ProofAwarePlanCandidate.from_dict(self.candidate)
+        )
+        object.__setattr__(self, "candidate", candidate)
+        object.__setattr__(self, "score_millionths", int(self.score_millionths))
+        rationale = tuple(str(item).strip() for item in self.rationale if str(item).strip())
+        if not rationale:
+            raise ValueError("evaluated proof-aware plans require a rationale")
+        object.__setattr__(self, "rationale", rationale)
+
+    @property
+    def candidate_id(self) -> str:
+        return self.candidate.candidate_id
+
+    @property
+    def branch(self) -> PlanBranch:
+        return self.candidate.branch
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        return {
+            "candidate": self.candidate.to_dict(profile_g=profile_g),
+            "score_millionths": self.score_millionths,
+            "rationale": list(self.rationale),
+        }
+
+
+@dataclass(frozen=True)
+class ProofAwarePlanEvaluation:
+    """Selected proof plan and rejected alternatives in deterministic order."""
+
+    selected: EvaluatedProofAwarePlan
+    rejected: tuple[EvaluatedProofAwarePlan, ...]
+    policy: ProofAwarePlanPolicy
+    evaluator_version: str = PROOF_AWARE_PLAN_EVALUATOR_VERSION
+
+    def __post_init__(self) -> None:
+        ranked = (self.selected, *self.rejected)
+        candidate_ids = [item.candidate_id for item in ranked]
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise ValueError("evaluated proof-aware candidate ids must be unique")
+
+    @property
+    def ranked(self) -> tuple[EvaluatedProofAwarePlan, ...]:
+        return (self.selected, *self.rejected)
+
+    @property
+    def scores(self) -> Mapping[str, int]:
+        return MappingProxyType(
+            {item.candidate_id: item.score_millionths for item in self.ranked}
+        )
+
+    @property
+    def rationales(self) -> Mapping[str, tuple[str, ...]]:
+        return MappingProxyType(
+            {item.candidate_id: item.rationale for item in self.ranked}
+        )
+
+    @property
+    def selected_candidate(self) -> ProofAwarePlanCandidate:
+        return self.selected.candidate
+
+    def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        return {
+            "evaluator_version": self.evaluator_version,
+            "selected": self.selected.to_dict(profile_g=profile_g),
+            "rejected": [
+                item.to_dict(profile_g=profile_g) for item in self.rejected
+            ],
+            "scores": dict(self.scores),
+            "rationales": {
+                key: list(value) for key, value in self.rationales.items()
+            },
+            "policy": self.policy.to_dict(profile_g=profile_g),
+        }
+
+    def to_profile_g_dict(self) -> dict[str, Any]:
+        return self.to_dict(profile_g=True)
+
+
+def _bounded_benefit(value: float) -> Decimal:
+    raw = Decimal(str(value))
+    return raw / (Decimal(1) + raw)
+
+
+def _proof_plan_score(
+    candidate: ProofAwarePlanCandidate,
+    policy: ProofAwarePlanPolicy,
+) -> tuple[int, tuple[str, ...]]:
+    weights = policy.weights
+    available = {
+        item.casefold() for item in policy.available_resource_classes
+    }
+    required_resources = {
+        item.casefold() for item in candidate.resource_classes
+    }
+    resource_availability = (
+        Decimal(1)
+        if not available
+        else Decimal(len(required_resources & available))
+        / Decimal(len(required_resources))
+    )
+    satisfied = {item.casefold() for item in policy.satisfied_dependencies}
+    required_dependencies = {item.casefold() for item in candidate.dependencies}
+    dependency_readiness = (
+        Decimal(1)
+        if not required_dependencies or not policy.satisfied_dependencies
+        else Decimal(len(required_dependencies & satisfied))
+        / Decimal(len(required_dependencies))
+    )
+    factors: tuple[tuple[str, Decimal, Decimal], ...] = (
+        (
+            "proof critical path",
+            Decimal(str(weights.proof_critical_path)),
+            _bounded_benefit(candidate.proof_critical_path),
+        ),
+        (
+            "downstream unlock value",
+            Decimal(str(weights.downstream_unlock_value)),
+            _bounded_benefit(candidate.downstream_unlock_value),
+        ),
+        (
+            "risk adjustment",
+            Decimal(str(weights.risk)),
+            Decimal(1) - Decimal(str(candidate.risk)),
+        ),
+        (
+            "evidence freshness",
+            Decimal(str(weights.freshness)),
+            Decimal(str(candidate.freshness)),
+        ),
+        (
+            "available resource classes",
+            Decimal(str(weights.resource_availability)),
+            resource_availability,
+        ),
+        (
+            "cache likelihood",
+            Decimal(str(weights.cache_likelihood)),
+            Decimal(str(candidate.cache_likelihood)),
+        ),
+        (
+            "proof cost efficiency",
+            Decimal(str(weights.proof_cost)),
+            Decimal(1) / (Decimal(1) + Decimal(str(candidate.proof_cost))),
+        ),
+        (
+            "expected evidence delta",
+            Decimal(str(weights.evidence_delta)),
+            min(
+                Decimal(1),
+                Decimal(len(candidate.expected_evidence_delta)) / Decimal(3),
+            ),
+        ),
+        (
+            "dependency readiness",
+            Decimal(str(weights.dependency_readiness)),
+            dependency_readiness,
+        ),
+    )
+    weighted = tuple(
+        (label, weight * factor / weights.total)
+        for label, weight, factor in factors
+    )
+    score = sum((contribution for _, contribution in weighted), Decimal(0))
+    score_millionths = _to_millionths(score)
+    rationale = tuple(
+        f"{label} contributes {_to_millionths(contribution)} millionths"
+        for label, contribution in weighted
+    ) + (
+        f"required assurance is {candidate.required_assurance}",
+        f"impacts {len(candidate.obligation_impact)} proof obligation(s)",
+        f"total deterministic proof priority is {score_millionths} millionths",
+    )
+    return score_millionths, rationale
+
+
+def evaluate_proof_aware_plans(
+    candidates: Iterable[ProofAwarePlanCandidate | Mapping[str, Any]],
+    *,
+    policy: ProofAwarePlanPolicy | None = None,
+    available_resource_classes: Sequence[str] | None = None,
+    satisfied_dependencies: Sequence[str] | None = None,
+    weights: ProofPlanningWeights | Mapping[str, Any] | None = None,
+) -> ProofAwarePlanEvaluation:
+    """Rank proof-aware candidates without sending proof graphs to a model.
+
+    All scoring inputs are bounded scalar declarations or identifier lists.
+    Live resource/dependency observations may be supplied directly for
+    convenience, but cannot be mixed ambiguously with a policy object.
+    """
+
+    if policy is not None and any(
+        value is not None
+        for value in (
+            available_resource_classes,
+            satisfied_dependencies,
+            weights,
+        )
+    ):
+        raise ValueError(
+            "policy cannot be combined with direct proof planning overrides"
+        )
+    if policy is None:
+        resolved_weights = (
+            ProofPlanningWeights()
+            if weights is None
+            else (
+                weights
+                if isinstance(weights, ProofPlanningWeights)
+                else ProofPlanningWeights(**dict(weights))
+            )
+        )
+        policy = ProofAwarePlanPolicy(
+            available_resource_classes=tuple(available_resource_classes or ()),
+            satisfied_dependencies=tuple(satisfied_dependencies or ()),
+            weights=resolved_weights,
+        )
+    elif not isinstance(policy, ProofAwarePlanPolicy):
+        policy = ProofAwarePlanPolicy(**dict(policy))
+
+    normalized = [
+        item
+        if isinstance(item, ProofAwarePlanCandidate)
+        else ProofAwarePlanCandidate.from_dict(item)
+        for item in candidates
+    ]
+    if not normalized:
+        raise ValueError("at least one proof-aware plan candidate is required")
+    candidate_ids = [item.candidate_id for item in normalized]
+    duplicates = sorted(
+        {
+            candidate_id
+            for candidate_id in candidate_ids
+            if candidate_ids.count(candidate_id) > 1
+        }
+    )
+    if duplicates:
+        raise ValueError(
+            "proof-aware candidate ids must be unique: " + ", ".join(duplicates)
+        )
+
+    evaluated = [
+        EvaluatedProofAwarePlan(candidate, score, rationale)
+        for candidate in normalized
+        for score, rationale in [_proof_plan_score(candidate, policy)]
+    ]
+    evaluated.sort(
+        key=lambda item: (
+            -item.score_millionths,
+            item.candidate_id,
+            json.dumps(
+                item.candidate.to_dict(),
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
+    )
+    winner = evaluated[0]
+    rejected = tuple(
+        EvaluatedProofAwarePlan(
+            candidate=item.candidate,
+            score_millionths=item.score_millionths,
+            rationale=(
+                *item.rationale,
+                f"rejected in favor of {winner.candidate_id!r} by "
+                f"{winner.score_millionths - item.score_millionths} "
+                "priority millionths",
+            ),
+        )
+        for item in evaluated[1:]
+    )
+    return ProofAwarePlanEvaluation(
+        selected=winner,
+        rejected=rejected,
+        policy=policy,
+    )
+
+
+evaluate_proof_aware_plan_candidates = evaluate_proof_aware_plans
 
 
 def evaluate_analysis_proposals(
