@@ -38,6 +38,7 @@ from ..merge_queue import MergeQueue
 from ..validation_commands import normalize_validation_command_text, split_validation_commands
 from ..validation_scheduler import ValidationScheduler
 from .runner import TodoDaemonHooks, TodoDaemonRunner
+from .supervisor_runtime import run_process_group_stream
 from .worktrees import WorktreeLease, WorktreePool
 
 REPO_ROOT = Path.cwd()
@@ -2039,15 +2040,12 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Started: {started_at}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
                 log_fh.flush()
-                completed = subprocess.run(
+                completed = run_process_group_stream(
                     command,
-                    input=prompt,
-                    text=True,
-                    stdout=log_fh,
-                    stderr=subprocess.STDOUT,
                     cwd=workspace_path,
-                    timeout=self.implementation_timeout,
-                    check=False,
+                    stdout=log_fh,
+                    input_text=prompt,
+                    timeout_seconds=self.implementation_timeout,
                 )
             effective_returncode = completed.returncode
             if completed.returncode != 0:
@@ -3265,6 +3263,89 @@ class PortalImplementationDaemon:
             or (isinstance(merge_result, dict) and bool(merge_result.get("merged")))
         )
 
+    def _enqueue_validated_worktree(
+        self,
+        *,
+        state: PortalTaskState,
+        task: PortalTask,
+        attempt: int,
+        branch_name: str,
+        baseline_ref: str,
+        worktree_path: Path,
+        implementation_commit: str,
+        commit_result: Mapping[str, Any],
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Hand a validated implementation commit to the durable merge train."""
+
+        self._mark_active_phase(
+            state,
+            phase="merge_queue",
+            phase_detail=branch_name,
+            worktree_path=worktree_path,
+            branch_name=branch_name,
+        )
+        pool_handoff = self._release_pooled_worktree_lease(
+            worktree_path,
+            reason="merge_queue_handoff",
+        )
+        request, merge_result = self._enqueue_merge_candidate(
+            branch_name=branch_name,
+            implementation_commit=implementation_commit,
+            baseline_ref=baseline_ref,
+            worktree_path=(
+                None if pool_handoff.get("released", False) else worktree_path
+            ),
+            task=task,
+            attempt=attempt,
+            changed_submodule_paths=self._committed_submodule_paths(
+                commit_result.get("submodule_results") or []
+            ),
+            validation_result=dict(validation_result),
+            worktree_pool_handoff=bool(pool_handoff.get("released", False)),
+        )
+        if pool_handoff.get("attempted", False):
+            merge_result["worktree_pool_handoff"] = pool_handoff
+        try:
+            train_result = self._consume_one_merge_candidate()
+        except Exception as exc:
+            # Enqueue has already committed the durable handoff; a busy
+            # consumer must not turn the lane into a merge polling loop.
+            train_result = {
+                "status": "deferred",
+                "reason": "merge_train_consumer_unavailable",
+                "exception_type": type(exc).__name__,
+                "error": str(exc)[-4000:],
+            }
+            self._record_event(
+                "merge_train_consumer_deferred",
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "request_id": str(request.request_id),
+                    **train_result,
+                },
+            )
+        if train_result is not None:
+            merge_result["train_result"] = train_result
+            consumed_request_id = self._merge_train_result_request_id(train_result)
+            if (
+                consumed_request_id == str(request.request_id)
+                and self._merge_train_result_is_integrated(train_result)
+            ):
+                callback_result = train_result.get("merge_result")
+                if isinstance(callback_result, dict):
+                    merge_result.update(callback_result)
+                merge_result.update(
+                    {
+                        "queued": False,
+                        "merged": True,
+                        "reason": str(train_result.get("status") or "merged"),
+                        "request_id": str(request.request_id),
+                    }
+                )
+        return merge_result
+
     def _run_implementation_in_ephemeral_worktree(
         self,
         *,
@@ -3301,6 +3382,7 @@ class PortalImplementationDaemon:
         todo_update_result: dict[str, Any] = {}
         exception_result: dict[str, Any] = {}
         provider_failure: dict[str, Any] = {}
+        timeout_result: dict[str, Any] = {}
 
         try:
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
@@ -3344,16 +3426,13 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Baseline: {baseline_ref}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
                 log_fh.flush()
-                completed = subprocess.run(
+                completed = run_process_group_stream(
                     command,
-                    input=prompt,
-                    text=True,
-                    stdout=log_fh,
-                    stderr=subprocess.STDOUT,
                     cwd=worktree_path,
-                    timeout=self.implementation_timeout,
-                    check=False,
-            )
+                    stdout=log_fh,
+                    input_text=prompt,
+                    timeout_seconds=self.implementation_timeout,
+                )
             returncode = completed.returncode
             if returncode != 0:
                 provider_failure = self._provider_capacity_failure_from_log(log_path)
@@ -3380,73 +3459,17 @@ class PortalImplementationDaemon:
                     commit_result = self._commit_worktree_changes(worktree_path, task, attempt)
                     implementation_commit = str(commit_result.get("commit", ""))
                     if implementation_commit:
-                        self._mark_active_phase(
-                            state,
-                            phase="merge_queue",
-                            phase_detail=branch_name,
-                            worktree_path=worktree_path,
-                            branch_name=branch_name,
-                        )
-                        pool_handoff = self._release_pooled_worktree_lease(
-                            worktree_path,
-                            reason="merge_queue_handoff",
-                        )
-                        request, merge_result = self._enqueue_merge_candidate(
-                            branch_name=branch_name,
-                            implementation_commit=implementation_commit,
-                            baseline_ref=baseline_ref,
-                            worktree_path=(
-                                None if pool_handoff.get("released", False) else worktree_path
-                            ),
+                        merge_result = self._enqueue_validated_worktree(
+                            state=state,
                             task=task,
                             attempt=attempt,
-                            changed_submodule_paths=self._committed_submodule_paths(
-                                commit_result.get("submodule_results") or []
-                            ),
+                            branch_name=branch_name,
+                            baseline_ref=baseline_ref,
+                            worktree_path=worktree_path,
+                            implementation_commit=implementation_commit,
+                            commit_result=commit_result,
                             validation_result=validation_result,
-                            worktree_pool_handoff=bool(pool_handoff.get("released", False)),
                         )
-                        if pool_handoff.get("attempted", False):
-                            merge_result["worktree_pool_handoff"] = pool_handoff
-                        try:
-                            train_result = self._consume_one_merge_candidate()
-                        except Exception as exc:
-                            # Enqueue has already committed the durable handoff;
-                            # a busy or temporarily unhealthy consumer must not
-                            # turn the lane into a merge polling loop.
-                            train_result = {
-                                "status": "deferred",
-                                "reason": "merge_train_consumer_unavailable",
-                                "exception_type": type(exc).__name__,
-                                "error": str(exc)[-4000:],
-                            }
-                            self._record_event(
-                                "merge_train_consumer_deferred",
-                                {
-                                    "task_id": task.task_id,
-                                    "attempt": attempt,
-                                    "request_id": str(request.request_id),
-                                    **train_result,
-                                },
-                            )
-                        if train_result is not None:
-                            merge_result["train_result"] = train_result
-                            consumed_request_id = self._merge_train_result_request_id(train_result)
-                            if (
-                                consumed_request_id == str(request.request_id)
-                                and self._merge_train_result_is_integrated(train_result)
-                            ):
-                                callback_result = train_result.get("merge_result")
-                                if isinstance(callback_result, dict):
-                                    merge_result.update(callback_result)
-                                merge_result.update(
-                                    {
-                                        "queued": False,
-                                        "merged": True,
-                                        "reason": str(train_result.get("status") or "merged"),
-                                        "request_id": str(request.request_id),
-                                    }
-                                )
                     elif commit_result.get("reason") == "no_changes":
                         cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
@@ -3476,22 +3499,113 @@ class PortalImplementationDaemon:
                     }
         except subprocess.TimeoutExpired:
             returncode = 124
-            self._record_event(
-                "implementation_timeout",
-                {"task_id": task.task_id, "attempt": attempt, "worktree_path": str(worktree_path)},
-            )
-            # Clean up timed-out worktree to prevent resource leaks
+            timeout_result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "timeout_seconds": float(self.implementation_timeout),
+                "salvaged": False,
+            }
+            self._record_event("implementation_timeout", timeout_result)
             if worktree_path.exists():
                 try:
-                    cleanup_result = self._cleanup_failed_setup_worktree(
-                        worktree_path,
-                        branch_name,
-                        task=task,
-                        attempt=attempt,
-                        exception_result={"reason": "implementation_timeout"},
+                    self._mark_active_phase(
+                        state,
+                        phase="validating",
+                        phase_detail="timeout salvage: " + "; ".join(task.validation),
+                        worktree_path=worktree_path,
+                        branch_name=branch_name,
                     )
-                except Exception:
-                    cleanup_result = {"cleaned": False, "reason": "cleanup_after_timeout_failed"}
+                    self._prepare_worktree_for_validation(
+                        worktree_path,
+                        task=task,
+                        branch_name=branch_name,
+                    )
+                    validation_result = self._run_validation_commands(
+                        worktree_path,
+                        task,
+                        log_path,
+                    )
+                    can_promote = bool(
+                        validation_result.get("attempted")
+                        and validation_result.get("passed")
+                    )
+                    if can_promote:
+                        commit_result = self._commit_worktree_changes(
+                            worktree_path,
+                            task,
+                            attempt,
+                        )
+                        implementation_commit = str(commit_result.get("commit", ""))
+                        if implementation_commit:
+                            merge_result = self._enqueue_validated_worktree(
+                                state=state,
+                                task=task,
+                                attempt=attempt,
+                                branch_name=branch_name,
+                                baseline_ref=baseline_ref,
+                                worktree_path=worktree_path,
+                                implementation_commit=implementation_commit,
+                                commit_result=commit_result,
+                                validation_result=validation_result,
+                            )
+                        elif commit_result.get("reason") == "no_changes":
+                            cleanup_result = self._cleanup_merged_worktree(
+                                worktree_path,
+                                branch_name,
+                            )
+                        returncode = 0
+                        timeout_result.update(
+                            {
+                                "salvaged": True,
+                                "implementation_commit": implementation_commit,
+                                "validation_result": validation_result,
+                            }
+                        )
+                        self._record_event(
+                            "implementation_timeout_salvaged",
+                            timeout_result,
+                        )
+                    else:
+                        failed_preservation_result = self._preserve_timed_out_worktree(
+                            worktree_path,
+                            branch_name,
+                            task,
+                            attempt,
+                            validation_result,
+                        )
+                        commit_result = dict(
+                            failed_preservation_result.get("commit_result")
+                            or commit_result
+                        )
+                        implementation_commit = str(commit_result.get("commit", ""))
+                        cleanup_result = dict(
+                            failed_preservation_result.get("cleanup_result")
+                            or cleanup_result
+                        )
+                        timeout_result["preservation_result"] = failed_preservation_result
+                except Exception as timeout_exc:
+                    timeout_result["salvage_error"] = str(timeout_exc)[-4000:]
+                    timeout_result["salvage_error_type"] = type(timeout_exc).__name__
+                    try:
+                        cleanup_result = self._cleanup_failed_setup_worktree(
+                            worktree_path,
+                            branch_name,
+                            task=task,
+                            attempt=attempt,
+                            exception_result=timeout_result,
+                        )
+                    except Exception as cleanup_exc:
+                        cleanup_result = {
+                            "cleaned": False,
+                            "reason": "cleanup_after_timeout_failed",
+                            "error": str(cleanup_exc)[-1000:],
+                        }
+                    self._record_event(
+                        "implementation_timeout_salvage_failed",
+                        timeout_result,
+                    )
         except Exception as exc:
             returncode = 1
             exception_result = {
@@ -3598,6 +3712,8 @@ class PortalImplementationDaemon:
             self._record_implementation_termination(task, attempt, termination_result)
         if exception_result:
             result["exception_result"] = exception_result
+        if timeout_result:
+            result["timeout_result"] = timeout_result
         if todo_update_result:
             result["todo_update_result"] = todo_update_result
         self._record_event("implementation_finished", result)
@@ -4748,12 +4864,57 @@ class PortalImplementationDaemon:
         attempt: int,
         validation_result: dict[str, Any],
     ) -> dict[str, Any]:
+        return self._preserve_interrupted_worktree(
+            worktree_path,
+            branch_name,
+            task,
+            attempt,
+            evidence=validation_result,
+            rescue_suffix="failed-validation",
+            event_type="failed_validation_worktree_preserved",
+            evidence_field="validation_result",
+        )
+
+    def _preserve_timed_out_worktree(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        task: PortalTask,
+        attempt: int,
+        validation_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._preserve_interrupted_worktree(
+            worktree_path,
+            branch_name,
+            task,
+            attempt,
+            evidence=validation_result,
+            rescue_suffix="timed-out",
+            event_type="timed_out_worktree_preserved",
+            evidence_field="validation_result",
+        )
+
+    def _preserve_interrupted_worktree(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        task: PortalTask,
+        attempt: int,
+        *,
+        evidence: Mapping[str, Any],
+        rescue_suffix: str,
+        event_type: str,
+        evidence_field: str,
+    ) -> dict[str, Any]:
         started_at = utc_now()
         commit_result = self._commit_worktree_changes(worktree_path, task, attempt)
         rescue_branch = ""
         implementation_commit = str(commit_result.get("commit", ""))
         if implementation_commit:
-            rescue_branch = self._failed_validation_rescue_branch_name(branch_name)
+            rescue_branch = self._interrupted_worktree_rescue_branch_name(
+                branch_name,
+                rescue_suffix,
+            )
             self._run_git(["branch", "-f", rescue_branch, implementation_commit], cwd=self.repo_root)
         cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
         result = {
@@ -4768,15 +4929,26 @@ class PortalImplementationDaemon:
             "implementation_commit": implementation_commit,
             "commit_result": commit_result,
             "cleanup_result": cleanup_result,
-            "validation_result": validation_result,
+            evidence_field: dict(evidence),
         }
-        self._record_event("failed_validation_worktree_preserved", result)
+        self._record_event(event_type, result)
         return result
 
     @staticmethod
     def _failed_validation_rescue_branch_name(branch_name: str) -> str:
+        return PortalImplementationDaemon._interrupted_worktree_rescue_branch_name(
+            branch_name,
+            "failed-validation",
+        )
+
+    @staticmethod
+    def _interrupted_worktree_rescue_branch_name(
+        branch_name: str,
+        suffix: str,
+    ) -> str:
         safe_name = branch_name.removeprefix("implementation/").strip("/").replace(" ", "-")
-        return f"rescue/{safe_name or 'implementation-attempt'}-failed-validation"
+        safe_suffix = suffix.strip("/").replace(" ", "-") or "interrupted"
+        return f"rescue/{safe_name or 'implementation-attempt'}-{safe_suffix}"
 
     def _restore_ephemeral_worktree_paths_for_commit(self, worktree_path: Path) -> None:
         for relative in EPHEMERAL_WORKTREE_PATHS:

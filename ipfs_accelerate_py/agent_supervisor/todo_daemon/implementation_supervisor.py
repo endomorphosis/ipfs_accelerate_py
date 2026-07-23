@@ -277,6 +277,8 @@ class PortalImplementationSupervisor:
         self.restart_count = 0
         self.last_start_at: float | None = None
         self._last_supervisor_maintenance_at: float = 0.0
+        self._worktree_worker_phase = ""
+        self._last_worktree_worker_seen_monotonic: float | None = None
 
     def _supervisor_status_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_supervisor_status.json"
@@ -778,6 +780,8 @@ class PortalImplementationSupervisor:
             )
             result = loop.run()
             self.restart_count = result.restart_count
+            self._worktree_worker_phase = ""
+            self._last_worktree_worker_seen_monotonic = None
             result_payload = {
                 "status": result.status,
                 "restart_count": result.restart_count,
@@ -4968,6 +4972,30 @@ class PortalImplementationSupervisor:
             threshold,
             now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
         )
+        phase = str(worker_status.get("phase") or "")
+        if not worker_status.get("required"):
+            self._worktree_worker_phase = ""
+            self._last_worktree_worker_seen_monotonic = None
+        elif phase != self._worktree_worker_phase:
+            self._worktree_worker_phase = phase
+            self._last_worktree_worker_seen_monotonic = None
+
+        now_monotonic = time.monotonic()
+        if int(worker_status.get("active_worker_count") or 0) > 0:
+            self._last_worktree_worker_seen_monotonic = now_monotonic
+            worker_status["worker_absence_age_seconds"] = 0.0
+            worker_status["stalled_without_active_worker"] = False
+        elif self._last_worktree_worker_seen_monotonic is not None:
+            absence_age = max(
+                0.0,
+                now_monotonic - self._last_worktree_worker_seen_monotonic,
+            )
+            worker_status["worker_absence_age_seconds"] = round(absence_age, 3)
+            worker_status["stalled_without_active_worker"] = bool(
+                threshold > 0 and absence_age >= threshold
+            )
+        else:
+            worker_status["worker_absence_age_seconds"] = None
         if not worker_status.get("stalled_without_active_worker"):
             return ""
         self._record_event(
@@ -4979,9 +5007,12 @@ class PortalImplementationSupervisor:
                 "worker_status": worker_status,
             },
         )
+        stall_age = worker_status.get("worker_absence_age_seconds")
+        if stall_age is None:
+            stall_age = worker_status.get("phase_age_seconds")
         return (
             f"{state.active_phase} stalled for active task {state.active_task_id}: "
-            f"no active worker for {worker_status.get('phase_age_seconds')}s"
+            f"no active worker for {stall_age}s"
         )
 
     def rewrite_strategy(self, state: PortalTaskState, reason: str) -> dict[str, Any]:

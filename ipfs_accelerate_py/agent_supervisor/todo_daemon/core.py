@@ -351,7 +351,71 @@ def child_pids(pid: int) -> List[int]:
     return children
 
 
+def _process_group_has_live_members(process_group_id: int) -> bool:
+    """Return whether a Unix process group still has a non-zombie member."""
+
+    proc_root = Path("/proc")
+    inspected = 0
+    try:
+        entries = proc_root.iterdir()
+    except OSError:
+        entries = ()
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat = (entry / "stat").read_text(encoding="utf-8")
+            closing_parenthesis = stat.rfind(")")
+            fields = stat[closing_parenthesis + 2 :].split()
+            state = fields[0]
+            process_group = int(fields[2])
+        except (OSError, UnicodeError, ValueError, IndexError):
+            continue
+        inspected += 1
+        if process_group == process_group_id and state != "Z":
+            return True
+    if inspected:
+        return False
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _terminate_owned_process_group(pid: int, *, grace_seconds: float) -> bool:
+    """Terminate a process group whose group id is the supplied owner pid."""
+
+    if pid <= 1 or pid == os.getpgrp() or not _process_group_has_live_members(pid):
+        return False
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OSError):
+        return False
+
+    deadline = time.monotonic() + max(0.0, grace_seconds)
+    while _process_group_has_live_members(pid) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    if _process_group_has_live_members(pid):
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+    return True
+
+
 def terminate_pid_tree(pid: int, *, grace_seconds: float) -> bool:
+    # Supervisor-owned children start new sessions, so their PID is also their
+    # process-group id. Signal that group first to include descendants spawned
+    # after a recursive process snapshot was taken.
+    if _terminate_owned_process_group(pid, grace_seconds=grace_seconds):
+        return True
     if not pid_alive(pid):
         return False
     for child in child_pids(pid):

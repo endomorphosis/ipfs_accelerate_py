@@ -127,7 +127,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     parse_args as parse_implementation_supervisor_args,
     supervisor_config_from_args,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec, pid_alive, stop_daemon
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import (
+    ManagedDaemonSpec,
+    pid_alive,
+    stop_daemon,
+    terminate_pid_tree,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.runner import TodoDaemonRunner
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor as todo_supervisor_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (
@@ -159,6 +164,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     launch_supervised_child,
     repair_supervisor_runtime,
     run_process_group_capture,
+    run_process_group_stream,
     supervisor_is_running,
     supervisor_runtime_paths,
     supervised_child_group_succeeded,
@@ -1705,6 +1711,40 @@ def test_supervisor_runtime_run_process_group_capture_reports_launch_failure(
     assert result["status"] == "failed"
     assert result["exit_code"] is None
     assert "missing command" in result["stderr"]
+
+
+def test_supervisor_runtime_stream_timeout_kills_owned_process_group(
+    tmp_path: Path,
+) -> None:
+    child_pid_path = tmp_path / "child.pid"
+    log_path = tmp_path / "worker.log"
+    script = (
+        "import pathlib, signal, subprocess, sys, time; "
+        "signal.signal(signal.SIGTERM, lambda *_: None); "
+        "child = subprocess.Popen([sys.executable, '-c', "
+        "\"import signal, time; signal.signal(signal.SIGTERM, lambda *_: None); time.sleep(60)\"]); "
+        f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid)); "
+        "time.sleep(60)"
+    )
+    child_pid = 0
+    try:
+        with log_path.open("w", encoding="utf-8") as log_fh:
+            with pytest.raises(subprocess.TimeoutExpired):
+                run_process_group_stream(
+                    [sys.executable, "-c", script],
+                    cwd=tmp_path,
+                    stdout=log_fh,
+                    timeout_seconds=0.25,
+                    termination_grace_seconds=0.1,
+                )
+        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+        deadline = time.monotonic() + 2.0
+        while pid_alive(child_pid) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert not pid_alive(child_pid)
+    finally:
+        if child_pid and pid_alive(child_pid):
+            terminate_pid_tree(child_pid, grace_seconds=0.0)
 
 
 def test_supervisor_runtime_stop_signal_handlers_record_and_restore(
@@ -5278,6 +5318,66 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
     assert stopped["worker_descendant_count"] == 0
 
 
+def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    clock = [100.0]
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+        ),
+        monotonic=lambda: clock[0],
+    )
+    active = {
+        "required": True,
+        "phase": "implementing",
+        "phase_age_seconds": 1800.0,
+        "active_worker_count": 1,
+        "active_worker_pids": [1234],
+        "stalled_without_active_worker": False,
+    }
+    absent = {
+        **active,
+        "active_worker_count": 0,
+        "active_worker_pids": [],
+        "stalled_without_active_worker": True,
+    }
+
+    loop._worker_status_with_disappearance_grace(active, threshold_seconds=60)
+    clock[0] = 110.0
+    within_grace = loop._worker_status_with_disappearance_grace(
+        absent,
+        threshold_seconds=60,
+    )
+    clock[0] = 161.0
+    expired = loop._worker_status_with_disappearance_grace(
+        absent,
+        threshold_seconds=60,
+    )
+
+    assert within_grace["worker_absence_age_seconds"] == 10.0
+    assert within_grace["stalled_without_active_worker"] is False
+    assert expired["worker_absence_age_seconds"] == 61.0
+    assert expired["stalled_without_active_worker"] is True
+
+
 def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7145,6 +7245,69 @@ def test_implementation_supervisor_honors_configured_worker_stall_threshold(
     assert reason == ""
 
 
+def test_implementation_supervisor_graces_recent_worker_disappearance(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state.json",
+            strategy_path=repo / "strategy.json",
+            events_path=repo / "events.jsonl",
+            state_dir=repo / "state",
+            implementation_log_stall_seconds=60,
+        )
+    )
+    state = TodoTaskState(
+        active_task_id="AUTO-001",
+        active_phase="implementing",
+        active_phase_started_at="2000-01-01T00:00:00+00:00",
+    )
+    clock = [100.0]
+    worker_count = [1]
+
+    def fake_worker_status(*_args, **_kwargs):
+        count = worker_count[0]
+        return {
+            "required": True,
+            "phase": "implementing",
+            "phase_age_seconds": 1800.0,
+            "threshold_seconds": 60.0,
+            "active_worker_pids": [1234] if count else [],
+            "active_worker_count": count,
+            "descendant_count": count,
+            "stalled_without_active_worker": not bool(count),
+        }
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_supervisor.worktree_phase_worker_status",
+        fake_worker_status,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_supervisor.time.monotonic",
+        lambda: clock[0],
+    )
+
+    assert supervisor._worktree_phase_without_worker_reason(state, now_ts=time.time()) == ""
+    worker_count[0] = 0
+    clock[0] = 110.0
+    assert supervisor._worktree_phase_without_worker_reason(state, now_ts=time.time()) == ""
+    clock[0] = 161.0
+    reason = supervisor._worktree_phase_without_worker_reason(state, now_ts=time.time())
+
+    assert "no active worker for 61.0s" in reason
+    events = [
+        json.loads(line)
+        for line in (repo / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["worker_status"]["worker_absence_age_seconds"] == 61.0
+
+
 def test_implementation_supervisor_repairs_stale_merge_resolver_without_worker(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7616,6 +7779,171 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "implementation_exception" for event in events)
     assert events[-1]["type"] == "daemon_pass"
+
+
+def test_implementation_daemon_promotes_fully_validated_timeout_work(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_timeout=0.1,
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Salvage validated timeout",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        validation=["test -f validated.txt"],
+    )
+    state = TodoTaskState()
+    enqueued: list[dict[str, object]] = []
+
+    def fake_seed(worktree_path, _branch_name, *, task=None):
+        worktree_path.mkdir(parents=True)
+        (worktree_path / "validated.txt").write_text("complete\n", encoding="utf-8")
+        return "baseline"
+
+    def timeout_runner(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["fake-agent"], timeout=0.1)
+
+    def fake_enqueue(**kwargs):
+        enqueued.append(kwargs)
+        return {"queued": True, "merged": False, "reason": "queued"}
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(daemon, "_prepare_worktree_for_validation", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [{"command": "test -f validated.txt", "returncode": 0}],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        lambda *_args, **_kwargs: {
+            "committed": True,
+            "commit": "validated-timeout-commit",
+        },
+    )
+    monkeypatch.setattr(daemon, "_enqueue_validated_worktree", fake_enqueue)
+    monkeypatch.setattr(daemon, "_record_task_queue_outcome", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(implementation_daemon_module, "run_process_group_stream", timeout_runner)
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="implement",
+    )
+
+    assert result["returncode"] == 0
+    assert result["timeout_result"]["salvaged"] is True
+    assert result["implementation_commit"] == "validated-timeout-commit"
+    assert result["merge_result"]["queued"] is True
+    assert enqueued[0]["baseline_ref"] == "baseline"
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "implementation_timeout_salvaged" for event in events)
+
+
+def test_implementation_daemon_preserves_timed_out_work_on_rescue_branch(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    worktree_path = repo / "worktree"
+    worktree_path.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="ACCEL-002",
+        title="Preserve timeout",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    branch_commands: list[list[str]] = []
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        lambda *_args, **_kwargs: {
+            "committed": True,
+            "commit": "timeout-rescue-commit",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_git",
+        lambda args, **_kwargs: branch_commands.append(args)
+        or subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_merged_worktree",
+        lambda *_args, **_kwargs: {"cleaned": True},
+    )
+
+    result = daemon._preserve_timed_out_worktree(
+        worktree_path,
+        "implementation/accel-002-attempt-1",
+        task,
+        1,
+        {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "validation_failed_after_timeout",
+        },
+    )
+
+    assert result["preserved"] is True
+    assert result["rescue_branch"] == "rescue/accel-002-attempt-1-timed-out"
+    assert branch_commands == [
+        [
+            "branch",
+            "-f",
+            "rescue/accel-002-attempt-1-timed-out",
+            "timeout-rescue-commit",
+        ]
+    ]
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["type"] == "timed_out_worktree_preserved"
 
 
 def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
