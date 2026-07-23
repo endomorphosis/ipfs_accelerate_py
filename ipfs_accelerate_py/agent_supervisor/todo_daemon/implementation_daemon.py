@@ -16,7 +16,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
@@ -94,6 +94,9 @@ IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
 VALIDATION_MAX_WORKERS_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_MAX_WORKERS"
 VALIDATION_RESOURCE_BUDGET_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_RESOURCE_BUDGET"
 DEFAULT_VALIDATION_MAX_WORKERS = 2
+MAX_MERGE_PROOF_METADATA_ITEMS = 256
+MAX_MERGE_PROOF_METADATA_DEPTH = 8
+MAX_MERGE_PROOF_METADATA_TEXT = 4096
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
 IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(r"(?:^|[\s/])(codex|copilot)(?:\s|$)")
 PROVIDER_CAPACITY_BACKOFF_ENV = "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS"
@@ -152,6 +155,95 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+def _bounded_merge_proof_value(
+    value: Any,
+    *,
+    depth: int = 0,
+    field_name: str = "",
+) -> Any:
+    """Project proof metadata without persisting raw outputs or witnesses.
+
+    Merge queue records are long-lived coordination artifacts, not proof
+    artifact storage.  Preserve the bounded identities and verdicts needed to
+    reproduce a gate decision while leaving potentially large or sensitive
+    provider material in its dedicated artifact store.
+    """
+
+    if depth >= MAX_MERGE_PROOF_METADATA_DEPTH:
+        return None
+    normalized_name = str(field_name or "").strip().lower().replace("-", "_")
+    if (
+        normalized_name in {
+            "output",
+            "outputs",
+            "stdout",
+            "stderr",
+            "witness",
+            "witnesses",
+            "counterexample",
+            "counterexamples",
+            "prompt",
+            "prompts",
+            "model_output",
+            "provider_response",
+            "proof_blob",
+            "proof_bytes",
+            "proof_text",
+            "raw_context",
+            "raw_output",
+            "raw_response",
+        }
+        or normalized_name.endswith("_witness")
+        or normalized_name.endswith("_output")
+    ):
+        return None
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return value[:MAX_MERGE_PROOF_METADATA_TEXT]
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, (str, int, float, bool)):
+        return _bounded_merge_proof_value(
+            enum_value,
+            depth=depth + 1,
+            field_name=field_name,
+        )
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            value = to_dict()
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, Mapping):
+        projected: dict[str, Any] = {}
+        for raw_key in sorted(value, key=lambda item: str(item))[
+            :MAX_MERGE_PROOF_METADATA_ITEMS
+        ]:
+            key = str(raw_key)[:MAX_MERGE_PROOF_METADATA_TEXT]
+            projected_value = _bounded_merge_proof_value(
+                value[raw_key],
+                depth=depth + 1,
+                field_name=key,
+            )
+            if projected_value is not None:
+                projected[key] = projected_value
+        return projected
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        projected_items = []
+        for item in value[:MAX_MERGE_PROOF_METADATA_ITEMS]:
+            projected_item = _bounded_merge_proof_value(
+                item,
+                depth=depth + 1,
+                field_name=field_name,
+            )
+            if projected_item is not None:
+                projected_items.append(projected_item)
+        return projected_items
+    return str(value)[:MAX_MERGE_PROOF_METADATA_TEXT]
 
 
 def shared_worktree_source_roots(repo_root: Path) -> tuple[Path, ...]:
@@ -910,6 +1002,9 @@ class PortalImplementationDaemon:
         validation_cache_dir: Path | None = None,
         validation_max_workers: int | None = None,
         validation_resource_budget: int | None = None,
+        formal_verification_policy: Any = None,
+        proof_gate: Any = None,
+        proof_cache_dir: Path | None = None,
         worktree_pool_enabled: bool | None = None,
         worktree_pool_max_entries: int | None = None,
         worktree_pool: WorktreePool | None = None,
@@ -1018,6 +1113,11 @@ class PortalImplementationDaemon:
             max_workers=max(1, configured_validation_workers),
             resource_budget=max(1, configured_validation_budget),
             default_timeout_seconds=self.implementation_timeout,
+        )
+        self.formal_verification_policy = formal_verification_policy
+        self.proof_gate = proof_gate
+        self.proof_cache_dir = (
+            Path(proof_cache_dir) if proof_cache_dir is not None else None
         )
         configured_submodules = (
             DEFAULT_WORKTREE_SUBMODULE_PATHS
@@ -2462,6 +2562,159 @@ class PortalImplementationDaemon:
             return set()
         return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
+    def _candidate_repository_tree(self, implementation_commit: str) -> str:
+        """Return the immutable Git tree promoted by a candidate commit."""
+
+        if not implementation_commit:
+            return ""
+        result = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                f"{implementation_commit}^{{tree}}",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    @staticmethod
+    def _proof_risk_for_task(task: PortalTask) -> str:
+        """Map scheduler priority to the conservative proof-policy risk."""
+
+        return {
+            "P0": "critical",
+            "P1": "high",
+            "P2": "medium",
+            "P3": "low",
+        }.get(str(task.priority or "").strip().upper(), "high")
+
+    @staticmethod
+    def _proof_scope_hints(task: PortalTask) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Extract bounded AST and modeled-invariant hints from task metadata."""
+
+        normalized_metadata = {
+            str(key).strip().lower().replace("_", " "): str(value or "")
+            for key, value in task.metadata.items()
+        }
+        ast_scope_ids = tuple(
+            sorted(
+                set(
+                    split_csv(
+                        normalized_metadata.get("ast symbols", "")
+                        or normalized_metadata.get("ast scopes", "")
+                    )
+                )
+            )[:MAX_MERGE_PROOF_METADATA_ITEMS]
+        )
+        invariant_classes = set(
+            split_csv(
+                normalized_metadata.get("invariant classes", "")
+                or normalized_metadata.get("proof invariant classes", "")
+                or normalized_metadata.get("proof invariants", "")
+            )
+        )
+        # Task records predate typed invariant metadata in many boards.  AST
+        # symbols are still deterministic semantic hints, so project only
+        # reviewed, high-signal keywords into the common policy vocabulary.
+        hint_text = " ".join(ast_scope_ids).lower()
+        keyword_classes = (
+            (("transition", "state", "status"), "state_transition"),
+            (("lease", "fenc", "lock owner"), "lease_safety"),
+            (("acyclic", "dag", "dependency graph"), "dag_acyclicity"),
+            (("merge", "dedupe", "idempot"), "merge_idempotence"),
+            (("cache key", "cache_key", "fingerprint"), "cache_key_completeness"),
+            (("fresh", "stale", "expir"), "evidence_freshness"),
+            (("projection", "alias", "canonical"), "projection_equivalence"),
+            (("authoriz", "permission", "override"), "authorization"),
+            (("integrity", "receipt", "evidence", "proof"), "data_integrity"),
+            (("resource", "budget", "isolation"), "resource_isolation"),
+        )
+        for keywords, invariant_class in keyword_classes:
+            if any(keyword in hint_text for keyword in keywords):
+                invariant_classes.add(invariant_class)
+        return ast_scope_ids, tuple(
+            sorted(invariant_classes)[:MAX_MERGE_PROOF_METADATA_ITEMS]
+        )
+
+    def _proof_changed_scopes(
+        self,
+        *,
+        baseline_ref: str,
+        implementation_commit: str,
+        task: PortalTask,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Compile the immutable baseline diff into deterministic proof scopes."""
+
+        if not baseline_ref or not implementation_commit:
+            return [], False
+        result = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-status",
+                "--find-renames",
+                baseline_ref,
+                implementation_commit,
+                "--",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return [], False
+        ast_scope_ids, invariant_classes = self._proof_scope_hints(task)
+        risk = self._proof_risk_for_task(task)
+        path_kinds: dict[str, str] = {}
+        for line in result.stdout.splitlines():
+            fields = line.split("\t")
+            if len(fields) < 2:
+                continue
+            status = fields[0].strip().upper()
+            status_kind = status[:1]
+            if status_kind in {"R", "C"} and len(fields) >= 3:
+                path_kinds[fields[1].strip("/")] = "deleted"
+                path_kinds[fields[2].strip("/")] = "added"
+                continue
+            change_kind = {
+                "A": "added",
+                "D": "deleted",
+                "M": "modified",
+                "T": "modified",
+                "U": "modified",
+                "X": "modified",
+                "B": "modified",
+            }.get(status_kind, "modified")
+            path_kinds[fields[1].strip("/")] = change_kind
+        valid_paths = [
+            path
+            for path in sorted(path_kinds)
+            if path and not path.startswith("../") and not Path(path).is_absolute()
+        ]
+        complete = len(valid_paths) <= MAX_MERGE_PROOF_METADATA_ITEMS
+        scopes: list[dict[str, Any]] = []
+        from ..formal_verification_policy import ChangedScope
+
+        for path in valid_paths[:MAX_MERGE_PROOF_METADATA_ITEMS]:
+            scope = ChangedScope(
+                path=path,
+                ast_scope_ids=ast_scope_ids,
+                risk=risk,
+                invariant_classes=invariant_classes,
+                change_kind=path_kinds[path],
+                metadata={
+                    "task_id": task.task_id,
+                    "task_priority": str(task.priority or "").strip().upper(),
+                },
+            )
+            scopes.append({**scope.to_dict(), "scope_id": scope.scope_id})
+        return scopes, complete
+
     def _enqueue_merge_candidate(
         self,
         *,
@@ -2485,10 +2738,23 @@ class PortalImplementationDaemon:
 
         identity = self._identity_for_task(task)
         work_order = self._bundle_work_order_for_task(task)
+        candidate_tree = self._candidate_repository_tree(implementation_commit)
+        repository_tree_id = f"git-tree:{candidate_tree}" if candidate_tree else ""
+        proof_changed_scopes, proof_changed_scopes_complete = (
+            self._proof_changed_scopes(
+                baseline_ref=baseline_ref,
+                implementation_commit=implementation_commit,
+                task=task,
+            )
+        )
         metadata = {
             "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@1",
             "baseline_ref": baseline_ref,
             "implementation_commit": implementation_commit,
+            "candidate_tree": candidate_tree,
+            "repository_tree_id": repository_tree_id,
+            "proof_changed_scopes": proof_changed_scopes,
+            "proof_changed_scopes_complete": proof_changed_scopes_complete,
             "worktree_path": str(worktree_path or ""),
             "todo_path": str(self.todo_path),
             "state_path": str(self.state_path),
@@ -2503,30 +2769,87 @@ class PortalImplementationDaemon:
                 {str(path).strip("/") for path in changed_submodule_paths if str(path).strip("/")}
             )
         if validation_result is not None:
-            metadata["validation_proof"] = {
+            result_records = [
+                {
+                    key: item.get(key)
+                    for key in (
+                        "command",
+                        "validation_id",
+                        "returncode",
+                        "passed",
+                        "verdict",
+                        "reason",
+                        "timed_out",
+                        "cache_hit",
+                        "cache_key",
+                        "cache_evidence_id",
+                        "stage",
+                        "ordinal",
+                        "started_at",
+                        "finished_at",
+                    )
+                    if key in item
+                }
+                for item in validation_result.get("results", [])[
+                    :MAX_MERGE_PROOF_METADATA_ITEMS
+                ]
+                if isinstance(item, dict)
+            ]
+            validation_proof = {
                 "attempted": bool(validation_result.get("attempted")),
                 "passed": bool(validation_result.get("passed")),
                 "returncode": int(validation_result.get("returncode") or 0),
-                "target_commit": str(validation_result.get("target_commit") or ""),
-                "selection": validation_result.get("selection") or {},
-                "stages": validation_result.get("stages") or [],
-                "results": [
-                    {
-                        key: item.get(key)
-                        for key in (
-                            "command",
-                            "returncode",
-                            "cache_hit",
-                            "cache_key",
-                            "stage",
-                            "started_at",
-                            "finished_at",
-                        )
-                    }
-                    for item in validation_result.get("results", [])
-                    if isinstance(item, dict)
-                ],
+                # Validation runs before the daemon creates its commit.  The
+                # merge gate must bind the evidence to the immutable commit
+                # and Git tree that were actually enqueued, not the earlier
+                # workspace HEAD reported by the validation scheduler.
+                "target_commit": implementation_commit,
+                "target_tree": candidate_tree,
+                "repository_tree_id": repository_tree_id,
+                "selection": _bounded_merge_proof_value(
+                    validation_result.get("selection") or {},
+                    field_name="selection",
+                ),
+                "stages": _bounded_merge_proof_value(
+                    validation_result.get("stages") or [],
+                    field_name="stages",
+                ),
+                "results": _bounded_merge_proof_value(
+                    result_records,
+                    field_name="results",
+                ),
+                "verdicts": _bounded_merge_proof_value(
+                    validation_result.get("verdicts") or {},
+                    field_name="verdicts",
+                ),
+                "proof": _bounded_merge_proof_value(
+                    validation_result.get("proof") or {},
+                    field_name="proof",
+                ),
+                "fallbacks": _bounded_merge_proof_value(
+                    validation_result.get("fallbacks") or [],
+                    field_name="fallbacks",
+                ),
+                "cache_hits": int(validation_result.get("cache_hits") or 0),
+                "cache_misses": int(validation_result.get("cache_misses") or 0),
             }
+            raw_proof_gate = validation_result.get(
+                "proof_gate",
+                validation_result.get("proof_gate_packet"),
+            )
+            if raw_proof_gate is not None:
+                proof_gate_packet = _bounded_merge_proof_value(
+                    raw_proof_gate,
+                    field_name="proof_gate",
+                )
+                validation_proof["proof_gate"] = proof_gate_packet
+                metadata["proof_gate"] = proof_gate_packet
+            metadata["validation_proof"] = validation_proof
+        if self.formal_verification_policy is not None:
+            metadata["formal_verification_policy"] = _bounded_merge_proof_value(
+                self.formal_verification_policy,
+                field_name="formal_verification_policy",
+            )
         if work_order is not None:
             metadata["bundle_work_order"] = work_order.to_dict()
         if worktree_pool_handoff:
@@ -2903,6 +3226,9 @@ class PortalImplementationDaemon:
             target_branch=self._main_branch_name(),
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
             merge_callback=self._merge_train_callback,
+            formal_verification_policy=self.formal_verification_policy,
+            proof_gate=self.proof_gate,
+            proof_cache_dir=self.proof_cache_dir,
         )
         return train.run_once()
 

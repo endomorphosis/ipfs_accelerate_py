@@ -36,6 +36,7 @@ from .formal_verification_contracts import (
     AssuranceLevel,
     CanonicalContract,
     ContractValidationError,
+    ProofPlan,
     ProofReceipt,
     ProofVerdict,
     assurance_satisfies,
@@ -64,6 +65,9 @@ REQUIREMENT_GATE_RESULT_SCHEMA = (
 )
 POLICY_GATE_DECISION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-policy-gate-decision@1"
+)
+MERGE_PROOF_GATE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/merge-proof-gate-receipt@1"
 )
 
 MAX_SCOPE_ITEMS = 256
@@ -2008,6 +2012,708 @@ class PolicyGateDecision(CanonicalContract):
 GateDecision = ProofGateDecision = PolicyGateDecision
 
 
+def _merge_status_mapping(value: Any, field_name: str) -> Mapping[str, Any]:
+    """Normalize a bounded provider/cache status snapshot.
+
+    Status is audit context, never proof authority.  Accepting a short string
+    keeps adapters simple while serializing one unambiguous object shape.
+    """
+
+    if value is None:
+        return {}
+    if isinstance(value, (str, Enum)):
+        text = value.value if isinstance(value, Enum) else value
+        return {"status": _text(text, field_name, required=True)}
+    return _mapping(value, field_name)
+
+
+def _merge_proof_plan_snapshot(
+    value: Any,
+    claimed_plan_id: str = "",
+) -> tuple[Mapping[str, Any], str]:
+    """Return a canonical plan snapshot and independently checked identity."""
+
+    if value is None:
+        if claimed_plan_id:
+            raise PolicyValidationError(
+                "proof_plan_id cannot be supplied without a proof plan snapshot"
+            )
+        return {}, ""
+    if isinstance(value, ProofPlan):
+        plan = value
+        snapshot = plan.to_dict()
+        plan_id = plan.plan_id
+    else:
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            value = converter()
+        snapshot = _mapping(value, "proof_plan")
+        if not snapshot:
+            if claimed_plan_id:
+                raise PolicyValidationError(
+                    "proof_plan_id cannot be supplied with an empty proof plan"
+                )
+            return {}, ""
+        if snapshot.get("schema") == ProofPlan.SCHEMA:
+            plan = ProofPlan.from_dict(snapshot)
+            snapshot = plan.to_dict()
+            plan_id = plan.plan_id
+        else:
+            plan_id = _text(
+                snapshot.get("plan_id") or snapshot.get("content_id"),
+                "proof_plan.plan_id",
+                required=True,
+            )
+    supplied = _text(claimed_plan_id, "proof_plan_id")
+    if supplied and supplied != plan_id:
+        raise PolicyValidationError("proof plan identity does not match snapshot")
+    return snapshot, plan_id
+
+
+def _merge_outcomes(
+    values: Any,
+    requirements: Sequence[ProofRequirement],
+) -> Tuple[ProofOutcome, ...]:
+    """Normalize outcomes while rejecting duplicates and foreign requirements."""
+
+    if values is None:
+        return ()
+    if isinstance(values, (ProofOutcome, ProofReceipt)):
+        raw_values: Sequence[Any] = (values,)
+    elif isinstance(values, Mapping):
+        normalized = []
+        for key, raw in values.items():
+            requirement_id = str(key)
+            if isinstance(raw, ProofOutcome):
+                outcome = raw
+            elif isinstance(raw, ProofReceipt):
+                outcome = ProofOutcome.from_receipt(requirement_id, raw)
+            elif isinstance(raw, Mapping):
+                outcome = ProofOutcome(
+                    requirement_id=raw.get("requirement_id", requirement_id),
+                    status=raw.get("status", ProofResultStatus.MISSING),
+                    authoritative_assurance=raw.get(
+                        "authoritative_assurance",
+                        raw.get("assurance", AssuranceLevel.UNVERIFIED),
+                    ),
+                    receipt_id=raw.get("receipt_id", ""),
+                    reason_code=raw.get("reason_code", ""),
+                )
+            else:
+                raise PolicyValidationError(
+                    "proof outcome mapping values are invalid"
+                )
+            normalized.append(outcome)
+        raw_values = normalized
+    elif isinstance(values, Sequence) and not isinstance(
+        values, (str, bytes, bytearray)
+    ):
+        raw_values = values
+    else:
+        raise PolicyValidationError("proof outcomes have an unsupported shape")
+
+    result = []
+    for raw in raw_values:
+        if isinstance(raw, ProofReceipt):
+            if len(requirements) != 1:
+                raise PolicyValidationError(
+                    "a single proof receipt can only evaluate one requirement"
+                )
+            outcome = ProofOutcome.from_receipt(
+                requirements[0].requirement_id, raw
+            )
+        elif isinstance(raw, ProofOutcome):
+            outcome = raw
+        elif isinstance(raw, Mapping):
+            outcome = ProofOutcome.from_dict(raw)
+        else:
+            raise PolicyValidationError(
+                "proof outcomes must contain ProofOutcome values"
+            )
+        result.append(outcome)
+
+    requirement_ids = {item.requirement_id for item in requirements}
+    outcome_ids = [item.requirement_id for item in result]
+    if len(set(outcome_ids)) != len(outcome_ids):
+        raise PolicyValidationError("proof outcomes contain duplicate requirements")
+    foreign = sorted(set(outcome_ids) - requirement_ids)
+    if foreign:
+        raise PolicyValidationError(
+            "proof outcome references an unselected requirement: "
+            + ", ".join(foreign)
+        )
+    return tuple(sorted(result, key=lambda item: item.requirement_id))
+
+
+def _merge_validations(values: Any) -> Tuple[ValidationOutcome, ...]:
+    if values is None:
+        return ()
+    normalized = _validation_map(values)
+    if isinstance(values, Sequence) and not isinstance(
+        values, (str, bytes, bytearray)
+    ):
+        supplied_ids = [
+            item.validation_id
+            if isinstance(item, ValidationOutcome)
+            else str(
+                item.get("validation_id", "")
+                if isinstance(item, Mapping)
+                else ""
+            )
+            for item in values
+        ]
+        supplied_ids = [item for item in supplied_ids if item]
+        if len(set(supplied_ids)) != len(supplied_ids):
+            raise PolicyValidationError(
+                "fallback validations contain duplicate validation IDs"
+            )
+    return tuple(sorted(normalized.values(), key=lambda item: item.validation_id))
+
+
+@dataclass(frozen=True)
+class MergeProofGateReceipt(CanonicalContract):
+    """Canonical proof-policy decision at the merge-promotion boundary.
+
+    This receipt embeds every snapshot needed to reproduce the decision.  It
+    does not trust summary fields from providers or queue metadata: typed proof
+    receipts are revalidated, identities are cross-checked, and the policy
+    decision must be for the exact candidate tree and selection.
+    """
+
+    SCHEMA: ClassVar[str] = MERGE_PROOF_GATE_RECEIPT_SCHEMA
+
+    policy: FormalVerificationPolicy
+    selection: PolicySelection
+    repository_tree_id: str
+    proof_plan: Mapping[str, Any]
+    proof_plan_id: str
+    proof_outcomes: Tuple[ProofOutcome, ...]
+    validation_outcomes: Tuple[ValidationOutcome, ...]
+    proof_receipts: Tuple[ProofReceipt, ...]
+    proof_receipt_ids: Tuple[str, ...]
+    validation_receipt_ids: Tuple[str, ...]
+    decision: PolicyGateDecision
+    evaluated_at: str
+    override: OverrideReceipt | None = None
+    provider_status: Mapping[str, Any] = field(default_factory=dict)
+    provider_error: str = ""
+    cache_status: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        policy = (
+            self.policy
+            if isinstance(self.policy, FormalVerificationPolicy)
+            else FormalVerificationPolicy.from_dict(self.policy)
+        )
+        selection = (
+            self.selection
+            if isinstance(self.selection, PolicySelection)
+            else PolicySelection.from_dict(self.selection)
+        )
+        decision = (
+            self.decision
+            if isinstance(self.decision, PolicyGateDecision)
+            else PolicyGateDecision.from_dict(self.decision)
+        )
+        override = self.override
+        if override is not None and not isinstance(override, OverrideReceipt):
+            override = OverrideReceipt.from_dict(override)
+        object.__setattr__(self, "policy", policy)
+        object.__setattr__(self, "selection", selection)
+        object.__setattr__(self, "decision", decision)
+        object.__setattr__(self, "override", override)
+
+        tree_id = _text(
+            self.repository_tree_id, "repository_tree_id", required=True
+        )
+        object.__setattr__(self, "repository_tree_id", tree_id)
+        plan_snapshot, plan_id = _merge_proof_plan_snapshot(
+            self.proof_plan, self.proof_plan_id
+        )
+        object.__setattr__(self, "proof_plan", plan_snapshot)
+        object.__setattr__(self, "proof_plan_id", plan_id)
+
+        outcomes = _merge_outcomes(self.proof_outcomes, selection.requirements)
+        validations = _merge_validations(self.validation_outcomes)
+        object.__setattr__(self, "proof_outcomes", outcomes)
+        object.__setattr__(self, "validation_outcomes", validations)
+
+        receipts = tuple(
+            sorted(
+                [
+                    item
+                    if isinstance(item, ProofReceipt)
+                    else ProofReceipt.from_dict(item)
+                    for item in self.proof_receipts
+                ],
+                key=lambda item: item.receipt_id,
+            )
+        )
+        if len({item.receipt_id for item in receipts}) != len(receipts):
+            raise PolicyValidationError("proof receipts contain duplicate identities")
+        if receipts and not plan_snapshot:
+            raise PolicyValidationError(
+                "typed proof receipts require an exact proof plan snapshot"
+            )
+        object.__setattr__(self, "proof_receipts", receipts)
+        receipt_ids = _strings(self.proof_receipt_ids, "proof_receipt_ids")
+        snapshot_ids = tuple(item.receipt_id for item in receipts)
+        if not set(snapshot_ids).issubset(receipt_ids):
+            raise PolicyValidationError(
+                "every proof receipt snapshot must be represented by proof_receipt_ids"
+            )
+        object.__setattr__(self, "proof_receipt_ids", receipt_ids)
+        validation_receipt_ids = _strings(
+            self.validation_receipt_ids, "validation_receipt_ids"
+        )
+        represented_validation_ids = {
+            item.receipt_id for item in validations if item.receipt_id
+        }
+        if not represented_validation_ids.issubset(validation_receipt_ids):
+            raise PolicyValidationError(
+                "every validation receipt must be represented by "
+                "validation_receipt_ids"
+            )
+        object.__setattr__(
+            self, "validation_receipt_ids", validation_receipt_ids
+        )
+        evaluated_text, _ = _timestamp(self.evaluated_at, "evaluated_at")
+        object.__setattr__(self, "evaluated_at", evaluated_text)
+        object.__setattr__(
+            self,
+            "provider_status",
+            _merge_status_mapping(self.provider_status, "provider_status"),
+        )
+        object.__setattr__(
+            self, "provider_error", _text(self.provider_error, "provider_error")
+        )
+        object.__setattr__(
+            self,
+            "cache_status",
+            _merge_status_mapping(self.cache_status, "cache_status"),
+        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, "metadata"))
+
+        if selection.policy_id != policy.policy_id:
+            raise PolicyValidationError("selection policy does not match receipt policy")
+        if selection.repository_tree_id != tree_id:
+            raise PolicyValidationError("selection tree does not match merge tree")
+        if decision.policy_id != policy.policy_id:
+            raise PolicyValidationError("decision policy does not match receipt policy")
+        if decision.selection_id != selection.selection_id:
+            raise PolicyValidationError(
+                "decision selection does not match receipt selection"
+            )
+        if decision.repository_tree_id != tree_id:
+            raise PolicyValidationError("decision tree does not match merge tree")
+        if decision.rollout_mode is not policy.rollout_mode:
+            raise PolicyValidationError(
+                "decision rollout mode does not match receipt policy"
+            )
+        expected_requirements = {
+            item.requirement_id for item in selection.requirements
+        }
+        decision_requirements = {
+            item.requirement_id for item in decision.results
+        }
+        if decision_requirements != expected_requirements:
+            raise PolicyValidationError(
+                "decision results do not exactly cover selected requirements"
+            )
+        requirements_by_id = {
+            item.requirement_id: item for item in selection.requirements
+        }
+        validations_by_id = {
+            item.validation_id: item for item in validations
+        }
+        for result in decision.results:
+            if not result.fallback_satisfied:
+                continue
+            requirement = requirements_by_id[result.requirement_id]
+            undurable = [
+                validation_id
+                for validation_id in requirement.fallback_validations
+                if validation_id not in validations_by_id
+                or not validations_by_id[validation_id].passed
+                or not validations_by_id[validation_id].receipt_id
+            ]
+            if undurable:
+                raise PolicyValidationError(
+                    "merge fallback requires durable passing validation receipts: "
+                    + ", ".join(sorted(undurable))
+                )
+
+        if plan_snapshot:
+            plan_policy = plan_snapshot.get("policy_id")
+            plan_tree = plan_snapshot.get("repository_tree_id") or plan_snapshot.get(
+                "candidate_tree_id"
+            )
+            if plan_policy and str(plan_policy) != policy.policy_id:
+                raise PolicyValidationError("proof plan policy does not match")
+            if plan_tree and str(plan_tree) != tree_id:
+                raise PolicyValidationError("proof plan tree does not match")
+            plan_obligations = {
+                str(item)
+                for item in plan_snapshot.get("obligation_ids", ()) or ()
+                if str(item)
+            }
+            if plan_obligations:
+                foreign_obligations = sorted(
+                    {
+                        item.obligation_id
+                        for item in receipts
+                        if item.obligation_id not in plan_obligations
+                    }
+                )
+                if foreign_obligations:
+                    raise PolicyValidationError(
+                        "proof receipt obligation is outside the proof plan: "
+                        + ", ".join(foreign_obligations)
+                    )
+
+        snapshots_by_id = {item.receipt_id: item for item in receipts}
+        for receipt in receipts:
+            if receipt.policy_id != policy.policy_id:
+                raise PolicyValidationError("proof receipt policy does not match")
+            if receipt.repository_tree_id != tree_id:
+                raise PolicyValidationError("proof receipt tree does not match")
+            if plan_id and receipt.plan_id != plan_id:
+                raise PolicyValidationError("proof receipt plan does not match")
+        used_receipt_ids = {
+            item.receipt_id for item in outcomes if item.receipt_id
+        } | {
+            item.proof_receipt_id
+            for item in decision.results
+            if item.proof_receipt_id
+        }
+        if not used_receipt_ids.issubset(receipt_ids):
+            raise PolicyValidationError(
+                "used proof receipt IDs are not represented in the merge receipt"
+            )
+        proved_outcomes_without_snapshot = [
+            item.requirement_id
+            for item in outcomes
+            if item.status is ProofResultStatus.PROVED
+            and (
+                not item.receipt_id
+                or item.receipt_id not in snapshots_by_id
+            )
+        ]
+        proof_results_without_snapshot = [
+            item.requirement_id
+            for item in decision.results
+            if item.proof_satisfied
+            and (
+                not item.proof_receipt_id
+                or item.proof_receipt_id not in snapshots_by_id
+            )
+        ]
+        if proved_outcomes_without_snapshot or proof_results_without_snapshot:
+            missing = sorted(
+                set(
+                    proved_outcomes_without_snapshot
+                    + proof_results_without_snapshot
+                )
+            )
+            raise PolicyValidationError(
+                "proved merge outcomes require embedded typed proof receipts: "
+                + ", ".join(missing)
+            )
+        for outcome in outcomes:
+            receipt = snapshots_by_id.get(outcome.receipt_id)
+            if receipt is None:
+                continue
+            projected = ProofOutcome.from_receipt(outcome.requirement_id, receipt)
+            if (
+                outcome.status is not projected.status
+                or outcome.authoritative_assurance
+                is not projected.authoritative_assurance
+                or outcome.receipt_id != projected.receipt_id
+            ):
+                raise PolicyValidationError(
+                    "proof outcome does not match its typed proof receipt"
+                )
+
+        if override is not None:
+            if override.policy_id != policy.policy_id:
+                raise PolicyValidationError("override policy does not match")
+            if override.repository_tree_id != tree_id:
+                raise PolicyValidationError("override tree does not match")
+        if decision.override_receipt_id:
+            if override is None or decision.override_receipt_id != override.receipt_id:
+                raise PolicyValidationError(
+                    "decision override identity is not represented"
+                )
+        reproduced_decision = policy.evaluate_gate(
+            selection,
+            outcomes,
+            validations=validations,
+            override=override,
+            now=self.evaluated_at,
+        )
+        if reproduced_decision != decision:
+            raise PolicyValidationError(
+                "merge proof gate decision is not reproducible from embedded evidence"
+            )
+
+    @property
+    def policy_id(self) -> str:
+        return self.policy.policy_id
+
+    @property
+    def selection_id(self) -> str:
+        return self.selection.selection_id
+
+    @property
+    def decision_id(self) -> str:
+        return self.decision.decision_id
+
+    @property
+    def override_receipt_id(self) -> str:
+        return self.override.receipt_id if self.override is not None else ""
+
+    @property
+    def allowed(self) -> bool:
+        return self.decision.allowed
+
+    @property
+    def receipt_id(self) -> str:
+        return self.content_id
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "policy_id": self.policy_id,
+            "policy": self.policy,
+            "selection_id": self.selection_id,
+            "selection": self.selection,
+            "repository_tree_id": self.repository_tree_id,
+            "proof_plan_id": self.proof_plan_id,
+            "proof_plan": self.proof_plan,
+            "proof_outcomes": self.proof_outcomes,
+            "validation_outcomes": self.validation_outcomes,
+            "proof_receipt_ids": self.proof_receipt_ids,
+            "proof_receipts": self.proof_receipts,
+            "validation_receipt_ids": self.validation_receipt_ids,
+            "decision_id": self.decision_id,
+            "decision": self.decision,
+            "allowed": self.allowed,
+            "override_receipt_id": self.override_receipt_id,
+            "override": self.override,
+            "provider_status": self.provider_status,
+            "provider_error": self.provider_error,
+            "cache_status": self.cache_status,
+            "evaluated_at": self.evaluated_at,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        policy: FormalVerificationPolicy,
+        selection: PolicySelection,
+        repository_tree_id: str,
+        proof_plan: Any = None,
+        outcomes: Any = None,
+        validations: Any = None,
+        proof_receipts: Sequence[ProofReceipt | Mapping[str, Any]] = (),
+        proof_receipt_ids: Sequence[str] = (),
+        override: OverrideReceipt | None = None,
+        provider_status: Any = None,
+        provider_error: str = "",
+        cache_status: Any = None,
+        now: datetime | str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> "MergeProofGateReceipt":
+        """Evaluate ``policy`` and bind the resulting exact merge evidence."""
+
+        normalized_policy = (
+            policy
+            if isinstance(policy, FormalVerificationPolicy)
+            else FormalVerificationPolicy.from_dict(policy)
+        )
+        normalized_selection = (
+            selection
+            if isinstance(selection, PolicySelection)
+            else PolicySelection.from_dict(selection)
+        )
+        normalized_receipts = tuple(
+            item
+            if isinstance(item, ProofReceipt)
+            else ProofReceipt.from_dict(item)
+            for item in proof_receipts
+        )
+        normalized_outcomes = _merge_outcomes(
+            outcomes, normalized_selection.requirements
+        )
+        if outcomes is None and normalized_receipts:
+            derived = []
+            unused = list(normalized_receipts)
+            for requirement in normalized_selection.requirements:
+                matching = [
+                    item
+                    for item in unused
+                    if item.metadata.get("requirement_id")
+                    == requirement.requirement_id
+                ]
+                if not matching and len(normalized_selection.requirements) == 1:
+                    matching = list(unused)
+                if len(matching) == 1:
+                    receipt = matching[0]
+                    derived.append(
+                        ProofOutcome.from_receipt(
+                            requirement.requirement_id, receipt
+                        )
+                    )
+                    unused.remove(receipt)
+            normalized_outcomes = tuple(derived)
+        normalized_validations = _merge_validations(validations)
+        normalized_override = override
+        if normalized_override is not None and not isinstance(
+            normalized_override, OverrideReceipt
+        ):
+            if not isinstance(normalized_override, Mapping):
+                raise PolicyValidationError(
+                    "override must be an OverrideReceipt or mapping"
+                )
+            normalized_override = OverrideReceipt.from_dict(normalized_override)
+        evaluation_time = _now(now)
+        decision = normalized_policy.evaluate_gate(
+            normalized_selection,
+            normalized_outcomes,
+            validations=normalized_validations,
+            override=normalized_override,
+            now=evaluation_time,
+        )
+        plan_snapshot, plan_id = _merge_proof_plan_snapshot(proof_plan)
+        all_receipt_ids = tuple(
+            sorted(
+                {
+                    *(
+                        _text(item, "proof_receipt_ids", required=True)
+                        for item in proof_receipt_ids
+                    ),
+                    *(item.receipt_id for item in normalized_receipts),
+                }
+            )
+        )
+        validation_receipt_ids = tuple(
+            sorted(
+                {
+                    item.receipt_id
+                    for item in normalized_validations
+                    if item.receipt_id
+                }
+            )
+        )
+        evaluated = evaluation_time.isoformat(timespec="microseconds").replace(
+            "+00:00", "Z"
+        )
+        return cls(
+            policy=normalized_policy,
+            selection=normalized_selection,
+            repository_tree_id=repository_tree_id,
+            proof_plan=plan_snapshot,
+            proof_plan_id=plan_id,
+            proof_outcomes=normalized_outcomes,
+            validation_outcomes=normalized_validations,
+            proof_receipts=normalized_receipts,
+            proof_receipt_ids=all_receipt_ids,
+            validation_receipt_ids=validation_receipt_ids,
+            decision=decision,
+            override=normalized_override,
+            provider_status=_merge_status_mapping(
+                provider_status, "provider_status"
+            ),
+            provider_error=provider_error,
+            cache_status=_merge_status_mapping(cache_status, "cache_status"),
+            evaluated_at=evaluated,
+            metadata=metadata or {},
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MergeProofGateReceipt":
+        _schema(payload, cls.SCHEMA)
+        result = cls(
+            policy=FormalVerificationPolicy.from_dict(payload.get("policy") or {}),
+            selection=PolicySelection.from_dict(payload.get("selection") or {}),
+            repository_tree_id=payload.get("repository_tree_id", ""),
+            proof_plan=payload.get("proof_plan") or {},
+            proof_plan_id=payload.get("proof_plan_id", ""),
+            proof_outcomes=tuple(
+                ProofOutcome.from_dict(item)
+                for item in payload.get("proof_outcomes", payload.get("outcomes", ()))
+                or ()
+            ),
+            validation_outcomes=tuple(
+                ValidationOutcome.from_dict(item)
+                for item in payload.get(
+                    "validation_outcomes", payload.get("validations", ())
+                )
+                or ()
+            ),
+            proof_receipts=tuple(
+                ProofReceipt.from_dict(item)
+                for item in payload.get("proof_receipts") or ()
+            ),
+            proof_receipt_ids=tuple(payload.get("proof_receipt_ids") or ()),
+            validation_receipt_ids=tuple(
+                payload.get("validation_receipt_ids") or ()
+            ),
+            decision=PolicyGateDecision.from_dict(payload.get("decision") or {}),
+            override=(
+                OverrideReceipt.from_dict(payload["override"])
+                if isinstance(payload.get("override"), Mapping)
+                else None
+            ),
+            provider_status=payload.get("provider_status") or {},
+            provider_error=payload.get("provider_error", ""),
+            cache_status=payload.get("cache_status") or {},
+            evaluated_at=payload.get("evaluated_at", ""),
+            metadata=payload.get("metadata") or {},
+        )
+        for name, actual in (
+            ("policy_id", result.policy_id),
+            ("selection_id", result.selection_id),
+            ("decision_id", result.decision_id),
+            ("override_receipt_id", result.override_receipt_id),
+        ):
+            claimed = payload.get(name)
+            if claimed is not None and str(claimed) != actual:
+                raise PolicyValidationError(
+                    f"merge proof gate {name} does not match snapshot"
+                )
+        claimed_allowed = payload.get("allowed")
+        if claimed_allowed is not None and claimed_allowed is not result.allowed:
+            raise PolicyValidationError(
+                "merge proof gate allowed value does not match decision"
+            )
+        claimed = payload.get("receipt_id") or payload.get("content_id")
+        if claimed and claimed != result.receipt_id:
+            raise PolicyValidationError(
+                "merge proof gate receipt identity does not match"
+            )
+        return result
+
+
+def build_merge_proof_gate_receipt(
+    *,
+    policy: FormalVerificationPolicy,
+    selection: PolicySelection,
+    repository_tree_id: str,
+    **kwargs: Any,
+) -> MergeProofGateReceipt:
+    """Functional spelling of :meth:`MergeProofGateReceipt.build`."""
+
+    return MergeProofGateReceipt.build(
+        policy=policy,
+        selection=selection,
+        repository_tree_id=repository_tree_id,
+        **kwargs,
+    )
+
+
 def select_proof_requirements(
     policy: FormalVerificationPolicy,
     changes: Iterable[ChangedScope | Mapping[str, Any]],
@@ -2087,6 +2793,7 @@ __all__ = [
     "DEFAULT_MAX_OVERRIDE_SECONDS",
     "FORMAL_VERIFICATION_POLICY_SCHEMA",
     "MAX_OVERRIDE_LIFETIME_SECONDS",
+    "MERGE_PROOF_GATE_RECEIPT_SCHEMA",
     "OVERRIDE_RECEIPT_SCHEMA",
     "POLICY_GATE_DECISION_SCHEMA",
     "POLICY_SELECTION_SCHEMA",
@@ -2106,6 +2813,7 @@ __all__ = [
     "FormalVerificationRule",
     "GateDecision",
     "InvariantClass",
+    "MergeProofGateReceipt",
     "OverrideReceipt",
     "OverrideReceiptStore",
     "PolicyGateDecision",
@@ -2133,6 +2841,7 @@ __all__ = [
     "VerificationPolicy",
     "default_formal_verification_policy",
     "default_policy",
+    "build_merge_proof_gate_receipt",
     "evaluate_proof_gate",
     "select_proof_requirements",
 ]
