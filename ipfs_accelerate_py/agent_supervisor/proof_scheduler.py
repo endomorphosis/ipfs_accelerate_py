@@ -50,6 +50,19 @@ from .formal_verification_provider import (
     ProviderFailureCode,
     ProviderResponse,
 )
+from .resource_scheduler import (
+    AdmissionDecision,
+    HostResourceSnapshot,
+    LaneResourceRequirements,
+    ProofResourceClass,
+    ProviderCapacity,
+    ResourceAdmissionLease,
+    ResourceLeaseBudget,
+    ResourcePolicy,
+    ResourceScheduler,
+    normalize_resource_class,
+    resource_pool,
+)
 
 
 PROOF_SCHEDULER_SCHEMA: Final = (
@@ -133,6 +146,9 @@ class ProofSchedulerConfig:
     poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS
     stage_limits: Mapping[ProofStage | str, int] = field(default_factory=dict)
     resource_limits: Mapping[str, int] = field(default_factory=dict)
+    max_cpu_proof_concurrency: int = 0
+    max_model_concurrency: int = 0
+    max_artifact_concurrency: int = 0
 
     def __post_init__(self) -> None:
         if (
@@ -141,6 +157,14 @@ class ProofSchedulerConfig:
             or self.max_parallel < 0
         ):
             raise ValueError("max_parallel must be a non-negative integer")
+        for name in (
+            "max_cpu_proof_concurrency",
+            "max_model_concurrency",
+            "max_artifact_concurrency",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
         if isinstance(self.lease_seconds, bool) or self.lease_seconds <= 0:
             raise ValueError("lease_seconds must be a positive integer")
         if (
@@ -264,6 +288,7 @@ class ProofExecutionContext:
     dependency_receipts: tuple[ProofReceipt, ...]
     fencing_token: int
     owner_id: str
+    resource_lease: ResourceAdmissionLease | None
     _heartbeat: Callable[[], bool] = field(repr=False, compare=False)
 
     @property
@@ -292,7 +317,28 @@ class ProofExecutionContext:
 
     @property
     def resource_class(self) -> str:
-        return self.step.resource_class
+        if self.resource_lease is not None:
+            return self.resource_lease.resource_class
+        return normalize_resource_class(self.step.resource_class, stage=self.step.stage)
+
+    @property
+    def resource_budget(self) -> ResourceLeaseBudget | None:
+        """Supervisor lease budget inherited by nested executors."""
+
+        return self.resource_lease.budget if self.resource_lease is not None else None
+
+    @property
+    def child_resource_limits(self) -> Mapping[str, int]:
+        """Serializable portfolio/kernel limits derived from the parent lease."""
+
+        if self.resource_lease is None:
+            return {}
+        return self.resource_lease.child_limits.to_dict()
+
+    # Short spelling used by portfolio and kernel adapters.
+    @property
+    def child_limits(self) -> Mapping[str, int]:
+        return self.child_resource_limits
 
     @property
     def inputs(self) -> tuple[str, ...]:
@@ -673,6 +719,7 @@ class _ProofStateStore:
         max_parallel: int,
         stage_limits: Mapping[str, int],
         resource_limits: Mapping[str, int],
+        pool_limits: Mapping[str, int],
     ) -> _Lease | None:
         connection = self.connect()
         now = self._now_ms()
@@ -723,6 +770,20 @@ class _ProofStateStore:
             if step.resource_class and resource_limit is not None and sum(
                 item.resource_class == step.resource_class for item in active_definitions
             ) >= resource_limit:
+                connection.rollback()
+                return None
+            normalized_class = normalize_resource_class(
+                step.resource_class, stage=step.stage
+            )
+            pool = resource_pool(normalized_class)
+            pool_limit = pool_limits.get(pool)
+            if pool_limit is not None and sum(
+                resource_pool(
+                    normalize_resource_class(item.resource_class, stage=item.stage)
+                )
+                == pool
+                for item in active_definitions
+            ) >= pool_limit:
                 connection.rollback()
                 return None
 
@@ -1269,7 +1330,15 @@ class ProofScheduler:
         lease_seconds: int | None = None,
         stage_limits: Mapping[ProofStage | str, int] | None = None,
         resource_limits: Mapping[str, int] | None = None,
+        max_cpu_proof_concurrency: int | None = None,
+        max_model_concurrency: int | None = None,
+        max_artifact_concurrency: int | None = None,
         config: ProofSchedulerConfig | None = None,
+        resource_scheduler: ResourceScheduler | None = None,
+        resource_policy: ResourcePolicy | Mapping[str, Any] | None = None,
+        resource_lease_budget: ResourceLeaseBudget | None = None,
+        host_resource_source: Callable[..., Any] | HostResourceSnapshot | Mapping[str, Any] | None = None,
+        provider_capacity_source: Callable[..., Any] | Mapping[str, Any] | Sequence[Any] | None = None,
         owner_id: str = "",
         clock: Callable[[], float] = time.time,
     ) -> None:
@@ -1285,7 +1354,15 @@ class ProofScheduler:
 
         if config is not None and any(
             value is not None
-            for value in (max_parallel, lease_seconds, stage_limits, resource_limits)
+            for value in (
+                max_parallel,
+                lease_seconds,
+                stage_limits,
+                resource_limits,
+                max_cpu_proof_concurrency,
+                max_model_concurrency,
+                max_artifact_concurrency,
+            )
         ):
             raise ValueError("config cannot be combined with individual scheduler limits")
         self.config = config or ProofSchedulerConfig(
@@ -1295,12 +1372,100 @@ class ProofScheduler:
             ),
             stage_limits=stage_limits or {},
             resource_limits=resource_limits or {},
+            max_cpu_proof_concurrency=(
+                0
+                if max_cpu_proof_concurrency is None
+                else max_cpu_proof_concurrency
+            ),
+            max_model_concurrency=(
+                0 if max_model_concurrency is None else max_model_concurrency
+            ),
+            max_artifact_concurrency=(
+                0
+                if max_artifact_concurrency is None
+                else max_artifact_concurrency
+            ),
         )
         self.max_parallel = self.config.max_parallel or self.plan.max_parallel
         if self.max_parallel > self.plan.max_parallel:
             # The immutable plan is the authority; runtime configuration can
             # constrain but never expand it.
             self.max_parallel = self.plan.max_parallel
+        if resource_scheduler is not None and resource_policy is not None:
+            raise ValueError(
+                "resource_scheduler cannot be combined with resource_policy"
+            )
+        self._implicit_resource_admission = (
+            resource_scheduler is None
+            and resource_policy is None
+            and resource_lease_budget is None
+            and host_resource_source is None
+            and provider_capacity_source is None
+        )
+        if resource_scheduler is None:
+            if isinstance(resource_policy, ResourcePolicy):
+                policy = resource_policy
+            else:
+                policy_values = dict(resource_policy or {})
+                policy_values.setdefault("max_lanes", self.max_parallel)
+                # Legacy proof scheduling did not require provider telemetry.
+                # Explicit policies retain their own fail-closed default.
+                if resource_policy is None:
+                    policy_values["require_provider_telemetry"] = False
+                policy = ResourcePolicy.from_mapping(policy_values)
+            resource_scheduler = ResourceScheduler(policy)
+        self.resource_scheduler = resource_scheduler
+        self._host_resource_source = host_resource_source
+        self._provider_capacity_source = provider_capacity_source
+        policy = self.resource_scheduler.policy
+        cpu_limit = (
+            self.config.max_cpu_proof_concurrency
+            or policy.max_cpu_proof_concurrency
+            or self.max_parallel
+        )
+        model_limit = (
+            self.config.max_model_concurrency
+            or policy.max_model_concurrency
+            or self.max_parallel
+        )
+        artifact_limit = (
+            self.config.max_artifact_concurrency
+            or policy.max_artifact_concurrency
+            or self.max_parallel
+        )
+        self.resource_lease_budget = resource_lease_budget or (
+            ResourceLeaseBudget.from_resource_budget(
+                self.plan.resource_budget,
+                max_parallel=self.max_parallel,
+                max_cpu_proof_concurrency=cpu_limit,
+                max_model_concurrency=model_limit,
+                max_artifact_concurrency=artifact_limit,
+                maximum_provider_latency_ms=policy.maximum_provider_latency_ms,
+            )
+        )
+        self.max_parallel = min(
+            self.max_parallel,
+            policy.max_lanes,
+            self.resource_lease_budget.max_parallel,
+            self.resource_lease_budget.max_processes,
+        )
+        self._pool_limits = {
+            "cpu-proof": min(
+                cpu_limit,
+                self.resource_lease_budget.max_cpu_proof_concurrency,
+            ),
+            "model": min(
+                model_limit,
+                self.resource_lease_budget.max_model_concurrency,
+            ),
+            "artifact": min(
+                artifact_limit,
+                self.resource_lease_budget.max_artifact_concurrency,
+            ),
+        }
+        if self.max_parallel <= 0:
+            raise ValueError("effective proof concurrency must be positive")
+        self._last_resource_decisions: dict[str, AdmissionDecision] = {}
         self.owner_id = owner_id.strip() or f"proof-scheduler:{os.getpid()}:{uuid.uuid4().hex}"
         self._default_executor: Callable[..., Any] | None = None
         self._executors: dict[str, Callable[..., Any]] = {}
@@ -1349,6 +1514,180 @@ class ProofScheduler:
         if callback is None:
             raise LookupError(f"no proof executor is configured for step {step.step_id}")
         return callback
+
+    @staticmethod
+    def _positive_metadata_int(
+        metadata: Mapping[str, Any],
+        *names: str,
+        default: int = 0,
+    ) -> int:
+        resources = metadata.get("resources")
+        sources = (metadata, resources if isinstance(resources, Mapping) else {})
+        for source in sources:
+            for name in names:
+                value = source.get(name)
+                if (
+                    isinstance(value, int)
+                    and not isinstance(value, bool)
+                    and value >= 0
+                ):
+                    return value
+        return default
+
+    def resource_requirement(self, step: ProofPlanStep) -> LaneResourceRequirements:
+        """Translate one proof node into the shared admission vocabulary."""
+
+        resource_class = normalize_resource_class(
+            step.resource_class,
+            stage=step.stage,
+        )
+        metadata = step.metadata
+        requested_processes = self._positive_metadata_int(
+            metadata,
+            "process_slots",
+            "required_processes",
+            "max_processes",
+            "portfolio_max_parallel",
+            "portfolio_width",
+            "kernel_max_parallel",
+            default=1,
+        )
+        requested_processes = max(1, requested_processes)
+        pool = resource_pool(resource_class)
+        process_slots = min(
+            requested_processes,
+            self.resource_lease_budget.max_processes,
+            self._pool_limits[pool],
+        )
+        model_work = resource_class == ProofResourceClass.MODEL_DRAFT.value
+        token_budget = self._positive_metadata_int(
+            metadata,
+            "token_budget",
+            "model_token_limit",
+            "max_new_tokens",
+            default=(
+                self.plan.resource_budget.model_token_limit if model_work else 0
+            ),
+        )
+        quota_units = self._positive_metadata_int(
+            metadata,
+            "quota_units",
+            "provider_quota",
+            "quota_cost",
+            default=1,
+        )
+        capabilities = metadata.get("required_capabilities", ())
+        if isinstance(capabilities, str):
+            required_capabilities = tuple(
+                item.strip().lower()
+                for item in capabilities.split(",")
+                if item.strip()
+            )
+        elif isinstance(capabilities, Sequence):
+            required_capabilities = tuple(
+                sorted(
+                    {
+                        str(item).strip().lower()
+                        for item in capabilities
+                        if str(item).strip()
+                    }
+                )
+            )
+        else:
+            required_capabilities = ()
+        if model_work:
+            required_capabilities = tuple(
+                sorted(
+                    set(required_capabilities)
+                    | {
+                        item
+                        if item.startswith(("llm:", "host:"))
+                        else f"llm:{item}"
+                        for item in required_capabilities
+                    }
+                )
+            )
+        return LaneResourceRequirements(
+            lane_id=step.step_id,
+            resource_class=resource_class,
+            required_capabilities=required_capabilities,
+            provider_id=step.provider_id if model_work else "",
+            requires_provider=model_work,
+            context_tokens=self._positive_metadata_int(
+                metadata,
+                "context_tokens",
+                "required_context_tokens",
+                "estimated_context_tokens",
+            ),
+            token_budget=token_budget,
+            quota_units=quota_units,
+            memory_bytes=self._positive_metadata_int(
+                metadata,
+                "memory_bytes",
+                "required_memory_bytes",
+            ),
+            disk_bytes=self._positive_metadata_int(
+                metadata,
+                "disk_bytes",
+                "required_disk_bytes",
+            ),
+            max_provider_latency_ms=self._positive_metadata_int(
+                metadata,
+                "max_provider_latency_ms",
+                "latency_budget_ms",
+            ),
+            process_slots=process_slots,
+        )
+
+    @staticmethod
+    def _read_capacity_source(source: Any, step: ProofPlanStep) -> Any:
+        if not callable(source):
+            return source
+        try:
+            signature = inspect.signature(source)
+        except (TypeError, ValueError):
+            return source()
+        positional = [
+            parameter
+            for parameter in signature.parameters.values()
+            if parameter.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+            and parameter.default is inspect.Parameter.empty
+        ]
+        return source(step) if positional else source()
+
+    def _acquire_resource(
+        self,
+        step: ProofPlanStep,
+    ) -> tuple[AdmissionDecision, ResourceAdmissionLease | None]:
+        host = self._read_capacity_source(self._host_resource_source, step)
+        if host is None and self._implicit_resource_admission:
+            # Preserve deterministic behavior for legacy callers that did not
+            # opt into live telemetry. Explicit unified-admission callers use
+            # the configured source (or ResourceScheduler's live sampler).
+            host = HostResourceSnapshot(
+                worker_limit=self.max_parallel,
+                available_worker_capacity=self.max_parallel,
+            )
+        providers = self._read_capacity_source(
+            self._provider_capacity_source, step
+        )
+        decision, lease = self.resource_scheduler.acquire(
+            self.resource_requirement(step),
+            budget=self.resource_lease_budget,
+            host=host,
+            providers=providers,
+            path=self.state_path.parent,
+        )
+        self._last_resource_decisions[step.step_id] = decision
+        return decision, lease
+
+    @property
+    def resource_decisions(self) -> Mapping[str, AdmissionDecision]:
+        return dict(self._last_resource_decisions)
 
     def priorities(self) -> dict[str, ProofStepPriority]:
         critical = self.plan.critical_path_lengths
@@ -1677,6 +2016,16 @@ class ProofScheduler:
             metadata={
                 "scheduler_owner_id": self.owner_id,
                 "fencing_token": lease.fencing_token,
+                **(
+                    {
+                        "resource_lease_id": context.resource_lease.lease_id,
+                        "resource_class": context.resource_lease.resource_class,
+                        "resource_pool": context.resource_lease.resource_pool,
+                        "child_resource_limits": context.child_resource_limits,
+                    }
+                    if context.resource_lease is not None
+                    else {}
+                ),
             },
         )
 
@@ -1738,6 +2087,7 @@ class ProofScheduler:
         step: ProofPlanStep,
         lease: _Lease,
         token: CancellationToken,
+        resource_lease: ResourceAdmissionLease | None,
     ) -> tuple[ProofStepResult, ProofAttempt]:
         dependency_attempts, dependency_receipts = self._dependency_context(step)
         context = ProofExecutionContext(
@@ -1748,6 +2098,7 @@ class ProofScheduler:
             dependency_receipts=dependency_receipts,
             fencing_token=lease.fencing_token,
             owner_id=self.owner_id,
+            resource_lease=resource_lease,
             _heartbeat=lambda: self._store.heartbeat(
                 self.plan.plan_id, lease, self.config.lease_seconds
             ),
@@ -1867,7 +2218,12 @@ class ProofScheduler:
         started = time.monotonic()
         futures: dict[
             Future[tuple[ProofStepResult, ProofAttempt]],
-            tuple[ProofPlanStep, _Lease, CancellationToken],
+            tuple[
+                ProofPlanStep,
+                _Lease,
+                CancellationToken,
+                ResourceAdmissionLease,
+            ],
         ] = {}
         with ThreadPoolExecutor(
             max_workers=self.max_parallel,
@@ -1888,6 +2244,49 @@ class ProofScheduler:
                     with self._cancel_lock:
                         if self._cancelled:
                             break
+                    running_steps = [
+                        running_step
+                        for running_step, _lease, _token, _resource_lease
+                        in futures.values()
+                    ]
+                    stage_limit = self.config.stage_limits.get(
+                        scheduled.step.stage.value
+                    )
+                    if stage_limit is not None and sum(
+                        item.stage is scheduled.step.stage
+                        for item in running_steps
+                    ) >= stage_limit:
+                        continue
+                    class_limit = self.config.resource_limits.get(
+                        scheduled.step.resource_class
+                    )
+                    if class_limit is not None and sum(
+                        item.resource_class == scheduled.step.resource_class
+                        for item in running_steps
+                    ) >= class_limit:
+                        continue
+                    scheduled_pool = resource_pool(
+                        normalize_resource_class(
+                            scheduled.step.resource_class,
+                            stage=scheduled.step.stage,
+                        )
+                    )
+                    if sum(
+                        resource_pool(
+                            normalize_resource_class(
+                                item.resource_class,
+                                stage=item.stage,
+                            )
+                        )
+                        == scheduled_pool
+                        for item in running_steps
+                    ) >= self._pool_limits[scheduled_pool]:
+                        continue
+                    _decision, resource_lease = self._acquire_resource(
+                        scheduled.step
+                    )
+                    if resource_lease is None:
+                        continue
                     lease = self._store.claim(
                         self.plan,
                         scheduled.step,
@@ -1896,16 +2295,29 @@ class ProofScheduler:
                         max_parallel=self.max_parallel,
                         stage_limits=self.config.stage_limits,
                         resource_limits=self.config.resource_limits,
+                        pool_limits=self._pool_limits,
                     )
                     if lease is None:
+                        self.resource_scheduler.release(resource_lease)
                         continue
                     token = CancellationToken()
                     with self._cancel_lock:
                         self._tokens[scheduled.step_id] = token
-                    future = pool.submit(self._invoke, scheduled.step, lease, token)
-                    futures[future] = (scheduled.step, lease, token)
+                    future = pool.submit(
+                        self._invoke,
+                        scheduled.step,
+                        lease,
+                        token,
+                        resource_lease,
+                    )
+                    futures[future] = (
+                        scheduled.step,
+                        lease,
+                        token,
+                        resource_lease,
+                    )
 
-                for future, (_, lease, _) in tuple(futures.items()):
+                for future, (_, lease, _, _) in tuple(futures.items()):
                     self._store.heartbeat(
                         self.plan.plan_id, lease, self.config.lease_seconds
                     )
@@ -1917,7 +2329,7 @@ class ProofScheduler:
                         return_when=FIRST_COMPLETED,
                     )
                     for future in completed:
-                        step, lease, _ = futures.pop(future)
+                        step, lease, _, resource_lease = futures.pop(future)
                         with self._cancel_lock:
                             self._tokens.pop(step.step_id, None)
                         try:
@@ -1927,6 +2339,8 @@ class ProofScheduler:
                             # intentionally not converted inside the worker.
                             self.cancel("scheduler_interrupted")
                             raise
+                        finally:
+                            self.resource_scheduler.release(resource_lease)
                         self._finalize(step, lease, result, attempt)
                 else:
                     time.sleep(self.config.poll_interval_seconds)

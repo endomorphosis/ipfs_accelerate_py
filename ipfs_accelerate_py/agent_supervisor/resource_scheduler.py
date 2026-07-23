@@ -15,15 +15,94 @@ zero is always treated as exhausted.
 from __future__ import annotations
 
 import os
+import threading
 import time
+import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 
 UNKNOWN_LIMIT = -1
-DEFAULT_RESOURCE_CLASSES = ("cpu-small", "cpu-medium", "cpu-large")
+
+
+class ProofResourceClass(str, Enum):
+    """Canonical supervisor resource classes used by proof-plan work."""
+
+    TRANSLATION = "cpu-proof-translate"
+    SOLVER = "cpu-proof-solver"
+    KERNEL = "cpu-proof-kernel"
+    VALIDATION = "cpu-validation"
+    MODEL_DRAFT = "llm-proof-draft"
+    ARTIFACT = "io-artifact"
+
+    @property
+    def pool(self) -> str:
+        if self is ProofResourceClass.MODEL_DRAFT:
+            return "model"
+        if self is ProofResourceClass.ARTIFACT:
+            return "artifact"
+        return "cpu-proof"
+
+
+PROOF_RESOURCE_CLASSES = tuple(item.value for item in ProofResourceClass)
+LEGACY_RESOURCE_CLASSES = (
+    "cpu-small",
+    "cpu-medium",
+    "cpu-large",
+)
+# Default hosts advertise the architecture's six distinct work classes.
+# Generic bundle classes remain interoperable through the compatibility check
+# in ``_host_reasons`` and can still be advertised explicitly by old workers.
+DEFAULT_RESOURCE_CLASSES = PROOF_RESOURCE_CLASSES
+
+_RESOURCE_CLASS_ALIASES = {
+    "translate": ProofResourceClass.TRANSLATION.value,
+    "translation": ProofResourceClass.TRANSLATION.value,
+    "proof-translate": ProofResourceClass.TRANSLATION.value,
+    "solve": ProofResourceClass.SOLVER.value,
+    "solver": ProofResourceClass.SOLVER.value,
+    "proof-solver": ProofResourceClass.SOLVER.value,
+    "reconstruct": ProofResourceClass.KERNEL.value,
+    "kernel": ProofResourceClass.KERNEL.value,
+    "kernel_verify": ProofResourceClass.KERNEL.value,
+    "kernel-verify": ProofResourceClass.KERNEL.value,
+    "validate": ProofResourceClass.VALIDATION.value,
+    "validation": ProofResourceClass.VALIDATION.value,
+    "model_draft": ProofResourceClass.MODEL_DRAFT.value,
+    "model-draft": ProofResourceClass.MODEL_DRAFT.value,
+    "persist": ProofResourceClass.ARTIFACT.value,
+    "artifact": ProofResourceClass.ARTIFACT.value,
+    "attest": ProofResourceClass.ARTIFACT.value,
+}
+
+
+def normalize_resource_class(value: Any, *, stage: Any = "") -> str:
+    """Return a canonical proof resource class while preserving extensions."""
+
+    raw = str(value or "").strip().lower()
+    stage_name = getattr(stage, "value", stage)
+    stage_raw = str(stage_name or "").strip().lower()
+    if raw in PROOF_RESOURCE_CLASSES:
+        return raw
+    if raw in _RESOURCE_CLASS_ALIASES:
+        return _RESOURCE_CLASS_ALIASES[raw]
+    if not raw and stage_raw:
+        return _RESOURCE_CLASS_ALIASES.get(stage_raw, stage_raw)
+    return raw
+
+
+def resource_pool(resource_class: Any) -> str:
+    """Classify a resource class into independently accounted capacity."""
+
+    normalized = normalize_resource_class(resource_class)
+    if normalized == ProofResourceClass.MODEL_DRAFT.value:
+        return "model"
+    if normalized == ProofResourceClass.ARTIFACT.value:
+        return "artifact"
+    return "cpu-proof"
 
 
 def _integer(value: Any, default: int = 0, *, minimum: int | None = None) -> int:
@@ -284,6 +363,8 @@ class ProviderCapacity:
     def __post_init__(self) -> None:
         if not self.provider_id.strip():
             raise ValueError("provider_id must be non-empty")
+        object.__setattr__(self, "provider_id", self.provider_id.strip().lower())
+        object.__setattr__(self, "capabilities", _strings(self.capabilities))
         for name in ("latency_ms", "max_concurrency", "active_requests", "observed_at_ms", "retry_after_ms"):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
@@ -470,11 +551,36 @@ class LaneResourceRequirements:
     memory_bytes: int = 0
     disk_bytes: int = 0
     max_provider_latency_ms: int = 0
+    process_slots: int = 1
 
     def __post_init__(self) -> None:
-        for name in ("context_tokens", "token_budget", "quota_units", "memory_bytes", "disk_bytes", "max_provider_latency_ms"):
+        for name in (
+            "context_tokens",
+            "token_budget",
+            "quota_units",
+            "memory_bytes",
+            "disk_bytes",
+            "max_provider_latency_ms",
+        ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
+        if isinstance(self.process_slots, bool) or int(self.process_slots) <= 0:
+            raise ValueError("process_slots must be a positive integer")
+        object.__setattr__(
+            self,
+            "resource_class",
+            normalize_resource_class(self.resource_class),
+        )
+        object.__setattr__(
+            self,
+            "provider_id",
+            str(self.provider_id or "").strip().lower(),
+        )
+        object.__setattr__(
+            self,
+            "required_capabilities",
+            _strings(self.required_capabilities),
+        )
 
     @property
     def provider_required(self) -> bool:
@@ -485,6 +591,10 @@ class LaneResourceRequirements:
             or self.token_budget
             or any(item.startswith("llm:") for item in self.required_capabilities)
         )
+
+    @property
+    def resource_pool(self) -> str:
+        return resource_pool(self.resource_class)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -533,7 +643,238 @@ class LaneResourceRequirements:
                 0,
                 minimum=0,
             ),
+            process_slots=_integer(
+                first(
+                    "process_slots",
+                    "required_processes",
+                    "processes",
+                    "portfolio_width",
+                    default=1,
+                ),
+                1,
+                minimum=1,
+            ),
         )
+
+
+@dataclass(frozen=True)
+class ChildResourceLimits:
+    """Hard limits passed from one supervisor lease to nested child pools."""
+
+    max_processes: int
+    portfolio_max_parallel: int
+    kernel_max_parallel: int
+    wall_time_ms: int = 0
+    cpu_time_ms: int = 0
+    memory_bytes: int = 0
+    disk_bytes: int = 0
+    model_token_limit: int = 0
+    provider_quota: int = 0
+    context_tokens: int = 0
+    maximum_provider_latency_ms: int = 0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "max_processes",
+            "portfolio_max_parallel",
+            "kernel_max_parallel",
+            "wall_time_ms",
+            "cpu_time_ms",
+            "memory_bytes",
+            "disk_bytes",
+            "model_token_limit",
+            "provider_quota",
+            "context_tokens",
+            "maximum_provider_latency_ms",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+
+    def to_dict(self) -> dict[str, int]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ResourceLeaseBudget:
+    """One top-level budget shared by proof, model, validation and I/O work.
+
+    Zero byte/time/token values mean that the corresponding plan did not
+    declare a finite limit.  Concurrency values are always positive because a
+    lease that cannot execute is represented by an admission rejection.
+    """
+
+    max_parallel: int = 1
+    max_cpu_proof_concurrency: int = 1
+    max_model_concurrency: int = 1
+    max_artifact_concurrency: int = 1
+    max_processes: int = 1
+    wall_time_ms: int = 0
+    cpu_time_ms: int = 0
+    memory_bytes: int = 0
+    disk_bytes: int = 0
+    model_token_limit: int = 0
+    provider_quota: int = 0
+    context_tokens: int = 0
+    maximum_provider_latency_ms: int = 0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "max_parallel",
+            "max_cpu_proof_concurrency",
+            "max_model_concurrency",
+            "max_artifact_concurrency",
+            "max_processes",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        for name in (
+            "wall_time_ms",
+            "cpu_time_ms",
+            "memory_bytes",
+            "disk_bytes",
+            "model_token_limit",
+            "provider_quota",
+            "context_tokens",
+            "maximum_provider_latency_ms",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+
+    @classmethod
+    def from_resource_budget(
+        cls,
+        value: Any,
+        *,
+        max_parallel: int,
+        max_cpu_proof_concurrency: int = 0,
+        max_model_concurrency: int = 0,
+        max_artifact_concurrency: int = 0,
+        maximum_provider_latency_ms: int = 0,
+        context_tokens: int = 0,
+    ) -> "ResourceLeaseBudget":
+        """Adapt a formal ``ResourceBudget`` without importing its module."""
+
+        parallel = max(1, int(max_parallel))
+
+        def budget_value(name: str) -> int:
+            raw = (
+                value.get(name, 0)
+                if isinstance(value, Mapping)
+                else getattr(value, name, 0)
+            )
+            return _integer(raw, 0, minimum=0)
+
+        declared_processes = budget_value("max_processes")
+        process_limit = min(parallel, declared_processes) if declared_processes else parallel
+        return cls(
+            max_parallel=process_limit,
+            max_cpu_proof_concurrency=min(
+                process_limit,
+                max_cpu_proof_concurrency or process_limit,
+            ),
+            max_model_concurrency=min(
+                process_limit,
+                max_model_concurrency or process_limit,
+            ),
+            max_artifact_concurrency=min(
+                process_limit,
+                max_artifact_concurrency or process_limit,
+            ),
+            max_processes=process_limit,
+            wall_time_ms=budget_value("wall_time_ms"),
+            cpu_time_ms=budget_value("cpu_time_ms"),
+            memory_bytes=budget_value("memory_bytes"),
+            disk_bytes=budget_value("disk_bytes"),
+            model_token_limit=budget_value("model_token_limit"),
+            provider_quota=budget_value("provider_quota"),
+            context_tokens=max(0, int(context_tokens)),
+            maximum_provider_latency_ms=max(0, int(maximum_provider_latency_ms)),
+        )
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "ResourceLeaseBudget":
+        defaults = cls()
+        names = tuple(asdict(defaults))
+        return cls(
+            **{
+                name: _integer(
+                    value.get(name),
+                    getattr(defaults, name),
+                    minimum=1
+                    if name
+                    in {
+                        "max_parallel",
+                        "max_cpu_proof_concurrency",
+                        "max_model_concurrency",
+                        "max_artifact_concurrency",
+                        "max_processes",
+                    }
+                    else 0,
+                )
+                for name in names
+            }
+        )
+
+    def child_limits(
+        self,
+        requirement: LaneResourceRequirements,
+        *,
+        granted_processes: int | None = None,
+    ) -> ChildResourceLimits:
+        """Derive nested portfolio/kernel limits from this exact lease."""
+
+        processes = max(
+            1,
+            min(
+                self.max_processes,
+                requirement.process_slots,
+                granted_processes if granted_processes is not None else requirement.process_slots,
+            ),
+        )
+        is_solver = requirement.resource_class == ProofResourceClass.SOLVER.value
+        is_kernel = requirement.resource_class == ProofResourceClass.KERNEL.value
+        latency = self.maximum_provider_latency_ms
+        if requirement.max_provider_latency_ms:
+            latency = (
+                min(latency, requirement.max_provider_latency_ms)
+                if latency
+                else requirement.max_provider_latency_ms
+            )
+        return ChildResourceLimits(
+            max_processes=processes,
+            portfolio_max_parallel=processes if is_solver else 1,
+            kernel_max_parallel=processes if is_kernel else 1,
+            wall_time_ms=self.wall_time_ms,
+            cpu_time_ms=self.cpu_time_ms,
+            memory_bytes=self.memory_bytes,
+            disk_bytes=self.disk_bytes,
+            model_token_limit=min(
+                item
+                for item in (self.model_token_limit, requirement.token_budget)
+                if item > 0
+            )
+            if self.model_token_limit and requirement.token_budget
+            else (self.model_token_limit or requirement.token_budget),
+            provider_quota=min(
+                item
+                for item in (self.provider_quota, requirement.quota_units)
+                if item > 0
+            )
+            if self.provider_quota and requirement.quota_units
+            else (self.provider_quota or requirement.quota_units),
+            context_tokens=requirement.context_tokens or self.context_tokens,
+            maximum_provider_latency_ms=latency,
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return asdict(self)
+
+
+# Descriptive alias used by integrations which name the owning layer.
+SupervisorResourceLeaseBudget = ResourceLeaseBudget
 
 
 @dataclass(frozen=True)
@@ -550,6 +891,10 @@ class ResourcePolicy:
     provider_quota_reserve: int = 0
     provider_token_reserve: int = 0
     require_provider_telemetry: bool = True
+    max_cpu_proof_concurrency: int = 0
+    max_model_concurrency: int = 0
+    max_artifact_concurrency: int = 0
+    resource_class_limits: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.max_lanes < 0:
@@ -563,9 +908,20 @@ class ResourcePolicy:
         for name in (
             "minimum_memory_available_bytes", "minimum_disk_available_bytes",
             "maximum_provider_latency_ms", "provider_quota_reserve", "provider_token_reserve",
+            "max_cpu_proof_concurrency", "max_model_concurrency",
+            "max_artifact_concurrency",
         ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
+        normalized_limits: dict[str, int] = {}
+        for raw_name, raw_limit in (self.resource_class_limits or {}).items():
+            name = normalize_resource_class(raw_name)
+            if not name:
+                raise ValueError("resource class limit names must be non-empty")
+            if isinstance(raw_limit, bool) or not isinstance(raw_limit, int) or raw_limit <= 0:
+                raise ValueError("resource class limits must be positive integers")
+            normalized_limits[name] = raw_limit
+        object.__setattr__(self, "resource_class_limits", normalized_limits)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -584,6 +940,28 @@ class ResourcePolicy:
             provider_quota_reserve=_integer(_first(value, ("provider_quota_reserve", "quota_reserve"), 0), 0, minimum=0),
             provider_token_reserve=_integer(_first(value, ("provider_token_reserve", "token_reserve"), 0), 0, minimum=0),
             require_provider_telemetry=_boolean(value.get("require_provider_telemetry"), True),
+            max_cpu_proof_concurrency=_integer(
+                _first(
+                    value,
+                    ("max_cpu_proof_concurrency", "cpu_proof_concurrency", "max_cpu_parallel"),
+                    0,
+                ),
+                0,
+                minimum=0,
+            ),
+            max_model_concurrency=_integer(
+                _first(value, ("max_model_concurrency", "model_concurrency"), 0),
+                0,
+                minimum=0,
+            ),
+            max_artifact_concurrency=_integer(
+                _first(value, ("max_artifact_concurrency", "artifact_concurrency"), 0),
+                0,
+                minimum=0,
+            ),
+            resource_class_limits=_mapping(
+                _first(value, ("resource_class_limits", "resource_limits"), {})
+            ),
         )
 
 
@@ -600,6 +978,11 @@ class AdmissionDecision:
     capability_fit_millionths: int = 0
     reserved_quota_units: int = 0
     reserved_tokens: int = 0
+    resource_class: str = ""
+    resource_pool: str = ""
+    reserved_process_slots: int = 0
+    reserved_memory_bytes: int = 0
+    reserved_disk_bytes: int = 0
 
     @property
     def allowed(self) -> bool:
@@ -657,6 +1040,54 @@ class _ProviderReservation:
     tokens: int = 0
 
 
+@dataclass(frozen=True)
+class ResourceAdmissionLease:
+    """A reclaimable grant from the supervisor-level resource budget."""
+
+    lease_id: str
+    requirement: LaneResourceRequirements
+    decision: AdmissionDecision
+    budget: ResourceLeaseBudget
+    acquired_at_ms: int
+
+    @property
+    def lane_id(self) -> str:
+        return self.requirement.lane_id
+
+    @property
+    def resource_class(self) -> str:
+        return self.requirement.resource_class
+
+    @property
+    def resource_pool(self) -> str:
+        return self.requirement.resource_pool
+
+    @property
+    def provider_id(self) -> str:
+        return self.decision.provider_id
+
+    @property
+    def child_limits(self) -> ChildResourceLimits:
+        return self.budget.child_limits(
+            self.requirement,
+            granted_processes=self.decision.reserved_process_slots,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "lease_id": self.lease_id,
+            "lane_id": self.lane_id,
+            "resource_class": self.resource_class,
+            "resource_pool": self.resource_pool,
+            "provider_id": self.provider_id,
+            "acquired_at_ms": self.acquired_at_ms,
+            "requirement": self.requirement.to_dict(),
+            "decision": self.decision.to_dict(),
+            "budget": self.budget.to_dict(),
+            "child_limits": self.child_limits.to_dict(),
+        }
+
+
 class ResourceScheduler:
     """Evaluate and reserve host/provider capacity for a reconciliation cycle."""
 
@@ -672,6 +1103,15 @@ class ResourceScheduler:
             else ResourcePolicy.from_mapping(policy or {})
         )
         self.host_sampler = host_sampler
+        self._lease_lock = threading.RLock()
+        self._leases: dict[str, ResourceAdmissionLease] = {}
+
+    def _pool_limit(self, pool: str) -> int:
+        if pool == "model":
+            return self.policy.max_model_concurrency or self.policy.max_lanes
+        if pool == "artifact":
+            return self.policy.max_artifact_concurrency or self.policy.max_lanes
+        return self.policy.max_cpu_proof_concurrency or self.policy.max_lanes
 
     def _host_reasons(self, host: HostResourceSnapshot, requirement: LaneResourceRequirements) -> list[str]:
         reasons: list[str] = []
@@ -688,8 +1128,20 @@ class ResourceScheduler:
             reasons.append("host_memory_headroom")
         if required_disk and host.disk_available_bytes < required_disk:
             reasons.append("host_disk_headroom")
-        if requirement.resource_class and host.resource_classes and requirement.resource_class not in host.resource_classes:
-            reasons.append("resource_class_mismatch")
+        if (
+            requirement.resource_class
+            and host.resource_classes
+            and requirement.resource_class not in host.resource_classes
+        ):
+            legacy_compatible = (
+                requirement.resource_class in LEGACY_RESOURCE_CLASSES
+                and bool(set(host.resource_classes).intersection(PROOF_RESOURCE_CLASSES))
+            ) or (
+                requirement.resource_class in PROOF_RESOURCE_CLASSES
+                and bool(set(host.resource_classes).intersection(LEGACY_RESOURCE_CLASSES))
+            )
+            if not legacy_compatible:
+                reasons.append("resource_class_mismatch")
         if requirement.provider_required:
             host_required = {
                 item.removeprefix("host:")
@@ -760,6 +1212,7 @@ class ResourceScheduler:
         providers: Mapping[str, Any] | Iterable[ProviderCapacity | Mapping[str, Any]] | None = None,
         admitted_workers: int = 0,
         reservations: Mapping[str, _ProviderReservation] | None = None,
+        active_requirements: Iterable[LaneResourceRequirements] = (),
     ) -> AdmissionDecision:
         """Evaluate one lane without mutating caller-owned reservation state."""
 
@@ -767,15 +1220,55 @@ class ResourceScheduler:
         host_snapshot = host if isinstance(host, HostResourceSnapshot) else HostResourceSnapshot.from_mapping(host)
         normalized = normalize_provider_capacities(providers)
         configured = self.policy.max_lanes
+        active_items = tuple(active_requirements)
+        occupied_processes = sum(item.process_slots for item in active_items)
         host_slots = max(
             0,
             min(configured, host_snapshot.worker_limit, host_snapshot.active_workers + host_snapshot.available_worker_capacity)
             - host_snapshot.active_workers
-            - max(0, int(admitted_workers)),
+            - max(0, int(admitted_workers))
+            - occupied_processes,
         )
         host_reasons = self._host_reasons(host_snapshot, req)
-        if host_slots <= 0:
+        reserved_memory = sum(item.memory_bytes for item in active_items)
+        reserved_disk = sum(item.disk_bytes for item in active_items)
+        required_memory = max(
+            self.policy.minimum_memory_available_bytes,
+            req.memory_bytes,
+        )
+        required_disk = max(
+            self.policy.minimum_disk_available_bytes,
+            req.disk_bytes,
+        )
+        if (
+            required_memory
+            and host_snapshot.memory_available_bytes - reserved_memory < required_memory
+            and "host_memory_headroom" not in host_reasons
+        ):
+            host_reasons.append("host_memory_headroom")
+        if (
+            required_disk
+            and host_snapshot.disk_available_bytes - reserved_disk < required_disk
+            and "host_disk_headroom" not in host_reasons
+        ):
+            host_reasons.append("host_disk_headroom")
+        if host_slots < req.process_slots:
             host_reasons.append("host_worker_capacity")
+        pool_occupied = sum(
+            item.process_slots
+            for item in active_items
+            if item.resource_pool == req.resource_pool
+        )
+        if pool_occupied + req.process_slots > self._pool_limit(req.resource_pool):
+            host_reasons.append(f"{req.resource_pool.replace('-', '_')}_concurrency")
+        class_limit = self.policy.resource_class_limits.get(req.resource_class)
+        class_occupied = sum(
+            item.process_slots
+            for item in active_items
+            if item.resource_class == req.resource_class
+        )
+        if class_limit is not None and class_occupied + req.process_slots > class_limit:
+            host_reasons.append("resource_class_concurrency")
         if host_reasons:
             return AdmissionDecision(
                 lane_id=req.lane_id,
@@ -784,6 +1277,8 @@ class ResourceScheduler:
                 configured_max_lanes=configured,
                 host_available_slots=host_slots,
                 effective_slots=0,
+                resource_class=req.resource_class,
+                resource_pool=req.resource_pool,
             )
 
         # Backwards compatibility: non-LLM lanes do not require provider
@@ -797,6 +1292,11 @@ class ResourceScheduler:
                 provider_available_slots=host_slots,
                 effective_slots=host_slots,
                 capability_fit_millionths=1_000_000,
+                resource_class=req.resource_class,
+                resource_pool=req.resource_pool,
+                reserved_process_slots=req.process_slots,
+                reserved_memory_bytes=req.memory_bytes,
+                reserved_disk_bytes=req.disk_bytes,
             )
 
         candidates = [item for item in normalized if not req.provider_id or item.provider_id == req.provider_id]
@@ -812,6 +1312,11 @@ class ResourceScheduler:
                 provider_available_slots=0,
                 effective_slots=host_slots if not self.policy.require_provider_telemetry else 0,
                 capability_fit_millionths=1_000_000 if not self.policy.require_provider_telemetry else 0,
+                resource_class=req.resource_class,
+                resource_pool=req.resource_pool,
+                reserved_process_slots=req.process_slots if not self.policy.require_provider_telemetry else 0,
+                reserved_memory_bytes=req.memory_bytes if not self.policy.require_provider_telemetry else 0,
+                reserved_disk_bytes=req.disk_bytes if not self.policy.require_provider_telemetry else 0,
             )
 
         reserved = reservations or {}
@@ -834,6 +1339,11 @@ class ResourceScheduler:
                 capability_fit_millionths=1_000_000,
                 reserved_quota_units=req.quota_units,
                 reserved_tokens=req.token_budget,
+                resource_class=req.resource_class,
+                resource_pool=req.resource_pool,
+                reserved_process_slots=req.process_slots,
+                reserved_memory_bytes=req.memory_bytes,
+                reserved_disk_bytes=req.disk_bytes,
             )
 
         # Preserve all distinct constraint failures. This makes backpressure
@@ -849,7 +1359,179 @@ class ResourceScheduler:
             host_available_slots=host_slots,
             provider_available_slots=0,
             effective_slots=0,
+            resource_class=req.resource_class,
+            resource_pool=req.resource_pool,
         )
+
+    def acquire(
+        self,
+        requirement: LaneResourceRequirements | Mapping[str, Any],
+        *,
+        budget: ResourceLeaseBudget | None = None,
+        host: HostResourceSnapshot | Mapping[str, Any] | None = None,
+        providers: Mapping[str, Any] | Iterable[ProviderCapacity | Mapping[str, Any]] | None = None,
+        path: Path | str = ".",
+    ) -> tuple[AdmissionDecision, ResourceAdmissionLease | None]:
+        """Atomically reserve a reclaimable local supervisor lease.
+
+        Live host/provider telemetry remains authoritative on every attempt.
+        Released leases disappear from all pool and provider reservations, so
+        capacity can immediately be reused without waiting for a new sample.
+        """
+
+        req = (
+            requirement
+            if isinstance(requirement, LaneResourceRequirements)
+            else LaneResourceRequirements.from_mapping(requirement)
+        )
+        lease_budget = budget or ResourceLeaseBudget.from_resource_budget(
+            {},
+            max_parallel=max(1, self.policy.max_lanes),
+            max_cpu_proof_concurrency=self._pool_limit("cpu-proof"),
+            max_model_concurrency=self._pool_limit("model"),
+            max_artifact_concurrency=self._pool_limit("artifact"),
+            maximum_provider_latency_ms=self.policy.maximum_provider_latency_ms,
+        )
+        if lease_budget.maximum_provider_latency_ms:
+            effective_latency = (
+                min(
+                    lease_budget.maximum_provider_latency_ms,
+                    req.max_provider_latency_ms,
+                )
+                if req.max_provider_latency_ms
+                else lease_budget.maximum_provider_latency_ms
+            )
+            req = replace(req, max_provider_latency_ms=effective_latency)
+        with self._lease_lock:
+            active = tuple(item.requirement for item in self._leases.values())
+            if host is None:
+                host_snapshot = self.host_sampler(
+                    path,
+                    active_workers=0,
+                    worker_limit=min(self.policy.max_lanes, lease_budget.max_processes),
+                    active_phase="proof_scheduler",
+                )
+            elif isinstance(host, HostResourceSnapshot):
+                host_snapshot = host
+            else:
+                host_snapshot = HostResourceSnapshot.from_mapping(host)
+            provider_reservations: dict[str, _ProviderReservation] = {}
+            for lease in self._leases.values():
+                if not lease.provider_id:
+                    continue
+                reservation = provider_reservations.setdefault(
+                    lease.provider_id, _ProviderReservation()
+                )
+                reservation.requests += 1
+                reservation.quota += lease.requirement.quota_units
+                reservation.tokens += lease.requirement.token_budget
+            decision = self.evaluate(
+                req,
+                host=host_snapshot,
+                providers=providers,
+                reservations=provider_reservations,
+                active_requirements=active,
+            )
+            if decision.admitted:
+                pool_limit = {
+                    "cpu-proof": lease_budget.max_cpu_proof_concurrency,
+                    "model": lease_budget.max_model_concurrency,
+                    "artifact": lease_budget.max_artifact_concurrency,
+                }[req.resource_pool]
+                pool_used = sum(
+                    item.process_slots
+                    for item in active
+                    if item.resource_pool == req.resource_pool
+                )
+                total_used = sum(item.process_slots for item in active)
+                memory_used = sum(item.memory_bytes for item in active)
+                disk_used = sum(item.disk_bytes for item in active)
+                tokens_used = sum(
+                    item.token_budget for item in active if item.provider_required
+                )
+                quota_used = sum(
+                    item.quota_units for item in active if item.provider_required
+                )
+                extra_reasons: list[str] = []
+                if total_used + req.process_slots > lease_budget.max_processes:
+                    extra_reasons.append("lease_process_capacity")
+                if pool_used + req.process_slots > pool_limit:
+                    extra_reasons.append(
+                        f"lease_{req.resource_pool.replace('-', '_')}_concurrency"
+                    )
+                if (
+                    lease_budget.memory_bytes
+                    and memory_used + req.memory_bytes > lease_budget.memory_bytes
+                ):
+                    extra_reasons.append("lease_memory_budget")
+                if (
+                    lease_budget.disk_bytes
+                    and disk_used + req.disk_bytes > lease_budget.disk_bytes
+                ):
+                    extra_reasons.append("lease_disk_budget")
+                if (
+                    lease_budget.model_token_limit
+                    and tokens_used + req.token_budget
+                    > lease_budget.model_token_limit
+                ):
+                    extra_reasons.append("lease_token_budget")
+                if (
+                    lease_budget.provider_quota
+                    and req.provider_required
+                    and quota_used + req.quota_units > lease_budget.provider_quota
+                ):
+                    extra_reasons.append("lease_provider_quota")
+                if extra_reasons:
+                    decision = replace(
+                        decision,
+                        admitted=False,
+                        reasons=tuple(extra_reasons),
+                        effective_slots=0,
+                        reserved_process_slots=0,
+                        reserved_quota_units=0,
+                        reserved_tokens=0,
+                        reserved_memory_bytes=0,
+                        reserved_disk_bytes=0,
+                    )
+            if not decision.admitted:
+                return decision, None
+            lease = ResourceAdmissionLease(
+                lease_id=f"resource-lease:{uuid.uuid4().hex}",
+                requirement=req,
+                decision=decision,
+                budget=lease_budget,
+                acquired_at_ms=host_snapshot.observed_at_ms or int(time.time() * 1000),
+            )
+            self._leases[lease.lease_id] = lease
+            return decision, lease
+
+    def release(self, lease: ResourceAdmissionLease | str) -> bool:
+        """Release a lease and make all of its capacity immediately reusable."""
+
+        lease_id = lease.lease_id if isinstance(lease, ResourceAdmissionLease) else str(lease)
+        with self._lease_lock:
+            return self._leases.pop(lease_id, None) is not None
+
+    @property
+    def active_leases(self) -> tuple[ResourceAdmissionLease, ...]:
+        with self._lease_lock:
+            return tuple(
+                self._leases[key]
+                for key in sorted(self._leases)
+            )
+
+    def release_lane(self, lane_id: str) -> int:
+        """Release all local resource grants owned by ``lane_id``."""
+
+        with self._lease_lock:
+            matching = [
+                lease_id
+                for lease_id, lease in self._leases.items()
+                if lease.lane_id == lane_id
+            ]
+            for lease_id in matching:
+                self._leases.pop(lease_id, None)
+            return len(matching)
 
     def schedule(
         self,
@@ -883,18 +1565,20 @@ class ResourceScheduler:
         }
         decisions: list[AdmissionDecision] = []
         admitted = 0
+        admitted_requirements: list[LaneResourceRequirements] = []
         for requirement in requirements:
             decision = self.evaluate(
                 requirement,
                 host=host_snapshot,
                 providers=normalized,
-                admitted_workers=admitted,
                 reservations=reservations,
+                active_requirements=admitted_requirements,
             )
             decisions.append(decision)
             if not decision.admitted:
                 continue
             admitted += 1
+            admitted_requirements.append(requirement)
             if decision.provider_id:
                 reservation = reservations.setdefault(decision.provider_id, _ProviderReservation())
                 reservation.requests += 1
@@ -949,13 +1633,23 @@ class ResourceScheduler:
 
 __all__ = [
     "AdmissionDecision",
+    "ChildResourceLimits",
+    "DEFAULT_RESOURCE_CLASSES",
     "HostResourceSnapshot",
     "LaneResourceRequirements",
+    "LEGACY_RESOURCE_CLASSES",
+    "PROOF_RESOURCE_CLASSES",
+    "ProofResourceClass",
     "ProviderCapacity",
+    "ResourceAdmissionLease",
+    "ResourceLeaseBudget",
     "ResourcePolicy",
     "ResourceScheduleSnapshot",
     "ResourceScheduler",
+    "SupervisorResourceLeaseBudget",
     "normalize_provider_capacities",
     "normalize_provider_capacity",
+    "normalize_resource_class",
+    "resource_pool",
     "sample_host_resources",
 ]
