@@ -14,6 +14,7 @@ module when they are inspected by another process.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import re
@@ -35,6 +36,384 @@ DEFAULT_SURFACE_WEIGHTS: dict[str, float] = {
 CONFLICT_RECEIPT_STATUSES = frozenset(
     {"conflict", "conflicted", "failed", "merge_conflict", "quarantined", "rejected", "resolved"}
 )
+AST_BLOB_RECORD_SCHEMA_VERSION = 1
+
+
+def _source_sha256(source: str) -> str:
+    return "sha256:" + hashlib.sha256(source.encode("utf-8", errors="surrogatepass")).hexdigest()
+
+
+def _ast_expression_name(node: ast.AST | None) -> str:
+    if node is None:
+        return ""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _ast_expression_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    if isinstance(node, ast.Subscript):
+        parent = _ast_expression_name(node.value)
+        try:
+            index = ast.unparse(node.slice)
+        except (AttributeError, ValueError):
+            index = "?"
+        return f"{parent}[{index}]" if parent else f"[{index}]"
+    if isinstance(node, ast.Call):
+        return _ast_expression_name(node.func)
+    return ""
+
+
+def _ast_render(node: ast.AST | None) -> str:
+    if node is None:
+        return ""
+    try:
+        return " ".join(ast.unparse(node).split())
+    except (AttributeError, ValueError):
+        return type(node).__name__
+
+
+def _ast_signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    """Return a deterministic, annotation-preserving Python signature."""
+
+    try:
+        arguments = ast.unparse(node.args)
+        returns = f" -> {_ast_render(node.returns)}" if node.returns is not None else ""
+        prefix = "async " if isinstance(node, ast.AsyncFunctionDef) else ""
+        return f"{prefix}def {node.name}({arguments}){returns}"
+    except (AttributeError, ValueError):
+        arguments = [argument.arg for argument in node.args.args]
+        return f"{'async ' if isinstance(node, ast.AsyncFunctionDef) else ''}def {node.name}({', '.join(arguments)})"
+
+
+@dataclass(frozen=True)
+class ASTBlobRecord:
+    """Path-independent Python facts cached by source/blob identity.
+
+    Paths deliberately do not participate in this record.  A Git rename can
+    therefore reuse the parse while the proof-scope compiler separately
+    qualifies the facts under the old and new modules.
+    """
+
+    blob_identity: str
+    source_sha256: str
+    qualified_symbols: tuple[str, ...] = ()
+    imports: tuple[str, ...] = ()
+    calls: tuple[str, ...] = ()
+    state_transitions: tuple[str, ...] = ()
+    interfaces: tuple[str, ...] = ()
+    symbol_hashes: Mapping[str, str] = field(default_factory=dict)
+    symbol_lines: Mapping[str, tuple[int, int]] = field(default_factory=dict)
+    parse_error: str = ""
+    language: str = "python"
+    record_schema_version: int = AST_BLOB_RECORD_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        version = int(self.record_schema_version)
+        if version != AST_BLOB_RECORD_SCHEMA_VERSION:
+            raise ValueError(f"unsupported AST blob record schema version: {version}")
+        object.__setattr__(self, "record_schema_version", version)
+        source_hash = str(self.source_sha256 or "").strip()
+        if source_hash and ":" not in source_hash:
+            source_hash = f"sha256:{source_hash}"
+        blob = str(self.blob_identity or source_hash).strip()
+        object.__setattr__(self, "source_sha256", source_hash)
+        object.__setattr__(self, "blob_identity", blob)
+        for name in (
+            "qualified_symbols",
+            "imports",
+            "calls",
+            "state_transitions",
+            "interfaces",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                tuple(sorted({str(item).strip() for item in getattr(self, name) if str(item).strip()})),
+            )
+        object.__setattr__(
+            self,
+            "symbol_hashes",
+            {
+                str(key): str(value)
+                for key, value in sorted(dict(self.symbol_hashes).items())
+                if str(key) and str(value)
+            },
+        )
+        normalized_lines: dict[str, tuple[int, int]] = {}
+        for key, value in sorted(dict(self.symbol_lines).items()):
+            try:
+                start, end = value
+                normalized_lines[str(key)] = (max(0, int(start)), max(0, int(end)))
+            except (TypeError, ValueError):
+                continue
+        object.__setattr__(self, "symbol_lines", normalized_lines)
+        object.__setattr__(self, "parse_error", str(self.parse_error or "").strip())
+
+    @property
+    def record_id(self) -> str:
+        payload = self._payload()
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return "ast-sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+    @property
+    def blob_id(self) -> str:
+        return self.blob_identity
+
+    @property
+    def source_hash(self) -> str:
+        return self.source_sha256
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "record_schema_version": self.record_schema_version,
+            "blob_identity": self.blob_identity,
+            "blob_hash": self.blob_identity,
+            "source_sha256": self.source_sha256,
+            "language": self.language,
+            "qualified_symbols": list(self.qualified_symbols),
+            "imports": list(self.imports),
+            "calls": list(self.calls),
+            "state_transitions": list(self.state_transitions),
+            "interfaces": list(self.interfaces),
+            "symbol_hashes": dict(self.symbol_hashes),
+            "symbol_lines": {
+                key: list(value) for key, value in sorted(self.symbol_lines.items())
+            },
+            "parse_error": self.parse_error,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"record_id": self.record_id, **self._payload()}
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ASTBlobRecord":
+        record = coerce_ast_blob_record(value)
+        if record is None:
+            raise ValueError("invalid AST blob record")
+        claimed_id = str(value.get("record_id") or "")
+        if claimed_id and claimed_id != record.record_id:
+            raise ValueError("AST blob record identity does not match payload")
+        return record
+
+
+def build_python_ast_blob_record(
+    source: str,
+    *,
+    blob_identity: str = "",
+    source_sha256: str = "",
+) -> ASTBlobRecord:
+    """Parse reusable, typed Python facts for one exact source blob."""
+
+    source_hash = source_sha256 or _source_sha256(source)
+    blob = str(blob_identity or source_hash)
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError) as exc:
+        location = ""
+        if isinstance(exc, SyntaxError) and exc.lineno:
+            location = f" at line {exc.lineno}"
+        return ASTBlobRecord(
+            blob_identity=blob,
+            source_sha256=source_hash,
+            parse_error=f"{type(exc).__name__}{location}: {exc.msg if isinstance(exc, SyntaxError) else exc}",
+        )
+
+    symbols: set[str] = set()
+    imports: set[str] = set()
+    calls: set[str] = set()
+    transitions: set[str] = set()
+    interfaces: set[str] = set()
+    symbol_hashes: dict[str, str] = {}
+    symbol_lines: dict[str, tuple[int, int]] = {}
+    scope: list[str] = []
+
+    class Visitor(ast.NodeVisitor):
+        def _owner(self) -> str:
+            return ".".join(scope) or "<module>"
+
+        def _definition(
+            self,
+            node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+        ) -> None:
+            qualified = ".".join([*scope, node.name])
+            symbols.add(qualified)
+            semantic = ast.dump(node, annotate_fields=True, include_attributes=False)
+            symbol_hashes[qualified] = "sha256:" + hashlib.sha256(
+                semantic.encode("utf-8")
+            ).hexdigest()
+            symbol_lines[qualified] = (
+                int(getattr(node, "lineno", 0) or 0),
+                int(getattr(node, "end_lineno", getattr(node, "lineno", 0)) or 0),
+            )
+            if isinstance(node, ast.ClassDef):
+                bases = {_ast_expression_name(base) for base in node.bases}
+                if bases & {"Protocol", "typing.Protocol", "ABC", "abc.ABC", "ABCMeta", "abc.ABCMeta"}:
+                    interfaces.add(f"{qualified}({','.join(sorted(base for base in bases if base))})")
+            else:
+                public = not node.name.startswith("_") or node.name == "__init__"
+                decorators = {_ast_expression_name(item) for item in node.decorator_list}
+                if public or decorators & {"abstractmethod", "abc.abstractmethod"}:
+                    interfaces.add(f"{qualified}:{_ast_signature(node)}")
+            scope.append(node.name)
+            self.generic_visit(node)
+            scope.pop()
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            self._definition(node)
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._definition(node)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._definition(node)
+
+        def visit_Import(self, node: ast.Import) -> None:
+            for alias in node.names:
+                imports.add(
+                    f"import {alias.name}" + (f" as {alias.asname}" if alias.asname else "")
+                )
+
+        def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+            module = "." * int(node.level or 0) + (node.module or "")
+            for alias in node.names:
+                imports.add(
+                    f"from {module} import {alias.name}"
+                    + (f" as {alias.asname}" if alias.asname else "")
+                )
+
+        def visit_Call(self, node: ast.Call) -> None:
+            callee = _ast_expression_name(node.func) or "<dynamic>"
+            calls.add(f"{self._owner()}->{callee}")
+            lowered = callee.rsplit(".", 1)[-1].lower()
+            if lowered in {
+                "transition",
+                "transition_to",
+                "set_state",
+                "set_status",
+                "change_state",
+                "update_state",
+            }:
+                arguments = ",".join(_ast_render(argument) for argument in node.args)
+                transitions.add(f"{self._owner()}:{callee}:call({arguments})")
+            self.generic_visit(node)
+
+        def _assignments(
+            self,
+            targets: Iterable[ast.AST],
+            operation: str,
+            value: ast.AST | None = None,
+        ) -> None:
+            rendered_value = _ast_render(value)
+            for target in targets:
+                name = _ast_expression_name(target)
+                if name:
+                    suffix = f":{rendered_value}" if rendered_value else ""
+                    transitions.add(f"{self._owner()}:{name}:{operation}{suffix}")
+
+        def visit_Assign(self, node: ast.Assign) -> None:
+            self._assignments(node.targets, "assign", node.value)
+            self.generic_visit(node)
+
+        def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+            self._assignments((node.target,), "assign", node.value)
+            self.generic_visit(node)
+
+        def visit_AugAssign(self, node: ast.AugAssign) -> None:
+            self._assignments(
+                (node.target,),
+                f"augassign:{type(node.op).__name__}",
+                node.value,
+            )
+            self.generic_visit(node)
+
+        def visit_Delete(self, node: ast.Delete) -> None:
+            self._assignments(node.targets, "delete")
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    return ASTBlobRecord(
+        blob_identity=blob,
+        source_sha256=source_hash,
+        qualified_symbols=tuple(symbols),
+        imports=tuple(imports),
+        calls=tuple(calls),
+        state_transitions=tuple(transitions),
+        interfaces=tuple(interfaces),
+        symbol_hashes=symbol_hashes,
+        symbol_lines=symbol_lines,
+    )
+
+
+def coerce_ast_blob_record(value: Any) -> ASTBlobRecord | None:
+    """Normalize conflict-graph, objective-dataset, or serialized AST records."""
+
+    if isinstance(value, ASTBlobRecord):
+        return value
+    if not isinstance(value, Mapping):
+        return None
+    payload = dict(value)
+    source = payload.get("source") or payload.get("source_text") or payload.get("evidence_text")
+    blob = str(
+        payload.get("blob_identity")
+        or payload.get("blob_id")
+        or payload.get("blob_hash")
+        or ""
+    )
+    source_hash = str(payload.get("source_sha256") or "")
+    if isinstance(source, str):
+        actual_hash = _source_sha256(source)
+        normalized_source_hash = (
+            source_hash[len("sha256:") :]
+            if source_hash.startswith("sha256:")
+            else source_hash
+        )
+        normalized_actual_hash = actual_hash[len("sha256:") :]
+        if source_hash and normalized_source_hash != normalized_actual_hash:
+            return None
+        # Reparse legacy objective rows: their ast_text and symbols do not
+        # contain the calls, transitions, and interfaces needed by proof work.
+        return build_python_ast_blob_record(
+            source,
+            blob_identity=blob,
+            source_sha256=actual_hash,
+        )
+    if not source_hash:
+        legacy_sha1 = str(payload.get("source_sha1") or "")
+        if not legacy_sha1:
+            return None
+        source_hash = (
+            legacy_sha1 if legacy_sha1.startswith("sha1:") else f"sha1:{legacy_sha1}"
+        )
+    try:
+        return ASTBlobRecord(
+            blob_identity=blob or source_hash,
+            source_sha256=source_hash,
+            qualified_symbols=tuple(payload.get("qualified_symbols") or payload.get("symbols") or ()),
+            imports=tuple(payload.get("imports") or ()),
+            calls=tuple(payload.get("calls") or ()),
+            state_transitions=tuple(payload.get("state_transitions") or ()),
+            interfaces=tuple(payload.get("interfaces") or ()),
+            symbol_hashes=payload.get("symbol_hashes") or {},
+            symbol_lines=payload.get("symbol_lines") or {},
+            parse_error=str(payload.get("parse_error") or ""),
+            language=str(payload.get("language") or "python"),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def index_ast_blob_records(records: Iterable[Any]) -> dict[str, ASTBlobRecord]:
+    """Index reusable records by blob, source hash, and record identity."""
+
+    result: dict[str, ASTBlobRecord] = {}
+    for value in records:
+        record = coerce_ast_blob_record(value)
+        if record is None:
+            continue
+        for identity in (record.blob_identity, record.source_sha256, record.record_id):
+            if identity:
+                result.setdefault(identity, record)
+    return result
 
 
 def _payload(value: Any) -> dict[str, Any]:
@@ -164,6 +543,8 @@ class ConflictSurface:
     interfaces: list[str] = field(default_factory=list)
     submodules: list[str] = field(default_factory=list)
     generated_artifacts: list[str] = field(default_factory=list)
+    ast_records: list[dict[str, Any]] = field(default_factory=list)
+    blob_identities: list[str] = field(default_factory=list)
     allow_concurrent_with: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -177,6 +558,10 @@ class ConflictSurface:
     def all_paths(self) -> list[str]:
         return sorted(set(self.files) | set(self.changed_paths) | set(self.submodules) | set(self.generated_artifacts))
 
+    @property
+    def ast_blob_records(self) -> list[dict[str, Any]]:
+        return list(self.ast_records)
+
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["all_paths"] = self.all_paths
@@ -187,31 +572,13 @@ def _python_symbols(path: Path) -> set[str]:
     """Collect qualified Python definitions from a predicted existing file."""
 
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, SyntaxError, ValueError):
+        record = build_python_ast_blob_record(
+            path.read_text(encoding="utf-8", errors="replace")
+        )
+    except OSError:
         return set()
-    symbols: set[str] = set()
-    scope: list[str] = []
-
-    class Visitor(ast.NodeVisitor):
-        def _definition(self, node: ast.AST, name: str) -> None:
-            symbols.add(name)
-            if scope:
-                symbols.add(".".join([*scope, name]))
-            scope.append(name)
-            self.generic_visit(node)
-            scope.pop()
-
-        def visit_ClassDef(self, node: ast.ClassDef) -> None:
-            self._definition(node, node.name)
-
-        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-            self._definition(node, node.name)
-
-        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-            self._definition(node, node.name)
-
-    Visitor().visit(tree)
+    symbols = set(record.qualified_symbols)
+    symbols.update(symbol.rsplit(".", 1)[-1] for symbol in record.qualified_symbols)
     return symbols
 
 
@@ -220,6 +587,7 @@ def build_conflict_surface(
     *,
     repo_root: Path | None = None,
     changed_paths: Sequence[str] | None = None,
+    ast_records: Sequence[Any] | None = None,
 ) -> ConflictSurface:
     """Build a complete normalized conflict surface from a task-like object.
 
@@ -270,12 +638,85 @@ def build_conflict_surface(
         else list(declared_ast_symbols)
     )
     ast_symbols = list(declared_ast_symbols)
+    external_ast_values: list[Any] = list(ast_records or ())
+    task_ast_values: list[Any] = []
+    for source in sources:
+        for name in ("ast_records", "ast_blob_records", "python_ast_records"):
+            value = source.get(name)
+            if isinstance(value, Mapping):
+                task_ast_values.extend(value.values())
+            elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+                task_ast_values.extend(value)
+    supplied_by_path: dict[str, ASTBlobRecord] = {}
+    reusable_records: dict[str, ASTBlobRecord] = {}
+    available_records: dict[str, ASTBlobRecord] = {}
+    relevant_paths = set(files) | set(normalized_changed_paths)
+    for value in task_ast_values:
+        record = coerce_ast_blob_record(value)
+        if record is None:
+            continue
+        if isinstance(value, Mapping):
+            record_path = normalize_repo_path(
+                str(value.get("root_relative_path") or value.get("path") or ""),
+                repo_root=repo_root,
+            )
+            # A task payload may carry a repository-wide objective AST
+            # snapshot.  Only pathless records explicitly attached to the
+            # task, or records for this surface, belong in the bounded graph
+            # record.  The complete snapshot remains available as a lookup
+            # cache below without leaking into the surface.
+            if record_path and record_path not in relevant_paths:
+                continue
+        reusable_records.setdefault(record.record_id, record)
+    for value in [*task_ast_values, *external_ast_values]:
+        record = coerce_ast_blob_record(value)
+        if record is None:
+            continue
+        available_records.setdefault(record.record_id, record)
+        if isinstance(value, Mapping):
+            record_path = normalize_repo_path(
+                str(value.get("root_relative_path") or value.get("path") or ""),
+                repo_root=repo_root,
+            )
+            if record_path:
+                supplied_by_path.setdefault(record_path, record)
+                if record_path in files:
+                    reusable_records.setdefault(record.record_id, record)
+    discovered: set[str] = set(ast_symbols)
+    for record in reusable_records.values():
+        discovered.update(record.qualified_symbols)
+        discovered.update(
+            symbol.rsplit(".", 1)[-1] for symbol in record.qualified_symbols
+        )
     if repo_root is not None:
-        discovered: set[str] = set(ast_symbols)
         for relative in files:
             if relative.endswith(".py"):
-                discovered.update(_python_symbols(Path(repo_root) / relative))
-        ast_symbols = sorted(discovered)
+                record = supplied_by_path.get(relative)
+                if record is None:
+                    path = Path(repo_root) / relative
+                    try:
+                        source = path.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        source = ""
+                    if source:
+                        source_hash = _source_sha256(source)
+                        record = next(
+                            (
+                                candidate
+                                for candidate in available_records.values()
+                                if candidate.source_sha256 == source_hash
+                            ),
+                            None,
+                        )
+                        if record is None:
+                            record = build_python_ast_blob_record(source)
+                if record is not None:
+                    reusable_records.setdefault(record.record_id, record)
+                    discovered.update(record.qualified_symbols)
+                    discovered.update(
+                        symbol.rsplit(".", 1)[-1] for symbol in record.qualified_symbols
+                    )
+    ast_symbols = sorted(discovered)
     interfaces = _normalized_terms(
         _field_items(
             sources,
@@ -322,6 +763,13 @@ def build_conflict_surface(
         interfaces=interfaces,
         submodules=submodules,
         generated_artifacts=generated,
+        ast_records=[
+            record.to_dict()
+            for record in sorted(reusable_records.values(), key=lambda item: item.record_id)
+        ],
+        blob_identities=sorted(
+            {record.blob_identity for record in reusable_records.values() if record.blob_identity}
+        ),
         allow_concurrent_with=allowed,
         metadata={
             key: value
@@ -331,6 +779,7 @@ def build_conflict_surface(
                 "files", "predicted_files", "outputs", "changed_paths", "ast_symbols",
                 "global_ast_symbols", "interfaces",
                 "submodules", "generated_artifacts", "allow_concurrent_with",
+                "ast_records", "ast_blob_records", "python_ast_records", "blob_identities",
             }
         },
     )
@@ -374,6 +823,18 @@ def _merge_duplicate_surfaces(
         submodules=sorted(set(left.submodules) | set(right.submodules)),
         generated_artifacts=sorted(
             set(left.generated_artifacts) | set(right.generated_artifacts)
+        ),
+        ast_records=[
+            record
+            for _, record in sorted(
+                {
+                    str(record.get("record_id") or json.dumps(record, sort_keys=True)): record
+                    for record in [*left.ast_records, *right.ast_records]
+                }.items()
+            )
+        ],
+        blob_identities=sorted(
+            set(left.blob_identities) | set(right.blob_identities)
         ),
         allow_concurrent_with=sorted(
             set(left.allow_concurrent_with) | set(right.allow_concurrent_with)
@@ -1418,6 +1879,7 @@ def materialize_task_conflict_graph(
     tasks: Sequence[Any],
     *,
     repo_root: Path | None = None,
+    ast_records: Sequence[Any] | None = None,
     branch_diffs: Any = None,
     conflict_receipts: Any = None,
     concurrency_overrides: Any = None,
@@ -1437,7 +1899,11 @@ def materialize_task_conflict_graph(
     surfaces: dict[str, ConflictSurface] = {}
     observed_paths_by_cid: dict[str, set[str]] = {}
     for task in tasks:
-        surface = build_conflict_surface(task, repo_root=repo_root)
+        surface = build_conflict_surface(
+            task,
+            repo_root=repo_root,
+            ast_records=ast_records,
+        )
         observed_paths = diffs.get(surface.task_cid, []) + diffs.get(surface.task_id, [])
         if observed_paths:
             normalized = _normalized_paths([*surface.changed_paths, *observed_paths], repo_root)
@@ -1549,6 +2015,8 @@ def update_conflict_weights(
 
 
 __all__ = [
+    "AST_BLOB_RECORD_SCHEMA_VERSION",
+    "ASTBlobRecord",
     "ConflictEdge",
     "ConflictGraph",
     "ConflictSurface",
@@ -1562,9 +2030,12 @@ __all__ = [
     "TaskConflictGraph",
     "build_conflict_graph",
     "build_conflict_surface",
+    "build_python_ast_blob_record",
     "color_conflict_graph",
     "compare_surface_evidence",
     "detect_surface_contradictions",
+    "coerce_ast_blob_record",
+    "index_ast_blob_records",
     "materialize_task_conflict_graph",
     "normalize_repo_path",
     "update_conflict_weights",
