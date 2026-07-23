@@ -18,6 +18,7 @@ from .formal_verification_capabilities import (
 )
 from .dataset_store import DatasetArtifact, DatasetAuditSnapshotArtifact, ObjectiveDatasetStore
 from .conflict_graph import (
+    ASTBlobRecord,
     ConflictEdge,
     ConflictGraph,
     ConflictSurface,
@@ -31,11 +32,29 @@ from .conflict_graph import (
     SurfaceEvidenceEdge,
     build_conflict_graph,
     build_conflict_surface,
+    build_python_ast_blob_record,
     color_conflict_graph,
     compare_surface_evidence,
     detect_surface_contradictions,
     materialize_task_conflict_graph,
     update_conflict_weights,
+)
+from .code_proof_obligations import (
+    ASTProofScope,
+    CandidateDiffEntry,
+    CandidateFileDiff,
+    CodeProofScope,
+    CodeProofScopeSet,
+    CompiledProofScopes,
+    DiffChangeKind,
+    ProofScopeKind,
+    ProofScopeCompilation,
+    collect_git_candidate_diff,
+    compile_candidate_diff,
+    compile_candidate_diffs,
+    compile_candidate_diff_scopes,
+    compile_candidate_proof_scopes,
+    compile_ast_proof_scopes,
 )
 from .objective_graph import (
     BundleWriteResult,
@@ -192,9 +211,19 @@ from .plan_evaluator import (
 )
 
 __all__ = [
+    "ASTBlobRecord",
+    "ASTProofScope",
+    "CandidateDiffEntry",
+    "CandidateFileDiff",
+    "CodeProofScope",
+    "CodeProofScopeSet",
+    "CompiledProofScopes",
     "CONTRADICTION_KINDS",
     "GOAL_COMPLETION_MIGRATION_SCHEMA_VERSION",
+    "DiffChangeKind",
     "LEGACY_COMPLETED_GOAL_STATES",
+    "ProofScopeKind",
+    "ProofScopeCompilation",
     "AcceptanceCoverage",
     "ContradictionEvidence",
     "CoverageEdge",
@@ -364,6 +393,7 @@ __all__ = [
     "build_bundle_task_payloads",
     "build_conflict_graph",
     "build_conflict_surface",
+    "build_python_ast_blob_record",
     "build_configured_backlog_recorder_bundle",
     "build_action_contract_sync_runner_from_spec",
     "build_configured_action_contract_sync_runner",
@@ -416,6 +446,12 @@ __all__ = [
     "collect_ast_dataset_records",
     "critical_path_schedule",
     "color_conflict_graph",
+    "collect_git_candidate_diff",
+    "compile_candidate_diff",
+    "compile_candidate_diffs",
+    "compile_candidate_diff_scopes",
+    "compile_candidate_proof_scopes",
+    "compile_ast_proof_scopes",
     "cluster_records",
     "generate_objective_todos",
     "generate_bounded_objective_work",
