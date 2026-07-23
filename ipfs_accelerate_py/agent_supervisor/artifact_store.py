@@ -25,6 +25,7 @@ CODE_EVIDENCE_GRAPH_KIND = "code_evidence_graph"
 EVIDENCE_GRAPH_KIND = CODE_EVIDENCE_GRAPH_KIND
 QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.queryable_artifact@2"
 MAX_QUERY_ROWS = 1_000
+MAX_GRAPH_QUERY_HOPS = 8
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _READ_ONLY_SQL = re.compile(r"^(?:select|with|describe|show)\b", re.IGNORECASE)
@@ -120,13 +121,10 @@ def _atomic_write_text(path: Path, text: str) -> None:
 
 def _artifact_kind(payload: Mapping[str, Any]) -> str:
     schema = str(payload.get("schema") or "")
-    if (
-        schema == "ipfs_accelerate_py.agent_supervisor.code-evidence-graph@1"
-        or (
-            isinstance(payload.get("nodes"), list)
-            and isinstance(payload.get("edges"), list)
-            and str(payload.get("graph_id") or "").startswith("graph-")
-        )
+    if schema == "ipfs_accelerate_py.agent_supervisor.code-evidence-graph@1" or (
+        isinstance(payload.get("nodes"), list)
+        and isinstance(payload.get("edges"), list)
+        and str(payload.get("graph_id") or "").startswith("graph-")
     ):
         return CODE_EVIDENCE_GRAPH_KIND
     if isinstance(payload.get("bundles"), Mapping):
@@ -1290,9 +1288,7 @@ def read_code_evidence_graph_projection(path: Path | str) -> dict[str, Any]:
     nodes: list[Any] = []
     edges: list[Any] = []
     for record_type, value in rows:
-        (nodes if str(record_type) == "node" else edges).append(
-            _json_value(str(value))
-        )
+        (nodes if str(record_type) == "node" else edges).append(_json_value(str(value)))
     from .code_evidence_graph import CodeEvidenceGraph
 
     graph = CodeEvidenceGraph.from_dict({**fields, "nodes": nodes, "edges": edges})
@@ -1418,6 +1414,315 @@ def query_code_evidence_graph(
     if supplied_kind != CODE_EVIDENCE_GRAPH_KIND:
         raise ValueError("code evidence graph queries require code_evidence_graph kind")
     return query_artifact(path, kind=CODE_EVIDENCE_GRAPH_KIND, **query)
+
+
+def _exact_strings(values: Sequence[str] | str, *, label: str) -> tuple[str, ...]:
+    """Normalize exact-match selectors without accepting wildcard spellings."""
+
+    raw_values: Sequence[str]
+    if isinstance(values, str):
+        raw_values = (values,)
+    else:
+        raw_values = values
+    result = tuple(
+        sorted({str(value).strip() for value in raw_values if str(value).strip()})
+    )
+    if any(value in {"*", "%"} for value in result):
+        raise ValueError(f"{label} selectors must be exact identifiers")
+    return result
+
+
+def query_code_evidence_neighborhood(
+    path: Path | str,
+    *,
+    task_id: str,
+    symbols: Sequence[str] | str = (),
+    dependency_task_ids: Sequence[str] | str = (),
+    obligation_ids: Sequence[str] | str = (),
+    receipt_ids: Sequence[str] | str = (),
+    contradiction_ids: Sequence[str] | str = (),
+    max_hops: int = 2,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Return a deterministic, exact, row-bounded proof neighborhood.
+
+    This is intentionally narrower than arbitrary graph traversal.  Repository
+    tree and AST-blob nodes are never traversed, receipt/transcript children are
+    terminal, and only proof-relevant edge directions may expand a seed.  The
+    resulting query is therefore safe to feed into a context reducer without
+    first materializing the complete evidence graph.
+    """
+
+    exact_task = str(task_id or "").strip()
+    if not exact_task or exact_task in {"*", "%"}:
+        raise ValueError("task_id must be one exact identifier")
+    exact_symbols = _exact_strings(symbols, label="symbol")
+    exact_dependencies = _exact_strings(dependency_task_ids, label="dependency task")
+    exact_obligations = _exact_strings(obligation_ids, label="obligation")
+    exact_receipts = _exact_strings(receipt_ids, label="receipt")
+    exact_contradictions = _exact_strings(contradiction_ids, label="contradiction")
+    hop_limit = int(max_hops)
+    if hop_limit < 0 or hop_limit > MAX_GRAPH_QUERY_HOPS:
+        raise ValueError(f"max_hops must be between 0 and {MAX_GRAPH_QUERY_HOPS}")
+    row_limit = max(1, min(int(limit), MAX_QUERY_ROWS))
+    database_path = ensure_query_database(path, kind=CODE_EVIDENCE_GRAPH_KIND)
+    duckdb = _duckdb_module()
+
+    seed_clauses = [
+        "(node_kind = 'task' AND task_id = ?)",
+        # Enrichments deliberately carry no authoritative task index.  Select
+        # them by their exact declared target, not by graph alias inference.
+        "(node_kind = 'enrichment' AND ("
+        "json_extract_string(payload_json, '$.record.target') = ? OR "
+        "json_extract_string(payload_json, '$.record.target_id') = ? OR "
+        "json_contains(json_extract(payload_json, '$.record.targets'), ?) OR "
+        "json_contains(json_extract(payload_json, '$.record.target_ids'), ?)"
+        "))",
+    ]
+    parameters: list[Any] = [
+        exact_task,
+        exact_task,
+        exact_task,
+        json.dumps(exact_task),
+        json.dumps(exact_task),
+    ]
+
+    def add_in(clause: str, values: tuple[str, ...]) -> None:
+        if not values:
+            return
+        placeholders = ", ".join("?" for _ in values)
+        seed_clauses.append(clause.format(placeholders=placeholders))
+        parameters.extend(values)
+
+    add_in("(node_kind = 'symbol' AND symbol IN ({placeholders}))", exact_symbols)
+    add_in(
+        "(node_kind = 'task' AND task_id IN ({placeholders}))",
+        exact_dependencies,
+    )
+    add_in(
+        "(node_kind = 'obligation' AND obligation_id IN ({placeholders}))",
+        exact_obligations,
+    )
+    add_in(
+        "(node_kind IN ('proof', 'validation', 'merge') "
+        "AND record_key IN ({placeholders}))",
+        exact_receipts,
+    )
+    if exact_contradictions:
+        placeholders = ", ".join("?" for _ in exact_contradictions)
+        seed_clauses.append(
+            "("
+            f"record_key IN ({placeholders}) OR "
+            f"json_extract_string(payload_json, '$.record.contradiction_id') IN ({placeholders}) OR "
+            f"json_extract_string(payload_json, '$.record.source_receipt_id') IN ({placeholders})"
+            ")"
+        )
+        parameters.extend(exact_contradictions)
+        parameters.extend(exact_contradictions)
+        parameters.extend(exact_contradictions)
+
+    node_columns = (
+        "node_id, node_kind, record_key, provenance, authoritative, task_id, "
+        "tree_id, symbol, obligation_id, assurance, freshness, payload_json"
+    )
+
+    def node_dict(row: Sequence[Any]) -> dict[str, Any]:
+        names = (
+            "node_id",
+            "node_kind",
+            "record_key",
+            "provenance",
+            "authoritative",
+            "task_id",
+            "tree_id",
+            "symbol",
+            "obligation_id",
+            "assurance",
+            "freshness",
+            "payload_json",
+        )
+        value = {name: _jsonable(item) for name, item in zip(names, row)}
+        value["payload"] = _json_value(str(value.pop("payload_json")))
+        return value
+
+    def edge_dict(row: Sequence[Any]) -> dict[str, Any]:
+        names = (
+            "edge_id",
+            "source_node_id",
+            "target_node_id",
+            "edge_kind",
+            "provenance",
+            "provenance_record_id",
+            "authoritative",
+            "payload_json",
+        )
+        value = {name: _jsonable(item) for name, item in zip(names, row)}
+        value["payload"] = _json_value(str(value.pop("payload_json")))
+        return value
+
+    connection = duckdb.connect(str(database_path), read_only=True)
+    truncated = False
+    try:
+        seed_rows = connection.execute(
+            f"SELECT {node_columns} FROM evidence_nodes WHERE "
+            + " OR ".join(seed_clauses)
+            + " ORDER BY node_kind, record_key, node_id "
+            + f"LIMIT {row_limit + 1}",
+            parameters,
+        ).fetchall()
+        if len(seed_rows) > row_limit:
+            truncated = True
+            seed_rows = seed_rows[:row_limit]
+        selected = {str(row[0]): node_dict(row) for row in seed_rows}
+        seed_ids = frozenset(selected)
+        frontier = set(seed_ids)
+
+        # Legal directional expansions by current node kind.  In particular,
+        # TARGETS_TREE/CONTAINS/DEFINES_SYMBOL never expand a context query.
+        allowed: dict[tuple[str, str, str], frozenset[str]] = {
+            ("task", "out", "depends_on"): frozenset({"task"}),
+            ("task", "out", "has_obligation"): frozenset({"obligation"}),
+            ("task", "in", "validates"): frozenset({"validation"}),
+            ("task", "in", "merged"): frozenset({"merge"}),
+            ("task", "in", "completes"): frozenset({"merge"}),
+            ("task", "in", "mentions"): frozenset({"enrichment"}),
+            ("task", "in", "suggests"): frozenset({"enrichment"}),
+            ("task", "in", "related_to"): frozenset({"enrichment"}),
+            ("obligation", "out", "depends_on"): frozenset({"obligation"}),
+            ("obligation", "out", "covers"): frozenset({"symbol"}),
+            ("obligation", "in", "proves"): frozenset({"proof"}),
+            ("obligation", "in", "derived_from"): frozenset({"proof"}),
+            ("obligation", "in", "covers"): frozenset({"validation"}),
+            ("symbol", "in", "covers"): frozenset({"obligation"}),
+        }
+        # An explicitly selected receipt may lead back to its exact subject,
+        # but receipts discovered during traversal remain terminal.
+        receipt_seed_expansions = {
+            ("proof", "out", "proves"): frozenset({"obligation"}),
+            ("proof", "out", "derived_from"): frozenset({"obligation"}),
+            ("validation", "out", "covers"): frozenset({"obligation"}),
+            ("validation", "out", "validates"): frozenset({"task"}),
+            ("merge", "out", "merged"): frozenset({"task"}),
+            ("merge", "out", "completes"): frozenset({"task"}),
+            ("enrichment", "out", "mentions"): frozenset(
+                {"task", "obligation", "symbol"}
+            ),
+            ("enrichment", "out", "suggests"): frozenset(
+                {"task", "obligation", "symbol"}
+            ),
+            ("enrichment", "out", "related_to"): frozenset(
+                {"task", "obligation", "symbol"}
+            ),
+        }
+        candidate_edges: dict[str, dict[str, Any]] = {}
+        for _hop in range(hop_limit):
+            if not frontier or len(selected) >= row_limit:
+                truncated = truncated or bool(frontier)
+                break
+            placeholders = ", ".join("?" for _ in frontier)
+            edge_rows = connection.execute(
+                "SELECT edge_id, source_node_id, target_node_id, edge_kind, "
+                "provenance, provenance_record_id, authoritative, payload_json "
+                "FROM evidence_edges "
+                f"WHERE source_node_id IN ({placeholders}) "
+                f"OR target_node_id IN ({placeholders}) "
+                "ORDER BY edge_id "
+                f"LIMIT {MAX_QUERY_ROWS + 1}",
+                [*sorted(frontier), *sorted(frontier)],
+            ).fetchall()
+            if len(edge_rows) > MAX_QUERY_ROWS:
+                truncated = True
+                edge_rows = edge_rows[:MAX_QUERY_ROWS]
+            neighbor_ids = sorted(
+                {
+                    str(row[index])
+                    for row in edge_rows
+                    for index in (1, 2)
+                    if str(row[index]) not in selected
+                }
+            )
+            if not neighbor_ids:
+                break
+            node_placeholders = ", ".join("?" for _ in neighbor_ids)
+            neighbor_rows = connection.execute(
+                f"SELECT {node_columns} FROM evidence_nodes "
+                f"WHERE node_id IN ({node_placeholders}) ORDER BY node_id "
+                f"LIMIT {MAX_QUERY_ROWS + 1}",
+                neighbor_ids,
+            ).fetchall()
+            neighbor_map = {
+                str(row[0]): node_dict(row) for row in neighbor_rows[:MAX_QUERY_ROWS]
+            }
+            accepted: set[str] = set()
+            for row in edge_rows:
+                edge = edge_dict(row)
+                source_id = str(row[1])
+                target_id = str(row[2])
+                edge_kind = str(row[3])
+                if source_id in selected and target_id in selected:
+                    candidate_edges[str(row[0])] = edge
+                for current_id, other_id, direction in (
+                    (source_id, target_id, "out"),
+                    (target_id, source_id, "in"),
+                ):
+                    if current_id not in frontier or other_id not in neighbor_map:
+                        continue
+                    current_kind = str(selected[current_id]["node_kind"])
+                    next_kind = str(neighbor_map[other_id]["node_kind"])
+                    permitted = allowed.get((current_kind, direction, edge_kind))
+                    if current_id in seed_ids:
+                        permitted = permitted or receipt_seed_expansions.get(
+                            (current_kind, direction, edge_kind)
+                        )
+                    if permitted and next_kind in permitted:
+                        accepted.add(other_id)
+                        candidate_edges[str(row[0])] = edge
+            frontier = set()
+            for node_id in sorted(accepted):
+                if len(selected) >= row_limit:
+                    truncated = True
+                    break
+                selected[node_id] = neighbor_map[node_id]
+                frontier.add(node_id)
+
+        remaining = max(0, row_limit - len(selected))
+        edges = [
+            edge
+            for _, edge in sorted(candidate_edges.items())
+            if edge["source_node_id"] in selected and edge["target_node_id"] in selected
+        ]
+        if len(edges) > remaining:
+            truncated = True
+            edges = edges[:remaining]
+    finally:
+        connection.close()
+
+    nodes = [selected[node_id] for node_id in sorted(selected)]
+    return {
+        "schema": QUERY_SCHEMA,
+        "artifact_kind": CODE_EVIDENCE_GRAPH_KIND,
+        "duckdb_path": str(database_path),
+        "query": {
+            "task_id": exact_task,
+            "symbols": list(exact_symbols),
+            "dependency_task_ids": list(exact_dependencies),
+            "obligation_ids": list(exact_obligations),
+            "receipt_ids": list(exact_receipts),
+            "contradiction_ids": list(exact_contradictions),
+        },
+        "nodes": nodes,
+        "edges": edges,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "row_count": len(nodes) + len(edges),
+        "truncated": truncated,
+        "limit": row_limit,
+        "max_hops": hop_limit,
+    }
+
+
+# Compatibility spelling for callers where the graph kind is implicit.
+query_evidence_neighborhood = query_code_evidence_neighborhood
 
 
 def artifact_schema(path: Path | str) -> dict[str, Any]:
