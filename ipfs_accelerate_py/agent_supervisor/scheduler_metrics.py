@@ -1226,7 +1226,15 @@ def scheduler_snapshot(
         if event_id:
             event_ids.add(event_id)
         unique.append((index, event, _event_time(event)))
-    unique.sort(key=lambda item: (item[2] is None, item[2] or datetime.max.replace(tzinfo=timezone.utc), item[0]))
+    # Undated legacy events cannot supersede a timestamped current projection.
+    # Treat them as the oldest evidence while preserving their source order.
+    unique.sort(
+        key=lambda item: (
+            item[2] is not None,
+            item[2] or datetime.min.replace(tzinfo=timezone.utc),
+            item[0],
+        )
+    )
     scan_metrics = _reduce_scan_metrics(unique)
     completion_diagnostics = project_goal_completion_diagnostics(
         [event for _index, event, _occurred in unique], now=now

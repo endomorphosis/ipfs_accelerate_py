@@ -112,6 +112,29 @@ def test_snapshot_zero_fills_and_reports_all_scheduler_phases() -> None:
     assert all(snapshot["phases"][phase]["count"] == 1 for phase in SCHEDULER_PHASES)
 
 
+def test_timestamped_projection_overrides_undated_legacy_lane_state() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "scheduler_lane_state",
+                "phase": "ready",
+                **IDENTITY,
+            },
+            {
+                "type": "scheduler_state",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "phase": "blocked",
+                "state": "blocked",
+                **IDENTITY,
+            },
+        ]
+    )
+
+    assert snapshot["phase_counts"]["ready"] == 0
+    assert snapshot["phase_counts"]["blocked"] == 1
+    assert snapshot["phases"]["blocked"]["items"][0]["task_cid"] == IDENTITY["task_cid"]
+
+
 def test_rates_usage_and_identity_grouping_are_zero_safe_and_canonical() -> None:
     other = {**IDENTITY, "task_cid": "task:other", "provider_id": "provider:other"}
     events = [
