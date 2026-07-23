@@ -4743,6 +4743,17 @@ def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX
     return ids
 
 
+def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
+    """Return canonical task identities already materialized on a board."""
+
+    prefix = "- Canonical task CID:"
+    return {
+        line[len(prefix) :].strip()
+        for line in todo_text.splitlines()
+        if line.startswith(prefix) and line[len(prefix) :].strip()
+    }
+
+
 def next_task_id(
     todo_text: str,
     *,
@@ -5164,6 +5175,7 @@ def generate_objective_todos(
         findings = list(precomputed_findings)
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
+        existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
         reserved_task_ids = task_ids_from_artifact_names(
             discovery_dir,
             task_prefix=task_prefix,
@@ -5174,7 +5186,11 @@ def generate_objective_todos(
                 task_prefix=task_prefix,
                 reserved_task_ids=reserved_task_ids,
             )
+            identity = objective_finding_task_identity(task_id, finding)
+            if identity.canonical_task_cid in existing_canonical_task_cids:
+                continue
             reserved_task_ids.add(task_id)
+            existing_canonical_task_cids.add(identity.canonical_task_cid)
             shard_relative = repo_relative_path(
                 repo_root, bundle_path(bundle_dir, finding.bundle_key)
             )

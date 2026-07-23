@@ -5907,6 +5907,66 @@ def test_implementation_daemon_borrows_ready_work_when_shard_drained(tmp_path):
     assert "task_shard_ready_fallback" in events
 
 
+def test_implementation_daemon_reopens_dependency_block_after_prerequisite_completes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Completed prerequisite
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Transient dependency block
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-001
+
+## ACCEL-003 Explicit operator block
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-001
+- Blocked reason: Awaiting operator approval.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._commit_generated_file_update = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "updated": False,
+        "reason": "test",
+    }
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(repo / "state.json")
+    todo_text = todo_path.read_text(encoding="utf-8")
+
+    assert result["active_task_id"] == "ACCEL-002"
+    assert state.ready_task_ids == ["ACCEL-002"]
+    assert state.blocked_task_ids == ["ACCEL-003"]
+    assert "## ACCEL-002 Transient dependency block\n\n- Status: todo" in todo_text
+    assert "## ACCEL-003 Explicit operator block\n\n- Status: blocked" in todo_text
+    assert "dependency_blocked_tasks_reopened" in (
+        repo / "events.jsonl"
+    ).read_text(encoding="utf-8")
+
+
 def test_implementation_daemon_filters_repo_wide_task_claims(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

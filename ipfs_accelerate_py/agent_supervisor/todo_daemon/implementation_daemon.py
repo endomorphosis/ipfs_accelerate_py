@@ -31,6 +31,7 @@ from ..merge_conflict_repair import (
 from ..submodule_degradation import DegradationState
 from ..persistent_task_queue import PersistentTaskQueue
 from ..task_identity import TaskIdentity, canonical_task_identity
+from ..taskboard_store import locked_taskboard, replace_locked_taskboard
 from ..git_gc import GitGarbageCollector
 from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
@@ -1565,6 +1566,28 @@ class PortalImplementationDaemon:
             if self._canonical_ref(task) in completed_cids
         )
         dependency_satisfied_task_ids = completed_set | self.assumed_completed_task_ids
+        dependency_reopen_candidates = [
+            task.task_id
+            for task in tasks
+            if (
+                task.status == "blocked"
+                and bool(task.depends_on)
+                and not str(task.metadata.get("blocked reason") or "").strip()
+                and task.task_id not in strategy_blocked_task_ids
+                and all(
+                    dependency in dependency_satisfied_task_ids
+                    for dependency in task.depends_on
+                )
+            )
+        ]
+        dependency_reopen_result = self._mark_tasks_ready_in_todo(
+            dependency_reopen_candidates,
+            reason="dependencies_completed",
+        )
+        dependency_reopened_task_ids = {
+            *dependency_reopen_result.get("updated_task_ids", []),
+            *dependency_reopen_result.get("already_ready_task_ids", []),
+        }
 
         for task in tasks:
             if task.task_id in completed_set:
@@ -1572,7 +1595,10 @@ class PortalImplementationDaemon:
                 if task.task_id not in previous_completed:
                     newly_completed.append(task.task_id)
                 continue
-            if task.task_id in strategy.get("blocked_tasks", []) or task.status == "blocked":
+            if task.task_id in strategy.get("blocked_tasks", []) or (
+                task.status == "blocked"
+                and task.task_id not in dependency_reopened_task_ids
+            ):
                 resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in shared_active_merge_task_ids:
@@ -2168,6 +2194,81 @@ class PortalImplementationDaemon:
                     task_claim_path.unlink()
             except OSError:
                 logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
+
+    def _mark_tasks_ready_in_todo(
+        self,
+        task_ids: Sequence[str],
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Reopen transiently blocked tasks after their dependencies complete."""
+
+        target_task_ids = {
+            str(task_id).strip()
+            for task_id in task_ids
+            if str(task_id).strip()
+        }
+        if not target_task_ids:
+            return {
+                "updated": False,
+                "reason": "no_tasks",
+                "updated_task_ids": [],
+                "already_ready_task_ids": [],
+            }
+
+        try:
+            with locked_taskboard(self.todo_path) as taskboard:
+                lines = taskboard.read().splitlines(keepends=True)
+                current_task_id = ""
+                updated_task_ids: list[str] = []
+                already_ready_task_ids: list[str] = []
+                for index, line in enumerate(lines):
+                    if line.startswith(self.task_header_prefix):
+                        header = line[3:].strip()
+                        current_task_id = header.split(" ", 1)[0] if header else ""
+                        continue
+                    if (
+                        current_task_id not in target_task_ids
+                        or not line.startswith("- Status:")
+                    ):
+                        continue
+                    current_status = normalize_status(line.split(":", 1)[1].strip())
+                    if current_status == "blocked":
+                        newline = "\n" if line.endswith("\n") else ""
+                        lines[index] = f"- Status: todo{newline}"
+                        updated_task_ids.append(current_task_id)
+                    elif current_status in {"todo", "in_progress"}:
+                        already_ready_task_ids.append(current_task_id)
+                    current_task_id = ""
+                if updated_task_ids:
+                    replace_locked_taskboard(taskboard, "".join(lines))
+        except OSError as exc:
+            result = {
+                "updated": False,
+                "reason": "write_failed",
+                "error": str(exc),
+                "updated_task_ids": [],
+                "already_ready_task_ids": [],
+            }
+            self._record_event("dependency_blocked_tasks_reopen_failed", result)
+            return result
+
+        result = {
+            "updated": bool(updated_task_ids),
+            "reason": reason,
+            "updated_task_ids": sorted(updated_task_ids),
+            "already_ready_task_ids": sorted(already_ready_task_ids),
+        }
+        if updated_task_ids:
+            commit_result = self._commit_generated_file_update(
+                self.todo_path,
+                task_id=updated_task_ids[0],
+                subject=f"{updated_task_ids[0]}: reopen dependency-ready tasks",
+            )
+            if commit_result:
+                result["commit_result"] = commit_result
+            self._record_event("dependency_blocked_tasks_reopened", result)
+        return result
 
     def _mark_task_completed_in_todo(self, task_id: str) -> dict[str, Any]:
         return self._mark_tasks_completed_in_todo(

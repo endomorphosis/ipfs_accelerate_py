@@ -938,6 +938,41 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert submitted[0]["payload"]["bundle_key"] == "objective/ops/root"
 
 
+def test_generate_objective_todos_skips_existing_canonical_task(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    first = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    original_todo = todo_path.read_text(encoding="utf-8")
+    original_discoveries = sorted(discovery_dir.iterdir())
+
+    repeated = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[first[0].finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert repeated == []
+    assert todo_path.read_text(encoding="utf-8") == original_todo
+    assert sorted(discovery_dir.iterdir()) == original_discoveries
+
+
 def test_bundle_regeneration_preserves_projected_task_status(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
