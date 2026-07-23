@@ -370,6 +370,39 @@ Before enforcement expands, require:
 - canary tasks demonstrate useful token reduction without unacceptable
   throughput regression.
 
+### Reviewed rollout expansion thresholds
+
+`ProofBenchmarkThresholds` is the versioned, executable review boundary for
+cold, warm, and parallel proof runs. The default gate requires every sample to
+meet all applicable limits and requires all three run modes to be present:
+
+| Signal | Expansion threshold |
+| --- | --- |
+| Raw-to-capsule context reduction | at least 40% by bytes and at least 40% by tokens |
+| Retrieval precision | at least 80% |
+| Model cost per accepted task | at most 1.00 configured cost unit |
+| Accepted-task throughput regression | at most 20% versus the declared baseline |
+| Warm cache reuse | at least 50% of lookups hit |
+| Nested worker oversubscription | zero workers above the shared limit |
+| Parallel cancellation savings | at least 10% of redundant work |
+| Parallel single-flight savings | at least 10% of duplicate requests |
+| Unsupported obligation templates | at most 25% |
+| Host use | at most 95% CPU and 2 GiB peak memory |
+
+The benchmark report also records translation, solver, kernel, cache, model,
+validation, and merge latency for every run. It is bounded and excludes
+prompts, proof transcripts, and private witnesses. A failed measurement emits
+a stable reason code and sets `rollout_expansion_allowed` to false; the report
+does not change policy on its own.
+
+Rollout status is similarly diagnostic, not authoritative. Capability health,
+provider outages, active plans, assurance counts, failures, fallbacks, and
+overrides are projected for operators, while the versioned policy remains the
+only rollout-mode authority. Canary promotion or rollback therefore requires a
+durable transition receipt tied to the policy identity. An outage in an
+enforcement scope fails closed and cannot silently downgrade that scope to
+shadow mode.
+
 ## Implementation Backlog
 
 The root refactor supervisor owns the executable backlog:

@@ -30,7 +30,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, ClassVar, Iterable, Mapping, Sequence, Tuple
+from typing import Any, ClassVar, Iterable, Iterator, Mapping, Sequence, Tuple
 
 from .formal_verification_contracts import (
     AssuranceLevel,
@@ -42,6 +42,7 @@ from .formal_verification_contracts import (
     assurance_satisfies,
     canonical_json,
 )
+from .proof_metrics import validate_public_projection
 
 POLICY_VERSION = 1
 SCHEMA_VERSION = POLICY_VERSION
@@ -69,10 +70,14 @@ POLICY_GATE_DECISION_SCHEMA = (
 MERGE_PROOF_GATE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/merge-proof-gate-receipt@1"
 )
+PROOF_ROLLOUT_STATUS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/proof-rollout-status@1"
+)
 
 MAX_SCOPE_ITEMS = 256
 MAX_OVERRIDE_LIFETIME_SECONDS = 7 * 24 * 60 * 60
 DEFAULT_MAX_OVERRIDE_SECONDS = 24 * 60 * 60
+MAX_ROLLOUT_STATUS_BYTES = 1024 * 1024
 
 
 class PolicyValidationError(ContractValidationError):
@@ -2745,6 +2750,469 @@ def evaluate_proof_gate(
     )
 
 
+@dataclass(frozen=True)
+class ProofRolloutStatus(Mapping[str, Any]):
+    """Public, bounded operator view of proof rollout and gate health.
+
+    This snapshot intentionally derives ``rollout_mode`` only from the
+    content-addressed policy.  Capability or provider status is diagnostic
+    context and therefore cannot silently downgrade an enforcement policy.
+    """
+
+    payload: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        copied = json.loads(json.dumps(dict(self.payload), sort_keys=True))
+        if copied.get("schema") != PROOF_ROLLOUT_STATUS_SCHEMA:
+            raise PolicyValidationError("unsupported proof rollout status schema")
+        if copied.get("schema_version") != 1:
+            raise PolicyValidationError(
+                "unsupported proof rollout status schema version"
+            )
+        if copied.get("rollout_mode") not in {
+            item.value for item in RolloutMode
+        }:
+            raise PolicyValidationError("invalid proof rollout status mode")
+        if copied.get("mode_authority") != "policy":
+            raise PolicyValidationError("rollout mode authority must be policy")
+        if copied.get("provider_health_can_change_mode") is not False:
+            raise PolicyValidationError(
+                "provider health cannot be a rollout mode authority"
+            )
+        mode = RolloutMode(copied["rollout_mode"])
+        if copied.get("blocking") is not mode.blocks:
+            raise PolicyValidationError(
+                "rollout blocking state must be derived from policy mode"
+            )
+        if not _text(copied.get("policy_id"), "policy_id", required=True):
+            raise PolicyValidationError("proof rollout policy identity is required")
+        allowed_fields = {
+            "schema",
+            "schema_version",
+            "snapshot_id",
+            "policy_id",
+            "policy_name",
+            "policy_version",
+            "rollout_mode",
+            "mode_authority",
+            "blocking",
+            "protected_scopes",
+            "canary_percent",
+            "canary_path_patterns",
+            "capability_health",
+            "active_plans",
+            "selections",
+            "decisions",
+            "assurance_counts",
+            "failures",
+            "fallbacks",
+            "overrides",
+            "transitions",
+            "provider_health_can_change_mode",
+            "generated_at",
+        }
+        unknown_fields = set(copied) - allowed_fields
+        if unknown_fields:
+            raise PolicyValidationError(
+                "unsupported proof rollout status fields: "
+                + ", ".join(sorted(unknown_fields))
+            )
+        sequence_limits = {
+            "protected_scopes": MAX_SCOPE_ITEMS,
+            "canary_path_patterns": MAX_SCOPE_ITEMS,
+            "capability_health": 128,
+            "active_plans": 128,
+            "selections": 128,
+            "decisions": 128,
+            "failures": 128,
+            "fallbacks": 128,
+            "overrides": 128,
+            "transitions": 128,
+        }
+        for field_name, limit in sequence_limits.items():
+            values = copied.get(field_name)
+            if (
+                not isinstance(values, list)
+                or len(values) > limit
+            ):
+                raise PolicyValidationError(
+                    f"{field_name} must be a bounded list"
+                )
+        for capability in copied["capability_health"]:
+            if (
+                not isinstance(capability, Mapping)
+                or capability.get("authoritative") is not False
+            ):
+                raise PolicyValidationError(
+                    "capability health must remain non-authoritative"
+                )
+        for override in copied["overrides"]:
+            if (
+                not isinstance(override, Mapping)
+                or override.get("rewrites_proof_verdict") is not False
+            ):
+                raise PolicyValidationError(
+                    "override status cannot rewrite a proof verdict"
+                )
+        try:
+            validate_public_projection(copied)
+        except ValueError as exc:
+            raise PolicyValidationError(str(exc)) from exc
+        if len(
+            json.dumps(copied, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ) > MAX_ROLLOUT_STATUS_BYTES:
+            raise PolicyValidationError("proof rollout status exceeds its byte bound")
+        supplied_id = str(copied.get("snapshot_id") or "")
+        identity_material = dict(copied)
+        identity_material.pop("snapshot_id", None)
+        identity_material.pop("generated_at", None)
+        expected_id = hashlib.sha256(
+            json.dumps(
+                identity_material, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+        if supplied_id != expected_id:
+            raise PolicyValidationError(
+                "proof rollout status identity is inconsistent"
+            )
+        object.__setattr__(self, "payload", copied)
+
+    @property
+    def snapshot_id(self) -> str:
+        return str(self.payload.get("snapshot_id") or "")
+
+    def to_dict(self) -> dict[str, Any]:
+        return json.loads(json.dumps(self.payload, sort_keys=True))
+
+    def __getitem__(self, key: str) -> Any:
+        return self.payload[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.payload)
+
+    def __len__(self) -> int:
+        return len(self.payload)
+
+
+def _rollout_record(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    converter = getattr(value, "to_dict", None)
+    if callable(converter):
+        converted = converter()
+        return dict(converted) if isinstance(converted, Mapping) else {}
+    return {}
+
+
+def _rollout_capabilities(value: Any) -> list[dict[str, Any]]:
+    """Return capability health without provider payloads or proof claims."""
+
+    if isinstance(value, Mapping):
+        raw_items = sorted(value.items(), key=lambda item: str(item[0]))
+    elif isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        raw_items = enumerate(value)
+    else:
+        raw_items = ()
+    rows: list[dict[str, Any]] = []
+    for key, raw in raw_items:
+        record = _rollout_record(raw)
+        name = _text(
+            record.get("capability")
+            or record.get("provider_id")
+            or record.get("name")
+            or str(key),
+            "capability",
+        )
+        status = (
+            _text(
+                record.get("status") or record.get("health"),
+                "capability.status",
+            ).lower()
+            or "unknown"
+        )
+        rows.append(
+            {
+                "capability": name[:256],
+                "status": status[:64],
+                "healthy": bool(
+                    record.get("healthy") is True
+                    if record.get("healthy") is not None
+                    else status in {"available", "healthy", "ready", "ok"}
+                ),
+                "reason_code": _text(
+                    record.get("reason_code"), "capability.reason_code"
+                )[:256],
+                "version": _text(
+                    record.get("version"), "capability.version"
+                )[:128],
+                "authoritative": False,
+            }
+        )
+        if len(rows) >= 128:
+            break
+    return sorted(rows, key=lambda row: row["capability"])
+
+
+def _rollout_plans(values: Iterable[Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for raw in values:
+        record = _rollout_record(raw)
+        plan = (
+            record.get("plan")
+            if isinstance(record.get("plan"), Mapping)
+            else record
+        )
+        snapshot = (
+            record.get("snapshot")
+            if isinstance(record.get("snapshot"), Mapping)
+            else {}
+        )
+        steps = (
+            plan.get("steps")
+            if isinstance(plan.get("steps"), Sequence)
+            and not isinstance(plan.get("steps"), (str, bytes, bytearray))
+            else ()
+        )
+        nodes = (
+            snapshot.get("nodes")
+            if isinstance(snapshot.get("nodes"), Sequence)
+            and not isinstance(snapshot.get("nodes"), (str, bytes, bytearray))
+            else ()
+        )
+        statuses = [
+            _text(
+                _rollout_record(node).get("state")
+                or _rollout_record(node).get("status"),
+                "plan.node.status",
+            )
+            for node in nodes[:MAX_SCOPE_ITEMS]
+        ]
+        rows.append(
+            {
+                "plan_id": _text(
+                    plan.get("plan_id") or plan.get("content_id"),
+                    "plan.plan_id",
+                )[:256],
+                "repository_tree_id": _text(
+                    plan.get("repository_tree_id"),
+                    "plan.repository_tree_id",
+                )[:256],
+                "status": _text(
+                    snapshot.get("status")
+                    or record.get("status")
+                    or ("active" if statuses else "planned"),
+                    "plan.status",
+                )[:64],
+                "step_count": len(steps),
+                "active_step_count": sum(
+                    status.lower() in {"ready", "running", "pending"}
+                    for status in statuses
+                ),
+                "failed_step_count": sum(
+                    status.lower()
+                    in {"failed", "blocked", "unsupported", "unavailable", "timed_out"}
+                    for status in statuses
+                ),
+            }
+        )
+        if len(rows) >= 128:
+            break
+    return sorted(rows, key=lambda row: (row["plan_id"], row["repository_tree_id"]))
+
+
+def build_proof_rollout_status(
+    policy: FormalVerificationPolicy | Mapping[str, Any],
+    *,
+    selections: Iterable[PolicySelection | Mapping[str, Any]] = (),
+    decisions: Iterable[
+        PolicyGateDecision | MergeProofGateReceipt | Mapping[str, Any]
+    ] = (),
+    capability_health: Any = None,
+    active_plans: Iterable[Any] = (),
+    overrides: Iterable[OverrideReceipt | Mapping[str, Any]] = (),
+    transitions: Iterable[RolloutTransitionReceipt | Mapping[str, Any]] = (),
+    generated_at: datetime | str | None = None,
+) -> ProofRolloutStatus:
+    """Build a truthful status projection for dashboards and supervisor state."""
+
+    normalized_policy = (
+        policy
+        if isinstance(policy, FormalVerificationPolicy)
+        else FormalVerificationPolicy.from_dict(policy)
+    )
+    current = _now(generated_at)
+    protected_scopes = sorted(
+        {
+            pattern
+            for rule in normalized_policy.rules
+            for pattern in rule.path_patterns
+        }
+    )[:MAX_SCOPE_ITEMS]
+    selection_rows: list[dict[str, Any]] = []
+    fallback_names: set[str] = set()
+    for raw in selections:
+        selection = (
+            raw
+            if isinstance(raw, PolicySelection)
+            else PolicySelection.from_dict(raw)
+        )
+        modes = {
+            normalized_policy.effective_mode(requirement).value
+            for requirement in selection.requirements
+        }
+        for requirement in selection.requirements:
+            fallback_names.update(requirement.fallback_validations)
+        selection_rows.append(
+            {
+                "selection_id": selection.selection_id,
+                "repository_tree_id": selection.repository_tree_id,
+                "requirement_count": len(selection.requirements),
+                "effective_modes": sorted(modes),
+                "required_assurance": selection.required_assurance.value,
+            }
+        )
+        if len(selection_rows) >= 128:
+            break
+
+    assurance_counts = {item.value: 0 for item in AssuranceLevel}
+    failures: list[dict[str, Any]] = []
+    decision_rows: list[dict[str, Any]] = []
+    for raw in decisions:
+        if isinstance(raw, MergeProofGateReceipt):
+            decision = raw.decision
+        elif isinstance(raw, PolicyGateDecision):
+            decision = raw
+        else:
+            record = _rollout_record(raw)
+            decision_record = (
+                record.get("decision")
+                if isinstance(record.get("decision"), Mapping)
+                else record
+            )
+            decision = PolicyGateDecision.from_dict(decision_record)
+        for result in decision.results:
+            assurance_counts[result.authoritative_assurance.value] += 1
+            fallback_names.update(result.missing_or_failed_validations)
+            for reason in result.reason_codes:
+                failures.append(
+                    {
+                        "requirement_id": result.requirement_id,
+                        "path": result.path,
+                        "reason_code": reason,
+                        "would_block": result.would_block,
+                    }
+                )
+        decision_rows.append(
+            {
+                "decision_id": decision.decision_id,
+                "repository_tree_id": decision.repository_tree_id,
+                "rollout_mode": decision.rollout_mode.value,
+                "allowed": decision.allowed,
+                "blocked_requirements": list(decision.blocked_requirements),
+                "shadow_would_block": list(decision.shadow_would_block),
+                "override_receipt_id": decision.override_receipt_id,
+            }
+        )
+        if len(decision_rows) >= 128:
+            break
+
+    override_rows: list[dict[str, Any]] = []
+    for raw in overrides:
+        receipt = (
+            raw if isinstance(raw, OverrideReceipt) else OverrideReceipt.from_dict(raw)
+        )
+        issued = _timestamp(receipt.issued_at, "issued_at")[1]
+        expires = _timestamp(receipt.expires_at, "expires_at")[1]
+        state = (
+            "not_yet_valid"
+            if current < issued
+            else "expired"
+            if current >= expires
+            else "active"
+        )
+        override_rows.append(
+            {
+                "receipt_id": receipt.receipt_id,
+                "policy_id": receipt.policy_id,
+                "repository_tree_id": receipt.repository_tree_id,
+                "paths": list(receipt.paths),
+                "ast_scope_ids": list(receipt.ast_scope_ids),
+                "invariant_classes": list(receipt.invariant_classes),
+                "allowed_modes": [mode.value for mode in receipt.allowed_modes],
+                "actor": receipt.actor[:256],
+                "ticket_id": receipt.ticket_id[:256],
+                "issued_at": receipt.issued_at,
+                "expires_at": receipt.expires_at,
+                "state": state,
+                # Underlying proof results live in decisions and are never
+                # replaced with an optimistic status here.
+                "rewrites_proof_verdict": False,
+            }
+        )
+        if len(override_rows) >= 128:
+            break
+
+    transition_rows: list[dict[str, Any]] = []
+    for raw in transitions:
+        receipt = (
+            raw
+            if isinstance(raw, RolloutTransitionReceipt)
+            else RolloutTransitionReceipt.from_dict(raw)
+        )
+        transition_rows.append(
+            {
+                "receipt_id": receipt.receipt_id,
+                "policy_id": receipt.policy_id,
+                "from_mode": receipt.from_mode.value,
+                "target_mode": receipt.target_mode.value,
+                "actor": receipt.actor[:256],
+                "issued_at": receipt.issued_at,
+                "evidence_receipt_ids": list(receipt.evidence_receipt_ids),
+            }
+        )
+        if len(transition_rows) >= 128:
+            break
+
+    material = {
+        "schema": PROOF_ROLLOUT_STATUS_SCHEMA,
+        "schema_version": 1,
+        "policy_id": normalized_policy.policy_id,
+        "policy_name": normalized_policy.name,
+        "policy_version": normalized_policy.version,
+        "rollout_mode": normalized_policy.rollout_mode.value,
+        "mode_authority": "policy",
+        "blocking": normalized_policy.rollout_mode.blocks,
+        "protected_scopes": protected_scopes,
+        "canary_percent": normalized_policy.canary_percent,
+        "canary_path_patterns": list(normalized_policy.canary_path_patterns),
+        "capability_health": _rollout_capabilities(capability_health),
+        "active_plans": _rollout_plans(active_plans),
+        "selections": selection_rows,
+        "decisions": decision_rows,
+        "assurance_counts": assurance_counts,
+        "failures": failures[:128],
+        "fallbacks": sorted(fallback_names)[:128],
+        "overrides": override_rows,
+        "transitions": transition_rows,
+        "provider_health_can_change_mode": False,
+        "generated_at": current.isoformat(timespec="microseconds").replace(
+            "+00:00", "Z"
+        ),
+    }
+    identity_material = dict(material)
+    identity_material.pop("generated_at")
+    snapshot_id = hashlib.sha256(
+        json.dumps(
+            identity_material, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    return ProofRolloutStatus({**material, "snapshot_id": snapshot_id})
+
+
 def default_formal_verification_policy(
     mode: RolloutMode = RolloutMode.SHADOW,
 ) -> FormalVerificationPolicy:
@@ -2793,7 +3261,9 @@ __all__ = [
     "DEFAULT_MAX_OVERRIDE_SECONDS",
     "FORMAL_VERIFICATION_POLICY_SCHEMA",
     "MAX_OVERRIDE_LIFETIME_SECONDS",
+    "MAX_ROLLOUT_STATUS_BYTES",
     "MERGE_PROOF_GATE_RECEIPT_SCHEMA",
+    "PROOF_ROLLOUT_STATUS_SCHEMA",
     "OVERRIDE_RECEIPT_SCHEMA",
     "POLICY_GATE_DECISION_SCHEMA",
     "POLICY_SELECTION_SCHEMA",
@@ -2830,6 +3300,7 @@ __all__ = [
     "ProofRequirement",
     "ProofResult",
     "ProofResultStatus",
+    "ProofRolloutStatus",
     "RequirementGateResult",
     "RiskLevel",
     "RiskSelectedProofPolicy",
@@ -2842,6 +3313,7 @@ __all__ = [
     "default_formal_verification_policy",
     "default_policy",
     "build_merge_proof_gate_receipt",
+    "build_proof_rollout_status",
     "evaluate_proof_gate",
     "select_proof_requirements",
 ]

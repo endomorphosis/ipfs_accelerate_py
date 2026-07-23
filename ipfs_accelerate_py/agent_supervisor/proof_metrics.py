@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -34,6 +35,21 @@ PROOF_METRICS_SCHEMA_VERSION: Final = 1
 PROOF_METRICS_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.proof-metrics@1"
 )
+PROOF_BENCHMARK_SCHEMA_VERSION: Final = 1
+PROOF_BENCHMARK_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.proof-benchmark@1"
+)
+PROOF_BENCHMARK_PHASES: Final = (
+    "translation",
+    "solver",
+    "kernel",
+    "cache",
+    "model",
+    "validation",
+    "merge",
+)
+PROOF_BENCHMARK_MODES: Final = ("cold", "warm", "parallel")
+MAX_PROOF_BENCHMARK_SAMPLES: Final = 256
 UNKNOWN_METRIC_DIMENSION: Final = "unknown"
 PROOF_METRIC_DIMENSIONS: Final = (
     "goal_cid",
@@ -1027,6 +1043,509 @@ class ProofMetricsSnapshot(Mapping[str, Any]):
         return len(self.payload)
 
 
+@dataclass(frozen=True)
+class ProofBenchmarkThresholds:
+    """Reviewed rollout limits for proof-context and throughput experiments.
+
+    Fractions use the closed interval ``[0, 1]``.  A report is suitable for
+    rollout expansion only when every applicable threshold passes.  Explicit
+    limits avoid turning a benchmark dashboard into an optimistic provider
+    claim.
+    """
+
+    min_context_byte_reduction: float = 0.40
+    min_context_token_reduction: float = 0.40
+    min_retrieval_precision: float = 0.80
+    max_accepted_task_cost: float = 1.00
+    max_throughput_regression: float = 0.20
+    min_warm_cache_hit_rate: float = 0.50
+    max_nested_oversubscription: int = 0
+    min_cancellation_savings: float = 0.10
+    min_single_flight_savings: float = 0.10
+    max_unsupported_template_rate: float = 0.25
+    max_cpu_percent: float = 95.0
+    max_memory_peak_bytes: int = 2 * 1024 * 1024 * 1024
+    required_modes: tuple[str, ...] = PROOF_BENCHMARK_MODES
+
+    def __post_init__(self) -> None:
+        fraction_fields = (
+            "min_context_byte_reduction",
+            "min_context_token_reduction",
+            "min_retrieval_precision",
+            "max_throughput_regression",
+            "min_warm_cache_hit_rate",
+            "min_cancellation_savings",
+            "min_single_flight_savings",
+            "max_unsupported_template_rate",
+        )
+        for name in fraction_fields:
+            value = float(getattr(self, name))
+            if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be between zero and one")
+            object.__setattr__(self, name, value)
+        accepted_cost = float(self.max_accepted_task_cost)
+        if not math.isfinite(accepted_cost) or accepted_cost < 0:
+            raise ValueError("max_accepted_task_cost must be non-negative")
+        object.__setattr__(self, "max_accepted_task_cost", accepted_cost)
+        if int(self.max_nested_oversubscription) < 0:
+            raise ValueError("max_nested_oversubscription must be non-negative")
+        cpu_percent = float(self.max_cpu_percent)
+        if not math.isfinite(cpu_percent) or not 0.0 < cpu_percent <= 100.0:
+            raise ValueError("max_cpu_percent must be in (0, 100]")
+        object.__setattr__(self, "max_cpu_percent", cpu_percent)
+        if int(self.max_memory_peak_bytes) <= 0:
+            raise ValueError("max_memory_peak_bytes must be positive")
+        modes = tuple(str(mode).strip().lower() for mode in self.required_modes)
+        if (
+            not modes
+            or len(set(modes)) != len(modes)
+            or any(mode not in PROOF_BENCHMARK_MODES for mode in modes)
+        ):
+            raise ValueError(
+                "required_modes must contain unique cold, warm, or parallel modes"
+            )
+        object.__setattr__(self, "required_modes", modes)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+        }
+
+
+@dataclass(frozen=True)
+class ProofBenchmarkReport(Mapping[str, Any]):
+    """Bounded, deterministic result of one rollout benchmark matrix."""
+
+    payload: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        copied = json.loads(json.dumps(dict(self.payload), sort_keys=True))
+        if copied.get("schema") != PROOF_BENCHMARK_SCHEMA:
+            raise ValueError("unsupported proof benchmark schema")
+        if copied.get("schema_version") != PROOF_BENCHMARK_SCHEMA_VERSION:
+            raise ValueError("unsupported proof benchmark schema version")
+        samples = copied.get("samples")
+        failures = copied.get("failures")
+        if (
+            not isinstance(samples, list)
+            or not 0 < len(samples) <= MAX_PROOF_BENCHMARK_SAMPLES
+        ):
+            raise ValueError("proof benchmark samples must be non-empty and bounded")
+        if not isinstance(failures, list):
+            raise ValueError("proof benchmark failures must be a list")
+        if copied.get("sample_count") != len(samples):
+            raise ValueError("proof benchmark sample count is inconsistent")
+        if copied.get("failure_count") != len(failures):
+            raise ValueError("proof benchmark failure count is inconsistent")
+        modes = sorted(
+            {
+                str(sample.get("mode") or "")
+                for sample in samples
+                if isinstance(sample, Mapping)
+            }
+        )
+        if copied.get("modes") != modes:
+            raise ValueError("proof benchmark modes are inconsistent")
+        if copied.get("rollout_expansion_allowed") is not (not failures):
+            raise ValueError("proof benchmark rollout decision is inconsistent")
+        if copied.get("bounded") is not True:
+            raise ValueError("proof benchmark report must be bounded")
+        if copied.get("contains_prompts") is not False:
+            raise ValueError("proof benchmark report cannot contain prompts")
+        if copied.get("contains_proof_transcripts") is not False:
+            raise ValueError("proof benchmark report cannot contain proof transcripts")
+        validate_public_projection(copied)
+        supplied_id = str(copied.get("report_id") or "")
+        identity_material = dict(copied)
+        identity_material.pop("report_id", None)
+        identity_material.pop("generated_at", None)
+        expected_id = hashlib.sha256(
+            json.dumps(
+                identity_material, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+        if supplied_id != expected_id:
+            raise ValueError("proof benchmark report identity is inconsistent")
+        object.__setattr__(self, "payload", copied)
+
+    @property
+    def report_id(self) -> str:
+        return str(self.payload.get("report_id") or "")
+
+    @property
+    def rollout_expansion_allowed(self) -> bool:
+        return bool(self.payload.get("rollout_expansion_allowed"))
+
+    def to_dict(self) -> dict[str, Any]:
+        return json.loads(json.dumps(self.payload, sort_keys=True))
+
+    def __getitem__(self, key: str) -> Any:
+        return self.payload[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.payload)
+
+    def __len__(self) -> int:
+        return len(self.payload)
+
+
+def _benchmark_fraction(numerator: float, denominator: float) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(max(0.0, numerator) / denominator, 6)
+
+
+def _benchmark_integer(
+    value: Any,
+    field_name: str,
+    *,
+    default: int = 0,
+) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a non-negative integer")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{field_name} must be a non-negative integer") from exc
+    if not math.isfinite(numeric) or numeric < 0 or not numeric.is_integer():
+        raise ValueError(f"{field_name} must be a non-negative integer")
+    return int(numeric)
+
+
+def _benchmark_number(
+    value: Any,
+    field_name: str,
+    *,
+    default: float = 0.0,
+) -> float:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a non-negative number")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{field_name} must be a non-negative number") from exc
+    if not math.isfinite(numeric) or numeric < 0:
+        raise ValueError(f"{field_name} must be a non-negative number")
+    return numeric
+
+
+def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
+    """Normalize one benchmark run without retaining prompts or transcripts."""
+
+    mode = _text(value.get("mode") or value.get("run_mode"), "cold").lower()
+    if mode not in PROOF_BENCHMARK_MODES:
+        raise ValueError("benchmark mode must be cold, warm, or parallel")
+    sample_id = _text(value.get("sample_id"), f"sample:{ordinal}")
+    raw_bytes = _benchmark_integer(
+        value.get("raw_context_bytes"), "raw_context_bytes"
+    )
+    capsule_bytes = _benchmark_integer(
+        value.get("capsule_context_bytes"), "capsule_context_bytes"
+    )
+    raw_tokens = _benchmark_integer(
+        value.get("raw_context_tokens"), "raw_context_tokens"
+    )
+    capsule_tokens = _benchmark_integer(
+        value.get("capsule_context_tokens"), "capsule_context_tokens"
+    )
+    retrieved = _benchmark_integer(value.get("retrieved_items"), "retrieved_items")
+    relevant = _benchmark_integer(
+        value.get("relevant_retrieved_items"), "relevant_retrieved_items"
+    )
+    if capsule_bytes > raw_bytes or capsule_tokens > raw_tokens:
+        raise ValueError("bounded context cannot exceed its raw baseline")
+    if retrieved < 0 or relevant < 0 or relevant > retrieved:
+        raise ValueError("retrieval counts are inconsistent")
+
+    accepted_tasks = _benchmark_integer(
+        value.get("accepted_tasks"), "accepted_tasks"
+    )
+    attempted_tasks = _benchmark_integer(
+        value.get("attempted_tasks"),
+        "attempted_tasks",
+        default=accepted_tasks,
+    )
+    if attempted_tasks < accepted_tasks:
+        raise ValueError("accepted task counts are inconsistent")
+    model_cost = _benchmark_number(
+        value.get("model_cost")
+        if value.get("model_cost") is not None
+        else value.get("accepted_task_cost_total"),
+        "model_cost",
+    )
+    phase_latencies = {
+        phase: _benchmark_integer(
+            value.get(f"{phase}_latency_ms")
+            if value.get(f"{phase}_latency_ms") is not None
+            else _record(value.get("phase_latencies_ms")).get(phase),
+            f"{phase}_latency_ms",
+        )
+        for phase in PROOF_BENCHMARK_PHASES
+    }
+    wall_time_ms = _benchmark_integer(
+        value.get("wall_time_ms"),
+        "wall_time_ms",
+        default=sum(phase_latencies.values()),
+    )
+    baseline_throughput = _benchmark_number(
+        value.get("baseline_accepted_tasks_per_second"),
+        "baseline_accepted_tasks_per_second",
+    )
+    throughput = (
+        round(accepted_tasks / (wall_time_ms / 1000.0), 6)
+        if wall_time_ms > 0
+        else 0.0
+    )
+    requested_workers = _benchmark_integer(
+        value.get("requested_workers"), "requested_workers"
+    )
+    peak_workers = _benchmark_integer(value.get("peak_workers"), "peak_workers")
+    nested_workers = _benchmark_integer(
+        value.get("nested_workers"), "nested_workers"
+    )
+    worker_limit = _benchmark_integer(
+        value.get("worker_limit"),
+        "worker_limit",
+        default=requested_workers,
+    )
+    oversubscription = max(0, peak_workers + nested_workers - worker_limit)
+    cancelled_baseline_ms = _benchmark_integer(
+        value.get("cancelled_work_baseline_ms"),
+        "cancelled_work_baseline_ms",
+    )
+    cancelled_actual_ms = _benchmark_integer(
+        value.get("cancelled_work_actual_ms"),
+        "cancelled_work_actual_ms",
+    )
+    flights_requested = _benchmark_integer(
+        value.get("single_flight_requests"), "single_flight_requests"
+    )
+    flights_executed = _benchmark_integer(
+        value.get("single_flight_executions"), "single_flight_executions"
+    )
+    if flights_executed > flights_requested:
+        raise ValueError("single-flight executions cannot exceed requests")
+    cache_lookups = _benchmark_integer(
+        value.get("cache_lookups"), "cache_lookups"
+    )
+    cache_hits = _benchmark_integer(value.get("cache_hits"), "cache_hits")
+    if cache_hits > cache_lookups:
+        raise ValueError("cache hits cannot exceed lookups")
+    templates = _benchmark_integer(value.get("template_count"), "template_count")
+    unsupported = _benchmark_integer(
+        value.get("unsupported_template_count"),
+        "unsupported_template_count",
+    )
+    if unsupported > templates:
+        raise ValueError("unsupported templates cannot exceed template count")
+
+    return {
+        "sample_id": sample_id,
+        "mode": mode,
+        "raw_context_bytes": raw_bytes,
+        "capsule_context_bytes": capsule_bytes,
+        "context_byte_reduction": _benchmark_fraction(
+            raw_bytes - capsule_bytes, raw_bytes
+        ),
+        "raw_context_tokens": raw_tokens,
+        "capsule_context_tokens": capsule_tokens,
+        "context_token_reduction": _benchmark_fraction(
+            raw_tokens - capsule_tokens, raw_tokens
+        ),
+        "retrieved_items": retrieved,
+        "relevant_retrieved_items": relevant,
+        "retrieval_precision": _benchmark_fraction(relevant, retrieved),
+        "attempted_tasks": attempted_tasks,
+        "accepted_tasks": accepted_tasks,
+        "accepted_task_cost": round(
+            model_cost / accepted_tasks, 6
+        ) if accepted_tasks else 0.0,
+        "phase_latencies_ms": phase_latencies,
+        "wall_time_ms": wall_time_ms,
+        "accepted_tasks_per_second": throughput,
+        "baseline_accepted_tasks_per_second": baseline_throughput,
+        "throughput_regression": (
+            _benchmark_fraction(baseline_throughput - throughput, baseline_throughput)
+            if baseline_throughput
+            else 0.0
+        ),
+        "cpu_percent": _benchmark_number(
+            value.get("cpu_percent"), "cpu_percent"
+        ),
+        "cpu_time_ms": _benchmark_integer(
+            value.get("cpu_time_ms"), "cpu_time_ms"
+        ),
+        "memory_peak_bytes": _benchmark_integer(
+            value.get("memory_peak_bytes"), "memory_peak_bytes"
+        ),
+        "requested_workers": requested_workers,
+        "worker_limit": worker_limit,
+        "peak_workers": peak_workers,
+        "nested_workers": nested_workers,
+        "nested_oversubscription": oversubscription,
+        "cache_lookups": cache_lookups,
+        "cache_hits": cache_hits,
+        "cache_hit_rate": _benchmark_fraction(cache_hits, cache_lookups),
+        "cancellation_savings": _benchmark_fraction(
+            cancelled_baseline_ms - cancelled_actual_ms,
+            cancelled_baseline_ms,
+        ),
+        "single_flight_requests": flights_requested,
+        "single_flight_executions": flights_executed,
+        "single_flight_savings": _benchmark_fraction(
+            flights_requested - flights_executed, flights_requested
+        ),
+        "template_count": templates,
+        "unsupported_template_count": unsupported,
+        "unsupported_template_rate": _benchmark_fraction(unsupported, templates),
+    }
+
+
+def build_proof_benchmark_report(
+    samples: Iterable[Mapping[str, Any]],
+    *,
+    thresholds: ProofBenchmarkThresholds | Mapping[str, Any] | None = None,
+    generated_at: datetime | str | None = None,
+) -> ProofBenchmarkReport:
+    """Evaluate cold, warm, and parallel proof runs against rollout thresholds."""
+
+    if thresholds is None:
+        limits = ProofBenchmarkThresholds()
+    elif isinstance(thresholds, ProofBenchmarkThresholds):
+        limits = thresholds
+    else:
+        limits = ProofBenchmarkThresholds(**dict(thresholds))
+    normalized: list[dict[str, Any]] = []
+    for ordinal, sample in enumerate(samples, start=1):
+        if ordinal > MAX_PROOF_BENCHMARK_SAMPLES:
+            raise ValueError("proof benchmark sample count exceeds its bound")
+        normalized.append(_benchmark_sample(dict(sample), ordinal))
+    if not normalized:
+        raise ValueError("at least one proof benchmark sample is required")
+
+    failures: list[dict[str, str]] = []
+
+    def require(sample: Mapping[str, Any], metric: str, passed: bool) -> None:
+        if not passed:
+            failures.append(
+                {"sample_id": str(sample["sample_id"]), "reason_code": metric}
+            )
+
+    present_modes = {sample["mode"] for sample in normalized}
+    for required_mode in limits.required_modes:
+        if required_mode not in present_modes:
+            failures.append(
+                {
+                    "sample_id": "matrix",
+                    "reason_code": f"{required_mode}_sample_missing",
+                }
+            )
+
+    for sample in normalized:
+        require(sample, "accepted_task_sample_missing", sample["accepted_tasks"] > 0)
+        require(
+            sample,
+            "throughput_baseline_missing",
+            sample["baseline_accepted_tasks_per_second"] > 0,
+        )
+        require(sample, "template_sample_missing", sample["template_count"] > 0)
+        require(
+            sample,
+            "context_byte_reduction_below_threshold",
+            sample["context_byte_reduction"] >= limits.min_context_byte_reduction,
+        )
+        require(
+            sample,
+            "context_token_reduction_below_threshold",
+            sample["context_token_reduction"] >= limits.min_context_token_reduction,
+        )
+        require(
+            sample,
+            "retrieval_precision_below_threshold",
+            sample["retrieval_precision"] >= limits.min_retrieval_precision,
+        )
+        require(
+            sample,
+            "accepted_task_cost_above_threshold",
+            sample["accepted_task_cost"] <= limits.max_accepted_task_cost,
+        )
+        require(
+            sample,
+            "throughput_regression_above_threshold",
+            sample["throughput_regression"] <= limits.max_throughput_regression,
+        )
+        require(
+            sample,
+            "cpu_usage_above_threshold",
+            sample["cpu_percent"] <= limits.max_cpu_percent,
+        )
+        require(
+            sample,
+            "memory_usage_above_threshold",
+            sample["memory_peak_bytes"] <= limits.max_memory_peak_bytes,
+        )
+        require(
+            sample,
+            "unsupported_template_rate_above_threshold",
+            sample["unsupported_template_rate"]
+            <= limits.max_unsupported_template_rate,
+        )
+        if sample["mode"] == "warm":
+            require(
+                sample,
+                "warm_cache_hit_rate_below_threshold",
+                sample["cache_hit_rate"] >= limits.min_warm_cache_hit_rate,
+            )
+        if sample["mode"] == "parallel":
+            require(
+                sample,
+                "nested_oversubscription_detected",
+                sample["nested_oversubscription"]
+                <= limits.max_nested_oversubscription,
+            )
+            require(
+                sample,
+                "cancellation_savings_below_threshold",
+                sample["cancellation_savings"]
+                >= limits.min_cancellation_savings,
+            )
+            require(
+                sample,
+                "single_flight_savings_below_threshold",
+                sample["single_flight_savings"]
+                >= limits.min_single_flight_savings,
+            )
+
+    material = {
+        "schema": PROOF_BENCHMARK_SCHEMA,
+        "schema_version": PROOF_BENCHMARK_SCHEMA_VERSION,
+        "thresholds": limits.to_dict(),
+        "samples": normalized,
+        "sample_count": len(normalized),
+        "modes": sorted({sample["mode"] for sample in normalized}),
+        "failure_count": len(failures),
+        "failures": failures,
+        "rollout_expansion_allowed": not failures,
+        "bounded": True,
+        "contains_prompts": False,
+        "contains_proof_transcripts": False,
+        "generated_at": _utc_iso(generated_at),
+    }
+    identity_material = dict(material)
+    identity_material.pop("generated_at")
+    report_id = hashlib.sha256(
+        json.dumps(
+            identity_material, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    return ProofBenchmarkReport({**material, "report_id": report_id})
+
+
 def build_proof_metrics_snapshot(
     plan: Any | None = None,
     *,
@@ -1640,13 +2159,21 @@ __all__ = [
     "MAX_PUBLIC_MAPPING_ITEMS",
     "MAX_PUBLIC_SEQUENCE_ITEMS",
     "MAX_PUBLIC_TEXT_BYTES",
+    "MAX_PROOF_BENCHMARK_SAMPLES",
     "PROOF_LATENCY_FIELDS",
+    "PROOF_BENCHMARK_MODES",
+    "PROOF_BENCHMARK_PHASES",
+    "PROOF_BENCHMARK_SCHEMA",
+    "PROOF_BENCHMARK_SCHEMA_VERSION",
     "PROOF_METRIC_DIMENSIONS",
     "PROOF_METRICS_SCHEMA",
     "PROOF_METRICS_SCHEMA_VERSION",
     "ProofMetricsSnapshot",
+    "ProofBenchmarkReport",
+    "ProofBenchmarkThresholds",
     "UNKNOWN_METRIC_DIMENSION",
     "build_proof_metrics_snapshot",
+    "build_proof_benchmark_report",
     "build_proof_metrics",
     "derive_proof_metrics",
     "normalize_proof_metric_identity",

@@ -1750,12 +1750,21 @@ def ready_task_cids(snapshot: SchedulerSnapshot | Mapping[str, Any]) -> tuple[st
 # Proof observability uses the same operator-facing module as a discovery
 # surface while keeping its stricter public-projection policy isolated.
 from .proof_metrics import (  # noqa: E402  (intentional late compatibility import)
+    PROOF_BENCHMARK_SCHEMA,
     PROOF_METRIC_DIMENSIONS,
     PROOF_METRICS_SCHEMA,
+    ProofBenchmarkReport,
+    ProofBenchmarkThresholds,
     ProofMetricsSnapshot,
+    build_proof_benchmark_report,
     build_proof_metrics,
     build_proof_metrics_snapshot,
     normalize_proof_metric_identity,
+)
+from .formal_verification_policy import (  # noqa: E402
+    PROOF_ROLLOUT_STATUS_SCHEMA,
+    ProofRolloutStatus,
+    build_proof_rollout_status,
 )
 
 
@@ -1773,9 +1782,16 @@ __all__ = [
     "SchedulerSnapshot",
     "PROOF_METRIC_DIMENSIONS",
     "PROOF_METRICS_SCHEMA",
+    "PROOF_BENCHMARK_SCHEMA",
+    "PROOF_ROLLOUT_STATUS_SCHEMA",
+    "ProofBenchmarkReport",
+    "ProofBenchmarkThresholds",
     "ProofMetricsSnapshot",
+    "ProofRolloutStatus",
+    "build_proof_benchmark_report",
     "build_proof_metrics",
     "build_proof_metrics_snapshot",
+    "build_proof_rollout_status",
     "build_scheduler_snapshot",
     "build_scheduler_snapshot_from_paths",
     "derive_scheduler_snapshot",

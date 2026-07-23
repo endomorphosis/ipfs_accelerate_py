@@ -84,6 +84,54 @@ OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
 CODEBASE_REFILL_ANALYZER_VERSION = "codebase-scan-v1"
 
 
+def apply_proof_rollout_projection(
+    payload: Mapping[str, Any],
+    rollout_status: Mapping[str, Any] | Any,
+) -> dict[str, Any]:
+    """Attach the bounded proof-rollout view to a supervisor status payload.
+
+    The detailed snapshot remains nested so future fields do not collide with
+    the daemon heartbeat schema.  A few stable operator fields are projected
+    at the top level for health checks and older status consumers.
+    """
+
+    from ..formal_verification_policy import (
+        PROOF_ROLLOUT_STATUS_SCHEMA,
+        ProofRolloutStatus,
+    )
+
+    converter = getattr(rollout_status, "to_dict", None)
+    raw = converter() if callable(converter) else rollout_status
+    if not isinstance(raw, Mapping):
+        raise TypeError("rollout_status must be a mapping or expose to_dict()")
+    normalized = (
+        rollout_status
+        if isinstance(rollout_status, ProofRolloutStatus)
+        else ProofRolloutStatus(raw)
+    )
+    projected = normalized.to_dict()
+    if projected.get("schema") != PROOF_ROLLOUT_STATUS_SCHEMA:
+        raise ValueError("unsupported proof rollout status schema")
+    result = dict(payload)
+    result["proof_rollout"] = projected
+    result["proof_policy_id"] = str(projected.get("policy_id") or "")
+    result["proof_rollout_mode"] = str(projected.get("rollout_mode") or "")
+    result["proof_rollout_blocking"] = bool(projected.get("blocking"))
+    capabilities = [
+        item
+        for item in projected.get("capability_health", ())
+        if isinstance(item, Mapping)
+    ]
+    result["proof_capability_healthy"] = bool(capabilities) and all(
+        bool(item.get("healthy"))
+        for item in capabilities
+    )
+    result["proof_active_plan_count"] = len(projected.get("active_plans") or ())
+    result["proof_override_count"] = len(projected.get("overrides") or ())
+    result["proof_failure_count"] = len(projected.get("failures") or ())
+    return result
+
+
 def _scan_skip_reason(mode: str) -> ScanTerminalReason:
     """Translate the backlog threshold decision into an explicit terminal reason."""
 
@@ -365,9 +413,14 @@ class PortalImplementationSupervisor:
             "goal_completion_by_goal_id",
             "goal_lifecycle_state_counts",
             "goal_completion_migration",
+            "proof_rollout",
         ):
             if key in strategy:
                 payload[key] = strategy[key]
+        if isinstance(strategy.get("proof_rollout"), Mapping):
+            payload = apply_proof_rollout_projection(
+                payload, strategy["proof_rollout"]
+            )
         write_json_atomic(status_path, payload)
 
     def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
