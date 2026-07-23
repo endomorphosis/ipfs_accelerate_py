@@ -159,6 +159,7 @@ class PortalSupervisorConfig:
     state_dir: Path
     stale_seconds: float = 1800.0
     check_interval: float = 60.0
+    watchdog_startup_grace_seconds: float | None = None
     max_restarts: int = 10
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
@@ -339,6 +340,12 @@ class PortalImplementationSupervisor:
             300.0,
         )
 
+    def _watchdog_startup_grace_seconds(self) -> float:
+        configured = self.config.watchdog_startup_grace_seconds
+        if configured is not None:
+            return max(0.0, float(configured))
+        return max(300.0, float(self.config.check_interval) * 2.0)
+
     def _write_supervisor_maintenance_status(
         self,
         phase: str,
@@ -384,10 +391,7 @@ class PortalImplementationSupervisor:
                 "agentic_timeout_seconds": timeout_seconds,
                 "agentic_stuck_maintenance_timeout_seconds": timeout_seconds,
                 "watchdog_stale_after_seconds": float(self.config.stale_seconds),
-                "watchdog_startup_grace_seconds": max(
-                    30.0,
-                    float(self.config.check_interval) * 2.0,
-                ),
+                "watchdog_startup_grace_seconds": self._watchdog_startup_grace_seconds(),
                 "supervisor_heartbeat_seconds": max(0.01, float(self.config.check_interval)),
             }
         )
@@ -921,7 +925,7 @@ class PortalImplementationSupervisor:
             heartbeat_seconds=max(0.01, float(self.config.check_interval)),
             poll_seconds=min(1.0, max(0.01, float(self.config.check_interval))),
             watchdog_stale_after_seconds=max(0.0, float(self.config.stale_seconds)),
-            watchdog_startup_grace_seconds=max(30.0, float(self.config.check_interval) * 2.0),
+            watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
             status_static_fields={
@@ -5610,6 +5614,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--stale-seconds", type=float, default=1800.0)
     parser.add_argument("--check-interval", type=float, default=60.0)
+    parser.add_argument(
+        "--watchdog-startup-grace-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Delay stale-heartbeat enforcement while a new daemon performs startup maintenance. "
+            "Defaults to at least 300 seconds; set explicitly to override."
+        ),
+    )
     parser.add_argument("--max-restarts", type=int, default=10)
     parser.add_argument("--daemon-interval", type=float, default=300.0)
     parser.add_argument(
@@ -6198,6 +6211,7 @@ def supervisor_config_from_args(
         state_dir=args.state_dir,
         stale_seconds=args.stale_seconds,
         check_interval=args.check_interval,
+        watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
         max_restarts=args.max_restarts,
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,

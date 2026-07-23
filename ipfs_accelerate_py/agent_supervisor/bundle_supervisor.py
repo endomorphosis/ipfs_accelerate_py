@@ -867,6 +867,7 @@ def implementation_supervisor_command(
     daemon_interval: float,
     stale_seconds: float,
     check_interval: float,
+    watchdog_startup_grace_seconds: float | None,
     max_restarts: int,
     implementation_timeout: float,
     implementation_command: str = "",
@@ -916,6 +917,13 @@ def implementation_supervisor_command(
         "--no-dependency-guardrail",
         "--no-reconciliation-guardrail",
     ]
+    if watchdog_startup_grace_seconds is not None:
+        command.extend(
+            [
+                "--watchdog-startup-grace-seconds",
+                str(watchdog_startup_grace_seconds),
+            ]
+        )
     for relative in dict.fromkeys(str(path).strip().strip("/") for path in worktree_submodule_paths):
         if relative:
             command.extend(["--worktree-submodule-path", relative])
@@ -958,6 +966,7 @@ def plan_bundle_lanes(
     daemon_interval: float = 300.0,
     stale_seconds: float = 1800.0,
     check_interval: float = 60.0,
+    watchdog_startup_grace_seconds: float | None = None,
     max_restarts: int = 10,
     implementation_timeout: float = 1800.0,
     implementation_command: str = "",
@@ -1040,6 +1049,7 @@ def plan_bundle_lanes(
             daemon_interval=daemon_interval,
             stale_seconds=stale_seconds,
             check_interval=check_interval,
+            watchdog_startup_grace_seconds=watchdog_startup_grace_seconds,
             max_restarts=max_restarts,
             implementation_timeout=implementation_timeout,
             implementation_command=implementation_command,
@@ -2617,6 +2627,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--daemon-interval", type=float, default=300.0)
     parser.add_argument("--stale-seconds", type=float, default=1800.0)
     parser.add_argument("--check-interval", type=float, default=60.0)
+    parser.add_argument("--watchdog-startup-grace-seconds", type=float, default=None)
     parser.add_argument("--max-restarts", type=int, default=0)
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
@@ -2684,6 +2695,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         daemon_interval=args.daemon_interval,
         stale_seconds=args.stale_seconds,
         check_interval=args.check_interval,
+        watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
         max_restarts=args.max_restarts,
         implementation_timeout=args.implementation_timeout,
         implementation_command=args.implementation_command,

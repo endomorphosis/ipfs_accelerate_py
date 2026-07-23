@@ -7638,6 +7638,26 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     loop_config = TodoImplementationSupervisor(config).build_supervisor_loop_config()
 
     assert loop_config.status_static_fields["worktree_no_child_stall_seconds"] == 42
+    assert loop_config.watchdog_startup_grace_seconds == 300
+
+
+def test_implementation_supervisor_allows_startup_grace_override(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        watchdog_startup_grace_seconds=45,
+    )
+
+    loop_config = TodoImplementationSupervisor(config).build_supervisor_loop_config()
+
+    assert loop_config.watchdog_startup_grace_seconds == 45
 
 
 def test_implementation_supervisor_repairs_stale_active_state_after_rewrite(tmp_path):
@@ -11805,6 +11825,7 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         log_dir=repo / "logs",
         task_prefix="ACCEL-",
         implement=True,
+        watchdog_startup_grace_seconds=420,
         implementation_command="codex exec --full-auto",
         llm_merge_resolver_command="python resolver.py",
         generated_dirty_repair_enabled=True,
@@ -11825,6 +11846,9 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     assert "--implement" in lanes[0].command
     assert "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor" in lanes[0].command
     assert "--implementation-command" in lanes[0].command
+    assert lanes[0].command[
+        lanes[0].command.index("--watchdog-startup-grace-seconds") + 1
+    ] == "420"
     assert lanes[0].command[lanes[0].command.index("--log-level") + 1] == "DEBUG"
     assert "--no-retry-budget-guardrail" in lanes[0].command
     assert "--no-dependency-guardrail" in lanes[0].command
