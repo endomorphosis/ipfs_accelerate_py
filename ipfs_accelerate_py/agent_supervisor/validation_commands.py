@@ -23,17 +23,66 @@ INLINE_CODE_COMMAND_RE = re.compile(r"^`+(?P<command>[^`]+?)`+\s*\.?\s*$", re.DO
 class ValidationStage(IntEnum):
     """Ordered validation barriers.
 
-    Cheap deterministic checks always finish before targeted or broad tests are
-    admitted.  Numeric ordering is intentional and is used by the scheduler.
+    Cheap deterministic checks always finish before proof work is admitted.
+    Proof phases retain their trust-boundary ordering before focused and broad
+    tests, and optional attestation is last.  The historical names remain
+    available as aliases for compatibility.
     """
 
     CHEAP = 0
-    TARGETED = 1
-    BROAD = 2
+    DETERMINISTIC = 0
+    TRANSLATION = 1
+    SOLVER = 2
+    KERNEL = 3
+    TARGETED = 4
+    FOCUSED = 4
+    BROAD = 5
+    ATTESTATION = 6
 
     @property
     def label(self) -> str:
         return self.name.lower()
+
+    @classmethod
+    def for_proof_stage(cls, stage: object) -> "ValidationStage":
+        """Map a proof-plan stage without importing the proof contracts."""
+
+        value = str(getattr(stage, "value", stage) or "").strip().lower()
+        mapping = {
+            "translate": cls.TRANSLATION,
+            "model_draft": cls.SOLVER,
+            "solve": cls.SOLVER,
+            "reconstruct": cls.KERNEL,
+            "kernel_verify": cls.KERNEL,
+            "validate": cls.FOCUSED,
+            "attest": cls.ATTESTATION,
+        }
+        try:
+            return mapping[value]
+        except KeyError as exc:
+            raise ValueError(
+                f"unsupported proof validation stage: {value or '<empty>'}"
+            ) from exc
+
+
+class ValidationVerdictKind(str, Enum):
+    """Independent verdict channel retained in combined reports."""
+
+    DETERMINISTIC = "deterministic"
+    TRANSLATION = "translation"
+    SOLVER = "solver"
+    KERNEL = "kernel"
+    TEST = "test"
+    ATTESTATION = "attestation"
+
+
+class ValidationDecisionKind(str, Enum):
+    """Why a selection item appears in an execution plan."""
+
+    INCLUDED = "included"
+    OMITTED = "omitted"
+    ESCALATED = "escalated"
+    FALLBACK = "fallback"
 
 
 class ValidationRequirementKind(str, Enum):
@@ -59,9 +108,40 @@ class ValidationCommand:
     ordinal: int = 0
     validation_id: str = ""
     requirement_kind: ValidationRequirementKind | None = None
+    verdict_kind: ValidationVerdictKind | None = None
+    source: str = "declared"
+    fallback: bool = False
 
     def with_stage(self, stage: ValidationStage) -> "ValidationCommand":
         return replace(self, stage=stage)
+
+    @property
+    def effective_verdict_kind(self) -> ValidationVerdictKind:
+        """Return the independent report channel for this check."""
+
+        if self.verdict_kind is not None:
+            return (
+                self.verdict_kind
+                if isinstance(self.verdict_kind, ValidationVerdictKind)
+                else ValidationVerdictKind(str(self.verdict_kind))
+            )
+        if self.stage is ValidationStage.CHEAP:
+            return ValidationVerdictKind.DETERMINISTIC
+        if self.stage is ValidationStage.TRANSLATION:
+            return ValidationVerdictKind.TRANSLATION
+        if self.stage is ValidationStage.SOLVER:
+            return ValidationVerdictKind.SOLVER
+        if self.stage is ValidationStage.KERNEL:
+            return ValidationVerdictKind.KERNEL
+        if self.stage is ValidationStage.ATTESTATION:
+            return ValidationVerdictKind.ATTESTATION
+        return ValidationVerdictKind.TEST
+
+    @property
+    def check_kind(self) -> ValidationVerdictKind:
+        """Compatibility spelling for integrations that call checks by kind."""
+
+        return self.effective_verdict_kind
 
 
 @dataclass(frozen=True)
@@ -133,20 +213,82 @@ class DeclaredValidation:
 class ValidationSelectionItem:
     """An explainable selection decision for one command."""
 
-    spec: ValidationCommand
+    spec: ValidationCommand | None
     selected: bool
     reason: str
     matched_paths: tuple[str, ...] = ()
     original_stage: ValidationStage | None = None
+    decision_kind: ValidationDecisionKind | None = None
+    declaration: DeclaredValidation | None = None
+
+    @property
+    def decision(self) -> ValidationDecisionKind:
+        if self.decision_kind is not None:
+            return (
+                self.decision_kind
+                if isinstance(self.decision_kind, ValidationDecisionKind)
+                else ValidationDecisionKind(str(self.decision_kind))
+            )
+        if self.declaration is not None or (
+            self.spec is not None and self.spec.fallback
+        ):
+            return ValidationDecisionKind.FALLBACK
+        if (
+            self.spec is not None
+            and self.original_stage is not None
+            and self.spec.stage is not self.original_stage
+        ):
+            return ValidationDecisionKind.ESCALATED
+        return (
+            ValidationDecisionKind.INCLUDED
+            if self.selected
+            else ValidationDecisionKind.OMITTED
+        )
 
     def to_dict(self) -> dict[str, object]:
+        declaration = self.declaration
+        spec = self.spec
+        stage = spec.stage.label if spec is not None else ""
         return {
-            "command": self.spec.command,
+            "command": spec.command if spec is not None else "",
+            "validation_id": (
+                declaration.validation_id
+                if declaration is not None
+                else spec.validation_id
+                if spec is not None
+                else ""
+            ),
             "selected": self.selected,
+            "decision": self.decision.value,
             "reason": self.reason,
-            "stage": self.spec.stage.label,
-            "original_stage": (self.original_stage or self.spec.stage).label,
-            "impact_paths": list(self.spec.impact_paths),
+            "stage": stage,
+            "original_stage": (
+                self.original_stage.label
+                if self.original_stage is not None
+                else stage
+            ),
+            "verdict_kind": (
+                spec.effective_verdict_kind.value if spec is not None else ""
+            ),
+            "source": (
+                "fallback"
+                if declaration is not None
+                else spec.source
+                if spec is not None
+                else ""
+            ),
+            "fallback": bool(
+                declaration is not None or (spec is not None and spec.fallback)
+            ),
+            "executable": spec is not None,
+            "requirement_kind": (
+                declaration.kind.value
+                if declaration is not None
+                else spec.requirement_kind.value
+                if spec is not None and spec.requirement_kind is not None
+                else ""
+            ),
+            "impact_paths": list(spec.impact_paths if spec is not None else ()),
             "matched_paths": list(self.matched_paths),
         }
 
@@ -163,11 +305,41 @@ class ValidationSelection:
 
     @property
     def selected(self) -> tuple[ValidationCommand, ...]:
-        return tuple(item.spec for item in self.items if item.selected)
+        result: list[ValidationCommand] = []
+        seen: set[tuple[str, ValidationStage]] = set()
+        for item in self.items:
+            if not item.selected or item.spec is None:
+                continue
+            identity = (item.spec.command, item.spec.stage)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            result.append(item.spec)
+        return tuple(result)
 
     @property
     def skipped(self) -> tuple[ValidationCommand, ...]:
-        return tuple(item.spec for item in self.items if not item.selected)
+        return tuple(
+            item.spec
+            for item in self.items
+            if not item.selected and item.spec is not None
+        )
+
+    @property
+    def fallback_items(self) -> tuple[ValidationSelectionItem, ...]:
+        return tuple(
+            item
+            for item in self.items
+            if item.decision is ValidationDecisionKind.FALLBACK
+        )
+
+    @property
+    def unresolved_fallbacks(self) -> tuple[DeclaredValidation, ...]:
+        return tuple(
+            item.declaration
+            for item in self.fallback_items
+            if item.declaration is not None and item.spec is None
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -177,6 +349,8 @@ class ValidationSelection:
             "escalation_reason": self.escalation_reason,
             "selected_count": len(self.selected),
             "skipped_count": len(self.skipped),
+            "fallback_count": len(self.fallback_items),
+            "unresolved_fallback_count": len(self.unresolved_fallbacks),
             "decisions": [item.to_dict() for item in self.items],
         }
 
@@ -566,6 +740,10 @@ def select_validation_commands(
     *,
     require_full_validation: bool = False,
     scope: str | None = None,
+    fallback_validations: Iterable[
+        str | ValidationCommand | DeclaredValidation
+    ] = (),
+    command_catalog: Mapping[str, str | ValidationCommand] | None = None,
 ) -> ValidationSelection:
     """Select impacted commands and explain every inclusion or omission.
 
@@ -574,9 +752,19 @@ def select_validation_commands(
     changes select everything.  ``require_full_validation`` promotes otherwise
     unrelated targeted tests into the broad stage.  Supervisors use that mode
     as the final pre-merge gate.
+
+    Proof fallbacks are explicit reviewed declarations.  Executable fallback
+    checks are always selected because the proof outcome, rather than path
+    inference, established their relevance.  Manual-review and unresolved
+    declarations remain non-executable selection items so reports cannot
+    silently lose a required fallback or mistake its identifier for shell text.
     """
 
     specs = build_validation_commands(commands)
+    fallback_declarations = build_declared_validations(
+        fallback_validations,
+        command_catalog=command_catalog,
+    )
     changed = tuple(sorted({_normalize_path(path) for path in changed_files if _normalize_path(path)}))
     broad_trigger = not changed or any(is_global_impact_change(path) for path in changed)
     items: list[ValidationSelectionItem] = []
@@ -599,11 +787,22 @@ def select_validation_commands(
             reason = "changed_path_matches_command_target"
         elif require_full_validation:
             reason = "pre_merge_broad_escalation"
-            selected_spec = spec.with_stage(ValidationStage.BROAD)
+            # Tests are promoted to the broad barrier.  A proof-phase check
+            # retains its trust-boundary stage even when full validation makes
+            # an otherwise unrelated check mandatory.
+            if spec.stage is ValidationStage.TARGETED:
+                selected_spec = spec.with_stage(ValidationStage.BROAD)
             escalated = True
         else:
             selected = False
             reason = "no_changed_path_matches_command_target"
+        decision_kind = (
+            ValidationDecisionKind.ESCALATED
+            if reason == "pre_merge_broad_escalation"
+            else ValidationDecisionKind.INCLUDED
+            if selected
+            else ValidationDecisionKind.OMITTED
+        )
         items.append(
             ValidationSelectionItem(
                 spec=selected_spec,
@@ -611,6 +810,72 @@ def select_validation_commands(
                 reason=reason,
                 matched_paths=matched,
                 original_stage=original_stage,
+                decision_kind=decision_kind,
+            )
+        )
+
+    existing = {
+        (item.spec.validation_id or item.spec.command, item.spec.command)
+        for item in items
+        if item.spec is not None and item.selected
+    }
+    next_ordinal = len(specs)
+    for declaration in fallback_declarations:
+        command = declaration.command
+        if command is None:
+            items.append(
+                ValidationSelectionItem(
+                    spec=None,
+                    selected=False,
+                    reason=declaration.reason
+                    or (
+                        "declared_manual_review"
+                        if declaration.manual_review_required
+                        else "declared_validation_requires_catalog_resolution"
+                    ),
+                    decision_kind=ValidationDecisionKind.FALLBACK,
+                    declaration=declaration,
+                )
+            )
+            continue
+
+        fallback_spec = replace(
+            command,
+            ordinal=next_ordinal,
+            validation_id=declaration.validation_id,
+            requirement_kind=declaration.kind,
+            source="fallback",
+            fallback=True,
+            verdict_kind=(
+                ValidationVerdictKind.DETERMINISTIC
+                if declaration.kind is ValidationRequirementKind.STATIC_CHECK
+                else ValidationVerdictKind.TEST
+            ),
+        )
+        next_ordinal += 1
+        identity = (
+            fallback_spec.validation_id or fallback_spec.command,
+            fallback_spec.command,
+        )
+        duplicate = identity in existing or any(
+            item.spec is not None
+            and item.spec.command == fallback_spec.command
+            and item.selected
+            for item in items
+        )
+        existing.add(identity)
+        items.append(
+            ValidationSelectionItem(
+                spec=fallback_spec,
+                selected=True,
+                reason=(
+                    "proof_fallback_required_existing_command"
+                    if duplicate
+                    else "proof_fallback_required"
+                ),
+                original_stage=fallback_spec.stage,
+                decision_kind=ValidationDecisionKind.FALLBACK,
+                declaration=declaration,
             )
         )
 
@@ -629,3 +894,6 @@ ValidationCommandSpec = ValidationCommand
 select_impacted_validations = select_validation_commands
 FallbackValidationKind = ValidationRequirementKind
 ValidationDeclaration = DeclaredValidation
+ValidationPhase = ValidationStage
+ValidationCheckKind = ValidationVerdictKind
+ValidationSelectionDecision = ValidationDecisionKind

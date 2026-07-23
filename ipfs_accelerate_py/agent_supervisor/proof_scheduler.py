@@ -26,7 +26,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -70,6 +70,28 @@ PROOF_SCHEDULER_SCHEMA: Final = (
 )
 DEFAULT_PROOF_LEASE_SECONDS: Final = 300
 DEFAULT_POLL_INTERVAL_SECONDS: Final = 0.02
+# Opt-in validation-pipeline ordering.  A phase is a barrier, while stages in
+# the same phase remain independent and may use the scheduler's full bounded
+# parallelism.  In particular, model and solver candidates can race after all
+# translation work, and reconstruction can overlap independent kernel checks.
+STAGED_PROOF_PHASES: Final[tuple[tuple[ProofStage, ...], ...]] = (
+    (ProofStage.TRANSLATE,),
+    (ProofStage.MODEL_DRAFT, ProofStage.SOLVE),
+    (ProofStage.RECONSTRUCT, ProofStage.KERNEL_VERIFY),
+    (ProofStage.VALIDATE,),
+    (ProofStage.ATTEST,),
+    (ProofStage.PERSIST,),
+)
+_STAGED_PROOF_PHASE_BY_STAGE: Final = {
+    stage: phase
+    for phase, stages in enumerate(STAGED_PROOF_PHASES)
+    for stage in stages
+}
+
+
+def _proof_phase(stage: ProofStage | str) -> int:
+    normalized = stage if isinstance(stage, ProofStage) else ProofStage(str(stage))
+    return _STAGED_PROOF_PHASE_BY_STAGE[normalized]
 
 
 def _utc_now() -> str:
@@ -149,6 +171,10 @@ class ProofSchedulerConfig:
     max_cpu_proof_concurrency: int = 0
     max_model_concurrency: int = 0
     max_artifact_concurrency: int = 0
+    stage_barriers: bool = False
+    # Compatibility spelling used by validation-pipeline callers.  ``None``
+    # means the canonical ``stage_barriers`` value is authoritative.
+    staged_execution: bool | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -173,6 +199,27 @@ class ProofSchedulerConfig:
             or self.poll_interval_seconds <= 0
         ):
             raise ValueError("poll_interval_seconds must be positive")
+        if not isinstance(self.stage_barriers, bool):
+            raise ValueError("stage_barriers must be a boolean")
+        if self.staged_execution is not None and not isinstance(
+            self.staged_execution, bool
+        ):
+            raise ValueError("staged_execution must be a boolean or None")
+        if (
+            self.staged_execution is not None
+            and self.stage_barriers
+            and self.staged_execution is not self.stage_barriers
+        ):
+            raise ValueError(
+                "stage_barriers and staged_execution must not conflict"
+            )
+        resolved_stage_barriers = (
+            self.stage_barriers
+            if self.staged_execution is None
+            else self.staged_execution
+        )
+        object.__setattr__(self, "stage_barriers", resolved_stage_barriers)
+        object.__setattr__(self, "staged_execution", resolved_stage_barriers)
         normalized_stages: dict[str, int] = {}
         for raw_stage, raw_limit in self.stage_limits.items():
             stage = raw_stage if isinstance(raw_stage, ProofStage) else ProofStage(str(raw_stage))
@@ -720,6 +767,7 @@ class _ProofStateStore:
         stage_limits: Mapping[str, int],
         resource_limits: Mapping[str, int],
         pool_limits: Mapping[str, int],
+        stage_barrier_phase: int | None = None,
     ) -> _Lease | None:
         connection = self.connect()
         now = self._now_ms()
@@ -733,6 +781,21 @@ class _ProofStateStore:
             if node is None or str(node["state"]) != ProofNodeState.READY.value:
                 connection.rollback()
                 return None
+            if stage_barrier_phase is not None:
+                states = {
+                    str(row["step_id"]): ProofNodeState(str(row["state"]))
+                    for row in connection.execute(
+                        "SELECT step_id, state FROM proof_nodes WHERE plan_id=?",
+                        (plan.plan_id,),
+                    ).fetchall()
+                }
+                if _proof_phase(step.stage) != stage_barrier_phase or any(
+                    not states[item.step_id].terminal
+                    and _proof_phase(item.stage) < stage_barrier_phase
+                    for item in plan.steps
+                ):
+                    connection.rollback()
+                    return None
             active = connection.execute(
                 """
                 SELECT COUNT(*) AS count FROM proof_leases
@@ -1333,6 +1396,9 @@ class ProofScheduler:
         max_cpu_proof_concurrency: int | None = None,
         max_model_concurrency: int | None = None,
         max_artifact_concurrency: int | None = None,
+        stage_barriers: bool | None = None,
+        staged_execution: bool | None = None,
+        staged: bool | None = None,
         config: ProofSchedulerConfig | None = None,
         resource_scheduler: ResourceScheduler | None = None,
         resource_policy: ResourcePolicy | Mapping[str, Any] | None = None,
@@ -1352,6 +1418,22 @@ class ProofScheduler:
                 raise ValueError("plan_id does not match plan")
             self._store.register_plan(self.plan)
 
+        barrier_aliases = tuple(
+            value
+            for value in (stage_barriers, staged_execution, staged)
+            if value is not None
+        )
+        if any(not isinstance(value, bool) for value in barrier_aliases):
+            raise ValueError(
+                "stage_barriers, staged_execution, and staged must be booleans"
+            )
+        if len(set(barrier_aliases)) > 1:
+            raise ValueError(
+                "stage_barriers, staged_execution, and staged must not conflict"
+            )
+        requested_stage_barriers = (
+            barrier_aliases[0] if barrier_aliases else None
+        )
         if config is not None and any(
             value is not None
             for value in (
@@ -1362,6 +1444,7 @@ class ProofScheduler:
                 max_cpu_proof_concurrency,
                 max_model_concurrency,
                 max_artifact_concurrency,
+                requested_stage_barriers,
             )
         ):
             raise ValueError("config cannot be combined with individual scheduler limits")
@@ -1385,7 +1468,10 @@ class ProofScheduler:
                 if max_artifact_concurrency is None
                 else max_artifact_concurrency
             ),
+            stage_barriers=bool(requested_stage_barriers),
         )
+        if self.config.stage_barriers:
+            self._validate_stage_barrier_dependencies()
         self.max_parallel = self.config.max_parallel or self.plan.max_parallel
         if self.max_parallel > self.plan.max_parallel:
             # The immutable plan is the authority; runtime configuration can
@@ -1689,6 +1775,84 @@ class ProofScheduler:
     def resource_decisions(self) -> Mapping[str, AdmissionDecision]:
         return dict(self._last_resource_decisions)
 
+    @property
+    def stage_barriers(self) -> bool:
+        """Whether this scheduler enforces the canonical proof phase barriers."""
+
+        return self.config.stage_barriers
+
+    @staticmethod
+    def proof_phase(stage: ProofStage | str) -> int:
+        """Return the validation-pipeline phase for a proof stage."""
+
+        return _proof_phase(stage)
+
+    @staticmethod
+    def _normalize_stages(
+        stages: Iterable[ProofStage | str] | ProofStage | str | None,
+    ) -> frozenset[ProofStage] | None:
+        if stages is None:
+            return None
+        if isinstance(stages, (ProofStage, str)):
+            values: Iterable[ProofStage | str] = (stages,)
+        else:
+            values = stages
+        normalized = frozenset(
+            value if isinstance(value, ProofStage) else ProofStage(str(value))
+            for value in values
+        )
+        if not normalized:
+            raise ValueError("stages must contain at least one proof stage")
+        return normalized
+
+    def _validate_stage_barrier_dependencies(self) -> None:
+        """Reject plans whose dependency edges run backwards across phases.
+
+        Such an edge cannot make progress in a staged validation pipeline:
+        the earlier phase would wait on work which the barrier deliberately
+        withholds until a later phase.  Ordinary DAG execution remains
+        backwards compatible because this check is opt-in.
+        """
+
+        by_id = {step.step_id: step for step in self.plan.steps}
+        for step in self.plan.steps:
+            phase = self.proof_phase(step.stage)
+            for dependency_id in step.depends_on:
+                dependency = by_id[dependency_id]
+                dependency_phase = self.proof_phase(dependency.stage)
+                if dependency_phase > phase:
+                    raise ContractValidationError(
+                        "staged proof dependency runs backwards: "
+                        f"{step.step_id} ({step.stage.value}) depends on "
+                        f"{dependency.step_id} ({dependency.stage.value})"
+                    )
+
+    def _eligible_phase(
+        self,
+        snapshot: ProofScheduleSnapshot,
+        stages: frozenset[ProofStage] | None,
+    ) -> int | None:
+        by_id = {step.step_id: step for step in self.plan.steps}
+        phases = [
+            self.proof_phase(by_id[node.step_id].stage)
+            for node in snapshot.nodes
+            if not node.state.terminal
+            and (stages is None or by_id[node.step_id].stage in stages)
+        ]
+        return min(phases) if phases else None
+
+    def _selected_nodes_complete(
+        self,
+        snapshot: ProofScheduleSnapshot,
+        stages: frozenset[ProofStage],
+    ) -> bool:
+        by_id = {step.step_id: step for step in self.plan.steps}
+        return all(
+            node.state.terminal
+            for node in snapshot.nodes
+            if by_id[node.step_id].stage in stages
+        )
+
     def priorities(self) -> dict[str, ProofStepPriority]:
         critical = self.plan.critical_path_lengths
         unlocks = self.plan.downstream_unlock_counts
@@ -1783,7 +1947,15 @@ class ProofScheduler:
             self._store.update_nodes(self.plan.plan_id, changed)
         return self.snapshot()
 
-    def ready_steps(self) -> tuple[ScheduledProofStep, ...]:
+    def ready_steps(
+        self,
+        stages: Iterable[ProofStage | str] | ProofStage | str | None = None,
+        *,
+        phase: int | None = None,
+    ) -> tuple[ScheduledProofStep, ...]:
+        """Return ready work, optionally limited to proof stages or one phase."""
+
+        selected_stages = self._normalize_stages(stages)
         states = self._state_map()
         priorities = self.priorities()
         by_id = {step.step_id: step for step in self.plan.steps}
@@ -1791,6 +1963,14 @@ class ProofScheduler:
             ScheduledProofStep(by_id[step_id], priorities[step_id])
             for step_id, state in states.items()
             if state is ProofNodeState.READY
+            and (
+                selected_stages is None
+                or by_id[step_id].stage in selected_stages
+            )
+            and (
+                phase is None
+                or self.proof_phase(by_id[step_id].stage) == phase
+            )
         ]
         return tuple(sorted(ready, key=lambda item: item.priority.sort_key))
 
@@ -1815,18 +1995,38 @@ class ProofScheduler:
             receipts=self._store.receipts(self.plan.plan_id),
         )
 
-    def cancel(self, reason: str = "scheduler_cancelled") -> tuple[str, ...]:
-        """Request cooperative cancellation of all unfinished nodes."""
+    def cancel(
+        self,
+        reason: str = "scheduler_cancelled",
+        *,
+        stages: Iterable[ProofStage | str] | ProofStage | str | None = None,
+    ) -> tuple[str, ...]:
+        """Request cooperative cancellation of unfinished selected nodes."""
 
         reason_code = str(reason or "scheduler_cancelled").strip()
+        selected_stages = self._normalize_stages(stages)
+        by_id = {step.step_id: step for step in self.plan.steps}
         with self._cancel_lock:
-            self._cancelled = True
-            for token in self._tokens.values():
-                token.cancel()
+            if selected_stages is None:
+                self._cancelled = True
+            for step_id, token in self._tokens.items():
+                if (
+                    selected_stages is None
+                    or by_id[step_id].stage in selected_stages
+                ):
+                    token.cancel()
         states = self._state_map()
         return self._store.cancel_steps(
             self.plan.plan_id,
-            [step_id for step_id, state in states.items() if not state.terminal],
+            [
+                step_id
+                for step_id, state in states.items()
+                if not state.terminal
+                and (
+                    selected_stages is None
+                    or by_id[step_id].stage in selected_stages
+                )
+            ],
             reason_code,
         )
 
@@ -2205,16 +2405,32 @@ class ProofScheduler:
                 if node is not None and node.cancellation_requested:
                     token.cancel()
 
-    def run(self, *, timeout_seconds: float | None = None) -> ProofScheduleResult:
-        """Run until every node reaches a terminal state.
+    def run(
+        self,
+        *,
+        timeout_seconds: float | None = None,
+        stages: Iterable[ProofStage | str] | ProofStage | str | None = None,
+    ) -> ProofScheduleResult:
+        """Run all work, or only the requested proof stages.
 
         Leases are extended while local callbacks run.  Other scheduler
         processes can execute remaining ready nodes against the same database;
         transactional claims preserve the plan-wide ``max_parallel`` bound.
+
+        Supplying ``stages`` is the durable partial-execution API used by the
+        validation scheduler.  It enforces canonical phase prerequisites and
+        returns as soon as the selected nodes are terminal, leaving later
+        nodes pending or ready for a subsequent call.  With no ``stages`` and
+        no configured barriers, execution retains the original dependency-only
+        behavior.
         """
 
         if timeout_seconds is not None and timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        selected_stages = self._normalize_stages(stages)
+        enforce_barriers = self.config.stage_barriers or selected_stages is not None
+        if enforce_barriers:
+            self._validate_stage_barrier_dependencies()
         started = time.monotonic()
         futures: dict[
             Future[tuple[ProofStepResult, ProofAttempt]],
@@ -2233,12 +2449,69 @@ class ProofScheduler:
                 self.reconcile()
                 self._sync_cancellation_tokens()
                 snapshot = self.snapshot()
-                if snapshot.complete and not futures:
+                if selected_stages is not None:
+                    selected_complete = self._selected_nodes_complete(
+                        snapshot, selected_stages
+                    )
+                    if selected_complete and not futures:
+                        break
+                elif snapshot.complete and not futures:
                     break
                 if timeout_seconds is not None and time.monotonic() - started >= timeout_seconds:
-                    self.cancel("scheduler_timeout")
+                    self.cancel(
+                        "scheduler_timeout",
+                        stages=selected_stages,
+                    )
+                    # Reconcile the cancellation before considering any READY
+                    # nodes from the snapshot captured before the timeout.
+                    continue
 
-                for scheduled in self.ready_steps():
+                eligible_phase = (
+                    self._eligible_phase(snapshot, selected_stages)
+                    if enforce_barriers
+                    else None
+                )
+                if selected_stages is not None and eligible_phase is not None:
+                    by_id = {step.step_id: step for step in self.plan.steps}
+                    unfinished_prerequisites = [
+                        node.step_id
+                        for node in snapshot.nodes
+                        if not node.state.terminal
+                        and by_id[node.step_id].stage not in selected_stages
+                        and self.proof_phase(by_id[node.step_id].stage)
+                        < eligible_phase
+                    ]
+                    if unfinished_prerequisites and not futures:
+                        raise ContractValidationError(
+                            "selected proof stages cannot run before unfinished "
+                            "earlier phases: "
+                            + ", ".join(sorted(unfinished_prerequisites))
+                        )
+
+                ready = self.ready_steps(
+                    selected_stages,
+                    phase=eligible_phase if enforce_barriers else None,
+                )
+                if selected_stages is not None and not ready and not futures:
+                    selected_unfinished = [
+                        node.step_id
+                        for node in snapshot.nodes
+                        if not node.state.terminal
+                        and next(
+                            step.stage
+                            for step in self.plan.steps
+                            if step.step_id == node.step_id
+                        )
+                        in selected_stages
+                    ]
+                    if selected_unfinished:
+                        raise ContractValidationError(
+                            "selected proof stages made no progress; unfinished "
+                            "nodes are not ready: "
+                            + ", ".join(sorted(selected_unfinished))
+                        )
+
+                for scheduled in ready:
                     if len(futures) >= self.max_parallel:
                         break
                     with self._cancel_lock:
@@ -2296,6 +2569,9 @@ class ProofScheduler:
                         stage_limits=self.config.stage_limits,
                         resource_limits=self.config.resource_limits,
                         pool_limits=self._pool_limits,
+                        stage_barrier_phase=(
+                            eligible_phase if enforce_barriers else None
+                        ),
                     )
                     if lease is None:
                         self.resource_scheduler.release(resource_lease)
@@ -2351,6 +2627,16 @@ class ProofScheduler:
     execute = run
     resume = run
 
+    def run_stages(
+        self,
+        stages: Iterable[ProofStage | str] | ProofStage | str,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> ProofScheduleResult:
+        """Compatibility-friendly spelling for durable partial execution."""
+
+        return self.run(timeout_seconds=timeout_seconds, stages=stages)
+
 
 def execute_proof_plan(
     plan: ProofPlan | Mapping[str, Any],
@@ -2362,6 +2648,8 @@ def execute_proof_plan(
     run_options = {}
     if "timeout_seconds" in scheduler_options:
         run_options["timeout_seconds"] = scheduler_options.pop("timeout_seconds")
+    if "stages" in scheduler_options:
+        run_options["stages"] = scheduler_options.pop("stages")
     return ProofScheduler(plan, executor, **scheduler_options).run(**run_options)
 
 
@@ -2372,6 +2660,7 @@ __all__ = [
     "DEFAULT_POLL_INTERVAL_SECONDS",
     "DEFAULT_PROOF_LEASE_SECONDS",
     "PROOF_SCHEDULER_SCHEMA",
+    "STAGED_PROOF_PHASES",
     "ProofExecutionContext",
     "ProofNodeSnapshot",
     "ProofNodeState",
