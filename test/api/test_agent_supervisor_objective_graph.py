@@ -225,7 +225,7 @@ def test_objective_graph_projects_lifecycle_and_completion_evidence() -> None:
         "title": "Evidence-backed completion",
         "status": "provisionally_complete",
         "lifecycle_state": "provisionally_complete",
-        "schedulable": False,
+        "schedulable": True,
         "terminal": False,
         "parents": [],
         "required_evidence": ["criterion one", "criterion two"],
@@ -247,7 +247,7 @@ def test_objective_graph_projects_lifecycle_and_completion_evidence() -> None:
         "reopened": 1,
         "verified_complete": 1,
     }
-    assert graph["schedulable_goal_ids"] == ["G10.S3.1"]
+    assert graph["schedulable_goal_ids"] == ["G10.S3", "G10.S3.1"]
     assert graph["terminal_goal_ids"] == ["G10.S3.2"]
     assert {node["acceptance_criterion"] for node in graph["evidence_nodes"]} == {
         "criterion one",
@@ -258,7 +258,7 @@ def test_objective_graph_projects_lifecycle_and_completion_evidence() -> None:
     assert {edge["kind"] for edge in graph["evidence_edges"]} == {"requires_evidence"}
 
 
-def test_objective_schedule_only_includes_active_and_reopened_states() -> None:
+def test_objective_schedule_includes_actionable_nonterminal_states() -> None:
     goals = parse_goal_heap(
         """# Objective Heap
 
@@ -290,7 +290,7 @@ def test_objective_schedule_only_includes_active_and_reopened_states() -> None:
 
     schedule = objective_heap_schedule(goals)
 
-    assert [record.goal_id for record in schedule] == ["G-A", "G-R"]
+    assert [record.goal_id for record in schedule] == ["G-A", "G-P", "G-I", "G-R"]
 
 
 def test_objective_graph_links_persisted_completion_receipts() -> None:

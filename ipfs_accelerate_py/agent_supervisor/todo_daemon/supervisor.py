@@ -170,6 +170,8 @@ def _is_agent_worker_command(cmdline: str) -> bool:
         ("codex" in normalized and " exec" in normalized)
         or "copilot" in normalized
         or "llm_merge_resolver_fallback.sh" in normalized
+        or "llm_router_merge_resolver.py" in normalized
+        or ("llm_router" in normalized and "merge_resolver" in normalized)
     )
 
 

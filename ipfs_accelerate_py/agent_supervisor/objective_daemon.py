@@ -8,6 +8,7 @@ submits those bundles to a local task queue.
 from __future__ import annotations
 
 import argparse
+from hashlib import sha1
 import json
 import logging
 import os
@@ -23,7 +24,11 @@ from .objective_graph import (
     DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
     DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     DEFAULT_TASK_PREFIX,
+    ObjectiveFinding,
+    ObjectiveWorkKind,
+    ObjectiveWorkProposal,
     generate_objective_todos,
+    parse_goal_heap,
     repo_relative_path,
     scan_objective_gaps,
     submit_bundle_tasks,
@@ -38,6 +43,7 @@ from .objective_tracker import (
     append_refinement_goals,
     deduplicate_interoperability_goals,
     ensure_objective_tracking_document,
+    open_goal_ids_from_todo_board,
     parse_root_evidence,
     reconcile_objective_goal_completion,
     write_objective_graph_artifact,
@@ -335,9 +341,8 @@ def objective_terms_for_analysis(
     terms: list[str] = []
     if objective_path.exists():
         for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace")):
-            # Provisional and inconclusive goals are not claimable execution
-            # work, but their unproven criteria are precisely the input to
-            # bounded evidence-generation.
+            # Provisional and inconclusive goals remain schedulable so their
+            # unproven criteria can feed bounded evidence generation.
             if goal.lifecycle_state_value in {
                 "active", "reopened", "provisionally_complete", "analysis_inconclusive"
             }:
@@ -658,6 +663,110 @@ def objective_generation_proposals(
             )
         )
     return tuple(proposals)
+
+
+def objective_generation_task_findings(
+    work_items: Iterable[Mapping[str, Any]],
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    generation_path: Path,
+    seen_fingerprints: Iterable[str] = (),
+    open_goal_ids: Iterable[str] = (),
+) -> tuple[ObjectiveFinding, ...]:
+    """Convert independent bounded task proposals into taskboard findings.
+
+    Goal/subgoal proposals and tasks whose parent is another generated work
+    item stay in the durable generation ledger until their hierarchy can be
+    resolved.  A task attached directly to an actionable objective goal can
+    use the ordinary discovery and bundle machinery immediately.
+    """
+
+    goals = (
+        parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace"))
+        if objective_path.exists()
+        else []
+    )
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+    seen = {str(item) for item in seen_fingerprints if str(item).strip()}
+    open_goals = {str(item) for item in open_goal_ids if str(item).strip()}
+    objective_relative = repo_relative_path(repo_root, objective_path)
+    generation_relative = repo_relative_path(repo_root, generation_path)
+    findings: list[ObjectiveFinding] = []
+
+    for raw in work_items:
+        try:
+            proposal = ObjectiveWorkProposal.from_dict(raw)
+        except (TypeError, ValueError):
+            logger.warning("Ignoring malformed persisted objective work proposal")
+            continue
+        if proposal.kind is not ObjectiveWorkKind.TASK:
+            continue
+        goal = goals_by_id.get(proposal.parent_goal_id)
+        if goal is None or not goal.is_schedulable or goal.goal_id in open_goals:
+            continue
+        fingerprint = sha1(proposal.semantic_key.encode("utf-8")).hexdigest()
+        if fingerprint in seen:
+            continue
+
+        missing_evidence = list(
+            proposal.expected_evidence_delta or proposal.parent_objective_terms
+        )
+        outputs = list(proposal.predicted_files)
+        validation = "; ".join(proposal.validation_commands) or "git diff --check"
+        bundle_key = goal.bundle_key(missing_evidence)
+        dependency_note = ""
+        if proposal.dependencies:
+            dependency_note = (
+                " Preserve the generated planning dependencies in the implementation plan: "
+                + ", ".join(proposal.dependencies)
+                + "."
+            )
+        findings.append(
+            ObjectiveFinding(
+                fingerprint=fingerprint,
+                goal_id=goal.goal_id,
+                title=goal.title,
+                summary=proposal.title,
+                priority=str(goal.fields.get("priority") or "P1").strip().upper(),
+                track=str(goal.fields.get("track") or "objective").strip().lower(),
+                missing_evidence=missing_evidence,
+                present_evidence={},
+                evidence_methods=[
+                    "bounded_objective_generation",
+                    str(proposal.source or "deterministic"),
+                ],
+                objective_path=objective_relative,
+                outputs=outputs,
+                validation=validation,
+                goal=str(goal.fields.get("goal") or goal.title),
+                refinement=(
+                    "Keep the parent goal actionable until fresh proof receipts "
+                    "satisfy its completion gate."
+                ),
+                gap_task=(proposal.rationale or proposal.title) + dependency_note,
+                parent_goal_ids=list(goal.parent_goal_ids),
+                graph_depth=max(0, int(proposal.depth)),
+                bundle_key=bundle_key,
+                parallel_lane=bundle_key,
+                bundle_strategy="bounded_objective_generation",
+                embedding_query=" ".join(proposal.parent_objective_terms),
+                ast_query=", ".join(proposal.predicted_symbols),
+                candidate_kind="generated_task",
+                surplus_group=goal.goal_id,
+                merge_key=proposal.semantic_key,
+                merge_family=goal.goal_id,
+                merge_role=str(proposal.source or "generated_task"),
+                work_item_count=max(1, len(missing_evidence)),
+                work_scope="bounded_objective_generation",
+                todo_vector_key=proposal.semantic_key.rsplit("/", 1)[-1][:16],
+                predicted_files=outputs,
+                ast_symbols=list(proposal.predicted_symbols),
+                generated_artifacts=[generation_relative],
+            )
+        )
+        seen.add(fingerprint)
+    return tuple(findings)
 
 
 def run_objective_analysis_escalation(
@@ -1309,6 +1418,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     objective_generation_path = objective_generation_path.resolve()
     objective_generation_payload: dict[str, Any] | None = None
     objective_generation_error = ""
+    objective_generation_materialized_records: list[Any] = []
     if not bool(getattr(args, "no_generate_bounded_work", False)):
         from .objective_graph import ObjectiveGenerationLimits, parse_goal_heap
         from .plan_evaluator import ObjectiveWorkEvaluationPolicy
@@ -1401,6 +1511,55 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             # deterministic backlog scan.
             objective_generation_error = f"{type(exc).__name__}: {exc}"
             logger.error("Bounded objective generation failed closed: %s", exc)
+        if objective_generation_payload is not None:
+            work_items = objective_generation_payload.get("generated_work", ())
+            if isinstance(work_items, list):
+                generated_findings = objective_generation_task_findings(
+                    work_items,
+                    repo_root=repo_root,
+                    objective_path=objective_path,
+                    generation_path=objective_generation_path,
+                    seen_fingerprints=discovery_fingerprints(discovery_dir),
+                    open_goal_ids=open_goal_ids_from_todo_board(
+                        todo_path,
+                        args.task_prefix,
+                    ),
+                )
+                if generated_findings:
+                    objective_generation_materialized_records = generate_objective_todos(
+                        repo_root=repo_root,
+                        objective_path=objective_path,
+                        todo_path=todo_path,
+                        discovery_dir=discovery_dir,
+                        bundle_dir=bundle_dir,
+                        dataset_dir=dataset_dir,
+                        task_prefix=args.task_prefix,
+                        depends_on=split_csv(args.depends_on),
+                        persist_ast_dataset=not args.no_persist_ast_dataset,
+                        write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
+                        todo_vector_index_path=getattr(args, "todo_vector_index_path", None),
+                        discovery_output_path=getattr(
+                            args,
+                            "discovery_output_path",
+                            DEFAULT_DISCOVERY_OUTPUT_PATH,
+                        ),
+                        precomputed_findings=generated_findings,
+                    )
+                    records.extend(objective_generation_materialized_records)
+                    generated_plan_decisions = plan_objective_records(
+                        objective_generation_materialized_records,
+                        branch_count=max(1, int(getattr(args, "plan_branch_count", 3))),
+                        router_config=router_config,
+                        use_llm_router=bool(
+                            getattr(args, "generate_plan_branches", False)
+                        ),
+                    )
+                    plan_decisions.extend(generated_plan_decisions)
+                    persist_objective_plan_evaluations(
+                        plan_evaluation_path,
+                        plan_decisions,
+                        bundle_index_path=bundle_dir / "index.json",
+                    )
     graph_payload = write_objective_graph_artifact(objective_path=objective_path, graph_path=graph_path)
 
     bundle_index_path = bundle_dir / "index.json"
@@ -1449,6 +1608,12 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "objective_generated_work_count": int(
             (objective_generation_payload or {}).get("generated_work_count", 0)
         ),
+        "objective_generation_materialized_count": len(
+            objective_generation_materialized_records
+        ),
+        "objective_generation_materialized_task_ids": [
+            record.task_id for record in objective_generation_materialized_records
+        ],
         "objective_generation_cycle_accepted_count": len(
             ((objective_generation_payload or {}).get("last_cycle") or {}).get("accepted", ())
         ),

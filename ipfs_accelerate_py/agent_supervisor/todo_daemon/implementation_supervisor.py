@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha1
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 REPO_ROOT = Path.cwd()
 
@@ -54,7 +54,7 @@ from .implementation_daemon import (
     write_json_atomic,
     write_text_atomic,
 )
-from .supervisor import descendant_processes, worktree_phase_worker_status
+from .supervisor import active_codex_exec_workers, descendant_processes, worktree_phase_worker_status
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
 
@@ -4856,12 +4856,12 @@ class PortalImplementationSupervisor:
     def _implementation_log_stall_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id or not state.implementation_in_progress:
             return ""
-        # Validation commands such as the canonical desktop Playwright replay
-        # can remain quiet while their child processes make progress. Their
-        # declared implementation timeout, not missing agent-log output, is
-        # the authoritative liveness bound.
+        # Agent and validation subprocesses can remain quiet while making
+        # progress. Their implementation timeout is the authoritative bound.
         if self._implementation_attempt_is_active(state, now_ts=now_ts) and (
-            state.active_phase == "validating" or self._active_validation_subprocess_exists()
+            self._active_agent_worker_processes()
+            or state.active_phase == "validating"
+            or self._active_validation_subprocess_exists()
         ):
             return ""
         threshold = max(0.0, float(self.config.implementation_log_stall_seconds))
@@ -4884,6 +4884,12 @@ class PortalImplementationSupervisor:
             f"implementation log stalled for active task {state.active_task_id}: "
             f"{age_seconds:.0f}s without output in {log_path}"
         )
+
+    def _active_agent_worker_processes(self) -> list[dict[str, Any]]:
+        daemon_pid = self._read_managed_daemon_pid()
+        if not daemon_pid:
+            return []
+        return active_codex_exec_workers(daemon_pid)
 
     def _active_validation_subprocess_exists(self) -> bool:
         """Return whether a managed agent is currently running a bounded test command."""
@@ -4952,10 +4958,7 @@ class PortalImplementationSupervisor:
     def _worktree_phase_without_worker_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id:
             return ""
-        if state.active_phase == "merge_resolver":
-            threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
-        else:
-            threshold = max(30.0, min(120.0, float(self.config.check_interval) * 2.0))
+        threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
         worker_status = worktree_phase_worker_status(
             {
                 "active_phase": state.active_phase,

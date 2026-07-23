@@ -141,9 +141,19 @@ def is_terminal_goal_state(state: GoalState | str) -> bool:
 
 
 def is_schedulable_goal_state(state: GoalState | str) -> bool:
-    """Whether backlog generation may schedule implementation for the goal."""
+    """Whether backlog generation may schedule work for the goal.
 
-    return normalize_goal_state(state) in {GoalState.ACTIVE, GoalState.REOPENED}
+    Provisional and inconclusive goals still have unmet proof or analysis
+    obligations.  Excluding them from scheduling would leave those
+    nonterminal states unable to produce the evidence needed to advance.
+    """
+
+    return normalize_goal_state(state) in {
+        GoalState.ACTIVE,
+        GoalState.PROVISIONALLY_COMPLETE,
+        GoalState.ANALYSIS_INCONCLUSIVE,
+        GoalState.REOPENED,
+    }
 
 
 class IllegalGoalTransitionError(ValueError):

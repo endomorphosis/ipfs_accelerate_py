@@ -835,6 +835,75 @@ def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path:
     assert state is not None and state["state"] == "blocked"
 
 
+def test_completed_execution_slice_releases_lane_while_shard_remains_open(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "title": "Completed execution slice"},
+        {"task_id": "T-2", "title": "Deferred dependent", "depends_on": ["T-1"]},
+        {"task_id": "T-3", "title": "Later dependent", "depends_on": ["T-2"]},
+    ]
+    bundle["execution_slice_task_ids"] = ["T-1"]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": bundle}}),
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    initial = scheduler.reconcile_once()
+    assert initial["counts"]["active"] == 1
+    lane = launcher.starts[0][0]
+    assert lane.task_ids == ["T-1"]
+    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
+    lane.todo_path.write_text(
+        "## T-1 Completed execution slice\n\n"
+        "- Status: completed\n"
+        "- Depends on: none\n\n"
+        "## T-2 Deferred dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-1\n\n"
+        "## T-3 Later dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-2\n",
+        encoding="utf-8",
+    )
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (lane.state_dir / f"{lane.state_prefix}_task_state.json").write_text(
+        json.dumps(
+            {
+                "task_count": 3,
+                "completed_count": 1,
+                "ready_count": 0,
+                "blocked_count": 0,
+                "waiting_count": 2,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "task_statuses": {
+                    "T-1": "completed",
+                    "T-2": "waiting",
+                    "T-3": "waiting",
+                },
+                "task_identities": {
+                    task_id: {"display_task_id": task_id}
+                    for task_id in ("T-1", "T-2", "T-3")
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settled = scheduler.reconcile_once()
+
+    assert settled["counts"]["active"] == 0
+    assert settled["reaped_task_cids"] == [lane.task_cid]
+    assert launcher.starts[0][2].terminate_calls == 1
+    assert launcher.starts[0][2].wait_calls == 1
+    assert len(launcher.starts) == 1
+
+
 def test_transitively_blocked_waiting_tasks_release_an_idle_lane(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"

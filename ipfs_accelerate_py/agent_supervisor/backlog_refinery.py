@@ -5137,6 +5137,8 @@ def record_codebase_scan_findings(
         late_deduplicated_candidates=late_deduplicated_candidates,
     )
     strategy["last_codebase_scan_findings"] = appended
+    if mode.endswith("drained_exhaustive"):
+        strategy["last_drained_codebase_scan_task_count"] = task_count
     write_json(strategy_path, strategy)
     if commit_outputs:
         generated_paths.insert(0, todo_path)

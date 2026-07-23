@@ -10,7 +10,7 @@ import signal
 import subprocess
 import sys
 import threading
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Callable
@@ -45,6 +45,7 @@ from .resource_scheduler import (
     ResourceScheduler,
     sample_host_resources,
 )
+from .todo_daemon.supervisor import active_codex_exec_workers
 
 logger = logging.getLogger(__name__)
 
@@ -1653,7 +1654,7 @@ class DynamicBundleScheduler:
         return bool(getattr(handle, "alive", False))
 
     def _default_lane_disposition(self, lane: BundleLaneSpec) -> str:
-        """Project a fully settled shard board to a bundle disposition."""
+        """Project a settled execution slice or shard board to a disposition."""
 
         try:
             markdown = lane.todo_path.read_text(encoding="utf-8")
@@ -1714,16 +1715,35 @@ class DynamicBundleScheduler:
                 else task_count == len(portal_tasks)
             )
             state_matches_board = state_matches_board and state_covers_current_board
+            raw_statuses = state.get("task_statuses")
+            statuses = {
+                str(task_id): str(status).strip().lower()
+                for task_id, status in (
+                    raw_statuses.items() if isinstance(raw_statuses, dict) else ()
+                )
+            }
+            board_statuses = {
+                str(task.task_id): str(task.status).strip().lower()
+                for task in portal_tasks
+            }
+            execution_statuses = [
+                statuses.get(task_id, board_statuses.get(task_id, ""))
+                for task_id in lane.task_ids
+            ]
+            if state_matches_board and not active and execution_statuses:
+                if all(status in {"complete", "completed"} for status in execution_statuses):
+                    return "completed"
+                if all(
+                    status in {"complete", "completed", "blocked", "on_hold"}
+                    for status in execution_statuses
+                ):
+                    return "blocked"
             if state_matches_board and task_count > 0 and not active and waiting_count == 0:
                 if completed_count >= task_count:
                     return "completed"
                 if completed_count + blocked_count >= task_count:
                     return "blocked"
             if state_matches_board and task_count > 0 and not active and ready_count == 0:
-                statuses = {
-                    str(task_id): str(status).strip().lower()
-                    for task_id, status in (state.get("task_statuses") or {}).items()
-                }
                 completed_ids = {
                     task.task_id
                     for task in portal_tasks
@@ -2066,6 +2086,14 @@ class DynamicBundleScheduler:
             running.to_database_dict(repo_root=self.repo_root)
             for _task_cid, running in sorted(self._running.items())
         ]
+        active_worker_pids = sorted(
+            {
+                int(worker["pid"])
+                for running in self._running.values()
+                for worker in active_codex_exec_workers(getattr(running.handle, "pid", None))
+                if worker.get("pid") is not None
+            }
+        )
         current_snapshot = scheduler_state or self._build_scheduler_snapshot(discovered, normalized)
         decision_state = decision_snapshot or current_snapshot
         self._last_scheduler_snapshot = current_snapshot
@@ -2109,6 +2137,8 @@ class DynamicBundleScheduler:
             "planned_count": len(discovered),
             "started_count": len(active_lanes),
             "running_count": len(active_lanes),
+            "active_worker_count": len(active_worker_pids),
+            "active_worker_pids": active_worker_pids,
             "ready_count": len(ready),
             "blocked_count": len(blocked),
             "completed_count": len(completed),

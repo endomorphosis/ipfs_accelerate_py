@@ -129,6 +129,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec, pid_alive, stop_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.runner import TodoDaemonRunner
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor as todo_supervisor_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (
     SupervisorStatusContext,
     worktree_phase_worker_status,
@@ -7233,6 +7234,7 @@ def test_implementation_supervisor_repairs_implementation_without_worker(tmp_pat
         check_interval=1,
         stale_seconds=3600,
         implementation_timeout=3600,
+        implementation_log_stall_seconds=60,
     )
 
     result = TodoImplementationSupervisor(config).run_once()
@@ -7243,6 +7245,49 @@ def test_implementation_supervisor_repairs_implementation_without_worker(tmp_pat
     repaired_state = TodoTaskState.load(state_path)
     assert repaired_state.active_task_id == ""
     assert repaired_state.implementation_in_progress is False
+
+
+def test_implementation_supervisor_keeps_quiet_live_agent_worker(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    log_path = state_dir / "implementation.log"
+    log_path.write_text("quiet worker\n", encoding="utf-8")
+    now = datetime.now(timezone.utc)
+    started = now - timedelta(minutes=10)
+    os.utime(log_path, (started.timestamp(), started.timestamp()))
+    state = TodoTaskState(
+        active_task_id="AUTO-LIVE",
+        active_phase="implementing",
+        active_phase_started_at=started.isoformat(),
+        implementation_in_progress=True,
+        last_implementation_task_id="AUTO-LIVE",
+        last_implementation_started_at=started.isoformat(),
+        last_implementation_log_path=str(log_path),
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            stale_seconds=3600,
+            implementation_timeout=3600,
+            implementation_log_stall_seconds=60,
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_agent_worker_processes",
+        lambda: [{"pid": 1234, "cmdline": "codex exec"}],
+    )
+
+    reason = supervisor._implementation_log_stall_reason(state, now_ts=now.timestamp())
+
+    assert reason == ""
 
 
 def test_implementation_supervisor_prefers_worker_stall_over_log_stall(tmp_path):
@@ -7318,6 +7363,38 @@ def test_supervisor_worker_watchdog_detects_active_merge_resolver_without_worker
     assert status["phase"] == "merge_resolver"
     assert status["active_worker_count"] == 0
     assert status["stalled_without_active_worker"] is True
+
+
+def test_supervisor_worker_watchdog_recognizes_llm_router_merge_resolver(monkeypatch):
+    now = datetime.now(timezone.utc)
+    old = now - timedelta(minutes=10)
+    monkeypatch.setattr(
+        todo_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "pid": 4321,
+                "cmdline": (
+                    "/usr/bin/python "
+                    "ipfs_accelerate_py/agent_supervisor/llm_router_merge_resolver.py"
+                ),
+            }
+        ],
+    )
+
+    status = worktree_phase_worker_status(
+        {
+            "active_phase": "merge_resolver",
+            "active_phase_started_at": old.isoformat(),
+        },
+        daemon_pid=1234,
+        threshold_seconds=60,
+        now=now,
+    )
+
+    assert status["active_worker_count"] == 1
+    assert status["active_worker_pids"] == [4321]
+    assert status["stalled_without_active_worker"] is False
 
 
 def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
@@ -10699,7 +10776,7 @@ def test_run_goal_validation_preserves_quoted_validation_semicolons(tmp_path):
     assert [item["command"] for item in result["results"]] == [inline_python, "test -f src/config.yml"]
 
 
-def test_objective_daemon_reconciles_completed_goals_from_evidence(tmp_path):
+def test_objective_daemon_materializes_completion_proof_work_without_receipts(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -10749,18 +10826,29 @@ def test_objective_daemon_reconciles_completed_goals_from_evidence(tmp_path):
 
     payload = run_objective_daemon(args)
 
-    assert payload["completed_goal_ids"] == ["VAIOS-G001"]
-    assert payload["objective_active_goal_count"] == 0
-    assert payload["objective_completed_goal_count"] == 1
-    assert payload["generated_count"] == 0
-    assert payload["objective_completion_validation_results"]["VAIOS-G001"]["passed"] is True
+    assert payload["completed_goal_ids"] == []
+    assert payload["objective_active_goal_count"] == 1
+    assert payload["objective_completed_goal_count"] == 0
+    assert payload["objective_completion_validation_results"] == {}
+    assert payload["objective_completion_decisions"]["VAIOS-G001"]["state"] == "provisionally_complete"
+    assert payload["objective_generated_work_count"] == 1
+    assert payload["objective_generation_materialized_count"] == 1
+    assert payload["generated_count"] == 1
     objective_text = objective_path.read_text(encoding="utf-8")
-    assert "- Status: completed" in objective_text
-    assert "- Completion evidence: COMPLETE_RUNTIME_PROOF => src/proof.py (exact)" in objective_text
-    assert "- Completion validation: 0" in objective_text
+    assert "- Status: provisionally_complete" in objective_text
+    assert "- Completion evidence:" not in objective_text
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## ACCEL-001 Produce completion evidence for Completed runtime proof" in todo_text
+    assert "- Goal id: VAIOS-G001" in todo_text
+    assert "- Validation: test -f src/proof.py" in todo_text
+
+    replay = run_objective_daemon(args)
+
+    assert replay["objective_generation_materialized_count"] == 0
+    assert todo_path.read_text(encoding="utf-8").count("## ACCEL-001 ") == 1
 
 
-def test_objective_daemon_does_not_complete_goal_when_validation_fails(tmp_path):
+def test_objective_daemon_materializes_validation_repair_instead_of_completing(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -10813,11 +10901,15 @@ def test_objective_daemon_does_not_complete_goal_when_validation_fails(tmp_path)
     assert payload["completed_goal_ids"] == []
     assert payload["objective_active_goal_count"] == 1
     assert payload["objective_completed_goal_count"] == 0
-    assert payload["objective_completion_validation_results"]["VAIOS-G001"]["passed"] is False
-    assert payload["generated_count"] == 0
+    assert payload["objective_completion_validation_results"] == {}
+    assert payload["objective_generation_materialized_count"] == 1
+    assert payload["generated_count"] == 1
     objective_text = objective_path.read_text(encoding="utf-8")
-    assert "- Status: active" in objective_text
+    assert "- Status: provisionally_complete" in objective_text
     assert "Completion evidence:" not in objective_text
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## ACCEL-001 Produce completion evidence for Runtime proof with failing validation" in todo_text
+    assert "- Validation: test -f missing-validation-proof.txt" in todo_text
 
 
 def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path):
@@ -11043,7 +11135,11 @@ def test_objective_daemon_compacts_duplicate_interoperability_goals(tmp_path):
     assert "## VAIOS-G003 Interoperate hallucinate_app with external/ipfs_datasets" not in objective_text
     assert "## VAIOS-G004 Interoperate hallucinate_app with swissknife" in objective_text
     schedule = objective_heap_schedule(parse_goal_heap(objective_text))
-    assert [record.goal_id for record in schedule] == ["VAIOS-G001", "VAIOS-G004"]
+    assert [record.goal_id for record in schedule] == [
+        "VAIOS-G000",
+        "VAIOS-G001",
+        "VAIOS-G004",
+    ]
 
 
 def test_objective_daemon_seeds_all_interoperability_pairs_without_focus(tmp_path):

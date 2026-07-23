@@ -5107,22 +5107,26 @@ def generate_objective_todos(
     surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    precomputed_findings: Sequence[ObjectiveFinding] | None = None,
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
     records: list[ObjectiveTaskRecord] = []
-    findings = scan_objective_gaps(
-        repo_root,
-        objective_path=objective_path,
-        max_findings=max_findings,
-        seen_fingerprints=seen_fingerprints,
-        force_goal_ids=force_goal_ids,
-        summary_prefix=summary_prefix,
-        surplus_findings_per_goal=surplus_findings_per_goal,
-        surplus_min_terms_per_todo=surplus_min_terms_per_todo,
-        dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
-        dataset_id=f"{task_prefix.rstrip('-').lower()}-objective-ast",
-    )
+    if precomputed_findings is None:
+        findings = scan_objective_gaps(
+            repo_root,
+            objective_path=objective_path,
+            max_findings=max_findings,
+            seen_fingerprints=seen_fingerprints,
+            force_goal_ids=force_goal_ids,
+            summary_prefix=summary_prefix,
+            surplus_findings_per_goal=surplus_findings_per_goal,
+            surplus_min_terms_per_todo=surplus_min_terms_per_todo,
+            dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
+            dataset_id=f"{task_prefix.rstrip('-').lower()}-objective-ast",
+        )
+    else:
+        findings = list(precomputed_findings)
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
         reserved_task_ids = task_ids_from_artifact_names(

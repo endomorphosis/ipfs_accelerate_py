@@ -75,6 +75,8 @@ DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGED_WO
 DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX = 25
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
+DAEMON_MAINTENANCE_INTERVAL_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MAINTENANCE_INTERVAL_SECONDS"
+DEFAULT_DAEMON_MAINTENANCE_INTERVAL_SECONDS = 300.0
 MERGE_RECONCILIATION_MAX_AGE_ENV = "IPFS_ACCELERATE_AGENT_MERGE_RECONCILIATION_MAX_AGE_SECONDS"
 DEFAULT_MERGE_RECONCILIATION_MAX_AGE_SECONDS = 86400
 UNSUPPORTED_TYPESCRIPT_VALIDATION_FLAGS = ("--ignoreConfig",)
@@ -142,6 +144,16 @@ def _env_int(name: str, default: int) -> int:
         return default
     try:
         return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
     except ValueError:
         return default
 
@@ -1008,6 +1020,7 @@ class PortalImplementationDaemon:
         worktree_pool_enabled: bool | None = None,
         worktree_pool_max_entries: int | None = None,
         worktree_pool: WorktreePool | None = None,
+        maintenance_interval_seconds: float | None = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -1085,6 +1098,16 @@ class PortalImplementationDaemon:
         self.task_shard_index = int(task_shard_index)
         if self.task_shard_index < 0 or self.task_shard_index >= self.task_shard_count:
             raise ValueError("task_shard_index must be in range [0, task_shard_count)")
+        self.maintenance_interval_seconds = max(
+            0.0,
+            _env_float(
+                DAEMON_MAINTENANCE_INTERVAL_ENV,
+                DEFAULT_DAEMON_MAINTENANCE_INTERVAL_SECONDS,
+            )
+            if maintenance_interval_seconds is None
+            else float(maintenance_interval_seconds),
+        )
+        self._last_periodic_maintenance_monotonic: float | None = None
         # Lane state directories are intentionally isolated, so the merge train
         # cannot live next to ``state_path``.  The git common directory is shared
         # by every worktree and supervisor lane for this repository.
@@ -7993,7 +8016,27 @@ class PortalImplementationDaemon:
         - Git garbage collection (loose objects, reflogs, repacking)
         - Task queue compaction (removing stale entries)
         """
-        results: dict[str, Any] = {}
+        now_monotonic = time.monotonic()
+        if (
+            self._last_periodic_maintenance_monotonic is not None
+            and self.maintenance_interval_seconds > 0
+        ):
+            elapsed_seconds = max(
+                0.0,
+                now_monotonic - self._last_periodic_maintenance_monotonic,
+            )
+            if elapsed_seconds < self.maintenance_interval_seconds:
+                return {
+                    "ran": False,
+                    "reason": "cooldown",
+                    "elapsed_seconds": round(elapsed_seconds, 3),
+                    "interval_seconds": self.maintenance_interval_seconds,
+                }
+        self._last_periodic_maintenance_monotonic = now_monotonic
+        results: dict[str, Any] = {
+            "ran": True,
+            "interval_seconds": self.maintenance_interval_seconds,
+        }
         try:
             results["stale_worktrees"] = self._cleanup_stale_worktrees()
         except Exception as exc:
@@ -10926,6 +10969,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--maintenance-interval-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Minimum seconds between repository-wide maintenance scans. "
+            f"Defaults to {DAEMON_MAINTENANCE_INTERVAL_ENV} or "
+            f"{DEFAULT_DAEMON_MAINTENANCE_INTERVAL_SECONDS}; <=0 runs every pass."
+        ),
+    )
+    parser.add_argument(
         "--objective-scan-min-open-tasks",
         type=int,
         default=None,
@@ -11103,6 +11156,7 @@ def main(argv: list[str] | None = None) -> None:
         task_shard_index=args.task_shard_index,
         validation_max_workers=args.validation_max_workers,
         validation_resource_budget=args.validation_resource_budget,
+        maintenance_interval_seconds=args.maintenance_interval_seconds,
     )
     while True:
         result = daemon.run_once()
