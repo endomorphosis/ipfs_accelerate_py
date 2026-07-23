@@ -1162,10 +1162,6 @@ class PortalImplementationDaemon:
         self._active_canonical_task_cids: set[str] = set()
         self.git_gc = GitGarbageCollector(
             repo_root=self.repo_root,
-            # Git objects and worktree metadata are repository-wide. A
-            # lane-local state file makes every new bundle believe aggressive
-            # GC has never run, serializing startup behind a full repack.
-            state_path=self.repo_root / "data" / "agent_supervisor" / "gc_state.json",
             worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
         )
 

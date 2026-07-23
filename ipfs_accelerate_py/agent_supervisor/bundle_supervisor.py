@@ -872,6 +872,7 @@ def implementation_supervisor_command(
     implementation_command: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
+    merge_target_branch: str = "",
     merge_reconciliation_max_merges: int | None = None,
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str = "",
@@ -926,6 +927,8 @@ def implementation_supervisor_command(
         command.extend(["--llm-merge-resolver-command", llm_merge_resolver_command])
     if llm_merge_resolver_timeout_seconds is not None:
         command.extend(["--llm-merge-resolver-timeout-seconds", str(llm_merge_resolver_timeout_seconds)])
+    if merge_target_branch:
+        command.extend(["--merge-target-branch", merge_target_branch])
     if merge_reconciliation_max_merges is not None:
         command.extend(["--merge-reconciliation-max-merges", str(merge_reconciliation_max_merges)])
     if generated_dirty_repair_enabled:
@@ -963,6 +966,7 @@ def plan_bundle_lanes(
     implementation_command: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
+    merge_target_branch: str = "",
     merge_reconciliation_max_merges: int | None = None,
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str = "",
@@ -1045,6 +1049,7 @@ def plan_bundle_lanes(
             implementation_command=implementation_command,
             llm_merge_resolver_command=llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=llm_merge_resolver_timeout_seconds,
+            merge_target_branch=merge_target_branch,
             merge_reconciliation_max_merges=merge_reconciliation_max_merges,
             generated_dirty_repair_enabled=generated_dirty_repair_enabled,
             generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
@@ -1618,7 +1623,8 @@ class DynamicBundleScheduler:
                 "task_prefix", "implement", "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "implementation_timeout",
                 "implementation_command", "llm_merge_resolver_command",
-                "llm_merge_resolver_timeout_seconds", "merge_reconciliation_max_merges",
+                "llm_merge_resolver_timeout_seconds", "merge_target_branch",
+                "merge_reconciliation_max_merges",
                 "generated_dirty_repair_enabled", "generated_dirty_repair_commit_subject",
                 "generated_dirty_repair_include_submodule_gitlinks",
                 "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
@@ -2622,6 +2628,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--implementation-command", default="")
     parser.add_argument("--llm-merge-resolver-command", default="")
     parser.add_argument("--llm-merge-resolver-timeout-seconds", type=float, default=None)
+    parser.add_argument(
+        "--merge-target-branch",
+        default="",
+        help=(
+            "Branch that receives isolated implementation merges. The branch "
+            "is forwarded to every bundle lane."
+        ),
+    )
     parser.add_argument("--merge-reconciliation-max-merges", type=int, default=None)
     parser.add_argument("--auto-commit-generated-dirty", dest="generated_dirty_repair_enabled", action="store_true")
     parser.set_defaults(generated_dirty_repair_enabled=False)
@@ -2689,6 +2703,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         implementation_command=args.implementation_command,
         llm_merge_resolver_command=args.llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
+        merge_target_branch=getattr(args, "merge_target_branch", ""),
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
         generated_dirty_repair_enabled=args.generated_dirty_repair_enabled,
         generated_dirty_repair_commit_subject=args.generated_dirty_commit_subject,

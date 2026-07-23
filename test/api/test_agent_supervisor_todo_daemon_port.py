@@ -1201,26 +1201,41 @@ def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
 def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
     todo_path = repo / "todo.md"
     todo_path.write_text("# Todos\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "-b", "lane", str(linked))
+
     first = TodoImplementationDaemon(
         todo_path=todo_path,
-        state_path=repo / "lanes" / "first" / "task_state.json",
-        strategy_path=repo / "lanes" / "first" / "strategy.json",
-        events_path=repo / "lanes" / "first" / "events.jsonl",
+        state_path=tmp_path / "lanes" / "first" / "task_state.json",
+        strategy_path=tmp_path / "lanes" / "first" / "strategy.json",
+        events_path=tmp_path / "lanes" / "first" / "events.jsonl",
         repo_root=repo,
     )
+    first.git_gc.state.last_gc_time = 123.0
+    first.git_gc.state.save()
+
     second = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=repo / "lanes" / "second" / "task_state.json",
-        strategy_path=repo / "lanes" / "second" / "strategy.json",
-        events_path=repo / "lanes" / "second" / "events.jsonl",
-        repo_root=repo,
+        todo_path=linked / "todo.md",
+        state_path=tmp_path / "lanes" / "second" / "task_state.json",
+        strategy_path=tmp_path / "lanes" / "second" / "strategy.json",
+        events_path=tmp_path / "lanes" / "second" / "events.jsonl",
+        repo_root=linked,
     )
 
-    expected = repo / "data" / "agent_supervisor" / "gc_state.json"
+    expected = repo / ".git" / "agent-supervisor" / "gc_state.json"
     assert first.git_gc.state_path == expected
     assert second.git_gc.state_path == expected
+    assert second.git_gc.state.last_gc_time == 123.0
+    assert _git(repo, "status", "--porcelain") == ""
+    assert _git(linked, "status", "--porcelain") == ""
 
 
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
@@ -11987,6 +12002,7 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         llm_merge_resolver_command="python resolver.py",
         generated_dirty_repair_enabled=True,
         generated_dirty_repair_paths=(repo / "docs" / "generated-taskboard.md",),
+        merge_target_branch="benchmark-plan",
         worktree_submodule_paths=("ipfs_datasets_py/ipfs_accelerate_py",),
         log_level="DEBUG",
         max_lanes=None,
@@ -12015,6 +12031,7 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     )
     assert lanes[0].command.count("--worktree-submodule-path") == 1
     assert "ipfs_datasets_py/ipfs_accelerate_py" in lanes[0].command
+    assert lanes[0].command[lanes[0].command.index("--merge-target-branch") + 1] == "benchmark-plan"
 
 
 def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
