@@ -42,7 +42,10 @@ DEFAULT_CAPABILITY_PROBE_MAX_CHECKS = 96
 class CapabilityHealth(str, Enum):
     """Truthful readiness states for one independently probed dependency."""
 
+    SIMULATED = "simulated"
+    CONFIGURED = "configured"
     AVAILABLE = "available"
+    VERIFIED = "verified"
     DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"
     DISABLED = "disabled"
@@ -282,16 +285,28 @@ class CapabilityHealthCheck:
 
     @property
     def available(self) -> bool:
-        """Return true only for a fully available dependency."""
+        """Return true when a dependency is available for use."""
 
-        return self.status is CapabilityHealth.AVAILABLE
+        return self.status in {
+            CapabilityHealth.AVAILABLE,
+            CapabilityHealth.VERIFIED,
+        }
+
+    @property
+    def verified(self) -> bool:
+        """Return true only for evidence-backed production health."""
+
+        return self.status is CapabilityHealth.VERIFIED
 
     @property
     def discovered(self) -> bool:
         """Return true when the dependency exists, including degraded forms."""
 
         return self.status in {
+            CapabilityHealth.SIMULATED,
+            CapabilityHealth.CONFIGURED,
             CapabilityHealth.AVAILABLE,
+            CapabilityHealth.VERIFIED,
             CapabilityHealth.DEGRADED,
             CapabilityHealth.DISABLED,
         }
@@ -377,7 +392,16 @@ class FormalVerificationProviderCapability:
 
     @property
     def available(self) -> bool:
-        return self.status is CapabilityHealth.AVAILABLE
+        return self.status in {
+            CapabilityHealth.AVAILABLE,
+            CapabilityHealth.VERIFIED,
+        }
+
+    @property
+    def production_ready(self) -> bool:
+        """Return whether bounded verification evidence promoted this provider."""
+
+        return self.status is CapabilityHealth.VERIFIED
 
     def to_dict(self) -> dict[str, Any]:
         health = {
@@ -434,7 +458,10 @@ class FormalVerificationCapabilityReport:
         if not self.providers:
             return CapabilityHealth.UNAVAILABLE
         statuses = tuple(provider.status for provider in self.providers)
-        if all(status is CapabilityHealth.AVAILABLE for status in statuses):
+        if all(
+            status in {CapabilityHealth.AVAILABLE, CapabilityHealth.VERIFIED}
+            for status in statuses
+        ):
             return CapabilityHealth.AVAILABLE
         if all(status is CapabilityHealth.UNAVAILABLE for status in statuses):
             return CapabilityHealth.UNAVAILABLE
@@ -970,8 +997,11 @@ class FormalVerificationCapabilityProbe:
         return CapabilityHealthCheck(
             dimension=dimension,
             name=name,
-            status=CapabilityHealth.AVAILABLE,
-            reason=f"artifact path configured by {source} exists; contents were not loaded",
+            status=CapabilityHealth.CONFIGURED,
+            reason=(
+                f"artifact path configured by {source} exists; contents were not "
+                "loaded or cryptographically verified"
+            ),
             required=required,
             location=str(path),
         )
@@ -1492,7 +1522,10 @@ class FormalVerificationCapabilityProbe:
                 else "simulated ZKP backend package is not discoverable"
             ),
             required=False,
-            metadata={"cryptographic": False},
+            metadata={
+                "cryptographic": False,
+                "backend_health": CapabilityHealth.SIMULATED.value,
+            },
         )
         groth16 = self._executable(
             "Groth16 Rust backend",
@@ -1547,8 +1580,17 @@ class FormalVerificationCapabilityProbe:
                 "operations are unavailable"
             ),
         )
-        groth16_ready = groth16.available and groth16_artifacts.available
-        provekit_ready = provekit.available and provekit_artifacts.available
+        configured_states = {
+            CapabilityHealth.CONFIGURED,
+            CapabilityHealth.AVAILABLE,
+            CapabilityHealth.VERIFIED,
+        }
+        groth16_ready = (
+            groth16.available and groth16_artifacts.status in configured_states
+        )
+        provekit_ready = (
+            provekit.available and provekit_artifacts.status in configured_states
+        )
         if not package.available or not circuits_package.available:
             status = CapabilityHealth.UNAVAILABLE
             reason = (
@@ -1571,11 +1613,12 @@ class FormalVerificationCapabilityProbe:
                 if groth16_ready
                 else CapabilityHealth.UNAVAILABLE,
                 reason=(
-                    "Groth16 executable and setup artifacts are discoverable"
+                    "Groth16 executable and setup artifacts are available but "
+                    "production self-tests have not been supplied to this metadata probe"
                     if groth16_ready
                     else "Groth16 requires both its Rust executable and setup artifacts"
                 ),
-                metadata={"cryptographic": True},
+                metadata={"cryptographic": True, "production_verified": False},
             ),
             CapabilityHealthCheck(
                 dimension=CapabilityDimension.PROVIDER,
@@ -1584,11 +1627,12 @@ class FormalVerificationCapabilityProbe:
                 if provekit_ready
                 else CapabilityHealth.UNAVAILABLE,
                 reason=(
-                    "ProveKit executable and circuit artifacts are discoverable"
+                    "ProveKit executable and circuit artifacts are available but "
+                    "production self-tests have not been supplied to this metadata probe"
                     if provekit_ready
                     else "ProveKit requires both its CLI and prepared circuit artifacts"
                 ),
-                metadata={"cryptographic": True},
+                metadata={"cryptographic": True, "production_verified": False},
             ),
         )
         return self._component(
