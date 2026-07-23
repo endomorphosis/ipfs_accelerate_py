@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import importlib.machinery
+import json
 import os
 import shutil
 import threading
@@ -30,6 +31,9 @@ FORMAL_VERIFICATION_CAPABILITY_SCHEMA_VERSION = (
     "ipfs_accelerate_py/agent-supervisor/formal-verification-capabilities@1"
 )
 FORMAL_VERIFICATION_CAPABILITY_REPORT_VERSION = 1
+PROOF_PROVIDER_CAPABILITY_SCHEMA_VERSION = (
+    "ipfs_accelerate_py/agent-supervisor/proof-provider-capability@1"
+)
 DEFAULT_CAPABILITY_CACHE_TTL_SECONDS = 300.0
 DEFAULT_CAPABILITY_PROBE_TIMEOUT_SECONDS = 2.0
 DEFAULT_CAPABILITY_PROBE_MAX_CHECKS = 96
@@ -53,6 +57,188 @@ class CapabilityDimension(str, Enum):
     MODEL = "model"
     CIRCUIT = "circuit"
     OPTIONAL_DEPENDENCY = "optional_dependency"
+
+
+class ProofProviderOperation(str, Enum):
+    """Operations exposed by version 1 of the optional provider protocol."""
+
+    CAPABILITY = "capability"
+    TRANSLATE = "translate"
+    PROVE = "prove"
+    RECONSTRUCT = "reconstruct"
+    VERIFY = "verify"
+    ATTEST = "attest"
+
+
+class ProofProviderIsolation(str, Enum):
+    """Execution boundaries a provider advertises support for."""
+
+    IN_PROCESS = "in_process"
+    SUBPROCESS = "subprocess"
+
+
+_PROVIDER_OPERATION_ORDER = tuple(ProofProviderOperation)
+
+
+@dataclass(frozen=True)
+class ProofProviderCapability:
+    """Versioned operation-level routing information for one provider.
+
+    This descriptor is deliberately not proof evidence.  In particular,
+    ``proof_attempted`` and ``proof_success`` are fixed to false just as they
+    are on the broader dependency report above.
+    """
+
+    provider_id: str
+    provider_version: str
+    protocol_versions: tuple[int, ...] = (1,)
+    operations: tuple[ProofProviderOperation | str, ...] = (
+        ProofProviderOperation.CAPABILITY,
+    )
+    isolation: tuple[ProofProviderIsolation | str, ...] = (
+        ProofProviderIsolation.IN_PROCESS,
+    )
+    network_access_required: bool = False
+    resource_limits_supported: bool = False
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    schema_version: str = PROOF_PROVIDER_CAPABILITY_SCHEMA_VERSION
+    proof_attempted: bool = field(default=False, init=False)
+    proof_success: bool = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        provider_id = str(self.provider_id).strip()
+        provider_version = str(self.provider_version).strip()
+        if not provider_id:
+            raise ValueError("proof-provider provider_id must not be empty")
+        if not provider_version:
+            raise ValueError("proof-provider provider_version must not be empty")
+        if self.schema_version != PROOF_PROVIDER_CAPABILITY_SCHEMA_VERSION:
+            raise ValueError("unsupported proof-provider capability schema")
+
+        versions: list[int] = []
+        for raw_version in self.protocol_versions:
+            if isinstance(raw_version, bool) or not isinstance(raw_version, int):
+                raise ValueError("proof-provider protocol versions must be integers")
+            if raw_version < 1:
+                raise ValueError("proof-provider protocol versions must be positive")
+            if raw_version not in versions:
+                versions.append(raw_version)
+        if not versions:
+            raise ValueError("at least one proof-provider protocol version is required")
+
+        operations = {
+            ProofProviderOperation(str(getattr(operation, "value", operation)))
+            for operation in self.operations
+        }
+        if ProofProviderOperation.CAPABILITY not in operations:
+            raise ValueError("proof providers must support the capability operation")
+        isolation = {
+            ProofProviderIsolation(str(getattr(mode, "value", mode)))
+            for mode in self.isolation
+        }
+        if not isolation:
+            raise ValueError("at least one proof-provider isolation mode is required")
+        if not isinstance(self.network_access_required, bool):
+            raise ValueError("network_access_required must be a boolean")
+        if not isinstance(self.resource_limits_supported, bool):
+            raise ValueError("resource_limits_supported must be a boolean")
+        if not isinstance(self.metadata, Mapping):
+            raise ValueError("proof-provider capability metadata must be a mapping")
+        try:
+            metadata = json.loads(
+                json.dumps(
+                    dict(self.metadata),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                )
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "proof-provider capability metadata must contain strict JSON values"
+            ) from exc
+
+        object.__setattr__(self, "provider_id", provider_id)
+        object.__setattr__(self, "provider_version", provider_version)
+        object.__setattr__(self, "protocol_versions", tuple(sorted(versions)))
+        object.__setattr__(
+            self,
+            "operations",
+            tuple(operation for operation in _PROVIDER_OPERATION_ORDER if operation in operations),
+        )
+        object.__setattr__(
+            self,
+            "isolation",
+            tuple(mode for mode in ProofProviderIsolation if mode in isolation),
+        )
+        object.__setattr__(self, "metadata", metadata)
+
+    def supports(
+        self,
+        operation: ProofProviderOperation | str,
+        *,
+        protocol_version: int = 1,
+        isolation: ProofProviderIsolation | str | None = None,
+    ) -> bool:
+        """Return whether this descriptor can route the requested call."""
+
+        try:
+            normalized_operation = ProofProviderOperation(
+                str(getattr(operation, "value", operation))
+            )
+            normalized_isolation = (
+                None
+                if isolation is None
+                else ProofProviderIsolation(str(getattr(isolation, "value", isolation)))
+            )
+        except ValueError:
+            return False
+        return (
+            protocol_version in self.protocol_versions
+            and normalized_operation in self.operations
+            and (
+                normalized_isolation is None
+                or normalized_isolation in self.isolation
+            )
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "provider_id": self.provider_id,
+            "provider_version": self.provider_version,
+            "protocol_versions": list(self.protocol_versions),
+            "operations": [operation.value for operation in self.operations],
+            "isolation": [mode.value for mode in self.isolation],
+            "network_access_required": self.network_access_required,
+            "resource_limits_supported": self.resource_limits_supported,
+            "metadata": dict(self.metadata),
+            "proof_attempted": False,
+            "proof_success": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofProviderCapability":
+        """Validate and decode a provider capability response."""
+
+        if not isinstance(payload, Mapping):
+            raise ValueError("proof-provider capability must be an object")
+        return cls(
+            schema_version=str(payload.get("schema_version", "")),
+            provider_id=str(payload.get("provider_id", "")),
+            provider_version=str(payload.get("provider_version", "")),
+            protocol_versions=tuple(payload.get("protocol_versions") or ()),
+            operations=tuple(payload.get("operations") or ()),
+            isolation=tuple(payload.get("isolation") or ()),
+            network_access_required=payload.get("network_access_required", False),
+            resource_limits_supported=payload.get("resource_limits_supported", False),
+            metadata=payload.get("metadata", {}),
+        )
+
+
+# A concise compatibility spelling useful to provider implementations.
+ProviderCapabilities = ProofProviderCapability
 
 
 _DIMENSION_ORDER = tuple(CapabilityDimension)
@@ -1386,12 +1572,17 @@ def clear_formal_verification_capability_cache() -> None:
 __all__ = [
     "FORMAL_VERIFICATION_CAPABILITY_SCHEMA_VERSION",
     "FORMAL_VERIFICATION_CAPABILITY_REPORT_VERSION",
+    "PROOF_PROVIDER_CAPABILITY_SCHEMA_VERSION",
     "DEFAULT_CAPABILITY_CACHE_TTL_SECONDS",
     "DEFAULT_CAPABILITY_PROBE_TIMEOUT_SECONDS",
     "DEFAULT_CAPABILITY_PROBE_MAX_CHECKS",
     "CapabilityHealth",
     "CapabilityDimension",
     "CapabilityHealthCheck",
+    "ProofProviderOperation",
+    "ProofProviderIsolation",
+    "ProofProviderCapability",
+    "ProviderCapabilities",
     "FormalVerificationProviderCapability",
     "FormalVerificationCapabilityReport",
     "FormalVerificationProbeConfig",
