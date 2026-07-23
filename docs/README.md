@@ -14,6 +14,7 @@
 - 📚 **[Usage Guide](archive/USAGE.md)** - Learn how to use all framework features  
 - 🔧 **[API Reference](api/overview.md)** - Complete API documentation with examples
 - 🏗️ **[Architecture Overview](architecture/overview.md)** - System design and components
+- 🤖 **[Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)** - Objective-driven planning, execution lanes, evidence, and proof gates
 - ❓ **[FAQ](guides/troubleshooting/faq.md)** - Frequently asked questions and troubleshooting
 
 ### **Project Information**
@@ -68,21 +69,22 @@ IPFS Accelerate Python is a **comprehensive, enterprise-grade framework** that c
 ### Technical Reference
 4. **[API Reference](api/overview.md)** - Complete API documentation with all methods and parameters
 5. **[Architecture Overview](architecture/overview.md)** - System design, components, and data flow
-6. **[Testing Guide](guides/testing/TESTING_README.md)** - Testing framework, benchmarks, and quality assurance
+6. **[Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)** - Agent planning, scheduling, validation, and recovery
+7. **[Testing Guide](guides/testing/TESTING_README.md)** - Testing framework, benchmarks, and quality assurance
 
 ### Specialization Guides
-7. **[Hardware Optimization](guides/hardware/overview.md)** - Platform-specific optimization strategies
-8. **[IPFS Integration](features/ipfs/IPFS.md)** - Distributed inference and content addressing
-9. **[P2P Architecture](guides/p2p/)** - P2P workflow scheduling and distributed computing
-10. **[WebNN/WebGPU Integration](features/webnn-webgpu/WEBNN_WEBGPU_README.md)** - Browser-based acceleration
+8. **[Hardware Optimization](guides/hardware/overview.md)** - Platform-specific optimization strategies
+9. **[IPFS Integration](features/ipfs/IPFS.md)** - Distributed inference and content addressing
+10. **[P2P Architecture](guides/p2p/)** - P2P workflow scheduling and distributed computing
+11. **[WebNN/WebGPU Integration](features/webnn-webgpu/WEBNN_WEBGPU_README.md)** - Browser-based acceleration
 
 ### Organized Guides
-11. **[GitHub Guides](guides/github/)** - GitHub Actions, autoscaling, authentication, P2P cache
-12. **[Docker Guides](guides/docker/)** - Container deployment, caching, security
-13. **[P2P Guides](guides/p2p/)** - Distributed computing, libp2p, workflow scheduling
-14. **[Deployment Guides](guides/deployment/)** - Production deployment, cross-platform
-15. **[Project Documentation](project/README.md)** - permanent location for project status, summary, and migration records
-16. **[MCP++ Records](../mcpplusplus/README.md)** - cutover evidence, conformance, and migration backlog
+12. **[GitHub Guides](guides/github/)** - GitHub Actions, autoscaling, authentication, P2P cache
+13. **[Docker Guides](guides/docker/)** - Container deployment, caching, security
+14. **[P2P Guides](guides/p2p/)** - Distributed computing, libp2p, workflow scheduling
+15. **[Deployment Guides](guides/deployment/)** - Production deployment, cross-platform
+16. **[Project Documentation](project/README.md)** - permanent location for project status, summary, and migration records
+17. **[MCP++ Records](../mcplusplus/README.md)** - cutover evidence, conformance, and migration backlog
 
 ## Key Features Covered
 
@@ -179,4 +181,3 @@ All examples, APIs, and features have been verified and updated for accuracy.
 ---
 
 Start with the [Installation Guide](guides/getting-started/installation.md) to begin using IPFS Accelerate Python! 🚀
-
