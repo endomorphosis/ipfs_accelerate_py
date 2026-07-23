@@ -64,6 +64,56 @@ def test_scheduler_reuses_plan_until_an_index_or_shard_revision_changes(
     assert calls == 3
 
 
+def test_external_worker_heartbeat_reapplies_fence_without_rebuilding(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    shard = repo / "bundle.todo.md"
+    external_state = repo / "serial-state.json"
+    repo.mkdir()
+    index.write_text("{}", encoding="utf-8")
+    shard.write_text("## T-1 cached\n", encoding="utf-8")
+    external_state.write_text(
+        '{"active_task_id":"T-1","active_phase":"implementing"}',
+        encoding="utf-8",
+    )
+    calls = 0
+
+    def fake_plan_bundle_lanes(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return [
+            replace(
+                _lane(repo, shard),
+                queue_payload={"tasks": [{"task_id": "T-1"}]},
+                claimable=True,
+            )
+        ]
+
+    monkeypatch.setattr(bundle_supervisor, "plan_bundle_lanes", fake_plan_bundle_lanes)
+    scheduler = DynamicBundleScheduler(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        external_task_state_paths=(external_state,),
+        max_lanes=1,
+    )
+
+    assert scheduler._plan()[0].claimable is False
+    external_state.write_text(
+        '{"active_task_id":"T-1","active_phase":"validating"}',
+        encoding="utf-8",
+    )
+    assert scheduler._plan()[0].claimable is False
+    external_state.write_text("{}", encoding="utf-8")
+    assert scheduler._plan()[0].claimable is True
+    assert calls == 1
+
+
 def test_hot_path_projections_copy_mutable_roots_without_recursive_graph_copy(
     tmp_path: Path,
 ) -> None:

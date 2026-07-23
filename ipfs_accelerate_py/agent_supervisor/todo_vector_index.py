@@ -1662,7 +1662,33 @@ def update_bundle_index_with_todo_vectors(
                 normalized = str(task_id)
                 if normalized:
                     packet_keys_by_task.setdefault(normalized, []).append(packet_key)
+    def compact_conflict_surface(value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            return {}
+        surface = dict(value)
+        ast_records = surface.pop("ast_records", None)
+        metadata = surface.pop("metadata", None)
+        if isinstance(ast_records, list):
+            surface["ast_record_count"] = len(ast_records)
+        else:
+            surface.setdefault("ast_record_count", 0)
+        if isinstance(metadata, Mapping):
+            surface["metadata_field_count"] = len(metadata)
+        else:
+            surface.setdefault("metadata_field_count", 0)
+        return surface
+
     graph_payload = dict(conflict_graph or {})
+    raw_graph_surfaces = (
+        graph_payload.get("surfaces")
+        if isinstance(graph_payload.get("surfaces"), dict)
+        else {}
+    )
+    if raw_graph_surfaces:
+        graph_payload["surfaces"] = {
+            str(key): compact_conflict_surface(value)
+            for key, value in raw_graph_surfaces.items()
+        }
     graph_surfaces = graph_payload.get("surfaces") if isinstance(graph_payload.get("surfaces"), dict) else {}
     graph_assignments = graph_payload.get("assignments") if isinstance(graph_payload.get("assignments"), list) else []
     graph_decisions = graph_payload.get("decisions") if isinstance(graph_payload.get("decisions"), list) else []
@@ -1768,12 +1794,18 @@ def update_bundle_index_with_todo_vectors(
                 for record in bundle_records
                 if conflict_key(record) in assignment_by_task
             ],
-            "conflict_decisions": [
-                dict(decision)
+            "conflict_decision_count": sum(
+                1
                 for decision in graph_decisions
                 if isinstance(decision, Mapping)
-                and graph_item_task_ids(decision) & {conflict_key(record) for record in bundle_records}
-            ],
+                and graph_item_task_ids(decision)
+                & {conflict_key(record) for record in bundle_records}
+            ),
+            "conflict_graph_ref": {
+                "field": "task_conflict_graph",
+                "bundle_key": str(bundle_key),
+                "tables": ["conflict_edges", "planning_decisions"],
+            },
         }
         tasks = bundle_payload.get("tasks")
         if not isinstance(tasks, list):
@@ -1805,24 +1837,39 @@ def update_bundle_index_with_todo_vectors(
             task["acceptance_criteria"] = record.acceptance_criteria
             task["validation_receipts"] = record.validation_receipts
             task["provenance_cids"] = record.provenance_cids
-            task["coverage_inputs"] = record.coverage_inputs
+            task.pop("coverage_inputs", None)
+            task["coverage_input_ref"] = {
+                "field": "todo_coverage_inputs",
+                "task_id": record.task_id,
+                "todo_vector_key": record.vector_key,
+            }
+            task["coverage_input_field_count"] = len(record.coverage_inputs)
             task["interfaces"] = record.interfaces
             task["submodules"] = record.submodules
             task["generated_artifacts"] = record.generated_artifacts
             task["allow_concurrent_with"] = record.allow_concurrent_with
             record_conflict_key = conflict_key(record)
-            task["conflict_surface"] = dict(graph_surfaces.get(record_conflict_key) or record.conflict_surface)
+            task["conflict_surface"] = compact_conflict_surface(
+                graph_surfaces.get(record_conflict_key) or record.conflict_surface
+            )
             task["conflict_assignment"] = assignment_by_task.get(record_conflict_key, {})
-            task["conflict_decisions"] = [
-                dict(decision)
+            task["conflict_decision_count"] = sum(
+                1
                 for decision in graph_decisions
                 if isinstance(decision, Mapping) and record_conflict_key in graph_item_task_ids(decision)
-            ]
-            task["conflict_edges"] = [
-                dict(edge)
+            )
+            task["conflict_edge_count"] = sum(
+                1
                 for edge in graph_edges
                 if isinstance(edge, Mapping) and record_conflict_key in graph_item_task_ids(edge)
-            ]
+            )
+            task.pop("conflict_decisions", None)
+            task.pop("conflict_edges", None)
+            task["conflict_evidence_ref"] = {
+                "field": "task_conflict_graph",
+                "task_cid": record_conflict_key,
+                "tables": ["conflict_edges", "planning_decisions"],
+            }
     if graph_payload:
         payload["conflict_graph"] = graph_payload
         payload["task_conflict_graph"] = graph_payload

@@ -37,6 +37,22 @@ CONFLICT_RECEIPT_STATUSES = frozenset(
     {"conflict", "conflicted", "failed", "merge_conflict", "quarantined", "rejected", "resolved"}
 )
 AST_BLOB_RECORD_SCHEMA_VERSION = 1
+_DERIVED_CONFLICT_METADATA_FIELDS = frozenset(
+    {
+        "conflict_decisions",
+        "conflict_edges",
+        "conflict_graph",
+        "conflict_planning_decisions",
+        "conflict_surface",
+        "coverage_inputs",
+        "dependency_dag",
+        "task_conflict_graph",
+        "task_dependency_graph",
+        "task_planning_graph",
+        "todo_coverage_inputs",
+        "todo_vector_summary",
+    }
+)
 
 
 def _source_sha256(source: str) -> str:
@@ -775,12 +791,15 @@ def build_conflict_surface(
             key: value
             for key, value in root.items()
             if key
-            not in {
-                "files", "predicted_files", "outputs", "changed_paths", "ast_symbols",
-                "global_ast_symbols", "interfaces",
-                "submodules", "generated_artifacts", "allow_concurrent_with",
-                "ast_records", "ast_blob_records", "python_ast_records", "blob_identities",
-            }
+            not in (
+                {
+                    "files", "predicted_files", "outputs", "changed_paths", "ast_symbols",
+                    "global_ast_symbols", "interfaces",
+                    "submodules", "generated_artifacts", "allow_concurrent_with",
+                    "ast_records", "ast_blob_records", "python_ast_records", "blob_identities",
+                }
+                | _DERIVED_CONFLICT_METADATA_FIELDS
+            )
         },
     )
 

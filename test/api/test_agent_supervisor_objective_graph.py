@@ -920,7 +920,8 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     payloads = build_bundle_task_payloads(index_path)
     assert payloads[0]["bundle_key"] == "objective/ops/root"
     assert payloads[0]["todo_path"].endswith("objective-ops-root.todo.md")
-    assert payloads[0]["task_conflict_graph"]["surfaces"]
+    assert payloads[0]["planning_evidence_ref"]["conflict_edge_table"] == "conflict_edges"
+    assert "task_conflict_graph" not in payloads[0]
 
     submitted: list[dict[str, object]] = []
 

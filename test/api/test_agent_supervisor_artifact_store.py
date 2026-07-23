@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.artifact_store import (
     artifact_schema,
     query_artifact,
     read_artifact_fields,
+    read_bundle_index_planning_projection,
     read_bundle_index_projection,
     write_bundle_index_artifact,
     write_scheduler_manifest_artifact,
@@ -105,6 +106,54 @@ def test_bundle_index_has_equivalent_json_and_duckdb_queries(tmp_path: Path) -> 
         and row["column_name"] == "canonical_task_cid"
         for row in schema_rows
     )
+
+
+def test_bundle_planning_projection_omits_repeated_evidence_blobs(
+    tmp_path: Path,
+) -> None:
+    json_path = tmp_path / "index.json"
+    payload = _bundle_index()
+    bundle = payload["bundles"]["objective/test/one"]
+    bundle["todo_vector_summary"] = {"conflict_decisions": ["large"]}
+    task = bundle["tasks"][0]
+    task.update(
+        {
+            "ast_symbols": ["module.symbol"],
+            "conflict_surface": {"ast_records": ["large"]},
+            "conflict_edges": [{"left": "T-1", "right": "T-2"}],
+            "conflict_decisions": [{"left": "T-1", "right": "T-2"}],
+            "coverage_inputs": {"records": ["large"]},
+        }
+    )
+    write_bundle_index_artifact(json_path, payload)
+
+    complete = read_bundle_index_projection(json_path)
+    projected = read_bundle_index_planning_projection(json_path)
+    complete_bundle = complete["bundles"]["objective/test/one"]
+    complete_task = complete_bundle["tasks"][0]
+    projected_bundle = projected["bundles"]["objective/test/one"]
+    projected_task = projected_bundle["tasks"][0]
+
+    assert "todo_vector_summary" in complete_bundle
+    assert complete_bundle["todo_vector_summary"]["conflict_decision_count"] == 1
+    assert "conflict_decisions" not in complete_bundle["todo_vector_summary"]
+    assert complete_task["conflict_decision_count"] == 1
+    assert complete_task["conflict_edge_count"] == 1
+    assert "ast_records" not in complete_task["conflict_surface"]
+    assert complete_task["conflict_surface"]["ast_record_count"] == 1
+    assert "coverage_inputs" not in complete_task
+    assert "todo_vector_summary" not in projected_bundle
+    assert "conflict_surface" not in projected_task
+    assert "conflict_edges" not in projected_task
+    assert "conflict_decisions" not in projected_task
+    assert "coverage_inputs" not in projected_task
+    assert projected_task["ast_symbols"] == ["module.symbol"]
+    assert projected_task["depends_on"] == []
+
+    write_bundle_index_artifact(json_path, complete)
+    rewritten = read_bundle_index_projection(json_path)
+    rewritten_task = rewritten["bundles"]["objective/test/one"]["tasks"][0]
+    assert rewritten_task["conflict_surface"]["ast_record_count"] == 1
 
 
 def test_scheduler_manifest_normalizes_rows_and_bounds_query_output(

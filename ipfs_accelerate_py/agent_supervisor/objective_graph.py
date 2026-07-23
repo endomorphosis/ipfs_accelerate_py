@@ -111,6 +111,36 @@ SKIP_DIRS = {
     "test-results",
 }
 
+_DERIVED_TASK_PLANNING_FIELDS = frozenset(
+    {
+        "ast_blob_records",
+        "ast_records",
+        "conflict_decisions",
+        "conflict_edges",
+        "conflict_graph",
+        "conflict_planning_decisions",
+        "conflict_surface",
+        "coverage_inputs",
+        "dependency_dag",
+        "python_ast_records",
+        "task_conflict_graph",
+        "task_dependency_graph",
+        "task_planning_graph",
+        "todo_coverage_inputs",
+        "todo_vector_summary",
+    }
+)
+
+
+def _bounded_task_planning_metadata(task: Mapping[str, Any]) -> dict[str, Any]:
+    """Retain task provenance without recursively embedding derived graphs."""
+
+    return {
+        str(key): value
+        for key, value in task.items()
+        if str(key) not in _DERIVED_TASK_PLANNING_FIELDS
+    }
+
 
 @dataclass(frozen=True)
 class ObjectiveGoal:
@@ -3653,7 +3683,7 @@ def materialize_task_dependency_dag(
             objective_priority=configured_priority,
             created_at_ms=_task_created_at_ms(task),
             estimated_duration=_task_duration(task),
-            metadata=dict(task),
+            metadata=_bounded_task_planning_metadata(task),
         )
         nodes[cid] = node
         records_by_cid[cid] = task
@@ -5388,10 +5418,13 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
 
     # Local import avoids making objective scanning depend on coordination
     # initialization while ensuring queue consumers receive immutable links.
-    from .artifact_store import read_bundle_index_projection
+    from .artifact_store import read_bundle_index_planning_projection
     from .lease_coordination import adapt_goal_bundle
 
-    payload = read_bundle_index_projection(bundle_index_path, field_names=("source_todo",))
+    payload = read_bundle_index_planning_projection(
+        bundle_index_path,
+        field_names=("source_todo",),
+    )
     bundles = payload.get("bundles") if isinstance(payload, Mapping) else {}
     if not isinstance(bundles, Mapping):
         return []
@@ -5424,10 +5457,10 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         if str(task.get("status") or "").strip().lower() in SUCCESSFUL_MERGE_RECEIPT_STATUSES
         and str(task.get("canonical_task_cid") or task.get("task_cid") or task.get("task_id") or "")
     }
-    planning_graph = materialize_task_planning_graph(flat_tasks, merge_receipts=terminal_receipts)
-    graph = planning_graph.dependency_graph
-    graph_dict = graph.to_dict()
-    conflict_graph_dict = planning_graph.conflict_graph.to_dict()
+    graph = materialize_task_dependency_dag(
+        flat_tasks,
+        merge_receipts=terminal_receipts,
+    )
     invalid_task_cids = set(graph.invalid_task_cids)
     schedule_by_cid = {item.task_cid: item for item in graph.schedule}
     member_cids_by_bundle_and_id = {
@@ -5605,10 +5638,18 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
                 if source in member_bundle and member_bundle[source] != bundle_key
             }
         )
-        projected_conflicts = _project_task_conflict_graph(
-            conflict_graph_dict,
-            execution_member_cids,
-        )
+        projected_dependency_graph = {
+            "schema": "ipfs_accelerate_py.agent_supervisor.bundle_dependency_projection@1",
+            "projection": "bundle_incident",
+            "task_cids": ordered(member_cids),
+            "claimable_task_cids": ordered(ready_member_cids),
+            "edges": [
+                edge.to_dict()
+                for edge in graph.edges
+                if edge.source_task_cid in member_cids
+                or edge.target_task_cid in member_cids
+            ],
+        }
         claimable = (
             not active_member_cids
             and (
@@ -5648,11 +5689,20 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
                 "objective_priority": max((item.objective_priority for item in member_schedule), default=0),
                 "schedule_score": max((item.score for item in member_schedule), default=0),
                 "dependency_repair_evidence": repair_evidence,
-                "task_dependency_graph": graph_dict,
-                "dependency_dag": graph_dict,
-                "task_conflict_graph": projected_conflicts,
-                "conflict_graph": projected_conflicts,
-                "conflict_planning_decisions": projected_conflicts["decisions"],
+                "task_dependency_graph": projected_dependency_graph,
+                "dependency_dag": projected_dependency_graph,
+                "planning_evidence_ref": {
+                    "schema": "ipfs_accelerate_py.agent_supervisor.planning_evidence_ref@1",
+                    "bundle_index": str(bundle_index_path),
+                    "bundle_index_duckdb": str(bundle_index_path.with_suffix(".duckdb")),
+                    "bundle_key": bundle_key,
+                    "bundle_table": "bundles",
+                    "task_table": "bundle_tasks",
+                    "dependency_table": "bundle_task_dependencies",
+                    "dependency_edge_table": "dependency_edges",
+                    "conflict_edge_table": "conflict_edges",
+                    "planning_decision_table": "planning_decisions",
+                },
             }
         )
 

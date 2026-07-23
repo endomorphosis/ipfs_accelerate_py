@@ -26,6 +26,29 @@ CODE_EVIDENCE_GRAPH_KIND = "code_evidence_graph"
 EVIDENCE_GRAPH_KIND = CODE_EVIDENCE_GRAPH_KIND
 PROOF_METRICS_KIND = "proof_metrics"
 PROOF_ATTESTATION_KIND = "proof_attestations"
+
+# These fields remain available in the bundle-index DuckDB tables for bounded
+# evidence queries. The scheduler does not need to materialize their repeated
+# multi-megabyte values to rebuild dependency and conflict plans.
+BUNDLE_PLANNING_BUNDLE_OMIT_FIELDS = (
+    "conflict_graph",
+    "conflict_planning_decisions",
+    "dependency_dag",
+    "task_conflict_graph",
+    "task_dependency_graph",
+    "task_planning_graph",
+    "todo_vector_summary",
+)
+BUNDLE_PLANNING_TASK_OMIT_FIELDS = (
+    "conflict_decisions",
+    "conflict_edges",
+    "conflict_surface",
+    "coverage_inputs",
+    "dependency_dag",
+    "task_conflict_graph",
+    "task_dependency_graph",
+    "task_planning_graph",
+)
 PROOF_ATTESTATION_STORE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.proof-attestation-store@1"
 )
@@ -1695,10 +1718,225 @@ def write_queryable_artifact(
     return rendered
 
 
+def _compact_bundle_conflict_surface(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    surface = dict(value)
+    ast_records = surface.pop("ast_records", None)
+    metadata = surface.pop("metadata", None)
+    if isinstance(ast_records, list):
+        surface["ast_record_count"] = len(ast_records)
+    else:
+        surface.setdefault("ast_record_count", 0)
+    if isinstance(metadata, Mapping):
+        surface["metadata_field_count"] = len(metadata)
+    else:
+        surface.setdefault("metadata_field_count", 0)
+    return surface
+
+
+def _compact_bundle_task(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    task = dict(value)
+    task_id = str(task.get("task_id") or "")
+    task_cid = str(task.get("canonical_task_cid") or task.get("task_cid") or "")
+    for field_name, count_name in (
+        ("conflict_decisions", "conflict_decision_count"),
+        ("conflict_edges", "conflict_edge_count"),
+    ):
+        records = task.pop(field_name, None)
+        if isinstance(records, list):
+            task[count_name] = len(records)
+    coverage = task.pop("coverage_inputs", None)
+    if isinstance(coverage, Mapping):
+        task["coverage_input_field_count"] = len(coverage)
+        task.setdefault(
+            "coverage_input_ref",
+            {
+                "field": "todo_coverage_inputs",
+                "task_id": task_id,
+                "todo_vector_key": str(task.get("todo_vector_key") or ""),
+            },
+        )
+    surface = task.get("conflict_surface")
+    if isinstance(surface, Mapping):
+        task["conflict_surface"] = _compact_bundle_conflict_surface(surface)
+    for field_name in (
+        "conflict_graph",
+        "conflict_planning_decisions",
+        "dependency_dag",
+        "task_conflict_graph",
+        "task_dependency_graph",
+        "task_planning_graph",
+        "todo_coverage_inputs",
+        "todo_vector_summary",
+    ):
+        task.pop(field_name, None)
+    if task_cid and (
+        task.get("conflict_decision_count") or task.get("conflict_edge_count")
+    ):
+        task.setdefault(
+            "conflict_evidence_ref",
+            {
+                "field": "task_conflict_graph",
+                "task_cid": task_cid,
+                "tables": ["conflict_edges", "planning_decisions"],
+            },
+        )
+    return task
+
+
+def _compact_dependency_graph(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    graph = dict(value)
+    nodes = graph.get("nodes")
+    if isinstance(nodes, Mapping):
+        compact_nodes: dict[str, Any] = {}
+        for task_cid, raw_node in nodes.items():
+            if not isinstance(raw_node, Mapping):
+                continue
+            node = dict(raw_node)
+            if isinstance(node.get("metadata"), Mapping):
+                node["metadata"] = _compact_bundle_task(node["metadata"])
+            compact_nodes[str(task_cid)] = node
+        graph["nodes"] = compact_nodes
+    return graph
+
+
+def _compact_conflict_graph(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    graph = dict(value)
+    surfaces = graph.get("surfaces")
+    if isinstance(surfaces, Mapping):
+        graph["surfaces"] = {
+            str(task_cid): _compact_bundle_conflict_surface(surface)
+            for task_cid, surface in surfaces.items()
+        }
+    return graph
+
+
+def _compact_task_planning_graph(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    decisions = value.get("planning_decisions")
+    decision_count = len(decisions) if isinstance(decisions, list) else 0
+    stored_decision_count = value.get("planning_decision_count")
+    if isinstance(stored_decision_count, int) and stored_decision_count >= 0:
+        decision_count = max(decision_count, stored_decision_count)
+    decisions_truncated = bool(value.get("planning_decisions_truncated"))
+    return {
+        "schema": "ipfs_accelerate_py.agent_supervisor.task_planning_projection@1",
+        "claimable_task_cids": _string_values(value.get("claimable_task_cids")),
+        "lanes": dict(value.get("lanes") or {})
+        if isinstance(value.get("lanes"), Mapping)
+        else {},
+        "lane_assignments": list(value.get("lane_assignments") or [])
+        if isinstance(value.get("lane_assignments"), list)
+        else [],
+        "planning_decisions": (
+            [dict(item) for item in decisions if isinstance(item, Mapping)]
+            if isinstance(decisions, list) and len(decisions) <= 128
+            else []
+        ),
+        "planning_decision_count": decision_count,
+        "planning_decisions_truncated": decisions_truncated or decision_count > 128,
+        "planning_evidence_ref": {
+            "dependency_field": "task_dependency_graph",
+            "conflict_field": "task_conflict_graph",
+            "tables": [
+                "dependency_edges",
+                "conflict_edges",
+                "planning_decisions",
+            ],
+        },
+    }
+
+
+def _compact_bundle_index_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    rendered = dict(payload)
+    bundles = rendered.get("bundles")
+    if isinstance(bundles, Mapping):
+        compact_bundles: dict[str, Any] = {}
+        for bundle_key, raw_bundle in bundles.items():
+            if not isinstance(raw_bundle, Mapping):
+                continue
+            bundle = dict(raw_bundle)
+            tasks = bundle.get("tasks")
+            if isinstance(tasks, list):
+                bundle["tasks"] = [
+                    _compact_bundle_task(task)
+                    for task in tasks
+                    if isinstance(task, Mapping)
+                ]
+            summary = bundle.get("todo_vector_summary")
+            if isinstance(summary, Mapping):
+                compact_summary = dict(summary)
+                decisions = compact_summary.pop("conflict_decisions", None)
+                if isinstance(decisions, list):
+                    compact_summary["conflict_decision_count"] = len(decisions)
+                compact_summary.setdefault(
+                    "conflict_graph_ref",
+                    {
+                        "field": "task_conflict_graph",
+                        "bundle_key": str(bundle_key),
+                        "tables": ["conflict_edges", "planning_decisions"],
+                    },
+                )
+                bundle["todo_vector_summary"] = compact_summary
+            for field_name in {
+                "conflict_graph",
+                "conflict_planning_decisions",
+                "dependency_dag",
+                "task_conflict_graph",
+                "task_dependency_graph",
+                "task_planning_graph",
+            }:
+                bundle.pop(field_name, None)
+            compact_bundles[str(bundle_key)] = bundle
+        rendered["bundles"] = compact_bundles
+
+    dependency_graph = _compact_dependency_graph(
+        rendered.get("task_dependency_graph") or rendered.get("dependency_dag")
+    )
+    if dependency_graph:
+        rendered["task_dependency_graph"] = dependency_graph
+        rendered["dependency_dag"] = dependency_graph
+
+    conflict_graph = _compact_conflict_graph(
+        rendered.get("task_conflict_graph") or rendered.get("conflict_graph")
+    )
+    if conflict_graph:
+        rendered["task_conflict_graph"] = conflict_graph
+        if isinstance(conflict_graph.get("history"), Mapping):
+            rendered.setdefault("conflict_history", dict(conflict_graph["history"]))
+        rendered["conflict_graph"] = {
+            "schema": str(conflict_graph.get("schema") or ""),
+            "history": dict(conflict_graph.get("history") or {})
+            if isinstance(conflict_graph.get("history"), Mapping)
+            else {},
+            "planning_evidence_ref": {
+                "field": "task_conflict_graph",
+                "tables": ["conflict_edges", "planning_decisions"],
+            },
+        }
+
+    planning_graph = _compact_task_planning_graph(rendered.get("task_planning_graph"))
+    if planning_graph:
+        rendered["task_planning_graph"] = planning_graph
+    return rendered
+
+
 def write_bundle_index_artifact(
     path: Path | str, payload: Mapping[str, Any]
 ) -> dict[str, Any]:
-    return write_queryable_artifact(path, payload, kind=BUNDLE_INDEX_KIND)
+    return write_queryable_artifact(
+        path,
+        _compact_bundle_index_payload(payload),
+        kind=BUNDLE_INDEX_KIND,
+    )
 
 
 def write_scheduler_manifest_artifact(
@@ -2172,18 +2410,54 @@ def read_bundle_index_projection(
     path: Path | str,
     *,
     field_names: Sequence[str] = ("source_todo",),
+    bundle_omit_fields: Sequence[str] = (),
+    task_omit_fields: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Read bundle rows plus only the requested top-level planning fields."""
+    """Read bundle rows plus only the requested top-level planning fields.
+
+    Optional omissions are applied inside DuckDB with JSON merge patches, so
+    callers can avoid transferring and decoding fields irrelevant to planning.
+    """
 
     database_path = ensure_query_database(path, kind=BUNDLE_INDEX_KIND)
     duckdb = _duckdb_module()
     connection = duckdb.connect(str(database_path), read_only=True)
     try:
+        bundle_expression = "payload_json"
+        bundle_parameters: list[str] = []
+        if bundle_omit_fields:
+            bundle_expression = "json_merge_patch(payload_json, ?)"
+            bundle_parameters.append(
+                _json_text(
+                    {
+                        str(field): None
+                        for field in dict.fromkeys(bundle_omit_fields)
+                        if str(field).strip()
+                    }
+                )
+            )
         bundle_rows = connection.execute(
-            "SELECT bundle_key, payload_json FROM bundles ORDER BY bundle_key"
+            f"SELECT bundle_key, {bundle_expression} "
+            "FROM bundles ORDER BY bundle_key",
+            bundle_parameters,
         ).fetchall()
+        task_expression = "payload_json"
+        task_parameters: list[str] = []
+        if task_omit_fields:
+            task_expression = "json_merge_patch(payload_json, ?)"
+            task_parameters.append(
+                _json_text(
+                    {
+                        str(field): None
+                        for field in dict.fromkeys(task_omit_fields)
+                        if str(field).strip()
+                    }
+                )
+            )
         task_rows = connection.execute(
-            "SELECT bundle_key, payload_json FROM bundle_tasks ORDER BY bundle_key, task_ordinal"
+            f"SELECT bundle_key, {task_expression} "
+            "FROM bundle_tasks ORDER BY bundle_key, task_ordinal",
+            task_parameters,
         ).fetchall()
         fields: dict[str, Any] = {}
         if field_names:
@@ -2200,6 +2474,21 @@ def read_bundle_index_projection(
         bundles.setdefault(str(bundle_key), {})
         bundles[str(bundle_key)].setdefault("tasks", []).append(_json_value(str(value)))
     return {**fields, "bundles": bundles}
+
+
+def read_bundle_index_planning_projection(
+    path: Path | str,
+    *,
+    field_names: Sequence[str] = ("source_todo",),
+) -> dict[str, Any]:
+    """Read the bounded task fields required to rebuild a scheduler plan."""
+
+    return read_bundle_index_projection(
+        path,
+        field_names=field_names,
+        bundle_omit_fields=BUNDLE_PLANNING_BUNDLE_OMIT_FIELDS,
+        task_omit_fields=BUNDLE_PLANNING_TASK_OMIT_FIELDS,
+    )
 
 
 def read_bundle_index_artifact(path: Path | str) -> dict[str, Any]:

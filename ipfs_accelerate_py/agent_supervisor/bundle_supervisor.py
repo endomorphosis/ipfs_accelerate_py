@@ -229,13 +229,19 @@ def _compact_bundle_manifest_payload(payload: dict[str, Any]) -> dict[str, Any]:
             for key, value in profile_g.items()
             if key in _MANIFEST_PROFILE_G_REFERENCE_FIELDS
         }
-    if omitted:
+    existing_reference = (
+        dict(compact.get("planning_evidence_ref") or {})
+        if isinstance(compact.get("planning_evidence_ref"), dict)
+        else {}
+    )
+    if omitted or existing_reference:
         index_path = str(payload.get("objective_bundle_index") or "")
         compact["planning_evidence_ref"] = {
+            **existing_reference,
             "bundle_index": index_path,
             "bundle_index_duckdb": str(Path(index_path).with_suffix(".duckdb")) if index_path else "",
             "bundle_key": str(payload.get("bundle_key") or ""),
-            "omitted_fields": omitted,
+            "omitted_fields": sorted(_MANIFEST_REFERENCED_BUNDLE_FIELDS),
             "bundle_table": "bundles",
             "task_table": "bundle_tasks",
         }
@@ -577,7 +583,6 @@ def _conflict_graph_inputs(bundle_index_path: Path) -> dict[str, Any]:
             bundle_index_path,
             (
                 "branch_diffs",
-                "conflict_graph",
                 "conflict_history",
                 "conflict_receipts",
                 "conflict_weight_history",
@@ -587,15 +592,14 @@ def _conflict_graph_inputs(bundle_index_path: Path) -> dict[str, Any]:
         )
     except (OSError, ValueError, RuntimeError):
         return {}
-    stored_graph = payload.get("conflict_graph") if isinstance(payload.get("conflict_graph"), dict) else {}
     history = payload.get("conflict_history")
     if history is None:
-        history = stored_graph.get("history")
+        history = payload.get("conflict_weight_history")
     return {
-        "branch_diffs": payload.get("branch_diffs", stored_graph.get("branch_diffs")),
-        "conflict_receipts": payload.get("conflict_receipts", stored_graph.get("conflict_receipts")),
-        "concurrency_overrides": payload.get("concurrency_overrides", stored_graph.get("concurrency_overrides")),
-        "history": history if history is not None else payload.get("conflict_weight_history"),
+        "branch_diffs": payload.get("branch_diffs"),
+        "conflict_receipts": payload.get("conflict_receipts"),
+        "concurrency_overrides": payload.get("concurrency_overrides"),
+        "history": history,
     }
 
 
@@ -1596,55 +1600,58 @@ class DynamicBundleScheduler:
         )
 
     def _plan(self) -> list[BundleLaneSpec]:
+        base_lanes: list[BundleLaneSpec]
         if self._plan_cache is not None:
             cached_paths, cached_revision, cached_lanes = self._plan_cache
             if self._plan_source_revision(cached_paths) == cached_revision:
-                return list(cached_lanes)
-
-        allowed = {
-            "task_prefix", "implement", "daemon_interval", "stale_seconds",
-            "check_interval", "max_restarts", "implementation_timeout",
-            "implementation_command", "llm_merge_resolver_command",
-            "llm_merge_resolver_timeout_seconds", "merge_reconciliation_max_merges",
-            "generated_dirty_repair_enabled", "generated_dirty_repair_commit_subject",
-            "generated_dirty_repair_include_submodule_gitlinks",
-            "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
-            "generated_dirty_repair_paths",
-            "worktree_submodule_paths", "log_level",
-        }
-        options = {key: value for key, value in self.lane_options.items() if key in allowed}
-        lanes = plan_bundle_lanes(
-            bundle_index_path=self.bundle_index_path,
-            repo_root=self.repo_root,
-            state_root=self.state_root,
-            worktree_root=self.worktree_root,
-            log_dir=self.log_dir,
-            max_lanes=None,
-            **options,
-        )
-        external_active_task_ids = self._external_active_task_ids()
-        if external_active_task_ids:
-            lanes = [
-                self._fence_external_active_members(lane, external_active_task_ids)
-                for lane in lanes
-            ]
-        source_paths = tuple(
-            sorted(
-                {
-                    self.bundle_index_path,
-                    self.bundle_index_path.with_suffix(".duckdb"),
-                    *self.external_task_state_paths,
-                    *(lane.todo_path for lane in lanes),
-                },
-                key=str,
+                base_lanes = list(cached_lanes)
+            else:
+                self._plan_cache = None
+        if self._plan_cache is None:
+            allowed = {
+                "task_prefix", "implement", "daemon_interval", "stale_seconds",
+                "check_interval", "max_restarts", "implementation_timeout",
+                "implementation_command", "llm_merge_resolver_command",
+                "llm_merge_resolver_timeout_seconds", "merge_reconciliation_max_merges",
+                "generated_dirty_repair_enabled", "generated_dirty_repair_commit_subject",
+                "generated_dirty_repair_include_submodule_gitlinks",
+                "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
+                "generated_dirty_repair_paths",
+                "worktree_submodule_paths", "log_level",
+            }
+            options = {key: value for key, value in self.lane_options.items() if key in allowed}
+            base_lanes = plan_bundle_lanes(
+                bundle_index_path=self.bundle_index_path,
+                repo_root=self.repo_root,
+                state_root=self.state_root,
+                worktree_root=self.worktree_root,
+                log_dir=self.log_dir,
+                max_lanes=None,
+                **options,
             )
-        )
-        self._plan_cache = (
-            source_paths,
-            self._plan_source_revision(source_paths),
-            tuple(lanes),
-        )
-        return lanes
+            source_paths = tuple(
+                sorted(
+                    {
+                        self.bundle_index_path,
+                        self.bundle_index_path.with_suffix(".duckdb"),
+                        *(lane.todo_path for lane in base_lanes),
+                    },
+                    key=str,
+                )
+            )
+            self._plan_cache = (
+                source_paths,
+                self._plan_source_revision(source_paths),
+                tuple(base_lanes),
+            )
+
+        external_active_task_ids = self._external_active_task_ids()
+        if not external_active_task_ids:
+            return base_lanes
+        return [
+            self._fence_external_active_members(lane, external_active_task_ids)
+            for lane in base_lanes
+        ]
 
     @staticmethod
     def _default_process_alive(handle: Any) -> bool:
