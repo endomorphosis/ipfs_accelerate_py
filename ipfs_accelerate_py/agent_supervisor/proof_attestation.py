@@ -50,6 +50,10 @@ PROOF_ATTESTATION_ENVELOPE_SCHEMA = (
 PROOF_ATTESTATION_VERIFICATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-attestation-verification@1"
 )
+PROOF_ATTESTATION_RECORD_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/proof-attestation-record@1"
+)
+PERSISTED_ATTESTATION_SCHEMA = PROOF_ATTESTATION_RECORD_SCHEMA
 ATTESTATION_BACKEND_POLICY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/attestation-backend-policy@1"
 )
@@ -67,6 +71,8 @@ ZKP_RECEIPT_ATTESTATION_VERIFICATION_SCHEMA = PROOF_ATTESTATION_VERIFICATION_SCH
 RECEIPT_ATTESTATION_STATEMENT_SCHEMA = PROOF_ATTESTATION_STATEMENT_SCHEMA
 RECEIPT_ATTESTATION_ENVELOPE_SCHEMA = PROOF_ATTESTATION_ENVELOPE_SCHEMA
 ATTESTATION_VERIFICATION_SCHEMA = PROOF_ATTESTATION_VERIFICATION_SCHEMA
+ZKP_RECEIPT_ATTESTATION_RECORD_SCHEMA = PROOF_ATTESTATION_RECORD_SCHEMA
+RECEIPT_ATTESTATION_RECORD_SCHEMA = PROOF_ATTESTATION_RECORD_SCHEMA
 
 
 class AttestationValidationError(ContractValidationError):
@@ -1465,6 +1471,342 @@ ProofAttestationVerification = AttestationVerification
 AttestationVerificationResult = AttestationVerification
 
 
+def _receipt(value: Any) -> ProofReceipt:
+    if isinstance(value, ProofReceipt):
+        return value
+    if isinstance(value, Mapping):
+        try:
+            return ProofReceipt.from_dict(value)
+        except (TypeError, ValueError, ContractValidationError) as exc:
+            raise AttestationValidationError(
+                "receipt must be a valid immutable ProofReceipt"
+            ) from exc
+    raise AttestationValidationError(
+        "receipt must be a ProofReceipt or mapping"
+    )
+
+
+def _verification(value: Any) -> AttestationVerification:
+    if isinstance(value, AttestationVerification):
+        return value
+    if isinstance(value, Mapping):
+        return AttestationVerification.from_dict(value)
+    raise AttestationValidationError(
+        "verification must be an AttestationVerification or mapping"
+    )
+
+
+@dataclass(frozen=True)
+class PersistedAttestationRecord(CanonicalContract):
+    """An independently expiring sidecar for an immutable proof receipt.
+
+    The receipt remains the trust root for kernel assurance.  This record
+    carries a complete public copy so every statement binding can be
+    reproduced without a witness or mutable provider state.  Its repeated
+    identity fields are derived in :meth:`_payload` and checked on load; callers
+    cannot use serialized claims to change the effective assurance.
+    """
+
+    SCHEMA: ClassVar[str] = PROOF_ATTESTATION_RECORD_SCHEMA
+
+    receipt: ProofReceipt
+    verification: AttestationVerification
+    created_at: str
+    expires_at: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "receipt", _receipt(self.receipt))
+        object.__setattr__(
+            self, "verification", _verification(self.verification)
+        )
+        object.__setattr__(
+            self,
+            "created_at",
+            _timestamp(self.created_at, field_name="created_at"),
+        )
+        object.__setattr__(
+            self,
+            "expires_at",
+            _timestamp(self.expires_at, field_name="expires_at"),
+        )
+        if _timestamp_value(self.expires_at) <= _timestamp_value(self.created_at):
+            raise AttestationValidationError(
+                "attestation expiration must be after creation"
+            )
+
+        self.receipt.require_kernel_verified()
+        if not self.receipt.kernel_receipt_id:
+            raise AttestationValidationError(
+                "persisted attestations require an immutable kernel receipt identity"
+            )
+        verification = self.verification
+        if not verification.authoritative:
+            raise AttestationValidationError(
+                "only authoritative independently verified attestations may be persisted"
+            )
+        statement = verification.envelope.statement
+        if not statement.backend_managed:
+            raise AttestationValidationError(
+                "persisted attestations require a version-pinned backend policy"
+            )
+        health = verification.envelope.backend_health
+        if health is None:
+            raise AttestationValidationError(
+                "persisted attestations require backend health evidence"
+            )
+        if not statement.matches_backend_policy(health.policy):
+            raise AttestationValidationError(
+                "persisted attestation does not match its backend policy"
+            )
+        expected = ReceiptAttestationStatement.from_receipt(
+            self.receipt,
+            circuit_id=health.policy.circuit_id,
+            backend_id=health.policy.backend_id,
+            verification_key_id=health.policy.verification_key_id,
+            backend_policy=health.policy,
+        )
+        if statement != expected:
+            raise AttestationValidationError(
+                "attestation statement does not bind the immutable proof receipt"
+            )
+        if not health.policy.key_is_current_at(self.created_at):
+            raise AttestationValidationError(
+                "attestation was created with an expired verification key"
+            )
+        key_expiry = health.policy.verification_key_expires_at
+        if key_expiry and _timestamp_value(self.expires_at) > _timestamp_value(
+            key_expiry
+        ):
+            raise AttestationValidationError(
+                "attestation expiration exceeds verification-key expiration"
+            )
+
+    @property
+    def record_id(self) -> str:
+        return self.content_id
+
+    @property
+    def proof_receipt_id(self) -> str:
+        """Identity of the immutable receipt attested by the statement."""
+
+        return self.receipt.receipt_id
+
+    @property
+    def base_receipt_id(self) -> str:
+        return self.proof_receipt_id
+
+    @property
+    def kernel_receipt_id(self) -> str:
+        """Immutable kernel reconstruction receipt referenced by the base receipt."""
+
+        return self.receipt.kernel_receipt_id
+
+    @property
+    def envelope(self) -> ReceiptAttestationEnvelope:
+        return self.verification.envelope
+
+    @property
+    def envelope_id(self) -> str:
+        return self.envelope.envelope_id
+
+    @property
+    def verification_id(self) -> str:
+        return self.verification.verification_id
+
+    @property
+    def statement_id(self) -> str:
+        return self.envelope.statement.statement_id
+
+    @property
+    def public_input_digest(self) -> str:
+        return self.envelope.statement.public_input_digest
+
+    @property
+    def backend_policy(self) -> AttestationBackendPolicy:
+        health = self.envelope.backend_health
+        if health is None:  # guarded during construction
+            raise AttestationValidationError("backend health is unavailable")
+        return health.policy
+
+    def is_current_at(self, timestamp: str) -> bool:
+        checked = _timestamp(timestamp, field_name="timestamp")
+        value = _timestamp_value(checked)
+        return (
+            _timestamp_value(self.created_at) <= value
+            and value < _timestamp_value(self.expires_at)
+            and self.backend_policy.key_is_current_at(checked)
+        )
+
+    current_at = is_current_at
+
+    def effective_assurance_at(self, timestamp: str) -> AssuranceLevel:
+        """Return the sidecar view without mutating the underlying receipt."""
+
+        if self.is_current_at(timestamp) and self.verification.authoritative:
+            return AssuranceLevel.ATTESTED
+        return self.receipt.authoritative_assurance
+
+    def _payload(self) -> Dict[str, Any]:
+        statement = self.envelope.statement
+        policy = self.backend_policy
+        return {
+            "contract_version": PROOF_ATTESTATION_CONTRACT_VERSION,
+            "receipt": self.receipt,
+            "proof_receipt_id": self.proof_receipt_id,
+            "base_receipt_id": self.base_receipt_id,
+            "kernel_receipt_id": self.kernel_receipt_id,
+            "verification": self.verification,
+            "verification_id": self.verification_id,
+            "envelope_id": self.envelope_id,
+            "statement_id": self.statement_id,
+            "public_input_digest": self.public_input_digest,
+            "backend_policy_id": statement.backend_policy_id,
+            "formal_policy_id": statement.policy_id,
+            "backend_id": statement.backend_id,
+            "backend_version": statement.backend_version,
+            "circuit_id": statement.circuit_id,
+            "circuit_version": statement.circuit_version,
+            "public_input_schema_id": statement.public_input_schema_id,
+            "public_input_schema_version": statement.public_input_schema_version,
+            "verification_key_id": statement.verification_key_id,
+            "verification_key_version": statement.verification_key_version,
+            "verification_key_expires_at": policy.verification_key_expires_at,
+            "backend_health_id": self.envelope.backend_health_id,
+            "proof_artifact_id": self.envelope.proof_artifact_id,
+            "proof_digest": self.envelope.proof_digest,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PersistedAttestationRecord":
+        _schema(payload, cls.SCHEMA)
+        result = cls(
+            receipt=_receipt(payload.get("receipt") or {}),
+            verification=_verification(payload.get("verification") or {}),
+            created_at=payload.get("created_at", ""),
+            expires_at=payload.get("expires_at", ""),
+        )
+        derived = result._payload()
+        for name, expected in derived.items():
+            if name in {"contract_version", "receipt", "verification"}:
+                continue
+            supplied = payload.get(name)
+            if supplied not in (None, "", expected):
+                raise AttestationValidationError(
+                    "persisted attestation %s does not match derived binding" % name
+                )
+        claimed_id = payload.get("record_id") or payload.get("content_id")
+        if claimed_id and claimed_id != result.record_id:
+            raise AttestationValidationError(
+                "persisted attestation record identity does not match payload"
+            )
+        return result
+
+    def to_public_artifact(self) -> Dict[str, Any]:
+        return {**self.to_dict(), "record_id": self.record_id}
+
+    to_cache_record = to_public_artifact
+    to_context_capsule = to_public_artifact
+    to_log_record = to_public_artifact
+
+
+ProofAttestationRecord = PersistedAttestationRecord
+ReceiptAttestationRecord = PersistedAttestationRecord
+StoredProofAttestation = PersistedAttestationRecord
+ZKPReceiptAttestationRecord = PersistedAttestationRecord
+
+
+def build_persisted_attestation_record(
+    receipt: ProofReceipt,
+    verification: AttestationVerification,
+    *,
+    created_at: str,
+    expires_at: str,
+) -> PersistedAttestationRecord:
+    """Bind a verified public envelope beside its immutable kernel receipt."""
+
+    return PersistedAttestationRecord(
+        receipt=receipt,
+        verification=verification,
+        created_at=created_at,
+        expires_at=expires_at,
+    )
+
+
+bind_attestation_record = build_persisted_attestation_record
+persisted_attestation_record = build_persisted_attestation_record
+
+
+def reproduce_attestation_verification(
+    record: PersistedAttestationRecord | Mapping[str, Any],
+    *,
+    verifier: Callable[[ReceiptAttestationEnvelope], bool],
+    checked_at: str,
+    receipt: ProofReceipt | Mapping[str, Any] | None = None,
+    backend_policy: AttestationBackendPolicy | Mapping[str, Any] | None = None,
+    verifier_id: str | None = None,
+) -> AttestationVerification:
+    """Re-run verification exclusively from persisted public contracts.
+
+    Serialized ``verified`` and ``authoritative`` claims are never sufficient:
+    all receipt and backend bindings are reconstructed first and the supplied
+    independent verifier is invoked again.  An expired record fails closed
+    before cryptographic verification.
+    """
+
+    checked = (
+        record
+        if isinstance(record, PersistedAttestationRecord)
+        else PersistedAttestationRecord.from_dict(record)
+    )
+    if not callable(verifier):
+        raise AttestationValidationError("verifier must be callable")
+    if receipt is not None and _receipt(receipt).receipt_id != checked.proof_receipt_id:
+        raise AttestationValidationError(
+            "persisted attestation does not match the expected proof receipt"
+        )
+    if backend_policy is not None:
+        expected_policy = _backend_policy(backend_policy)
+        if expected_policy.policy_id != checked.backend_policy.policy_id:
+            raise AttestationValidationError(
+                "persisted attestation does not match the expected backend policy"
+            )
+    if not checked.is_current_at(checked_at):
+        raise AttestationValidationError(
+            "persisted attestation is not current at verification time"
+        )
+    try:
+        verified = verifier(checked.envelope)
+    except Exception:
+        return AttestationVerification(
+            envelope=checked.envelope,
+            verdict=AttestationVerificationVerdict.ERROR,
+            verifier_id=verifier_id or checked.verification.verifier_id,
+            independent=True,
+            diagnostic_code="persisted_attestation_verifier_error",
+        )
+    if not isinstance(verified, bool):
+        return AttestationVerification(
+            envelope=checked.envelope,
+            verdict=AttestationVerificationVerdict.ERROR,
+            verifier_id=verifier_id or checked.verification.verifier_id,
+            independent=True,
+            diagnostic_code="persisted_attestation_verifier_non_boolean",
+        )
+    return record_attestation_verification(
+        checked.envelope,
+        verified=verified,
+        verifier_id=verifier_id or checked.verification.verifier_id,
+        independent=True,
+        diagnostic_code="" if verified else "persisted_attestation_rejected",
+    )
+
+
+verify_attestation_record = reproduce_attestation_verification
+replay_attestation_verification = reproduce_attestation_verification
+
+
 def build_receipt_attestation_statement(
     receipt: ProofReceipt,
     *,
@@ -1831,6 +2173,7 @@ def public_attestation_artifact(value: Any) -> Any:
             ReceiptAttestationStatement,
             ReceiptAttestationEnvelope,
             AttestationVerification,
+            PersistedAttestationRecord,
         ),
     ):
         return value.to_public_artifact()
@@ -1862,12 +2205,16 @@ __all__ = [
     "ATTESTATION_BACKEND_TEST_RESULT_SCHEMA",
     "PROOF_ATTESTATION_CONTRACT_VERSION",
     "PROOF_ATTESTATION_ENVELOPE_SCHEMA",
+    "PROOF_ATTESTATION_RECORD_SCHEMA",
+    "PERSISTED_ATTESTATION_SCHEMA",
     "PROOF_ATTESTATION_STATEMENT_SCHEMA",
     "PROOF_ATTESTATION_VERIFICATION_SCHEMA",
     "RECEIPT_ATTESTATION_ENVELOPE_SCHEMA",
+    "RECEIPT_ATTESTATION_RECORD_SCHEMA",
     "RECEIPT_ATTESTATION_STATEMENT_SCHEMA",
     "ATTESTATION_VERIFICATION_SCHEMA",
     "ZKP_RECEIPT_ATTESTATION_ENVELOPE_SCHEMA",
+    "ZKP_RECEIPT_ATTESTATION_RECORD_SCHEMA",
     "ZKP_RECEIPT_ATTESTATION_STATEMENT_SCHEMA",
     "ZKP_RECEIPT_ATTESTATION_VERIFICATION_SCHEMA",
     "AttestationBackendHealth",
@@ -1895,10 +2242,12 @@ __all__ = [
     "PrivateAttestationWitness",
     "ProofAttestationEnvelope",
     "ProofAttestationRequest",
+    "ProofAttestationRecord",
     "ProofAttestationStatement",
     "ProofAttestationVerification",
     "ReceiptAttestationEnvelope",
     "ReceiptAttestationRequest",
+    "ReceiptAttestationRecord",
     "ReceiptAttestationStatement",
     "ReceiptAttestationVerification",
     "ReceiptAttestationWitness",
@@ -1906,11 +2255,14 @@ __all__ = [
     "ZKPBackendMode",
     "ZKPReceiptAttestation",
     "ZKPReceiptAttestationRequest",
+    "ZKPReceiptAttestationRecord",
     "ZKPReceiptAttestationStatement",
     "ZKPReceiptAttestationVerification",
     "ZKPWitness",
     "REQUIRED_BACKEND_TEST_CASES",
     "attestation_satisfies_gate",
+    "bind_attestation_record",
+    "build_persisted_attestation_record",
     "build_receipt_attestation_statement",
     "build_attestation_statement",
     "create_attestation_envelope",
@@ -1923,6 +2275,11 @@ __all__ = [
     "public_artifact_contains",
     "public_attestation_artifact",
     "record_attestation_verification",
+    "replay_attestation_verification",
+    "reproduce_attestation_verification",
     "run_backend_self_tests",
     "witness_no_leak_test_result",
+    "PersistedAttestationRecord",
+    "StoredProofAttestation",
+    "verify_attestation_record",
 ]

@@ -25,6 +25,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Final, TypeVar
@@ -41,6 +42,14 @@ from .formal_verification_contracts import (
     assurance_satisfies,
     canonical_json,
 )
+from .proof_attestation import (
+    AttestationBackendPolicy,
+    AttestationValidationError,
+    AttestationVerification,
+    PersistedAttestationRecord,
+    build_persisted_attestation_record,
+    reproduce_attestation_verification,
+)
 
 
 FORMAL_VERIFICATION_CACHE_SCHEMA: Final = (
@@ -51,6 +60,12 @@ FORMAL_VERIFICATION_CACHE_KEY_SCHEMA: Final = (
 )
 FORMAL_VERIFICATION_FLIGHT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-verification-flight@1"
+)
+FORMAL_VERIFICATION_ATTESTATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/formal-verification-attestation-entry@1"
+)
+FORMAL_VERIFICATION_ATTESTATION_CACHE_SCHEMA: Final = (
+    FORMAL_VERIFICATION_ATTESTATION_SCHEMA
 )
 DEFAULT_CACHE_TTL_SECONDS: Final = 24 * 60 * 60
 DEFAULT_LEASE_SECONDS: Final = 5 * 60
@@ -76,6 +91,13 @@ class CacheRejectionReason(str, Enum):
     INSUFFICIENT_ASSURANCE = "required_assurance_not_satisfied"
     FRESHNESS_NOT_SATISFIED = "freshness_requirement_not_satisfied"
     BINDING_MISMATCH = "cache_binding_mismatch"
+    ATTESTATION_MISS = "attestation_cache_miss"
+    ATTESTATION_MALFORMED = "malformed_attestation_entry"
+    ATTESTATION_POISONED = "poisoned_attestation_entry"
+    ATTESTATION_EXPIRED = "expired_attestation_entry"
+    ATTESTATION_BINDING_MISMATCH = "attestation_binding_mismatch"
+    ATTESTATION_REPLAY_REQUIRED = "attestation_reverification_required"
+    ATTESTATION_VERIFICATION_FAILED = "attestation_reverification_failed"
 
     # Short compatibility spellings.
     MALFORMED = "malformed_cache_entry"
@@ -134,6 +156,22 @@ def _premises(value: Any) -> tuple[Any, ...]:
 
 def _sha256(value: Any) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _rfc3339_from_ms(value: int) -> str:
+    return (
+        datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _timestamp_ms(value: str) -> int:
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        raise ValueError("timestamp must include a timezone")
+    return int(parsed.timestamp() * 1000)
 
 
 @dataclass(frozen=True)
@@ -332,11 +370,66 @@ class ProofCacheEntry:
 
 
 @dataclass(frozen=True)
+class AttestationCacheEntry:
+    """Integrity-checked sidecar stored independently from a proof receipt."""
+
+    key: ProofCacheKey
+    record: PersistedAttestationRecord
+    stored_at_ms: int
+    expires_at_ms: int
+    ipfs_cid: str = ""
+    entry_digest: str = ""
+
+    def _unsigned_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": FORMAL_VERIFICATION_ATTESTATION_SCHEMA,
+            "key_id": self.key.key_id,
+            "proof_receipt_id": self.record.proof_receipt_id,
+            "record_id": self.record.record_id,
+            "record": self.record.to_public_artifact(),
+            "stored_at_ms": self.stored_at_ms,
+            "expires_at_ms": self.expires_at_ms,
+            "ipfs_cid": self.ipfs_cid,
+        }
+
+    @property
+    def computed_digest(self) -> str:
+        return f"sha256:{_sha256(self._unsigned_dict())}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._unsigned_dict(),
+            "entry_digest": self.entry_digest or self.computed_digest,
+        }
+
+    @classmethod
+    def create(
+        cls,
+        key: ProofCacheKey,
+        record: PersistedAttestationRecord,
+        *,
+        stored_at_ms: int,
+        expires_at_ms: int,
+        ipfs_cid: str = "",
+    ) -> "AttestationCacheEntry":
+        entry = cls(
+            key=key,
+            record=record,
+            stored_at_ms=stored_at_ms,
+            expires_at_ms=expires_at_ms,
+            ipfs_cid=ipfs_cid.strip(),
+        )
+        return cls(**{**entry.__dict__, "entry_digest": entry.computed_digest})
+
+
+@dataclass(frozen=True)
 class CacheLookupResult:
     status: CacheLookupStatus
     key: ProofCacheKey
     entry: ProofCacheEntry | None = None
     reason_codes: tuple[str, ...] = ()
+    attestation_entry: AttestationCacheEntry | None = None
+    attestation_reproduced: bool = False
 
     @property
     def hit(self) -> bool:
@@ -345,6 +438,42 @@ class CacheLookupResult:
     @property
     def receipt(self) -> ProofReceipt | None:
         return self.entry.receipt if self.entry is not None and self.hit else None
+
+    @property
+    def kernel_receipt(self) -> ProofReceipt | None:
+        """Return the immutable base receipt even when ATTESTED was requested."""
+
+        return self.entry.receipt if self.entry is not None else None
+
+    @property
+    def attestation(self) -> PersistedAttestationRecord | None:
+        return (
+            self.attestation_entry.record
+            if self.attestation_entry is not None
+            else None
+        )
+
+    @property
+    def verification(self) -> AttestationVerification | None:
+        return (
+            self.attestation.verification
+            if self.attestation is not None
+            else None
+        )
+
+    @property
+    def kernel_assurance(self) -> AssuranceLevel:
+        if self.kernel_receipt is None:
+            return AssuranceLevel.UNVERIFIED
+        return self.kernel_receipt.authoritative_assurance
+
+    @property
+    def authoritative_assurance(self) -> AssuranceLevel:
+        if self.attestation_entry is not None and self.attestation_reproduced:
+            return AssuranceLevel.ATTESTED
+        return self.kernel_assurance
+
+    effective_assurance = authoritative_assurance
 
     @property
     def reason_code(self) -> str:
@@ -356,6 +485,59 @@ class CacheStoreResult:
     stored: bool
     key: ProofCacheKey
     entry: ProofCacheEntry | None = None
+    reason_codes: tuple[str, ...] = ()
+
+    def __bool__(self) -> bool:
+        return self.stored
+
+
+@dataclass(frozen=True)
+class AttestationCacheLookupResult:
+    status: CacheLookupStatus
+    key: ProofCacheKey
+    receipt: ProofReceipt | None = None
+    entry: AttestationCacheEntry | None = None
+    reason_codes: tuple[str, ...] = ()
+    reproduced: bool = False
+
+    @property
+    def hit(self) -> bool:
+        return self.status is CacheLookupStatus.HIT
+
+    @property
+    def record(self) -> PersistedAttestationRecord | None:
+        return self.entry.record if self.entry is not None and self.hit else None
+
+    @property
+    def verification(self) -> AttestationVerification | None:
+        return self.record.verification if self.record is not None else None
+
+    @property
+    def kernel_assurance(self) -> AssuranceLevel:
+        if self.receipt is None:
+            return AssuranceLevel.UNVERIFIED
+        return self.receipt.authoritative_assurance
+
+    @property
+    def authoritative_assurance(self) -> AssuranceLevel:
+        return (
+            AssuranceLevel.ATTESTED
+            if self.hit and self.reproduced
+            else self.kernel_assurance
+        )
+
+    effective_assurance = authoritative_assurance
+
+    @property
+    def reason_code(self) -> str:
+        return self.reason_codes[0] if self.reason_codes else ""
+
+
+@dataclass(frozen=True)
+class AttestationCacheStoreResult:
+    stored: bool
+    key: ProofCacheKey
+    entry: AttestationCacheEntry | None = None
     reason_codes: tuple[str, ...] = ()
 
     def __bool__(self) -> bool:
@@ -541,6 +723,7 @@ class FormalVerificationCache:
         default_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
         clock: Callable[[], float] = time.time,
         sqlite_timeout_seconds: int = 30,
+        attestation_verifier: Callable[[Any], bool] | None = None,
     ) -> None:
         if isinstance(default_ttl_seconds, bool) or default_ttl_seconds <= 0:
             raise ValueError("default_ttl_seconds must be a positive integer")
@@ -561,6 +744,7 @@ class FormalVerificationCache:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.default_ttl_seconds = int(default_ttl_seconds)
         self._clock = clock
+        self._attestation_verifier = attestation_verifier
         self._sqlite_timeout_seconds = sqlite_timeout_seconds
         self._schema_lock = threading.Lock()
         self._initialize()
@@ -599,6 +783,28 @@ class FormalVerificationCache:
                     );
                     CREATE INDEX IF NOT EXISTS proof_cache_expiry_idx
                         ON proof_cache_entries(expires_at_ms);
+                    CREATE TABLE IF NOT EXISTS proof_attestation_entries (
+                        key_id TEXT PRIMARY KEY,
+                        proof_receipt_id TEXT NOT NULL,
+                        record_id TEXT NOT NULL UNIQUE,
+                        envelope_id TEXT NOT NULL,
+                        public_input_digest TEXT NOT NULL,
+                        backend_policy_id TEXT NOT NULL,
+                        backend_id TEXT NOT NULL,
+                        circuit_id TEXT NOT NULL,
+                        verification_key_id TEXT NOT NULL,
+                        formal_policy_id TEXT NOT NULL,
+                        entry_json TEXT NOT NULL,
+                        stored_at_ms INTEGER NOT NULL,
+                        expires_at_ms INTEGER NOT NULL,
+                        ipfs_cid TEXT NOT NULL DEFAULT '',
+                        FOREIGN KEY(key_id) REFERENCES proof_cache_entries(key_id)
+                            ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS proof_attestation_receipt_idx
+                        ON proof_attestation_entries(proof_receipt_id);
+                    CREATE INDEX IF NOT EXISTS proof_attestation_expiry_idx
+                        ON proof_attestation_entries(expires_at_ms);
                     CREATE TABLE IF NOT EXISTS proof_single_flights (
                         key_id TEXT PRIMARY KEY,
                         owner_id TEXT NOT NULL,
@@ -681,6 +887,24 @@ class FormalVerificationCache:
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
+            previous = connection.execute(
+                "SELECT * FROM proof_cache_entries WHERE key_id=?",
+                (cache_key.key_id,),
+            ).fetchone()
+            if previous is not None:
+                previous_entry, _ = self._decode_entry(cache_key, previous)
+                if (
+                    previous_entry is None
+                    or previous_entry.receipt.receipt_id
+                    != typed_receipt.receipt_id
+                ):
+                    # A sidecar is bound to one immutable receipt identity.
+                    # Replacing that receipt must atomically remove the old
+                    # optional assurance while preserving the new kernel row.
+                    connection.execute(
+                        "DELETE FROM proof_attestation_entries WHERE key_id=?",
+                        (cache_key.key_id,),
+                    )
             connection.execute(
                 """
                 INSERT INTO proof_cache_entries(
@@ -709,6 +933,464 @@ class FormalVerificationCache:
         return CacheStoreResult(True, cache_key, entry=entry)
 
     store = put
+
+    def put_attestation(
+        self,
+        key: ProofCacheKey | Mapping[str, Any],
+        attestation: (
+            AttestationVerification
+            | PersistedAttestationRecord
+            | Mapping[str, Any]
+        ),
+        *,
+        receipt: ProofReceipt | Mapping[str, Any] | None = None,
+        ttl_seconds: int | None = None,
+        created_at: str | None = None,
+        expires_at: str | None = None,
+        ipfs_cid: str = "",
+    ) -> AttestationCacheStoreResult:
+        """Persist a verified ZKP as an expiring sidecar to a cached receipt.
+
+        Failure to store this optional record never rewrites or removes the
+        underlying kernel receipt.  A caller can therefore retry IPFS or
+        attestation persistence without changing the proof verdict.
+        """
+
+        cache_key = self._coerce_key(key)
+        base = self.lookup(
+            cache_key,
+            required_assurance=AssuranceLevel.KERNEL_VERIFIED,
+        )
+        base_receipt = base.kernel_receipt
+        if not base.hit or base_receipt is None:
+            return AttestationCacheStoreResult(
+                False,
+                cache_key,
+                reason_codes=(
+                    CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
+                ),
+            )
+        if receipt is not None:
+            try:
+                supplied_receipt = (
+                    receipt
+                    if isinstance(receipt, ProofReceipt)
+                    else ProofReceipt.from_dict(receipt)
+                )
+            except (TypeError, ValueError, ContractValidationError):
+                return AttestationCacheStoreResult(
+                    False,
+                    cache_key,
+                    reason_codes=(
+                        CacheRejectionReason.ATTESTATION_MALFORMED.value,
+                    ),
+                )
+            if supplied_receipt.receipt_id != base_receipt.receipt_id:
+                return AttestationCacheStoreResult(
+                    False,
+                    cache_key,
+                    reason_codes=(
+                        CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
+                    ),
+                )
+
+        now = self._now_ms()
+        try:
+            if isinstance(attestation, PersistedAttestationRecord):
+                record = attestation
+            elif isinstance(attestation, AttestationVerification):
+                ttl = self.default_ttl_seconds if ttl_seconds is None else ttl_seconds
+                if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl <= 0:
+                    raise ValueError("ttl_seconds must be a positive integer")
+                created = created_at or _rfc3339_from_ms(now)
+                expires = expires_at or _rfc3339_from_ms(now + ttl * 1000)
+                record = build_persisted_attestation_record(
+                    base_receipt,
+                    attestation,
+                    created_at=created,
+                    expires_at=expires,
+                )
+            elif isinstance(attestation, Mapping):
+                schema = attestation.get("schema")
+                if schema == PersistedAttestationRecord.SCHEMA:
+                    record = PersistedAttestationRecord.from_dict(attestation)
+                else:
+                    verification = AttestationVerification.from_dict(attestation)
+                    ttl = (
+                        self.default_ttl_seconds
+                        if ttl_seconds is None
+                        else ttl_seconds
+                    )
+                    if (
+                        isinstance(ttl, bool)
+                        or not isinstance(ttl, int)
+                        or ttl <= 0
+                    ):
+                        raise ValueError("ttl_seconds must be a positive integer")
+                    record = build_persisted_attestation_record(
+                        base_receipt,
+                        verification,
+                        created_at=created_at or _rfc3339_from_ms(now),
+                        expires_at=expires_at
+                        or _rfc3339_from_ms(now + ttl * 1000),
+                    )
+            else:
+                raise AttestationValidationError("invalid attestation value")
+        except (
+            TypeError,
+            ValueError,
+            ContractValidationError,
+            AttestationValidationError,
+        ):
+            return AttestationCacheStoreResult(
+                False,
+                cache_key,
+                reason_codes=(CacheRejectionReason.ATTESTATION_MALFORMED.value,),
+            )
+
+        if record.proof_receipt_id != base_receipt.receipt_id:
+            return AttestationCacheStoreResult(
+                False,
+                cache_key,
+                reason_codes=(
+                    CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
+                ),
+            )
+        try:
+            record_expires_ms = _timestamp_ms(record.expires_at)
+        except (TypeError, ValueError):
+            return AttestationCacheStoreResult(
+                False,
+                cache_key,
+                reason_codes=(CacheRejectionReason.ATTESTATION_MALFORMED.value,),
+            )
+        if now >= record_expires_ms:
+            return AttestationCacheStoreResult(
+                False,
+                cache_key,
+                reason_codes=(CacheRejectionReason.ATTESTATION_EXPIRED.value,),
+            )
+        entry = AttestationCacheEntry.create(
+            cache_key,
+            record,
+            stored_at_ms=now,
+            expires_at_ms=record_expires_ms,
+            ipfs_cid=str(ipfs_cid or ""),
+        )
+        statement = record.envelope.statement
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            parent_row = connection.execute(
+                "SELECT * FROM proof_cache_entries WHERE key_id=?",
+                (cache_key.key_id,),
+            ).fetchone()
+            current_parent = None
+            if parent_row is not None:
+                current_parent, _ = self._decode_entry(cache_key, parent_row)
+            commit_now = self._now_ms()
+            parent_reasons = (
+                _trust_reasons(
+                    cache_key,
+                    current_parent.receipt,
+                    complete=current_parent.complete,
+                    requirements=CacheRequirements(
+                        required_assurance=AssuranceLevel.KERNEL_VERIFIED
+                    ),
+                )
+                if current_parent is not None
+                else set()
+            )
+            if (
+                current_parent is None
+                or current_parent.receipt.receipt_id
+                != record.proof_receipt_id
+                or parent_reasons
+                or commit_now >= current_parent.expires_at_ms
+                or commit_now >= record_expires_ms
+            ):
+                connection.rollback()
+                return AttestationCacheStoreResult(
+                    False,
+                    cache_key,
+                    reason_codes=(
+                        CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
+                    ),
+                )
+            connection.execute(
+                """
+                INSERT INTO proof_attestation_entries(
+                    key_id, proof_receipt_id, record_id, envelope_id,
+                    public_input_digest, backend_policy_id, backend_id,
+                    circuit_id, verification_key_id, formal_policy_id,
+                    entry_json, stored_at_ms, expires_at_ms, ipfs_cid
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key_id) DO UPDATE SET
+                    proof_receipt_id=excluded.proof_receipt_id,
+                    record_id=excluded.record_id,
+                    envelope_id=excluded.envelope_id,
+                    public_input_digest=excluded.public_input_digest,
+                    backend_policy_id=excluded.backend_policy_id,
+                    backend_id=excluded.backend_id,
+                    circuit_id=excluded.circuit_id,
+                    verification_key_id=excluded.verification_key_id,
+                    formal_policy_id=excluded.formal_policy_id,
+                    entry_json=excluded.entry_json,
+                    stored_at_ms=excluded.stored_at_ms,
+                    expires_at_ms=excluded.expires_at_ms,
+                    ipfs_cid=excluded.ipfs_cid
+                """,
+                (
+                    cache_key.key_id,
+                    record.proof_receipt_id,
+                    record.record_id,
+                    record.envelope_id,
+                    record.public_input_digest,
+                    statement.backend_policy_id,
+                    statement.backend_id,
+                    statement.circuit_id,
+                    statement.verification_key_id,
+                    statement.policy_id,
+                    canonical_json(entry.to_dict()),
+                    entry.stored_at_ms,
+                    entry.expires_at_ms,
+                    entry.ipfs_cid,
+                ),
+            )
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return AttestationCacheStoreResult(True, cache_key, entry=entry)
+
+    store_attestation = put_attestation
+
+    def _decode_attestation_entry(
+        self,
+        key: ProofCacheKey,
+        receipt: ProofReceipt,
+        row: sqlite3.Row,
+    ) -> tuple[AttestationCacheEntry | None, tuple[str, ...]]:
+        try:
+            payload = _strict_json_loads(str(row["entry_json"]))
+            if not isinstance(payload, Mapping):
+                raise ValueError("attestation entry must be an object")
+            stored_key_id = str(payload["key_id"])
+            record_payload = payload.get("record")
+            if not isinstance(record_payload, Mapping):
+                raise ValueError("attestation record must be an object")
+            record = PersistedAttestationRecord.from_dict(record_payload)
+            entry = AttestationCacheEntry(
+                key=key,
+                record=record,
+                stored_at_ms=int(payload["stored_at_ms"]),
+                expires_at_ms=int(payload["expires_at_ms"]),
+                ipfs_cid=str(payload.get("ipfs_cid") or ""),
+                entry_digest=str(payload["entry_digest"]),
+            )
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            ContractValidationError,
+            AttestationValidationError,
+            json.JSONDecodeError,
+        ):
+            return None, (CacheRejectionReason.ATTESTATION_MALFORMED.value,)
+
+        statement = record.envelope.statement
+        poisoned = (
+            stored_key_id != key.key_id
+            or record.proof_receipt_id != receipt.receipt_id
+            or str(payload.get("proof_receipt_id")) != receipt.receipt_id
+            or str(payload.get("record_id")) != record.record_id
+            or entry.entry_digest != entry.computed_digest
+            or str(row["key_id"]) != key.key_id
+            or str(row["proof_receipt_id"]) != record.proof_receipt_id
+            or str(row["record_id"]) != record.record_id
+            or str(row["envelope_id"]) != record.envelope_id
+            or str(row["public_input_digest"]) != record.public_input_digest
+            or str(row["backend_policy_id"]) != statement.backend_policy_id
+            or str(row["backend_id"]) != statement.backend_id
+            or str(row["circuit_id"]) != statement.circuit_id
+            or str(row["verification_key_id"]) != statement.verification_key_id
+            or str(row["formal_policy_id"]) != statement.policy_id
+            or int(row["stored_at_ms"]) != entry.stored_at_ms
+            or int(row["expires_at_ms"]) != entry.expires_at_ms
+            or str(row["ipfs_cid"] or "") != entry.ipfs_cid
+            or _timestamp_ms(record.expires_at) != entry.expires_at_ms
+        )
+        if poisoned:
+            return None, (CacheRejectionReason.ATTESTATION_POISONED.value,)
+        return entry, ()
+
+    def _attestation_for_receipt(
+        self,
+        key: ProofCacheKey,
+        receipt: ProofReceipt,
+        *,
+        now_ms: int | None = None,
+        expected_backend_policy: AttestationBackendPolicy | None = None,
+    ) -> tuple[AttestationCacheEntry | None, tuple[str, ...]]:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM proof_attestation_entries WHERE key_id=?",
+                (key.key_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            return None, (CacheRejectionReason.ATTESTATION_MISS.value,)
+        entry, reasons = self._decode_attestation_entry(key, receipt, row)
+        if entry is None:
+            return None, reasons
+        checked_now = self._now_ms() if now_ms is None else now_ms
+        if checked_now >= entry.expires_at_ms or not entry.record.is_current_at(
+            _rfc3339_from_ms(checked_now)
+        ):
+            return entry, (CacheRejectionReason.ATTESTATION_EXPIRED.value,)
+        if (
+            expected_backend_policy is not None
+            and entry.record.backend_policy.policy_id
+            != expected_backend_policy.policy_id
+        ):
+            return entry, (
+                CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
+            )
+        return entry, ()
+
+    def lookup_attestation(
+        self,
+        key: ProofCacheKey | Mapping[str, Any] | str,
+        *,
+        expected_backend_policy: AttestationBackendPolicy | None = None,
+        verifier: Callable[[Any], bool] | None = None,
+        checked_at: str | None = None,
+    ) -> AttestationCacheLookupResult:
+        """Return a current sidecar while preserving the base receipt on miss."""
+
+        if isinstance(key, str):
+            receipt_id = key.strip()
+            if not receipt_id:
+                raise ValueError("proof receipt identity must not be empty")
+            connection = self._connect()
+            try:
+                row = connection.execute(
+                    """
+                    SELECT cache.key_json
+                    FROM proof_attestation_entries AS attestation
+                    JOIN proof_cache_entries AS cache
+                      ON cache.key_id = attestation.key_id
+                    WHERE attestation.proof_receipt_id=?
+                    ORDER BY attestation.stored_at_ms DESC
+                    LIMIT 1
+                    """,
+                    (receipt_id,),
+                ).fetchone()
+            finally:
+                connection.close()
+            if row is None:
+                # There is no key object to return for a receipt-only miss.
+                # A deterministic lookup key cannot be invented safely.
+                raise KeyError(
+                    "no cached proof attestation for receipt %s" % receipt_id
+                )
+            payload = _strict_json_loads(str(row["key_json"]))
+            if not isinstance(payload, Mapping):
+                raise ValueError("cached proof key is malformed")
+            cache_key = ProofCacheKey.from_dict(payload)
+        else:
+            cache_key = self._coerce_key(key)
+        base = self.lookup(
+            cache_key,
+            required_assurance=AssuranceLevel.KERNEL_VERIFIED,
+            _include_attestation=False,
+        )
+        receipt = base.kernel_receipt
+        if receipt is None:
+            return AttestationCacheLookupResult(
+                CacheLookupStatus.MISS,
+                cache_key,
+                reason_codes=(CacheRejectionReason.CACHE_MISS.value,),
+            )
+        if not base.hit:
+            return AttestationCacheLookupResult(
+                CacheLookupStatus.REJECTED,
+                cache_key,
+                receipt=receipt,
+                reason_codes=base.reason_codes,
+            )
+        try:
+            checked_at_ms = (
+                self._now_ms()
+                if checked_at is None
+                else _timestamp_ms(checked_at)
+            )
+        except (TypeError, ValueError):
+            raise ValueError("checked_at must be an RFC3339 timestamp") from None
+        entry, reasons = self._attestation_for_receipt(
+            cache_key,
+            receipt,
+            now_ms=checked_at_ms,
+            expected_backend_policy=expected_backend_policy,
+        )
+        if entry is None and reasons == (
+            CacheRejectionReason.ATTESTATION_MISS.value,
+        ):
+            return AttestationCacheLookupResult(
+                CacheLookupStatus.MISS,
+                cache_key,
+                receipt=receipt,
+                reason_codes=reasons,
+            )
+        if reasons:
+            return AttestationCacheLookupResult(
+                CacheLookupStatus.REJECTED,
+                cache_key,
+                receipt=receipt,
+                entry=entry,
+                reason_codes=reasons,
+            )
+        replay_verifier = verifier or self._attestation_verifier
+        reproduced_ok = False
+        if replay_verifier is not None and entry is not None:
+            reproduced = reproduce_attestation_verification(
+                entry.record,
+                verifier=replay_verifier,
+                checked_at=checked_at or _rfc3339_from_ms(checked_at_ms),
+                receipt=receipt,
+                backend_policy=expected_backend_policy,
+            )
+            if not reproduced.authoritative:
+                return AttestationCacheLookupResult(
+                    CacheLookupStatus.REJECTED,
+                    cache_key,
+                    receipt=receipt,
+                    entry=entry,
+                    reason_codes=(
+                        CacheRejectionReason.ATTESTATION_VERIFICATION_FAILED.value,
+                    ),
+                )
+            reproduced_ok = True
+        return AttestationCacheLookupResult(
+            CacheLookupStatus.HIT,
+            cache_key,
+            receipt=receipt,
+            entry=entry,
+            reproduced=reproduced_ok,
+        )
+
+    def get_attestation(
+        self,
+        key: ProofCacheKey | Mapping[str, Any] | str,
+        **requirements: Any,
+    ) -> PersistedAttestationRecord | None:
+        """Compatibility helper returning only a current public record."""
+
+        return self.lookup_attestation(key, **requirements).record
 
     def _decode_entry(
         self, key: ProofCacheKey, row: sqlite3.Row
@@ -763,6 +1445,8 @@ class FormalVerificationCache:
         required_freshness: EvidenceFreshness = EvidenceFreshness.CURRENT,
         max_age_seconds: int | None = None,
         requirements: CacheRequirements | None = None,
+        attestation_verifier: Callable[[Any], bool] | None = None,
+        _include_attestation: bool = True,
     ) -> CacheLookupResult:
         cache_key = self._coerce_key(key)
         requested = requirements or CacheRequirements(
@@ -808,14 +1492,76 @@ class FormalVerificationCache:
         ):
             reasons.add(CacheRejectionReason.STALE_ENTRY.value)
             reasons.add(CacheRejectionReason.FRESHNESS_NOT_SATISFIED.value)
+        attestation_entry: AttestationCacheEntry | None = None
+        attestation_reasons: tuple[str, ...] = ()
+        base_blockers = reasons - {
+            CacheRejectionReason.INSUFFICIENT_ASSURANCE.value
+        }
+        if _include_attestation and not base_blockers:
+            attestation_entry, attestation_reasons = self._attestation_for_receipt(
+                cache_key,
+                entry.receipt,
+                now_ms=now,
+            )
+            if attestation_entry is not None and not attestation_reasons:
+                replay_verifier = (
+                    attestation_verifier or self._attestation_verifier
+                )
+                attestation_reproduced = False
+                if replay_verifier is not None:
+                    reproduced = reproduce_attestation_verification(
+                        attestation_entry.record,
+                        verifier=replay_verifier,
+                        checked_at=_rfc3339_from_ms(now),
+                        receipt=entry.receipt,
+                    )
+                    attestation_reproduced = reproduced.authoritative
+                    if not attestation_reproduced:
+                        attestation_reasons = (
+                            CacheRejectionReason.ATTESTATION_VERIFICATION_FAILED.value,
+                        )
+                elif requested.required_assurance is AssuranceLevel.ATTESTED:
+                    attestation_reasons = (
+                        CacheRejectionReason.ATTESTATION_REPLAY_REQUIRED.value,
+                    )
+                if attestation_reproduced and assurance_satisfies(
+                    AssuranceLevel.ATTESTED, requested.required_assurance
+                ):
+                    reasons.discard(
+                        CacheRejectionReason.INSUFFICIENT_ASSURANCE.value
+                    )
+            if (
+                attestation_reasons
+                and requested.required_assurance is AssuranceLevel.ATTESTED
+            ):
+                reasons.update(attestation_reasons)
         if reasons:
             return CacheLookupResult(
                 CacheLookupStatus.REJECTED,
                 cache_key,
                 entry=entry,
                 reason_codes=tuple(sorted(reasons)),
+                attestation_entry=(
+                    attestation_entry if not attestation_reasons else None
+                ),
+                attestation_reproduced=False,
             )
-        return CacheLookupResult(CacheLookupStatus.HIT, cache_key, entry=entry)
+        return CacheLookupResult(
+            CacheLookupStatus.HIT,
+            cache_key,
+            entry=entry,
+            attestation_entry=(
+                attestation_entry if not attestation_reasons else None
+            ),
+            attestation_reproduced=bool(
+                attestation_entry
+                and not attestation_reasons
+                and (
+                    attestation_verifier is not None
+                    or self._attestation_verifier is not None
+                )
+            ),
+        )
 
     def get(
         self,
@@ -838,11 +1584,40 @@ class FormalVerificationCache:
         finally:
             connection.close()
 
+    def delete_attestation(
+        self, key: ProofCacheKey | Mapping[str, Any] | str
+    ) -> bool:
+        """Delete only the optional sidecar, never the trusted proof receipt."""
+
+        connection = self._connect()
+        try:
+            if isinstance(key, str):
+                receipt_id = key.strip()
+                if not receipt_id:
+                    raise ValueError("proof receipt identity must not be empty")
+                cursor = connection.execute(
+                    "DELETE FROM proof_attestation_entries WHERE proof_receipt_id=?",
+                    (receipt_id,),
+                )
+            else:
+                cache_key = self._coerce_key(key)
+                cursor = connection.execute(
+                    "DELETE FROM proof_attestation_entries WHERE key_id=?",
+                    (cache_key.key_id,),
+                )
+            return cursor.rowcount > 0
+        finally:
+            connection.close()
+
     def purge_expired(self) -> int:
         now = self._now_ms()
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "DELETE FROM proof_attestation_entries WHERE expires_at_ms<=?",
+                (now,),
+            )
             first = connection.execute(
                 "DELETE FROM proof_cache_entries WHERE expires_at_ms<=?", (now,)
             ).rowcount
@@ -1250,6 +2025,8 @@ __all__ = [
     "FORMAL_VERIFICATION_CACHE_SCHEMA",
     "FORMAL_VERIFICATION_CACHE_KEY_SCHEMA",
     "FORMAL_VERIFICATION_FLIGHT_SCHEMA",
+    "FORMAL_VERIFICATION_ATTESTATION_SCHEMA",
+    "FORMAL_VERIFICATION_ATTESTATION_CACHE_SCHEMA",
     "DEFAULT_CACHE_TTL_SECONDS",
     "DEFAULT_LEASE_SECONDS",
     "DEFAULT_WAIT_TIMEOUT_SECONDS",
@@ -1259,8 +2036,11 @@ __all__ = [
     "ProofCacheKey",
     "FormalVerificationCacheKey",
     "ProofCacheEntry",
+    "AttestationCacheEntry",
     "CacheLookupResult",
     "CacheStoreResult",
+    "AttestationCacheLookupResult",
+    "AttestationCacheStoreResult",
     "SingleFlightLease",
     "SingleFlightError",
     "SingleFlightTimeout",
