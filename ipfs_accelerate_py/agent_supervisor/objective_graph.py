@@ -3121,13 +3121,11 @@ def evidence_index(
                 evidence[term].append(f"{root_relative} (exact)")
                 continue
             normalized_symbol = " ".join(objective_tokens(term))
-            if normalized_symbol and (
-                normalized_symbol in evidence_symbols
-                or any(
-                    normalized_symbol in symbol or symbol in normalized_symbol
-                    for symbol in evidence_symbols
-                )
-            ):
+            # AST evidence proves a named interface only when its complete
+            # token-normalized identity matches. Substring matching lets short
+            # but valid identifiers such as ``le`` or ``ssl`` satisfy unrelated
+            # unique markers and makes a missing-evidence scan fail open.
+            if normalized_symbol and normalized_symbol in evidence_symbols:
                 evidence[term].append(f"{root_relative} (ast)")
                 continue
             overlap = term_tokens[term] & document_tokens

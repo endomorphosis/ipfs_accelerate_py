@@ -158,6 +158,29 @@ def test_hsslev0097b20_empty_symbol_normalizations_are_not_ast_evidence(tmp_path
     assert evidence == {"HSSLEV0097B20": []}
 
 
+def test_short_ast_symbols_are_not_substring_evidence_for_unique_markers(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    records = [
+        {
+            "root_relative_path": "src/unrelated.py",
+            "evidence_text": "short identifiers only",
+            "symbols_json": json.dumps(["le", "ssl", "hssl", "hsslev"]),
+            "document_tokens_json": "[]",
+            "document_embedding_json": "[]",
+        }
+    ]
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=["HSSLEV0097B20"],
+        embedding_min_score=2.0,
+        records=records,
+    )
+
+    assert evidence == {"HSSLEV0097B20": []}
+
+
 def test_empty_symbol_filter_preserves_nonempty_ast_and_exact_evidence(tmp_path):
     repo, objective_path, _todo_path = _seed_repo(tmp_path)
     records = [
@@ -185,7 +208,10 @@ def test_empty_symbol_filter_preserves_nonempty_ast_and_exact_evidence(tmp_path)
 def test_empty_symbol_only_source_keeps_unique_objective_evidence_missing(tmp_path):
     repo, objective_path, _todo_path = _seed_repo(tmp_path)
     minified_source = repo / "src" / "minified.js"
-    minified_source.write_text("const e = 1; let v = e; var $ = v;\n", encoding="utf-8")
+    minified_source.write_text(
+        "const e = 1; let le = e; var ssl = le; let hssl = ssl;\n",
+        encoding="utf-8",
+    )
     objective_path.write_text(
         """# Objective Heap
 
