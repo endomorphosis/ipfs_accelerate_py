@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -165,14 +166,41 @@ def active_codex_exec_workers(root_pid: Any) -> list[JsonDict]:
 
 
 def _is_agent_worker_command(cmdline: str) -> bool:
-    normalized = " " + " ".join(cmdline.lower().split())
-    return (
-        ("codex" in normalized and " exec" in normalized)
-        or "copilot" in normalized
-        or "llm_merge_resolver_fallback.sh" in normalized
-        or "llm_router_merge_resolver.py" in normalized
-        or ("llm_router" in normalized and "merge_resolver" in normalized)
-    )
+    try:
+        tokens = shlex.split(cmdline)
+    except ValueError:
+        tokens = cmdline.split()
+    if not tokens:
+        return False
+
+    executable = os.path.basename(tokens[0]).lower()
+    lowered = [token.lower() for token in tokens]
+    if executable == "codex":
+        return len(lowered) > 1 and lowered[1] == "exec"
+    if executable == "copilot":
+        return True
+    if executable == "node" and len(tokens) > 1:
+        return os.path.basename(tokens[1]).lower() == "copilot"
+    if executable in {"bash", "sh"} and len(tokens) > 1:
+        return os.path.basename(tokens[1]).lower() == "llm_merge_resolver_fallback.sh"
+    if executable == "llm_router_merge_resolver.py":
+        return True
+    if not executable.startswith("python"):
+        return False
+
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "-m":
+            return (
+                index + 1 < len(tokens)
+                and tokens[index + 1].lower().endswith("llm_router_merge_resolver")
+            )
+        if token.startswith("-"):
+            index += 1
+            continue
+        return os.path.basename(token).lower() == "llm_router_merge_resolver.py"
+    return False
 
 
 def worktree_phase_worker_status(

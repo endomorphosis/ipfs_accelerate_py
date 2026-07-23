@@ -7373,6 +7373,16 @@ def test_supervisor_worker_watchdog_recognizes_llm_router_merge_resolver(monkeyp
         "descendant_processes",
         lambda _pid: [
             {
+                "pid": 4320,
+                "cmdline": (
+                    "/usr/bin/python -m "
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor "
+                    "--llm-merge-resolver-command '/usr/bin/python "
+                    "ipfs_accelerate_py/agent_supervisor/llm_router_merge_resolver.py' "
+                    "--provider-env COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS=300"
+                ),
+            },
+            {
                 "pid": 4321,
                 "cmdline": (
                     "/usr/bin/python "
