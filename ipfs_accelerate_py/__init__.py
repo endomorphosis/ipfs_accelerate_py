@@ -454,10 +454,14 @@ if not SKIP_CORE:
             speech_to_text,
             get_voice_provider,
             register_voice_provider,
+            get_voice_provider_capabilities,
             clear_voice_router_caches,
             VoiceProvider,
             VoiceProviderCapabilities,
             ProviderInfo,
+            VOICE_TURN_CONTRACT_VERSION,
+            VOICE_STAGE_STATUSES,
+            VOICE_TURN_STATUSES,
             DEFAULT_GROUNDED_FALLBACK,
             GroundingEvidence,
             VoiceGroundingSource,
@@ -469,6 +473,7 @@ if not SKIP_CORE:
             VoiceTurnRequest,
             VoiceTurnProvenance,
             VoiceTurnResult,
+            voice_turn_cache_key,
             process_voice_turn,
             # backward-compat TTS aliases
             get_tts_provider,
@@ -481,10 +486,14 @@ if not SKIP_CORE:
         export["speech_to_text"] = speech_to_text
         export["get_voice_provider"] = get_voice_provider
         export["register_voice_provider"] = register_voice_provider
+        export["get_voice_provider_capabilities"] = get_voice_provider_capabilities
         export["clear_voice_router_caches"] = clear_voice_router_caches
         export["VoiceProvider"] = VoiceProvider
         export["VoiceProviderCapabilities"] = VoiceProviderCapabilities
         export["ProviderInfo"] = ProviderInfo
+        export["VOICE_TURN_CONTRACT_VERSION"] = VOICE_TURN_CONTRACT_VERSION
+        export["VOICE_STAGE_STATUSES"] = VOICE_STAGE_STATUSES
+        export["VOICE_TURN_STATUSES"] = VOICE_TURN_STATUSES
         export["DEFAULT_GROUNDED_FALLBACK"] = DEFAULT_GROUNDED_FALLBACK
         export["GroundingEvidence"] = GroundingEvidence
         export["VoiceGroundingSource"] = VoiceGroundingSource
@@ -496,6 +505,7 @@ if not SKIP_CORE:
         export["VoiceTurnRequest"] = VoiceTurnRequest
         export["VoiceTurnProvenance"] = VoiceTurnProvenance
         export["VoiceTurnResult"] = VoiceTurnResult
+        export["voice_turn_cache_key"] = voice_turn_cache_key
         export["process_voice_turn"] = process_voice_turn
         export["get_tts_provider"] = get_tts_provider
         export["register_tts_provider"] = register_tts_provider
@@ -508,10 +518,14 @@ if not SKIP_CORE:
         speech_to_text = None
         get_voice_provider = None
         register_voice_provider = None
+        get_voice_provider_capabilities = None
         clear_voice_router_caches = None
         VoiceProvider = None
         VoiceProviderCapabilities = None
         ProviderInfo = None
+        VOICE_TURN_CONTRACT_VERSION = None
+        VOICE_STAGE_STATUSES = None
+        VOICE_TURN_STATUSES = None
         DEFAULT_GROUNDED_FALLBACK = None
         GroundingEvidence = None
         VoiceGroundingSource = None
@@ -523,6 +537,7 @@ if not SKIP_CORE:
         VoiceTurnRequest = None
         VoiceTurnProvenance = None
         VoiceTurnResult = None
+        voice_turn_cache_key = None
         process_voice_turn = None
         get_tts_provider = None
         register_tts_provider = None
@@ -535,10 +550,14 @@ else:
     speech_to_text = None
     get_voice_provider = None
     register_voice_provider = None
+    get_voice_provider_capabilities = None
     clear_voice_router_caches = None
     VoiceProvider = None
     VoiceProviderCapabilities = None
     ProviderInfo = None
+    VOICE_TURN_CONTRACT_VERSION = None
+    VOICE_STAGE_STATUSES = None
+    VOICE_TURN_STATUSES = None
     DEFAULT_GROUNDED_FALLBACK = None
     GroundingEvidence = None
     VoiceGroundingSource = None
@@ -550,6 +569,7 @@ else:
     VoiceTurnRequest = None
     VoiceTurnProvenance = None
     VoiceTurnResult = None
+    voice_turn_cache_key = None
     process_voice_turn = None
     get_tts_provider = None
     register_tts_provider = None
@@ -581,12 +601,14 @@ __all__ = [
     'text_to_speech', 'get_tts_provider', 'register_tts_provider',
     'clear_tts_router_caches', 'TTSProvider', 'tts_router_available',
     'speech_to_text', 'get_voice_provider', 'register_voice_provider',
+    'get_voice_provider_capabilities',
     'clear_voice_router_caches', 'VoiceProvider', 'voice_router_available',
-    'VoiceProviderCapabilities', 'ProviderInfo', 'DEFAULT_GROUNDED_FALLBACK',
+    'VoiceProviderCapabilities', 'ProviderInfo', 'VOICE_TURN_CONTRACT_VERSION',
+    'VOICE_STAGE_STATUSES', 'VOICE_TURN_STATUSES', 'DEFAULT_GROUNDED_FALLBACK',
     'GroundingEvidence', 'VoiceGroundingSource', 'GroundedSlot',
     'VoiceResponsePlan', 'VoiceTemplateProvider', 'GraphRAGVoiceTemplateProvider',
     'VoiceStageTrace', 'VoiceTurnRequest', 'VoiceTurnProvenance',
-    'VoiceTurnResult', 'process_voice_turn',
+    'VoiceTurnResult', 'voice_turn_cache_key', 'process_voice_turn',
 ]
 
 # Package version

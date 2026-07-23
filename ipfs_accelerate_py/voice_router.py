@@ -42,6 +42,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import string
@@ -50,6 +51,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from functools import lru_cache
+from types import MappingProxyType
 from typing import (
     Callable,
     Dict,
@@ -65,6 +67,10 @@ from typing import (
 from .router_deps import RouterDeps, get_default_router_deps
 
 logger = logging.getLogger(__name__)
+
+VOICE_TURN_CONTRACT_VERSION = "1.0"
+VOICE_STAGE_STATUSES = frozenset({"succeeded", "failed", "skipped"})
+VOICE_TURN_STATUSES = frozenset({"completed", "degraded", "text_only", "failed"})
 
 
 def _truthy(value: Optional[str]) -> bool:
@@ -99,7 +105,49 @@ def _text_digest(text: str) -> str:
 def _audio_digest(audio: Union[str, bytes]) -> str:
     if isinstance(audio, bytes):
         return hashlib.sha256(audio).hexdigest()[:16]
+    if isinstance(audio, str) and os.path.isfile(audio):
+        digest = hashlib.sha256()
+        try:
+            with open(audio, "rb") as input_file:
+                for chunk in iter(lambda: input_file.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            return digest.hexdigest()[:16]
+        except OSError:
+            pass
     return hashlib.sha256(str(audio or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _provider_instance_cache_identity(
+    provider_instance: Optional[object],
+    provider_name: Optional[str] = None,
+) -> Optional[str]:
+    """Return a cache namespace that cannot cross-contaminate instances."""
+    if provider_instance is None:
+        normalized_name = str(provider_name or "").strip().lower()
+        environment_key_factory = globals().get("_provider_cache_key")
+        environment_key = (
+            environment_key_factory() if callable(environment_key_factory) else ()
+        )
+        digest = hashlib.sha256(repr(environment_key).encode("utf-8")).hexdigest()[:16]
+        if normalized_name:
+            revisions = globals().get("_PROVIDER_REGISTRY_REVISIONS", {})
+            revision = revisions.get(normalized_name, 0)
+            return f"{normalized_name}::revision-{revision}::{digest}"
+        return f"auto::{digest}"
+    explicit = getattr(provider_instance, "cache_identity", None)
+    if callable(explicit):
+        explicit = explicit()
+    provider_type = provider_instance.__class__
+    type_name = f"{provider_type.__module__}.{provider_type.__qualname__}"
+    if explicit is not None and str(explicit).strip():
+        explicit_digest = hashlib.sha256(
+            str(explicit).strip().encode("utf-8")
+        ).hexdigest()[:16]
+        return f"instance::{type_name}::{explicit_digest}"
+    # An injected instance with no declared stable identity is intentionally
+    # process-local. Reusing a remote cache entry from another instance could
+    # return speech from the wrong model, tenant, or voice configuration.
+    return f"instance::{type_name}::{id(provider_instance)}"
 
 
 def _tts_response_cache_key(
@@ -108,13 +156,18 @@ def _tts_response_cache_key(
     model_name: Optional[str],
     text: str,
     voice: Optional[str] = None,
+    device: Optional[str] = None,
+    output_format: Optional[str] = None,
     kwargs: Dict[str, object],
 ) -> str:
     provider_key = (provider or "auto").strip().lower()
     model_key = (model_name or "").strip()
     voice_key = (voice or "").strip()
+    device_key = (device or "").strip().lower()
+    format_key = (output_format or "").strip().lower().lstrip(".")
     return (
         f"voice_tts::{provider_key}::{model_key}::{voice_key}"
+        f"::{device_key}::{format_key}"
         f"::{_text_digest(text)}::{_stable_kwargs_digest(kwargs)}"
     )
 
@@ -125,13 +178,15 @@ def _stt_response_cache_key(
     model_name: Optional[str],
     audio: Union[str, bytes],
     language: Optional[str] = None,
+    device: Optional[str] = None,
     kwargs: Dict[str, object],
 ) -> str:
     provider_key = (provider or "auto").strip().lower()
     model_key = (model_name or "").strip()
     lang_key = (language or "").strip()
+    device_key = (device or "").strip().lower()
     return (
-        f"voice_stt::{provider_key}::{model_key}::{lang_key}"
+        f"voice_stt::{provider_key}::{model_key}::{lang_key}::{device_key}"
         f"::{_audio_digest(audio)}::{_stable_kwargs_digest(kwargs)}"
     )
 
@@ -140,8 +195,9 @@ def _stt_response_cache_key(
 class VoiceProvider(Protocol):
     """Provider interface for voice processing (TTS and/or STT).
 
-    Providers may implement either or both methods.  Calling a method the
-    provider does not support raises ``NotImplementedError``.
+    Provider objects expose both methods for structural/runtime protocol
+    checks. An unsupported method raises ``NotImplementedError`` and its
+    operation is declared false in :class:`VoiceProviderCapabilities`.
     """
 
     def synthesize(
@@ -178,6 +234,24 @@ class VoiceProviderCapabilities:
     streaming: bool = False
     audio_formats: Tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        for field_name in ("transcription", "synthesis", "streaming"):
+            if not isinstance(getattr(self, field_name), bool):
+                raise TypeError(f"{field_name} must be a boolean")
+        raw_formats = (
+            (self.audio_formats,)
+            if isinstance(self.audio_formats, str)
+            else (self.audio_formats or ())
+        )
+        formats = tuple(
+            dict.fromkeys(
+                str(value).strip().lower().lstrip(".")
+                for value in raw_formats
+                if str(value).strip().lstrip(".")
+            )
+        )
+        object.__setattr__(self, "audio_formats", formats)
+
     @property
     def can_transcribe(self) -> bool:
         return self.transcription
@@ -185,6 +259,53 @@ class VoiceProviderCapabilities:
     @property
     def can_synthesize(self) -> bool:
         return self.synthesis
+
+    def supports(self, operation: str) -> bool:
+        """Return whether *operation* is supported by this provider.
+
+        The accepted operation names match both the provider method names and
+        the pipeline stage names so callers do not need provider-specific
+        translation logic.
+        """
+        normalized = str(operation or "").strip().lower()
+        if normalized in {"transcribe", "transcription", "stt", "speech_to_text"}:
+            return self.transcription
+        if normalized in {"synthesize", "synthesis", "tts", "text_to_speech"}:
+            return self.synthesis
+        if normalized == "streaming":
+            return self.streaming
+        return False
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "transcription": self.transcription,
+            "synthesis": self.synthesis,
+            "streaming": self.streaming,
+            "audio_formats": list(self.audio_formats),
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> "VoiceProviderCapabilities":
+        if not isinstance(value, Mapping):
+            raise TypeError("VoiceProviderCapabilities.from_dict requires a mapping")
+
+        def _boolean(name: str, default: bool) -> bool:
+            raw_value = value.get(name, default)
+            if not isinstance(raw_value, bool):
+                raise TypeError(f"{name} must be a boolean")
+            return raw_value
+
+        raw_formats = value.get("audio_formats", ())
+        if isinstance(raw_formats, str):
+            raw_formats = (raw_formats,)
+        if not isinstance(raw_formats, Sequence):
+            raise TypeError("audio_formats must be a string or sequence")
+        return cls(
+            transcription=_boolean("transcription", True),
+            synthesis=_boolean("synthesis", True),
+            streaming=_boolean("streaming", False),
+            audio_formats=tuple(str(item) for item in raw_formats),
+        )
 
 
 @dataclass(frozen=True)
@@ -195,8 +316,28 @@ class ProviderInfo:
         default_factory=VoiceProviderCapabilities
     )
 
+    def __post_init__(self) -> None:
+        name = str(self.name or "").strip().lower()
+        if not name:
+            raise ValueError("ProviderInfo.name must be non-empty")
+        if not callable(self.factory):
+            raise TypeError("ProviderInfo.factory must be callable")
+        if not isinstance(self.capabilities, VoiceProviderCapabilities):
+            raise TypeError(
+                "ProviderInfo.capabilities must be VoiceProviderCapabilities"
+            )
+        object.__setattr__(self, "name", name)
+
+    def to_dict(self) -> Dict[str, object]:
+        """Serialize provider metadata without attempting to serialize code."""
+        return {
+            "name": self.name,
+            "capabilities": self.capabilities.to_dict(),
+        }
+
 
 _PROVIDER_REGISTRY: Dict[str, ProviderInfo] = {}
+_PROVIDER_REGISTRY_REVISIONS: Dict[str, int] = {}
 
 
 def register_voice_provider(
@@ -206,15 +347,66 @@ def register_voice_provider(
     capabilities: Optional[VoiceProviderCapabilities] = None,
 ) -> None:
     """Register a custom voice provider and its optional capabilities."""
-    if not name or not name.strip():
+    normalized_name = str(name or "").strip().lower()
+    if not normalized_name:
         raise ValueError("Provider name must be non-empty")
     if not callable(factory):
         raise TypeError("Provider factory must be callable")
-    _PROVIDER_REGISTRY[name] = ProviderInfo(
-        name=name,
+    if capabilities is not None and not isinstance(
+        capabilities, VoiceProviderCapabilities
+    ):
+        raise TypeError("capabilities must be VoiceProviderCapabilities or None")
+    _PROVIDER_REGISTRY[normalized_name] = ProviderInfo(
+        name=normalized_name,
         factory=factory,
         capabilities=capabilities or VoiceProviderCapabilities(),
     )
+    _PROVIDER_REGISTRY_REVISIONS[normalized_name] = (
+        _PROVIDER_REGISTRY_REVISIONS.get(normalized_name, 0) + 1
+    )
+    # A re-registration is expected to take effect immediately. The global
+    # resolver exists by the time public registration can be called.
+    resolver = globals().get("_resolve_provider_cached")
+    if resolver is not None:
+        resolver.cache_clear()
+
+
+_BUILTIN_PROVIDER_CAPABILITIES: Mapping[str, VoiceProviderCapabilities] = {
+    "openai": VoiceProviderCapabilities(),
+    "elevenlabs": VoiceProviderCapabilities(transcription=False),
+    "assemblyai": VoiceProviderCapabilities(synthesis=False),
+    "huggingface": VoiceProviderCapabilities(),
+    "backend_manager": VoiceProviderCapabilities(),
+}
+
+_BUILTIN_PROVIDER_ALIASES: Mapping[str, str] = {
+    "openai_voice": "openai",
+    "eleven_labs": "elevenlabs",
+    "eleven": "elevenlabs",
+    "assembly_ai": "assemblyai",
+    "hf": "huggingface",
+    "local_hf": "huggingface",
+    "accelerate": "backend_manager",
+}
+
+
+def get_voice_provider_capabilities(name: str) -> VoiceProviderCapabilities:
+    """Return declared capabilities without constructing a provider.
+
+    This makes capability discovery safe for optional and remote providers:
+    no model import, credential lookup, or network request occurs.
+    """
+    normalized_name = str(name or "").strip().lower()
+    if not normalized_name:
+        raise ValueError("Provider name must be non-empty")
+    info = _PROVIDER_REGISTRY.get(normalized_name)
+    if info is not None:
+        return info.capabilities
+    builtin_name = _BUILTIN_PROVIDER_ALIASES.get(normalized_name, normalized_name)
+    capabilities = _BUILTIN_PROVIDER_CAPABILITIES.get(builtin_name)
+    if capabilities is None:
+        raise ValueError(f"Unknown voice provider: {name}")
+    return capabilities
 
 
 def _coalesce_env(*names: str) -> str:
@@ -398,11 +590,37 @@ class VoiceStageTrace:
     error: Optional[str] = None
     details: Mapping[str, object] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        stage = str(self.stage or "").strip()
+        status = str(self.status or "").strip().lower()
+        if not stage:
+            raise ValueError("VoiceStageTrace.stage must be non-empty")
+        if status not in VOICE_STAGE_STATUSES:
+            raise ValueError(
+                "VoiceStageTrace.status must be one of "
+                + ", ".join(sorted(VOICE_STAGE_STATUSES))
+            )
+        duration_ms = float(self.duration_ms)
+        if not math.isfinite(duration_ms) or duration_ms < 0:
+            raise ValueError(
+                "VoiceStageTrace.duration_ms must be finite and non-negative"
+            )
+        provider = str(self.provider).strip() if self.provider is not None else None
+        error = str(self.error).strip() if self.error is not None else None
+        object.__setattr__(self, "stage", stage)
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "duration_ms", duration_ms)
+        object.__setattr__(self, "provider", provider or None)
+        object.__setattr__(self, "error", error or None)
+        object.__setattr__(
+            self, "details", MappingProxyType(dict(self.details or {}))
+        )
+
     def to_dict(self) -> Dict[str, object]:
         return {
             "stage": self.stage,
             "status": self.status,
-            "duration_ms": round(max(0.0, float(self.duration_ms)), 3),
+            "duration_ms": round(self.duration_ms, 3),
             "provider": self.provider,
             "error": self.error,
             "details": _json_safe(self.details),
@@ -453,34 +671,81 @@ class VoiceTurnRequest:
             raise ValueError("VoiceTurnRequest requires non-empty audio or transcript")
         if self.audio is not None and not isinstance(self.audio, (str, bytes)):
             raise TypeError("VoiceTurnRequest.audio must be bytes, a path/URL string, or None")
-        if not 0.0 <= float(self.minimum_template_confidence) <= 1.0:
+        minimum_confidence = float(self.minimum_template_confidence)
+        if (
+            not math.isfinite(minimum_confidence)
+            or not 0.0 <= minimum_confidence <= 1.0
+        ):
             raise ValueError("minimum_template_confidence must be between 0 and 1")
         if int(self.max_template_results) < 1:
             raise ValueError("max_template_results must be at least 1")
         fallback_text = str(self.fallback_text or "").strip()
         if not fallback_text:
             raise ValueError("fallback_text must be non-empty")
-        object.__setattr__(self, "transcript", transcript or None)
-        object.__setattr__(
-            self,
-            "request_id",
-            str(self.request_id).strip() if self.request_id is not None else None,
+        request_id = (
+            str(self.request_id).strip() if self.request_id is not None else ""
         )
-        object.__setattr__(self, "context", dict(self.context or {}))
-        object.__setattr__(self, "grounding", dict(self.grounding or {}))
+        object.__setattr__(self, "transcript", transcript or None)
+        object.__setattr__(self, "request_id", request_id or None)
+        object.__setattr__(
+            self, "context", MappingProxyType(dict(self.context or {}))
+        )
+        object.__setattr__(
+            self, "grounding", MappingProxyType(dict(self.grounding or {}))
+        )
+        for field_name in (
+            "language",
+            "locale",
+            "voice",
+            "stt_model",
+            "tts_model",
+            "device",
+            "output_format",
+        ):
+            raw_value = getattr(self, field_name)
+            normalized = (
+                str(raw_value).strip() if raw_value is not None else ""
+            )
+            object.__setattr__(self, field_name, normalized or None)
+        for field_name in ("stt_provider", "tts_provider"):
+            raw_value = getattr(self, field_name)
+            normalized = (
+                str(raw_value).strip().lower() if raw_value is not None else ""
+            )
+            object.__setattr__(self, field_name, normalized or None)
         object.__setattr__(
             self,
             "stt_providers",
-            tuple(str(name).strip() for name in self.stt_providers if str(name).strip()),
+            tuple(
+                dict.fromkeys(
+                    str(name).strip().lower()
+                    for name in self.stt_providers
+                    if str(name).strip()
+                )
+            ),
         )
         object.__setattr__(
             self,
             "tts_providers",
-            tuple(str(name).strip() for name in self.tts_providers if str(name).strip()),
+            tuple(
+                dict.fromkeys(
+                    str(name).strip().lower()
+                    for name in self.tts_providers
+                    if str(name).strip()
+                )
+            ),
         )
+        object.__setattr__(
+            self, "minimum_template_confidence", minimum_confidence
+        )
+        object.__setattr__(self, "max_template_results", int(self.max_template_results))
         object.__setattr__(self, "fallback_text", fallback_text)
-        object.__setattr__(self, "stt_options", dict(self.stt_options or {}))
-        object.__setattr__(self, "tts_options", dict(self.tts_options or {}))
+        object.__setattr__(
+            self, "stt_options", MappingProxyType(dict(self.stt_options or {}))
+        )
+        object.__setattr__(
+            self, "tts_options", MappingProxyType(dict(self.tts_options or {}))
+        )
 
     @property
     def effective_language(self) -> Optional[str]:
@@ -505,8 +770,15 @@ class VoiceTurnRequest:
             return _sha256_text(self.audio)
         return None
 
-    def to_dict(self) -> Dict[str, object]:
-        return {
+    def to_dict(self, *, include_audio: bool = False) -> Dict[str, object]:
+        """Return a JSON-safe request.
+
+        Raw caller audio and local paths are excluded by default. Passing
+        ``include_audio=True`` is an explicit wire-transport choice; byte audio
+        is then base64 encoded and string inputs are emitted as ``audio``.
+        """
+        payload: Dict[str, object] = {
+            "contract_version": VOICE_TURN_CONTRACT_VERSION,
             "request_id": self.request_id,
             "transcript": self.transcript,
             "input_audio_sha256": self.input_audio_sha256,
@@ -528,7 +800,17 @@ class VoiceTurnRequest:
             "output_format": self.output_format,
             "minimum_template_confidence": self.minimum_template_confidence,
             "max_template_results": self.max_template_results,
+            "fallback_text": self.fallback_text,
+            "stt_options": _json_safe(self.stt_options),
+            "tts_options": _json_safe(self.tts_options),
         }
+        if include_audio and isinstance(self.audio, bytes):
+            import base64
+
+            payload["audio_base64"] = base64.b64encode(self.audio).decode("ascii")
+        elif include_audio and isinstance(self.audio, str):
+            payload["audio"] = self.audio
+        return payload
 
 
 @dataclass(frozen=True)
@@ -548,8 +830,43 @@ class VoiceTurnProvenance:
     pipeline: str = "abby-grounded-voice-v1"
     metadata: Mapping[str, object] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        for field_name in (
+            "stt_provider",
+            "template_provider",
+            "template_id",
+            "tts_provider",
+            "input_audio_sha256",
+            "transcript_sha256",
+            "response_text_sha256",
+            "output_audio_sha256",
+        ):
+            raw_value = getattr(self, field_name)
+            normalized = (
+                str(raw_value).strip() if raw_value is not None else ""
+            )
+            object.__setattr__(self, field_name, normalized or None)
+        pipeline = str(self.pipeline or "").strip()
+        if not pipeline:
+            raise ValueError("VoiceTurnProvenance.pipeline must be non-empty")
+        if any(
+            not isinstance(item, GroundingEvidence) for item in (self.evidence or ())
+        ):
+            raise TypeError("VoiceTurnProvenance.evidence entries must be GroundingEvidence")
+        if any(
+            not isinstance(item, GroundedSlot) for item in (self.grounded_slots or ())
+        ):
+            raise TypeError("VoiceTurnProvenance.grounded_slots entries must be GroundedSlot")
+        object.__setattr__(self, "pipeline", pipeline)
+        object.__setattr__(self, "evidence", tuple(self.evidence or ()))
+        object.__setattr__(self, "grounded_slots", tuple(self.grounded_slots or ()))
+        object.__setattr__(
+            self, "metadata", MappingProxyType(dict(self.metadata or {}))
+        )
+
     def to_dict(self) -> Dict[str, object]:
         return {
+            "contract_version": VOICE_TURN_CONTRACT_VERSION,
             "pipeline": self.pipeline,
             "stt_provider": self.stt_provider,
             "template_provider": self.template_provider,
@@ -580,6 +897,52 @@ class VoiceTurnResult:
     fallback_reasons: Tuple[str, ...] = ()
     cache_key: Optional[str] = None
 
+    def __post_init__(self) -> None:
+        request_id = str(self.request_id or "").strip()
+        status = str(self.status or "").strip().lower()
+        if not request_id:
+            raise ValueError("VoiceTurnResult.request_id must be non-empty")
+        if status not in VOICE_TURN_STATUSES:
+            raise ValueError(
+                "VoiceTurnResult.status must be one of "
+                + ", ".join(sorted(VOICE_TURN_STATUSES))
+            )
+        if not isinstance(self.transcript, str):
+            raise TypeError("VoiceTurnResult.transcript must be a string")
+        if not isinstance(self.response_text, str) or not self.response_text.strip():
+            raise ValueError("VoiceTurnResult.response_text must be non-empty")
+        if self.audio is not None and (
+            not isinstance(self.audio, bytes) or not self.audio
+        ):
+            raise TypeError("VoiceTurnResult.audio must be non-empty bytes or None")
+        if not isinstance(self.provenance, VoiceTurnProvenance):
+            raise TypeError("VoiceTurnResult.provenance must be VoiceTurnProvenance")
+        traces = tuple(self.traces or ())
+        if any(not isinstance(trace, VoiceStageTrace) for trace in traces):
+            raise TypeError("VoiceTurnResult.traces entries must be VoiceStageTrace")
+        reasons = tuple(
+            dict.fromkeys(
+                str(reason).strip()
+                for reason in (self.fallback_reasons or ())
+                if str(reason).strip()
+            )
+        )
+        audio_format = (
+            str(self.audio_format).strip().lower().lstrip(".")
+            if self.audio_format is not None
+            else None
+        )
+        cache_key = (
+            str(self.cache_key).strip() if self.cache_key is not None else None
+        )
+        object.__setattr__(self, "request_id", request_id)
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "response_text", self.response_text.strip())
+        object.__setattr__(self, "audio_format", audio_format or None)
+        object.__setattr__(self, "traces", traces)
+        object.__setattr__(self, "fallback_reasons", reasons)
+        object.__setattr__(self, "cache_key", cache_key or None)
+
     @property
     def spoken_text(self) -> str:
         return self.response_text
@@ -588,6 +951,11 @@ class VoiceTurnResult:
     def fallbacks(self) -> Tuple[str, ...]:
         """Compatibility alias for early objective drafts."""
         return self.fallback_reasons
+
+    @property
+    def fallback_reason(self) -> Optional[str]:
+        """Primary degradation reason for clients that display one reason."""
+        return self.fallback_reasons[0] if self.fallback_reasons else None
 
     @property
     def degraded(self) -> bool:
@@ -606,8 +974,21 @@ class VoiceTurnResult:
     def sources(self) -> Tuple[GroundingEvidence, ...]:
         return self.provenance.evidence
 
+    @property
+    def total_duration_ms(self) -> float:
+        return round(sum(trace.duration_ms for trace in self.traces), 3)
+
+    @property
+    def provider_selection(self) -> Dict[str, Optional[str]]:
+        return {
+            "transcription": self.provenance.stt_provider,
+            "retrieval": self.provenance.template_provider,
+            "synthesis": self.provenance.tts_provider,
+        }
+
     def to_dict(self, *, include_audio: bool = False) -> Dict[str, object]:
         payload: Dict[str, object] = {
+            "contract_version": VOICE_TURN_CONTRACT_VERSION,
             "request_id": self.request_id,
             "status": self.status,
             "degraded": self.degraded,
@@ -619,6 +1000,9 @@ class VoiceTurnResult:
             "provenance": self.provenance.to_dict(),
             "traces": [trace.to_dict() for trace in self.traces],
             "fallback_reasons": list(self.fallback_reasons),
+            "fallback_reason": self.fallback_reason,
+            "provider_selection": self.provider_selection,
+            "total_duration_ms": self.total_duration_ms,
             "cache_key": self.cache_key,
         }
         if include_audio and self.audio is not None:
@@ -1500,20 +1884,22 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[VoiceProv
 
 def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) -> VoiceProvider:
     if preferred:
-        info = _PROVIDER_REGISTRY.get(preferred)
+        normalized_preferred = str(preferred).strip().lower()
+        info = _PROVIDER_REGISTRY.get(normalized_preferred)
         if info is not None:
             return info.factory()
-        builtin = _builtin_provider_by_name(preferred, deps=deps)
+        builtin = _builtin_provider_by_name(normalized_preferred, deps=deps)
         if builtin is not None:
             return builtin
         raise ValueError(f"Unknown voice provider: {preferred}")
 
     preferred_env = os.getenv("IPFS_ACCELERATE_PY_VOICE_PROVIDER", "").strip()
     if preferred_env:
-        info = _PROVIDER_REGISTRY.get(preferred_env)
+        normalized_env = preferred_env.lower()
+        info = _PROVIDER_REGISTRY.get(normalized_env)
         if info is not None:
             return info.factory()
-        builtin = _builtin_provider_by_name(preferred_env, deps=deps)
+        builtin = _builtin_provider_by_name(normalized_env, deps=deps)
         if builtin is not None:
             return builtin
 
@@ -1558,8 +1944,12 @@ def get_voice_provider(
 
     if deps is not None:
         cache_key = _provider_cache_key()
+        normalized_provider = (provider or "").strip().lower()
+        registry_revision = _PROVIDER_REGISTRY_REVISIONS.get(
+            normalized_provider, 0
+        )
         deps_key = (
-            f"voice_provider::{(provider or '').strip().lower()}"
+            f"voice_provider::{normalized_provider}::revision-{registry_revision}"
             f"::{hashlib.sha256(repr(cache_key).encode()).hexdigest()[:16]}"
         )
         cached = resolved_deps.get_cached(deps_key)
@@ -1593,6 +1983,22 @@ def _template_provider_name(provider: Optional[object]) -> Optional[str]:
     return _provider_display_name(provider, "template_provider")
 
 
+def _collaborator_cache_identity(
+    collaborator: Optional[object],
+    fallback: Optional[str] = None,
+) -> Optional[str]:
+    if collaborator is None:
+        return fallback
+    explicit = getattr(collaborator, "cache_identity", None)
+    if callable(explicit):
+        explicit = explicit()
+    collaborator_type = collaborator.__class__
+    type_name = f"{collaborator_type.__module__}.{collaborator_type.__qualname__}"
+    if explicit is not None and str(explicit).strip():
+        return f"{type_name}::{str(explicit).strip()}"
+    return f"{type_name}::{id(collaborator)}"
+
+
 def _safe_stage_error(error: Exception) -> str:
     """Normalize adapter errors without embedding caller audio or tracebacks."""
     message = " ".join(str(error).replace("\x00", "").split())
@@ -1615,6 +2021,9 @@ def _duration_ms(started_at: float) -> float:
 def _voice_turn_cache_key(
     request: VoiceTurnRequest,
     template_provider: Optional[object],
+    *,
+    stt_provider: Optional[object] = None,
+    tts_provider: Optional[object] = None,
 ) -> str:
     payload = {
         "pipeline": "abby-grounded-voice-v1",
@@ -1632,21 +2041,53 @@ def _voice_turn_cache_key(
         "tts_providers": request.tts_providers,
         "stt_model": request.stt_model,
         "tts_model": request.tts_model,
+        "device": request.device,
         "output_format": request.output_format,
         "minimum_template_confidence": request.minimum_template_confidence,
-        "template_provider": _template_provider_name(template_provider),
+        "max_template_results": request.max_template_results,
+        "fallback_text_sha256": _sha256_text(request.fallback_text),
+        "stt_options": _json_safe(request.stt_options),
+        "tts_options": _json_safe(request.tts_options),
+        "stt_provider_instance": _collaborator_cache_identity(
+            stt_provider, request.stt_provider
+        ),
+        "tts_provider_instance": _collaborator_cache_identity(
+            tts_provider, request.tts_provider
+        ),
+        "template_provider": _collaborator_cache_identity(
+            template_provider, _template_provider_name(template_provider)
+        ),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=repr)
     return f"abby_voice_turn::{hashlib.sha256(encoded.encode('utf-8')).hexdigest()}"
 
 
+def voice_turn_cache_key(
+    request: VoiceTurnRequest,
+    *,
+    template_provider: Optional[VoiceTemplateProvider] = None,
+    stt_provider: Optional[VoiceProvider] = None,
+    tts_provider: Optional[VoiceProvider] = None,
+) -> str:
+    """Return the privacy-safe identity used for a voice-turn receipt."""
+    if not isinstance(request, VoiceTurnRequest):
+        raise TypeError("request must be a VoiceTurnRequest")
+    return _voice_turn_cache_key(
+        request,
+        template_provider,
+        stt_provider=stt_provider,
+        tts_provider=tts_provider,
+    )
+
+
 def _registry_supports(name: str, operation: str) -> bool:
-    info = _PROVIDER_REGISTRY.get(name)
-    if info is None:
-        return True
-    if operation == "transcription":
-        return info.capabilities.transcription
-    return info.capabilities.synthesis
+    normalized_name = str(name or "").strip().lower()
+    info = _PROVIDER_REGISTRY.get(normalized_name)
+    if info is not None:
+        return info.capabilities.supports(operation)
+    builtin_name = _BUILTIN_PROVIDER_ALIASES.get(normalized_name, normalized_name)
+    capabilities = _BUILTIN_PROVIDER_CAPABILITIES.get(builtin_name)
+    return capabilities.supports(operation) if capabilities is not None else True
 
 
 def _provider_candidates(
@@ -1884,7 +2325,12 @@ def process_voice_turn(
     primary_tts = tts_provider if tts_provider is not None else tts_provider_instance
     traces: list[VoiceStageTrace] = []
     fallback_reasons: list[str] = []
-    cache_key = _voice_turn_cache_key(request, template_provider)
+    cache_key = _voice_turn_cache_key(
+        request,
+        template_provider,
+        stt_provider=primary_stt,
+        tts_provider=primary_tts,
+    )
     request_id = request.request_id or cache_key.rsplit("::", 1)[-1][:24]
 
     transcript = request.transcript or ""
@@ -2215,10 +2661,12 @@ def text_to_speech(
 
     if _response_cache_enabled():
         cache_key = _tts_response_cache_key(
-            provider=provider,
+            provider=_provider_instance_cache_identity(provider_instance, provider),
             model_name=model_name,
             text=text,
             voice=voice,
+            device=device,
+            output_format=output_format,
             kwargs=dict(kwargs),
         )
         try:
@@ -2249,10 +2697,12 @@ def text_to_speech(
         if _response_cache_enabled():
             try:
                 ck = _tts_response_cache_key(
-                    provider=provider,
+                    provider=_provider_instance_cache_identity(provider_instance, provider),
                     model_name=model_name,
                     text=text,
                     voice=voice,
+                    device=device,
+                    output_format=output_format,
                     kwargs=dict(kwargs),
                 )
                 setter = getattr(resolved_deps, "set_cached_and_remote", None)
@@ -2320,10 +2770,11 @@ def speech_to_text(
 
     if _response_cache_enabled():
         cache_key = _stt_response_cache_key(
-            provider=provider,
+            provider=_provider_instance_cache_identity(provider_instance, provider),
             model_name=model_name,
             audio=audio,
             language=language,
+            device=device,
             kwargs=dict(kwargs),
         )
         try:
@@ -2367,10 +2818,11 @@ def speech_to_text(
         if _response_cache_enabled():
             try:
                 ck = _stt_response_cache_key(
-                    provider=provider,
+                    provider=_provider_instance_cache_identity(provider_instance, provider),
                     model_name=model_name,
                     audio=audio,
                     language=language,
+                    device=device,
                     kwargs=dict(kwargs),
                 )
                 setter = getattr(resolved_deps, "set_cached_and_remote", None)
@@ -2421,6 +2873,9 @@ clear_tts_router_caches = clear_voice_router_caches
 
 __all__ = [
     # Core voice (TTS + STT)
+    "VOICE_TURN_CONTRACT_VERSION",
+    "VOICE_STAGE_STATUSES",
+    "VOICE_TURN_STATUSES",
     "VoiceProvider",
     "VoiceProviderCapabilities",
     "ProviderInfo",
@@ -2428,6 +2883,7 @@ __all__ = [
     "RouterDeps",
     "get_default_router_deps",
     "register_voice_provider",
+    "get_voice_provider_capabilities",
     "get_voice_provider",
     "text_to_speech",
     "speech_to_text",
@@ -2444,6 +2900,7 @@ __all__ = [
     "VoiceTurnRequest",
     "VoiceTurnProvenance",
     "VoiceTurnResult",
+    "voice_turn_cache_key",
     "process_voice_turn",
     # Backward-compat TTS aliases (formerly in tts_router)
     "TTSProvider",
