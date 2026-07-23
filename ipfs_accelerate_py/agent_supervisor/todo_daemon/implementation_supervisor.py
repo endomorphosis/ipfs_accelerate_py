@@ -83,6 +83,29 @@ class CodebaseRefillTimeoutError(TimeoutError):
 OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
 CODEBASE_REFILL_ANALYZER_VERSION = "codebase-scan-v1"
 
+# Fields derived exclusively from a validated ``ProofRolloutStatus``.  Keeping
+# the set explicit lets a long-running supervisor replace the whole projection
+# when a durable policy configuration changes, instead of accidentally mixing
+# fields from two policy identities.
+PROOF_ROLLOUT_PROJECTION_FIELDS = frozenset(
+    {
+        "proof_rollout",
+        "proof_rollout_snapshot_id",
+        "proof_policy_id",
+        "proof_rollout_mode",
+        "proof_rollout_blocking",
+        "proof_provider_health_can_change_mode",
+        "proof_capability_healthy",
+        "proof_protected_scope_count",
+        "proof_active_plan_count",
+        "proof_override_count",
+        "proof_active_override_count",
+        "proof_failure_count",
+        "proof_fallback_count",
+        "proof_assurance_counts",
+    }
+)
+
 
 def apply_proof_rollout_projection(
     payload: Mapping[str, Any],
@@ -114,9 +137,18 @@ def apply_proof_rollout_projection(
         raise ValueError("unsupported proof rollout status schema")
     result = dict(payload)
     result["proof_rollout"] = projected
+    result["proof_rollout_snapshot_id"] = str(
+        projected.get("snapshot_id") or ""
+    )
     result["proof_policy_id"] = str(projected.get("policy_id") or "")
     result["proof_rollout_mode"] = str(projected.get("rollout_mode") or "")
     result["proof_rollout_blocking"] = bool(projected.get("blocking"))
+    # This is intentionally copied from the validated snapshot rather than
+    # inferred from provider health.  An outage is diagnostic input and never
+    # an authority to weaken an enforcement policy.
+    result["proof_provider_health_can_change_mode"] = bool(
+        projected.get("provider_health_can_change_mode")
+    )
     capabilities = [
         item
         for item in projected.get("capability_health", ())
@@ -126,9 +158,26 @@ def apply_proof_rollout_projection(
         bool(item.get("healthy"))
         for item in capabilities
     )
+    result["proof_protected_scope_count"] = len(
+        projected.get("protected_scopes") or ()
+    )
     result["proof_active_plan_count"] = len(projected.get("active_plans") or ())
-    result["proof_override_count"] = len(projected.get("overrides") or ())
+    overrides = [
+        item
+        for item in projected.get("overrides", ())
+        if isinstance(item, Mapping)
+    ]
+    result["proof_override_count"] = len(overrides)
+    result["proof_active_override_count"] = sum(
+        str(item.get("state") or "") == "active"
+        and item.get("applicable_to_policy_mode", True) is True
+        for item in overrides
+    )
     result["proof_failure_count"] = len(projected.get("failures") or ())
+    result["proof_fallback_count"] = len(projected.get("fallbacks") or ())
+    result["proof_assurance_counts"] = dict(
+        projected.get("assurance_counts") or {}
+    )
     return result
 
 
@@ -346,6 +395,44 @@ class PortalImplementationSupervisor:
             return max(0.0, float(configured))
         return max(300.0, float(self.config.check_interval) * 2.0)
 
+    def _proof_rollout_status_fields(
+        self,
+        strategy: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Load and validate the durable proof-rollout status projection.
+
+        Strategy state is the supervisor-owned configuration/query artifact.
+        Returning an empty mapping is reserved for a strategy which has never
+        configured proof rollout.  A present but malformed snapshot raises
+        instead of silently presenting enforcement work as advisory or absent.
+        """
+
+        current = (
+            dict(strategy)
+            if strategy is not None
+            else (load_json_dict(self.config.strategy_path) or {})
+        )
+        if "proof_rollout" not in current:
+            return {}
+        return apply_proof_rollout_projection({}, current["proof_rollout"])
+
+    def _refresh_loop_proof_rollout_status(
+        self,
+        loop: SupervisorLoop | None,
+    ) -> None:
+        """Refresh rollout diagnostics used by ordinary loop heartbeats."""
+
+        loop_config = getattr(loop, "config", None)
+        fields = getattr(loop_config, "status_extra_fields", None)
+        if not isinstance(fields, dict):
+            # ``build_supervisor_loop_config`` always supplies a mutable dict,
+            # but test hooks and custom loop implementations may not.
+            return
+        projected = self._proof_rollout_status_fields()
+        for key in PROOF_ROLLOUT_PROJECTION_FIELDS:
+            fields.pop(key, None)
+        fields.update(projected)
+
     def _write_supervisor_maintenance_status(
         self,
         phase: str,
@@ -417,14 +504,13 @@ class PortalImplementationSupervisor:
             "goal_completion_by_goal_id",
             "goal_lifecycle_state_counts",
             "goal_completion_migration",
-            "proof_rollout",
         ):
             if key in strategy:
                 payload[key] = strategy[key]
-        if isinstance(strategy.get("proof_rollout"), Mapping):
-            payload = apply_proof_rollout_projection(
-                payload, strategy["proof_rollout"]
-            )
+        rollout_fields = self._proof_rollout_status_fields(strategy)
+        for key in PROOF_ROLLOUT_PROJECTION_FIELDS:
+            payload.pop(key, None)
+        payload.update(rollout_fields)
         write_json_atomic(status_path, payload)
 
     def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
@@ -893,6 +979,7 @@ class PortalImplementationSupervisor:
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
+        proof_rollout_status_fields = self._proof_rollout_status_fields()
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
             schema="ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor",
@@ -938,6 +1025,11 @@ class PortalImplementationSupervisor:
                     float(self.config.implementation_log_stall_seconds),
                 ),
             },
+            # The watchdog refreshes this mutable projection from durable
+            # strategy state.  SupervisorLoop applies extra fields after its
+            # static heartbeat fields, so policy transitions become visible
+            # without restarting the managed daemon.
+            status_extra_fields=dict(proof_rollout_status_fields),
         )
 
     def _supervisor_loop_watchdog_decision(
@@ -946,6 +1038,7 @@ class PortalImplementationSupervisor:
         _child: Any,
         _current_status: dict[str, Any],
     ) -> SupervisorLoopDecision:
+        self._refresh_loop_proof_rollout_status(_loop)
         now_monotonic = time.monotonic()
         min_interval = max(1.0, float(self.config.check_interval))
         if now_monotonic - self._last_supervisor_maintenance_at < min_interval:
