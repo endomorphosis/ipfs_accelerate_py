@@ -1384,6 +1384,45 @@ class ProofReceipt(CanonicalContract):
     def satisfies(self, required: AssuranceLevel) -> bool:
         return assurance_satisfies(self.authoritative_assurance, required)
 
+    @property
+    def is_kernel_verified(self) -> bool:
+        """Whether this is a current proved receipt accepted by its kernel.
+
+        ``ATTESTED`` is above ``KERNEL_VERIFIED`` in the trust lattice, so an
+        already-attested receipt remains kernel verified.  Keeping this check
+        on the receipt contract gives optional attestation implementations one
+        fail-closed eligibility boundary instead of inviting them to interpret
+        provider status text or individual evidence records themselves.
+        """
+
+        return (
+            self.verdict is ProofVerdict.PROVED
+            and self.freshness is EvidenceFreshness.CURRENT
+            and self.satisfies(AssuranceLevel.KERNEL_VERIFIED)
+        )
+
+    @property
+    def can_be_attested(self) -> bool:
+        """Compatibility spelling for the receipt-attestation eligibility gate."""
+
+        return self.is_kernel_verified
+
+    def require_kernel_verified(self) -> None:
+        """Fail unless this receipt is eligible for cryptographic attestation."""
+
+        if self.verdict is not ProofVerdict.PROVED:
+            raise ContractValidationError(
+                "attestation requires an existing proved receipt"
+            )
+        if self.freshness is not EvidenceFreshness.CURRENT:
+            raise ContractValidationError(
+                "attestation requires a current kernel-verified receipt"
+            )
+        if not self.satisfies(AssuranceLevel.KERNEL_VERIFIED):
+            raise ContractValidationError(
+                "attestation requires an existing kernel-verified receipt"
+            )
+
     def _payload(self) -> Dict[str, Any]:
         assessment = self.assurance_assessment
         return {
