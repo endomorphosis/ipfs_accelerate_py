@@ -26,11 +26,28 @@ from .conflict_graph import (
     index_ast_blob_records,
     normalize_repo_path,
 )
-from .formal_verification_contracts import canonical_json, content_identity
+from .formal_verification_contracts import (
+    AssuranceLevel,
+    CodeProofObligation,
+    canonical_json,
+    content_identity,
+)
+from .proof_obligation_templates import (
+    DEFAULT_TEMPLATE_REGISTRY,
+    ProofObligationTemplateRegistry,
+    ReviewedCodeShape,
+    UnsupportedProofTemplateError,
+)
 
 
 PROOF_SCOPE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-proof-scope@1"
 PROOF_SCOPE_SET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-proof-scope-set@1"
+CODE_OBLIGATION_REQUEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/code-obligation-request@1"
+)
+CODE_OBLIGATION_CACHE_KEY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/code-obligation-cache-key@1"
+)
 
 
 class DiffChangeKind(str, Enum):
@@ -591,6 +608,297 @@ CompiledProofScopes = CodeProofScopeSet
 ProofScopeSet = CodeProofScopeSet
 ProofScopeCompilation = CodeProofScopeSet
 CandidateFileDiff = CandidateDiffEntry
+
+
+@dataclass(frozen=True)
+class CodeObligationRequest:
+    """Explicit binding of a reviewed template to exact compiled scopes.
+
+    ``template_id`` is mandatory.  ``code_shape`` is optional because a
+    reviewed policy may select a template directly; when present it must be an
+    exact shape supported by that same template.  No field is interpreted as
+    free-form evidence for a similar template.
+    """
+
+    template_id: str
+    template_version: str = ""
+    ast_scope_ids: tuple[str, ...] = ()
+    code_shape: str = ""
+    premise_ids: tuple[str, ...] = ()
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED
+    task_id: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in ("template_id", "template_version", "code_shape", "task_id"):
+            value = str(getattr(self, name) or "").strip()
+            if name == "template_id" and not value:
+                raise ValueError("template_id is required")
+            object.__setattr__(self, name, value)
+        for name in ("ast_scope_ids", "premise_ids"):
+            raw = getattr(self, name)
+            if isinstance(raw, str):
+                raw = (raw,)
+            values = tuple(
+                sorted({str(value).strip() for value in raw if str(value).strip()})
+            )
+            object.__setattr__(self, name, values)
+        object.__setattr__(
+            self, "required_assurance", AssuranceLevel(self.required_assurance)
+        )
+        # Reuse the canonical contract boundary to reject floats, opaque
+        # objects, and non-string mapping keys.
+        normalized_metadata = json.loads(canonical_json(dict(self.metadata)))
+        object.__setattr__(self, "metadata", normalized_metadata)
+
+    @property
+    def request_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CODE_OBLIGATION_REQUEST_SCHEMA,
+            "template_id": self.template_id,
+            "template_version": self.template_version,
+            "ast_scope_ids": self.ast_scope_ids,
+            "code_shape": self.code_shape,
+            "premise_ids": self.premise_ids,
+            "required_assurance": self.required_assurance.value,
+            "task_id": self.task_id,
+            "metadata": dict(self.metadata),
+        }
+
+    def to_json(self) -> str:
+        return canonical_json(self.to_dict())
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CodeObligationRequest":
+        schema = str(payload.get("schema") or CODE_OBLIGATION_REQUEST_SCHEMA)
+        if schema != CODE_OBLIGATION_REQUEST_SCHEMA:
+            raise ValueError(f"unsupported code obligation request schema: {schema}")
+        result = cls(
+            template_id=str(payload.get("template_id") or ""),
+            template_version=str(payload.get("template_version") or ""),
+            ast_scope_ids=tuple(payload.get("ast_scope_ids") or ()),
+            code_shape=str(payload.get("code_shape") or ""),
+            premise_ids=tuple(payload.get("premise_ids") or ()),
+            required_assurance=payload.get(
+                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
+            ),
+            task_id=str(payload.get("task_id") or ""),
+            metadata=payload.get("metadata") or {},
+        )
+        claimed_id = str(payload.get("request_id") or "")
+        if claimed_id and claimed_id != result.request_id:
+            raise ValueError("code obligation request identity does not match payload")
+        return result
+
+    @classmethod
+    def from_json(cls, text: str) -> "CodeObligationRequest":
+        try:
+            payload = json.loads(text)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("code obligation request JSON is malformed") from exc
+        if not isinstance(payload, Mapping):
+            raise ValueError("code obligation request JSON must be an object")
+        return cls.from_dict(payload)
+
+
+CodeProofObligationRequest = CodeObligationRequest
+ProofObligationRequest = CodeObligationRequest
+
+
+def _selected_obligation_scopes(
+    scope_set: CodeProofScopeSet,
+    requested_scope_ids: Sequence[str],
+) -> tuple[CodeProofScope, ...]:
+    by_id = {scope.scope_id: scope for scope in scope_set.scopes}
+    if requested_scope_ids:
+        unknown = sorted(set(requested_scope_ids) - set(by_id))
+        if unknown:
+            raise ValueError(
+                "obligation request references scopes outside the compiled scope set: "
+                + ", ".join(unknown)
+            )
+        selected = tuple(by_id[value] for value in sorted(set(requested_scope_ids)))
+    else:
+        # Path inventory is compilation context, not an AST theorem premise.
+        # Conservative-file scopes can never become formal premises.
+        selected = tuple(
+            scope
+            for scope in scope_set.scopes
+            if scope.kind
+            not in (ProofScopeKind.CHANGED_PATH, ProofScopeKind.CONSERVATIVE_FILE)
+        )
+    if not selected:
+        raise UnsupportedProofTemplateError(
+            "no non-conservative AST scopes are available for a code obligation"
+        )
+    if any(scope.conservative for scope in selected):
+        reasons = sorted(
+            {
+                reason
+                for scope in selected
+                for reason in scope.conservative_reasons
+            }
+        )
+        raise UnsupportedProofTemplateError(
+            "conservative scopes cannot satisfy a reviewed code obligation"
+            + (": " + ", ".join(reasons) if reasons else "")
+        )
+    return tuple(sorted(selected, key=lambda scope: scope.scope_id))
+
+
+def materialize_code_proof_obligation(
+    scope_set: CodeProofScopeSet,
+    *,
+    repository_tree_id: str,
+    template_id: str = "",
+    template_version: str | None = None,
+    request: CodeObligationRequest | None = None,
+    repository_id: str = "",
+    ast_scope_ids: Sequence[str] = (),
+    code_shape: str | ReviewedCodeShape = "",
+    premise_ids: Sequence[str] = (),
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    task_id: str = "",
+    backend_id: str = "",
+    metadata: Mapping[str, Any] | None = None,
+    registry: ProofObligationTemplateRegistry = DEFAULT_TEMPLATE_REGISTRY,
+) -> CodeProofObligation:
+    """Apply one explicitly selected reviewed template to exact AST scopes.
+
+    The canonical statement, fallback tests, version, and semantic hash always
+    come from the registry.  Callers cannot replace them with model-generated
+    prose.  An optional code shape is checked by exact membership only.
+    """
+
+    if not isinstance(scope_set, CodeProofScopeSet):
+        raise TypeError("scope_set must be a CodeProofScopeSet")
+    tree_id = str(repository_tree_id or "").strip()
+    if not tree_id:
+        raise ValueError("repository_tree_id is required")
+    if request is None:
+        shape_value = str(getattr(code_shape, "value", code_shape) or "").strip()
+        request = CodeObligationRequest(
+            template_id=template_id,
+            template_version=str(template_version or ""),
+            ast_scope_ids=tuple(ast_scope_ids),
+            code_shape=shape_value,
+            premise_ids=tuple(premise_ids),
+            required_assurance=required_assurance,
+            task_id=task_id,
+            metadata=metadata or {},
+        )
+    elif any(
+        (
+            template_id,
+            template_version,
+            tuple(ast_scope_ids),
+            str(getattr(code_shape, "value", code_shape) or "").strip(),
+            tuple(premise_ids),
+            task_id,
+            metadata,
+        )
+    ):
+        raise ValueError(
+            "request cannot be combined with direct template, scope, premise, task, "
+            "or metadata arguments"
+        )
+
+    template = registry.require(
+        request.template_id, request.template_version or None
+    )
+    if request.code_shape and not template.supports_code_shape(request.code_shape):
+        raise UnsupportedProofTemplateError(
+            f"template {template.template_id!r} does not support exact code shape "
+            f"{request.code_shape!r}"
+        )
+    normalized_backend = str(backend_id or "").strip()
+    if normalized_backend and not template.supports_backend(normalized_backend):
+        raise UnsupportedProofTemplateError(
+            f"template {template.template_id!r} does not support backend "
+            f"{normalized_backend!r}"
+        )
+    selected = _selected_obligation_scopes(scope_set, request.ast_scope_ids)
+    obligation_metadata = dict(request.metadata)
+    obligation_metadata.update({"code_shape": request.code_shape})
+    return CodeProofObligation(
+        repository_id=str(repository_id or "").strip(),
+        repository_tree_id=tree_id,
+        ast_scope_ids=tuple(scope.scope_id for scope in selected),
+        statement=template.canonical_statement,
+        premise_ids=request.premise_ids,
+        template_id=template.template_id,
+        template_version=template.version,
+        template_semantic_hash=template.semantic_hash,
+        invariant_class=template.invariant_class,
+        task_id=request.task_id,
+        required_assurance=request.required_assurance,
+        fallback_checks=template.fallback_tests,
+        metadata=obligation_metadata,
+    )
+
+
+def build_code_proof_obligation(
+    scope_set: CodeProofScopeSet,
+    **kwargs: Any,
+) -> CodeProofObligation:
+    """Compatibility facade for :func:`materialize_code_proof_obligation`."""
+
+    return materialize_code_proof_obligation(scope_set, **kwargs)
+
+
+def obligation_cache_identity(
+    obligation: CodeProofObligation,
+    *,
+    backend_id: str = "",
+    translator_id: str = "",
+    toolchain_id: str = "",
+    semantic_input_ids: Iterable[str] = (),
+) -> str:
+    """Return a proof-cache identity including all reviewed semantics.
+
+    Template version and semantic hash are repeated explicitly instead of
+    relying only on their transitive inclusion in ``obligation_id``.  This
+    makes incomplete cache-key implementations visible during review.
+    """
+
+    if not isinstance(obligation, CodeProofObligation):
+        raise TypeError("obligation must be a CodeProofObligation")
+    raw_inputs = (
+        (semantic_input_ids,)
+        if isinstance(semantic_input_ids, str)
+        else semantic_input_ids
+    )
+    inputs = tuple(
+        sorted(
+            {
+                str(value).strip()
+                for value in raw_inputs
+                if str(value).strip()
+            }
+        )
+    )
+    return content_identity(
+        {
+            "schema": CODE_OBLIGATION_CACHE_KEY_SCHEMA,
+            "obligation_id": obligation.obligation_id,
+            "repository_tree_id": obligation.repository_tree_id,
+            "ast_scope_ids": obligation.ast_scope_ids,
+            "template_id": obligation.template_id,
+            "template_version": obligation.template_version,
+            "template_semantic_hash": obligation.template_semantic_hash,
+            "backend_id": str(backend_id or "").strip(),
+            "translator_id": str(translator_id or "").strip(),
+            "toolchain_id": str(toolchain_id or "").strip(),
+            "semantic_input_ids": inputs,
+        }
+    )
+
+
+code_proof_obligation_cache_identity = obligation_cache_identity
+build_obligation_cache_key = obligation_cache_identity
 
 
 def _module_name(path: str) -> str:
@@ -1259,9 +1567,13 @@ compile_candidate_diffs = compile_candidate_diff_scopes
 
 __all__ = [
     "ASTProofScope",
+    "CODE_OBLIGATION_CACHE_KEY_SCHEMA",
+    "CODE_OBLIGATION_REQUEST_SCHEMA",
     "CandidateChangeKind",
     "CandidateDiffEntry",
     "CandidateFileDiff",
+    "CodeObligationRequest",
+    "CodeProofObligationRequest",
     "CodeProofScope",
     "CodeProofScopeSet",
     "CompiledProofScopes",
@@ -1271,9 +1583,13 @@ __all__ = [
     "ProofScopeCompilationStats",
     "ProofScopeCompilation",
     "ProofScopeKind",
+    "ProofObligationRequest",
     "ProofScopeSet",
     "ProofScopeType",
     "TypedASTProofScope",
+    "build_code_proof_obligation",
+    "build_obligation_cache_key",
+    "code_proof_obligation_cache_identity",
     "collect_git_candidate_diff",
     "compile_candidate_diff",
     "compile_candidate_diffs",
@@ -1282,5 +1598,7 @@ __all__ = [
     "compile_code_proof_scopes",
     "compile_ast_proof_scopes",
     "compile_proof_scopes",
+    "materialize_code_proof_obligation",
+    "obligation_cache_identity",
     "parse_unified_diff",
 ]
