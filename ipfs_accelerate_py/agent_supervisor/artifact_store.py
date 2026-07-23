@@ -64,6 +64,8 @@ MAX_GRAPH_QUERY_HOPS = 8
 ARTIFACT_LOCK_TIMEOUT_SECONDS = 300.0
 DUCKDB_ARTIFACT_THREADS = 2
 DUCKDB_ARTIFACT_MEMORY_LIMIT = "1GB"
+MAX_INLINE_GRAPH_ITEMS = 128
+MAX_INLINE_COVERAGE_TASKS = 128
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _READ_ONLY_SQL = re.compile(r"^(?:select|with|describe|show)\b", re.IGNORECASE)
@@ -1850,10 +1852,68 @@ def _compact_dependency_graph(value: Any) -> dict[str, Any]:
     return graph
 
 
-def _compact_conflict_graph(value: Any) -> dict[str, Any]:
+def _stored_collection_count(
+    value: Mapping[str, Any],
+    field_name: str,
+    count_name: str,
+) -> int:
+    collection = value.get(field_name)
+    count = len(collection) if isinstance(collection, (list, Mapping)) else 0
+    stored_count = value.get(count_name)
+    if isinstance(stored_count, int) and stored_count >= 0:
+        count = max(count, stored_count)
+    return count
+
+
+def compact_conflict_graph_projection(
+    value: Any,
+    *,
+    max_inline_items: int = MAX_INLINE_GRAPH_ITEMS,
+) -> dict[str, Any]:
+    """Return an inline graph or a bounded query-store projection."""
+
     if not isinstance(value, Mapping):
         return {}
     graph = dict(value)
+    edge_count = _stored_collection_count(graph, "edges", "edge_count")
+    decision_count = max(
+        _stored_collection_count(graph, "decisions", "planning_decision_count"),
+        _stored_collection_count(
+            graph,
+            "planning_decisions",
+            "planning_decision_count",
+        ),
+    )
+    surface_count = _stored_collection_count(graph, "surfaces", "surface_count")
+    assignment_count = _stored_collection_count(
+        graph,
+        "assignments",
+        "assignment_count",
+    )
+    lane_count = _stored_collection_count(graph, "lanes", "lane_count")
+    if max(
+        edge_count,
+        decision_count,
+        surface_count,
+        assignment_count,
+        lane_count,
+    ) > max_inline_items:
+        return {
+            "schema": str(graph.get("schema") or ""),
+            "history": dict(graph.get("history") or {})
+            if isinstance(graph.get("history"), Mapping)
+            else {},
+            "edge_count": edge_count,
+            "planning_decision_count": decision_count,
+            "surface_count": surface_count,
+            "assignment_count": assignment_count,
+            "lane_count": lane_count,
+            "compacted": True,
+            "planning_evidence_ref": {
+                "field": "task_conflict_graph",
+                "tables": ["conflict_edges", "planning_decisions"],
+            },
+        }
     surfaces = graph.get("surfaces")
     if isinstance(surfaces, Mapping):
         graph["surfaces"] = {
@@ -1861,6 +1921,50 @@ def _compact_conflict_graph(value: Any) -> dict[str, Any]:
             for task_cid, surface in surfaces.items()
         }
     return graph
+
+
+def compact_coverage_inputs_projection(
+    value: Any,
+    *,
+    max_inline_tasks: int = MAX_INLINE_COVERAGE_TASKS,
+) -> dict[str, Any]:
+    """Return coverage inputs inline until they require bounded retrieval."""
+
+    if not isinstance(value, Mapping):
+        return {}
+    coverage = dict(value)
+    task_count = _stored_collection_count(coverage, "by_task", "task_count")
+    goal_count = _stored_collection_count(coverage, "by_goal", "goal_count")
+    criterion_count = _stored_collection_count(
+        coverage,
+        "criteria",
+        "criterion_count",
+    )
+    edge_count = _stored_collection_count(coverage, "edges", "edge_count")
+    if task_count <= max_inline_tasks and max(criterion_count, edge_count) <= (
+        max_inline_tasks * 4
+    ):
+        return coverage
+    return {
+        "schema": str(coverage.get("schema") or ""),
+        "fingerprint": str(coverage.get("fingerprint") or ""),
+        "goal_ids": list(coverage.get("goal_ids") or [])
+        if isinstance(coverage.get("goal_ids"), list)
+        else [],
+        "unmapped_bucket": str(coverage.get("unmapped_bucket") or ""),
+        "unmapped_task_ids": list(coverage.get("unmapped_task_ids") or [])
+        if isinstance(coverage.get("unmapped_task_ids"), list)
+        else [],
+        "task_count": task_count,
+        "goal_count": goal_count,
+        "criterion_count": criterion_count,
+        "edge_count": edge_count,
+        "compacted": True,
+        "coverage_evidence_ref": {
+            "field": "todo_coverage_inputs",
+            "table": "artifact_fields",
+        },
+    }
 
 
 def _compact_task_planning_graph(value: Any) -> dict[str, Any]:
@@ -1950,37 +2054,51 @@ def _compact_bundle_index_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         rendered["task_dependency_graph"] = dependency_graph
         rendered["dependency_dag"] = dependency_graph
 
-    conflict_graph = _compact_conflict_graph(
+    conflict_graph = compact_conflict_graph_projection(
         rendered.get("task_conflict_graph") or rendered.get("conflict_graph")
     )
     if conflict_graph:
         rendered["task_conflict_graph"] = conflict_graph
         if isinstance(conflict_graph.get("history"), Mapping):
             rendered.setdefault("conflict_history", dict(conflict_graph["history"]))
-        rendered["conflict_graph"] = {
-            "schema": str(conflict_graph.get("schema") or ""),
-            "history": dict(conflict_graph.get("history") or {})
-            if isinstance(conflict_graph.get("history"), Mapping)
-            else {},
-            "planning_evidence_ref": {
-                "field": "task_conflict_graph",
-                "tables": ["conflict_edges", "planning_decisions"],
-            },
-        }
+        rendered["conflict_graph"] = (
+            dict(conflict_graph)
+            if conflict_graph.get("compacted")
+            else {
+                "schema": str(conflict_graph.get("schema") or ""),
+                "history": dict(conflict_graph.get("history") or {})
+                if isinstance(conflict_graph.get("history"), Mapping)
+                else {},
+                "planning_evidence_ref": {
+                    "field": "task_conflict_graph",
+                    "tables": ["conflict_edges", "planning_decisions"],
+                },
+            }
+        )
 
     planning_graph = _compact_task_planning_graph(rendered.get("task_planning_graph"))
     if planning_graph:
         rendered["task_planning_graph"] = planning_graph
+    coverage_inputs = compact_coverage_inputs_projection(
+        rendered.get("todo_coverage_inputs")
+    )
+    if coverage_inputs:
+        rendered["todo_coverage_inputs"] = coverage_inputs
     return rendered
 
 
 def write_bundle_index_artifact(
     path: Path | str, payload: Mapping[str, Any]
 ) -> dict[str, Any]:
+    portable_payload = _compact_bundle_index_payload(payload)
+    database_payload = dict(payload)
+    if isinstance(portable_payload.get("bundles"), Mapping):
+        database_payload["bundles"] = portable_payload["bundles"]
     return write_queryable_artifact(
         path,
-        _compact_bundle_index_payload(payload),
+        portable_payload,
         kind=BUNDLE_INDEX_KIND,
+        database_payload=database_payload,
     )
 
 

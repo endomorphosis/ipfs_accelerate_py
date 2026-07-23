@@ -1570,7 +1570,7 @@ def write_todo_vector_index(
         )
         payload["dataset_artifact"] = artifact.to_dict()
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    index_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_todo_vector_index_artifact(index_path=index_path, payload=payload)
     if bundle_index_path is not None and bundle_index_path.exists():
         update_bundle_index_with_todo_vectors(
             bundle_index_path=bundle_index_path,
@@ -1582,6 +1582,51 @@ def write_todo_vector_index(
             conflict_graph=conflict_graph_payload,
         )
     return payload
+
+
+def write_todo_vector_index_artifact(
+    *,
+    index_path: Path,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist a bounded vector index while retaining query-store references."""
+
+    from .artifact_store import (
+        compact_conflict_graph_projection,
+        compact_coverage_inputs_projection,
+    )
+
+    rendered = dict(payload)
+    conflict_graph = compact_conflict_graph_projection(
+        rendered.get("task_conflict_graph") or rendered.get("conflict_graph")
+    )
+    if conflict_graph:
+        rendered["conflict_graph"] = conflict_graph
+        rendered["task_conflict_graph"] = dict(conflict_graph)
+    coverage_inputs = compact_coverage_inputs_projection(
+        rendered.get("coverage_inputs")
+    )
+    if coverage_inputs:
+        rendered["coverage_inputs"] = coverage_inputs
+    bundle_index_path = str(rendered.get("bundle_index_path") or "")
+    if bundle_index_path and (
+        conflict_graph.get("compacted") or coverage_inputs.get("compacted")
+    ):
+        rendered["query_artifact"] = {
+            "path": bundle_index_path,
+            "duckdb_path": str(Path(bundle_index_path).with_suffix(".duckdb")),
+            "tables": [
+                "artifact_fields",
+                "conflict_edges",
+                "planning_decisions",
+            ],
+        }
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    index_path.write_text(
+        json.dumps(rendered, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return rendered
 
 
 def persist_todo_vector_dataset(

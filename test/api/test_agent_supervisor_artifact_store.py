@@ -164,6 +164,65 @@ def test_bundle_planning_projection_omits_repeated_evidence_blobs(
     assert rewritten_task["conflict_surface"]["ast_record_count"] == 1
 
 
+def test_large_bundle_graph_uses_bounded_json_and_complete_duckdb(
+    tmp_path: Path,
+) -> None:
+    json_path = tmp_path / "index.json"
+    payload = _bundle_index()
+    payload["task_conflict_graph"] = {
+        "schema": "test.conflict-graph@1",
+        "history": {"samples": 2},
+        "edges": [
+            {
+                "left_task_cid": f"left-{ordinal}",
+                "right_task_cid": f"right-{ordinal}",
+                "reason": "shared path",
+            }
+            for ordinal in range(129)
+        ],
+        "decisions": [
+            {
+                "left_task_cid": f"left-{ordinal}",
+                "right_task_cid": f"right-{ordinal}",
+                "decision": "serialize",
+            }
+            for ordinal in range(129)
+        ],
+    }
+    payload["todo_coverage_inputs"] = {
+        "schema": "test.coverage@1",
+        "fingerprint": "coverage-fingerprint",
+        "by_task": {f"T-{ordinal}": {"symbols": ["large"]} for ordinal in range(129)},
+        "by_goal": {"G-1": {"tasks": 129}},
+        "criteria": [{"task_id": f"T-{ordinal}"} for ordinal in range(129)],
+        "edges": [{"task_id": f"T-{ordinal}"} for ordinal in range(129)],
+    }
+
+    write_bundle_index_artifact(json_path, payload)
+
+    portable = json.loads(json_path.read_text(encoding="utf-8"))
+    assert portable["task_conflict_graph"]["compacted"] is True
+    assert portable["task_conflict_graph"]["edge_count"] == 129
+    assert "edges" not in portable["task_conflict_graph"]
+    assert portable["todo_coverage_inputs"]["compacted"] is True
+    assert portable["todo_coverage_inputs"]["task_count"] == 129
+    assert "by_task" not in portable["todo_coverage_inputs"]
+
+    conflict_rows = query_artifact(
+        json_path,
+        table="conflict_edges",
+        columns=("left_task_cid",),
+        limit=200,
+    )
+    assert conflict_rows["row_count"] == 129
+    complete_fields = read_artifact_fields(
+        json_path,
+        ("task_conflict_graph", "todo_coverage_inputs"),
+    )
+    assert len(complete_fields["task_conflict_graph"]["edges"]) == 129
+    assert len(complete_fields["todo_coverage_inputs"]["by_task"]) == 129
+
+
 def test_scheduler_manifest_normalizes_rows_and_bounds_query_output(
     tmp_path: Path,
 ) -> None:
