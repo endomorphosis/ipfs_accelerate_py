@@ -4859,7 +4859,8 @@ class PortalImplementationSupervisor:
         # declared implementation timeout, not missing agent-log output, is
         # the authoritative liveness bound.
         if self._implementation_attempt_is_active(state, now_ts=now_ts) and (
-            state.active_phase == "validating" or self._active_validation_subprocess_exists()
+            state.active_phase in {"validating", "merge_reconciliation", "merge_resolver"}
+            or self._active_validation_subprocess_exists()
         ):
             return ""
         threshold = max(0.0, float(self.config.implementation_log_stall_seconds))

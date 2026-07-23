@@ -6941,6 +6941,44 @@ def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_pa
     assert reason == ""
 
 
+def test_implementation_supervisor_ignores_stale_agent_log_during_active_merge_resolver(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implementation_log = repo / "implementation.log"
+    implementation_log.write_text("implementation complete\n", encoding="utf-8")
+    old = datetime.now(timezone.utc) - timedelta(seconds=600)
+    os.utime(implementation_log, (old.timestamp(), old.timestamp()))
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        state_dir=repo / "state",
+        stale_seconds=3600,
+        implementation_log_stall_seconds=300,
+    )
+    supervisor = TodoImplementationSupervisor(config)
+    now = datetime.now(timezone.utc)
+    state = TodoTaskState(
+        active_task_id="AUTO-001",
+        active_phase="merge_resolver",
+        active_phase_detail="main_checkout_dirty_conflict",
+        active_phase_started_at=now.isoformat(),
+        heartbeat_at=now.isoformat(),
+        last_progress_at=now.isoformat(),
+        implementation_in_progress=True,
+        active_task_started_at=now.isoformat(),
+        last_implementation_log_path=str(implementation_log),
+    )
+
+    stuck, reason = supervisor.is_stuck(state, now_ts=now.timestamp())
+
+    assert stuck is False
+    assert reason == ""
+
+
 def test_implementation_supervisor_honors_configured_worker_stall_threshold(
     tmp_path, monkeypatch
 ):
