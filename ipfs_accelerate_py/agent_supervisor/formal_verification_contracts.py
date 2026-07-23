@@ -1070,6 +1070,92 @@ def derive_assurance(
     return assess_assurance(evidence, **bindings).level
 
 
+def derive_verdict(
+    evidence: Iterable[ProofEvidence],
+    *,
+    obligation_id: str = "",
+    kernel_id: str = "",
+    freshness: EvidenceFreshness = EvidenceFreshness.CURRENT,
+) -> ProofVerdict:
+    """Derive the authoritative semantic verdict from typed evidence.
+
+    Proof providers do not participate in this projection.  A theorem is
+    ``PROVED`` only when the same exact, current, independent kernel evidence
+    which can establish kernel assurance is present.  Kernel rejection merely
+    rejects a candidate proof; it does not disprove the theorem.  A
+    ``DISPROVED`` verdict therefore requires an independently checked solver
+    counterexample explicitly marked as such.
+
+    ``kernel_verification`` evidence emitted by :mod:`kernel_verification`
+    carries a stable ``failure_code``.  Unavailability and unsupported target
+    kernels remain ``UNSUPPORTED``; execution or corrupt-evidence failures are
+    ``ERROR``; ordinary proof rejection and timeouts are ``INCONCLUSIVE``.
+    """
+
+    items = tuple(
+        sorted((_evidence(item) for item in evidence), key=lambda item: item.evidence_id)
+    )
+    receipt_freshness = _enum(
+        freshness, EvidenceFreshness, field_name="freshness"
+    )
+    if receipt_freshness is not EvidenceFreshness.CURRENT:
+        return ProofVerdict.INCONCLUSIVE
+
+    expected_obligation = _text(obligation_id, field_name="obligation_id")
+    expected_kernel = _text(kernel_id, field_name="kernel_id")
+    failure_codes = set()
+
+    for item in items:
+        if item.kind is not EvidenceKind.KERNEL_VERIFICATION:
+            continue
+        if item.authority is not EvidenceAuthority.KERNEL:
+            continue
+        if not item.independent or item.simulated:
+            continue
+        if item.freshness is not EvidenceFreshness.CURRENT:
+            continue
+        if expected_obligation and item.subject_id != expected_obligation:
+            continue
+        if expected_kernel and item.verifier_id != expected_kernel:
+            continue
+        if item.verdict is EvidenceVerdict.ACCEPTED and item.artifact_id:
+            return ProofVerdict.PROVED
+        failure_code = item.metadata.get("failure_code")
+        if isinstance(failure_code, str) and failure_code:
+            failure_codes.add(failure_code)
+
+    for item in items:
+        if (
+            item.kind is EvidenceKind.SOLVER_RESULT
+            and item.authority in {
+                EvidenceAuthority.SOLVER,
+                EvidenceAuthority.VALIDATION_RUNNER,
+            }
+            and item.verdict is EvidenceVerdict.REJECTED
+            and item.independent
+            and not item.simulated
+            and item.freshness is EvidenceFreshness.CURRENT
+            and item.artifact_id
+            and (not expected_obligation or item.subject_id == expected_obligation)
+            and item.metadata.get("counterexample_verified") is True
+        ):
+            return ProofVerdict.DISPROVED
+
+    if failure_codes & {"kernel_unavailable", "unsupported_kernel"}:
+        return ProofVerdict.UNSUPPORTED
+    if failure_codes & {
+        "binding_mismatch",
+        "corrupt_evidence",
+        "digest_mismatch",
+        "environment_mismatch",
+        "forbidden_declaration",
+        "malformed_reconstruction",
+        "statement_mismatch",
+    }:
+        return ProofVerdict.ERROR
+    return ProofVerdict.INCONCLUSIVE
+
+
 def assurance_satisfies(
     actual: AssuranceLevel, required: AssuranceLevel
 ) -> bool:
@@ -1374,6 +1460,17 @@ class ProofReceipt(CanonicalContract):
         return self.assurance_assessment.level
 
     @property
+    def authoritative_verdict(self) -> ProofVerdict:
+        """Semantic verdict projected from evidence, never provider text."""
+
+        return derive_verdict(
+            self.evidence,
+            obligation_id=self.obligation_id,
+            kernel_id=self.kernel_id,
+            freshness=self.freshness,
+        )
+
+    @property
     def assurance(self) -> AssuranceLevel:
         return self.authoritative_assurance
 
@@ -1396,7 +1493,7 @@ class ProofReceipt(CanonicalContract):
         """
 
         return (
-            self.verdict is ProofVerdict.PROVED
+            self.authoritative_verdict is ProofVerdict.PROVED
             and self.freshness is EvidenceFreshness.CURRENT
             and self.satisfies(AssuranceLevel.KERNEL_VERIFIED)
         )
@@ -1450,6 +1547,7 @@ class ProofReceipt(CanonicalContract):
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "resource_usage": self.resource_usage,
+            "authoritative_verdict": self.authoritative_verdict,
             "authoritative_assurance": assessment.level,
             "assurance_reason_codes": assessment.reason_codes,
             "authoritative_evidence_ids": assessment.evidence_ids,
@@ -1493,6 +1591,13 @@ class ProofReceipt(CanonicalContract):
         ) is not result.authoritative_assurance:
             raise ContractValidationError(
                 "receipt authoritative assurance does not match derived evidence"
+            )
+        claimed_verdict = payload.get("authoritative_verdict")
+        if claimed_verdict and _enum(
+            claimed_verdict, ProofVerdict, field_name="authoritative_verdict"
+        ) is not result.authoritative_verdict:
+            raise ContractValidationError(
+                "receipt authoritative verdict does not match derived evidence"
             )
         supplied_reasons = payload.get("assurance_reason_codes")
         if supplied_reasons is not None and _ids(
@@ -1546,4 +1651,5 @@ __all__ = [
     "canonical_json_bytes",
     "content_identity",
     "derive_assurance",
+    "derive_verdict",
 ]
