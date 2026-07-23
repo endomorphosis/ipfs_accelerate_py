@@ -893,6 +893,59 @@ def run_process_group_capture(
         }
 
 
+def run_process_group_stream(
+    command: Sequence[str],
+    *,
+    cwd: Path | str,
+    stdout: Any,
+    input_text: Optional[str] = None,
+    env: Optional[Mapping[str, object]] = None,
+    timeout_seconds: float,
+    termination_grace_seconds: float = 5.0,
+    text: bool = True,
+) -> subprocess.CompletedProcess[Any]:
+    """Run a streamed child in an owned process group and fence it on timeout."""
+
+    input_value: Any = input_text
+    if input_text is not None and not text:
+        input_value = input_text.encode("utf-8")
+    process = launch_process_child(
+        command,
+        cwd=cwd,
+        env=env,
+        stdin=subprocess.PIPE if input_text is not None else None,
+        stdout=stdout,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+        text=text,
+    )
+    try:
+        process.communicate(
+            input=input_value,
+            timeout=max(0.0, float(timeout_seconds)),
+        )
+    except subprocess.TimeoutExpired as exc:
+        terminate_pid_tree(
+            process.pid,
+            grace_seconds=max(0.0, float(termination_grace_seconds)),
+        )
+        try:
+            process.communicate(timeout=max(0.1, float(termination_grace_seconds)))
+        except subprocess.TimeoutExpired:
+            terminate_process_group(process, signal.SIGKILL)
+            process.communicate()
+        raise subprocess.TimeoutExpired(
+            cmd=list(command),
+            timeout=float(timeout_seconds),
+            output=exc.output,
+            stderr=exc.stderr,
+        ) from exc
+    return subprocess.CompletedProcess(
+        args=list(command),
+        returncode=int(process.returncode or 0),
+    )
+
+
 def terminate_process_with_grace(
     process: subprocess.Popen[Any],
     *,

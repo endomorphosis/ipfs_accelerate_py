@@ -7,12 +7,13 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Barrier
 from typing import Any
 
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
+from ipfs_accelerate_py.agent_supervisor.artifact_store import query_artifact
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
@@ -114,6 +115,7 @@ def _scheduler(
     claimant: str = "did:web:worker-a.example",
     max_lanes: int = 1,
     manifest_name: str = "manifest.json",
+    external_task_state_paths: tuple[Path, ...] = (),
 ) -> DynamicBundleScheduler:
     repo = tmp_path / "repo"
     repo.mkdir(exist_ok=True)
@@ -148,6 +150,7 @@ def _scheduler(
         launcher=launcher,
         process_alive=launcher.alive,
         host_resource_source=host_resource_source,
+        external_task_state_paths=external_task_state_paths,
         poll_interval=0,
         task_prefix="T-",
     )
@@ -250,6 +253,106 @@ def test_pool_capacity_and_shared_leases_prevent_duplicate_execution(tmp_path: P
     second.reconcile_once()
     assert len(first_launcher.starts) == 2
     assert len(second_launcher.starts) == 1
+
+
+def test_dependency_blocked_candidate_does_not_consume_admission_capacity(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1", "T-2")
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher, max_lanes=1)
+    lanes = scheduler._plan()
+    blocked = replace(
+        lanes[0],
+        queue_payload={
+            **dict(lanes[0].queue_payload or {}),
+            "dependency_task_cids": ["bmissing-prerequisite"],
+        },
+    )
+    scheduler._plan = lambda: [blocked, lanes[1]]  # type: ignore[method-assign]
+
+    manifest = scheduler.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [["T-2"]]
+    blocked_task = next(
+        task for task in manifest["tasks"] if task["bundle_key"].endswith("t-1")
+    )
+    assert blocked_task["state"] == "blocked"
+    assert blocked_task["blocked_reason"] == "dependency_not_ready"
+    assert blocked_task["missing_dependency_task_cids"] == ["bmissing-prerequisite"]
+    decision = next(
+        item
+        for item in manifest["scheduler_decisions"]
+        if item["bundle_key"].endswith("t-1")
+    )
+    assert decision["reason"] == "snapshot_not_ready"
+
+
+def test_planner_blocked_lane_ignores_stale_ready_metric_identity(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    lane = replace(scheduler._plan()[0], claimable=False)
+    scheduler._plan = lambda: [lane]  # type: ignore[method-assign]
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (lane.state_dir / f"{lane.state_prefix}_events.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "scheduler_lane_state",
+                "timestamp": "2099-01-01T00:00:00Z",
+                "phase": "ready",
+                "goal_cid": "stale-goal-identity",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    manifest = scheduler.reconcile_once()
+
+    assert not launcher.starts
+    assert manifest["counts"]["ready"] == 0
+    assert manifest["counts"]["blocked"] == 1
+    assert manifest["scheduler_decisions"][0]["reason"] == "snapshot_not_ready"
+
+
+def test_lease_race_backfills_the_admission_slot_in_the_same_cycle(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1", "T-2")
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher, max_lanes=1)
+    original_claim_ready = LeaseCoordinator.claim_ready
+    failed_once = False
+
+    def lose_first_lease(self: LeaseCoordinator, *args: Any, **kwargs: Any):
+        nonlocal failed_once
+        if not failed_once and kwargs.get("eligible_task_cids"):
+            failed_once = True
+            return None
+        return original_claim_ready(self, *args, **kwargs)
+
+    monkeypatch.setattr(LeaseCoordinator, "claim_ready", lose_first_lease)
+
+    manifest = scheduler.reconcile_once()
+
+    assert failed_once is True
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [["T-2"]]
+    decisions = {
+        item["bundle_key"]: item for item in manifest["scheduler_decisions"]
+    }
+    assert decisions["objective/test/t-1"]["reason"] == "lease_unavailable"
+    assert decisions["objective/test/t-2"]["decision"] == "launched"
+    assert manifest["resource_schedule"]["admitted_count"] == 1
 
 
 def test_concurrent_serial_and_dynamic_supervisors_publish_one_canonical_result(
@@ -422,6 +525,87 @@ def test_concurrent_serial_and_dynamic_supervisors_publish_one_canonical_result(
         assert len(coordinator.list_receipts(winning_grant.task_cid)) == 1
 
 
+def test_external_serial_task_state_fences_then_releases_matching_bundle(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    serial_state = repo / "serial-task-state.json"
+    _write_index(index, "T-1")
+    serial_state.write_text(
+        json.dumps(
+            {
+                "implementation_in_progress": True,
+                "active_phase": "implementing",
+                "active_task_id": "T-1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        external_task_state_paths=(serial_state,),
+    )
+
+    fenced = scheduler.reconcile_once()
+
+    assert launcher.starts == []
+    assert fenced["counts"]["active"] == 0
+    assert fenced["counts"]["blocked"] == 1
+    assert fenced["tasks"][0]["bundle"]["external_active_member_fence"] is True
+
+    serial_state.write_text(
+        json.dumps(
+            {
+                "implementation_in_progress": False,
+                "active_phase": "",
+                "active_task_id": "",
+                "revision_padding": "released",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    released = scheduler.reconcile_once()
+
+    assert len(launcher.starts) == 1
+    assert _active_task_ids(released) == {"T-1"}
+
+
+def test_lane_command_carries_planner_proven_cross_bundle_dependencies(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    prerequisite = _bundle("T-1")
+    prerequisite["tasks"][0]["status"] = "completed"
+    dependent = _bundle("T-2")
+    dependent["tasks"][0]["status"] = "todo"
+    dependent["tasks"][0]["depends_on"] = ["T-1"]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/test/t-1": prerequisite,
+                    "objective/test/t-2": dependent,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    scheduler = _scheduler(tmp_path, index, _FakeLauncher())
+
+    lane = next(item for item in scheduler._plan() if item.task_ids == ["T-2"])
+
+    assert lane.command.count("--assume-completed-task-id") == 1
+    assert lane.command[lane.command.index("--assume-completed-task-id") + 1] == "T-1"
+
+
 def test_two_scheduler_processes_with_same_did_do_not_share_one_grant(tmp_path: Path) -> None:
     """A DID identifies authority, not a particular local executing process."""
 
@@ -551,6 +735,65 @@ def test_stale_terminal_state_does_not_settle_a_refilled_bundle(tmp_path: Path) 
     assert active["counts"]["completed"] == 0
 
 
+def test_newer_shard_projection_overrides_stale_blocked_lane_state(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "title": "Recovered prerequisite", "status": "completed"},
+        {
+            "task_id": "T-2",
+            "title": "Released dependent",
+            "status": "todo",
+            "depends_on": ["T-1"],
+        },
+    ]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": bundle}}),
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    lane = scheduler._plan()[0]
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "task_count": 2,
+                "completed_count": 0,
+                "ready_count": 0,
+                "blocked_count": 1,
+                "waiting_count": 1,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "task_statuses": {"T-1": "blocked", "T-2": "waiting"},
+                "task_identities": {
+                    "T-1": {"display_task_id": "T-1"},
+                    "T-2": {"display_task_id": "T-2"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
+    lane.todo_path.write_text(
+        "## T-1 Recovered prerequisite\n\n"
+        "- Status: completed\n\n"
+        "## T-2 Released dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-1\n",
+        encoding="utf-8",
+    )
+
+    active = scheduler.reconcile_once()
+
+    assert len(launcher.starts) == 1
+    assert _active_task_ids(active) == {"T-2"}
+    assert active["counts"]["blocked"] == 0
+
+
 def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"
@@ -591,6 +834,141 @@ def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path:
     with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
         state = coordinator.task_state(launcher.starts[0][1].task_cid)
     assert state is not None and state["state"] == "blocked"
+
+
+def test_completed_execution_slice_releases_lane_while_shard_remains_open(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "title": "Completed execution slice"},
+        {"task_id": "T-2", "title": "Deferred dependent", "depends_on": ["T-1"]},
+        {"task_id": "T-3", "title": "Later dependent", "depends_on": ["T-2"]},
+    ]
+    bundle["execution_slice_task_ids"] = ["T-1"]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": bundle}}),
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    initial = scheduler.reconcile_once()
+    assert initial["counts"]["active"] == 1
+    lane = launcher.starts[0][0]
+    assert lane.task_ids == ["T-1"]
+    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
+    lane.todo_path.write_text(
+        "## T-1 Completed execution slice\n\n"
+        "- Status: completed\n"
+        "- Depends on: none\n\n"
+        "## T-2 Deferred dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-1\n\n"
+        "## T-3 Later dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-2\n",
+        encoding="utf-8",
+    )
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (lane.state_dir / f"{lane.state_prefix}_task_state.json").write_text(
+        json.dumps(
+            {
+                "task_count": 3,
+                "completed_count": 1,
+                "ready_count": 0,
+                "blocked_count": 0,
+                "waiting_count": 2,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "task_statuses": {
+                    "T-1": "completed",
+                    "T-2": "waiting",
+                    "T-3": "waiting",
+                },
+                "task_identities": {
+                    task_id: {"display_task_id": task_id}
+                    for task_id in ("T-1", "T-2", "T-3")
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settled = scheduler.reconcile_once()
+
+    assert settled["counts"]["active"] == 0
+    assert settled["reaped_task_cids"] == [lane.task_cid]
+    assert launcher.starts[0][2].terminate_calls == 1
+    assert launcher.starts[0][2].wait_calls == 1
+    assert len(launcher.starts) == 1
+
+
+def test_transitively_blocked_waiting_tasks_release_an_idle_lane(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "title": "Blocked root"},
+        {"task_id": "T-2", "title": "First dependent", "depends_on": ["T-1"]},
+        {"task_id": "T-3", "title": "Second dependent", "depends_on": ["T-2"]},
+    ]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": bundle}}),
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    initial = scheduler.reconcile_once()
+    assert initial["counts"]["active"] == 1
+    lane = launcher.starts[0][0]
+    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
+    lane.todo_path.write_text(
+        "## T-1 Blocked root\n\n"
+        "- Status: blocked\n"
+        "- Depends on: none\n\n"
+        "## T-2 First dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-1\n\n"
+        "## T-3 Second dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-2\n",
+        encoding="utf-8",
+    )
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (lane.state_dir / f"{lane.state_prefix}_task_state.json").write_text(
+        json.dumps(
+            {
+                "task_count": 3,
+                "completed_count": 0,
+                "ready_count": 0,
+                "blocked_count": 1,
+                "waiting_count": 2,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "task_statuses": {
+                    "T-1": "blocked",
+                    "T-2": "waiting",
+                    "T-3": "waiting",
+                },
+                "task_identities": {
+                    task_id: {"display_task_id": task_id}
+                    for task_id in ("T-1", "T-2", "T-3")
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settled = scheduler.reconcile_once()
+
+    assert settled["counts"]["active"] == 0
+    assert launcher.starts[0][2].terminate_calls == 1
+    assert launcher.starts[0][2].wait_calls == 1
+    assert len(launcher.starts) == 1
 
 
 def test_drained_lane_releases_lease_for_conflict_safe_steal(tmp_path: Path) -> None:
@@ -788,6 +1166,23 @@ def test_manifest_references_full_planning_graphs_without_embedding_them(tmp_pat
         reference = projected["planning_evidence_ref"]
         assert reference["bundle_key"] == "objective/test/t-1"
         assert set(reference["omitted_fields"]) == _MANIFEST_GRAPH_FIELDS
+    task_row = query_artifact(
+        scheduler.manifest_path,
+        table="manifest_tasks",
+        columns=("payload_json",),
+        limit=1,
+    )["rows"][0]
+    lane_row = query_artifact(
+        scheduler.manifest_path,
+        table="manifest_lanes",
+        columns=("payload_json",),
+        limit=1,
+    )["rows"][0]
+    for row in (task_row, lane_row):
+        projected = json.loads(row["payload_json"])
+        bundle_payload = projected.get("bundle") or projected.get("queue_payload")
+        assert not _MANIFEST_GRAPH_FIELDS.intersection(bundle_payload)
+        assert bundle_payload["planning_evidence_ref"]["bundle_key"] == "objective/test/t-1"
     assert len(json.dumps(index_payload)) > 65_000
     assert len(json.dumps(manifest)) < 30_000
 

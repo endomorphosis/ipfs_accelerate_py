@@ -167,6 +167,8 @@ class PortalSupervisorConfig:
     generated_dirty_repair_max_paths: int = 200
     generated_dirty_repair_stale_lock_seconds: float = 300.0
     generated_dirty_repair_paths: tuple[Path, ...] = field(default_factory=tuple)
+    external_reservation_manifest_paths: tuple[Path, ...] = field(default_factory=tuple)
+    assumed_completed_task_ids: tuple[str, ...] = field(default_factory=tuple)
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -279,6 +281,8 @@ class PortalImplementationSupervisor:
         self.restart_count = 0
         self.last_start_at: float | None = None
         self._last_supervisor_maintenance_at: float = 0.0
+        self._worktree_worker_phase = ""
+        self._last_worktree_worker_seen_monotonic: float | None = None
 
     def _supervisor_status_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_supervisor_status.json"
@@ -780,6 +784,8 @@ class PortalImplementationSupervisor:
             )
             result = loop.run()
             self.restart_count = result.restart_count
+            self._worktree_worker_phase = ""
+            self._last_worktree_worker_seen_monotonic = None
             result_payload = {
                 "status": result.status,
                 "restart_count": result.restart_count,
@@ -4858,13 +4864,11 @@ class PortalImplementationSupervisor:
     def _implementation_log_stall_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id or not state.implementation_in_progress:
             return ""
-        # Validation commands such as the canonical desktop Playwright replay
-        # can remain quiet while their child processes make progress. Their
-        # declared implementation timeout, not missing agent-log output, is
-        # the authoritative liveness bound.
+        # Agent and validation subprocesses can remain quiet while making
+        # progress. Their implementation timeout is the authoritative bound.
         if self._implementation_attempt_is_active(state, now_ts=now_ts) and (
-            state.active_phase in {"validating", "merge_reconciliation", "merge_resolver"}
-            or self._active_agent_subprocess_exists()
+            self._active_agent_worker_processes()
+            or state.active_phase in {"validating", "merge_reconciliation", "merge_resolver"}
             or self._active_validation_subprocess_exists()
         ):
             return ""
@@ -4889,11 +4893,11 @@ class PortalImplementationSupervisor:
             f"{age_seconds:.0f}s without output in {log_path}"
         )
 
-    def _active_agent_subprocess_exists(self) -> bool:
-        """Return whether the managed daemon still owns a live agent worker."""
-
+    def _active_agent_worker_processes(self) -> list[dict[str, Any]]:
         daemon_pid = self._read_managed_daemon_pid()
-        return bool(daemon_pid and active_codex_exec_workers(daemon_pid))
+        if not daemon_pid:
+            return []
+        return active_codex_exec_workers(daemon_pid)
 
     def _active_validation_subprocess_exists(self) -> bool:
         """Return whether a managed agent is currently running a bounded test command."""
@@ -4962,10 +4966,7 @@ class PortalImplementationSupervisor:
     def _worktree_phase_without_worker_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id:
             return ""
-        if state.active_phase == "merge_resolver":
-            threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
-        else:
-            threshold = max(30.0, min(120.0, float(self.config.check_interval) * 2.0))
+        threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
         worker_status = worktree_phase_worker_status(
             {
                 "active_phase": state.active_phase,
@@ -4975,6 +4976,30 @@ class PortalImplementationSupervisor:
             threshold,
             now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
         )
+        phase = str(worker_status.get("phase") or "")
+        if not worker_status.get("required"):
+            self._worktree_worker_phase = ""
+            self._last_worktree_worker_seen_monotonic = None
+        elif phase != self._worktree_worker_phase:
+            self._worktree_worker_phase = phase
+            self._last_worktree_worker_seen_monotonic = None
+
+        now_monotonic = time.monotonic()
+        if int(worker_status.get("active_worker_count") or 0) > 0:
+            self._last_worktree_worker_seen_monotonic = now_monotonic
+            worker_status["worker_absence_age_seconds"] = 0.0
+            worker_status["stalled_without_active_worker"] = False
+        elif self._last_worktree_worker_seen_monotonic is not None:
+            absence_age = max(
+                0.0,
+                now_monotonic - self._last_worktree_worker_seen_monotonic,
+            )
+            worker_status["worker_absence_age_seconds"] = round(absence_age, 3)
+            worker_status["stalled_without_active_worker"] = bool(
+                threshold > 0 and absence_age >= threshold
+            )
+        else:
+            worker_status["worker_absence_age_seconds"] = None
         if not worker_status.get("stalled_without_active_worker"):
             return ""
         self._record_event(
@@ -4986,9 +5011,12 @@ class PortalImplementationSupervisor:
                 "worker_status": worker_status,
             },
         )
+        stall_age = worker_status.get("worker_absence_age_seconds")
+        if stall_age is None:
+            stall_age = worker_status.get("phase_age_seconds")
         return (
             f"{state.active_phase} stalled for active task {state.active_task_id}: "
-            f"no active worker for {worker_status.get('phase_age_seconds')}s"
+            f"no active worker for {stall_age}s"
         )
 
     def rewrite_strategy(self, state: PortalTaskState, reason: str) -> dict[str, Any]:
@@ -5265,6 +5293,10 @@ class PortalImplementationSupervisor:
                 str(int(self.config.task_shard_index)),
             ]
         )
+        for path in self.config.external_reservation_manifest_paths:
+            command.extend(["--external-reservation-manifest-path", str(path)])
+        for task_id in self.config.assumed_completed_task_ids:
+            command.extend(["--assume-completed-task-id", str(task_id)])
         return command
 
     def _managed_daemon_pid_path(self) -> Path:
@@ -5719,6 +5751,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Zero-based deterministic task-selection shard index for this supervisor lane.",
     )
     parser.add_argument(
+        "--external-reservation-manifest-path",
+        type=Path,
+        action="append",
+        default=[],
+        help="Repeatable bundle scheduler manifest whose running execution slices reserve tasks.",
+    )
+    parser.add_argument(
+        "--assume-completed-task-id",
+        action="append",
+        default=[],
+        help="Repeatable external dependency task ID already proven complete by the planner.",
+    )
+    parser.add_argument(
         "--no-retry-budget-guardrail",
         dest="retry_budget_guardrail_enabled",
         action="store_false",
@@ -6130,6 +6175,10 @@ def supervisor_config_from_args(
         daemon_merged_worktree_cleanup_max=args.daemon_merged_worktree_cleanup_max,
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
+        external_reservation_manifest_paths=tuple(
+            args.external_reservation_manifest_path or ()
+        ),
+        assumed_completed_task_ids=tuple(args.assume_completed_task_id or ()),
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
         retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,

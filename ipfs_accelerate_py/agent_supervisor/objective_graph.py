@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from hashlib import sha1, sha256
+from itertools import islice
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -109,6 +110,36 @@ SKIP_DIRS = {
     "playwright-report",
     "test-results",
 }
+
+_DERIVED_TASK_PLANNING_FIELDS = frozenset(
+    {
+        "ast_blob_records",
+        "ast_records",
+        "conflict_decisions",
+        "conflict_edges",
+        "conflict_graph",
+        "conflict_planning_decisions",
+        "conflict_surface",
+        "coverage_inputs",
+        "dependency_dag",
+        "python_ast_records",
+        "task_conflict_graph",
+        "task_dependency_graph",
+        "task_planning_graph",
+        "todo_coverage_inputs",
+        "todo_vector_summary",
+    }
+)
+
+
+def _bounded_task_planning_metadata(task: Mapping[str, Any]) -> dict[str, Any]:
+    """Retain task provenance without recursively embedding derived graphs."""
+
+    return {
+        str(key): value
+        for key, value in task.items()
+        if str(key) not in _DERIVED_TASK_PLANNING_FIELDS
+    }
 
 
 @dataclass(frozen=True)
@@ -1155,6 +1186,1163 @@ ObjectiveGenerationPlan = ObjectiveGenerationResult
 generate_bounded_objective_work = materialize_bounded_objective_work
 
 
+class ProofObligationState(str, Enum):
+    """Planning-relevant state of a proof obligation.
+
+    Proof executors use a larger lifecycle vocabulary.  Objective planning
+    only needs to distinguish unfinished work, trusted completion, and the
+    three terminal conditions which require bounded repair work.
+    """
+
+    PENDING = "pending"
+    SATISFIED = "satisfied"
+    UNSUPPORTED = "unsupported"
+    FAILED = "failed"
+    CONTRADICTED = "contradicted"
+
+    @property
+    def requires_repair(self) -> bool:
+        return self in {
+            ProofObligationState.UNSUPPORTED,
+            ProofObligationState.FAILED,
+            ProofObligationState.CONTRADICTED,
+        }
+
+
+class ProofRepairWorkKind(str, Enum):
+    """Closed set of work that an unsuccessful proof may introduce."""
+
+    TEMPLATE = "template"
+    TEST = "test"
+    PREMISE = "premise"
+    MANUAL_REVIEW = "manual_review"
+
+
+_PROOF_STATE_ALIASES: dict[str, ProofObligationState] = {
+    "": ProofObligationState.PENDING,
+    "active": ProofObligationState.PENDING,
+    "blocked": ProofObligationState.FAILED,
+    "cancelled": ProofObligationState.FAILED,
+    "complete": ProofObligationState.SATISFIED,
+    "completed": ProofObligationState.SATISFIED,
+    "contradicted": ProofObligationState.CONTRADICTED,
+    "contradiction": ProofObligationState.CONTRADICTED,
+    "disproved": ProofObligationState.CONTRADICTED,
+    "error": ProofObligationState.FAILED,
+    "failed": ProofObligationState.FAILED,
+    "failure": ProofObligationState.FAILED,
+    "inconclusive": ProofObligationState.FAILED,
+    "invalid": ProofObligationState.CONTRADICTED,
+    "passed": ProofObligationState.SATISFIED,
+    "pending": ProofObligationState.PENDING,
+    "planned": ProofObligationState.PENDING,
+    "proved": ProofObligationState.SATISFIED,
+    "rejected": ProofObligationState.CONTRADICTED,
+    "running": ProofObligationState.PENDING,
+    "satisfied": ProofObligationState.SATISFIED,
+    "stale": ProofObligationState.CONTRADICTED,
+    "succeeded": ProofObligationState.SATISFIED,
+    "success": ProofObligationState.SATISFIED,
+    "timed_out": ProofObligationState.FAILED,
+    "timeout": ProofObligationState.FAILED,
+    "unavailable": ProofObligationState.UNSUPPORTED,
+    "unsupported_proof": ProofObligationState.UNSUPPORTED,
+    "unsupported_template": ProofObligationState.UNSUPPORTED,
+    "unsupported": ProofObligationState.UNSUPPORTED,
+    "verified": ProofObligationState.SATISFIED,
+}
+
+
+def _proof_obligation_state(value: Any) -> ProofObligationState:
+    if isinstance(value, ProofObligationState):
+        return value
+    normalized = str(getattr(value, "value", value) or "").strip().lower().replace("-", "_")
+    return _PROOF_STATE_ALIASES.get(normalized, ProofObligationState.PENDING)
+
+
+def _proof_repair_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        if isinstance(payload, Mapping):
+            return dict(payload)
+    if hasattr(value, "__dict__"):
+        return {
+            str(key): item
+            for key, item in vars(value).items()
+            if not str(key).startswith("_")
+        }
+    raise TypeError("proof obligations and outcomes must be mappings or provide to_dict()")
+
+
+def _proof_repair_strings(value: Any, *, maximum: int | None = None) -> tuple[str, ...]:
+    if value in (None, ""):
+        return ()
+    if isinstance(value, str):
+        values: Iterable[Any] = re.split(r"[,;\n]+", value)
+    elif isinstance(value, Mapping):
+        values = value.keys()
+    elif isinstance(value, Iterable):
+        values = value
+    else:
+        values = (value,)
+    result = tuple(
+        sorted(
+            {
+                " ".join(str(item or "").split())
+                for item in values
+                if " ".join(str(item or "").split())
+            },
+            key=lambda item: (item.casefold(), item),
+        )
+    )
+    return result if maximum is None else result[: max(0, int(maximum))]
+
+
+def _proof_repair_text(value: Any, *, maximum: int = 2048) -> str:
+    result = " ".join(str(value or "").split())
+    if len(result) <= maximum:
+        return result
+    return result[: max(0, maximum - 1)].rstrip() + "…"
+
+
+@dataclass(frozen=True)
+class ProofObligationInput:
+    """Small, executor-independent obligation projection used by planning."""
+
+    obligation_id: str
+    state: ProofObligationState | str = ProofObligationState.PENDING
+    statement: str = ""
+    task_id: str = ""
+    goal_id: str = ""
+    template_id: str = ""
+    template_version: str = ""
+    code_shape: str = ""
+    required_assurance: str = ""
+    premise_ids: tuple[str, ...] = ()
+    missing_premise_ids: tuple[str, ...] = ()
+    fallback_checks: tuple[str, ...] = ()
+    dependencies: tuple[str, ...] = ()
+    reason: str = ""
+    source_id: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        obligation_id = str(self.obligation_id or "").strip()
+        if not obligation_id:
+            raise ValueError("proof repair planning requires obligation_id")
+        object.__setattr__(self, "obligation_id", obligation_id)
+        object.__setattr__(self, "state", _proof_obligation_state(self.state))
+        for name in (
+            "statement",
+            "task_id",
+            "goal_id",
+            "template_id",
+            "template_version",
+            "code_shape",
+            "required_assurance",
+            "reason",
+            "source_id",
+        ):
+            object.__setattr__(self, name, _proof_repair_text(getattr(self, name)))
+        for name in (
+            "premise_ids",
+            "missing_premise_ids",
+            "fallback_checks",
+            "dependencies",
+        ):
+            object.__setattr__(self, name, _proof_repair_strings(getattr(self, name)))
+        if not isinstance(self.metadata, Mapping):
+            raise TypeError("proof obligation metadata must be a mapping")
+        object.__setattr__(
+            self,
+            "metadata",
+            {
+                str(key): _coverage_json_value(item)
+                for key, item in sorted(self.metadata.items(), key=lambda pair: str(pair[0]))
+            },
+        )
+
+    @property
+    def status(self) -> ProofObligationState:
+        """Compatibility spelling used by proof receipt consumers."""
+
+        return self.state
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        outcome: Mapping[str, Any] | None = None,
+    ) -> "ProofObligationInput":
+        if not isinstance(payload, Mapping):
+            raise TypeError("proof obligation input must be a mapping")
+        values = dict(payload)
+        metadata = values.get("metadata") if isinstance(values.get("metadata"), Mapping) else {}
+        metadata = dict(metadata)
+        outcome_payload = dict(outcome or {})
+        outcome_metadata = (
+            dict(outcome_payload.get("metadata") or {})
+            if isinstance(outcome_payload.get("metadata"), Mapping)
+            else {}
+        )
+
+        def first(name: str, *aliases: str, default: Any = "") -> Any:
+            for source in (outcome_payload, outcome_metadata, values, metadata):
+                for key in (name, *aliases):
+                    if key in source and source[key] not in (None, ""):
+                        return source[key]
+            return default
+
+        # A provider attempt may succeed while its semantic verdict disproves
+        # the obligation.  Prefer verdict over transport/lifecycle status so a
+        # successful execution can never hide a contradiction.
+        declared_state: Any = ProofObligationState.PENDING.value
+        for source in (outcome_payload, outcome_metadata, values, metadata):
+            for key in (
+                "verdict",
+                "proof_verdict",
+                "state",
+                "proof_state",
+                "status",
+                "proof_status",
+            ):
+                if key in source and source[key] not in (None, ""):
+                    declared_state = source[key]
+                    break
+            if declared_state != ProofObligationState.PENDING.value:
+                break
+        obligation_id = first(
+            "obligation_id", "proof_obligation_id", "content_id", "id"
+        )
+        return cls(
+            obligation_id=str(obligation_id or ""),
+            state=declared_state,
+            statement=first("statement", "canonical_statement", "obligation"),
+            task_id=first("task_id"),
+            goal_id=first("goal_id", "parent_goal_id"),
+            template_id=first("template_id"),
+            template_version=first("template_version", "version"),
+            code_shape=first("code_shape", "reviewed_code_shape"),
+            required_assurance=first("required_assurance", "assurance"),
+            premise_ids=_proof_repair_strings(first("premise_ids", "premises", default=())),
+            missing_premise_ids=_proof_repair_strings(
+                first(
+                    "missing_premise_ids",
+                    "unsupported_premise_ids",
+                    "failed_premise_ids",
+                    default=(),
+                )
+            ),
+            fallback_checks=_proof_repair_strings(
+                first(
+                    "fallback_checks",
+                    "fallback_tests",
+                    "validation_commands",
+                    "validations",
+                    default=(),
+                )
+            ),
+            dependencies=_proof_repair_strings(
+                first("dependencies", "depends_on", "dependency_ids", default=())
+            ),
+            reason=first(
+                "reason",
+                "failure_reason",
+                "error",
+                "summary",
+                "diagnostic",
+            ),
+            source_id=first(
+                "source_id", "receipt_id", "attempt_id", "selection_id"
+            ),
+            metadata=metadata,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "obligation_id": self.obligation_id,
+            "state": self.state.value,
+            "status": self.state.value,
+            "statement": self.statement,
+            "task_id": self.task_id,
+            "goal_id": self.goal_id,
+            "template_id": self.template_id,
+            "template_version": self.template_version,
+            "code_shape": self.code_shape,
+            "required_assurance": self.required_assurance,
+            "premise_ids": list(self.premise_ids),
+            "missing_premise_ids": list(self.missing_premise_ids),
+            "fallback_checks": list(self.fallback_checks),
+            "dependencies": list(self.dependencies),
+            "reason": self.reason,
+            "source_id": self.source_id,
+            "metadata": dict(self.metadata),
+        }
+
+
+# A longer spelling makes the boundary explicit in generated API docs while
+# retaining the concise input name used by callers.
+ProofObligationPlanningInput = ProofObligationInput
+
+
+@dataclass(frozen=True)
+class ProofRepairPolicy:
+    """Independent hard bounds for proof-derived objective work."""
+
+    max_obligations: int = 64
+    max_total_work: int = 16
+    max_work_per_obligation: int = 4
+    max_existing_work: int = 256
+    max_rejections: int = 128
+    max_dependencies_per_work: int = 32
+    max_validation_commands_per_work: int = 16
+    semantic_similarity_threshold: float = 0.84
+    # Concise constructor aliases used by objective planner configurations.
+    max_work_items: int | None = None
+    max_per_obligation: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_work_items is not None:
+            if isinstance(self.max_work_items, bool) or not isinstance(
+                self.max_work_items, int
+            ):
+                raise ValueError("max_work_items must be a non-negative integer")
+            object.__setattr__(self, "max_total_work", self.max_work_items)
+        if self.max_per_obligation is not None:
+            if isinstance(self.max_per_obligation, bool) or not isinstance(
+                self.max_per_obligation, int
+            ):
+                raise ValueError("max_per_obligation must be a non-negative integer")
+            object.__setattr__(
+                self, "max_work_per_obligation", self.max_per_obligation
+            )
+        for name in (
+            "max_obligations",
+            "max_total_work",
+            "max_work_per_obligation",
+            "max_existing_work",
+            "max_rejections",
+            "max_dependencies_per_work",
+            "max_validation_commands_per_work",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        object.__setattr__(self, "max_work_items", self.max_total_work)
+        object.__setattr__(self, "max_per_obligation", self.max_work_per_obligation)
+        threshold = float(self.semantic_similarity_threshold)
+        if not math.isfinite(threshold) or threshold < 0.0 or threshold > 1.0:
+            raise ValueError("semantic_similarity_threshold must be between 0 and 1")
+        object.__setattr__(self, "semantic_similarity_threshold", threshold)
+
+
+def _proof_repair_normalized_text(value: Any) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+
+
+def semantic_proof_repair_key(value: Any) -> str:
+    """Return wording-insensitive identity for one proof repair action."""
+
+    payload = value.to_dict() if isinstance(value, ProofRepairWork) else _proof_repair_mapping(value)
+
+    def values(name: str, *aliases: str) -> list[str]:
+        raw: Any = ()
+        for key in (name, *aliases):
+            if key in payload and payload[key] not in (None, ""):
+                raw = payload[key]
+                break
+        return sorted(_proof_repair_normalized_text(item) for item in _proof_repair_strings(raw))
+
+    kind = str(
+        getattr(
+            payload.get("repair_kind", payload.get("work_kind", payload.get("kind", ""))),
+            "value",
+            payload.get("repair_kind", payload.get("work_kind", payload.get("kind", ""))),
+        )
+        or ""
+    ).strip().lower()
+    material: dict[str, Any] = {
+        "repair_kind": kind,
+        "template_id": _proof_repair_normalized_text(payload.get("template_id", "")),
+        "template_version": _proof_repair_normalized_text(payload.get("template_version", "")),
+        "semantic_scope": _proof_repair_normalized_text(
+            payload.get(
+                "semantic_scope",
+                payload.get("statement", payload.get("code_shape", "")),
+            )
+        ),
+        "required_assurance": _proof_repair_normalized_text(
+            payload.get("required_assurance", "")
+        ),
+        "premise_ids": values("premise_ids", "missing_premise_ids"),
+        "validation": values(
+            "validation_commands", "fallback_checks", "validation"
+        ),
+        "evidence_delta": values(
+            "expected_evidence_delta", "evidence_delta", "missing_evidence"
+        ),
+    }
+    if not any(
+        material[key]
+        for key in (
+            "template_id",
+            "semantic_scope",
+            "premise_ids",
+            "validation",
+            "evidence_delta",
+        )
+    ):
+        material["title"] = _proof_repair_normalized_text(
+            payload.get("title", payload.get("summary", ""))
+        )
+    canonical = json.dumps(material, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "proof-repair/v1/" + sha1(canonical.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class ProofRepairWork:
+    """One finite task produced from an unsupported or failed obligation."""
+
+    repair_kind: ProofRepairWorkKind | str
+    obligation_ids: tuple[str, ...]
+    title: str
+    rationale: str
+    expected_evidence_delta: tuple[str, ...]
+    dependencies: tuple[str, ...] = ()
+    validation_commands: tuple[str, ...] = ()
+    template_id: str = ""
+    template_version: str = ""
+    semantic_scope: str = ""
+    required_assurance: str = ""
+    source_state: ProofObligationState | str = ProofObligationState.FAILED
+    source_ids: tuple[str, ...] = ()
+    premise_ids: tuple[str, ...] = ()
+    semantic_key: str = ""
+    canonical_id: str = ""
+
+    def __post_init__(self) -> None:
+        try:
+            kind = (
+                self.repair_kind
+                if isinstance(self.repair_kind, ProofRepairWorkKind)
+                else ProofRepairWorkKind(str(self.repair_kind).strip().lower())
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "repair_kind must be template, test, premise, or manual_review"
+            ) from exc
+        obligation_ids = _proof_repair_strings(self.obligation_ids)
+        if not obligation_ids:
+            raise ValueError("proof repair work requires at least one obligation_id")
+        title = _proof_repair_text(self.title)
+        rationale = _proof_repair_text(self.rationale)
+        if not title or not rationale:
+            raise ValueError("proof repair work requires title and rationale")
+        evidence_delta = _proof_repair_strings(self.expected_evidence_delta)
+        if not evidence_delta:
+            raise ValueError("proof repair work requires expected_evidence_delta")
+        object.__setattr__(self, "repair_kind", kind)
+        object.__setattr__(self, "obligation_ids", obligation_ids)
+        object.__setattr__(self, "title", title)
+        object.__setattr__(self, "rationale", rationale)
+        object.__setattr__(self, "expected_evidence_delta", evidence_delta)
+        for name in (
+            "dependencies",
+            "validation_commands",
+            "source_ids",
+            "premise_ids",
+        ):
+            object.__setattr__(self, name, _proof_repair_strings(getattr(self, name)))
+        for name in (
+            "template_id",
+            "template_version",
+            "semantic_scope",
+            "required_assurance",
+        ):
+            object.__setattr__(self, name, _proof_repair_text(getattr(self, name)))
+        object.__setattr__(self, "source_state", _proof_obligation_state(self.source_state))
+        expected_key = semantic_proof_repair_key(self)
+        if self.semantic_key and str(self.semantic_key) != expected_key:
+            raise ValueError("semantic_key does not match proof repair content")
+        object.__setattr__(self, "semantic_key", expected_key)
+        identity_payload = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/proof-repair-work@1",
+            "semantic_key": expected_key,
+            "obligation_ids": obligation_ids,
+            "source_state": self.source_state.value,
+        }
+        expected_id = "proof-repair:" + sha256(
+            json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if self.canonical_id and str(self.canonical_id) != expected_id:
+            raise ValueError("canonical_id does not match proof repair content")
+        object.__setattr__(self, "canonical_id", expected_id)
+
+    @property
+    def obligation_id(self) -> str:
+        """Return the sole/first obligation for compatibility with task rows."""
+
+        return self.obligation_ids[0]
+
+    @property
+    def kind(self) -> ProofRepairWorkKind:
+        return self.repair_kind
+
+    @property
+    def dedupe_key(self) -> str:
+        return self.semantic_key
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "canonical_id": self.canonical_id,
+            "work_id": self.canonical_id,
+            "repair_kind": self.repair_kind.value,
+            "work_kind": self.repair_kind.value,
+            "kind": self.repair_kind.value,
+            "obligation_id": self.obligation_id,
+            "obligation_ids": list(self.obligation_ids),
+            "title": self.title,
+            "rationale": self.rationale,
+            "expected_evidence_delta": list(self.expected_evidence_delta),
+            "dependencies": list(self.dependencies),
+            "validation_commands": list(self.validation_commands),
+            "validation": list(self.validation_commands),
+            "template_id": self.template_id,
+            "template_version": self.template_version,
+            "semantic_scope": self.semantic_scope,
+            "required_assurance": self.required_assurance,
+            "source_state": self.source_state.value,
+            "source_ids": list(self.source_ids),
+            "premise_ids": list(self.premise_ids),
+            "semantic_key": self.semantic_key,
+            "dedupe_key": self.semantic_key,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofRepairWork":
+        if not isinstance(payload, Mapping):
+            raise TypeError("proof repair work must be a mapping")
+        obligation_ids = payload.get("obligation_ids")
+        if not obligation_ids:
+            obligation_ids = (payload.get("obligation_id"),)
+        return cls(
+            repair_kind=payload.get(
+                "repair_kind", payload.get("work_kind", payload.get("kind", ""))
+            ),
+            obligation_ids=_proof_repair_strings(obligation_ids),
+            title=str(payload.get("title") or payload.get("summary") or ""),
+            rationale=str(
+                payload.get("rationale")
+                or payload.get("reason")
+                or payload.get("explanation")
+                or ""
+            ),
+            expected_evidence_delta=_proof_repair_strings(
+                payload.get(
+                    "expected_evidence_delta",
+                    payload.get("evidence_delta", payload.get("missing_evidence", ())),
+                )
+            ),
+            dependencies=_proof_repair_strings(
+                payload.get("dependencies", payload.get("depends_on", ()))
+            ),
+            validation_commands=_proof_repair_strings(
+                payload.get(
+                    "validation_commands",
+                    payload.get("validation", payload.get("fallback_checks", ())),
+                )
+            ),
+            template_id=str(payload.get("template_id") or ""),
+            template_version=str(payload.get("template_version") or ""),
+            semantic_scope=str(
+                payload.get(
+                    "semantic_scope",
+                    payload.get("statement", payload.get("code_shape", "")),
+                )
+                or ""
+            ),
+            required_assurance=str(payload.get("required_assurance") or ""),
+            source_state=payload.get(
+                "source_state", payload.get("state", payload.get("status", "failed"))
+            ),
+            source_ids=_proof_repair_strings(
+                payload.get("source_ids", (payload.get("source_id"),))
+            ),
+            premise_ids=_proof_repair_strings(
+                payload.get("premise_ids", payload.get("missing_premise_ids", ()))
+            ),
+            semantic_key=str(payload.get("semantic_key") or payload.get("dedupe_key") or ""),
+            canonical_id=str(payload.get("canonical_id") or payload.get("work_id") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class ProofRepairRejection:
+    """Bounded rationale for repair work that was not emitted."""
+
+    reason: str
+    obligation_id: str
+    repair_kind: str = ""
+    semantic_key: str = ""
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ProofRepairResult:
+    """Finite proof-repair tasks and a bounded rejection accounting."""
+
+    work: tuple[ProofRepairWork, ...]
+    rejected: tuple[ProofRepairRejection, ...]
+    policy: ProofRepairPolicy
+    considered_obligations: int
+    ignored_obligations: int = 0
+    input_truncated: bool = False
+    rejection_count: int = 0
+    rejections_truncated: bool = False
+
+    @property
+    def generated_work(self) -> tuple[ProofRepairWork, ...]:
+        return self.work
+
+    @property
+    def accepted(self) -> tuple[ProofRepairWork, ...]:
+        return self.work
+
+    @property
+    def truncated(self) -> bool:
+        return (
+            self.input_truncated
+            or self.rejections_truncated
+            or any(
+                item.reason in {"per_obligation_limit", "total_work_limit"}
+                for item in self.rejected
+            )
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        rejection_counts: dict[str, int] = {}
+        for item in self.rejected:
+            rejection_counts[item.reason] = rejection_counts.get(item.reason, 0) + 1
+        return {
+            "work": [item.to_dict() for item in self.work],
+            "generated_work": [item.to_dict() for item in self.work],
+            "accepted": [item.to_dict() for item in self.work],
+            "rejected": [item.to_dict() for item in self.rejected],
+            "rejection_counts": dict(sorted(rejection_counts.items())),
+            "rejection_count": self.rejection_count,
+            "policy": asdict(self.policy),
+            "considered_obligations": self.considered_obligations,
+            "ignored_obligations": self.ignored_obligations,
+            "input_truncated": self.input_truncated,
+            "rejections_truncated": self.rejections_truncated,
+            "truncated": self.truncated,
+        }
+
+
+def _proof_repair_tokens(value: ProofRepairWork) -> set[str]:
+    return set(
+        re.findall(
+            r"[a-z0-9]+",
+            " ".join(
+                (
+                    value.repair_kind.value,
+                    value.template_id,
+                    value.semantic_scope,
+                    value.required_assurance,
+                    *value.premise_ids,
+                    *value.validation_commands,
+                    *value.expected_evidence_delta,
+                )
+            ).casefold(),
+        )
+    )
+
+
+def proof_repair_semantic_similarity(
+    left: ProofRepairWork,
+    right: ProofRepairWork,
+) -> float:
+    """Return Jaccard similarity for same-kind repair semantics."""
+
+    if left.repair_kind is not right.repair_kind:
+        return 0.0
+    left_tokens = _proof_repair_tokens(left)
+    right_tokens = _proof_repair_tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+
+
+def _proof_repair_outcomes(
+    outcomes: Iterable[Any] | Mapping[str, Any],
+    *,
+    maximum: int,
+) -> dict[str, dict[str, Any]]:
+    if isinstance(outcomes, Mapping):
+        if any(
+            key in outcomes
+            for key in ("obligation_id", "proof_obligation_id", "status", "verdict")
+        ):
+            raw: Iterable[Any] = (outcomes,)
+        else:
+            raw = (
+                dict(
+                    (
+                        _proof_repair_mapping(value)
+                        if isinstance(value, Mapping)
+                        or callable(getattr(value, "to_dict", None))
+                        or hasattr(value, "__dict__")
+                        else {"status": value}
+                    ),
+                    obligation_id=str(key),
+                )
+                for key, value in outcomes.items()
+            )
+    else:
+        raw = outcomes
+    indexed: dict[str, dict[str, Any]] = {}
+    for value in islice(raw, max(0, maximum)):
+        payload = _proof_repair_mapping(value)
+        obligation_id = str(
+            payload.get("obligation_id")
+            or payload.get("proof_obligation_id")
+            or ""
+        ).strip()
+        if not obligation_id:
+            continue
+        previous = indexed.get(obligation_id)
+        if previous is None:
+            indexed[obligation_id] = payload
+            continue
+        # A repair-requiring terminal result must not be hidden by an
+        # insertion-order-dependent pending row.
+        previous_state = _proof_obligation_state(
+            previous.get("state", previous.get("status", previous.get("verdict", "")))
+        )
+        candidate_state = _proof_obligation_state(
+            payload.get("state", payload.get("status", payload.get("verdict", "")))
+        )
+        rank = {
+            ProofObligationState.PENDING: 0,
+            ProofObligationState.SATISFIED: 1,
+            ProofObligationState.FAILED: 2,
+            ProofObligationState.UNSUPPORTED: 3,
+            ProofObligationState.CONTRADICTED: 4,
+        }
+        if rank[candidate_state] > rank[previous_state]:
+            indexed[obligation_id] = payload
+    return indexed
+
+
+def _proof_repair_kinds(item: ProofObligationInput) -> tuple[ProofRepairWorkKind, ...]:
+    explicit = item.metadata.get(
+        "repair_kinds",
+        item.metadata.get("suggested_repair_kinds", item.metadata.get("repair_kind", ())),
+    )
+    if explicit:
+        result: set[ProofRepairWorkKind] = set()
+        for value in _proof_repair_strings(explicit):
+            try:
+                result.add(ProofRepairWorkKind(value.strip().lower()))
+            except ValueError:
+                # Unreviewed work kinds may not cross the planning boundary.
+                continue
+        if result:
+            return tuple(sorted(result, key=lambda value: value.value))
+
+    reason = " ".join((item.reason, item.code_shape)).casefold()
+    kinds: set[ProofRepairWorkKind] = set()
+    if item.missing_premise_ids or (
+        item.premise_ids
+        and (
+            item.state in {
+                ProofObligationState.FAILED,
+                ProofObligationState.CONTRADICTED,
+            }
+            or any(term in reason for term in ("premise", "assumption"))
+        )
+    ):
+        kinds.add(ProofRepairWorkKind.PREMISE)
+    template_problem = (
+        not item.template_id
+        or any(
+            term in reason
+            for term in (
+                "ambiguous template",
+                "missing template",
+                "no reviewed template",
+                "template unsupported",
+                "unknown template",
+                "unsupported code shape",
+            )
+        )
+        or item.metadata.get("template_supported") is False
+    )
+    if item.state is ProofObligationState.UNSUPPORTED and template_problem:
+        kinds.add(ProofRepairWorkKind.TEMPLATE)
+    executable_fallbacks = tuple(
+        check
+        for check in item.fallback_checks
+        if not check.casefold().startswith(("manual:", "review:"))
+    )
+    if executable_fallbacks:
+        kinds.add(ProofRepairWorkKind.TEST)
+    if item.state is ProofObligationState.CONTRADICTED:
+        kinds.add(ProofRepairWorkKind.MANUAL_REVIEW)
+    if "ambiguous" in reason or "conflict" in reason or "manual review" in reason:
+        kinds.add(ProofRepairWorkKind.MANUAL_REVIEW)
+    if not kinds:
+        kinds.add(ProofRepairWorkKind.MANUAL_REVIEW)
+    order = {
+        ProofRepairWorkKind.PREMISE: 0,
+        ProofRepairWorkKind.TEMPLATE: 1,
+        ProofRepairWorkKind.TEST: 2,
+        ProofRepairWorkKind.MANUAL_REVIEW: 3,
+    }
+    return tuple(sorted(kinds, key=lambda value: order[value]))
+
+
+def _proof_repair_candidate(
+    item: ProofObligationInput,
+    kind: ProofRepairWorkKind,
+    policy: ProofRepairPolicy,
+) -> ProofRepairWork:
+    scope = item.statement or item.code_shape or item.template_id or item.obligation_id
+    short_scope = _proof_repair_text(scope, maximum=160)
+    rationale = item.reason or (
+        f"Obligation {item.obligation_id} ended in {item.state.value} state."
+    )
+    missing_premises = item.missing_premise_ids or (
+        item.premise_ids
+        if kind is ProofRepairWorkKind.PREMISE
+        else ()
+    )
+    if kind is ProofRepairWorkKind.TEMPLATE:
+        title = f"Add reviewed proof template for {short_scope}"
+        delta = (
+            "reviewed versioned template with executable reference semantics",
+            "template mutation cases and exact code-shape support evidence",
+        )
+        validations: tuple[str, ...] = ()
+    elif kind is ProofRepairWorkKind.TEST:
+        title = f"Add fallback regression test for {short_scope}"
+        delta = (
+            "current fallback validation receipt bound to the obligation scope",
+        )
+        validations = tuple(
+            check
+            for check in item.fallback_checks
+            if not check.casefold().startswith(("manual:", "review:"))
+        )[: policy.max_validation_commands_per_work]
+    elif kind is ProofRepairWorkKind.PREMISE:
+        title = f"Establish proof premises for {short_scope}"
+        delta = (
+            "trusted current evidence for each missing proof premise",
+        )
+        validations = ()
+    else:
+        title = f"Manually review proof obligation for {short_scope}"
+        delta = (
+            "recorded manual-review decision with rationale and provenance",
+        )
+        validations = ()
+    return ProofRepairWork(
+        repair_kind=kind,
+        obligation_ids=(item.obligation_id,),
+        title=title,
+        rationale=rationale,
+        expected_evidence_delta=delta,
+        dependencies=item.dependencies[: policy.max_dependencies_per_work],
+        validation_commands=validations,
+        template_id=item.template_id,
+        template_version=item.template_version,
+        semantic_scope=scope,
+        required_assurance=item.required_assurance,
+        source_state=item.state,
+        source_ids=(item.source_id,) if item.source_id else (),
+        premise_ids=missing_premises,
+    )
+
+
+def _merge_proof_repair_work(
+    left: ProofRepairWork,
+    right: ProofRepairWork,
+    policy: ProofRepairPolicy,
+) -> ProofRepairWork:
+    return ProofRepairWork(
+        repair_kind=left.repair_kind,
+        obligation_ids=_proof_repair_strings(
+            (*left.obligation_ids, *right.obligation_ids)
+        ),
+        title=min((left.title, right.title), key=lambda value: (value.casefold(), value)),
+        rationale=min(
+            (left.rationale, right.rationale),
+            key=lambda value: (value.casefold(), value),
+        ),
+        expected_evidence_delta=_proof_repair_strings(
+            (*left.expected_evidence_delta, *right.expected_evidence_delta)
+        ),
+        dependencies=_proof_repair_strings(
+            (*left.dependencies, *right.dependencies),
+            maximum=policy.max_dependencies_per_work,
+        ),
+        validation_commands=_proof_repair_strings(
+            (*left.validation_commands, *right.validation_commands),
+            maximum=policy.max_validation_commands_per_work,
+        ),
+        template_id=left.template_id or right.template_id,
+        template_version=left.template_version or right.template_version,
+        semantic_scope=left.semantic_scope or right.semantic_scope,
+        required_assurance=left.required_assurance or right.required_assurance,
+        source_state=(
+            ProofObligationState.CONTRADICTED
+            if ProofObligationState.CONTRADICTED
+            in {left.source_state, right.source_state}
+            else left.source_state
+        ),
+        source_ids=_proof_repair_strings((*left.source_ids, *right.source_ids)),
+        premise_ids=_proof_repair_strings((*left.premise_ids, *right.premise_ids)),
+    )
+
+
+def generate_proof_repair_work(
+    obligations: Iterable[ProofObligationInput | Mapping[str, Any] | Any],
+    *,
+    outcomes: Iterable[Any] | Mapping[str, Any] = (),
+    existing_work: Iterable[ProofRepairWork | Mapping[str, Any]] = (),
+    policy: ProofRepairPolicy | Mapping[str, Any] | None = None,
+    limits: ProofRepairPolicy | Mapping[str, Any] | None = None,
+    max_work_items: int | None = None,
+    max_work_per_obligation: int | None = None,
+) -> ProofRepairResult:
+    """Generate finite repair tasks for unsuccessful proof obligations.
+
+    Inputs are consumed under ``max_obligations`` and existing work under
+    ``max_existing_work``.  Consequently an accidentally unbounded iterator,
+    a retry storm, or a large receipt ledger cannot expand one planning cycle
+    without limit.  Unsupported work kinds are never model-invented: the
+    output vocabulary is the closed :class:`ProofRepairWorkKind` enum.
+    """
+
+    if policy is not None and limits is not None:
+        raise ValueError("provide either policy or limits, not both")
+    raw_policy = policy if policy is not None else limits
+    if raw_policy is None:
+        selected_policy = ProofRepairPolicy()
+    elif isinstance(raw_policy, ProofRepairPolicy):
+        selected_policy = raw_policy
+    elif isinstance(raw_policy, Mapping):
+        selected_policy = ProofRepairPolicy(**dict(raw_policy))
+    else:
+        raise TypeError("policy must be ProofRepairPolicy or a mapping")
+    overrides: dict[str, Any] = {}
+    if max_work_items is not None:
+        overrides["max_total_work"] = int(max_work_items)
+    if max_work_per_obligation is not None:
+        overrides["max_work_per_obligation"] = int(max_work_per_obligation)
+    if overrides:
+        selected_policy = replace(selected_policy, **overrides)
+
+    outcome_index = _proof_repair_outcomes(
+        outcomes,
+        maximum=max(1, selected_policy.max_obligations * 2),
+    )
+    obligation_rows = list(
+        islice(obligations, selected_policy.max_obligations + 1)
+    )
+    input_truncated = len(obligation_rows) > selected_policy.max_obligations
+    obligation_rows = obligation_rows[: selected_policy.max_obligations]
+    normalized: list[ProofObligationInput] = []
+    for raw in obligation_rows:
+        if isinstance(raw, ProofObligationInput):
+            base = raw
+            outcome = outcome_index.get(base.obligation_id)
+            normalized.append(
+                ProofObligationInput.from_dict(base.to_dict(), outcome=outcome)
+                if outcome
+                else base
+            )
+        else:
+            payload = _proof_repair_mapping(raw)
+            obligation_id = str(
+                payload.get("obligation_id")
+                or payload.get("proof_obligation_id")
+                or payload.get("content_id")
+                or payload.get("id")
+                or ""
+            ).strip()
+            normalized.append(
+                ProofObligationInput.from_dict(
+                    payload,
+                    outcome=outcome_index.get(obligation_id),
+                )
+            )
+    normalized.sort(key=lambda item: (item.obligation_id, item.state.value))
+
+    existing: list[ProofRepairWork] = []
+    existing_keys: set[str] = set()
+    for raw in islice(existing_work, selected_policy.max_existing_work):
+        if isinstance(raw, ProofRepairWork):
+            prior = raw
+        else:
+            payload = _proof_repair_mapping(raw)
+            try:
+                prior = ProofRepairWork.from_dict(payload)
+            except (TypeError, ValueError):
+                supplied_key = str(
+                    payload.get("semantic_key") or payload.get("dedupe_key") or ""
+                )
+                if supplied_key.startswith("proof-repair/v1/"):
+                    existing_keys.add(supplied_key)
+                continue
+        existing.append(prior)
+        existing_keys.add(prior.semantic_key)
+
+    accepted: list[ProofRepairWork] = []
+    accepted_by_key: dict[str, int] = {}
+    rejected: list[ProofRepairRejection] = []
+    rejection_count = 0
+    ignored = 0
+
+    def reject(
+        item: ProofObligationInput,
+        reason: str,
+        *,
+        candidate: ProofRepairWork | None = None,
+        detail: str = "",
+    ) -> None:
+        nonlocal rejection_count
+        rejection_count += 1
+        if len(rejected) >= selected_policy.max_rejections:
+            return
+        rejected.append(
+            ProofRepairRejection(
+                reason=reason,
+                obligation_id=item.obligation_id,
+                repair_kind=(
+                    candidate.repair_kind.value if candidate is not None else ""
+                ),
+                semantic_key=(
+                    candidate.semantic_key if candidate is not None else ""
+                ),
+                detail=detail,
+            )
+        )
+
+    for item in normalized:
+        if not item.state.requires_repair:
+            ignored += 1
+            continue
+        kinds = _proof_repair_kinds(item)
+        if len(kinds) > selected_policy.max_work_per_obligation:
+            for kind in kinds[selected_policy.max_work_per_obligation :]:
+                reject(
+                    item,
+                    "per_obligation_limit",
+                    detail=f"repair kind {kind.value} exceeds per-obligation bound",
+                )
+            kinds = kinds[: selected_policy.max_work_per_obligation]
+        for kind in kinds:
+            candidate = _proof_repair_candidate(item, kind, selected_policy)
+            if candidate.semantic_key in existing_keys:
+                reject(
+                    item,
+                    "semantic_duplicate",
+                    candidate=candidate,
+                    detail="equivalent persisted proof repair work already exists",
+                )
+                continue
+            existing_duplicate = next(
+                (
+                    prior
+                    for prior in existing
+                    if proof_repair_semantic_similarity(candidate, prior)
+                    >= selected_policy.semantic_similarity_threshold
+                ),
+                None,
+            )
+            if existing_duplicate is not None:
+                reject(
+                    item,
+                    "semantic_duplicate",
+                    candidate=candidate,
+                    detail=f"equivalent to {existing_duplicate.canonical_id}",
+                )
+                continue
+            merge_index = accepted_by_key.get(candidate.semantic_key)
+            if merge_index is None:
+                merge_index = next(
+                    (
+                        index
+                        for index, prior in enumerate(accepted)
+                        if (
+                            item.obligation_id in prior.obligation_ids
+                            and prior.repair_kind is candidate.repair_kind
+                        )
+                        or proof_repair_semantic_similarity(candidate, prior)
+                        >= selected_policy.semantic_similarity_threshold
+                    ),
+                    None,
+                )
+            if merge_index is not None:
+                merged = _merge_proof_repair_work(
+                    accepted[merge_index], candidate, selected_policy
+                )
+                old_key = accepted[merge_index].semantic_key
+                accepted[merge_index] = merged
+                accepted_by_key.pop(old_key, None)
+                accepted_by_key[merged.semantic_key] = merge_index
+                reject(
+                    item,
+                    "semantic_duplicate",
+                    candidate=candidate,
+                    detail=f"coalesced into {merged.canonical_id}",
+                )
+                continue
+            if len(accepted) >= selected_policy.max_total_work:
+                reject(
+                    item,
+                    "total_work_limit",
+                    candidate=candidate,
+                    detail=f"cycle allows {selected_policy.max_total_work} proof repair records",
+                )
+                continue
+            accepted_by_key[candidate.semantic_key] = len(accepted)
+            accepted.append(candidate)
+
+    accepted.sort(
+        key=lambda item: (
+            item.repair_kind.value,
+            item.semantic_key,
+            item.obligation_ids,
+        )
+    )
+    return ProofRepairResult(
+        work=tuple(accepted),
+        rejected=tuple(rejected),
+        policy=selected_policy,
+        considered_obligations=len(normalized),
+        ignored_obligations=ignored,
+        input_truncated=input_truncated,
+        rejection_count=rejection_count,
+        rejections_truncated=rejection_count > len(rejected),
+    )
+
+
+# Compatibility spellings used by planner and objective-refinement callers.
+ProofRepairGenerationPolicy = ProofRepairPolicy
+ProofRepairGenerationResult = ProofRepairResult
+materialize_proof_repair_work = generate_proof_repair_work
+generate_obligation_repair_work = generate_proof_repair_work
+
+
 @dataclass(frozen=True)
 class DependencyEdge:
     """A prerequisite relationship directed from producer to consumer.
@@ -2198,17 +3386,18 @@ def _cycle_components(nodes: Iterable[str], adjacency: Mapping[str, set[str]]) -
     for root in node_list:
         if root in visited:
             continue
-        visited.add(root)
         stack: list[tuple[str, bool]] = [(root, False)]
         while stack:
             node, exiting = stack.pop()
             if exiting:
                 finish_order.append(node)
                 continue
+            if node in visited:
+                continue
+            visited.add(node)
             stack.append((node, True))
             for child in sorted(adjacency.get(node, set()), reverse=True):
                 if child not in visited:
-                    visited.add(child)
                     stack.append((child, False))
 
     reverse: dict[str, set[str]] = {node: set() for node in node_list}
@@ -2494,7 +3683,7 @@ def materialize_task_dependency_dag(
             objective_priority=configured_priority,
             created_at_ms=_task_created_at_ms(task),
             estimated_duration=_task_duration(task),
-            metadata=dict(task),
+            metadata=_bounded_task_planning_metadata(task),
         )
         nodes[cid] = node
         records_by_cid[cid] = task
@@ -3948,22 +5137,26 @@ def generate_objective_todos(
     surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    precomputed_findings: Sequence[ObjectiveFinding] | None = None,
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
     records: list[ObjectiveTaskRecord] = []
-    findings = scan_objective_gaps(
-        repo_root,
-        objective_path=objective_path,
-        max_findings=max_findings,
-        seen_fingerprints=seen_fingerprints,
-        force_goal_ids=force_goal_ids,
-        summary_prefix=summary_prefix,
-        surplus_findings_per_goal=surplus_findings_per_goal,
-        surplus_min_terms_per_todo=surplus_min_terms_per_todo,
-        dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
-        dataset_id=f"{task_prefix.rstrip('-').lower()}-objective-ast",
-    )
+    if precomputed_findings is None:
+        findings = scan_objective_gaps(
+            repo_root,
+            objective_path=objective_path,
+            max_findings=max_findings,
+            seen_fingerprints=seen_fingerprints,
+            force_goal_ids=force_goal_ids,
+            summary_prefix=summary_prefix,
+            surplus_findings_per_goal=surplus_findings_per_goal,
+            surplus_min_terms_per_todo=surplus_min_terms_per_todo,
+            dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
+            dataset_id=f"{task_prefix.rstrip('-').lower()}-objective-ast",
+        )
+    else:
+        findings = list(precomputed_findings)
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
         reserved_task_ids = task_ids_from_artifact_names(
@@ -4225,13 +5418,24 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
 
     # Local import avoids making objective scanning depend on coordination
     # initialization while ensuring queue consumers receive immutable links.
-    from .artifact_store import read_bundle_index_projection
+    from .artifact_store import read_bundle_index_planning_projection
     from .lease_coordination import adapt_goal_bundle
 
-    payload = read_bundle_index_projection(bundle_index_path, field_names=("source_todo",))
+    payload = read_bundle_index_planning_projection(
+        bundle_index_path,
+        field_names=("source_todo", "generated_at"),
+    )
     bundles = payload.get("bundles") if isinstance(payload, Mapping) else {}
     if not isinstance(bundles, Mapping):
         return []
+    profile_created_at_ms = _task_created_at_ms(
+        {"created_at": payload.get("generated_at")}
+    )
+    if profile_created_at_ms <= 0:
+        try:
+            profile_created_at_ms = bundle_index_path.stat().st_mtime_ns // 1_000_000
+        except OSError:
+            profile_created_at_ms = 0
     task_payloads: list[dict[str, Any]] = []
     for key, info in sorted(bundles.items()):
         if not isinstance(info, Mapping):
@@ -4261,10 +5465,10 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         if str(task.get("status") or "").strip().lower() in SUCCESSFUL_MERGE_RECEIPT_STATUSES
         and str(task.get("canonical_task_cid") or task.get("task_cid") or task.get("task_id") or "")
     }
-    planning_graph = materialize_task_planning_graph(flat_tasks, merge_receipts=terminal_receipts)
-    graph = planning_graph.dependency_graph
-    graph_dict = graph.to_dict()
-    conflict_graph_dict = planning_graph.conflict_graph.to_dict()
+    graph = materialize_task_dependency_dag(
+        flat_tasks,
+        merge_receipts=terminal_receipts,
+    )
     invalid_task_cids = set(graph.invalid_task_cids)
     schedule_by_cid = {item.task_cid: item for item in graph.schedule}
     member_cids_by_bundle_and_id = {
@@ -4330,18 +5534,70 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
             for item in bundle_payload.get("tasks", [])
             if isinstance(item, Mapping)
         }
+        completed_member_cids = {
+            cid
+            for cid in member_cids
+            if cid in graph.nodes
+            and graph.nodes[cid].status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+        }
+        active_member_cids = {
+            cid
+            for cid in member_cids
+            if cid in graph.nodes
+            and graph.nodes[cid].status
+            in {"active", "implementing", "in_progress", "running"}
+        }
+        blocked_member_cids = {
+            cid
+            for cid in member_cids
+            if cid in graph.nodes
+            and graph.nodes[cid].status in {"blocked", "on_hold"}
+        }
+        unfinished_member_cids = member_cids - completed_member_cids
+        ready_member_cids = {
+            cid
+            for cid in unfinished_member_cids - active_member_cids - blocked_member_cids
+            if cid in schedule_by_cid and schedule_by_cid[cid].claimable
+        }
+        # Until member leases are shared across serial and bundle schedulers,
+        # an externally active member fences the whole bundle from a duplicate
+        # launch. Otherwise, lease only the dependency-closed ready slice.
+        execution_member_cids = (
+            set()
+            if active_member_cids
+            else (ready_member_cids or unfinished_member_cids)
+        )
+        deferred_member_cids = unfinished_member_cids - ready_member_cids
+        schedule_order = {
+            item.task_cid: index for index, item in enumerate(graph.schedule)
+        }
+
+        def ordered(cids: set[str]) -> list[str]:
+            return sorted(cids, key=lambda cid: (schedule_order.get(cid, len(schedule_order)), cid))
+
+        def task_ids(cids: set[str]) -> list[str]:
+            return [
+                graph.nodes[cid].task_id
+                for cid in ordered(cids)
+                if cid in graph.nodes and graph.nodes[cid].task_id
+            ]
+
         dependency_bundle_keys = {
             member_bundle[source]
-            for target in member_cids
+            for target in execution_member_cids
             for source in unresolved_incoming.get(target, set())
             if source in member_bundle and member_bundle[source] != bundle_key
         }
         dependency_task_cids = sorted(bundle_identity_cids[key] for key in dependency_bundle_keys)
-        member_schedule = [schedule_by_cid[cid] for cid in member_cids if cid in schedule_by_cid]
+        member_schedule = [
+            schedule_by_cid[cid]
+            for cid in ordered(execution_member_cids)
+            if cid in schedule_by_cid
+        ]
         repair_evidence: list[dict[str, Any]] = []
         bundle_resolved_cycle_cids: set[str] = set()
         for item in graph.repair_evidence:
-            if item.task_cid not in member_cids:
+            if item.task_cid not in execution_member_cids:
                 continue
             component = {
                 str(cid)
@@ -4362,7 +5618,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         }
         invalid_member_cids = sorted(
             blocking_repair_cids
-            | ((member_cids & invalid_task_cids) - bundle_resolved_cycle_cids)
+            | ((execution_member_cids & invalid_task_cids) - bundle_resolved_cycle_cids)
         )
         if invalid_member_cids and not repair_evidence:
             # The graph keeps the complete invalid-CID set even when detailed
@@ -4385,18 +5641,53 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         external_blockers = sorted(
             {
                 bundle_identity_cids[member_bundle[source]]
-                for target in member_cids
+                for target in execution_member_cids
                 for source in unresolved_incoming.get(target, set())
                 if source in member_bundle and member_bundle[source] != bundle_key
             }
         )
-        projected_conflicts = _project_task_conflict_graph(conflict_graph_dict, member_cids)
+        projected_dependency_graph = {
+            "schema": "ipfs_accelerate_py.agent_supervisor.bundle_dependency_projection@1",
+            "projection": "bundle_incident",
+            "task_cids": ordered(member_cids),
+            "claimable_task_cids": ordered(ready_member_cids),
+            "edges": [
+                edge.to_dict()
+                for edge in graph.edges
+                if edge.source_task_cid in member_cids
+                or edge.target_task_cid in member_cids
+            ],
+        }
+        claimable = (
+            not active_member_cids
+            and (
+                not unfinished_member_cids
+                or bool(ready_member_cids)
+                or (
+                    bool(bundle_resolved_cycle_cids)
+                    and not external_blockers
+                    and not invalid_member_cids
+                )
+            )
+        )
         bundle_payload.update(
             {
                 "canonical_task_cid": bundle_identity_cids[bundle_key],
                 "dependency_task_cids": dependency_task_cids,
                 "blocking_task_cids": external_blockers,
-                "claimable": not external_blockers and not invalid_member_cids,
+                "claimable": claimable,
+                "ready_member_task_cids": ordered(ready_member_cids),
+                "ready_member_task_ids": task_ids(ready_member_cids),
+                "deferred_member_task_cids": ordered(deferred_member_cids),
+                "deferred_member_task_ids": task_ids(deferred_member_cids),
+                "completed_member_task_cids": ordered(completed_member_cids),
+                "completed_member_task_ids": task_ids(completed_member_cids),
+                "active_member_task_cids": ordered(active_member_cids),
+                "active_member_task_ids": task_ids(active_member_cids),
+                "blocked_member_task_cids": ordered(blocked_member_cids),
+                "blocked_member_task_ids": task_ids(blocked_member_cids),
+                "execution_slice_task_cids": ordered(execution_member_cids),
+                "execution_slice_task_ids": task_ids(execution_member_cids),
                 "critical_path_length": max((item.critical_path_length for item in member_schedule), default=1),
                 "slack": min((item.slack for item in member_schedule), default=0),
                 "downstream_unlock_value": max(
@@ -4406,11 +5697,20 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
                 "objective_priority": max((item.objective_priority for item in member_schedule), default=0),
                 "schedule_score": max((item.score for item in member_schedule), default=0),
                 "dependency_repair_evidence": repair_evidence,
-                "task_dependency_graph": graph_dict,
-                "dependency_dag": graph_dict,
-                "task_conflict_graph": projected_conflicts,
-                "conflict_graph": projected_conflicts,
-                "conflict_planning_decisions": projected_conflicts["decisions"],
+                "task_dependency_graph": projected_dependency_graph,
+                "dependency_dag": projected_dependency_graph,
+                "planning_evidence_ref": {
+                    "schema": "ipfs_accelerate_py.agent_supervisor.planning_evidence_ref@1",
+                    "bundle_index": str(bundle_index_path),
+                    "bundle_index_duckdb": str(bundle_index_path.with_suffix(".duckdb")),
+                    "bundle_key": bundle_key,
+                    "bundle_table": "bundles",
+                    "task_table": "bundle_tasks",
+                    "dependency_table": "bundle_task_dependencies",
+                    "dependency_edge_table": "dependency_edges",
+                    "conflict_edge_table": "conflict_edges",
+                    "planning_decision_table": "planning_decisions",
+                },
             }
         )
 
@@ -4427,7 +5727,10 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
     )
     for rank, task_payload in enumerate(task_payloads):
         task_payload["schedule_rank"] = rank
-        task_payload["profile_g"] = adapt_goal_bundle(_profile_g_safe_planning_value(task_payload))
+        task_payload["profile_g"] = adapt_goal_bundle(
+            _profile_g_safe_planning_value(task_payload),
+            created_at_ms=profile_created_at_ms,
+        )
     return task_payloads
 
 

@@ -969,7 +969,7 @@ def reconcile_objective_goal_completion(
     return ObjectiveCompletionResult(
         objective_path=objective_path,
         completed_goal_ids=completed_goal_ids,
-        active_goal_count=state_counts[GoalState.ACTIVE.value] + state_counts[GoalState.REOPENED.value],
+        active_goal_count=sum(1 for goal in goals if goal.is_schedulable),
         completed_goal_count=state_counts[GoalState.VERIFIED_COMPLETE.value],
         completion_evidence=completion_evidence,
         validation_results=validation_results,
@@ -2099,8 +2099,12 @@ def write_objective_graph_artifact(
         "generated_at": utc_now(),
         "objective_path": str(objective_path),
         "goal_count": len(goals),
-        "active_goal_count": sum(1 for goal in goals if goal.status in {"active", "todo", "open"}),
-        "completed_goal_count": sum(1 for goal in goals if goal.status == "completed"),
+        "active_goal_count": sum(1 for goal in goals if goal.is_schedulable),
+        "completed_goal_count": sum(
+            1
+            for goal in goals
+            if goal.lifecycle_state is GoalState.VERIFIED_COMPLETE
+        ),
         "heap_schedule": [record.to_dict() for record in objective_heap_schedule(goals)],
         "thought_graph": build_objective_thought_graph(goals),
         "goals": [

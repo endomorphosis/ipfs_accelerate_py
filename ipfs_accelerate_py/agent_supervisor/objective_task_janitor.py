@@ -22,6 +22,9 @@ JANITOR_COMPLETION_GATE_RECEIPT_SCHEMA = (
 JANITOR_GOAL_REOPEN_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.goal_reopening.v1"
 )
+JANITOR_REPLACEMENT_TASK_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.objective_task_janitor.replacement_task.v1"
+)
 LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE = "launch Playwright validation gate"
 LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
     "(test ! -f swissknife/package.json || npm --prefix swissknife run test:e2e:meta-glasses) && "
@@ -352,6 +355,352 @@ def _contradiction_scheduled_task_ids(payload: Mapping[str, Any]) -> list[str]:
             elif str(item).strip():
                 values.append(str(item).strip())
     return _unique(values)
+
+
+def _json_safe_value(value: Any) -> Any:
+    """Return a deterministic JSON-compatible copy without losing fields."""
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_safe_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted(
+            (_json_safe_value(item) for item in value),
+            key=lambda item: json.dumps(item, sort_keys=True, default=str),
+        )
+    return value
+
+
+def _work_values(value: Any) -> list[Any]:
+    """Normalize a scalar-or-sequence graph/provenance value to a list."""
+
+    if value is None or value == "":
+        return []
+    if isinstance(value, str):
+        return _split_terms(value)
+    if isinstance(value, Mapping):
+        return [_json_safe_value(value)]
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_json_safe_value(item) for item in value if item is not None and item != ""]
+    return [_json_safe_value(value)]
+
+
+def _dedupe_json_values(values: Sequence[Any]) -> list[Any]:
+    """Deduplicate structured values while retaining deterministic order."""
+
+    by_identity: dict[str, Any] = {}
+    for value in values:
+        normalized = _json_safe_value(value)
+        identity = json.dumps(normalized, sort_keys=True, separators=(",", ":"), default=str)
+        by_identity.setdefault(identity, normalized)
+    return [by_identity[key] for key in sorted(by_identity)]
+
+
+def _replacement_task_identity(payload: Mapping[str, Any]) -> str:
+    """Return the durable identity for one replacement task/work request."""
+
+    for key in ("request_id", "task_id", "work_id", "id", "replacement_id"):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value
+    return _stable_contradiction_id(payload)
+
+
+def _contradiction_changed_inputs(payload: Mapping[str, Any]) -> list[Any]:
+    """Project changed proof inputs/scopes retained by contradiction evidence."""
+
+    values: list[Any] = []
+    for key in (
+        "changed_inputs",
+        "changed_input",
+        "invalidated_inputs",
+        "invalidated_scopes",
+        "invalidated_scope",
+        "affected_scopes",
+        "affected_scope",
+        "scope_keys",
+    ):
+        values.extend(_work_values(payload.get(key)))
+    source = payload.get("source_receipt")
+    if isinstance(source, Mapping):
+        for key in (
+            "changed_inputs",
+            "changed_input",
+            "invalidated_scopes",
+            "invalidated_scope",
+            "affected_scopes",
+            "affected_scope",
+            "scope_keys",
+        ):
+            values.extend(_work_values(source.get(key)))
+    return _dedupe_json_values(values)
+
+
+def _normalize_replacement_task(
+    work: Mapping[str, Any],
+    *,
+    goal_id: str,
+    decision: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Retain a scheduled work request with deterministic invalidation context.
+
+    The scheduled record is copied wholesale.  Canonical fields are additive:
+    callers keep custom scheduler fields while downstream consumers can rely
+    on task/request identities, graph edges, and proof-scope provenance.
+    """
+
+    record = _json_safe_value(work)
+    assert isinstance(record, dict)
+    contradiction_payloads = [
+        dict(item)
+        for item in decision.get("contradictions", ())
+        if isinstance(item, Mapping)
+    ]
+    contradiction_ids = _unique(
+        [
+            *(
+                [str(record.get("contradiction_id") or "")]
+                if record.get("contradiction_id")
+                else []
+            ),
+            *[str(item) for item in record.get("contradiction_ids", ())],
+            *[str(item) for item in decision.get("contradiction_ids", ())],
+        ]
+    )
+    changed_inputs = _dedupe_json_values(
+        [
+            *_work_values(record.get("changed_inputs")),
+            *_work_values(record.get("changed_input")),
+            *[
+                changed
+                for contradiction in contradiction_payloads
+                for changed in _contradiction_changed_inputs(contradiction)
+            ],
+        ]
+    )
+
+    raw_task_id = str(
+        record.get("task_id")
+        or record.get("request_id")
+        or record.get("work_id")
+        or record.get("id")
+        or ""
+    ).strip()
+    if not raw_task_id:
+        work_identity = {
+            "goal_id": str(record.get("goal_id") or goal_id),
+            "contradiction_ids": contradiction_ids,
+            "work": record,
+        }
+        raw_task_id = "replacement-" + hashlib.sha256(
+            json.dumps(
+                work_identity,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()[:32]
+    record["task_id"] = raw_task_id
+    record["request_id"] = str(record.get("request_id") or raw_task_id)
+    record["goal_id"] = str(record.get("goal_id") or goal_id)
+    record["goal_ids"] = _unique(
+        [
+            *[str(item) for item in _work_values(record.get("goal_ids"))],
+            record["goal_id"],
+        ]
+    )
+    record["schema"] = str(record.get("schema") or JANITOR_REPLACEMENT_TASK_SCHEMA)
+    record["contradiction_ids"] = contradiction_ids
+
+    depends_on = _dedupe_json_values(
+        [
+            *_work_values(record.get("depends_on")),
+            *_work_values(record.get("dependency_ids")),
+            *_work_values(record.get("dependencies")),
+        ]
+    )
+    record["depends_on"] = depends_on
+    record["dependency_edges"] = _dedupe_json_values(
+        [
+            *_work_values(record.get("dependency_edges")),
+            *_work_values(record.get("dependency_edge")),
+            *[
+                edge
+                for contradiction in contradiction_payloads
+                for edge in _work_values(contradiction.get("dependency_edges"))
+            ],
+        ]
+    )
+    record["conflict_edges"] = _dedupe_json_values(
+        [
+            *_work_values(record.get("conflict_edges")),
+            *_work_values(record.get("conflict_edge")),
+            *[
+                edge
+                for contradiction in contradiction_payloads
+                for edge in _work_values(contradiction.get("conflict_edges"))
+            ],
+        ]
+    )
+    if "conflicts_with" in record:
+        record["conflicts_with"] = _dedupe_json_values(
+            _work_values(record.get("conflicts_with"))
+        )
+    record["changed_inputs"] = changed_inputs
+    record["impacted_criteria"] = _unique(
+        [
+            *[str(item) for item in _work_values(record.get("impacted_criteria"))],
+            *[str(item) for item in decision.get("impacted_criteria", ())],
+        ]
+    )
+    record["invalidated_evidence"] = _unique(
+        [
+            *[str(item) for item in _work_values(record.get("invalidated_evidence"))],
+            *[str(item) for item in decision.get("invalidated_evidence", ())],
+        ]
+    )
+    record["source_receipts"] = _dedupe_json_values(
+        [
+            *_work_values(record.get("source_receipts")),
+            *_work_values(record.get("source_receipt")),
+            *[
+                source
+                for source in decision.get("source_receipts", ())
+                if isinstance(source, Mapping)
+            ],
+        ]
+    )
+    record["invalidation_event_ids"] = _unique(
+        [
+            *[str(item) for item in _work_values(record.get("invalidation_event_ids"))],
+            *[str(item) for item in _work_values(record.get("invalidation_event_id"))],
+            *[
+                str(contradiction.get("invalidation_event_id") or "")
+                for contradiction in contradiction_payloads
+            ],
+        ]
+    )
+    record["affected_obligation_ids"] = _unique(
+        [
+            *[str(item) for item in _work_values(record.get("affected_obligation_ids"))],
+            *[
+                str(item)
+                for contradiction in contradiction_payloads
+                for item in _work_values(contradiction.get("affected_obligation_ids"))
+            ],
+        ]
+    )
+    record["affected_receipt_ids"] = _unique(
+        [
+            *[str(item) for item in _work_values(record.get("affected_receipt_ids"))],
+            *[
+                str(item)
+                for contradiction in contradiction_payloads
+                for item in _work_values(contradiction.get("affected_receipt_ids"))
+            ],
+        ]
+    )
+    record["source_trees"] = _unique(
+        [
+            *[str(item) for item in _work_values(record.get("source_trees"))],
+            *[str(item) for item in _work_values(record.get("source_tree"))],
+            *[
+                str(contradiction.get("source_tree") or "")
+                for contradiction in contradiction_payloads
+            ],
+        ]
+    )
+    if not record.get("source_tree") and len(record["source_trees"]) == 1:
+        record["source_tree"] = record["source_trees"][0]
+    if (
+        not record.get("invalidation_event_id")
+        and len(record["invalidation_event_ids"]) == 1
+    ):
+        record["invalidation_event_id"] = record["invalidation_event_ids"][0]
+    record["invalidation_records"] = _dedupe_json_values(
+        [
+            *_work_values(record.get("invalidation_records")),
+            *[
+                item
+                for contradiction in contradiction_payloads
+                for item in _work_values(contradiction.get("invalidation_records"))
+            ],
+        ]
+    )
+    record["historical_receipts"] = _dedupe_json_values(
+        [
+            *_work_values(record.get("historical_receipts")),
+            *[
+                item
+                for contradiction in contradiction_payloads
+                for item in _work_values(contradiction.get("historical_receipts"))
+            ],
+        ]
+    )
+    record["replacement_id"] = "replacement-" + hashlib.sha256(
+        json.dumps(
+            {
+                "task_id": record["task_id"],
+                "request_id": record["request_id"],
+                "goal_id": record["goal_id"],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()[:32]
+    return record
+
+
+def _merge_replacement_task_records(
+    existing: Mapping[str, Any],
+    incoming: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merge provenance for one task without dropping scheduler-specific data."""
+
+    result = dict(_json_safe_value(existing))
+    for key, value in _json_safe_value(incoming).items():
+        if key not in result or result[key] in (None, "", [], {}):
+            result[key] = value
+    for key in (
+        "contradiction_ids",
+        "goal_ids",
+        "depends_on",
+        "dependency_edges",
+        "conflict_edges",
+        "conflicts_with",
+        "changed_inputs",
+        "impacted_criteria",
+        "invalidated_evidence",
+        "source_receipts",
+        "invalidation_event_ids",
+        "affected_obligation_ids",
+        "affected_receipt_ids",
+        "source_trees",
+        "invalidation_records",
+        "historical_receipts",
+    ):
+        values = [
+            *_work_values(result.get(key)),
+            *_work_values(incoming.get(key)),
+        ]
+        if key in {
+            "contradiction_ids",
+            "goal_ids",
+            "impacted_criteria",
+            "invalidated_evidence",
+            "invalidation_event_ids",
+            "affected_obligation_ids",
+            "affected_receipt_ids",
+            "source_trees",
+        }:
+            result[key] = _unique([str(item) for item in values])
+        else:
+            result[key] = _dedupe_json_values(values)
+    return dict(_json_safe_value(result))
 
 
 def _completion_gate_receipt(
@@ -694,6 +1043,77 @@ def reconcile_objective_task_strategy(
         if key not in seen_reopening_receipts:
             persisted_reopening_receipts.append(receipt)
             seen_reopening_receipts.add(key)
+
+    raw_persisted_replacement_tasks = strategy.get(
+        "objective_task_janitor_replacement_tasks"
+    )
+    if not isinstance(raw_persisted_replacement_tasks, list):
+        # Brief compatibility alias used by early proof-invalidation writers.
+        raw_persisted_replacement_tasks = strategy.get(
+            "objective_task_janitor_replacement_work_requests", ()
+        )
+    prior_replacement_tasks = [
+        dict(_json_safe_value(item))
+        for item in raw_persisted_replacement_tasks
+        if isinstance(item, Mapping)
+    ] if isinstance(raw_persisted_replacement_tasks, (list, tuple)) else []
+
+    replacement_candidates: list[dict[str, Any]] = []
+    for goal_id, decision in serialized_reopening_decisions.items():
+        # Active goals do not have a completion claim to revoke.  Conversely,
+        # an already-reopened goal may receive a second novel contradiction;
+        # its receipt and replacement work remain material even though
+        # ``reopened`` is false for that subsequent transition.
+        if (
+            decision.get("idempotent") is True
+            or str(decision.get("state") or "").strip().lower() != "reopened"
+            or not isinstance(decision.get("reopening_receipt"), Mapping)
+            or not decision.get("reopening_receipt")
+        ):
+            continue
+        raw_work = decision.get("newly_scheduled_work", ())
+        if not isinstance(raw_work, (list, tuple)):
+            continue
+        for work in raw_work:
+            if not isinstance(work, Mapping):
+                continue
+            replacement_candidates.append(
+                _normalize_replacement_task(
+                    work,
+                    goal_id=goal_id,
+                    decision=decision,
+                )
+            )
+
+    replacement_tasks_by_id: dict[str, dict[str, Any]] = {}
+    replacement_order: list[str] = []
+    for task in prior_replacement_tasks:
+        identity = _replacement_task_identity(task)
+        if identity not in replacement_tasks_by_id:
+            replacement_order.append(identity)
+            replacement_tasks_by_id[identity] = task
+        else:
+            replacement_tasks_by_id[identity] = _merge_replacement_task_records(
+                replacement_tasks_by_id[identity],
+                task,
+            )
+
+    replacement_tasks: list[dict[str, Any]] = []
+    for task in replacement_candidates:
+        identity = _replacement_task_identity(task)
+        previous = replacement_tasks_by_id.get(identity)
+        if previous is None:
+            replacement_order.append(identity)
+            replacement_tasks_by_id[identity] = task
+            replacement_tasks.append(task)
+            continue
+        merged = _merge_replacement_task_records(previous, task)
+        if merged != previous:
+            replacement_tasks_by_id[identity] = merged
+            replacement_tasks.append(merged)
+    persisted_replacement_tasks = [
+        replacement_tasks_by_id[identity] for identity in replacement_order
+    ]
 
     newly_scheduled_task_ids = _unique(
         [
@@ -1052,6 +1472,12 @@ def reconcile_objective_task_strategy(
     updated_strategy["objective_task_janitor_newly_scheduled_task_ids"] = (
         persisted_scheduled_task_ids
     )
+    updated_strategy["objective_task_janitor_replacement_tasks"] = (
+        persisted_replacement_tasks
+    )
+    updated_strategy["objective_task_janitor_replacement_work_requests"] = (
+        persisted_replacement_tasks
+    )
     updated_strategy["objective_task_janitor_last_run_at"] = now
     updated_strategy["objective_task_janitor_last_run_summary"] = {
         "blocked_count": len(blocked_task_ids),
@@ -1070,6 +1496,8 @@ def reconcile_objective_task_strategy(
         "contradiction_reopened_goal_count": len(contradiction_reopened_goal_ids),
         "recalculated_goal_count": len(recalculated_goal_ids),
         "newly_scheduled_task_count": len(newly_scheduled_task_ids),
+        "replacement_task_count": len(replacement_tasks),
+        "persisted_replacement_task_count": len(persisted_replacement_tasks),
     }
 
     comparable_keys = (
@@ -1095,6 +1523,8 @@ def reconcile_objective_task_strategy(
         "objective_task_janitor_pending_reopen_goal_ids",
         "objective_task_janitor_recalculated_goal_ids",
         "objective_task_janitor_newly_scheduled_task_ids",
+        "objective_task_janitor_replacement_tasks",
+        "objective_task_janitor_replacement_work_requests",
     )
     changed = any(strategy.get(key) != updated_strategy.get(key) for key in comparable_keys)
     return {
@@ -1109,6 +1539,10 @@ def reconcile_objective_task_strategy(
         "effective_reopened_goal_ids": effective_contradiction_reopened_goal_ids,
         "recalculated_goal_ids": recalculated_goal_ids,
         "newly_scheduled_task_ids": newly_scheduled_task_ids,
+        "replacement_tasks": replacement_tasks,
+        "replacement_work_requests": replacement_tasks,
+        "persisted_replacement_tasks": persisted_replacement_tasks,
+        "persisted_replacement_work_requests": persisted_replacement_tasks,
         "goal_reopening_decisions": serialized_reopening_decisions,
         "goal_reopening_receipts": persisted_reopening_receipts,
         "receipts": receipt_payloads,

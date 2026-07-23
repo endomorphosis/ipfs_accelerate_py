@@ -141,6 +141,9 @@ class SupervisorLoop:
         self.last_recycle_reason = ""
         self.last_run_id = ""
         self.last_log_path = ""
+        self._last_worker_status: dict[str, Any] = {}
+        self._worker_tracking_phase = ""
+        self._last_worker_seen_monotonic: Optional[float] = None
 
     def _child_spec(self, run_id: str) -> SupervisedChildSpec:
         log_path = supervised_log_path(
@@ -171,6 +174,38 @@ class SupervisorLoop:
             "last_recycle_reason": self.last_recycle_reason,
             **dict(self.config.status_extra_fields),
         }
+        if self._last_worker_status:
+            worker_pids = (
+                list(self._last_worker_status.get("active_worker_pids") or [])
+                if child is not None
+                else []
+            )
+            payload_extra.update(
+                {
+                    "active_worker_count": len(worker_pids),
+                    "active_worker_pids": worker_pids,
+                    "worker_phase": str(self._last_worker_status.get("phase") or ""),
+                    "worker_phase_age_seconds": self._last_worker_status.get(
+                        "phase_age_seconds"
+                    ),
+                    "worker_absence_age_seconds": self._last_worker_status.get(
+                        "worker_absence_age_seconds"
+                    )
+                    if child is not None
+                    else None,
+                    "worker_descendant_count": (
+                        int(self._last_worker_status.get("descendant_count") or 0)
+                        if child is not None
+                        else 0
+                    ),
+                    "stalled_without_active_worker": bool(
+                        child is not None
+                        and self._last_worker_status.get(
+                            "stalled_without_active_worker"
+                        )
+                    ),
+                }
+            )
         if extra:
             payload_extra.update(dict(extra))
         self.status.write(
@@ -224,13 +259,55 @@ class SupervisorLoop:
             )
         except Exception:
             threshold = 0.0
-        worker_status = worktree_phase_worker_status(current_status, child.pid, threshold)
+        worker_status = self._worker_status_with_disappearance_grace(
+            worktree_phase_worker_status(current_status, child.pid, threshold),
+            threshold_seconds=threshold,
+        )
+        self._last_worker_status = dict(worker_status)
         if worker_status.get("stalled_without_active_worker"):
             return SupervisorLoopDecision.recycle(
                 "worktree_phase_without_active_child",
                 detail=worker_status,
             )
         return SupervisorLoopDecision.keep_running()
+
+    def _worker_status_with_disappearance_grace(
+        self,
+        worker_status: Mapping[str, Any],
+        *,
+        threshold_seconds: float,
+    ) -> dict[str, Any]:
+        """Measure a workerless stall from disappearance when one was observed."""
+
+        status = dict(worker_status)
+        if not status.get("required"):
+            self._worker_tracking_phase = ""
+            self._last_worker_seen_monotonic = None
+            status["worker_absence_age_seconds"] = None
+            return status
+
+        phase = str(status.get("phase") or "")
+        if phase != self._worker_tracking_phase:
+            self._worker_tracking_phase = phase
+            self._last_worker_seen_monotonic = None
+
+        now_monotonic = self.monotonic()
+        if int(status.get("active_worker_count") or 0) > 0:
+            self._last_worker_seen_monotonic = now_monotonic
+            status["worker_absence_age_seconds"] = 0.0
+            status["stalled_without_active_worker"] = False
+            return status
+
+        if self._last_worker_seen_monotonic is None:
+            status["worker_absence_age_seconds"] = None
+            return status
+
+        absence_age = max(0.0, now_monotonic - self._last_worker_seen_monotonic)
+        status["worker_absence_age_seconds"] = round(absence_age, 3)
+        status["stalled_without_active_worker"] = bool(
+            threshold_seconds > 0 and absence_age >= threshold_seconds
+        )
+        return status
 
     def watchdog_decision(self, child: SupervisedChild) -> SupervisorLoopDecision:
         current_status = read_json(self.config.spec.resolve(self.config.spec.status_path))
@@ -277,6 +354,9 @@ class SupervisorLoop:
                 self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason, run_duration=0.0))
                 continue
             child_started_at = self.monotonic()
+            self._worker_tracking_phase = ""
+            self._last_worker_seen_monotonic = None
+            self._last_worker_status = {}
             self._safe_write_status("starting", child=child, run_id=run_id, log_path=log_path)
             recycled = False
             stop_requested = False

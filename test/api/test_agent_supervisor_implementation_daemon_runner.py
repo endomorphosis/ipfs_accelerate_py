@@ -215,6 +215,39 @@ def test_secondary_task_shard_skips_repository_wide_git_gc(tmp_path: Path, monke
     assert result["git_gc"] == {"ran": False, "reason": "non_primary_shard"}
 
 
+def test_periodic_maintenance_obeys_daemon_cooldown(tmp_path: Path, monkeypatch):
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        maintenance_interval_seconds=300,
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(daemon, "_cleanup_stale_worktrees", lambda: calls.append("worktrees") or {})
+    monkeypatch.setattr(daemon, "_cleanup_stale_locks", lambda: calls.append("locks") or {})
+    monkeypatch.setattr(
+        daemon,
+        "_reset_persistently_dirty_submodules",
+        lambda: calls.append("submodules") or {},
+    )
+    monkeypatch.setattr(daemon.git_gc, "run_if_needed", lambda: calls.append("gc") or {})
+    monkeypatch.setattr(
+        daemon.task_queue,
+        "compact",
+        lambda _active_ids: calls.append("queue") or 0,
+    )
+
+    first = daemon._periodic_maintenance()
+    second = daemon._periodic_maintenance()
+
+    assert first["ran"] is True
+    assert second["ran"] is False
+    assert second["reason"] == "cooldown"
+    assert calls == ["worktrees", "locks", "submodules", "gc", "queue"]
+
+
 def test_task_claim_liveness_accepts_module_style_daemon_invocation(tmp_path: Path, monkeypatch):
     daemon = PortalImplementationDaemon(
         todo_path=tmp_path / "tasks.todo.md",

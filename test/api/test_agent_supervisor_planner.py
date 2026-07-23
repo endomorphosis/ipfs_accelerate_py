@@ -177,6 +177,35 @@ def test_cycle_and_missing_dependency_emit_bounded_repairs_without_blocking_inde
     ).claimable
 
 
+def test_converging_dependency_dag_is_not_misclassified_as_a_cycle() -> None:
+    graph = materialize_task_dependency_dag(
+        [
+            {"task_id": "A", "canonical_task_cid": "cid-a"},
+            {
+                "task_id": "B",
+                "canonical_task_cid": "cid-b",
+                "depends_on": ["A"],
+            },
+            {
+                "task_id": "C",
+                "canonical_task_cid": "cid-c",
+                "depends_on": ["A", "B"],
+            },
+        ]
+    )
+
+    assert graph.repair_evidence == []
+    assert graph.invalid_task_cids == []
+    assert {
+        (edge.source_task_cid, edge.target_task_cid)
+        for edge in graph.edges
+    } == {
+        ("cid-a", "cid-b"),
+        ("cid-a", "cid-c"),
+        ("cid-b", "cid-c"),
+    }
+
+
 def test_terminal_duplicate_alias_does_not_block_its_live_canonical_task() -> None:
     graph = materialize_task_dependency_dag(
         [

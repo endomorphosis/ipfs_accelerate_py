@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     evaluate_goal_completion,
     evaluate_completion_gate,
     completion_diagnostics,
+    is_schedulable_goal_state,
     migrate_legacy_goal_completion,
     reconcile_goal_reopenings,
     reopen_goal_for_contradictions,
@@ -155,6 +156,24 @@ def test_goal_state_contract_names_every_required_lifecycle_state() -> None:
         "blocked",
         "reopened",
     }
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        (GoalState.ACTIVE, True),
+        (GoalState.PROVISIONALLY_COMPLETE, True),
+        (GoalState.ANALYSIS_INCONCLUSIVE, True),
+        (GoalState.REOPENED, True),
+        (GoalState.VERIFIED_COMPLETE, False),
+        (GoalState.BLOCKED, False),
+    ],
+)
+def test_goal_scheduler_keeps_nonterminal_proof_work_actionable(
+    state: GoalState,
+    expected: bool,
+) -> None:
+    assert is_schedulable_goal_state(state) is expected
 
 
 def test_goal_lifecycle_enforces_legal_transitions_and_records_history() -> None:

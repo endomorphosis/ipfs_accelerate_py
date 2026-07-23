@@ -28,8 +28,16 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
+from .formal_verification_policy import (
+    ChangedScope,
+    FormalVerificationPolicy,
+    InvariantClass,
+    PolicySelection,
+    RiskLevel,
+    default_formal_verification_policy,
+)
 from .merge_queue import MergeQueue, MergeRequest
 
 
@@ -87,6 +95,11 @@ class MergeTrain:
             request and returns a merge-result mapping.
         state_dir: Train receipts/lease/worktrees directory.  Defaults beneath
             the queue directory so independent processes converge on one lease.
+        formal_verification_policy: Optional risk-selected policy applied before
+            any callback or built-in target advancement.
+        proof_gate: Evidence provider for selected proof requirements.  The
+            ``proof_gate_callback`` spelling is retained as an adapter alias.
+        proof_cache_dir: Durable exact-selection gate cache shared by retries.
     """
 
     def __init__(
@@ -101,6 +114,10 @@ class MergeTrain:
         state_dir: Path | str | None = None,
         git_timeout_seconds: float = 600.0,
         owner_id: str | None = None,
+        formal_verification_policy: FormalVerificationPolicy | Mapping[str, Any] | None = None,
+        proof_gate: Callable[..., Any] | None = None,
+        proof_gate_callback: Callable[..., Any] | None = None,
+        proof_cache_dir: Path | str | None = None,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.queue = queue
@@ -118,6 +135,42 @@ class MergeTrain:
         self.consumer_lock_path = self.state_dir / "consumer.lock"
         self.git_timeout_seconds = max(1.0, float(git_timeout_seconds))
         self.owner_id = owner_id or f"merge-train:{os.getpid()}:{uuid.uuid4().hex}"
+        if (
+            proof_gate is not None
+            and proof_gate_callback is not None
+            and proof_gate is not proof_gate_callback
+        ):
+            raise ValueError("proof_gate and proof_gate_callback must refer to the same callback")
+        self.proof_gate = proof_gate or proof_gate_callback
+        self.proof_gate_callback = self.proof_gate
+        if formal_verification_policy is None:
+            self.formal_verification_policy = (
+                default_formal_verification_policy()
+                if self.proof_gate is not None
+                else None
+            )
+        elif isinstance(formal_verification_policy, FormalVerificationPolicy):
+            self.formal_verification_policy = formal_verification_policy
+        elif isinstance(formal_verification_policy, Mapping):
+            self.formal_verification_policy = FormalVerificationPolicy.from_dict(
+                formal_verification_policy
+            )
+        else:
+            raise TypeError(
+                "formal_verification_policy must be a FormalVerificationPolicy or mapping"
+            )
+        self.proof_cache_dir = Path(
+            proof_cache_dir
+            if proof_cache_dir is not None
+            else self.state_dir / "proof-gate-cache"
+        )
+        self.proof_gate_state_dir = self.state_dir / "proof-gates"
+        self.proof_gate_pin_dir = self.proof_gate_state_dir / "pins"
+        self.proof_gate_attempt_dir = self.proof_gate_state_dir / "attempts"
+        if self.formal_verification_policy is not None:
+            self.proof_cache_dir.mkdir(parents=True, exist_ok=True)
+            self.proof_gate_pin_dir.mkdir(parents=True, exist_ok=True)
+            self.proof_gate_attempt_dir.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
     def _consumer_lease(self) -> Iterator[bool]:
@@ -200,6 +253,13 @@ class MergeTrain:
             "target_branch": self.target_branch,
             "state_dir": str(self.state_dir),
             "consumer_lock_path": str(self.consumer_lock_path),
+            "proof_gate_enabled": self.formal_verification_policy is not None,
+            "proof_policy_id": (
+                self.formal_verification_policy.policy_id
+                if self.formal_verification_policy is not None
+                else ""
+            ),
+            "proof_cache_dir": str(self.proof_cache_dir),
             "queue": queue_status,
         }
 
@@ -253,6 +313,53 @@ class MergeTrain:
                 started_at=started_at,
             )
 
+        proof_gate_receipt: dict[str, Any] = {}
+        proof_tree_id = ""
+        try:
+            proof_policy = self._proof_policy_for_request(request)
+        except Exception as exc:
+            return self._finish_failure(
+                request,
+                reason="proof_gate_identity_invalid",
+                details={"proof_gate_error": f"{type(exc).__name__}: {exc}"},
+                started_at=started_at,
+                retryable=False,
+            )
+        if proof_policy is not None:
+            tree_result = self._git("rev-parse", "--verify", f"{candidate}^{{tree}}")
+            if tree_result.returncode != 0 or not tree_result.stdout.strip():
+                return self._finish_failure(
+                    request,
+                    reason="candidate_tree_missing",
+                    details={
+                        "commit_sha": candidate,
+                        "stderr": tree_result.stderr[-2000:],
+                    },
+                    started_at=started_at,
+                    retryable=False,
+                )
+            proof_tree_id = f"git-tree:{tree_result.stdout.strip()}"
+            gate = self._evaluate_proof_gate(
+                request=request,
+                candidate=candidate,
+                target=target,
+                repository_tree_id=proof_tree_id,
+                policy=proof_policy,
+            )
+            proof_gate_receipt = dict(gate.get("receipt") or {})
+            if not gate.get("allowed", False):
+                return self._finish_failure(
+                    request,
+                    reason=str(gate.get("reason") or "proof_gate_blocked"),
+                    details={
+                        "proof_gate": proof_gate_receipt,
+                        "proof_gate_cache_hit": bool(gate.get("cache_hit")),
+                        "repository_tree_id": proof_tree_id,
+                    },
+                    started_at=started_at,
+                    retryable=bool(gate.get("retryable", True)),
+                )
+
         # A callback owns the complete integration lifecycle, including nested
         # repository handoff and taskboard completion.  Root-level receipts or
         # ancestry only prove that the parent commit landed; they cannot safely
@@ -272,7 +379,17 @@ class MergeTrain:
                     candidate=candidate,
                     target=target,
                     started_at=started_at,
-                    extra={"duplicate_of": previous.get("request_id", "")},
+                    extra={
+                        "duplicate_of": previous.get("request_id", ""),
+                        **(
+                            {
+                                "proof_gate": proof_gate_receipt,
+                                "repository_tree_id": proof_tree_id,
+                            }
+                            if proof_gate_receipt
+                            else {}
+                        ),
+                    },
                 )
 
             if self._is_ancestor(candidate, target):
@@ -283,6 +400,14 @@ class MergeTrain:
                     candidate=candidate,
                     target=target,
                     started_at=started_at,
+                    extra=(
+                        {
+                            "proof_gate": proof_gate_receipt,
+                            "repository_tree_id": proof_tree_id,
+                        }
+                        if proof_gate_receipt
+                        else None
+                    ),
                 )
 
         if self.merge_callback is not None:
@@ -303,7 +428,17 @@ class MergeTrain:
                     candidate=candidate,
                     target=self._target_commit() or target,
                     started_at=started_at,
-                    extra={"merge_result": callback_result},
+                    extra={
+                        "merge_result": callback_result,
+                        **(
+                            {
+                                "proof_gate": proof_gate_receipt,
+                                "repository_tree_id": proof_tree_id,
+                            }
+                            if proof_gate_receipt
+                            else {}
+                        ),
+                    },
                 )
             callback_reason = str(callback_result.get("reason") or "merge_callback_failed")
             retryable = callback_reason not in {
@@ -315,7 +450,17 @@ class MergeTrain:
             return self._finish_failure(
                 request,
                 reason=callback_reason,
-                details={"merge_result": callback_result},
+                details={
+                    "merge_result": callback_result,
+                    **(
+                        {
+                            "proof_gate": proof_gate_receipt,
+                            "repository_tree_id": proof_tree_id,
+                        }
+                        if proof_gate_receipt
+                        else {}
+                    ),
+                },
                 started_at=started_at,
                 retryable=retryable,
             )
@@ -325,6 +470,7 @@ class MergeTrain:
             canonical=canonical,
             candidate=candidate,
             target=target,
+            proof_tree_id=proof_tree_id,
         )
         if result.get("merged"):
             return self._finish_success(
@@ -334,15 +480,580 @@ class MergeTrain:
                 candidate=candidate,
                 target=str(result.get("target_commit") or target),
                 started_at=started_at,
-                extra=result,
+                extra={
+                    **result,
+                    **(
+                        {
+                            "proof_gate": proof_gate_receipt,
+                            "repository_tree_id": proof_tree_id,
+                        }
+                        if proof_gate_receipt
+                        else {}
+                    ),
+                },
             )
         return self._finish_failure(
             request,
             reason=str(result.get("reason") or "merge_failed"),
-            details=result,
+            details={
+                **result,
+                **(
+                    {
+                        "proof_gate": proof_gate_receipt,
+                        "repository_tree_id": proof_tree_id,
+                    }
+                    if proof_gate_receipt
+                    else {}
+                ),
+            },
             started_at=started_at,
             retryable=bool(result.get("retryable", True)),
         )
+
+    @staticmethod
+    def _metadata_strings(value: Any) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            return tuple(
+                item.strip()
+                for item in value.replace("\n", ",").split(",")
+                if item.strip()
+            )
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
+            return tuple(str(item).strip() for item in value if str(item).strip())
+        return ()
+
+    @staticmethod
+    def _risk_for_priority(priority: str) -> RiskLevel:
+        return {
+            "P0": RiskLevel.CRITICAL,
+            "P1": RiskLevel.HIGH,
+            "P2": RiskLevel.MEDIUM,
+            "P3": RiskLevel.LOW,
+        }.get(str(priority or "").strip().upper(), RiskLevel.MEDIUM)
+
+    @staticmethod
+    def _modeled_invariant_hints(path: str) -> tuple[str, ...]:
+        """Conservatively classify modeled supervisor surfaces by path.
+
+        These hints are only used when a producer did not provide richer
+        symbol-level scope information.  They are deliberately deterministic
+        and additive: a broad hint can select a stricter rule, but cannot lower
+        a requirement selected by another hint.
+        """
+
+        lowered = path.casefold()
+        values: set[str] = set()
+        if "agent_supervisor/" in lowered:
+            values.update(
+                {
+                    InvariantClass.DATA_INTEGRITY.value,
+                    InvariantClass.STATE_TRANSITION.value,
+                }
+            )
+        if "merge" in lowered:
+            values.add(InvariantClass.MERGE_IDEMPOTENCE.value)
+        if any(token in lowered for token in ("queue", "scheduler", "goal", "task")):
+            values.add(InvariantClass.STATE_TRANSITION.value)
+        if any(token in lowered for token in ("dag", "graph", "dependency")):
+            values.add(InvariantClass.DAG_ACYCLICITY.value)
+        if any(token in lowered for token in ("lease", "lock")):
+            values.add(InvariantClass.LEASE_SAFETY.value)
+        if "cache" in lowered:
+            values.add(InvariantClass.CACHE_KEY_COMPLETENESS.value)
+        if any(token in lowered for token in ("proof", "evidence", "receipt")):
+            values.add(InvariantClass.EVIDENCE_FRESHNESS.value)
+        if any(token in lowered for token in ("auth", "permission", "override")):
+            values.add(InvariantClass.AUTHORIZATION.value)
+        if any(token in lowered for token in ("resource", "worktree", "sandbox")):
+            values.add(InvariantClass.RESOURCE_ISOLATION.value)
+        return tuple(sorted(values))
+
+    def _changed_scopes(
+        self,
+        request: MergeRequest,
+        *,
+        candidate: str,
+        target: str,
+    ) -> tuple[ChangedScope, ...]:
+        metadata = request.metadata if isinstance(request.metadata, Mapping) else {}
+        supplied = metadata.get("proof_changed_scopes")
+        if isinstance(supplied, Sequence) and not isinstance(
+            supplied, (str, bytes, bytearray)
+        ):
+            if metadata.get("proof_changed_scopes_complete") is False:
+                raise ValueError("proof changed-scope packet is incomplete")
+            scopes = []
+            for raw in supplied:
+                if isinstance(raw, ChangedScope):
+                    scopes.append(raw)
+                    continue
+                if not isinstance(raw, Mapping):
+                    raise ValueError("proof_changed_scopes entries must be mappings")
+                # Queue producers may use the canonical wire contract or a
+                # compact, JSON-friendly spelling.
+                if raw.get("schema"):
+                    scopes.append(ChangedScope.from_dict(raw))
+                else:
+                    scopes.append(
+                        ChangedScope(
+                            path=raw.get("path", ""),
+                            ast_scope_ids=tuple(raw.get("ast_scope_ids") or ()),
+                            risk=raw.get(
+                                "risk", self._risk_for_priority(request.priority)
+                            ),
+                            invariant_classes=tuple(
+                                raw.get("invariant_classes") or ()
+                            ),
+                            change_kind=raw.get("change_kind", "modified"),
+                            metadata=raw.get("metadata") or {},
+                        )
+                    )
+            return tuple(sorted(scopes, key=lambda item: item.scope_id))
+
+        baseline = str(metadata.get("baseline_ref") or "").strip()
+        if not baseline:
+            merge_base = self._git("merge-base", candidate, target)
+            baseline = (
+                merge_base.stdout.strip()
+                if merge_base.returncode == 0 and merge_base.stdout.strip()
+                else target
+            )
+        diff = self._git(
+            "diff",
+            "--name-status",
+            "--find-renames",
+            baseline,
+            candidate,
+        )
+        if diff.returncode != 0:
+            raise ValueError(f"could not derive proof changed scopes: {diff.stderr[-1000:]}")
+
+        task_payload = metadata.get("task")
+        task_metadata = (
+            task_payload.get("metadata")
+            if isinstance(task_payload, Mapping)
+            and isinstance(task_payload.get("metadata"), Mapping)
+            else {}
+        )
+        ast_scope_ids = self._metadata_strings(
+            metadata.get("proof_ast_scope_ids")
+            or task_metadata.get("ast symbols")
+            or task_metadata.get("ast_symbols")
+        )
+        explicit_invariants = self._metadata_strings(
+            metadata.get("proof_invariant_classes")
+            or task_metadata.get("invariant classes")
+            or task_metadata.get("invariant_classes")
+        )
+        risk = self._risk_for_priority(request.priority)
+        scopes: list[ChangedScope] = []
+        for line in diff.stdout.splitlines():
+            fields = line.split("\t")
+            if len(fields) < 2:
+                continue
+            status = fields[0]
+            path = fields[-1]
+            kind = {
+                "A": "added",
+                "D": "deleted",
+                "R": "renamed",
+                "C": "copied",
+            }.get(status[:1], "modified")
+            invariants = tuple(
+                sorted(
+                    set(explicit_invariants)
+                    | set(self._modeled_invariant_hints(path))
+                )
+            )
+            scopes.append(
+                ChangedScope(
+                    path=path,
+                    ast_scope_ids=ast_scope_ids,
+                    risk=risk,
+                    invariant_classes=invariants,
+                    change_kind=kind,
+                    metadata={"git_status": status},
+                )
+            )
+        return tuple(sorted(scopes, key=lambda item: item.scope_id))
+
+    @staticmethod
+    def _proof_gate_cache_key(selection: PolicySelection) -> str:
+        payload = "\0".join(
+            (
+                selection.policy_id,
+                selection.selection_id,
+                selection.repository_tree_id,
+            )
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _proof_policy_for_request(
+        self, request: MergeRequest
+    ) -> FormalVerificationPolicy | None:
+        """Resolve the immutable queue policy without allowing a retry downgrade.
+
+        Queue producers persist the complete policy snapshot beside the
+        candidate.  A consumer may additionally have a configured policy, but
+        it must be the same snapshot.  This prevents a restarted consumer with
+        a missing or weaker configuration from bypassing a gate that already
+        timed out or observed an unavailable provider.
+        """
+
+        metadata = request.metadata if isinstance(request.metadata, Mapping) else {}
+        raw_policy = metadata.get("formal_verification_policy")
+        queued_policy: FormalVerificationPolicy | None = None
+        if raw_policy:
+            if not isinstance(raw_policy, Mapping):
+                raise ValueError("queued formal-verification policy is malformed")
+            queued_policy = FormalVerificationPolicy.from_dict(raw_policy)
+        configured = self.formal_verification_policy
+        if configured is not None and queued_policy is not None:
+            if configured.policy_id != queued_policy.policy_id:
+                raise ValueError(
+                    "configured proof policy does not match the queued policy snapshot"
+                )
+        return queued_policy or configured
+
+    @staticmethod
+    def _default_proof_plan(
+        *,
+        policy: FormalVerificationPolicy,
+        selection: PolicySelection,
+    ) -> dict[str, Any]:
+        """Describe the exact selected work even when a provider is unavailable."""
+
+        payload: dict[str, Any] = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-proof-plan@1",
+            "policy_id": policy.policy_id,
+            "selection_id": selection.selection_id,
+            "repository_tree_id": selection.repository_tree_id,
+            "requirement_ids": [
+                item.requirement_id for item in selection.requirements
+            ],
+            "requirements": [item.to_dict() for item in selection.requirements],
+            "fallback_validations": list(selection.fallback_validations),
+        }
+        canonical = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), default=str
+        )
+        payload["plan_id"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return payload
+
+    @staticmethod
+    def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(
+            f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        )
+        try:
+            temporary.write_text(
+                json.dumps(dict(payload), indent=2, sort_keys=True, default=str) + "\n",
+                encoding="utf-8",
+            )
+            os.replace(temporary, path)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+    def _pin_proof_selection(
+        self,
+        request: MergeRequest,
+        *,
+        selection: PolicySelection,
+        changes: Sequence[ChangedScope],
+    ) -> dict[str, Any]:
+        path = self.proof_gate_pin_dir / f"{request.request_id}.json"
+        pin = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-proof-pin@1",
+            "request_id": request.request_id,
+            "policy_id": selection.policy_id,
+            "selection_id": selection.selection_id,
+            "repository_tree_id": selection.repository_tree_id,
+            "rollout_mode": selection.rollout_mode.value,
+            "changed_scope_ids": [item.scope_id for item in changes],
+        }
+        if path.exists():
+            try:
+                existing = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ValueError("proof gate pin is unreadable") from exc
+            for name in (
+                "request_id",
+                "policy_id",
+                "selection_id",
+                "repository_tree_id",
+                "rollout_mode",
+                "changed_scope_ids",
+            ):
+                if existing.get(name) != pin.get(name):
+                    raise ValueError(f"proof gate pin mismatch: {name}")
+            return dict(existing)
+        self._atomic_json(path, pin)
+        return pin
+
+    @staticmethod
+    def _gate_receipt_type() -> Any:
+        # Kept lazy so older installations which only use the ungated train
+        # can still import this module during a rolling deployment.
+        from . import formal_verification_policy as policy_module
+
+        receipt_type = getattr(policy_module, "MergeProofGateReceipt", None)
+        if receipt_type is None:
+            raise RuntimeError("MergeProofGateReceipt is unavailable")
+        return receipt_type
+
+    def _read_cached_gate_receipt(
+        self, selection: PolicySelection
+    ) -> Any | None:
+        path = self.proof_cache_dir / f"{self._proof_gate_cache_key(selection)}.json"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            receipt = self._gate_receipt_type().from_dict(payload)
+        except (FileNotFoundError, OSError, json.JSONDecodeError, TypeError, ValueError):
+            return None
+        if (
+            receipt.policy_id != selection.policy_id
+            or receipt.selection_id != selection.selection_id
+            or receipt.repository_tree_id != selection.repository_tree_id
+            or not receipt.allowed
+            or getattr(receipt, "override_receipt_id", "")
+            or not all(
+                result.requirement_satisfied
+                for result in receipt.decision.results
+            )
+        ):
+            return None
+        return receipt
+
+    def _persist_gate_receipt(
+        self,
+        request: MergeRequest,
+        receipt: Any,
+        *,
+        cache: bool,
+    ) -> dict[str, Any]:
+        payload = dict(receipt.to_dict())
+        attempt = max(1, int(getattr(request, "attempt", 1) or 1))
+        attempt_path = (
+            self.proof_gate_attempt_dir
+            / f"{request.request_id}-attempt-{attempt}.json"
+        )
+        self._atomic_json(attempt_path, payload)
+        if cache:
+            selection = PolicySelection.from_dict(payload["selection"])
+            cache_path = (
+                self.proof_cache_dir
+                / f"{self._proof_gate_cache_key(selection)}.json"
+            )
+            self._atomic_json(cache_path, payload)
+        return payload
+
+    def _evaluate_proof_gate(
+        self,
+        *,
+        request: MergeRequest,
+        candidate: str,
+        target: str,
+        repository_tree_id: str,
+        policy: FormalVerificationPolicy,
+    ) -> dict[str, Any]:
+        try:
+            changes = self._changed_scopes(
+                request, candidate=candidate, target=target
+            )
+            selection = policy.select(
+                changes, repository_tree_id=repository_tree_id
+            )
+            self._pin_proof_selection(
+                request, selection=selection, changes=changes
+            )
+        except Exception as exc:
+            return {
+                "allowed": False,
+                "retryable": False,
+                "reason": "proof_gate_identity_invalid",
+                "receipt": {
+                    "policy_id": policy.policy_id,
+                    "repository_tree_id": repository_tree_id,
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+            }
+
+        cached = self._read_cached_gate_receipt(selection)
+        if cached is not None:
+            receipt_type = self._gate_receipt_type()
+            cached_metadata = dict(getattr(cached, "metadata", {}) or {})
+            cached_metadata["reused_receipt_id"] = cached.receipt_id
+            receipt = receipt_type.build(
+                policy=policy,
+                selection=selection,
+                repository_tree_id=repository_tree_id,
+                proof_plan=getattr(cached, "proof_plan", None) or None,
+                outcomes=getattr(cached, "proof_outcomes", ()),
+                validations=getattr(cached, "validation_outcomes", ()),
+                proof_receipts=getattr(cached, "proof_receipts", ()),
+                proof_receipt_ids=getattr(cached, "proof_receipt_ids", ()),
+                provider_status=getattr(cached, "provider_status", {}),
+                provider_error=getattr(cached, "provider_error", ""),
+                cache_status={
+                    "status": "hit",
+                    "cache_key": self._proof_gate_cache_key(selection),
+                    "reused_receipt_id": cached.receipt_id,
+                },
+                metadata=cached_metadata,
+            )
+            payload = self._persist_gate_receipt(request, receipt, cache=False)
+            return {
+                "allowed": True,
+                "retryable": False,
+                "reason": "proof_gate_cache_hit",
+                "receipt": payload,
+                "cache_hit": True,
+            }
+
+        metadata = request.metadata if isinstance(request.metadata, Mapping) else {}
+        evidence: Any = metadata.get("proof_gate") or metadata.get(
+            "proof_gate_evidence"
+        )
+        provider_error = ""
+        callback_failed = False
+        if self.proof_gate is not None:
+            try:
+                evidence = self._call_compatible(
+                    self.proof_gate,
+                    request,
+                    policy=policy,
+                    selection=selection,
+                    repository_tree_id=repository_tree_id,
+                    changed_scopes=changes,
+                    changes=changes,
+                    cached_evidence=None,
+                    candidate_commit=candidate,
+                    target_commit=target,
+                )
+            except Exception as exc:
+                callback_failed = True
+                provider_error = f"{type(exc).__name__}: {exc}"
+                evidence = {
+                    "provider_status": {
+                        "status": (
+                            "timed_out"
+                            if isinstance(exc, TimeoutError)
+                            else "unavailable"
+                        )
+                    },
+                    "provider_error": provider_error,
+                }
+
+        receipt_type = self._gate_receipt_type()
+        try:
+            if isinstance(evidence, receipt_type):
+                receipt = evidence
+            elif isinstance(evidence, Mapping) and str(
+                evidence.get("schema") or ""
+            ).endswith("merge-proof-gate-receipt@1"):
+                receipt = receipt_type.from_dict(evidence)
+            else:
+                packet = dict(evidence) if isinstance(evidence, Mapping) else {}
+                for claimed_name, actual in (
+                    ("policy_id", policy.policy_id),
+                    ("selection_id", selection.selection_id),
+                    ("repository_tree_id", repository_tree_id),
+                ):
+                    claimed = str(packet.get(claimed_name) or "")
+                    if claimed and claimed != actual:
+                        raise ValueError(
+                            f"proof gate {claimed_name} does not match pinned value"
+                        )
+                receipt = receipt_type.build(
+                    policy=policy,
+                    selection=selection,
+                    repository_tree_id=repository_tree_id,
+                    proof_plan=(
+                        packet.get("proof_plan")
+                        or self._default_proof_plan(
+                            policy=policy,
+                            selection=selection,
+                        )
+                    ),
+                    outcomes=packet.get(
+                        "proof_outcomes", packet.get("outcomes")
+                    ),
+                    validations=packet.get(
+                        "validations", packet.get("validation_outcomes")
+                    ),
+                    proof_receipts=tuple(packet.get("proof_receipts") or ()),
+                    proof_receipt_ids=tuple(
+                        packet.get("proof_receipt_ids") or ()
+                    ),
+                    override=packet.get("override"),
+                    provider_status=packet.get("provider_status"),
+                    provider_error=str(
+                        packet.get("provider_error") or provider_error
+                    ),
+                    cache_status={
+                        "status": "miss",
+                        "cache_key": self._proof_gate_cache_key(selection),
+                    },
+                )
+            if (
+                receipt.policy_id != policy.policy_id
+                or receipt.selection_id != selection.selection_id
+                or receipt.repository_tree_id != repository_tree_id
+            ):
+                raise ValueError("proof gate receipt identity does not match pinned selection")
+        except Exception as exc:
+            return {
+                "allowed": False,
+                "retryable": callback_failed,
+                "reason": "proof_gate_provider_failed" if callback_failed else "proof_gate_identity_invalid",
+                "receipt": {
+                    "policy_id": policy.policy_id,
+                    "selection_id": selection.selection_id,
+                    "repository_tree_id": repository_tree_id,
+                    "provider_error": provider_error
+                    or f"{type(exc).__name__}: {exc}",
+                },
+            }
+
+        payload = self._persist_gate_receipt(
+            request,
+            receipt,
+            cache=bool(receipt.allowed)
+            and not bool(getattr(receipt, "override_receipt_id", ""))
+            and all(
+                result.requirement_satisfied
+                for result in receipt.decision.results
+            ),
+        )
+        provider_status = payload.get("provider_status")
+        status = (
+            str(provider_status.get("status") or "")
+            if isinstance(provider_status, Mapping)
+            else str(provider_status or "")
+        ).casefold()
+        transient = callback_failed or status in {
+            "timed_out",
+            "timeout",
+            "unavailable",
+            "provider_unavailable",
+            "error",
+            "failed",
+        }
+        return {
+            "allowed": bool(receipt.allowed),
+            "retryable": transient or not bool(receipt.allowed),
+            "reason": "proof_gate_allowed" if receipt.allowed else "proof_gate_blocked",
+            "receipt": payload,
+            "cache_hit": False,
+        }
 
     def _rebase_and_integrate(
         self,
@@ -351,6 +1062,7 @@ class MergeTrain:
         canonical: str,
         candidate: str,
         target: str,
+        proof_tree_id: str = "",
     ) -> dict[str, Any]:
         workspace = Path(tempfile.mkdtemp(prefix="candidate-", dir=self.worktree_dir))
         added = False
@@ -404,6 +1116,25 @@ class MergeTrain:
             if rebased.returncode != 0:
                 return self._command_failure("rebased_commit_missing", rebased)
             rebased_commit = rebased.stdout.strip()
+            if proof_tree_id:
+                rebased_tree = self._git(
+                    "rev-parse", "--verify", f"{rebased_commit}^{{tree}}", cwd=workspace
+                )
+                actual_tree_id = (
+                    f"git-tree:{rebased_tree.stdout.strip()}"
+                    if rebased_tree.returncode == 0 and rebased_tree.stdout.strip()
+                    else ""
+                )
+                if actual_tree_id != proof_tree_id:
+                    return {
+                        "merged": False,
+                        "retryable": True,
+                        "reason": "proof_gate_tree_mismatch",
+                        "proof_repository_tree_id": proof_tree_id,
+                        "integration_repository_tree_id": actual_tree_id,
+                        "rebased_commit": rebased_commit,
+                        "stderr": rebased_tree.stderr[-2000:],
+                    }
             # Compare-and-swap is important even under our lease: a human or a
             # different merge mechanism may legitimately advance the branch.
             update = self._advance_target(rebased_commit, expected_target=target)

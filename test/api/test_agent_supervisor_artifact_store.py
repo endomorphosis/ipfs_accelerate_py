@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor import artifact_store
 from ipfs_accelerate_py.agent_supervisor.artifact_store import (
     BUNDLE_INDEX_KIND,
     QUERY_SCHEMA,
@@ -12,12 +15,16 @@ from ipfs_accelerate_py.agent_supervisor.artifact_store import (
     artifact_schema,
     query_artifact,
     read_artifact_fields,
+    read_bundle_index_planning_projection,
     read_bundle_index_projection,
     write_bundle_index_artifact,
     write_scheduler_manifest_artifact,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     build_bundle_task_payloads,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+    write_todo_vector_index_artifact,
 )
 
 
@@ -96,8 +103,13 @@ def test_bundle_index_has_equivalent_json_and_duckdb_queries(tmp_path: Path) -> 
 
     projection = read_bundle_index_projection(duckdb_path)
     assert projection["bundles"]["objective/test/one"]["tasks"][1]["task_id"] == "T-2"
+    first_payload = build_bundle_task_payloads(duckdb_path)[0]
+    second_payload = build_bundle_task_payloads(duckdb_path)[0]
+    assert first_payload["bundle_key"] == "objective/test/one"
+    assert first_payload["profile_g"]["goal"]["created_at_ms"] == 1_784_678_400_000
     assert (
-        build_bundle_task_payloads(duckdb_path)[0]["bundle_key"] == "objective/test/one"
+        first_payload["profile_g"]["task_spec_cid"]
+        == second_payload["profile_g"]["task_spec_cid"]
     )
     schema_rows = artifact_schema(json_path)["rows"]
     assert any(
@@ -105,6 +117,173 @@ def test_bundle_index_has_equivalent_json_and_duckdb_queries(tmp_path: Path) -> 
         and row["column_name"] == "canonical_task_cid"
         for row in schema_rows
     )
+
+
+def test_bundle_planning_projection_omits_repeated_evidence_blobs(
+    tmp_path: Path,
+) -> None:
+    json_path = tmp_path / "index.json"
+    payload = _bundle_index()
+    bundle = payload["bundles"]["objective/test/one"]
+    bundle["todo_vector_summary"] = {"conflict_decisions": ["large"]}
+    task = bundle["tasks"][0]
+    task.update(
+        {
+            "ast_symbols": ["module.symbol"],
+            "conflict_surface": {"ast_records": ["large"]},
+            "conflict_edges": [{"left": "T-1", "right": "T-2"}],
+            "conflict_decisions": [{"left": "T-1", "right": "T-2"}],
+            "coverage_inputs": {"records": ["large"]},
+        }
+    )
+    write_bundle_index_artifact(json_path, payload)
+
+    complete = read_bundle_index_projection(json_path)
+    projected = read_bundle_index_planning_projection(json_path)
+    complete_bundle = complete["bundles"]["objective/test/one"]
+    complete_task = complete_bundle["tasks"][0]
+    projected_bundle = projected["bundles"]["objective/test/one"]
+    projected_task = projected_bundle["tasks"][0]
+
+    assert "todo_vector_summary" in complete_bundle
+    assert complete_bundle["todo_vector_summary"]["conflict_decision_count"] == 1
+    assert "conflict_decisions" not in complete_bundle["todo_vector_summary"]
+    assert complete_task["conflict_decision_count"] == 1
+    assert complete_task["conflict_edge_count"] == 1
+    assert "ast_records" not in complete_task["conflict_surface"]
+    assert complete_task["conflict_surface"]["ast_record_count"] == 1
+    assert "coverage_inputs" not in complete_task
+    assert "todo_vector_summary" not in projected_bundle
+    assert "conflict_surface" not in projected_task
+    assert "conflict_edges" not in projected_task
+    assert "conflict_decisions" not in projected_task
+    assert "coverage_inputs" not in projected_task
+    assert projected_task["ast_symbols"] == ["module.symbol"]
+    assert projected_task["depends_on"] == []
+
+    write_bundle_index_artifact(json_path, complete)
+    rewritten = read_bundle_index_projection(json_path)
+    rewritten_task = rewritten["bundles"]["objective/test/one"]["tasks"][0]
+    assert rewritten_task["conflict_surface"]["ast_record_count"] == 1
+
+
+def test_large_bundle_graph_uses_bounded_json_and_complete_duckdb(
+    tmp_path: Path,
+) -> None:
+    json_path = tmp_path / "index.json"
+    payload = _bundle_index()
+    payload["task_conflict_graph"] = {
+        "schema": "test.conflict-graph@1",
+        "history": {"samples": 2},
+        "edges": [
+            {
+                "left_task_cid": f"left-{ordinal}",
+                "right_task_cid": f"right-{ordinal}",
+                "reason": "shared path",
+            }
+            for ordinal in range(129)
+        ],
+        "decisions": [
+            {
+                "left_task_cid": f"left-{ordinal}",
+                "right_task_cid": f"right-{ordinal}",
+                "decision": "serialize",
+            }
+            for ordinal in range(129)
+        ],
+    }
+    payload["todo_coverage_inputs"] = {
+        "schema": "test.coverage@1",
+        "fingerprint": "coverage-fingerprint",
+        "by_task": {f"T-{ordinal}": {"symbols": ["large"]} for ordinal in range(129)},
+        "by_goal": {"G-1": {"tasks": 129}},
+        "criteria": [{"task_id": f"T-{ordinal}"} for ordinal in range(129)],
+        "edges": [{"task_id": f"T-{ordinal}"} for ordinal in range(129)],
+    }
+
+    write_bundle_index_artifact(json_path, payload)
+
+    portable = json.loads(json_path.read_text(encoding="utf-8"))
+    assert portable["task_conflict_graph"]["compacted"] is True
+    assert portable["task_conflict_graph"]["edge_count"] == 129
+    assert "edges" not in portable["task_conflict_graph"]
+    assert portable["todo_coverage_inputs"]["compacted"] is True
+    assert portable["todo_coverage_inputs"]["task_count"] == 129
+    assert "by_task" not in portable["todo_coverage_inputs"]
+
+    conflict_rows = query_artifact(
+        json_path,
+        table="conflict_edges",
+        columns=("left_task_cid",),
+        limit=200,
+    )
+    assert conflict_rows["row_count"] == 129
+    complete_fields = read_artifact_fields(
+        json_path,
+        ("task_conflict_graph", "todo_coverage_inputs"),
+    )
+    assert len(complete_fields["task_conflict_graph"]["edges"]) == 129
+    assert len(complete_fields["todo_coverage_inputs"]["by_task"]) == 129
+
+
+def test_large_todo_vector_index_omits_repeated_record_evidence(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "todo_vector_index.json"
+    graph = {
+        "schema": "test.conflict-graph@1",
+        "edges": [
+            {"left_task_cid": f"left-{ordinal}", "right_task_cid": "right"}
+            for ordinal in range(129)
+        ],
+    }
+    payload = {
+        "schema": "test.todo-vector@1",
+        "bundle_index_path": "objective_bundles/index.json",
+        "records": [
+            {
+                "task_id": "T-1",
+                "vector_key": "vector-1",
+                "coverage_inputs": {"ast_symbols": ["large"]},
+                "conflict_surface": {
+                    "ast_records": [{"symbol": "large"}],
+                    "metadata": {"large": True},
+                    "paths": ["src/module.py"],
+                },
+            }
+        ],
+        "coverage_inputs": {
+            "by_task": {
+                f"T-{ordinal}": {"ast_symbols": ["large"]}
+                for ordinal in range(129)
+            },
+            "criteria": [],
+            "edges": [],
+        },
+        "conflict_graph": graph,
+        "task_conflict_graph": graph,
+    }
+
+    rendered = write_todo_vector_index_artifact(
+        index_path=index_path,
+        payload=payload,
+    )
+
+    record = rendered["records"][0]
+    assert "coverage_inputs" not in record
+    assert record["coverage_input_ref"]["task_id"] == "T-1"
+    assert "ast_records" not in record["conflict_surface"]
+    assert record["conflict_surface"]["ast_record_count"] == 1
+    assert record["conflict_surface"]["paths"] == ["src/module.py"]
+    assert rendered["query_artifact"]["duckdb_path"] == (
+        "objective_bundles/index.duckdb"
+    )
+    rewritten = write_todo_vector_index_artifact(
+        index_path=index_path,
+        payload=rendered,
+    )
+    assert rewritten["records"][0]["conflict_surface"]["ast_record_count"] == 1
+    assert rewritten["records"][0]["conflict_surface"]["metadata_field_count"] == 1
 
 
 def test_scheduler_manifest_normalizes_rows_and_bounds_query_output(
@@ -247,3 +426,39 @@ def test_json_changes_refresh_the_query_sidecar(tmp_path: Path) -> None:
     )
 
     assert refreshed["rows"] == [{"task_id": "T-3"}]
+
+
+def test_concurrent_sidecar_refresh_is_coalesced(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    json_path = tmp_path / "index.json"
+    write_bundle_index_artifact(json_path, _bundle_index())
+    changed = _bundle_index()
+    changed["source_todo"] = "changed.todo.md"
+    json_path.write_text(json.dumps(changed), encoding="utf-8")
+
+    original = artifact_store._write_duckdb
+    calls = 0
+    calls_lock = threading.Lock()
+
+    def counted_write(*args: object, **kwargs: object) -> None:
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        original(*args, **kwargs)
+
+    monkeypatch.setattr(artifact_store, "_write_duckdb", counted_write)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        paths = list(
+            executor.map(
+                lambda _index: artifact_store.ensure_query_database(
+                    json_path,
+                    kind=BUNDLE_INDEX_KIND,
+                ),
+                range(2),
+            )
+        )
+
+    assert paths == [tmp_path / "index.duckdb"] * 2
+    assert calls == 1

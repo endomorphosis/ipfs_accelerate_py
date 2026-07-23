@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -15,8 +16,10 @@ from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
     LeaseCoordinator,
     LeaseExpiredError,
     LeaseQueueBridge,
+    MAX_PERSISTED_HEARTBEATS_PER_LEASE,
     StaleFencingTokenError,
     adapt_goal_bundle,
+    migrate_sqlite_coordination_store,
     profile_g_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
@@ -244,6 +247,87 @@ def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -
             )
 
 
+def test_identical_registration_is_a_duckdb_noop(tmp_path: Path) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    path = tmp_path / "leases.duckdb"
+    now = [10]
+    payload = _bundle()
+    payload["profile_g"] = adapt_goal_bundle(payload, created_at_ms=1)
+
+    with LeaseCoordinator(path, clock_ms=lambda: now[0]) as coordinator:
+        registered = coordinator.register_bundle(payload)
+        first = coordinator.task_state(registered["task_cid"])
+        now[0] = 20
+        coordinator.register_bundle(payload)
+        second = coordinator.task_state(registered["task_cid"])
+
+    connection = duckdb.connect(str(path), read_only=True)
+    try:
+        artifact_count = connection.execute(
+            "SELECT count(*) FROM artifacts"
+        ).fetchone()[0]
+        alias_count = connection.execute(
+            "SELECT count(*) FROM task_aliases"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    assert artifact_count == 5
+    assert alias_count == 2
+    assert first is not None and second is not None
+    assert first["updated_at_ms"] == second["updated_at_ms"] == 10
+
+
+def test_legacy_sqlite_coordination_store_migrates_to_duckdb(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "legacy.sqlite3"
+    target = tmp_path / "leases.duckdb"
+    connection = sqlite3.connect(source)
+    try:
+        connection.execute(
+            """CREATE TABLE artifacts(
+                 cid TEXT PRIMARY KEY, kind TEXT NOT NULL,
+                 payload_json TEXT NOT NULL, created_at_ms INTEGER NOT NULL
+               )"""
+        )
+        connection.execute(
+            "INSERT INTO artifacts VALUES(?,?,?,?)",
+            ("cid-one", "test", json.dumps({"migrated": True}), 1),
+        )
+        connection.execute(
+            """CREATE TABLE tasks(
+                 task_cid TEXT PRIMARY KEY, goal_cid TEXT NOT NULL,
+                 subgoal_cid TEXT NOT NULL, task_id TEXT NOT NULL,
+                 bundle_json TEXT NOT NULL, registered_at_ms INTEGER NOT NULL,
+                 updated_at_ms INTEGER NOT NULL
+               )"""
+        )
+        connection.execute(
+            "INSERT INTO tasks VALUES(?,?,?,?,?,?,?)",
+            (
+                "task-one",
+                "goal-one",
+                "subgoal-one",
+                "T-1",
+                json.dumps({"bundle_key": "one", "tasks": [{"task_id": "T-1"}]}),
+                1,
+                1,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    migrated = migrate_sqlite_coordination_store(source, target)
+
+    assert migrated["row_counts"]["artifacts"] == 1
+    assert migrated["row_counts"]["tasks"] == 1
+    with LeaseCoordinator(target) as coordinator:
+        assert coordinator.get_artifact("cid-one") == {"migrated": True}
+        assert coordinator.task_state("task-one")["bundle_key"] == "one"
+
+
 def test_reopened_blocked_bundle_resets_exhausted_attempt_budget(tmp_path: Path) -> None:
     blocked_bundle = {
         **_bundle(),
@@ -343,6 +427,58 @@ def test_claim_renew_heartbeat_release_and_receipt_are_fenced(tmp_path: Path) ->
         assert coordinator.active_lease(adapted["task_cid"], now_ms=now + 3_001) is None
         with pytest.raises(LeaseExpiredError):
             coordinator.heartbeat(renewed, capacity_millionths=1, now_ms=now + 3_001)
+
+
+def test_heartbeat_history_is_bounded_per_lease(tmp_path: Path) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    path = tmp_path / "leases.duckdb"
+    now = 1_000
+
+    with LeaseCoordinator(path) as coordinator:
+        registered = coordinator.register_bundle(_bundle(), created_at_ms=now)
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:lane.example",
+            requested_lease_ms=60_000,
+            now_ms=now,
+        )
+        for offset in range(MAX_PERSISTED_HEARTBEATS_PER_LEASE + 4):
+            coordinator.heartbeat(
+                grant,
+                capacity_millionths=500_000,
+                now_ms=now + offset,
+            )
+        latest = coordinator.latest_heartbeat(
+            grant.task_cid,
+            include_expired=True,
+        )
+        before_compaction = path.stat().st_size
+        compaction = coordinator.compact()
+        latest_after_compaction = coordinator.latest_heartbeat(
+            grant.task_cid,
+            include_expired=True,
+        )
+
+    connection = duckdb.connect(str(path), read_only=True)
+    try:
+        heartbeat_count = connection.execute(
+            "SELECT count(*) FROM heartbeats"
+        ).fetchone()[0]
+        artifact_count = connection.execute(
+            "SELECT count(*) FROM artifacts WHERE kind='DaemonHeartbeat'"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    assert latest is not None
+    assert latest["created_at_ms"] == (
+        now + MAX_PERSISTED_HEARTBEATS_PER_LEASE + 3
+    )
+    assert latest_after_compaction == latest
+    assert heartbeat_count == MAX_PERSISTED_HEARTBEATS_PER_LEASE
+    assert artifact_count == MAX_PERSISTED_HEARTBEATS_PER_LEASE
+    assert compaction["source_bytes"] == before_compaction
+    assert compaction["target_bytes"] < compaction["source_bytes"]
 
 
 def test_expired_lane_is_recovered_with_higher_epoch_and_token(tmp_path: Path) -> None:
