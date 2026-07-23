@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
     ChangedScope,
     FormalVerificationPolicy,
     OverrideReceipt,
+    PolicyValidationError,
     ProofOutcome,
     ProofPolicyRule,
     ProofResultStatus,
@@ -18,6 +19,12 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
     RolloutMode,
     RolloutTransitionReceipt,
     build_proof_rollout_status,
+)
+from ipfs_accelerate_py.agent_supervisor.scheduler_metrics import (
+    build_scheduler_snapshot,
+    query_proof_rollout_status,
+    read_proof_rollout_status,
+    write_proof_rollout_status,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     apply_proof_rollout_projection,
@@ -119,6 +126,29 @@ def test_status_exposes_policy_scope_capability_plan_assurance_and_failures() ->
     )
 
 
+def test_successful_assurance_is_not_reported_as_a_failure() -> None:
+    policy = _policy()
+    selection = _selection(policy)
+    proved = ProofOutcome(
+        requirement_id=selection.requirements[0].requirement_id,
+        status=ProofResultStatus.PROVED,
+        authoritative_assurance=AssuranceLevel.KERNEL_VERIFIED,
+        receipt_id="proof-receipt:lease-safety",
+    )
+    decision = policy.evaluate_gate(selection, proved)
+
+    status = build_proof_rollout_status(
+        policy,
+        selections=(selection,),
+        decisions=(decision,),
+        generated_at=NOW,
+    )
+
+    assert decision.allowed is True
+    assert status["assurance_counts"]["kernel_verified"] == 1
+    assert status["failures"] == []
+
+
 def test_provider_outage_cannot_silently_downgrade_enforcement() -> None:
     policy = _policy(RolloutMode.ENFORCEMENT)
     selection = _selection(policy)
@@ -132,13 +162,54 @@ def test_provider_outage_cannot_silently_downgrade_enforcement() -> None:
         policy,
         selections=(selection,),
         decisions=(decision,),
-        capability_health={"hammer": {"status": "unavailable"}},
+        capability_health={
+            "hammer": {
+                "status": "unavailable",
+                "healthy": False,
+                "reason_code": "provider_outage",
+            }
+        },
         generated_at=NOW,
     )
 
     assert decision.allowed is False
     assert status["rollout_mode"] == RolloutMode.ENFORCEMENT.value
     assert status["blocking"] is True
+    assert status["capability_health"] == [
+        {
+            "authoritative": False,
+            "capability": "hammer",
+            "healthy": False,
+            "reason_code": "provider_outage",
+            "status": "unavailable",
+            "version": "",
+        }
+    ]
+    assert status["provider_health_can_change_mode"] is False
+    assert any(
+        failure["reason_code"] == "provider_outage"
+        for failure in status["failures"]
+    )
+
+
+def test_status_rejects_selection_from_a_different_policy() -> None:
+    policy = _policy()
+    foreign_policy = FormalVerificationPolicy(
+        name=policy.name,
+        version="foreign",
+        rollout_mode=policy.rollout_mode,
+        rules=policy.rules,
+        canary_percent=policy.canary_percent,
+        canary_salt=policy.canary_salt,
+    )
+    foreign_selection = _selection(foreign_policy)
+
+    with pytest.raises(PolicyValidationError, match="different policy"):
+        build_proof_rollout_status(
+            policy,
+            selections=(foreign_selection,),
+            generated_at=NOW,
+        )
 
 
 def test_canary_expansion_and_rollback_require_durable_policy_identity() -> None:
@@ -175,6 +246,64 @@ def test_canary_expansion_and_rollback_require_durable_policy_identity() -> None
         promote.receipt_id,
         rollback.receipt_id,
     ]
+    assert [row["target_policy_id"] for row in status["transitions"]] == [
+        canary.policy_id,
+        rolled_back.policy_id,
+    ]
+    assert "target_canary_percent" not in promote.to_dict()
+    assert (
+        RolloutTransitionReceipt.from_dict(
+            {**promote.to_dict(), "receipt_id": promote.receipt_id}
+        )
+        == promote
+    )
+
+
+def test_canary_configuration_expansion_and_contraction_are_receipted() -> None:
+    canary = _policy(RolloutMode.CANARY)
+    expand = RolloutTransitionReceipt(
+        policy_id=canary.policy_id,
+        from_mode=RolloutMode.CANARY,
+        target_mode=RolloutMode.CANARY,
+        target_canary_percent=50,
+        target_canary_path_patterns=("src/agent_supervisor/critical/**",),
+        actor="release-manager",
+        reason="Expand the reviewed canary cohort.",
+        issued_at=NOW.isoformat(),
+        observation_count=2,
+        evidence_receipt_ids=("benchmark:canary-25", "adversarial:canary-25"),
+    )
+    expanded = canary.transition(expand)
+    contract = RolloutTransitionReceipt(
+        policy_id=expanded.policy_id,
+        from_mode=RolloutMode.CANARY,
+        target_mode=RolloutMode.CANARY,
+        target_canary_percent=10,
+        target_canary_path_patterns=(),
+        actor="incident-commander",
+        reason="Contract the cohort after a false-block regression.",
+        issued_at=(NOW + timedelta(minutes=1)).isoformat(),
+    )
+    contracted = expanded.transition(contract)
+
+    assert expanded.canary_percent == 50
+    assert expanded.canary_path_patterns == (
+        "src/agent_supervisor/critical/**",
+    )
+    assert expanded.policy_id != canary.policy_id
+    assert contracted.canary_percent == 10
+    assert contracted.canary_path_patterns == ()
+    assert contracted.policy_id != expanded.policy_id
+    assert RolloutTransitionReceipt.from_dict(expand.to_dict()) == expand
+    expanded_status = build_proof_rollout_status(
+        expanded,
+        transitions=(expand,),
+        generated_at=NOW,
+    )
+    assert (
+        expanded_status["transitions"][0]["target_policy_id"]
+        == expanded.policy_id
+    )
 
 
 def test_override_diagnostics_are_expiring_scoped_and_do_not_rewrite_verdict() -> None:
@@ -219,6 +348,73 @@ def test_override_diagnostics_are_expiring_scoped_and_do_not_rewrite_verdict() -
     assert expired["overrides"][0]["state"] == "expired"
 
 
+def test_narrow_override_never_covers_a_broader_requirement() -> None:
+    policy = _policy()
+    selection = _selection(policy)
+    narrow = OverrideReceipt.create(
+        policy_id=policy.policy_id,
+        repository_tree_id=TREE,
+        paths=(PATH,),
+        ast_scope_ids=("method:LeaseStore.acquire",),
+        invariant_classes=("lease_safety",),
+        actor="incident-commander",
+        reason="Provider incident INC-366.",
+        ticket_id="INC-366",
+        ttl_seconds=60,
+        now=NOW,
+    )
+    timed_out = ProofOutcome(
+        requirement_id=selection.requirements[0].requirement_id,
+        status=ProofResultStatus.TIMED_OUT,
+    )
+
+    decision = policy.evaluate_gate(
+        selection,
+        timed_out,
+        override=narrow,
+        now=NOW,
+    )
+    status = build_proof_rollout_status(
+        policy,
+        decisions=(decision,),
+        overrides=(narrow,),
+        generated_at=NOW,
+    )
+
+    assert decision.allowed is False
+    assert decision.override_receipt_id == ""
+    assert "override_does_not_cover_requirement" in decision.results[0].reason_codes
+    assert status["overrides"][0]["ast_scope_ids"] == [
+        "method:LeaseStore.acquire"
+    ]
+    assert status["overrides"][0]["rewrites_proof_verdict"] is False
+    assert status["decisions"][0]["allowed"] is False
+
+
+def test_foreign_policy_override_is_never_reported_active() -> None:
+    policy = _policy()
+    foreign = _policy(RolloutMode.SHADOW)
+    override = OverrideReceipt.create(
+        policy_id=foreign.policy_id,
+        repository_tree_id=TREE,
+        paths=(PATH,),
+        actor="incident-commander",
+        reason="Override belongs to a different rollout policy.",
+        ticket_id="INC-foreign",
+        ttl_seconds=60,
+        now=NOW,
+    )
+
+    status = build_proof_rollout_status(
+        policy,
+        overrides=(override,),
+        generated_at=NOW,
+    )
+
+    assert status["overrides"][0]["policy_id"] == foreign.policy_id
+    assert status["overrides"][0]["state"] != "active"
+
+
 def test_supervisor_projection_keeps_bounded_rollout_diagnostics() -> None:
     status = build_proof_rollout_status(
         _policy(),
@@ -244,3 +440,89 @@ def test_supervisor_projection_keeps_bounded_rollout_diagnostics() -> None:
     tampered["proof_transcript"] = "must never enter supervisor state"
     with pytest.raises(ValueError, match="unsupported proof rollout status fields"):
         apply_proof_rollout_projection({}, tampered)
+
+
+def test_scheduler_status_and_query_artifacts_preserve_policy_authority(
+    tmp_path,
+) -> None:
+    status = build_proof_rollout_status(
+        _policy(),
+        capability_health={
+            "hammer": {
+                "status": "unavailable",
+                "healthy": False,
+                "reason_code": "provider_outage",
+            }
+        },
+        generated_at=NOW,
+    )
+    snapshot = build_scheduler_snapshot(
+        (
+            {
+                "type": "proof_rollout_status",
+                "timestamp": NOW.isoformat(),
+                "proof_rollout": status.to_dict(),
+            },
+        ),
+        now=NOW,
+    )
+
+    assert snapshot.proof_rollout == status.to_dict()
+    assert snapshot["proof_rollout_mode"] == "enforcement"
+    assert snapshot["proof_rollout_blocking"] is True
+    assert snapshot["proof_capability_healthy"] is False
+    assert snapshot["source_event_count"] == 1
+    assert snapshot["task_states"] == []
+
+    query = query_proof_rollout_status(
+        snapshot,
+        record_types=("capability", "failure"),
+        limit=2,
+    )
+    assert query["policy_id"] == status["policy_id"]
+    assert query["rollout_mode"] == "enforcement"
+    assert query["blocking"] is True
+    assert query["provider_health_can_change_mode"] is False
+    assert query["row_count"] == 2
+    assert {row["record_type"] for row in query["rows"]} == {
+        "capability",
+        "failure",
+    }
+
+    status_path = tmp_path / "proof-rollout-status.json"
+    write_proof_rollout_status(status_path, snapshot)
+    restored = read_proof_rollout_status(status_path)
+    assert restored is not None
+    assert restored.snapshot_id == status.snapshot_id
+
+
+def test_scheduler_rejects_tampered_rollout_but_accepts_other_proof_ids() -> None:
+    status = build_proof_rollout_status(_policy(), generated_at=NOW).to_dict()
+    status["proof_transcript"] = "private provider output"
+    with pytest.raises(ValueError, match="invalid proof rollout"):
+        build_scheduler_snapshot(
+            (
+                {
+                    "type": "proof_rollout_status",
+                    "timestamp": NOW.isoformat(),
+                    "proof_rollout": status,
+                },
+            ),
+            now=NOW,
+        )
+
+    # Proof-policy identity is also used by goal/merge events.  A flat identity
+    # does not claim to be the full, independently validated rollout snapshot.
+    ordinary = build_scheduler_snapshot(
+        (
+            {
+                "type": "implementation_started",
+                "timestamp": NOW.isoformat(),
+                "task_id": "REF-273",
+                "task_cid": "task:ref-273",
+                "proof_policy_id": _policy().policy_id,
+            },
+        ),
+        now=NOW,
+    )
+    assert ordinary["task_states"][0]["task_id"] == "REF-273"

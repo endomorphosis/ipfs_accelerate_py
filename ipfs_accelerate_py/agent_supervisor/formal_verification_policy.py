@@ -1021,7 +1021,12 @@ class FormalVerificationPolicy(CanonicalContract):
     def transition(
         self, receipt: "RolloutTransitionReceipt"
     ) -> "FormalVerificationPolicy":
-        """Return a new policy after validating an explicit transition receipt."""
+        """Return a new policy after validating an explicit transition receipt.
+
+        Rollout is configuration, not mutable provider state.  Besides mode
+        changes, a receipt may make an explicit in-mode canary configuration
+        change.  Both forms return a new content-addressed policy.
+        """
 
         if not isinstance(receipt, RolloutTransitionReceipt):
             raise PolicyValidationError("rollout transition requires a durable receipt")
@@ -1030,13 +1035,50 @@ class FormalVerificationPolicy(CanonicalContract):
         if receipt.from_mode is not self.rollout_mode:
             raise PolicyValidationError("transition receipt source mode does not match")
         target = receipt.target_mode
-        if self.rollout_mode.can_roll_back_to(target):
-            return replace(self, rollout_mode=target)
-        if not self.rollout_mode.can_promote_to(target):
+        same_mode_canary_change = (
+            self.rollout_mode is RolloutMode.CANARY
+            and target is RolloutMode.CANARY
+            and receipt.changes_canary_configuration
+        )
+        if not (
+            self.rollout_mode.can_roll_back_to(target)
+            or self.rollout_mode.can_promote_to(target)
+            or same_mode_canary_change
+        ):
             raise PolicyValidationError(
                 "rollout promotion must advance exactly one mode"
             )
-        if self.rollout_mode is not RolloutMode.DISABLED:
+
+        target_canary_percent = (
+            self.canary_percent
+            if receipt.target_canary_percent is None
+            else receipt.target_canary_percent
+        )
+        target_canary_paths = (
+            self.canary_path_patterns
+            if receipt.target_canary_path_patterns is None
+            else receipt.target_canary_path_patterns
+        )
+        updated = replace(
+            self,
+            rollout_mode=target,
+            canary_percent=target_canary_percent,
+            canary_path_patterns=target_canary_paths,
+        )
+        if updated.policy_id == self.policy_id:
+            raise PolicyValidationError(
+                "rollout transition must change policy configuration"
+            )
+
+        expands_canary = same_mode_canary_change and (
+            target_canary_percent > self.canary_percent
+            or not set(target_canary_paths).issubset(self.canary_path_patterns)
+        )
+        promotion_requires_evidence = (
+            self.rollout_mode.can_promote_to(target)
+            and self.rollout_mode is not RolloutMode.DISABLED
+        ) or expands_canary
+        if promotion_requires_evidence:
             if receipt.observation_count < self.minimum_promotion_observations:
                 raise PolicyValidationError("insufficient observations for promotion")
             if receipt.blocking_result_count > self.maximum_promotion_blocking_results:
@@ -1047,7 +1089,7 @@ class FormalVerificationPolicy(CanonicalContract):
                 raise PolicyValidationError(
                     "promotion requires durable evidence receipts"
                 )
-        return replace(self, rollout_mode=target)
+        return updated
 
     def evaluate_gate(
         self,
@@ -1572,14 +1614,16 @@ class OverrideReceipt(CanonicalContract):
 
         if mode not in self.allowed_modes or requirement.path not in self.paths:
             return False
-        if self.ast_scope_ids and not set(requirement.ast_scope_ids).issubset(
-            self.ast_scope_ids
-        ):
-            return False
-        if self.invariant_classes and not set(requirement.invariant_classes).issubset(
-            self.invariant_classes
-        ):
-            return False
+        if self.ast_scope_ids:
+            if not requirement.ast_scope_ids or not set(
+                requirement.ast_scope_ids
+            ).issubset(self.ast_scope_ids):
+                return False
+        if self.invariant_classes:
+            if not requirement.invariant_classes or not set(
+                requirement.invariant_classes
+            ).issubset(self.invariant_classes):
+                return False
         return True
 
     def invalid_reasons(
@@ -1698,6 +1742,8 @@ class RolloutTransitionReceipt(CanonicalContract):
     blocking_result_count: int = 0
     override_count: int = 0
     evidence_receipt_ids: Tuple[str, ...] = ()
+    target_canary_percent: int | None = None
+    target_canary_path_patterns: Tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1709,10 +1755,46 @@ class RolloutTransitionReceipt(CanonicalContract):
         object.__setattr__(
             self, "target_mode", _enum(self.target_mode, RolloutMode, "target_mode")
         )
-        if self.from_mode is self.target_mode:
-            raise PolicyValidationError("rollout transition must change mode")
+        target_percent = self.target_canary_percent
+        if target_percent is not None:
+            target_percent = _integer(
+                target_percent, "target_canary_percent", maximum=100
+            )
+            object.__setattr__(self, "target_canary_percent", target_percent)
+        target_patterns = self.target_canary_path_patterns
+        if target_patterns is not None:
+            target_patterns = tuple(
+                sorted(
+                    {
+                        _normalize_path_pattern(item)
+                        for item in _strings(
+                            target_patterns, "target_canary_path_patterns"
+                        )
+                    }
+                )
+            )
+            object.__setattr__(
+                self, "target_canary_path_patterns", target_patterns
+            )
+        changes_canary = (
+            target_percent is not None or target_patterns is not None
+        )
+        same_mode_canary_change = (
+            self.from_mode is RolloutMode.CANARY
+            and self.target_mode is RolloutMode.CANARY
+            and changes_canary
+        )
+        if self.from_mode is self.target_mode and not same_mode_canary_change:
+            raise PolicyValidationError(
+                "same-mode transition requires explicit canary configuration"
+            )
+        if changes_canary and self.target_mode is not RolloutMode.CANARY:
+            raise PolicyValidationError(
+                "canary configuration may only target canary mode"
+            )
         if not (
-            self.from_mode.can_promote_to(self.target_mode)
+            same_mode_canary_change
+            or self.from_mode.can_promote_to(self.target_mode)
             or self.from_mode.can_roll_back_to(self.target_mode)
         ):
             raise PolicyValidationError(
@@ -1748,8 +1830,15 @@ class RolloutTransitionReceipt(CanonicalContract):
     def receipt_id(self) -> str:
         return self.content_id
 
+    @property
+    def changes_canary_configuration(self) -> bool:
+        return (
+            self.target_canary_percent is not None
+            or self.target_canary_path_patterns is not None
+        )
+
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "policy_id": self.policy_id,
             "from_mode": self.from_mode,
             "target_mode": self.target_mode,
@@ -1761,6 +1850,15 @@ class RolloutTransitionReceipt(CanonicalContract):
             "override_count": self.override_count,
             "evidence_receipt_ids": self.evidence_receipt_ids,
         }
+        # Optional fields are omitted to preserve @1 identities for receipts
+        # created before same-mode canary configuration changes were added.
+        if self.target_canary_percent is not None:
+            payload["target_canary_percent"] = self.target_canary_percent
+        if self.target_canary_path_patterns is not None:
+            payload["target_canary_path_patterns"] = (
+                self.target_canary_path_patterns
+            )
+        return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "RolloutTransitionReceipt":
@@ -1776,6 +1874,13 @@ class RolloutTransitionReceipt(CanonicalContract):
             blocking_result_count=payload.get("blocking_result_count", 0),
             override_count=payload.get("override_count", 0),
             evidence_receipt_ids=tuple(payload.get("evidence_receipt_ids") or ()),
+            target_canary_percent=payload.get("target_canary_percent"),
+            target_canary_path_patterns=(
+                tuple(payload.get("target_canary_path_patterns") or ())
+                if "target_canary_path_patterns" in payload
+                and payload.get("target_canary_path_patterns") is not None
+                else None
+            ),
         )
         claimed = payload.get("receipt_id") or payload.get("content_id")
         if claimed and claimed != result.receipt_id:
@@ -2920,6 +3025,10 @@ def _rollout_capabilities(value: Any) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for key, raw in raw_items:
         record = _rollout_record(raw)
+        if not record and isinstance(raw, (str, Enum)):
+            record = {
+                "status": raw.value if isinstance(raw, Enum) else raw,
+            }
         name = _text(
             record.get("capability")
             or record.get("provider_id")
@@ -3045,6 +3154,7 @@ def build_proof_rollout_status(
         else FormalVerificationPolicy.from_dict(policy)
     )
     current = _now(generated_at)
+    capability_rows = _rollout_capabilities(capability_health)
     protected_scopes = sorted(
         {
             pattern
@@ -3060,6 +3170,14 @@ def build_proof_rollout_status(
             if isinstance(raw, PolicySelection)
             else PolicySelection.from_dict(raw)
         )
+        if selection.policy_id != normalized_policy.policy_id:
+            raise PolicyValidationError(
+                "rollout status selection was produced by a different policy"
+            )
+        if selection.rollout_mode is not normalized_policy.rollout_mode:
+            raise PolicyValidationError(
+                "rollout status selection mode does not match policy"
+            )
         modes = {
             normalized_policy.effective_mode(requirement).value
             for requirement in selection.requirements
@@ -3082,8 +3200,14 @@ def build_proof_rollout_status(
     failures: list[dict[str, Any]] = []
     decision_rows: list[dict[str, Any]] = []
     for raw in decisions:
+        outcome_reason_codes: dict[str, str] = {}
         if isinstance(raw, MergeProofGateReceipt):
             decision = raw.decision
+            outcome_reason_codes = {
+                outcome.requirement_id: outcome.reason_code
+                for outcome in raw.proof_outcomes
+                if outcome.reason_code
+            }
         elif isinstance(raw, PolicyGateDecision):
             decision = raw
         else:
@@ -3094,15 +3218,55 @@ def build_proof_rollout_status(
                 else record
             )
             decision = PolicyGateDecision.from_dict(decision_record)
+            raw_outcomes = record.get("proof_outcomes")
+            if isinstance(raw_outcomes, Sequence) and not isinstance(
+                raw_outcomes, (str, bytes, bytearray)
+            ):
+                for raw_outcome in raw_outcomes[:MAX_SCOPE_ITEMS]:
+                    if not isinstance(raw_outcome, Mapping):
+                        continue
+                    outcome = ProofOutcome.from_dict(raw_outcome)
+                    if outcome.reason_code:
+                        outcome_reason_codes[
+                            outcome.requirement_id
+                        ] = outcome.reason_code
+        if decision.policy_id != normalized_policy.policy_id:
+            raise PolicyValidationError(
+                "rollout status decision was produced by a different policy"
+            )
+        if decision.rollout_mode is not normalized_policy.rollout_mode:
+            raise PolicyValidationError(
+                "rollout status decision mode does not match policy"
+            )
         for result in decision.results:
             assurance_counts[result.authoritative_assurance.value] += 1
             fallback_names.update(result.missing_or_failed_validations)
-            for reason in result.reason_codes:
+            diagnostic_reasons = [
+                reason
+                for reason in result.reason_codes
+                if reason
+                not in {
+                    "required_assurance_satisfied",
+                    "explicit_fallback_validations_satisfied",
+                    "proof_policy_disabled",
+                    "bounded_override_applied",
+                }
+            ]
+            outcome_reason = outcome_reason_codes.get(result.requirement_id, "")
+            if (
+                not result.proof_satisfied
+                and outcome_reason
+                and outcome_reason not in diagnostic_reasons
+            ):
+                diagnostic_reasons.append(outcome_reason)
+            for reason in diagnostic_reasons:
+                if len(failures) >= 128:
+                    break
                 failures.append(
                     {
                         "requirement_id": result.requirement_id,
                         "path": result.path,
-                        "reason_code": reason,
+                        "reason_code": reason[:256],
                         "would_block": result.would_block,
                     }
                 )
@@ -3120,6 +3284,31 @@ def build_proof_rollout_status(
         if len(decision_rows) >= 128:
             break
 
+    # Provider diagnostics remain explicitly non-authoritative.  Surfacing
+    # their bounded reason codes alongside gate failures explains an outage
+    # without permitting health state to alter the policy mode or verdict.
+    for capability in capability_rows:
+        reason_code = str(capability.get("reason_code") or "")[:256]
+        if capability.get("healthy") is not False or not reason_code:
+            continue
+        if len(failures) >= 128:
+            break
+        if any(
+            item.get("reason_code") == reason_code
+            and item.get("capability") == capability["capability"]
+            for item in failures
+        ):
+            continue
+        failures.append(
+            {
+                "requirement_id": "",
+                "path": "",
+                "reason_code": reason_code,
+                "would_block": False,
+                "capability": capability["capability"],
+            }
+        )
+
     override_rows: list[dict[str, Any]] = []
     for raw in overrides:
         receipt = (
@@ -3127,13 +3316,30 @@ def build_proof_rollout_status(
         )
         issued = _timestamp(receipt.issued_at, "issued_at")[1]
         expires = _timestamp(receipt.expires_at, "expires_at")[1]
+        invalid_policy = receipt.policy_id != normalized_policy.policy_id
+        exceeds_policy_duration = (
+            expires - issued
+        ).total_seconds() > normalized_policy.max_override_seconds
         state = (
-            "not_yet_valid"
-            if current < issued
+            "invalid_policy"
+            if invalid_policy
             else "expired"
             if current >= expires
+            else "not_yet_valid"
+            if current < issued
+            else "exceeds_policy_duration"
+            if exceeds_policy_duration
             else "active"
         )
+        rejection_reasons = []
+        if invalid_policy:
+            rejection_reasons.append("override_policy_mismatch")
+        if current < issued:
+            rejection_reasons.append("override_not_yet_valid")
+        if current >= expires:
+            rejection_reasons.append("override_expired")
+        if exceeds_policy_duration:
+            rejection_reasons.append("override_exceeds_policy_duration")
         override_rows.append(
             {
                 "receipt_id": receipt.receipt_id,
@@ -3144,10 +3350,18 @@ def build_proof_rollout_status(
                 "invariant_classes": list(receipt.invariant_classes),
                 "allowed_modes": [mode.value for mode in receipt.allowed_modes],
                 "actor": receipt.actor[:256],
+                # 512 Unicode code points remain within the public
+                # projection's 2 KiB UTF-8 text bound.
+                "reason": receipt.reason[:512],
                 "ticket_id": receipt.ticket_id[:256],
                 "issued_at": receipt.issued_at,
                 "expires_at": receipt.expires_at,
                 "state": state,
+                "rejection_reasons": rejection_reasons,
+                "applicable_to_policy_mode": (
+                    state == "active"
+                    and normalized_policy.rollout_mode in receipt.allowed_modes
+                ),
                 # Underlying proof results live in decisions and are never
                 # replaced with an optimistic status here.
                 "rewrites_proof_verdict": False,
@@ -3163,6 +3377,46 @@ def build_proof_rollout_status(
             if isinstance(raw, RolloutTransitionReceipt)
             else RolloutTransitionReceipt.from_dict(raw)
         )
+        source_is_current = receipt.policy_id == normalized_policy.policy_id
+        mode_only_source = replace(
+            normalized_policy,
+            rollout_mode=receipt.from_mode,
+        )
+        source_matches_current_configuration = (
+            not receipt.changes_canary_configuration
+            and mode_only_source.policy_id == receipt.policy_id
+            and receipt.target_mode is normalized_policy.rollout_mode
+        )
+        target_matches_current_configuration = (
+            receipt.changes_canary_configuration
+            and receipt.target_mode is normalized_policy.rollout_mode
+            and (
+                receipt.target_canary_percent is None
+                or receipt.target_canary_percent == normalized_policy.canary_percent
+            )
+            and (
+                receipt.target_canary_path_patterns is None
+                or receipt.target_canary_path_patterns
+                == normalized_policy.canary_path_patterns
+            )
+        )
+        if not (
+            source_is_current
+            or source_matches_current_configuration
+            or target_matches_current_configuration
+        ):
+            raise PolicyValidationError(
+                "rollout transition is not coherent with the status policy"
+            )
+        if source_is_current:
+            target_policy_id = normalized_policy.transition(receipt).policy_id
+        elif source_matches_current_configuration:
+            target_policy_id = mode_only_source.transition(receipt).policy_id
+        else:
+            # Same-mode configuration receipts explicitly carry their target
+            # canary values.  Matching those values to this status binds the
+            # transition target to the current policy identity.
+            target_policy_id = normalized_policy.policy_id
         transition_rows.append(
             {
                 "receipt_id": receipt.receipt_id,
@@ -3170,8 +3424,19 @@ def build_proof_rollout_status(
                 "from_mode": receipt.from_mode.value,
                 "target_mode": receipt.target_mode.value,
                 "actor": receipt.actor[:256],
+                "reason": receipt.reason[:512],
                 "issued_at": receipt.issued_at,
+                "observation_count": receipt.observation_count,
+                "blocking_result_count": receipt.blocking_result_count,
+                "override_count": receipt.override_count,
                 "evidence_receipt_ids": list(receipt.evidence_receipt_ids),
+                "target_canary_percent": receipt.target_canary_percent,
+                "target_canary_path_patterns": (
+                    list(receipt.target_canary_path_patterns)
+                    if receipt.target_canary_path_patterns is not None
+                    else None
+                ),
+                "target_policy_id": target_policy_id,
             }
         )
         if len(transition_rows) >= 128:
@@ -3189,7 +3454,7 @@ def build_proof_rollout_status(
         "protected_scopes": protected_scopes,
         "canary_percent": normalized_policy.canary_percent,
         "canary_path_patterns": list(normalized_policy.canary_path_patterns),
-        "capability_health": _rollout_capabilities(capability_health),
+        "capability_health": capability_rows,
         "active_plans": _rollout_plans(active_plans),
         "selections": selection_rows,
         "decisions": decision_rows,
