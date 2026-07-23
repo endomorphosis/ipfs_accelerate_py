@@ -8,6 +8,7 @@ typed projection without loading a complete planning graph into a prompt.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -17,13 +18,20 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 BUNDLE_INDEX_KIND = "bundle_planning_index"
 SCHEDULER_MANIFEST_KIND = "scheduler_manifest"
 CODE_EVIDENCE_GRAPH_KIND = "code_evidence_graph"
 EVIDENCE_GRAPH_KIND = CODE_EVIDENCE_GRAPH_KIND
 PROOF_METRICS_KIND = "proof_metrics"
+PROOF_ATTESTATION_KIND = "proof_attestations"
+PROOF_ATTESTATION_STORE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.proof-attestation-store@1"
+)
+PROOF_ATTESTATIONS_KIND = PROOF_ATTESTATION_KIND
+PROOF_ATTESTATION_ARTIFACT_KIND = PROOF_ATTESTATION_KIND
+PROOF_ATTESTATION_ARTIFACT_SCHEMA = PROOF_ATTESTATION_STORE_SCHEMA
 QUERY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.queryable_artifact@2"
 MAX_QUERY_ROWS = 1_000
 MAX_GRAPH_QUERY_HOPS = 8
@@ -122,6 +130,10 @@ def _atomic_write_text(path: Path, text: str) -> None:
 
 def _artifact_kind(payload: Mapping[str, Any]) -> str:
     schema = str(payload.get("schema") or "")
+    if schema == PROOF_ATTESTATION_STORE_SCHEMA and isinstance(
+        payload.get("attestations"), list
+    ):
+        return PROOF_ATTESTATION_KIND
     if schema.startswith(
         "ipfs_accelerate_py.agent_supervisor.proof-metrics@"
     ) or all(
@@ -515,6 +527,50 @@ def _code_evidence_graph_schema(connection: Any) -> None:
         connection.execute(f"CREATE VIEW {alias} AS SELECT * FROM {source}")
 
 
+def _proof_attestation_schema(connection: Any) -> None:
+    connection.execute("""
+        CREATE TABLE proof_attestations (
+            record_id VARCHAR PRIMARY KEY,
+            proof_receipt_id VARCHAR NOT NULL,
+            kernel_receipt_id VARCHAR,
+            envelope_id VARCHAR NOT NULL,
+            verification_id VARCHAR NOT NULL,
+            statement_id VARCHAR NOT NULL,
+            public_input_digest VARCHAR NOT NULL,
+            formal_policy_id VARCHAR NOT NULL,
+            backend_policy_id VARCHAR NOT NULL,
+            backend_id VARCHAR NOT NULL,
+            backend_version VARCHAR NOT NULL,
+            circuit_id VARCHAR NOT NULL,
+            circuit_version VARCHAR NOT NULL,
+            public_input_schema_id VARCHAR NOT NULL,
+            public_input_schema_version VARCHAR NOT NULL,
+            verification_key_id VARCHAR NOT NULL,
+            verification_key_version VARCHAR NOT NULL,
+            verification_key_expires_at VARCHAR,
+            backend_health_id VARCHAR NOT NULL,
+            proof_artifact_id VARCHAR NOT NULL,
+            proof_digest VARCHAR NOT NULL,
+            verifier_id VARCHAR NOT NULL,
+            verdict VARCHAR NOT NULL,
+            independent BOOLEAN NOT NULL,
+            authoritative BOOLEAN NOT NULL,
+            created_at VARCHAR NOT NULL,
+            expires_at VARCHAR NOT NULL,
+            ipfs_cid VARCHAR,
+            payload_json VARCHAR NOT NULL
+        )
+        """)
+    connection.execute(
+        "CREATE INDEX proof_attestations_receipt_idx "
+        "ON proof_attestations(proof_receipt_id)"
+    )
+    connection.execute(
+        "CREATE INDEX proof_attestations_expiry_idx "
+        "ON proof_attestations(expires_at)"
+    )
+
+
 def _proof_metrics_schema(connection: Any) -> None:
     """Create the compact, public proof observability query schema."""
 
@@ -716,6 +772,11 @@ def _proof_metrics_schema(connection: Any) -> None:
 def _top_level_fields(
     payload: Mapping[str, Any], kind: str
 ) -> Iterable[tuple[str, str]]:
+    if kind == PROOF_ATTESTATION_KIND:
+        for key, value in payload.items():
+            if key != "attestations":
+                yield str(key), _json_text(value)
+        return
     if kind == PROOF_METRICS_KIND:
         # Proof query databases expose a deliberately closed catalog.  Unknown
         # extension fields must not become an accidental side channel for a
@@ -1224,6 +1285,14 @@ def _table_descriptions(kind: str) -> dict[str, str]:
             "code_evidence_freshness": "Compatibility alias for freshness_index.",
             "code_evidence_dependencies": "Compatibility alias for dependency_index.",
         }
+    if kind == PROOF_ATTESTATION_KIND:
+        return {
+            **common,
+            "proof_attestations": (
+                "Public, receipt-bound ZKP verification sidecars with backend, "
+                "circuit, key, policy, expiration, and optional IPFS identities."
+            ),
+        }
     if kind == PROOF_METRICS_KIND:
         descriptions = {
             **common,
@@ -1277,6 +1346,56 @@ def _proof_dimensions(row: Mapping[str, Any]) -> tuple[str, ...]:
             "resource_class",
         )
     )
+
+
+def _populate_proof_attestation_tables(
+    connection: Any, payload: Mapping[str, Any]
+) -> None:
+    from .proof_attestation import PersistedAttestationRecord
+
+    for raw in payload.get("attestations") or ():
+        if not isinstance(raw, Mapping):
+            raise ValueError("proof attestation rows must be objects")
+        record = PersistedAttestationRecord.from_dict(raw)
+        rendered = record.to_public_artifact()
+        statement = record.envelope.statement
+        verification = record.verification
+        connection.execute(
+            "INSERT INTO proof_attestations VALUES ("
+            + ", ".join("?" for _ in range(29))
+            + ")",
+            (
+                record.record_id,
+                record.proof_receipt_id,
+                record.kernel_receipt_id,
+                record.envelope_id,
+                record.verification_id,
+                record.statement_id,
+                record.public_input_digest,
+                statement.policy_id,
+                statement.backend_policy_id,
+                statement.backend_id,
+                statement.backend_version,
+                statement.circuit_id,
+                statement.circuit_version,
+                statement.public_input_schema_id,
+                statement.public_input_schema_version,
+                statement.verification_key_id,
+                statement.verification_key_version,
+                record.backend_policy.verification_key_expires_at,
+                record.envelope.backend_health_id,
+                record.envelope.proof_artifact_id,
+                record.envelope.proof_digest,
+                verification.verifier_id,
+                verification.verdict.value,
+                verification.independent,
+                verification.authoritative,
+                record.created_at,
+                record.expires_at,
+                str(raw.get("ipfs_cid") or ""),
+                _json_text(rendered),
+            ),
+        )
 
 
 def _populate_proof_metrics_tables(
@@ -1498,6 +1617,9 @@ def _write_duckdb(
             elif kind == CODE_EVIDENCE_GRAPH_KIND:
                 _code_evidence_graph_schema(connection)
                 _populate_code_evidence_graph_tables(connection, payload)
+            elif kind == PROOF_ATTESTATION_KIND:
+                _proof_attestation_schema(connection)
+                _populate_proof_attestation_tables(connection, payload)
             elif kind == PROOF_METRICS_KIND:
                 _proof_metrics_schema(connection)
                 _populate_proof_metrics_tables(connection, payload)
@@ -1609,6 +1731,272 @@ def write_proof_metrics_artifact(
     # directly with a mapping instead of the typed snapshot wrapper.
     ProofMetricsSnapshot(rendered)
     return write_queryable_artifact(path, rendered, kind=PROOF_METRICS_KIND)
+
+
+def _attestation_records(value: Any) -> tuple[Any, ...]:
+    from .proof_attestation import PersistedAttestationRecord
+
+    raw_values = (
+        value
+        if isinstance(value, Sequence)
+        and not isinstance(value, (str, bytes, bytearray, Mapping))
+        else (value,)
+    )
+    records = []
+    for item in raw_values:
+        records.append(
+            item
+            if isinstance(item, PersistedAttestationRecord)
+            else PersistedAttestationRecord.from_dict(item)
+        )
+    if not records:
+        raise ValueError("at least one proof attestation record is required")
+    identities = [record.record_id for record in records]
+    if len(identities) != len(set(identities)):
+        raise ValueError("duplicate proof attestation records are not allowed")
+    return tuple(records)
+
+
+def _ipfs_publish(
+    backend: Any,
+    payload: bytes,
+    *,
+    record_id: str,
+) -> str:
+    raw_block = False
+    if callable(backend):
+        result = backend(payload)
+    elif callable(getattr(backend, "block_put", None)):
+        raw_block = True
+        result = backend.block_put(payload, codec="raw")
+    elif callable(getattr(backend, "store", None)):
+        result = backend.store(
+            payload,
+            filename=f"{record_id}.json",
+            pin=True,
+        )
+    else:
+        raise TypeError("IPFS publisher must be callable or provide block_put/store")
+    if isinstance(result, Mapping):
+        result = result.get("cid") or result.get("Hash") or result.get("hash")
+    cid = str(result or "").strip()
+    if not cid:
+        raise ValueError("IPFS publisher returned an empty CID")
+    if raw_block and cid != raw_ipfs_cid(payload):
+        raise ValueError("IPFS publisher returned a CID for different raw content")
+    return cid
+
+
+def raw_ipfs_cid(payload: bytes) -> str:
+    """Return the CIDv1/base32 identity of one raw SHA-256 IPFS block."""
+
+    if not isinstance(payload, (bytes, bytearray)):
+        raise TypeError("raw IPFS content must be bytes")
+    # CIDv1, raw codec (0x55), sha2-256 multihash (0x12, 32 bytes).
+    binary = b"\x01\x55\x12\x20" + hashlib.sha256(bytes(payload)).digest()
+    return "b" + base64.b32encode(binary).decode("ascii").lower().rstrip("=")
+
+
+def write_proof_attestation_artifact(
+    path: Path | str,
+    records: Any,
+    *,
+    ipfs_backend: Any | None = None,
+    ipfs_publisher: Callable[[bytes], Any] | None = None,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Write queryable public attestation records and optionally publish them.
+
+    IPFS publication is best-effort and never affects the canonical local
+    artifact.  Each publisher receives only a validated public record; private
+    proving requests and witnesses cannot cross this boundary.
+    """
+
+    from .formal_verification_contracts import canonical_json_bytes
+
+    typed = _attestation_records(records)
+    publisher = ipfs_publisher if ipfs_publisher is not None else ipfs_backend
+    rows: list[dict[str, Any]] = []
+    for record in typed:
+        row = record.to_public_artifact()
+        cid = ""
+        publication_error = ""
+        if publisher is not None:
+            try:
+                cid = _ipfs_publish(
+                    publisher,
+                    canonical_json_bytes(row),
+                    record_id=record.record_id,
+                )
+            except Exception as exc:
+                # Exception messages can contain backend request bodies.  A
+                # stable type-only code keeps this public projection secret-free.
+                publication_error = f"ipfs_publication_{type(exc).__name__.lower()}"
+        row["ipfs_cid"] = cid
+        row["ipfs_publication_error"] = publication_error
+        rows.append(row)
+    payload = {
+        "schema": PROOF_ATTESTATION_STORE_SCHEMA,
+        "generated_at": generated_at
+        or max(record.created_at for record in typed),
+        # A portable artifact is evidence to replay, never a live trust root.
+        "authoritative": False,
+        "contains_hidden_witnesses": False,
+        "attestation_count": len(rows),
+        "ipfs_record_count": sum(bool(row["ipfs_cid"]) for row in rows),
+        "attestations": rows,
+    }
+    return write_queryable_artifact(
+        path,
+        payload,
+        kind=PROOF_ATTESTATION_KIND,
+    )
+
+
+def _ipfs_read(backend: Any, cid: str) -> bytes:
+    if callable(getattr(backend, "block_get", None)):
+        result = backend.block_get(cid)
+    elif callable(getattr(backend, "retrieve", None)):
+        result = backend.retrieve(cid)
+    elif callable(getattr(backend, "cat", None)):
+        result = backend.cat(cid)
+    elif callable(backend):
+        result = backend(cid)
+    else:
+        raise TypeError("IPFS reader must be callable or provide block_get/retrieve/cat")
+    if isinstance(result, str):
+        return result.encode("utf-8")
+    if not isinstance(result, (bytes, bytearray)):
+        raise ValueError("IPFS reader returned a non-byte payload")
+    return bytes(result)
+
+
+def read_proof_attestation_artifact(
+    path_or_cid: Path | str,
+    *,
+    ipfs_backend: Any | None = None,
+    verifier: Callable[[Any], bool] | None = None,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    """Read and revalidate public records from JSON, DuckDB path, or IPFS CID.
+
+    Supplying ``verifier`` additionally reproduces every stored verdict.  A
+    rejected, errored, or expired replay raises instead of trusting serialized
+    assurance claims.
+    """
+
+    from .proof_attestation import (
+        PersistedAttestationRecord,
+        reproduce_attestation_verification,
+    )
+
+    requested = Path(path_or_cid)
+    if requested.exists() or requested.suffix.lower() in {".json", ".duckdb"}:
+        paths = query_artifact_paths(requested)
+        payload = json.loads(paths.json_path.read_text(encoding="utf-8"))
+        if (
+            not isinstance(payload, dict)
+            or _artifact_kind(payload) != PROOF_ATTESTATION_KIND
+        ):
+            raise ValueError(f"not a proof attestation artifact: {paths.json_path}")
+        raw_rows = payload.get("attestations")
+        if not isinstance(raw_rows, list):
+            raise ValueError("proof attestation artifact rows must be an array")
+    else:
+        if ipfs_backend is None:
+            raise ValueError("an IPFS backend is required to read an attestation CID")
+        raw = _ipfs_read(ipfs_backend, str(path_or_cid))
+        if callable(getattr(ipfs_backend, "block_get", None)):
+            if raw_ipfs_cid(raw) != str(path_or_cid):
+                raise ValueError("IPFS raw block does not match its requested CID")
+        decoded = json.loads(raw.decode("utf-8"))
+        if not isinstance(decoded, Mapping):
+            raise ValueError("IPFS attestation record must contain an object")
+        raw_rows = [dict(decoded, ipfs_cid=str(path_or_cid))]
+        payload = {
+            "schema": PROOF_ATTESTATION_STORE_SCHEMA,
+            "generated_at": str(decoded.get("created_at") or ""),
+            "authoritative": False,
+            "contains_hidden_witnesses": False,
+            "attestation_count": 1,
+            "ipfs_record_count": 1,
+            "attestations": raw_rows,
+        }
+
+    validated_rows = []
+    attested_count = 0
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, Mapping):
+            raise ValueError("proof attestation row must be an object")
+        record = PersistedAttestationRecord.from_dict(raw_row)
+        current = (
+            record.is_current_at(checked_at)
+            if checked_at is not None
+            else None
+        )
+        reproduced_authoritative = False
+        if verifier is not None:
+            if checked_at is None:
+                raise ValueError("checked_at is required when reproducing verification")
+            reproduced = reproduce_attestation_verification(
+                record,
+                verifier=verifier,
+                checked_at=checked_at,
+            )
+            if not reproduced.authoritative:
+                raise ValueError("persisted attestation failed independent reverification")
+            reproduced_authoritative = True
+            attested_count += 1
+        rendered = record.to_public_artifact()
+        rendered["ipfs_cid"] = str(raw_row.get("ipfs_cid") or "")
+        rendered["ipfs_publication_error"] = str(
+            raw_row.get("ipfs_publication_error") or ""
+        )
+        rendered["attestation_current"] = current
+        rendered["reproduced_authoritative"] = reproduced_authoritative
+        rendered["effective_assurance"] = (
+            reproduced.authoritative_assurance.value
+            if reproduced_authoritative
+            else record.receipt.authoritative_assurance.value
+        )
+        validated_rows.append(rendered)
+    claimed_count = payload.get("attestation_count")
+    if claimed_count not in (None, len(validated_rows)):
+        raise ValueError("proof attestation count does not match artifact rows")
+    actual_ipfs_count = sum(bool(row["ipfs_cid"]) for row in validated_rows)
+    claimed_ipfs_count = payload.get("ipfs_record_count")
+    if claimed_ipfs_count not in (None, actual_ipfs_count):
+        raise ValueError("IPFS attestation count does not match artifact rows")
+    if payload.get("contains_hidden_witnesses") not in (None, False):
+        raise ValueError("proof attestation artifacts cannot contain hidden witnesses")
+    if payload.get("authoritative") not in (None, False):
+        raise ValueError("proof attestation authority label is inconsistent")
+    result = dict(payload)
+    result["authoritative"] = False
+    result["attestations"] = validated_rows
+    result["attestation_count"] = len(validated_rows)
+    result["attested_record_count"] = attested_count
+    result["attested_assurance_available"] = bool(
+        validated_rows and attested_count == len(validated_rows)
+    )
+    return result
+
+
+def query_proof_attestations(path: Path | str, **query: Any) -> dict[str, Any]:
+    """Execute a bounded query against the public attestation projection."""
+
+    supplied_kind = query.pop("kind", PROOF_ATTESTATION_KIND)
+    if supplied_kind != PROOF_ATTESTATION_KIND:
+        raise ValueError("proof attestation queries require proof_attestations kind")
+    query.setdefault("table", "proof_attestations")
+    return query_artifact(path, kind=PROOF_ATTESTATION_KIND, **query)
+
+
+write_attestation_artifact = write_proof_attestation_artifact
+read_attestation_artifact = read_proof_attestation_artifact
+query_proof_attestation_artifact = query_proof_attestations
+write_proof_attestation_store = write_proof_attestation_artifact
+read_proof_attestation_store = read_proof_attestation_artifact
 
 
 def read_proof_metrics_artifact(path: Path | str) -> dict[str, Any]:
