@@ -164,6 +164,7 @@ class PortalSupervisorConfig:
     generated_dirty_repair_stale_lock_seconds: float = 300.0
     generated_dirty_repair_paths: tuple[Path, ...] = field(default_factory=tuple)
     external_reservation_manifest_paths: tuple[Path, ...] = field(default_factory=tuple)
+    assumed_completed_task_ids: tuple[str, ...] = field(default_factory=tuple)
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -5256,6 +5257,8 @@ class PortalImplementationSupervisor:
         )
         for path in self.config.external_reservation_manifest_paths:
             command.extend(["--external-reservation-manifest-path", str(path)])
+        for task_id in self.config.assumed_completed_task_ids:
+            command.extend(["--assume-completed-task-id", str(task_id)])
         return command
 
     def _managed_daemon_pid_path(self) -> Path:
@@ -5717,6 +5720,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Repeatable bundle scheduler manifest whose running execution slices reserve tasks.",
     )
     parser.add_argument(
+        "--assume-completed-task-id",
+        action="append",
+        default=[],
+        help="Repeatable external dependency task ID already proven complete by the planner.",
+    )
+    parser.add_argument(
         "--no-retry-budget-guardrail",
         dest="retry_budget_guardrail_enabled",
         action="store_false",
@@ -6131,6 +6140,7 @@ def supervisor_config_from_args(
         external_reservation_manifest_paths=tuple(
             args.external_reservation_manifest_path or ()
         ),
+        assumed_completed_task_ids=tuple(args.assume_completed_task_id or ()),
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
         retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,

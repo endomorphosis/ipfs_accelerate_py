@@ -574,6 +574,37 @@ def test_external_serial_task_state_fences_then_releases_matching_bundle(
     assert _active_task_ids(released) == {"T-1"}
 
 
+def test_lane_command_carries_planner_proven_cross_bundle_dependencies(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    prerequisite = _bundle("T-1")
+    prerequisite["tasks"][0]["status"] = "completed"
+    dependent = _bundle("T-2")
+    dependent["tasks"][0]["status"] = "todo"
+    dependent["tasks"][0]["depends_on"] = ["T-1"]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/test/t-1": prerequisite,
+                    "objective/test/t-2": dependent,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    scheduler = _scheduler(tmp_path, index, _FakeLauncher())
+
+    lane = next(item for item in scheduler._plan() if item.task_ids == ["T-2"])
+
+    assert lane.command.count("--assume-completed-task-id") == 1
+    assert lane.command[lane.command.index("--assume-completed-task-id") + 1] == "T-1"
+
+
 def test_two_scheduler_processes_with_same_did_do_not_share_one_grant(tmp_path: Path) -> None:
     """A DID identifies authority, not a particular local executing process."""
 

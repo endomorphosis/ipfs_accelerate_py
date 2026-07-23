@@ -580,6 +580,7 @@ class PortalTaskState:
     ready_task_ids: list[str] = field(default_factory=list)
     selectable_ready_task_ids: list[str] = field(default_factory=list)
     external_reserved_task_ids: list[str] = field(default_factory=list)
+    assumed_completed_task_ids: list[str] = field(default_factory=list)
     eligible_ready_task_ids: list[str] = field(default_factory=list)
     strict_deprioritized_ready_task_ids: list[str] = field(default_factory=list)
     waiting_task_ids: list[str] = field(default_factory=list)
@@ -610,6 +611,7 @@ class PortalTaskState:
     ready_count: int = 0
     selectable_ready_count: int = 0
     external_reserved_count: int = 0
+    assumed_completed_count: int = 0
     eligible_ready_count: int = 0
     strict_deprioritized_ready_count: int = 0
     waiting_count: int = 0
@@ -664,6 +666,9 @@ class PortalTaskState:
                 ],
                 external_reserved_task_ids=[
                     str(item) for item in payload.get("external_reserved_task_ids", []) or []
+                ],
+                assumed_completed_task_ids=[
+                    str(item) for item in payload.get("assumed_completed_task_ids", []) or []
                 ],
                 eligible_ready_task_ids=[str(item) for item in payload.get("eligible_ready_task_ids", []) or []],
                 strict_deprioritized_ready_task_ids=[
@@ -725,6 +730,7 @@ class PortalTaskState:
                 ready_count=int(payload.get("ready_count") or 0),
                 selectable_ready_count=int(payload.get("selectable_ready_count") or 0),
                 external_reserved_count=int(payload.get("external_reserved_count") or 0),
+                assumed_completed_count=int(payload.get("assumed_completed_count") or 0),
                 eligible_ready_count=int(payload.get("eligible_ready_count") or 0),
                 strict_deprioritized_ready_count=int(payload.get("strict_deprioritized_ready_count") or 0),
                 waiting_count=int(payload.get("waiting_count") or 0),
@@ -890,6 +896,7 @@ class PortalImplementationDaemon:
         objective_bundle_dir: Path | None = None,
         generated_status_paths: Sequence[Path | str] = (),
         external_reservation_manifest_paths: Sequence[Path | str] = (),
+        assumed_completed_task_ids: Sequence[str] = (),
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
         merge_reconciliation_max_merges: int | None = None,
@@ -952,6 +959,11 @@ class PortalImplementationDaemon:
         self.generated_status_paths = tuple(Path(path) for path in generated_status_paths)
         self.external_reservation_manifest_paths = tuple(
             Path(path).resolve() for path in external_reservation_manifest_paths
+        )
+        self.assumed_completed_task_ids = frozenset(
+            str(task_id).strip()
+            for task_id in assumed_completed_task_ids
+            if str(task_id).strip()
         )
         self.llm_merge_resolver_command = (
             default_llm_merge_resolver_command()
@@ -1428,6 +1440,7 @@ class PortalImplementationDaemon:
             for task in tasks
             if self._canonical_ref(task) in completed_cids
         )
+        dependency_satisfied_task_ids = completed_set | self.assumed_completed_task_ids
 
         for task in tasks:
             if task.task_id in completed_set:
@@ -1453,7 +1466,9 @@ class PortalImplementationDaemon:
             if task.task_id in unresolved_merge_failure_task_ids:
                 resolved_statuses[task.task_id] = "blocked"
                 continue
-            unresolved_deps = [dep for dep in task.depends_on if dep not in completed_set]
+            unresolved_deps = [
+                dep for dep in task.depends_on if dep not in dependency_satisfied_task_ids
+            ]
             if unresolved_deps:
                 resolved_statuses[task.task_id] = "waiting"
                 continue
@@ -1512,6 +1527,7 @@ class PortalImplementationDaemon:
         state.ready_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "ready"]
         state.selectable_ready_task_ids = list(selection_scope["selectable_ready_task_ids"])
         state.external_reserved_task_ids = sorted(external_task_reservations)
+        state.assumed_completed_task_ids = sorted(self.assumed_completed_task_ids)
         state.eligible_ready_task_ids = list(selection_scope["eligible_ready_task_ids"])
         state.strict_deprioritized_ready_task_ids = list(selection_scope["strict_deprioritized_ready_task_ids"])
         state.waiting_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "waiting"]
@@ -1519,6 +1535,7 @@ class PortalImplementationDaemon:
         state.ready_count = len(state.ready_task_ids)
         state.selectable_ready_count = len(state.selectable_ready_task_ids)
         state.external_reserved_count = len(state.external_reserved_task_ids)
+        state.assumed_completed_count = len(state.assumed_completed_task_ids)
         state.eligible_ready_count = len(state.eligible_ready_task_ids)
         state.strict_deprioritized_ready_count = len(state.strict_deprioritized_ready_task_ids)
         state.waiting_count = len(state.waiting_task_ids)
@@ -1655,6 +1672,7 @@ class PortalImplementationDaemon:
             "merged_status_repair": merged_status_repair,
             "active_task_claims": sorted(active_task_claims),
             "external_reserved_task_ids": sorted(external_task_reservations),
+            "assumed_completed_task_ids": sorted(self.assumed_completed_task_ids),
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
             "shared_completed_task_ids": sorted(shared_completed_task_ids),
             "canonical_task_count": len(aliases_by_cid),
@@ -10703,6 +10721,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Repeatable bundle scheduler manifest whose running execution slices reserve tasks.",
     )
     parser.add_argument(
+        "--assume-completed-task-id",
+        action="append",
+        default=[],
+        help="Repeatable external dependency task ID already proven complete by the planner.",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -10744,6 +10768,7 @@ def main(argv: list[str] | None = None) -> None:
         objective_bundle_dir=args.objective_bundle_dir,
         generated_status_paths=args.generated_status_path,
         external_reservation_manifest_paths=args.external_reservation_manifest_path,
+        assumed_completed_task_ids=args.assume_completed_task_id,
         llm_merge_resolver_command=args.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,

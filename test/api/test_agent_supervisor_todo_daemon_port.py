@@ -5878,6 +5878,44 @@ def test_implementation_daemon_reserves_every_active_bundle_slice_member(tmp_pat
     assert state.selectable_ready_task_ids == ["ACCEL-003"]
 
 
+def test_implementation_daemon_accepts_planner_proven_external_dependency(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-002 Cross-bundle dependent
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-001
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        assumed_completed_task_ids=("ACCEL-001",),
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(repo / "state.json")
+
+    assert result["active_task_id"] == "ACCEL-002"
+    assert result["assumed_completed_task_ids"] == ["ACCEL-001"]
+    assert state.assumed_completed_task_ids == ["ACCEL-001"]
+    assert state.assumed_completed_count == 1
+    assert state.completed_task_ids == []
+    assert state.ready_task_ids == ["ACCEL-002"]
+
+
 def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6896,6 +6934,7 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
         task_shard_count=2,
         task_shard_index=1,
         external_reservation_manifest_paths=(repo / "bundle-lanes.json",),
+        assumed_completed_task_ids=("REF-001",),
         daemon_script_path=daemon_script,
     )
     supervisor = TodoImplementationSupervisor(config)
@@ -6925,6 +6964,7 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert command[command.index("--external-reservation-manifest-path") + 1] == str(
         repo / "bundle-lanes.json"
     )
+    assert command[command.index("--assume-completed-task-id") + 1] == "REF-001"
 
     args = parse_implementation_supervisor_args(
         [
@@ -6968,6 +7008,8 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
             "1",
             "--external-reservation-manifest-path",
             str(repo / "bundle-lanes.json"),
+            "--assume-completed-task-id",
+            "REF-001",
         ]
     )
     assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
@@ -6987,6 +7029,7 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert args.task_shard_count == 2
     assert args.task_shard_index == 1
     assert args.external_reservation_manifest_path == [repo / "bundle-lanes.json"]
+    assert args.assume_completed_task_id == ["REF-001"]
 
 
 def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_path):

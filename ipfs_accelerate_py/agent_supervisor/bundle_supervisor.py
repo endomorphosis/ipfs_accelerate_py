@@ -870,6 +870,7 @@ def implementation_supervisor_command(
     generated_dirty_repair_stale_lock_seconds: float | None = None,
     generated_dirty_repair_paths: Sequence[Path | str] = (),
     worktree_submodule_paths: Sequence[str] = (),
+    assumed_completed_task_ids: Sequence[str] = (),
     log_level: str = "INFO",
 ) -> list[str]:
     command = [
@@ -929,6 +930,9 @@ def implementation_supervisor_command(
         command.extend(["--generated-dirty-stale-lock-seconds", str(generated_dirty_repair_stale_lock_seconds)])
     for path in dict.fromkeys(Path(path) for path in generated_dirty_repair_paths):
         command.extend(["--generated-dirty-path", str(path)])
+    for task_id in dict.fromkeys(str(task_id).strip() for task_id in assumed_completed_task_ids):
+        if task_id:
+            command.extend(["--assume-completed-task-id", task_id])
     return command
 
 
@@ -964,6 +968,14 @@ def plan_bundle_lanes(
 
     lanes: list[BundleLaneSpec] = []
     bundle_payloads = build_bundle_task_payloads(bundle_index_path)
+    globally_completed_task_ids = {
+        str(task.get("task_id") or "")
+        for payload in bundle_payloads
+        for task in _mapping_list(payload.get("tasks"))
+        if str(task.get("status") or "").strip().lower()
+        in _TERMINAL_CONFLICT_TASK_STATUSES
+        and str(task.get("task_id") or "")
+    }
     excluded_bundle_keys = _excluded_bundle_keys(bundle_index_path)
     bundle_payloads = [
         payload
@@ -985,6 +997,18 @@ def plan_bundle_lanes(
         lane_worktree_root = worktree_root / safe_key
         log_path = log_dir / f"{safe_key}.log"
         state_prefix = lane_state_prefix(bundle_key)
+        execution_tasks = _execution_slice_members(
+            payload,
+            _mapping_list(payload.get("tasks")),
+        )
+        assumed_completed_task_ids = sorted(
+            {
+                dependency_id
+                for task in execution_tasks
+                for dependency_id in _string_list(task.get("depends_on"))
+                if dependency_id in globally_completed_task_ids
+            }
+        )
         task_ids = (
             _string_list(payload.get("execution_slice_task_ids"))
             if "execution_slice_task_ids" in payload
@@ -1019,6 +1043,7 @@ def plan_bundle_lanes(
             generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
             generated_dirty_repair_paths=generated_dirty_repair_paths,
             worktree_submodule_paths=worktree_submodule_paths,
+            assumed_completed_task_ids=assumed_completed_task_ids,
             log_level=log_level,
         )
         lanes.append(
