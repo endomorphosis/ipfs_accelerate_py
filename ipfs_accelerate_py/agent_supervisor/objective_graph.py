@@ -4330,18 +4330,70 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
             for item in bundle_payload.get("tasks", [])
             if isinstance(item, Mapping)
         }
+        completed_member_cids = {
+            cid
+            for cid in member_cids
+            if cid in graph.nodes
+            and graph.nodes[cid].status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+        }
+        active_member_cids = {
+            cid
+            for cid in member_cids
+            if cid in graph.nodes
+            and graph.nodes[cid].status
+            in {"active", "implementing", "in_progress", "running"}
+        }
+        blocked_member_cids = {
+            cid
+            for cid in member_cids
+            if cid in graph.nodes
+            and graph.nodes[cid].status in {"blocked", "on_hold"}
+        }
+        unfinished_member_cids = member_cids - completed_member_cids
+        ready_member_cids = {
+            cid
+            for cid in unfinished_member_cids - active_member_cids - blocked_member_cids
+            if cid in schedule_by_cid and schedule_by_cid[cid].claimable
+        }
+        # Until member leases are shared across serial and bundle schedulers,
+        # an externally active member fences the whole bundle from a duplicate
+        # launch. Otherwise, lease only the dependency-closed ready slice.
+        execution_member_cids = (
+            set()
+            if active_member_cids
+            else (ready_member_cids or unfinished_member_cids)
+        )
+        deferred_member_cids = unfinished_member_cids - ready_member_cids
+        schedule_order = {
+            item.task_cid: index for index, item in enumerate(graph.schedule)
+        }
+
+        def ordered(cids: set[str]) -> list[str]:
+            return sorted(cids, key=lambda cid: (schedule_order.get(cid, len(schedule_order)), cid))
+
+        def task_ids(cids: set[str]) -> list[str]:
+            return [
+                graph.nodes[cid].task_id
+                for cid in ordered(cids)
+                if cid in graph.nodes and graph.nodes[cid].task_id
+            ]
+
         dependency_bundle_keys = {
             member_bundle[source]
-            for target in member_cids
+            for target in execution_member_cids
             for source in unresolved_incoming.get(target, set())
             if source in member_bundle and member_bundle[source] != bundle_key
         }
         dependency_task_cids = sorted(bundle_identity_cids[key] for key in dependency_bundle_keys)
-        member_schedule = [schedule_by_cid[cid] for cid in member_cids if cid in schedule_by_cid]
+        member_schedule = [
+            schedule_by_cid[cid]
+            for cid in ordered(execution_member_cids)
+            if cid in schedule_by_cid
+        ]
         repair_evidence: list[dict[str, Any]] = []
         bundle_resolved_cycle_cids: set[str] = set()
         for item in graph.repair_evidence:
-            if item.task_cid not in member_cids:
+            if item.task_cid not in execution_member_cids:
                 continue
             component = {
                 str(cid)
@@ -4362,7 +4414,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         }
         invalid_member_cids = sorted(
             blocking_repair_cids
-            | ((member_cids & invalid_task_cids) - bundle_resolved_cycle_cids)
+            | ((execution_member_cids & invalid_task_cids) - bundle_resolved_cycle_cids)
         )
         if invalid_member_cids and not repair_evidence:
             # The graph keeps the complete invalid-CID set even when detailed
@@ -4385,18 +4437,45 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         external_blockers = sorted(
             {
                 bundle_identity_cids[member_bundle[source]]
-                for target in member_cids
+                for target in execution_member_cids
                 for source in unresolved_incoming.get(target, set())
                 if source in member_bundle and member_bundle[source] != bundle_key
             }
         )
-        projected_conflicts = _project_task_conflict_graph(conflict_graph_dict, member_cids)
+        projected_conflicts = _project_task_conflict_graph(
+            conflict_graph_dict,
+            execution_member_cids,
+        )
+        claimable = (
+            not active_member_cids
+            and (
+                not unfinished_member_cids
+                or bool(ready_member_cids)
+                or (
+                    bool(bundle_resolved_cycle_cids)
+                    and not external_blockers
+                    and not invalid_member_cids
+                )
+            )
+        )
         bundle_payload.update(
             {
                 "canonical_task_cid": bundle_identity_cids[bundle_key],
                 "dependency_task_cids": dependency_task_cids,
                 "blocking_task_cids": external_blockers,
-                "claimable": not external_blockers and not invalid_member_cids,
+                "claimable": claimable,
+                "ready_member_task_cids": ordered(ready_member_cids),
+                "ready_member_task_ids": task_ids(ready_member_cids),
+                "deferred_member_task_cids": ordered(deferred_member_cids),
+                "deferred_member_task_ids": task_ids(deferred_member_cids),
+                "completed_member_task_cids": ordered(completed_member_cids),
+                "completed_member_task_ids": task_ids(completed_member_cids),
+                "active_member_task_cids": ordered(active_member_cids),
+                "active_member_task_ids": task_ids(active_member_cids),
+                "blocked_member_task_cids": ordered(blocked_member_cids),
+                "blocked_member_task_ids": task_ids(blocked_member_cids),
+                "execution_slice_task_cids": ordered(execution_member_cids),
+                "execution_slice_task_ids": task_ids(execution_member_cids),
                 "critical_path_length": max((item.critical_path_length for item in member_schedule), default=1),
                 "slack": min((item.slack for item in member_schedule), default=0),
                 "downstream_unlock_value": max(

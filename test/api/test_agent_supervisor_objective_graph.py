@@ -1282,6 +1282,145 @@ def test_task_dependency_dag_does_not_require_an_abstract_parent_goal_task():
     assert graph.schedule[0].claimable is True
 
 
+def test_bundle_payload_admits_only_the_dependency_closed_ready_member_slice(tmp_path):
+    index_path = tmp_path / "slice-index.json"
+    payload = {
+        "source_todo": "tasks.todo.md",
+        "bundles": {
+            "objective/mixed": {
+                "shard_path": "mixed.todo.md",
+                "tasks": [
+                    {
+                        "task_id": "A",
+                        "task_cid": "cid-a",
+                        "outputs": ["ready.py"],
+                    },
+                    {
+                        "task_id": "B",
+                        "task_cid": "cid-b",
+                        "depends_on": ["X"],
+                        "outputs": ["deferred.py"],
+                    },
+                ],
+            },
+            "objective/prerequisite": {
+                "shard_path": "prerequisite.todo.md",
+                "tasks": [
+                    {
+                        "task_id": "X",
+                        "task_cid": "cid-x",
+                        "outputs": ["prerequisite.py"],
+                    }
+                ],
+            },
+        },
+    }
+    index_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    initial = {
+        item["bundle_key"]: item for item in build_bundle_task_payloads(index_path)
+    }
+    mixed = initial["objective/mixed"]
+    assert mixed["claimable"] is True
+    assert mixed["ready_member_task_ids"] == ["A"]
+    assert mixed["deferred_member_task_ids"] == ["B"]
+    assert mixed["execution_slice_task_ids"] == ["A"]
+    assert mixed["dependency_task_cids"] == []
+
+    payload["bundles"]["objective/mixed"]["tasks"][0]["status"] = "completed"
+    index_path.write_text(json.dumps(payload), encoding="utf-8")
+    waiting = {
+        item["bundle_key"]: item for item in build_bundle_task_payloads(index_path)
+    }
+    mixed = waiting["objective/mixed"]
+    assert mixed["claimable"] is False
+    assert mixed["ready_member_task_ids"] == []
+    assert mixed["deferred_member_task_ids"] == ["B"]
+    assert mixed["execution_slice_task_ids"] == ["B"]
+    assert mixed["dependency_task_cids"] == [
+        waiting["objective/prerequisite"]["canonical_task_cid"]
+    ]
+
+    payload["bundles"]["objective/prerequisite"]["tasks"][0]["status"] = "completed"
+    index_path.write_text(json.dumps(payload), encoding="utf-8")
+    replenished = {
+        item["bundle_key"]: item for item in build_bundle_task_payloads(index_path)
+    }
+    mixed = replenished["objective/mixed"]
+    assert mixed["claimable"] is True
+    assert mixed["ready_member_task_ids"] == ["B"]
+    assert mixed["execution_slice_task_ids"] == ["B"]
+    assert mixed["dependency_task_cids"] == []
+
+
+def test_active_member_fences_bundle_slice_from_duplicate_launch(tmp_path):
+    index_path = tmp_path / "active-index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/active": {
+                        "shard_path": "active.todo.md",
+                        "tasks": [
+                            {
+                                "task_id": "A",
+                                "task_cid": "cid-a",
+                                "status": "in_progress",
+                            },
+                            {"task_id": "B", "task_cid": "cid-b"},
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    bundle = build_bundle_task_payloads(index_path)[0]
+
+    assert bundle["claimable"] is False
+    assert bundle["active_member_task_ids"] == ["A"]
+    assert bundle["execution_slice_task_ids"] == []
+    assert bundle["ready_member_task_ids"] == ["B"]
+
+
+def test_blocked_member_is_not_admitted_as_a_ready_bundle_slice(tmp_path):
+    index_path = tmp_path / "blocked-index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/blocked": {
+                        "shard_path": "blocked.todo.md",
+                        "tasks": [
+                            {
+                                "task_id": "A",
+                                "task_cid": "cid-a",
+                                "status": "blocked",
+                            },
+                            {
+                                "task_id": "B",
+                                "task_cid": "cid-b",
+                                "depends_on": ["A"],
+                            },
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    bundle = build_bundle_task_payloads(index_path)[0]
+
+    assert bundle["claimable"] is False
+    assert bundle["blocked_member_task_ids"] == ["A"]
+    assert bundle["ready_member_task_ids"] == []
+    assert bundle["deferred_member_task_ids"] == ["A", "B"]
+
+
 def test_bundle_projection_absorbs_internal_cycles_but_keeps_cross_bundle_cycles(tmp_path):
     internal_index = tmp_path / "internal-index.json"
     internal_index.write_text(

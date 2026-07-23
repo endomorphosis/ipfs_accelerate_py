@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Barrier
 from typing import Any
@@ -250,6 +250,74 @@ def test_pool_capacity_and_shared_leases_prevent_duplicate_execution(tmp_path: P
     second.reconcile_once()
     assert len(first_launcher.starts) == 2
     assert len(second_launcher.starts) == 1
+
+
+def test_dependency_blocked_candidate_does_not_consume_admission_capacity(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1", "T-2")
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher, max_lanes=1)
+    lanes = scheduler._plan()
+    blocked = replace(
+        lanes[0],
+        queue_payload={
+            **dict(lanes[0].queue_payload or {}),
+            "dependency_task_cids": ["bmissing-prerequisite"],
+        },
+    )
+    scheduler._plan = lambda: [blocked, lanes[1]]  # type: ignore[method-assign]
+
+    manifest = scheduler.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [["T-2"]]
+    blocked_task = next(
+        task for task in manifest["tasks"] if task["bundle_key"].endswith("t-1")
+    )
+    assert blocked_task["state"] == "blocked"
+    assert blocked_task["blocked_reason"] == "dependency_not_ready"
+    assert blocked_task["missing_dependency_task_cids"] == ["bmissing-prerequisite"]
+    decision = next(
+        item
+        for item in manifest["scheduler_decisions"]
+        if item["bundle_key"].endswith("t-1")
+    )
+    assert decision["reason"] == "snapshot_not_ready"
+
+
+def test_lease_race_backfills_the_admission_slot_in_the_same_cycle(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1", "T-2")
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher, max_lanes=1)
+    original_claim_ready = LeaseCoordinator.claim_ready
+    failed_once = False
+
+    def lose_first_lease(self: LeaseCoordinator, *args: Any, **kwargs: Any):
+        nonlocal failed_once
+        if not failed_once and kwargs.get("eligible_task_cids"):
+            failed_once = True
+            return None
+        return original_claim_ready(self, *args, **kwargs)
+
+    monkeypatch.setattr(LeaseCoordinator, "claim_ready", lose_first_lease)
+
+    manifest = scheduler.reconcile_once()
+
+    assert failed_once is True
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [["T-2"]]
+    decisions = {
+        item["bundle_key"]: item for item in manifest["scheduler_decisions"]
+    }
+    assert decisions["objective/test/t-1"]["reason"] == "lease_unavailable"
+    assert decisions["objective/test/t-2"]["decision"] == "launched"
+    assert manifest["resource_schedule"]["admitted_count"] == 1
 
 
 def test_concurrent_serial_and_dynamic_supervisors_publish_one_canonical_result(
@@ -591,6 +659,72 @@ def test_authoritative_lane_state_releases_a_worker_with_no_ready_work(tmp_path:
     with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
         state = coordinator.task_state(launcher.starts[0][1].task_cid)
     assert state is not None and state["state"] == "blocked"
+
+
+def test_transitively_blocked_waiting_tasks_release_an_idle_lane(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "title": "Blocked root"},
+        {"task_id": "T-2", "title": "First dependent", "depends_on": ["T-1"]},
+        {"task_id": "T-3", "title": "Second dependent", "depends_on": ["T-2"]},
+    ]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": bundle}}),
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    initial = scheduler.reconcile_once()
+    assert initial["counts"]["active"] == 1
+    lane = launcher.starts[0][0]
+    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
+    lane.todo_path.write_text(
+        "## T-1 Blocked root\n\n"
+        "- Status: blocked\n"
+        "- Depends on: none\n\n"
+        "## T-2 First dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-1\n\n"
+        "## T-3 Second dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-2\n",
+        encoding="utf-8",
+    )
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (lane.state_dir / f"{lane.state_prefix}_task_state.json").write_text(
+        json.dumps(
+            {
+                "task_count": 3,
+                "completed_count": 0,
+                "ready_count": 0,
+                "blocked_count": 1,
+                "waiting_count": 2,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "task_statuses": {
+                    "T-1": "blocked",
+                    "T-2": "waiting",
+                    "T-3": "waiting",
+                },
+                "task_identities": {
+                    task_id: {"display_task_id": task_id}
+                    for task_id in ("T-1", "T-2", "T-3")
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settled = scheduler.reconcile_once()
+
+    assert settled["counts"]["active"] == 0
+    assert launcher.starts[0][2].terminate_calls == 1
+    assert launcher.starts[0][2].wait_calls == 1
+    assert len(launcher.starts) == 1
 
 
 def test_drained_lane_releases_lease_for_conflict_safe_steal(tmp_path: Path) -> None:

@@ -1030,15 +1030,61 @@ class LeaseCoordinator:
         result["expires_at_ms"] = state.lease_expires_at_ms
         return result
 
+    def _projection_with_claimability(
+        self,
+        connection: sqlite3.Connection,
+        state: TaskLeaseState,
+        *,
+        max_evidence: int,
+    ) -> dict[str, Any]:
+        """Attach bounded dependency evidence to a scheduler projection."""
+
+        result = self._projection_dict(state)
+        readiness = self._claimability(
+            connection,
+            state.task_cid,
+            max_evidence=max_evidence,
+        )
+        result.update(
+            {
+                "claimable": bool(readiness["claimable"]),
+                "dependency_task_cids": list(readiness["dependency_task_cids"]),
+                "satisfied_dependency_task_cids": list(
+                    readiness["satisfied_dependency_task_cids"]
+                ),
+                "blocked_dependency_task_cids": list(
+                    readiness["blocked_dependency_task_cids"]
+                ),
+                "blocking_task_cids": list(readiness["blocked_dependency_task_cids"]),
+                "missing_dependency_task_cids": list(
+                    readiness["missing_dependency_task_cids"]
+                ),
+                "dependency_cycles": list(readiness["dependency_cycles"]),
+                "dependency_repair_evidence": list(readiness["repair_evidence"]),
+                "claimability_evidence_truncated": bool(
+                    readiness["evidence_truncated"]
+                ),
+            }
+        )
+        if result["state"] == "ready" and not result["claimable"]:
+            result["state"] = "blocked"
+            result["blocked_reason"] = "dependency_not_ready"
+        return result
+
     def list_tasks(
         self,
         *,
         task_cids: Iterable[str] | None = None,
         now_ms: int | None = None,
+        include_claimability: bool = False,
+        max_claimability_evidence: int = 8,
     ) -> list[dict[str, Any]]:
         """Return a consistent live projection, optionally scoped to current tasks."""
 
         now = self._clock_ms() if now_ms is None else int(now_ms)
+        evidence_limit = int(max_claimability_evidence)
+        if not 1 <= evidence_limit <= 256:
+            raise ValueError("max_claimability_evidence must be in [1, 256]")
         selected = None if task_cids is None else sorted({str(item) for item in task_cids})
         with self._lock:
             connection = self._connection
@@ -1072,17 +1118,46 @@ class LeaseCoordinator:
                             ).fetchall()
                         )
                     rows.sort(key=lambda row: (int(row["registered_at_ms"]), str(row["task_cid"])))
-                result = [self._projection_dict(self._task_projection(row, row if row["state"] is not None else None, now=now)) for row in rows]
+                states = [
+                    self._task_projection(
+                        row,
+                        row if row["state"] is not None else None,
+                        now=now,
+                    )
+                    for row in rows
+                ]
+                result = [
+                    (
+                        self._projection_with_claimability(
+                            connection,
+                            state,
+                            max_evidence=evidence_limit,
+                        )
+                        if include_claimability
+                        else self._projection_dict(state)
+                    )
+                    for state in states
+                ]
                 connection.commit()
                 return result
             except Exception:
                 connection.rollback()
                 raise
 
-    def task_state(self, task_cid: str, *, now_ms: int | None = None) -> dict[str, Any] | None:
+    def task_state(
+        self,
+        task_cid: str,
+        *,
+        now_ms: int | None = None,
+        include_claimability: bool = False,
+        max_claimability_evidence: int = 8,
+    ) -> dict[str, Any] | None:
         """Return the live scheduler projection for ``task_cid``."""
 
         now = self._clock_ms() if now_ms is None else int(now_ms)
+        evidence_limit = int(max_claimability_evidence)
+        if not 1 <= evidence_limit <= 256:
+            raise ValueError("max_claimability_evidence must be in [1, 256]")
         with self._lock:
             connection = self._connection
             connection.execute("BEGIN IMMEDIATE")
@@ -1097,7 +1172,16 @@ class LeaseCoordinator:
                 lease = connection.execute(
                     "SELECT * FROM leases WHERE task_cid=?", (task_cid,)
                 ).fetchone()
-                result = self._projection_dict(self._task_projection(task, lease, now=now))
+                state = self._task_projection(task, lease, now=now)
+                result = (
+                    self._projection_with_claimability(
+                        connection,
+                        state,
+                        max_evidence=evidence_limit,
+                    )
+                    if include_claimability
+                    else self._projection_dict(state)
+                )
                 connection.commit()
                 return result
             except Exception:

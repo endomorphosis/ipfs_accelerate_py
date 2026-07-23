@@ -38,6 +38,7 @@ from .scheduler_metrics import (
     write_scheduler_snapshot,
 )
 from .resource_scheduler import (
+    AdmissionDecision,
     HostResourceSnapshot,
     LaneResourceRequirements,
     ResourcePolicy,
@@ -358,6 +359,27 @@ def _mapping_list(value: Any) -> list[dict[str, Any]]:
     return [dict(item) for item in value if isinstance(item, dict)]
 
 
+def _execution_slice_members(
+    payload: Mapping[str, Any],
+    tasks: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Restrict planning surfaces to the current ready-member slice."""
+
+    if (
+        "execution_slice_task_cids" not in payload
+        and "execution_slice_task_ids" not in payload
+    ):
+        return [dict(task) for task in tasks]
+    selected_cids = set(_string_list(payload.get("execution_slice_task_cids")))
+    selected_ids = set(_string_list(payload.get("execution_slice_task_ids")))
+    return [
+        dict(task)
+        for task in tasks
+        if str(task.get("canonical_task_cid") or task.get("task_cid") or "") in selected_cids
+        or str(task.get("task_id") or "") in selected_ids
+    ]
+
+
 def _first_nonempty(payloads: Sequence[dict[str, Any]], *keys: str) -> Any:
     for payload in payloads:
         for key in keys:
@@ -373,7 +395,7 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
     profile = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
     task_spec = profile.get("task") if isinstance(profile.get("task"), dict) else {}
     selection = profile.get("selection") if isinstance(profile.get("selection"), dict) else {}
-    tasks = _mapping_list(payload.get("tasks"))
+    tasks = _execution_slice_members(payload, _mapping_list(payload.get("tasks")))
     # Member requirements precede the adapter's compatibility defaults. This
     # prevents a synthesized ``cpu-small`` TaskSpec from masking an explicit
     # GPU/resource request on the underlying work item.
@@ -443,7 +465,7 @@ def _live_bundle_conflict_members(
 ) -> list[dict[str, Any]]:
     """Exclude settled members from the bundle's prospective edit surface."""
 
-    tasks = _mapping_list(payload.get("tasks"))
+    tasks = _execution_slice_members(payload, _mapping_list(payload.get("tasks")))
     todo_path_text = str(payload.get("todo_path") or "").strip()
     live_statuses: dict[str, str] = {}
     if todo_path_text:
@@ -964,11 +986,15 @@ def plan_bundle_lanes(
         lane_worktree_root = worktree_root / safe_key
         log_path = log_dir / f"{safe_key}.log"
         state_prefix = lane_state_prefix(bundle_key)
-        task_ids = [
-            str(item.get("task_id"))
-            for item in payload.get("tasks", [])
-            if isinstance(item, dict) and item.get("task_id")
-        ]
+        task_ids = (
+            _string_list(payload.get("execution_slice_task_ids"))
+            if "execution_slice_task_ids" in payload
+            else [
+                str(item.get("task_id"))
+                for item in payload.get("tasks", [])
+                if isinstance(item, dict) and item.get("task_id")
+            ]
+        )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
         command = implementation_supervisor_command(
@@ -1552,6 +1578,7 @@ class DynamicBundleScheduler:
             task_count = _schedule_int(state, "task_count")
             completed_count = _schedule_int(state, "completed_count")
             blocked_count = _schedule_int(state, "blocked_count")
+            ready_count = _schedule_int(state, "ready_count")
             waiting_count = _schedule_int(state, "waiting_count")
             active = bool(state.get("implementation_in_progress") or state.get("active_task_id"))
             state_task_ids = {
@@ -1567,6 +1594,36 @@ class DynamicBundleScheduler:
                 if completed_count >= task_count:
                     return "completed"
                 if completed_count + blocked_count >= task_count:
+                    return "blocked"
+            if state_matches_board and task_count > 0 and not active and ready_count == 0:
+                statuses = {
+                    str(task_id): str(status).strip().lower()
+                    for task_id, status in (state.get("task_statuses") or {}).items()
+                }
+                completed_ids = {
+                    task.task_id
+                    for task in portal_tasks
+                    if statuses.get(task.task_id, task.status) in {"complete", "completed"}
+                }
+                blocked_ids = {
+                    task.task_id
+                    for task in portal_tasks
+                    if statuses.get(task.task_id, task.status) == "blocked"
+                }
+                # Waiting descendants of an internally blocked task can never
+                # become ready in this lane. Propagate that closure so the
+                # bundle releases its lease instead of retaining an idle worker.
+                changed = True
+                while changed:
+                    changed = False
+                    for task in portal_tasks:
+                        if task.task_id in completed_ids or task.task_id in blocked_ids:
+                            continue
+                        internal_dependencies = portal_task_ids.intersection(task.depends_on)
+                        if internal_dependencies.intersection(blocked_ids):
+                            blocked_ids.add(task.task_id)
+                            changed = True
+                if portal_task_ids and portal_task_ids.issubset(completed_ids | blocked_ids):
                     return "blocked"
 
         if not markdown:
@@ -1801,6 +1858,9 @@ class DynamicBundleScheduler:
             task_cid = str(item.get("task_cid") or "")
             lane = by_task_cid.get(task_cid)
             state = self._projection_state(item)
+            if state == "ready" and lane is not None and not lane.claimable:
+                state = "blocked"
+                item.setdefault("blocked_reason", "planner_not_claimable")
             if state == "accepted" and task_cid not in running_ids:
                 state = "blocked"
             elif state == "accepted":
@@ -2015,7 +2075,10 @@ class DynamicBundleScheduler:
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),
                 }
-                decision_projection = coordinator.list_tasks(task_cids=current_task_cids)
+                decision_projection = coordinator.list_tasks(
+                    task_cids=current_task_cids,
+                    include_claimability=True,
+                )
                 decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
                 snapshot_ready = set(ready_task_cids(decision_snapshot))
                 decisions: list[dict[str, Any]] = []
@@ -2055,18 +2118,12 @@ class DynamicBundleScheduler:
                 except Exception:
                     logger.exception("Provider capacity sampling failed")
                     provider_capacities = ()
-                resource_snapshot = self.resource_scheduler.schedule(
-                    [self._lane_resource_requirement(lane) for lane in resource_candidates],
-                    host=host_resources,
-                    providers=provider_capacities,
-                    path=self.state_root,
-                    active_workers=len(self._running),
-                )
-                self._last_resource_snapshot = resource_snapshot
-                resource_decisions = {
-                    lane.task_cid: decision
-                    for lane, decision in zip(resource_candidates, resource_snapshot.decisions)
+                resource_requirements = {
+                    lane.task_cid: self._lane_resource_requirement(lane)
+                    for lane in resource_candidates
                 }
+                confirmed_requirements: list[LaneResourceRequirements] = []
+                resource_cycle_decisions: list[AdmissionDecision] = []
                 for lane in registered:
                     if lane.task_cid in self._running:
                         decisions.append({
@@ -2129,7 +2186,19 @@ class DynamicBundleScheduler:
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
                         continue
-                    admission = resource_decisions.get(lane.task_cid)
+                    requirement = resource_requirements.get(lane.task_cid)
+                    if requirement is None:
+                        admission = None
+                    else:
+                        candidate_schedule = self.resource_scheduler.schedule(
+                            [*confirmed_requirements, requirement],
+                            host=host_resources,
+                            providers=provider_capacities,
+                            path=self.state_root,
+                            active_workers=len(self._running),
+                        )
+                        admission = candidate_schedule.decisions[-1]
+                        resource_cycle_decisions.append(admission)
                     if admission is None or not admission.admitted:
                         evidence = admission.to_dict() if admission is not None else {}
                         reasons = list(admission.reasons) if admission is not None else ["resource_capacity"]
@@ -2149,11 +2218,19 @@ class DynamicBundleScheduler:
                         eligible_task_cids=(lane.task_cid,),
                     )
                     if grant is None:
+                        resource_cycle_decisions[-1] = replace(
+                            admission,
+                            admitted=False,
+                            reasons=("lease_unavailable",),
+                            reserved_quota_units=0,
+                            reserved_tokens=0,
+                        )
                         decisions.append({
                             "task_cid": lane.task_cid,
                             "bundle_key": lane.bundle_key,
                             "decision": "deferred",
                             "reason": "lease_unavailable",
+                            "resource_admission": resource_cycle_decisions[-1].to_dict(),
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
                         continue
@@ -2166,12 +2243,20 @@ class DynamicBundleScheduler:
                             coordinator.release(grant, reason="launch failed")
                         except LeaseError:
                             pass
+                        resource_cycle_decisions[-1] = replace(
+                            admission,
+                            admitted=False,
+                            reasons=("launch_failed",),
+                            reserved_quota_units=0,
+                            reserved_tokens=0,
+                        )
                         logger.exception("Failed to launch bundle lane %s", lane.bundle_key)
                         decisions.append({
                             "task_cid": lane.task_cid,
                             "bundle_key": lane.bundle_key,
                             "decision": "deferred",
                             "reason": "launch_failed",
+                            "resource_admission": resource_cycle_decisions[-1].to_dict(),
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
                         continue
@@ -2181,6 +2266,7 @@ class DynamicBundleScheduler:
                         handle=handle,
                         started_at=utc_now(),
                     )
+                    confirmed_requirements.append(requirement)
                     launched.append(lane.task_cid)
                     decisions.append({
                         "task_cid": lane.task_cid,
@@ -2191,11 +2277,35 @@ class DynamicBundleScheduler:
                         "snapshot_id": decision_snapshot.snapshot_id,
                     })
 
+                resource_snapshot = self.resource_scheduler.schedule(
+                    confirmed_requirements,
+                    host=host_resources,
+                    providers=provider_capacities,
+                    path=self.state_root,
+                    active_workers=len(self._running) - len(confirmed_requirements),
+                )
+                resource_backpressure = tuple(
+                    dict.fromkeys(
+                        reason
+                        for decision in resource_cycle_decisions
+                        if not decision.admitted
+                        for reason in decision.reasons
+                    )
+                )
+                self._last_resource_snapshot = replace(
+                    resource_snapshot,
+                    decisions=tuple(resource_cycle_decisions),
+                    admitted_count=len(confirmed_requirements),
+                    backpressure_reasons=resource_backpressure,
+                )
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),
                 }
-                projection = coordinator.list_tasks(task_cids=current_task_cids)
+                projection = coordinator.list_tasks(
+                    task_cids=current_task_cids,
+                    include_claimability=True,
+                )
                 current_snapshot = self._build_scheduler_snapshot(registered, projection)
             return self._write_live_manifest(
                 discovered=discovered,
