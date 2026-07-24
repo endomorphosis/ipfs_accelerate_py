@@ -1173,6 +1173,8 @@ def plan_bundle_lanes(
         payload
         for payload in bundle_payloads
         if str(payload.get("bundle_key") or "objective/general") not in excluded_bundle_keys
+        and payload.get("is_schedulable") is not False
+        and payload.get("review_only") is not True
     ]
     conflict_annotations = _bundle_conflict_annotations(
         bundle_payloads,
@@ -1286,6 +1288,63 @@ def plan_bundle_lanes(
     return lanes[:max_lanes] if max_lanes is not None else lanes
 
 
+def _lane_launch_policy_error(lane: BundleLaneSpec) -> str:
+    """Return why a lane lacks a concrete, schedulable execution slice."""
+
+    payload = lane.queue_payload
+    if not isinstance(payload, dict):
+        return "missing queue payload"
+    if payload.get("is_schedulable") is not True:
+        return "bundle is not schedulable"
+    if payload.get("review_only") is not False:
+        return "bundle is review-only"
+    if not lane.task_ids:
+        return "lane has no execution task ids"
+
+    has_execution_slice = (
+        "execution_slice_task_cids" in payload
+        or "execution_slice_task_ids" in payload
+    )
+    execution_cids = _string_list(payload.get("execution_slice_task_cids"))
+    execution_ids = _string_list(payload.get("execution_slice_task_ids"))
+    if not has_execution_slice or not (execution_cids or execution_ids):
+        return "bundle has no authorized execution slice"
+
+    execution_tasks = _execution_slice_members(
+        payload,
+        _mapping_list(payload.get("tasks")),
+    )
+    if not execution_tasks:
+        return "authorized execution slice has no task records"
+    execution_task_ids = {
+        str(task.get("task_id") or "")
+        for task in execution_tasks
+        if str(task.get("task_id") or "")
+    }
+    if not set(lane.task_ids).issubset(execution_task_ids):
+        return "lane task ids are outside the authorized execution slice"
+    for task in execution_tasks:
+        if not _schedule_bool(task, "is_schedulable", True):
+            return "execution slice contains a non-schedulable task"
+        if _schedule_bool(task, "review_only", False):
+            return "execution slice contains a review-only task"
+        status = str(task.get("status") or "todo").strip().lower()
+        if status in {
+            "blocked",
+            "on_hold",
+            "complete",
+            "completed",
+            "done",
+            "merged",
+            "passed",
+            "success",
+            "succeeded",
+            "verified_complete",
+        }:
+            return f"execution slice contains terminal task status {status}"
+    return ""
+
+
 def launch_bundle_lanes(
     lanes: Sequence[BundleLaneSpec],
     *,
@@ -1303,6 +1362,17 @@ def launch_bundle_lanes(
     path = coordination_path or default_state_root(repo_root) / "coordination.duckdb"
     with LeaseCoordinator(path) as coordinator:
         for lane in lanes:
+            policy_error = _lane_launch_policy_error(lane)
+            if policy_error:
+                results.append(
+                    {
+                        "bundle_key": lane.bundle_key,
+                        "accepted": False,
+                        "error": policy_error,
+                        "code": "G_EXECUTION_POLICY_DENIED",
+                    }
+                )
+                continue
             blockers = [active.bundle_key for active in active_lanes if _lanes_conflict(lane, active)]
             if blockers:
                 results.append(
@@ -1317,9 +1387,7 @@ def launch_bundle_lanes(
                     }
                 )
                 continue
-            if not lane.queue_payload:
-                results.append({"bundle_key": lane.bundle_key, "accepted": False, "error": "missing queue payload"})
-                continue
+            assert lane.queue_payload is not None
             adapted = coordinator.register_bundle(lane.queue_payload)
             try:
                 grant = coordinator.claim(adapted["task_cid"], claimant_did, requested_lease_ms=lease_ms)
