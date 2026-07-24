@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import copy
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+    AnalyzerHealthReport,
+    AnalyzerHealthStatus,
+    AnalyzerHealthThresholds,
+)
 from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     ADAPTIVE_GOAL_REFINER_VERSION,
     NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
@@ -39,6 +45,15 @@ from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
     GoalState,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+    AcceptanceCoverage,
+    CoverageStatus,
+    GoalCoverageMap,
+)
+from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+    ExhaustionBinding,
+    evaluate_exhaustion_quorum,
 )
 
 
@@ -209,7 +224,7 @@ def test_new_counterexample_triggers_exactly_one_bounded_verified_refinement() -
 
 
 def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
-    """ASI-058: runtime admission stays separate from objective completion."""
+    """ASI-073: every completion proof class is explicit and fail-closed."""
 
     result = AdaptiveGoalRefiner(
         _candidate,
@@ -223,7 +238,7 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     evidence = tuple(
         CompletionEvidence(
             acceptance_criterion=criterion,
-            producing_task_or_scan="ASI-058",
+            producing_task_or_scan="ASI-073",
             producer_kind="task",
             validation_receipt={
                 "status": "passed",
@@ -237,7 +252,7 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
             repository_tree=tree_id,
             freshness={"fresh": True},
             observed_at=now,
-            provenance_cid=f"validation:asi-058:{index}",
+            provenance_cid=f"validation:asi-073:{index}",
             metadata={
                 "evidence_source_policy": {
                     "satisfies": True,
@@ -264,21 +279,31 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
                     "test/api/test_agent_supervisor_"
                     "adaptive_goal_refiner.py"
                 ),
+                "validation_receipt_ids": [
+                    f"validation:asi-073:{index}"
+                ],
             }
-            for criterion in criteria
+            for index, criterion in enumerate(criteria, start=1)
         ],
     }
     health = {
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
-        "analyzer_version": "asi-058-completion-analyzer@1",
+        "analyzer_version": "asi-073-completion-analyzer@1",
     }
+    typed_health = AnalyzerHealthReport(
+        status=AnalyzerHealthStatus.HEALTHY,
+        reasons=(),
+        thresholds=AnalyzerHealthThresholds(),
+        metrics={"objective_id": "ASI-G098", "repository_tree": tree_id},
+    )
     binding = {
+        "repository_id": "repository:adaptive-goal-refiner",
         "tree_id": tree_id,
-        "analyzer_version": "asi-058-completion-analyzer@1",
-        "configuration_revision": "asi-058-completion-policy@1",
-        "objective_revision": "ASI-G098@asi-058",
+        "analyzer_version": "asi-073-completion-analyzer@1",
+        "configuration_revision": "asi-073-completion-policy@1",
+        "objective_revision": "ASI-G098@asi-073",
     }
     quorum = {
         "required_members": 2,
@@ -288,9 +313,9 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
         "binding": binding,
         "members": [
             {
-                "member_id": "asi-058-exhaustive-implementation",
+                "member_id": "asi-073-exhaustive-implementation",
                 "evidence_channel": "implementation-validation",
-                "receipt_cid": "scan:asi-058:implementation",
+                "receipt_cid": "scan:asi-073:implementation",
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -298,9 +323,9 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
                 "finished_at": now.isoformat(),
             },
             {
-                "member_id": "asi-058-exhaustive-receipt-audit",
+                "member_id": "asi-073-exhaustive-receipt-audit",
                 "evidence_channel": "receipt-replay-audit",
-                "receipt_cid": "scan:asi-058:receipt-audit",
+                "receipt_cid": "scan:asi-073:receipt-audit",
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -351,6 +376,81 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     assert verified.verified
     assert verified.gate is not None and verified.gate.passed
 
+    # Canonical analyzer and coverage producers can be passed directly; the
+    # bridge narrows a repository-wide map to ASI-G098 before checking that
+    # each row binds implementation surfaces and validation receipts.
+    typed_coverage = GoalCoverageMap(
+        criteria=[
+            AcceptanceCoverage(
+                criterion_id=f"ASI-G098:{index}",
+                goal_id="ASI-G098",
+                criterion=criterion,
+                status=CoverageStatus.VERIFIED,
+                changed_files=[
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "adaptive_goal_refiner.py"
+                ],
+                validation_receipt_ids=[
+                    f"validation:asi-073:{index}"
+                ],
+            )
+            for index, criterion in enumerate(criteria, start=1)
+        ],
+        edges=[],
+        receipts=[],
+        finding_assignments=[],
+        registered_goal_ids=["ASI-G098"],
+        evaluated_at=now.isoformat(),
+        repository_tree=tree_id,
+    )
+    typed_binding = ExhaustionBinding(
+        repository_id=binding["repository_id"],
+        tree_id=tree_id,
+        analyzer_version=binding["analyzer_version"],
+        configuration_revision=binding["configuration_revision"],
+        objective_revision=binding["objective_revision"],
+    )
+    typed_quorum = evaluate_exhaustion_quorum(
+        (
+            {
+                "receipt_cid": "scan:asi-073:typed-implementation",
+                "terminal_reason": "exhausted",
+                "scan_mode": "exhaustive",
+                "finished_at": now.isoformat(),
+                "metadata": {
+                    "analyzer_health": {"status": "healthy"},
+                    "coverage_complete": True,
+                    "evidence_channel": "typed-implementation-validation",
+                },
+            },
+            {
+                "receipt_cid": "scan:asi-073:typed-audit",
+                "terminal_reason": "exhausted",
+                "scan_mode": "audit",
+                "finished_at": now.isoformat(),
+                "metadata": {
+                    "analyzer_health": {"status": "healthy"},
+                    "coverage_complete": True,
+                    "evidence_channel": "typed-receipt-replay-audit",
+                },
+            },
+        ),
+        binding=typed_binding,
+        required_members=2,
+    )
+    assert typed_quorum.satisfied
+    typed_proof = result.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "coverage": typed_coverage,
+            "analyzer_health": typed_health,
+            "exhaustion_quorum": typed_quorum,
+        },
+    )
+    assert typed_proof.state is GoalState.VERIFIED_COMPLETE
+    assert typed_proof.gate is not None and typed_proof.gate.passed
+
     # An omitted mandatory record cannot narrow the bridge's closed criterion
     # set, and an extra failed or stale submission cannot be masked by a pass.
     missing = result.evaluate_objective_completion(
@@ -390,59 +490,134 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     assert stale_submission.state is GoalState.PROVISIONALLY_COMPLETE
     assert "stale_evidence" in stale_submission.reason_codes
 
-    # Health must say both healthy and completion-safe explicitly.
-    implicit_health = result.evaluate_objective_completion(
-        current_state=GoalState.PROVISIONALLY_COMPLETE,
-        **{**values, "analyzer_health": {"status": "healthy"}},
-    )
-    assert implicit_health.state is GoalState.PROVISIONALLY_COMPLETE
-    assert "analyzer_unhealthy" in implicit_health.reason_codes
+    # A summary cannot claim criterion coverage without every exact row and
+    # both its implementation surface and validation proof binding.
+    missing_implementation = copy.deepcopy(coverage)
+    missing_implementation["criteria"][0]["implementation"] = ""
+    missing_validation = copy.deepcopy(coverage)
+    missing_validation["criteria"][0]["validation"] = ""
+    missing_validation["criteria"][0]["validation_receipt_ids"] = []
+    unbound_validation = copy.deepcopy(coverage)
+    unbound_validation["criteria"][0]["validation_receipt_ids"] = [
+        "validation:foreign-tree"
+    ]
+    for invalid_coverage in (
+        missing_implementation,
+        missing_validation,
+        unbound_validation,
+        {**coverage, "criteria": coverage["criteria"][:-1]},
+    ):
+        coverage_gap = result.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "coverage": invalid_coverage},
+        )
+        assert coverage_gap.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not coverage_gap.verified
+        assert any(
+            code in coverage_gap.reason_codes
+            for code in ("coverage_unverified", "coverage_missing")
+        )
 
-    unsafe_health = result.evaluate_objective_completion(
-        current_state=GoalState.PROVISIONALLY_COMPLETE,
-        **{
-            **values,
-            "analyzer_health": {
-                **health,
-                "safe_for_completion_reasoning": False,
-            },
+    # Health must say healthy and completion-safe explicitly. A typed healthy
+    # AnalyzerHealthReport above is accepted; partial mappings cannot infer it.
+    for invalid_health in (
+        {"status": "healthy"},
+        {**health, "healthy": False},
+        {**health, "safe_for_completion_reasoning": False},
+    ):
+        unhealthy = result.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "analyzer_health": invalid_health},
+        )
+        assert unhealthy.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not unhealthy.verified
+        assert "analyzer_unhealthy" in unhealthy.reason_codes
+
+    # Quorum proof requires the configured number of unique members, receipt
+    # CIDs, and evidence channels. Every member is fresh, healthy,
+    # completion-safe, exhaustive, and bound to this exact tree.
+    invalid_quorums = (
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "evidence_channel": "implementation-validation",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "receipt_cid": "scan:asi-073:implementation",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "scan_mode": "partial"},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "healthy": False},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "safe_for_completion_reasoning": False,
+                },
+            ],
+        },
+        {
+            **quorum,
+            "member_count": 1,
+            "members": [quorum["members"][0]],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "finished_at": "2026-07-24T12:00:00+00:00",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "binding": {**binding, "tree_id": "tree:foreign"},
+                },
+            ],
         },
     )
-    assert unsafe_health.state is GoalState.PROVISIONALLY_COMPLETE
-    assert "analyzer_unhealthy" in unsafe_health.reason_codes
-
-    # Quorum proof requires distinct channels and explicit healthy exhaustive
-    # members, all fresh and bound to this exact tree.
-    duplicate_channel = {
-        **quorum,
-        "members": [
-            quorum["members"][0],
-            {
-                **quorum["members"][1],
-                "evidence_channel": "implementation-validation",
-            },
-        ],
-    }
-    non_independent = result.evaluate_objective_completion(
-        current_state=GoalState.PROVISIONALLY_COMPLETE,
-        **{**values, "exhaustion_quorum": duplicate_channel},
-    )
-    assert non_independent.state is GoalState.PROVISIONALLY_COMPLETE
-    assert "exhaustion_quorum_inconsistent" in non_independent.reason_codes
-
-    unhealthy_quorum = {
-        **quorum,
-        "members": [
-            quorum["members"][0],
-            {**quorum["members"][1], "healthy": False},
-        ],
-    }
-    unhealthy_receipt = result.evaluate_objective_completion(
-        current_state=GoalState.PROVISIONALLY_COMPLETE,
-        **{**values, "exhaustion_quorum": unhealthy_quorum},
-    )
-    assert unhealthy_receipt.state is GoalState.PROVISIONALLY_COMPLETE
-    assert "exhaustion_quorum_unsatisfied" in unhealthy_receipt.reason_codes
+    for invalid_quorum in invalid_quorums:
+        no_quorum = result.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "exhaustion_quorum": invalid_quorum},
+        )
+        assert no_quorum.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not no_quorum.verified
+        assert any(
+            code.startswith("exhaustion_quorum")
+            for code in no_quorum.reason_codes
+        )
 
     foreign = replace(
         evidence[0],

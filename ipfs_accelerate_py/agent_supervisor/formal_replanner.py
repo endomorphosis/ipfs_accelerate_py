@@ -62,6 +62,15 @@ RESPONSIVE_REPLAN_DECISION_SCHEMA: Final = (
 BOUNDED_REFINEMENT_EVIDENCE_ID: Final = (
     "003778425160038348524906247302938706902"
 )
+# These are deliberately absent from ResponsiveReplanDecision.  Naming the
+# roles makes the trust boundary machine-readable: deterministic routing
+# metadata cannot be submitted as completion analyzer health, completion
+# criterion coverage, or completion exhaustion quorum evidence.
+OBJECTIVE_COMPLETION_EVIDENCE_ROLES: Final[tuple[str, ...]] = (
+    "completion_analyzer_health",
+    "completion_criterion_coverage",
+    "completion_exhaustion_quorum",
+)
 
 
 class ReplannerValidationError(ValueError):
@@ -723,6 +732,18 @@ class ResponsiveReplanDecision:
         In particular, it must never be supplied as criterion validation,
         analyzer-health, or exhaustion-quorum evidence to
         ``AdaptiveRefinementResult.evaluate_objective_completion``.
+        """
+
+        return ()
+
+    @property
+    def completion_evidence_roles(self) -> tuple[str, ...]:
+        """Return no completion-proof authority for routing metadata.
+
+        The responsive decision has neither a completion-analyzer execution
+        nor a criterion coverage join nor independent exhaustion scans.  A
+        caller must obtain all three from their canonical producers and pass
+        them separately to the adaptive result's completion gate.
         """
 
         return ()
@@ -1855,6 +1876,7 @@ __all__ = [
     "BOUNDED_REFINEMENT_EVIDENCE_ID",
     "CODEX_REPAIR_PACKET_SCHEMA",
     "FORMAL_REPLANNER_VERSION",
+    "OBJECTIVE_COMPLETION_EVIDENCE_ROLES",
     "REPAIR_CANDIDATE_SCHEMA",
     "REPAIR_TRANSITION_SCHEMA",
     "REPLAN_RESULT_SCHEMA",
