@@ -48,6 +48,7 @@ ADAPTIVE_GOAL_REFINER_VERSION: Final = 2
 NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID: Final = (
     "003778425160038348524906247302938706902"
 )
+NEW_EVIDENCE_REFINEMENT_GOAL_ID: Final = "ASI-G098"
 UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID: Final = (
     "312819945606360295782005228058369235550"
 )
@@ -1261,16 +1262,126 @@ class AdaptiveRefinementResult:
                 "safe_for_completion_reasoning": False,
             }
 
-        # A coverage summary must identify both sides of every criterion
-        # mapping, not merely claim a verified status.
-        coverage_value = payload(coverage)
+        # GoalCoverageMap is the canonical repository-wide producer.  Ask it
+        # for this objective's narrow projection rather than inspecting every
+        # unrelated goal row in its full serialization.
+        coverage_projection = getattr(coverage, "completion_gate_evidence", None)
+        if callable(coverage_projection):
+            try:
+                projected = coverage_projection(NEW_EVIDENCE_REFINEMENT_GOAL_ID)
+            except (TypeError, ValueError):
+                projected = {}
+            coverage_value = (
+                dict(projected) if isinstance(projected, Mapping) else {}
+            )
+        else:
+            coverage_value = payload(coverage)
         coverage_rows = coverage_value.get("criteria")
         coverage_rows = coverage_rows if isinstance(coverage_rows, list) else []
-        coverage_bindings_complete = bool(coverage_rows) and all(
-            isinstance(row, Mapping)
-            and bool(str(row.get("implementation") or "").strip())
-            and bool(str(row.get("validation") or "").strip())
+        criterion_keys = {
+            " ".join(item.strip().lower().split())
+            for item in NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA
+        }
+        relevant_coverage_rows = [
+            row
             for row in coverage_rows
+            if isinstance(row, Mapping)
+            and " ".join(
+                str(
+                    row.get(
+                        "criterion",
+                        row.get("acceptance_criterion", row.get("acceptance", "")),
+                    )
+                    or ""
+                )
+                .strip()
+                .lower()
+                .split()
+            )
+            in criterion_keys
+        ]
+
+        def populated(row: Mapping[str, Any], *names: str) -> bool:
+            for name in names:
+                value = row.get(name)
+                if isinstance(value, str) and value.strip():
+                    return True
+                if (
+                    isinstance(value, Sequence)
+                    and not isinstance(value, (str, bytes, bytearray))
+                    and any(str(item or "").strip() for item in value)
+                ):
+                    return True
+            return False
+
+        submitted_validation_ids: set[str] = set()
+        for item in evidence:
+            source: Any = item
+            if isinstance(source, Mapping) and isinstance(
+                source.get("evidence"), Mapping
+            ):
+                source = source["evidence"]
+            identity = (
+                source.get("provenance_cid")
+                if isinstance(source, Mapping)
+                else getattr(source, "provenance_cid", "")
+            )
+            identity = str(identity or "").strip()
+            if identity:
+                submitted_validation_ids.add(identity)
+
+        def validation_bound(row: Mapping[str, Any]) -> bool:
+            receipt_ids = row.get("validation_receipt_ids")
+            if isinstance(receipt_ids, Sequence) and not isinstance(
+                receipt_ids, (str, bytes, bytearray)
+            ):
+                normalized = {
+                    str(item or "").strip()
+                    for item in receipt_ids
+                    if str(item or "").strip()
+                }
+                return bool(
+                    normalized
+                    and normalized.intersection(submitted_validation_ids)
+                )
+            # Preserve the reviewed ASI-058 mapping spelling for persisted
+            # compatibility. Canonical GoalCoverageMap projections always use
+            # validation_receipt_ids and therefore take the bound path above.
+            return populated(row, "validation")
+
+        coverage_bindings_complete = (
+            len(relevant_coverage_rows) >= len(criterion_keys)
+            and {
+                " ".join(
+                    str(
+                        row.get(
+                            "criterion",
+                            row.get(
+                                "acceptance_criterion",
+                                row.get("acceptance", ""),
+                            ),
+                        )
+                        or ""
+                    )
+                    .strip()
+                    .lower()
+                    .split()
+                )
+                for row in relevant_coverage_rows
+            }
+            == criterion_keys
+            and all(
+                populated(
+                    row,
+                    "implementation",
+                    "changed_files",
+                    "predicted_files",
+                    "ast_symbols",
+                    "interfaces",
+                )
+                and validation_bound(row)
+                for row in relevant_coverage_rows
+            )
         )
         if not coverage_bindings_complete:
             coverage_value = {
@@ -1289,22 +1400,94 @@ class AdaptiveRefinementResult:
             }
 
         # Every configured quorum member must explicitly be a healthy,
-        # completion-safe exhaustive receipt.  Independence, binding, count,
-        # and timestamp freshness remain canonical gate responsibilities.
+        # completion-safe exhaustive receipt.  Enforce the configured count,
+        # unique member/receipt/channel identities, and exact binding here as
+        # well as in the generic gate.  This objective boundary must fail
+        # closed even if a future generic projection becomes more permissive.
+        from .scan_receipts import ExhaustionQuorumResult
+
+        evaluated_quorum = isinstance(
+            exhaustion_quorum,
+            ExhaustionQuorumResult,
+        )
         quorum_value = payload(exhaustion_quorum)
         quorum_members = quorum_value.get("members")
         quorum_members = (
             quorum_members if isinstance(quorum_members, list) else []
         )
-        quorum_members_healthy = bool(quorum_members) and all(
-            isinstance(member, Mapping)
-            and member.get("healthy") is True
-            and member.get("safe_for_completion_reasoning") is True
-            and str(member.get("scan_mode") or "").strip().lower()
-            == "exhaustive"
-            for member in quorum_members
+        quorum_members_healthy = bool(quorum_members) and (
+            # ExhaustionQuorumResult members have already passed the
+            # canonical evaluator's terminal, exhaustive-mode, analyzer
+            # health, coverage, actionability, and binding filters. Its
+            # persisted member projection intentionally does not duplicate
+            # health fields from the underlying scan receipts.
+            evaluated_quorum
+            or all(
+                isinstance(member, Mapping)
+                and member.get("healthy") is True
+                and member.get("safe_for_completion_reasoning") is True
+                and str(member.get("scan_mode") or "").strip().lower()
+                == "exhaustive"
+                for member in quorum_members
+            )
         )
-        if not quorum_members_healthy:
+        required_members = quorum_value.get("required_members")
+        member_count = quorum_value.get("member_count")
+        configured_count_met = (
+            isinstance(required_members, int)
+            and not isinstance(required_members, bool)
+            and required_members > 0
+            and isinstance(member_count, int)
+            and not isinstance(member_count, bool)
+            and member_count == len(quorum_members)
+            and member_count >= required_members
+        )
+        member_ids = [
+            str(member.get("member_id") or "").strip()
+            for member in quorum_members
+            if isinstance(member, Mapping)
+        ]
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in quorum_members
+            if isinstance(member, Mapping)
+        ]
+        channels = [
+            str(member.get("evidence_channel") or "").strip()
+            for member in quorum_members
+            if isinstance(member, Mapping)
+        ]
+
+        def independent(values: Sequence[str]) -> bool:
+            return (
+                len(values) == len(quorum_members)
+                and all(values)
+                and len(values) == len(set(values))
+            )
+
+        binding_value = quorum_value.get("binding")
+        binding = (
+            dict(binding_value)
+            if isinstance(binding_value, Mapping)
+            else {}
+        )
+        binding_is_current = (
+            binding.get("tree_id") == self.receipt.repository_tree_id
+            and all(
+                isinstance(member, Mapping)
+                and isinstance(member.get("binding"), Mapping)
+                and dict(member["binding"]) == binding
+                for member in quorum_members
+            )
+        )
+        if not (
+            quorum_members_healthy
+            and configured_count_met
+            and independent(member_ids)
+            and independent(receipt_ids)
+            and independent(channels)
+            and binding_is_current
+        ):
             quorum_value = {
                 **quorum_value,
                 "satisfied": False,
@@ -2049,6 +2232,7 @@ def refine_goal_from_evidence(
 __all__ = [
     "ADAPTIVE_GOAL_REFINER_VERSION",
     "NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID",
+    "NEW_EVIDENCE_REFINEMENT_GOAL_ID",
     "UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID",
     "NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA",
     "AdaptiveGoalRefinementError",

@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
 )
 from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
     BOUNDED_REFINEMENT_EVIDENCE_ID,
+    OBJECTIVE_COMPLETION_EVIDENCE_ROLES,
     CODEX_REPAIR_PACKET_SCHEMA,
     REPAIR_TRANSITION_SCHEMA,
     RESPONSIVE_REPLAN_DECISION_SCHEMA,
@@ -485,6 +486,12 @@ def test_unchanged_counterexample_backs_off_before_compile_or_generation() -> No
     payload = decision.to_dict()
     assert payload["schema"] == RESPONSIVE_REPLAN_DECISION_SCHEMA
     assert payload["evidence_ids"] == []
+    assert decision.completion_evidence_roles == ()
+    assert OBJECTIVE_COMPLETION_EVIDENCE_ROLES == (
+        "completion_analyzer_health",
+        "completion_criterion_coverage",
+        "completion_exhaustion_quorum",
+    )
     assert payload["requirement_ids"] == [
         BOUNDED_REFINEMENT_EVIDENCE_ID
     ]
