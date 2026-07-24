@@ -49,7 +49,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-004 Add a capability-isolated Leanstral goal-development provider
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
