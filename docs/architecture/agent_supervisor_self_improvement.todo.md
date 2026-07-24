@@ -2558,3 +2558,48 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: generated_task
 - Todo vector key: 573cd85b5929284e
 - Acceptance: Objective scan filed this gap for ASI-G093. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-074-objective-gap-4a168d424c57.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: The exact requirement ID is emitted only by a bounded, content-addressed benchmark receipt carrying the complete typed baseline and candidate receipt populations, one frozen goal/tree/policy binding, the independently replayed paired result, source and report identities, a deterministic input digest, and a passing accounting result. A completion gate verifies the artifact against its independently enumerated benchmark cohort, so an omitted, duplicated, reordered, or substituted input is either canonicalized to the same evidence identity or fails closed. The accepted-task population must be non-empty and identical across arms, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
+
+## ASI-075 Produce completion evidence for Prove 266404049326363900535699811645710804440 for Strict output, code, test, semantic, and proof validation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: validation
+- Depends on: 
+- Outputs: data/agent_supervisor/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_accelerate_py/agent_supervisor/formal_plan_conformance.py, ipfs_accelerate_py/agent_supervisor/proposal_validation.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, test/api/test_agent_supervisor_proposal_validation.py, test/api/test_agent_supervisor_semantic_validation_pipeline.py, test/api/test_agent_supervisor_validation_dag.py
+- Validation: python -m pytest test/api/test_agent_supervisor_proposal_validation.py test/api/test_agent_supervisor_validation_dag.py test/api/test_agent_supervisor_semantic_validation_pipeline.py -q
+- Bundle: agent-supervisor/self-improvement/validation
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-validation.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: ASI-G040
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/validation
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_accelerate_py/agent_supervisor/formal_plan_conformance.py, ipfs_accelerate_py/agent_supervisor/proposal_validation.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, test/api/test_agent_supervisor_proposal_validation.py, test/api/test_agent_supervisor_semantic_validation_pipeline.py, test/api/test_agent_supervisor_validation_dag.py
+- Changed paths: 
+- AST symbols: 266404049326363900535699811645710804440
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G101
+- Canonical task key: task/v1/e61da564214aa1cde3be32c1cbe3b4c0877a58a399739d59265c5a5a7276f494
+- Canonical task CID: baguqeera4yo2kzbbjkq43y56gla4xy5uycdxuwfdtfzz2wjglrnfu4tw6ska
+- Evidence obligation key: objective-work/v1/8433e3f318f68068174cbfe718c3c1e6f020cfae
+- Missing evidence: Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: The validation DAG is derived from the canonical changed-file and dependency/interface impact graph and validated declarations that explicitly name impact targets, node dependencies, and downstream authority gates. Its receipt contains the complete selected population, includes every mandatory direct and transitive validation exactly once, schedules only dependency-ready nodes under bounded parallelism, records selected, executed, succeeded, failed, blocked, and omitted dispositions deterministically, and identifies the failed prerequisite for every blocked descendant. Missing, stale, cyclic, inconsistent, or population-incomplete impact evidence fails closed before it can grant authority. A seeded upstream defect must select and execute its transitively affected consumer test, whose real failure creates explicit closed records for semantic/proof promotion, merge, freshness, and completion authority. The exact requirement ID is emitted only by a tamper-evident receipt binding the current tree, objective, policy, accepted proposal, change and graph identities, declaration set, affected closure, selected-node population, DAG dependencies, authority-gate closure, impact paths, actual defect-detecting result, fail-fast disposition, and content digest., Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.
+- Embedding query: 266404049326363900535699811645710804440
+- AST query: 266404049326363900535699811645710804440
+- Surplus group: ASI-G101
+- Merge key: objective-work/v1/8433e3f318f68068174cbfe718c3c1e6f020cfae
+- Merge family: ASI-G101
+- Merge role: completion_gate
+- Work item count: 6
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: 8433e3f318f68068
+- Acceptance: Objective scan filed this gap for ASI-G101. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-075-objective-gap-2f6255939201.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: The validation DAG is derived from the canonical changed-file and dependency/interface impact graph and validated declarations that explicitly name impact targets, node dependencies, and downstream authority gates. Its receipt contains the complete selected population, includes every mandatory direct and transitive validation exactly once, schedules only dependency-ready nodes under bounded parallelism, records selected, executed, succeeded, failed, blocked, and omitted dispositions deterministically, and identifies the failed prerequisite for every blocked descendant. Missing, stale, cyclic, inconsistent, or population-incomplete impact evidence fails closed before it can grant authority. A seeded upstream defect must select and execute its transitively affected consumer test, whose real failure creates explicit closed records for semantic/proof promotion, merge, freshness, and completion authority. The exact requirement ID is emitted only by a tamper-evident receipt binding the current tree, objective, policy, accepted proposal, change and graph identities, declaration set, affected closure, selected-node population, DAG dependencies, authority-gate closure, impact paths, actual defect-detecting result, fail-fast disposition, and content digest., Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
