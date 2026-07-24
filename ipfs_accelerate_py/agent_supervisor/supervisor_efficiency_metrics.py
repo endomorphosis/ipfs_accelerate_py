@@ -4784,6 +4784,46 @@ class DeltaRetryPromotionReport(CanonicalContract):
         )
 
     @property
+    def source_bindings_consistent(self) -> bool:
+        """Require every retry proof to bind the measured ASI-G092 cohort.
+
+        Construction-time joins already reject stale task identities.  This
+        derived check repeats that authority boundary for decoded reports so a
+        structurally valid proof population cannot be paired with an unrelated
+        goal, tree, policy, repository, or objective revision.
+        """
+
+        from .context_compiler import DELTA_RETRY_OBJECTIVE_ID
+
+        case_by_task = {
+            item.task_reference: item for item in self.paired_report.cases
+        }
+        if not self.proof_bindings:
+            return False
+        repositories = {item.repository_id for item in self.proof_bindings}
+        policies = {item.policy_id for item in self.proof_bindings}
+        objective_revisions = {
+            item.parent_context_capsule.objective_revision
+            for item in self.proof_bindings
+        }
+        return (
+            len(repositories) == 1
+            and len(policies) == 1
+            and len(objective_revisions) == 1
+            and all(
+                item.task_reference in case_by_task
+                and item.objective_id == DELTA_RETRY_OBJECTIVE_ID
+                and item.objective_id
+                == case_by_task[item.task_reference].goal_reference
+                and item.tree_id
+                == case_by_task[item.task_reference].repository_tree_digest
+                and item.policy_revision
+                == case_by_task[item.task_reference].policy_digest
+                for item in self.proof_bindings
+            )
+        )
+
+    @property
     def typed_delta_gate_passed(self) -> bool:
         return (
             self.proof_population_complete
@@ -4800,6 +4840,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
             and self.median_delta_input_token_reduction_bps
             >= self.paired_report.minimum_input_token_reduction_bps
             and self.token_accounting_consistent
+            and self.source_bindings_consistent
         )
 
     @property
@@ -4826,6 +4867,259 @@ class DeltaRetryPromotionReport(CanonicalContract):
     def promotion_eligible(self) -> bool:
         return self.passed
 
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = 2,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G092 using only current-tree, completion-safe proof.
+
+        The typed report proves the retry-delta implementation and measurement
+        obligation.  Completion additionally requires a fresh validation for
+        each literal objective criterion, a deterministic implementation/test
+        map, an explicitly healthy completion-safe analyzer, and at least the
+        trusted configured number of independent fresh exhaustive receipts.
+        The generic goal lifecycle then enforces a separate provisional
+        transition before verified completion.
+
+        ``required_exhaustive_receipts`` is trusted caller configuration.  It
+        is deliberately not inferred from the submitted quorum, preventing a
+        proof producer from weakening a configured two-receipt gate to one.
+        """
+
+        from .context_compiler import (
+            DELTA_RETRY_ACCEPTANCE_CRITERIA,
+            DELTA_RETRY_OBJECTIVE_ID,
+        )
+        from .goal_completion import evaluate_goal_completion
+
+        configured_receipts = _integer(
+            required_exhaustive_receipts,
+            field_name="required_exhaustive_receipts",
+            minimum=1,
+            maximum=MAX_RECEIPTS_PER_REPORT,
+        )
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        repositories = {item.repository_id for item in self.proof_bindings}
+        trees = {item.tree_id for item in self.proof_bindings}
+        objectives = {item.objective_id for item in self.proof_bindings}
+        revisions = {
+            item.parent_context_capsule.objective_revision
+            for item in self.proof_bindings
+        }
+        policies = {item.policy_revision for item in self.proof_bindings}
+        identity_complete = bool(
+            self.promotion_eligible
+            and self.source_bindings_consistent
+            and repositories
+            and len(repositories) == 1
+            and len(trees) == 1
+            and objectives == {DELTA_RETRY_OBJECTIVE_ID}
+            and len(revisions) == 1
+            and len(policies) == 1
+        )
+        repository_id = next(iter(repositories), "")
+        repository_tree = next(iter(trees), "")
+        objective_revision = next(iter(revisions), "")
+        policy_revision = next(iter(policies), "")
+
+        coverage_value = payload(coverage)
+        rows_value = coverage_value.get("criteria")
+        rows = rows_value if isinstance(rows_value, list) else []
+        expected_criteria = {
+            " ".join(item.strip().lower().split())
+            for item in DELTA_RETRY_ACCEPTANCE_CRITERIA
+        }
+        mapped_criteria = [
+            " ".join(
+                str(row.get("criterion") or "").strip().lower().split()
+            )
+            for row in rows
+            if isinstance(row, Mapping)
+        ]
+        mappings_complete = bool(rows) and (
+            len(mapped_criteria) == len(expected_criteria)
+            and set(mapped_criteria) == expected_criteria
+            and len(mapped_criteria) == len(set(mapped_criteria))
+            and all(
+                isinstance(row, Mapping)
+                and bool(str(row.get("implementation") or "").strip())
+                and bool(str(row.get("validation") or "").strip())
+                for row in rows
+            )
+        )
+        if not mappings_complete:
+            reasons = coverage_value.get("reason_codes")
+            reasons = (
+                list(reasons)
+                if isinstance(reasons, (list, tuple))
+                else []
+            )
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": [
+                    *reasons,
+                    "coverage_missing_implementation_validation_binding",
+                ],
+            }
+
+        health_value = payload(analyzer_health)
+        analyzer_version = str(
+            health_value.get("analyzer_version") or ""
+        ).strip()
+        health_complete = (
+            str(health_value.get("status") or "").strip().lower()
+            == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+            and bool(analyzer_version)
+        )
+        if not health_complete:
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        quorum_value = payload(exhaustion_quorum)
+        binding_value = quorum_value.get("binding")
+        binding_value = (
+            binding_value if isinstance(binding_value, Mapping) else {}
+        )
+        configuration_revision = str(
+            binding_value.get("configuration_revision") or ""
+        ).strip()
+        expected_binding = {
+            "repository_id": repository_id,
+            "tree_id": repository_tree,
+            "objective_id": DELTA_RETRY_OBJECTIVE_ID,
+            "objective_revision": objective_revision,
+            "policy_revision": policy_revision,
+            "requirement_id": DELTA_RETRY_CONTEXT_EVIDENCE_ID,
+            "promotion_report_id": self.report_id,
+            "analyzer_version": analyzer_version,
+            "configuration_revision": configuration_revision,
+        }
+        binding_complete = bool(configuration_revision) and all(
+            binding_value.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        members_value = quorum_value.get("members")
+        members = (
+            members_value
+            if isinstance(members_value, (list, tuple))
+            else []
+        )
+        members_complete = bool(members) and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            and all(
+                isinstance(member.get("binding"), Mapping)
+                and member["binding"].get(name) == expected
+                for name, expected in expected_binding.items()
+            )
+            for member in members
+        )
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        member_ids = [
+            str(member.get("member_id") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        channels = [
+            str(
+                member.get("evidence_channel")
+                or member.get("independence_key")
+                or ""
+            ).strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        declared_required = quorum_value.get("required_members")
+        declared_count = quorum_value.get("member_count")
+        receipts_independent = (
+            len(receipt_ids) >= configured_receipts
+            and all(receipt_ids)
+            and all(member_ids)
+            and all(channels)
+            and len(receipt_ids) == len(set(receipt_ids))
+            and len(member_ids) == len(set(member_ids))
+            and len(channels) == len(set(channels))
+        )
+        configured_quorum_complete = (
+            not isinstance(declared_required, bool)
+            and declared_required == configured_receipts
+            and not isinstance(declared_count, bool)
+            and declared_count == len(members)
+            and len(members) >= configured_receipts
+        )
+        if not (
+            identity_complete
+            and health_complete
+            and binding_complete
+            and members_complete
+            and receipts_independent
+            and configured_quorum_complete
+        ):
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": DELTA_RETRY_ACCEPTANCE_CRITERIA,
+            "evidence": evidence,
+            "tasks_complete": bool(tasks_complete and identity_complete),
+            "repository_tree": repository_tree,
+            "repository_id": repository_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage_value,
+            "analyzer_health": health_value,
+            "exhaustion_quorum": quorum_value,
+            "child_goals": child_goals,
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
@@ -4849,6 +5143,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
                 self.median_delta_input_token_reduction_bps
             ),
             "token_accounting_consistent": self.token_accounting_consistent,
+            "source_bindings_consistent": self.source_bindings_consistent,
             "typed_delta_gate_passed": self.typed_delta_gate_passed,
             "paired_efficiency_gate_passed": (
                 self.paired_efficiency_gate_passed
@@ -4888,6 +5183,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
             "median_delta_input_tokens",
             "median_delta_input_token_reduction_bps",
             "token_accounting_consistent",
+            "source_bindings_consistent",
             "typed_delta_gate_passed",
             "paired_efficiency_gate_passed",
             "evidence_claim_references",

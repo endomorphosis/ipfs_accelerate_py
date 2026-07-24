@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+    DELTA_RETRY_ACCEPTANCE_CRITERIA,
     DELTA_RETRY_EVIDENCE_ID,
+    DELTA_RETRY_OBJECTIVE_ID,
     REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA,
     REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID as COMPILER_REQUIRED_CONTEXT_ID,
     ContextCompiler,
@@ -1478,6 +1480,376 @@ def test_delta_retry_promotion_binds_typed_result_to_same_task_gate() -> None:
         identified,
         verifiers_by_receipt=verifiers,
     ) == report
+    forged_binding_claim = dict(identified)
+    forged_binding_claim["source_bindings_consistent"] = False
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="source_bindings_consistent",
+    ):
+        DeltaRetryPromotionReport.from_dict(
+            forged_binding_claim,
+            verifiers_by_receipt=verifiers,
+        )
+
+
+def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() -> None:
+    result = _delta_retry_fixture()
+    terminal = _paired_delta_report(result, verified=True)
+    report = build_delta_retry_promotion_report(
+        terminal,
+        {"task:delta-retry": (result,)},
+    )
+    assert report.promotion_eligible
+    assert report.source_bindings_consistent
+
+    now = datetime(2026, 7, 24, 15, 0, tzinfo=timezone.utc)
+    command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_efficiency_metrics.py "
+        "test/api/test_agent_supervisor_context_compiler.py "
+        "test/api/test_agent_supervisor_context_delta.py -q"
+    )
+    receipt = result.receipt
+    repository_id = receipt.repository_id
+    tree_id = receipt.tree_id
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-060",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": tree_id,
+                "command": command,
+                "promotion_report_id": report.report_id,
+            },
+            validation_passed=True,
+            repository_id=repository_id,
+            repository_tree=tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-060:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            DELTA_RETRY_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "context_contracts.py"
+                        if index == 1
+                        else "context_compiler.py"
+                        if index < 5
+                        else "supervisor_efficiency_metrics.py"
+                    )
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_context_delta.py"
+                    if index < 5
+                    else (
+                        "test/api/"
+                        "test_agent_supervisor_efficiency_metrics.py"
+                    )
+                ),
+            }
+            for index, criterion in enumerate(
+                DELTA_RETRY_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    analyzer_version = "delta-retry-completion@1"
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": analyzer_version,
+    }
+    binding = {
+        "repository_id": repository_id,
+        "tree_id": tree_id,
+        "objective_id": DELTA_RETRY_OBJECTIVE_ID,
+        "objective_revision": result.parent_capsule.objective_revision,
+        "policy_revision": receipt.policy_revision,
+        "requirement_id": DELTA_RETRY_CONTEXT_EVIDENCE_ID,
+        "promotion_report_id": report.report_id,
+        "analyzer_version": analyzer_version,
+        "configuration_revision": "sha256:completion-config",
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-060-exhaustive-a",
+                "evidence_channel": "delta-contract-and-compiler",
+                "receipt_cid": "scan:asi-060:exhaustive-a",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-060-exhaustive-b",
+                "evidence_channel": "promotion-and-lifecycle",
+                "receipt_cid": "scan:asi-060:exhaustive-b",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    values = {
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    provisional = report.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert provisional.acceptance_criteria == DELTA_RETRY_ACCEPTANCE_CRITERIA
+    assert provisional.gate is not None and provisional.gate.passed
+    assert "provisional_transition_required" in provisional.reason_codes
+
+    verified = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    reordered = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "evidence": tuple(reversed(evidence)),
+            "coverage": {
+                **coverage,
+                "criteria": list(reversed(coverage["criteria"])),
+            },
+        },
+    )
+    assert reordered.verified
+    assert reordered.missing_criteria == verified.missing_criteria == ()
+    assert reordered.invalid_criteria == verified.invalid_criteria == ()
+
+    no_validations = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": ()},
+    )
+    assert not no_validations.verified
+    assert no_validations.missing_criteria == (
+        DELTA_RETRY_ACCEPTANCE_CRITERIA
+    )
+
+    failed = replace(
+        evidence[0],
+        provenance_cid="validation:asi-060:failed",
+        validation_passed=False,
+        validation_receipt={
+            "status": "failed",
+            "tree_id": tree_id,
+            "command": command,
+        },
+    )
+    failed_validation = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (*evidence, failed)},
+    )
+    assert not failed_validation.verified
+    assert "failed_validation" in failed_validation.reason_codes
+
+    stale = replace(
+        evidence[0],
+        provenance_cid="validation:asi-060:stale",
+        observed_at=now - timedelta(seconds=301),
+    )
+    stale_validation = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (stale, *evidence[1:])},
+    )
+    assert not stale_validation.verified
+    assert "stale_evidence" in stale_validation.reason_codes
+
+    unmapped = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "coverage": {
+                **coverage,
+                "criteria": [
+                    *coverage["criteria"][:-1],
+                    {**coverage["criteria"][-1], "validation": ""},
+                ],
+            },
+        },
+    )
+    assert not unmapped.verified
+    assert "coverage_unverified" in unmapped.reason_codes
+
+    duplicate_mapping = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "coverage": {
+                **coverage,
+                "criteria": [
+                    *coverage["criteria"],
+                    coverage["criteria"][0],
+                ],
+            },
+        },
+    )
+    assert not duplicate_mapping.verified
+    assert "coverage_unverified" in duplicate_mapping.reason_codes
+
+    unsafe = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "analyzer_health": {
+                "status": "healthy",
+                "healthy": True,
+                "analyzer_version": analyzer_version,
+            },
+        },
+    )
+    assert not unsafe.verified
+    assert "analyzer_unhealthy" in unsafe.reason_codes
+
+    invalid_quorums = (
+        {**quorum, "required_members": 1},
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "receipt_cid": "scan:asi-060:exhaustive-a",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "member_id": "asi-060-exhaustive-a",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "evidence_channel": "delta-contract-and-compiler",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "scan_mode": "audit"},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "healthy": False},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "finished_at": (
+                        now - timedelta(seconds=301)
+                    ).isoformat(),
+                },
+            ],
+        },
+        {
+            **quorum,
+            "binding": {
+                **binding,
+                "tree_id": "sha256:" + "0" * 64,
+            },
+        },
+        {
+            **quorum,
+            "binding": {
+                **binding,
+                "promotion_report_id": "sha256:" + "0" * 64,
+            },
+        },
+    )
+    for invalid_quorum in invalid_quorums:
+        rejected = report.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "exhaustion_quorum": invalid_quorum},
+        )
+        assert not rejected.verified
+        assert any(
+            code.startswith("exhaustion_quorum")
+            for code in rejected.reason_codes
+        )
+
+    configured_three = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        required_exhaustive_receipts=3,
+        **values,
+    )
+    assert not configured_three.verified
+    assert any(
+        code.startswith("exhaustion_quorum")
+        for code in configured_three.reason_codes
+    )
+
+    detached = replace(report, terminal_work_evidence=None)
+    assert not detached.promotion_eligible
+    rejected = detached.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert not rejected.verified
 
 
 def test_delta_retry_promotion_fails_closed_for_missing_stale_or_unverified_proof() -> None:
