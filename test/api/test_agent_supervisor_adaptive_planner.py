@@ -191,6 +191,27 @@ def test_cheaper_authority_violating_plan_is_absolutely_rejected() -> None:
     )
 
 
+def test_candidate_self_report_cannot_manufacture_authority_evidence() -> None:
+    goal = _goal()
+    untrusted_claim = _candidate(
+        goal,
+        "untrusted-claim",
+        cost=0.01,
+        plan_overrides={"authority_violations": ("model says lease is missing",)},
+    )
+    valid = _candidate(goal, "valid", cost=12.0)
+
+    receipt = AdaptivePlanner().select(goal, (untrusted_claim, valid))
+
+    assert receipt.selected_candidate_id == "valid"
+    assert receipt.evaluation.rejected[0].candidate_id == "untrusted-claim"
+    assert untrusted_claim.receipt_for(HardPlanConstraint.AUTHORITY).passed
+    assert receipt.evaluation.evidence_ids == ()
+    assert receipt.to_dict()["evaluation"]["evidence_ids"] == []
+    assert not receipt.proves_authority_non_compensation
+    assert receipt.proved_requirement_ids == ()
+
+
 @pytest.mark.parametrize(
     ("constraint", "dimension"),
     [

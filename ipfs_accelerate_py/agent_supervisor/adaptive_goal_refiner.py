@@ -59,6 +59,9 @@ CANDIDATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-candidate@1"
 )
 RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-receipt@1"
+REQUIREMENT_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/new-counterexample-refinement-evidence@1"
+)
 
 
 class AdaptiveGoalRefinementError(ValueError):
@@ -485,6 +488,14 @@ class AdaptiveRefinementRequest:
             _text(self.repository_tree_id, "repository_tree_id", required=False)
             or self.plan.repository_tree_id,
         )
+        if not self.repository_tree_id:
+            raise AdaptiveGoalRefinementError(
+                "repository_tree_id is required for refinement"
+            )
+        if self.repository_tree_id != self.plan.repository_tree_id:
+            raise AdaptiveGoalRefinementError(
+                "request repository tree does not match the frozen plan"
+            )
         object.__setattr__(
             self,
             "refinement_depth",
@@ -624,6 +635,134 @@ GoalRefinementProposal = AdaptiveRefinementCandidate
 
 
 @dataclass(frozen=True)
+class NewCounterexampleRefinementEvidence:
+    """Concrete witness for the ASI-G098 changed-counterexample criterion.
+
+    The witness is deliberately narrower than an admission receipt.  Other
+    reviewed signal kinds may still produce useful refinements, but only one
+    counterexample signal whose exact candidate plan was independently
+    verified can carry this objective evidence.
+    """
+
+    counterexample_signal_id: str
+    request_id: str
+    evidence_fingerprint: str
+    root_goal_id: str
+    root_goal_content_id: str
+    assumption_ids: tuple[str, ...]
+    policy_id: str
+    repository_tree_id: str
+    previous_plan_id: str
+    candidate_plan_id: str
+    verification_receipt_id: str
+    producer_id: str
+    producer_kind: str
+    refinement_index: int
+    requirement_id: str = NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID
+    evidence_producer_kind: str = "adaptive_goal_refinement"
+
+    def __post_init__(self) -> None:
+        for name in (
+            "counterexample_signal_id",
+            "request_id",
+            "evidence_fingerprint",
+            "root_goal_id",
+            "root_goal_content_id",
+            "policy_id",
+            "repository_tree_id",
+            "previous_plan_id",
+            "candidate_plan_id",
+            "verification_receipt_id",
+            "producer_id",
+            "producer_kind",
+            "requirement_id",
+            "evidence_producer_kind",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(
+            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
+        )
+        object.__setattr__(
+            self,
+            "refinement_index",
+            _positive(self.refinement_index, "refinement_index"),
+        )
+        if self.requirement_id != NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID:
+            raise AdaptiveGoalRefinementError(
+                "unsupported counterexample-refinement requirement id"
+            )
+        if self.evidence_producer_kind != "adaptive_goal_refinement":
+            raise AdaptiveGoalRefinementError(
+                "unsupported counterexample-refinement evidence producer"
+            )
+
+    @property
+    def evidence_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    @property
+    def content_id(self) -> str:
+        return self.evidence_id
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": REQUIREMENT_EVIDENCE_SCHEMA,
+            "requirement_id": self.requirement_id,
+            "evidence_producer_kind": self.evidence_producer_kind,
+            "counterexample_signal_id": self.counterexample_signal_id,
+            "request_id": self.request_id,
+            "evidence_fingerprint": self.evidence_fingerprint,
+            "root_goal_id": self.root_goal_id,
+            "root_goal_content_id": self.root_goal_content_id,
+            "assumption_ids": self.assumption_ids,
+            "policy_id": self.policy_id,
+            "repository_tree_id": self.repository_tree_id,
+            "previous_plan_id": self.previous_plan_id,
+            "candidate_plan_id": self.candidate_plan_id,
+            "verification_receipt_id": self.verification_receipt_id,
+            "producer_id": self.producer_id,
+            "producer_kind": self.producer_kind,
+            "refinement_index": self.refinement_index,
+        }
+        if include_identity:
+            payload["evidence_id"] = self.evidence_id
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "NewCounterexampleRefinementEvidence":
+        if payload.get("schema") != REQUIREMENT_EVIDENCE_SCHEMA:
+            raise AdaptiveGoalRefinementError(
+                "unsupported counterexample-refinement evidence schema"
+            )
+        result = cls(
+            counterexample_signal_id=payload.get("counterexample_signal_id", ""),
+            request_id=payload.get("request_id", ""),
+            evidence_fingerprint=payload.get("evidence_fingerprint", ""),
+            root_goal_id=payload.get("root_goal_id", ""),
+            root_goal_content_id=payload.get("root_goal_content_id", ""),
+            assumption_ids=tuple(payload.get("assumption_ids") or ()),
+            policy_id=payload.get("policy_id", ""),
+            repository_tree_id=payload.get("repository_tree_id", ""),
+            previous_plan_id=payload.get("previous_plan_id", ""),
+            candidate_plan_id=payload.get("candidate_plan_id", ""),
+            verification_receipt_id=payload.get("verification_receipt_id", ""),
+            producer_id=payload.get("producer_id", ""),
+            producer_kind=payload.get("producer_kind", ""),
+            refinement_index=payload.get("refinement_index", 0),
+            requirement_id=payload.get("requirement_id", ""),
+            evidence_producer_kind=payload.get("evidence_producer_kind", ""),
+        )
+        claimed = str(payload.get("evidence_id") or "")
+        if claimed and claimed != result.evidence_id:
+            raise AdaptiveGoalRefinementError(
+                "counterexample-refinement evidence identity does not match"
+            )
+        return result
+
+
+@dataclass(frozen=True)
 class AdaptiveRefinementReceipt:
     """Durable evidence for one decision at the adaptive trust boundary."""
 
@@ -647,7 +786,9 @@ class AdaptiveRefinementReceipt:
     refinement_index: int
     reason: str
     signal_ids: tuple[str, ...]
+    signal_kinds: tuple[str, ...]
     requirement_ids: tuple[str, ...]
+    new_counterexample_evidence: NewCounterexampleRefinementEvidence | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -679,11 +820,61 @@ class AdaptiveRefinementReceipt:
         object.__setattr__(
             self, "signal_ids", _strings(self.signal_ids, "signal_ids", required=True)
         )
+        signal_kinds = tuple(
+            _enum(item, RefinementSignalKind, "signal_kinds").value
+            for item in self.signal_kinds
+        )
+        if len(signal_kinds) != len(self.signal_ids):
+            raise AdaptiveGoalRefinementError(
+                "signal kinds must correspond to every signal identity"
+            )
+        object.__setattr__(self, "signal_kinds", signal_kinds)
         object.__setattr__(
             self,
             "requirement_ids",
             _strings(self.requirement_ids, "requirement_ids"),
         )
+        evidence = self.new_counterexample_evidence
+        if evidence is not None:
+            if not isinstance(evidence, NewCounterexampleRefinementEvidence):
+                raise AdaptiveGoalRefinementError(
+                    "invalid new-counterexample refinement evidence"
+                )
+            expected = {
+                "request_id": self.request_id,
+                "evidence_fingerprint": self.evidence_fingerprint,
+                "root_goal_id": self.root_goal_id,
+                "root_goal_content_id": self.root_goal_content_id,
+                "assumption_ids": self.assumption_ids,
+                "policy_id": self.policy_id,
+                "repository_tree_id": self.repository_tree_id,
+                "previous_plan_id": self.previous_plan_id,
+                "candidate_plan_id": self.candidate_plan_id,
+                "verification_receipt_id": self.verification_receipt_id,
+                "producer_id": self.producer_id,
+                "producer_kind": self.producer_kind,
+                "refinement_index": self.refinement_index,
+            }
+            mismatched = [
+                name
+                for name, value in expected.items()
+                if getattr(evidence, name) != value
+            ]
+            if mismatched:
+                raise AdaptiveGoalRefinementError(
+                    "counterexample evidence does not match receipt bindings: "
+                    + ", ".join(mismatched)
+                )
+            if (
+                len(self.signal_ids) != 1
+                or self.signal_kinds
+                != (RefinementSignalKind.COUNTEREXAMPLE.value,)
+                or evidence.counterexample_signal_id != self.signal_ids[0]
+            ):
+                raise AdaptiveGoalRefinementError(
+                    "counterexample evidence requires exactly one bound "
+                    "counterexample signal"
+                )
         if not isinstance(self.model_called, bool):
             raise AdaptiveGoalRefinementError("model_called must be boolean")
         for name in (
@@ -699,7 +890,6 @@ class AdaptiveRefinementReceipt:
                 and self.candidate_plan_id
                 and self.verification_receipt_id
                 and self.producer_kind
-                and NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID in self.requirement_ids
             ):
                 raise AdaptiveGoalRefinementError(
                     "admitted receipt requires generation, verification, and evidence binding"
@@ -713,7 +903,12 @@ class AdaptiveRefinementReceipt:
                 raise AdaptiveGoalRefinementError(
                     "backoff receipt must suppress generation until a future time"
                 )
-            if UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID not in self.requirement_ids:
+            if (
+                self.signal_kinds
+                == (RefinementSignalKind.REPEATED_FAILURE.value,)
+                and UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
+                not in self.requirement_ids
+            ):
                 raise AdaptiveGoalRefinementError(
                     "backoff receipt is missing its objective evidence binding"
                 )
@@ -728,6 +923,23 @@ class AdaptiveRefinementReceipt:
             raise AdaptiveGoalRefinementError(
                 "non-evidentiary decisions cannot claim objective requirement coverage"
             )
+        expected_requirements: list[str] = []
+        if evidence is not None:
+            if self.decision is not RefinementDecision.ADMITTED:
+                raise AdaptiveGoalRefinementError(
+                    "only an admitted receipt may carry counterexample evidence"
+                )
+            expected_requirements.append(NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID)
+        if (
+            self.decision is RefinementDecision.BACKED_OFF
+            and self.signal_kinds
+            == (RefinementSignalKind.REPEATED_FAILURE.value,)
+        ):
+            expected_requirements.append(UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID)
+        if self.requirement_ids != tuple(sorted(expected_requirements)):
+            raise AdaptiveGoalRefinementError(
+                "receipt requirement projection is inconsistent"
+            )
 
     @property
     def receipt_id(self) -> str:
@@ -736,6 +948,22 @@ class AdaptiveRefinementReceipt:
     @property
     def content_id(self) -> str:
         return self.receipt_id
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        """Requirements backed by a concrete witness in this receipt."""
+
+        return self.requirement_ids
+
+    @property
+    def evidence_ids(self) -> tuple[str, ...]:
+        """Content identities of concrete objective evidence witnesses."""
+
+        return (
+            (self.new_counterexample_evidence.evidence_id,)
+            if self.new_counterexample_evidence is not None
+            else ()
+        )
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -761,7 +989,13 @@ class AdaptiveRefinementReceipt:
             "refinement_index": self.refinement_index,
             "reason": self.reason,
             "signal_ids": self.signal_ids,
+            "signal_kinds": self.signal_kinds,
             "requirement_ids": self.requirement_ids,
+            "new_counterexample_evidence": (
+                self.new_counterexample_evidence.to_dict()
+                if self.new_counterexample_evidence is not None
+                else None
+            ),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -792,7 +1026,15 @@ class AdaptiveRefinementReceipt:
             refinement_index=payload.get("refinement_index", 0),
             reason=payload.get("reason", ""),
             signal_ids=tuple(payload.get("signal_ids") or ()),
+            signal_kinds=tuple(payload.get("signal_kinds") or ()),
             requirement_ids=tuple(payload.get("requirement_ids") or ()),
+            new_counterexample_evidence=(
+                NewCounterexampleRefinementEvidence.from_dict(
+                    payload["new_counterexample_evidence"]
+                )
+                if payload.get("new_counterexample_evidence") is not None
+                else None
+            ),
         )
         _claimed(payload, result.receipt_id, "refinement receipt")
         return result
@@ -1136,7 +1378,7 @@ class AdaptiveGoalRefiner:
             try:
                 verification = self.verifier(candidate, request)
                 verified, verification_id, verification_reason = (
-                    self._verification(verification, request)
+                    self._verification(verification, candidate, request)
                 )
             except BaseException as exc:
                 verified, verification_id = False, ""
@@ -1270,6 +1512,10 @@ class AdaptiveGoalRefiner:
             return "candidate changed the frozen root goal content identity"
         if candidate.assumption_ids != request.assumption_ids:
             return "candidate changed the frozen assumptions"
+        if candidate.plan.repository_tree_id != request.repository_tree_id:
+            return "candidate plan does not match the frozen repository tree"
+        if candidate.signal_kind not in {item.kind for item in request.signals}:
+            return "candidate signal kind is not present in the refinement request"
         roots = [
             item
             for item in candidate.plan.goals
@@ -1309,7 +1555,9 @@ class AdaptiveGoalRefiner:
 
     @staticmethod
     def _verification(
-        value: Any, request: AdaptiveRefinementRequest
+        value: Any,
+        candidate: AdaptiveRefinementCandidate,
+        request: AdaptiveRefinementRequest,
     ) -> tuple[bool, str, str]:
         if isinstance(value, bool):
             # A bare boolean has no independently auditable receipt.
@@ -1323,6 +1571,12 @@ class AdaptiveGoalRefiner:
         frozen = getattr(value, "frozen_context", None)
         if isinstance(value, RefinementVerificationResult):
             frozen = value.frozen_context
+            verified_plan_id = value.rounds[-1].plan_id
+        else:
+            verified_plan_id = str(
+                getattr(value, "candidate_plan_id", "")
+                or getattr(value, "plan_id", "")
+            ).strip()
         if frozen is None:
             return False, verification_id, "verification omitted frozen context"
         if (
@@ -1333,6 +1587,10 @@ class AdaptiveGoalRefiner:
             != request.assumption_ids
         ):
             return False, verification_id, "verification changed the frozen context"
+        if not verified_plan_id:
+            return False, verification_id, "verification omitted candidate plan identity"
+        if verified_plan_id != candidate.plan.content_id:
+            return False, verification_id, "verification was produced for another plan"
         if verified and not verification_id:
             return False, "", "verification omitted its content identity"
         return verified, verification_id, reason
@@ -1417,9 +1675,34 @@ class AdaptiveGoalRefiner:
         refinement_index: int = 0,
     ) -> AdaptiveRefinementReceipt:
         requirement_ids: list[str] = []
-        if decision is RefinementDecision.ADMITTED:
+        counterexample_evidence: NewCounterexampleRefinementEvidence | None = None
+        if (
+            decision is RefinementDecision.ADMITTED
+            and len(request.signals) == 1
+            and request.signals[0].kind is RefinementSignalKind.COUNTEREXAMPLE
+        ):
+            counterexample_evidence = NewCounterexampleRefinementEvidence(
+                counterexample_signal_id=request.signals[0].evidence_id,
+                request_id=request.content_id,
+                evidence_fingerprint=request.evidence_fingerprint,
+                root_goal_id=request.root_goal_id,
+                root_goal_content_id=request.root_goal_content_id,
+                assumption_ids=request.assumption_ids,
+                policy_id=self.policy.content_id,
+                repository_tree_id=request.repository_tree_id,
+                previous_plan_id=request.plan.content_id,
+                candidate_plan_id=candidate_plan_id,
+                verification_receipt_id=verification_receipt_id,
+                producer_id=producer_id,
+                producer_kind=producer_kind,
+                refinement_index=refinement_index,
+            )
             requirement_ids.append(NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID)
-        elif decision is RefinementDecision.BACKED_OFF:
+        elif (
+            decision is RefinementDecision.BACKED_OFF
+            and len(request.signals) == 1
+            and request.signals[0].kind is RefinementSignalKind.REPEATED_FAILURE
+        ):
             requirement_ids.append(UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID)
         return AdaptiveRefinementReceipt(
             decision=decision,
@@ -1442,7 +1725,9 @@ class AdaptiveGoalRefiner:
             refinement_index=refinement_index,
             reason=reason,
             signal_ids=tuple(item.evidence_id for item in request.signals),
+            signal_kinds=tuple(item.kind.value for item in request.signals),
             requirement_ids=tuple(requirement_ids),
+            new_counterexample_evidence=counterexample_evidence,
         )
 
 
@@ -1488,6 +1773,7 @@ __all__ = [
     "AdaptiveRefinementCandidate",
     "GoalRefinementCandidate",
     "GoalRefinementProposal",
+    "NewCounterexampleRefinementEvidence",
     "AdaptiveRefinementReceipt",
     "GoalRefinementReceipt",
     "AdaptiveRefinementResult",

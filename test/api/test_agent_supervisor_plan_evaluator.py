@@ -285,11 +285,12 @@ def test_evidence_aware_evaluation_rejects_cheaper_authority_violating_plan() ->
         PlanEvaluationDimension.CONFLICT_SCOPE_AND_AUTHORITY.value,
     )
     assert any("authority violation" in item for item in rejected.rationale)
-    assert forward.evidence_ids == (
-        AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID,
-    )
-    assert forward.to_dict()["evidence_ids"] == [
-        "173075880069453142914839090434430341799"
+    # Candidate-reported violations drive fail-closed evaluation but are not
+    # trusted objective evidence.  The adaptive planner adds gate receipts.
+    assert forward.evidence_ids == ()
+    assert forward.to_dict()["evidence_ids"] == []
+    assert forward.to_dict()["requirement_ids"] == [
+        AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID
     ]
 
 

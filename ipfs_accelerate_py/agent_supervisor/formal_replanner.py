@@ -644,9 +644,15 @@ class ResponsiveReplanDecision:
 
     @property
     def evidence_ids(self) -> tuple[str, ...]:
-        """Return objective evidence only after verified admission."""
+        """Return no objective evidence outside the bound receipt producer.
 
-        return (BOUNDED_REFINEMENT_EVIDENCE_ID,) if self.refined else ()
+        This decision is useful deterministic routing metadata, but it lacks
+        the durable request/policy/tree/verifier witness emitted by
+        :class:`AdaptiveRefinementReceipt`.  ``requirement_ids`` identifies
+        the downstream objective without allowing this wrapper to satisfy it.
+        """
+
+        return ()
 
     def to_dict(self) -> dict[str, Any]:
         return {

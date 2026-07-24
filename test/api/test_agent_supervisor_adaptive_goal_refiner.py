@@ -129,16 +129,21 @@ def _candidate(request: AdaptiveRefinementRequest) -> AdaptiveRefinementCandidat
 class _Verification:
     verified: bool
     frozen_context: FrozenRefinementContext
+    candidate_plan_id: str
     content_id: str = "verification:independent"
     reason: str = ""
 
 
 def _verification(
-    request: AdaptiveRefinementRequest, *, verified: bool = True
+    request: AdaptiveRefinementRequest,
+    *,
+    verified: bool = True,
+    candidate_plan_id: str | None = None,
 ) -> _Verification:
     return _Verification(
         verified=verified,
         frozen_context=request.frozen_context,
+        candidate_plan_id=candidate_plan_id or _plan(with_child=True).content_id,
         reason="" if verified else "child-to-parent obligation disproved",
     )
 
@@ -160,20 +165,39 @@ def test_new_counterexample_triggers_exactly_one_bounded_verified_refinement() -
         return _verification(request)
 
     request = _request()
-    result = AdaptiveGoalRefiner(generate, verify, clock=lambda: 100).refine(request)
+    policy = AdaptiveRefinementPolicy()
+    result = AdaptiveGoalRefiner(
+        generate, verify, policy=policy, clock=lambda: 100
+    ).refine(request)
 
     assert result.admitted
     assert result.admitted_plan == _plan(with_child=True)
     assert calls == {"generator": 1, "verifier": 1}
-    assert result.receipt.root_goal_content_id == request.root_goal_content_id
-    assert result.receipt.assumption_ids == request.assumption_ids
-    assert result.receipt.refinement_index == 1
-    assert (
-        NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID
-        in result.receipt.requirement_ids
+    receipt = result.receipt
+    assert receipt.request_id == request.content_id
+    assert receipt.evidence_fingerprint == request.evidence_fingerprint
+    assert receipt.root_goal_id == request.root_goal_id
+    assert receipt.root_goal_content_id == request.root_goal_content_id
+    assert receipt.assumption_ids == request.assumption_ids
+    assert receipt.policy_id == policy.content_id
+    assert receipt.repository_tree_id == request.repository_tree_id
+    assert receipt.previous_plan_id == request.plan.content_id
+    assert receipt.candidate_plan_id == result.admitted_plan.content_id
+    assert receipt.refinement_index == 1
+    assert receipt.requirement_ids == (
+        NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
     )
-    assert result.receipt.verification_receipt_id == "verification:independent"
-    assert result.receipt.producer_kind == "leanstral"
+    assert receipt.proved_requirement_ids == receipt.requirement_ids
+    assert receipt.verification_receipt_id == "verification:independent"
+    assert receipt.producer_kind == "leanstral"
+    assert receipt.signal_kinds == (RefinementSignalKind.COUNTEREXAMPLE.value,)
+    witness = receipt.new_counterexample_evidence
+    assert witness is not None
+    assert witness.counterexample_signal_id == request.signals[0].evidence_id
+    assert witness.candidate_plan_id == result.admitted_plan.content_id
+    assert receipt.evidence_ids == (witness.evidence_id,)
+    assert AdaptiveRefinementReceipt.from_dict(receipt.to_dict()) == receipt
+    assert receipt.receipt_id == receipt.to_dict()["receipt_id"]
 
 
 def test_replayed_admitted_evidence_is_idempotent_without_more_model_calls() -> None:
@@ -293,6 +317,15 @@ def test_all_reviewed_typed_changes_are_eligible(kind: RefinementSignalKind) -> 
         clock=lambda: 100,
     ).refine(request)
     assert result.admitted
+    if kind is RefinementSignalKind.COUNTEREXAMPLE:
+        assert result.receipt.requirement_ids == (
+            NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
+        )
+        assert result.receipt.new_counterexample_evidence is not None
+    else:
+        assert result.receipt.requirement_ids == ()
+        assert result.receipt.evidence_ids == ()
+        assert result.receipt.new_counterexample_evidence is None
 
 
 @pytest.mark.parametrize("mutation", ["root_id", "root_content", "assumptions", "plan_root"])
@@ -335,12 +368,82 @@ def test_independent_verification_must_bind_the_exact_frozen_context() -> None:
             request.root_goal_content_id,
             ("assumption:changed",),
         ),
+        candidate_plan_id=_plan(with_child=True).content_id,
     )
     result = AdaptiveGoalRefiner(
         _candidate, lambda candidate, current: mismatched, clock=lambda: 100
     ).refine(request)
     assert result.decision is RefinementDecision.VERIFICATION_FAILED
     assert "frozen context" in result.receipt.reason
+
+
+def test_verification_for_another_candidate_plan_cannot_be_replayed() -> None:
+    request = _request()
+    result = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, current: _verification(
+            current, candidate_plan_id=current.plan.content_id
+        ),
+        clock=lambda: 100,
+    ).refine(request)
+
+    assert result.decision is RefinementDecision.VERIFICATION_FAILED
+    assert result.admitted_plan is None
+    assert result.receipt.requirement_ids == ()
+    assert "another plan" in result.receipt.reason
+
+
+def test_candidate_must_bind_request_signal_kind_and_repository_tree() -> None:
+    request = _request()
+    wrong_kind = replace(
+        _candidate(request), signal_kind=RefinementSignalKind.CAPABILITY_CHANGE
+    )
+    kind_result = AdaptiveGoalRefiner(
+        lambda current: wrong_kind,
+        lambda candidate, current: _verification(current),
+        clock=lambda: 100,
+    ).refine(request)
+    assert kind_result.decision is RefinementDecision.CANDIDATE_REJECTED
+    assert "signal kind" in kind_result.receipt.reason
+    assert kind_result.receipt.requirement_ids == ()
+
+    wrong_tree_plan = replace(
+        _plan(with_child=True), repository_tree_id="tree:other"
+    )
+    wrong_tree = replace(_candidate(request), plan=wrong_tree_plan)
+    tree_result = AdaptiveGoalRefiner(
+        lambda current: wrong_tree,
+        lambda candidate, current: _verification(
+            current, candidate_plan_id=wrong_tree_plan.content_id
+        ),
+        clock=lambda: 100,
+    ).refine(request)
+    assert tree_result.decision is RefinementDecision.CANDIDATE_REJECTED
+    assert "repository tree" in tree_result.receipt.reason
+    assert tree_result.receipt.requirement_ids == ()
+
+
+def test_request_repository_tree_must_match_frozen_plan() -> None:
+    with pytest.raises(AdaptiveGoalRefinementError, match="repository tree"):
+        replace(_request(), repository_tree_id="tree:other")
+
+
+def test_counterexample_witness_tampering_fails_closed() -> None:
+    request = _request()
+    result = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, current: _verification(current),
+        clock=lambda: 100,
+    ).refine(request)
+    payload = result.receipt.to_dict()
+    payload["new_counterexample_evidence"]["candidate_plan_id"] = (
+        request.plan.content_id
+    )
+
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="evidence identity does not match"
+    ):
+        AdaptiveRefinementReceipt.from_dict(payload)
 
 
 def test_bare_boolean_verifier_cannot_assert_proof() -> None:

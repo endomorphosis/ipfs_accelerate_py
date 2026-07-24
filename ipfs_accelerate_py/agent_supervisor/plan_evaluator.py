@@ -1811,26 +1811,15 @@ class EvidenceAwarePlanEvaluation:
 
     @property
     def evidence_ids(self) -> tuple[str, ...]:
-        """Return only objective evidence actually demonstrated by this run."""
+        """Return no authority evidence without trusted gate provenance.
 
-        if self.selected is None:
-            return ()
-        selected = self.selected.candidate
-        for item in self.rejected:
-            rejected = item.candidate
-            costs = (
-                (rejected.estimated_resource_cost, selected.estimated_resource_cost),
-                (rejected.estimated_tokens, selected.estimated_tokens),
-                (rejected.branch.estimated_cost, selected.branch.estimated_cost),
-            )
-            no_more_expensive = all(left <= right for left, right in costs)
-            strictly_cheaper = any(left < right for left, right in costs)
-            if (
-                rejected.authority_violations
-                and no_more_expensive
-                and strictly_cheaper
-            ):
-                return (AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID,)
+        Candidate declarations are sufficient for deterministic rejection and
+        diagnostics, but they are not authoritative observations.  The
+        adaptive-planner boundary combines this evaluation with trusted hard
+        constraint receipts and emits the content-addressed objective witness.
+        ``requirement_ids`` in :meth:`to_dict` remains routing metadata.
+        """
+
         return ()
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:

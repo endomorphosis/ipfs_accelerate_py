@@ -471,7 +471,12 @@ def test_changed_counterexample_delegates_once_and_preserves_frozen_root() -> No
     assert decision.changed is True
     assert decision.refined is True
     assert decision.model_call_required is True
-    assert decision.evidence_ids == (BOUNDED_REFINEMENT_EVIDENCE_ID,)
+    # The wrapper routes the requirement; only the durable adaptive-refiner
+    # receipt is an authoritative objective evidence producer.
+    assert decision.evidence_ids == ()
+    assert decision.to_dict()["requirement_ids"] == [
+        BOUNDED_REFINEMENT_EVIDENCE_ID
+    ]
     assert decision.result is not None
     assert decision.result.admitted
     assert decision.stop_reason is ReplanStopReason.ADMITTED
