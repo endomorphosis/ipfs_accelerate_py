@@ -129,8 +129,11 @@ def test_delta_transmits_changes_and_preserves_required_coverage() -> None:
     assert result.receipt.delta_tokens == compiler.estimator.estimate(
         result.delta_capsule.to_record()
     )
-    assert result.receipt.full_replay_tokens == compiler.estimator.estimate(
-        result.reconstructed_capsule.to_record()
+    assert result.receipt.full_replay_tokens == max(
+        result.reconstructed_capsule.input_tokens,
+        compiler.estimator.estimate(
+            result.reconstructed_capsule.provider_input_payload
+        ),
     )
     assert result.receipt.evidence is not None
     assert result.receipt.evidence.requirement_id == DELTA_RETRY_EVIDENCE_ID
@@ -373,7 +376,9 @@ def test_new_required_candidate_is_included_in_witness_coverage() -> None:
 def test_delta_must_be_smaller_than_full_replay() -> None:
     compiler = ContextCompiler(
         _budget(),
-        tokenizer=lambda text: 1,
+        tokenizer=lambda text: (
+            100 if "context-delta-capsule@1" in text else 1
+        ),
     )
     required = _reference("required", "old", 1, required=True)
     parent = compiler.compile(

@@ -10,6 +10,7 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     CalibratedTokenEstimator,
     ContextCompilationError,
     ContextCompilationReceipt,
+    ContextCompileResult,
     ContextCompiler,
     ExclusionReason,
     InclusionReason,
@@ -19,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
 )
 from ipfs_accelerate_py.agent_supervisor.context_contracts import (
     ContextBudget,
+    ContextContractError,
     ContextReference,
     ContextTier,
 )
@@ -165,6 +167,41 @@ def test_required_context_fails_closed_instead_of_truncating() -> None:
         _compile(evidence=(required,))
 
 
+def test_canonical_provider_input_defeats_forged_reference_token_count() -> None:
+    compiler = ContextCompiler(
+        _budget(max_input_tokens=100),
+        tokenizer=lambda text: max(1, len(text.encode("utf-8")) // 16),
+    )
+    understated = _reference(
+        "understated",
+        1,
+        required=True,
+        summary="x" * 8_000,
+    )
+
+    with pytest.raises(
+        RequiredContextOverflowError, match="required evidence"
+    ):
+        compiler.compile(**BINDING, **CORE, evidence=(understated,))
+
+    valid = ContextCompiler(
+        _budget(max_input_tokens=500),
+        tokenizer=_tokenizer,
+    ).compile(
+        **BINDING,
+        **CORE,
+        evidence=(_reference("required", 1, required=True),),
+    )
+    verifier = ContextCompiler(
+        _budget(max_input_tokens=500),
+        tokenizer=_tokenizer,
+    )
+    assert verifier.estimate_capsule_input(valid.capsule) == (
+        valid.capsule.input_tokens
+    )
+    assert dict(valid.capsule.provider_input_payload)["evidence"]
+
+
 def test_optional_evidence_has_deterministic_ranking_and_decisions() -> None:
     references = (
         _reference("low", 200, priority=1),
@@ -238,6 +275,95 @@ def test_compilation_receipt_is_canonical_bounded_and_tamper_evident() -> None:
     forged["evidence_claim_references"] = ()
     with pytest.raises(ContextCompilationError, match="claim"):
         ContextCompilationReceipt.from_dict(forged)
+
+
+def test_compilation_result_revalidates_capsule_witness_and_decisions() -> None:
+    result = _compile(
+        evidence=(
+            _reference("required", 12, required=True),
+            _reference("optional", 12),
+        )
+    )
+    assert result.receipt.evidence is not None
+
+    forged_digest = replace(
+        result.receipt,
+        evidence=replace(
+            result.receipt.evidence,
+            artifact_digest="sha256:" + "0" * 64,
+        ),
+    )
+    with pytest.raises(ContextCompilationError, match="artifact digest"):
+        ContextCompileResult(
+            result.capsule,
+            forged_digest,
+            result.decisions,
+        )
+
+    forged_references = replace(
+        result.receipt,
+        evidence=replace(
+            result.receipt.evidence,
+            required_reference_ids=(),
+        ),
+    )
+    with pytest.raises(ContextCompilationError, match="required references"):
+        ContextCompileResult(
+            result.capsule,
+            forged_references,
+            result.decisions,
+        )
+
+    with pytest.raises(ContextCompilationError, match="bound to its receipt"):
+        replace(
+            result.receipt,
+            tree_id="tree:stale",
+        )
+    forged_objective = replace(result.receipt, objective_id="ASI-G999")
+    with pytest.raises(ContextCompilationError, match="complete compiled"):
+        ContextCompileResult(
+            result.capsule,
+            forged_objective,
+            result.decisions,
+        )
+
+    forged_decisions = tuple(
+        replace(item, reason=InclusionReason.RANKED_FIT)
+        if item.reference_id == "required"
+        else item
+        for item in result.decisions
+    )
+    forged_receipt = replace(result.receipt, decisions=forged_decisions)
+    with pytest.raises(ContextCompilationError, match="selected reference"):
+        ContextCompileResult(
+            result.capsule,
+            forged_receipt,
+            forged_decisions,
+        )
+
+
+def test_required_evidence_cannot_be_deferred_as_expansion_handle() -> None:
+    required_expansion = ContextReference(
+        reference_id="required-expansion",
+        kind="test-evidence",
+        tier=ContextTier.EXPANSION,
+        referenced_content_id="sha256:required-expansion",
+        repository_id=BINDING["repository_id"],
+        tree_id=BINDING["tree_id"],
+        token_count=10,
+        metadata={"required": True},
+    )
+    capsule = _compile().capsule
+
+    with pytest.raises(
+        ContextContractError, match="required evidence cannot be deferred"
+    ):
+        replace(
+            capsule,
+            expansion_references=(required_expansion,),
+            truncated=True,
+            omissions=("required-expansion:token_budget",),
+        )
 
 
 def test_estimator_uses_provider_tokenizer_and_records_fallback_calibration() -> None:
