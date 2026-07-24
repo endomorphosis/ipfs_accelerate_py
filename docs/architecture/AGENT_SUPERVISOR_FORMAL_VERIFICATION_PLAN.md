@@ -13,6 +13,36 @@ The integration has two equally important outcomes:
 2. Increase assurance by requiring machine-checkable evidence for selected
    code invariants before a task can merge or a goal can become verified.
 
+## Architectural principles
+
+The supervisor is a staged assurance system, not a model-driven proof oracle:
+
+1. **Intent is immutable during refinement.** The root goal, assumptions,
+   scope, vocabulary, and policy digest are frozen before a proposal provider
+   runs. Refinement may expose missing evidence or dependencies, but may not
+   silently strengthen the requirement.
+2. **Trust is typed and property-specific.** Schema validation, plan
+   consistency, solver candidates, bounded model checks, runtime traces,
+   protocol checks, kernel verification, and cryptographic attestation are
+   distinct states. They form a partial order of usable evidence, not a single
+   numeric score.
+3. **Receipts are content-addressed claims.** A receipt binds the obligation
+   to the repository tree, changed scope, assumptions, translation profile,
+   provider/toolchain, finite bounds, and policy. Cache reuse is memoization
+   under those bindings, never an assurance upgrade.
+4. **Models propose; deterministic gates decide.** Leanstral can draft a
+   theorem, subgoal, proof candidate, or repair. Typed validation, independent
+   reconstruction, code conformance, and merge policy decide whether it can
+   affect canonical state.
+5. **Concurrency is budgeted causality.** Independent proof and validation
+   nodes may run in parallel, but leases, fencing, conflict scopes, provider
+   capacity, and host resources constrain admission. Parallel execution must
+   preserve dependency order and exactly-once terminal effects.
+6. **Unknown is a first-class outcome.** Unsupported semantics, unavailable
+   providers, timeout, cancellation, disagreement, stale evidence, and
+   incomplete traces remain observable non-success states. Enforcement fails
+   closed; shadow mode may continue only through explicitly labeled fallbacks.
+
 This is not a plan to claim full formal verification of arbitrary Python.
 Tests, static analysis, and review remain necessary. Formal gates apply only
 where the supervisor can generate a sound obligation with supported semantics.
@@ -487,7 +517,7 @@ durable transition receipt tied to the policy identity. An outage in an
 enforcement scope fails closed and cannot silently downgrade that scope to
 shadow mode.
 
-## Implementation Backlog
+## Evolution plan and implementation backlog
 
 The root refactor supervisor owns the executable backlog:
 
@@ -506,9 +536,7 @@ foundation:
 
 Merge and goal-completion enforcement remains downstream of those branches.
 
-## REF-244 Capability Discovery Implementation
-
-Status: capability discovery implemented
+## Runtime capability discovery as a routing contract
 
 Capability schema: `ipfs_accelerate_py/agent-supervisor/formal-verification-capabilities@1`
 

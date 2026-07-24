@@ -9,12 +9,11 @@ The package is intentionally broader than an LLM wrapper. Models propose plans
 and edits, but deterministic parsers, policy checks, validation commands, Git
 operations, leases, and evidence receipts decide whether work may advance.
 
-## Current implementation status
+## Architectural status
 
-The latest supervisor work (23-24 July 2026 UTC) has moved the
-formal-planning and Leanstral goal-development designs into executable,
-resumable components. The following formal-planning commits are now part of
-the nested `ipfs_accelerate_py` repository:
+The supervisor currently provides executable, resumable formal planning and
+Leanstral-assisted goal development. The following capabilities define the
+architecture:
 
 | Capability | Implementation | Operational meaning |
 | --- | --- | --- |
@@ -25,41 +24,64 @@ the nested `ipfs_accelerate_py` repository:
 | Proof-carrying execution | `proof_carrying_planner.py` (`REF-293`) | Compile, verify, implement, scope-check, merge, monitor, and repair nodes run as a durable DAG with paired JSON/DuckDB state. The workflow is replayable and only completes when required assurance is present. |
 | Rollout measurement and gates | `formal_planning_metrics.py`, `formal_planning_rollout.py` (`REF-294`) | Cold/warm/parallel benchmark samples measure context reduction, defect detection, proof support, counterexample quality, cache reuse, queue latency, CPU, memory, and throughput before promotion. |
 
-## Delivery update: 24 July 2026 UTC
+## Architectural synthesis: a constrained feedback controller
 
-The Leanstral-assisted goal-development board is complete: **10/10 tasks are
-completed**. The five task commits delivered during the final two-hour
-implementation window are:
+The recent implementation completes the first integrated slice of a
+proof-aware supervisor. Its central abstraction is a feedback controller:
 
-| Task commit | Delivered capability | Operational boundary |
+```text
+frozen intent + policy + capacity
+              |
+              v
+  typed plan and proposal refinement
+              |
+              v
+  bounded execution and independent checks
+              |
+              v
+ observations, receipts, counterexamples, and health
+              |
+              +--> reconcile, repair, reopen, or complete
+```
+
+This model gives each subsystem a distinct responsibility:
+
+| Layer | Responsibility | What it cannot do |
 | --- | --- | --- |
-| `c09e0008` (`LEAN-GOAL-006`) | Transactional objective and subgoal materialization | Preview-first; shadow mode cannot mutate the objective heap. |
-| `963b13e2` (`LEAN-GOAL-007`) | Fresh code-conformance obligations | Plan evidence cannot be promoted to generated-code proof. |
-| `117bb601` (`LEAN-GOAL-008`) | Route-aware capabilities, resource scheduling, cache separation, and metrics | Drafts and authoritative receipts use separate cache and trust paths. |
-| `87af152f` (`LEAN-GOAL-009`) | End-to-end shadow lifecycle and restart recovery | Leanstral remains an untrusted proposal source with no completion authority. |
-| `388be1d5` (`LEAN-GOAL-010`) | Paired benchmark reports and fail-closed rollout gates | `auto_safe` remains disabled unless explicitly authorized by policy. |
+| Intent | Freeze the root goal, assumptions, scope, vocabulary, and acceptance criteria | Accept a model suggestion as a new requirement |
+| Planning | Compile typed goals, subgoals, dependencies, effects, and evidence obligations | Claim that a plan proves the implementation |
+| Proposal | Use Leanstral or another model to suggest bounded refinements | Mutate canonical objectives, grant authority, or assert completion |
+| Assurance | Route each obligation to semantically appropriate checks and retain provenance | Treat a solver candidate, stale receipt, or unsupported translation as proof |
+| Execution | Admit leased work, validate changed scope, merge, and recover from interruption | Publish with a stale fence, missing evidence, or failed policy gate |
+| Reconciliation | Compare observed events and fresh evidence with the accepted plan | Infer success from an empty queue or a process exit code alone |
 
-These changes were reconciled with the upstream formal-planning/prover tranche
-in merge commit `c84802e1` and published together in `c764be51`. The board
-completed on the first implementation attempt for each task, with no blocked
-tasks or supervisor restarts during this tranche.
+The design follows several computer-science principles. The objective, task,
+and evidence graphs are separate projections because planning, scheduling, and
+trust answer different questions. Leases and fencing tokens provide the
+distributed-systems safety property that stale workers cannot publish after
+ownership changes. Canonical content identities make receipts a form of
+memoization whose validity is conditional on the exact tree, policy,
+translation, toolchain, and bounds. Typed states form a monotone trust lattice:
+new observations may strengthen or invalidate a claim, but a proposal cannot
+skip directly to authoritative assurance. Bounded retries and explicit
+terminal states provide a termination argument for repair loops.
 
-Validation recorded for the delivery:
+Parallelism is therefore admission control, not simply a worker count.
+Independent DAG nodes may run concurrently only when their scopes, leases,
+provider capabilities, and host budgets permit it. Cache hits remove work but
+do not remove freshness and trust checks. A counterexample cancels redundant
+portfolio work, while cancellation preserves a partial receipt and releases
+capacity. These rules let throughput increase without weakening causality or
+making completion nondeterministic.
 
-- The required paired benchmark suite passed **3 tests**.
-- The lifecycle and contract regression suite passed **37 tests**.
-- The combined analysis, Leanstral, formal-planning, prover-resource,
-  scheduler, and daemon suite passed **730 tests** in parallel; the one
-  subprocess isolation-sensitive fallback test also passed when rerun serially.
-- `compileall`, `git diff --check`, and the combined public-export import check
-  passed.
-
-The checked fixture benchmark reports four of five paired quality wins, zero
-false completions, zero authority-boundary violations, and stable restart
-recovery. These are fixture and policy-gate results, not a claim that arbitrary
-Python execution is formally verified. Live Leanstral inference remains
-optional, shadow is the default, and promotion still requires the independent
-proof, scope, authority, validation, and completion gates described below.
+Leanstral belongs at the proposal/refinement boundary. It can compress
+repository evidence into candidate subgoals, suggest repairs, and expose
+alternative decompositions. Deterministic schema checks, typed plan
+validation, property-specific provers, code-conformance checks, and merge
+policy remain the acceptance boundary. The default rollout is shadow mode;
+assist and auto-safe require measured paired improvement plus zero false
+completions, zero authority violations, stable restart recovery, and explicit
+policy authorization.
 
 These modules provide the execution surface for the design below; they do not
 make arbitrary Python formally verified. Provider conformance, reviewed

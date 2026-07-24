@@ -35,10 +35,12 @@ Use the logic capabilities in `ipfs_datasets_py` to:
 7. Preserve implementation throughput with one CPU, memory, process, and model
    admission budget across all serial and parallel lanes.
 
-## Delivered execution layer (23 July 2026)
+## Execution architecture
 
-The recent `REF-289` through `REF-294` work implements the first end-to-end
-slice of this plan:
+The first executable slice of this plan is organized as a sequence of typed
+representation changes. Intent becomes a formal work plan; the plan becomes a
+property-specific proof DAG; the observed execution becomes a conformance
+trace; and typed counterexamples become bounded repair candidates:
 
 - `formal_plan_conformance.py` binds an accepted plan to canonical execution
   events and evaluates transition order, authority, evidence freshness, and
@@ -71,6 +73,13 @@ This is an executable integration slice, not a blanket verification claim.
 Unsupported providers continue through deterministic fallback validation, and
 provider output remains candidate evidence until the relevant conformance and
 assurance checks pass.
+
+The important invariant is that these stages are not interchangeable. A
+counterexample is an observation, not an instruction; a repair candidate is a
+proposal, not a changed objective; and a proof receipt is authoritative only
+for its exact obligation, tree, assumptions, translation, toolchain, and
+bounds. This preserves soundness when the model, cache, provider, or
+repository changes.
 
 ### Rollout policy defaults
 
@@ -121,7 +130,18 @@ The assessment covered these implementation families:
 | Security-model workflows | `logic/security_models/crypto_exchange/`, including AST extraction, SMT runners, TLA/Apalache reports, runtime MTL, receipts, and release policy |
 | Matrix definition | `docs/security_verification/prover_matrix.md` |
 
-## Capability Findings
+## Capability findings as an evidence architecture
+
+Capability discovery is a routing boundary, not a proof boundary. A provider
+is usable only when its executable, bindings, model, translation profile, and
+conformance fixtures satisfy the requested operation. Missing or degraded
+capabilities remain explicit inputs to planning and scheduling. They do not
+become false success, and they do not make the package import fail.
+
+The evidence graph is an architectural index rather than a transcript of
+implementation activity. Traversal must be deterministic, content addressed,
+bounded, and safe to rebuild. A graph edge can narrow context or identify a
+dependency, but it cannot by itself establish code correctness.
 
 ### Strong reusable foundations
 
