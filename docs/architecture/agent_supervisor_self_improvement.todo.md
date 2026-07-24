@@ -86,7 +86,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-005 Build a token-budgeted evidence context compiler
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
