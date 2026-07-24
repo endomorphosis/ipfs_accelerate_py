@@ -1933,6 +1933,26 @@ class AdaptiveRefinementResult:
     def decision(self) -> RefinementDecision:
         return self.receipt.decision
 
+    @property
+    def planning_completion_witness(self) -> Mapping[str, Any]:
+        """Project a qualifying ASI-G030 producer without granting authority.
+
+        The parent planning cohort persists the complete receipt and validates
+        it again.  This small projection is useful for routing only: it cannot
+        substitute for fresh criterion validation, analyzer health,
+        descendant proof, or an exhaustion receipt.
+        """
+
+        return {
+            "objective_id": "ASI-G030",
+            "receipt_id": self.receipt.receipt_id,
+            "repository_tree_id": self.receipt.repository_tree_id,
+            "requirement_ids": list(self.receipt.proved_requirement_ids),
+            "evidence_ids": list(self.receipt.evidence_ids),
+            "completion_authority": False,
+            "safe_for_completion_reasoning": False,
+        }
+
     def evaluate_objective_completion(
         self,
         *,

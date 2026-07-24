@@ -652,6 +652,15 @@ def test_every_quality_dimension_is_evaluated_and_weighting_is_deterministic() -
     assert {
         item.dimension for item in forward.evaluation.selected.dimensions
     } == set(PlanEvaluationDimension)
+    assert forward.evaluation.covers_every_planning_dimension
+    assert forward.evaluation.completion_dimension_population == tuple(
+        item.value for item in PlanEvaluationDimension
+    )
+    assert all(
+        {assessment.dimension for assessment in evaluated.dimensions}
+        == set(PlanEvaluationDimension)
+        for evaluated in forward.evaluation.ranked
+    )
     assert forward.evaluation.selected.score_millionths == (
         reverse.evaluation.selected.score_millionths
     )

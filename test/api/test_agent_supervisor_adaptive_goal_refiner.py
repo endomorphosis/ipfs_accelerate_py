@@ -38,6 +38,19 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     RefinementSignalKind,
     UnchangedFailureBackoffEvidence,
 )
+from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
+    AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,
+    EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
+    EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS,
+    EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION,
+    EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS,
+    AdaptivePlannerValidationError,
+    EvidenceAwarePlanningCompletionEvidence,
+    FrozenPlanningGoal,
+    HardPlanConstraint,
+    deterministic_hard_gate_receipts,
+    plan_adaptively,
+)
 from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     Actor,
     ActorKind,
@@ -56,6 +69,15 @@ from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
     GoalState,
+)
+from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+    EvidenceAwarePlanCandidate,
+    EvidenceAwarePlanPolicy,
+    PlanBranch,
+    PlanEvaluationDimension,
+)
+from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+    AdaptiveCandidateProviderKind,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     ObjectiveGoalQualityReport,
@@ -184,6 +206,96 @@ def _verification(
         frozen_context=request.frozen_context,
         candidate_plan_id=candidate_plan_id or _plan(with_child=True).content_id,
         reason="" if verified else "child-to-parent obligation disproved",
+    )
+
+
+def _g030_planning_run():
+    policy = EvidenceAwarePlanPolicy(
+        acceptance_criteria=("acceptance:planning-complete",),
+        evidence_terms=(AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,),
+        trusted_assumptions=("assumption:frozen",),
+        supported_semantics=("semantics:typed",),
+        satisfied_dependencies=("dependency:context",),
+        allowed_scopes=("scope:planner",),
+        available_resource_classes=("cpu",),
+        max_estimated_resource_cost=100,
+        max_estimated_tokens=100_000,
+    )
+    goal = FrozenPlanningGoal(
+        goal_id="ASI-G030",
+        goal_content_id="goal:g030:asi-080",
+        repository_tree_id="tree:one",
+        policy=policy,
+    )
+    cheap = EvidenceAwarePlanCandidate(
+        branch=PlanBranch(
+            branch_id="cheap-unsafe",
+            summary="A cheaper plan whose authority gate rejects it.",
+            predicted_files=("src/planner.py",),
+            predicted_symbols=("Planner.select",),
+            dependencies=("dependency:context",),
+            validation_commands=("pytest test_planner.py -q",),
+            validation_proof=("selection is observed",),
+            estimated_cost=0.01,
+            risk=0.0,
+            expected_objective_delta=1.0,
+            source=AdaptiveCandidateProviderKind.LLM.value,
+        ),
+        covered_acceptance_criteria=("acceptance:planning-complete",),
+        covered_evidence_terms=(AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,),
+        assumptions=("assumption:frozen",),
+        validated_assumptions=("assumption:frozen",),
+        semantic_requirements=("semantics:typed",),
+        supported_semantics=("semantics:typed",),
+        dependencies=("dependency:context",),
+        critical_path=("dependency:context",),
+        unresolved_conflicts=(),
+        changed_scopes=("scope:planner",),
+        authorized_scopes=("scope:planner",),
+        authority_violations=(),
+        validation_feasible=True,
+        proof_feasible=True,
+        novelty=1.0,
+        resource_classes=("cpu",),
+        estimated_resource_cost=0.01,
+        estimated_tokens=1,
+    )
+    context = {
+        "title": "Complete ASI-G030",
+        "outputs": ["src/planner.py", "test_planner.py"],
+        "predicted_symbols": ["Planner.select"],
+        "dependencies": ["dependency:context"],
+        "validation_commands": ["pytest test_planner.py -q"],
+        "estimated_tokens": 100,
+        "estimated_runtime_seconds": 1.0,
+        "estimated_resource_cost": 1.0,
+        "resource_classes": ["cpu"],
+    }
+
+    def gates(plan, frozen_goal, request):
+        receipts = deterministic_hard_gate_receipts(
+            plan, frozen_goal, request
+        )
+        if plan.candidate_id != cheap.candidate_id:
+            return receipts
+        return tuple(
+            replace(
+                receipt,
+                passed=False,
+                reason_codes=("authorization_denied",),
+            )
+            if receipt.constraint is HardPlanConstraint.AUTHORITY
+            else receipt
+            for receipt in receipts
+        )
+
+    return plan_adaptively(
+        goal,
+        context,
+        providers={
+            AdaptiveCandidateProviderKind.LLM: lambda _request: (cheap,)
+        },
+        hard_gate_evaluator=gates,
     )
 
 
@@ -648,6 +760,336 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     )
     assert wrong_tree.state is GoalState.PROVISIONALLY_COMPLETE
     assert "repository_tree_mismatch" in wrong_tree.reason_codes
+
+
+def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -> None:
+    """ASI-080: the parent stays actionable until every proof surface closes."""
+
+    planning_run = _g030_planning_run()
+    assert planning_run.selection.evaluation.covers_every_planning_dimension
+    assert all(
+        {item.dimension for item in evaluated.dimensions}
+        == set(PlanEvaluationDimension)
+        for evaluated in planning_run.selection.evaluation.ranked
+    )
+
+    changed = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, request: _verification(request),
+        clock=lambda: 100,
+    ).refine(_request())
+    retry_now = [100]
+    retry_request = _request(
+        _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
+    )
+    retry_controller = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, request: _verification(
+            request, verified=False
+        ),
+        policy=AdaptiveRefinementPolicy(
+            initial_backoff_seconds=30,
+            max_backoff_seconds=120,
+        ),
+        clock=lambda: retry_now[0],
+    )
+    failed = retry_controller.refine(retry_request)
+    retry_now[0] = 110
+    backed_off = retry_controller.refine(
+        replace(retry_request, cycle_id="cycle:g030-backoff")
+    )
+    cohort = EvidenceAwarePlanningCompletionEvidence(
+        planning_run=planning_run,
+        changed_refinement_receipt=changed.receipt,
+        backoff_source_receipt=failed.receipt,
+        unchanged_backoff_receipt=backed_off.receipt,
+    )
+    assert cohort.requirement_ids == tuple(
+        sorted(
+            (
+                AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,
+                NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
+                UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
+            )
+        )
+    )
+    assert not cohort.completion_authority
+    assert not cohort.safe_for_completion_reasoning
+    assert (
+        EvidenceAwarePlanningCompletionEvidence.from_dict(cohort.to_dict())
+        == cohort
+    )
+    assert changed.planning_completion_witness["completion_authority"] is False
+    assert backed_off.planning_completion_witness["requirement_ids"] == [
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
+    ]
+
+    now = datetime(2026, 7, 24, 22, 0, tzinfo=timezone.utc)
+    tree_id = cohort.repository_tree_id
+    command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_adaptive_planner.py "
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py -q"
+    )
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-080",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": tree_id,
+                "command": command,
+            },
+            validation_passed=True,
+            repository_id="repository:ipfs-accelerate",
+            repository_tree=tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-080:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "adaptive_planner.py"
+                        if index <= 2
+                        else "adaptive_goal_refiner.py"
+                    )
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_"
+                    + (
+                        "adaptive_planner.py"
+                        if index <= 2
+                        else "adaptive_goal_refiner.py"
+                    )
+                ),
+                "validation_receipt_id": evidence[
+                    index - 1
+                ].provenance_cid,
+            }
+            for index, criterion in enumerate(
+                EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    binding = {
+        "repository_id": "repository:ipfs-accelerate",
+        "tree_id": tree_id,
+        "objective_id": "ASI-G030",
+        "objective_revision": EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION,
+        "analyzer_version": "asi-080-completion-analyzer@1",
+        "configuration_revision": "asi-080-completion-policy@1",
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": binding["analyzer_version"],
+        "binding": binding,
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-080-planner-exhaustion",
+                "evidence_channel": "planner-validation",
+                "receipt_cid": "scan:asi-080:planner",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-080-refiner-exhaustion",
+                "evidence_channel": "refiner-validation",
+                "receipt_cid": "scan:asi-080:refiner",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    producing_tasks = tuple(
+        {"task_id": task_id, "status": "completed"}
+        for task_id in EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS
+    )
+
+    def child(goal_id: str) -> dict:
+        return {
+            "goal_id": goal_id,
+            "state": "verified_complete",
+            "verified": True,
+            "completion_gate": {
+                "passed": True,
+                "evaluated_evidence": {
+                    "repository_tree": tree_id,
+                    "evaluated_at": now.isoformat(),
+                },
+            },
+            "proof_requirements": [
+                {
+                    "goal_id": goal_id,
+                    "acceptance_criterion": f"{goal_id} proof",
+                    "obligation_id": f"obligation:{goal_id}",
+                    "proof_receipt_id": f"proof:{goal_id}",
+                    "required_assurance": "kernel_verified",
+                    "authoritative_assurance": "kernel_verified",
+                    "proof_verdict": "proved",
+                    "freshness": "current",
+                    "assurance_satisfied": True,
+                    "contradicted": False,
+                    "reason_codes": [],
+                }
+            ],
+        }
+
+    children = tuple(
+        child(goal_id)
+        for goal_id in EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS
+    )
+    values = {
+        "producing_tasks": producing_tasks,
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "child_goals": children,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+    provisional = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.gate is not None and provisional.gate.passed
+    assert provisional.acceptance_criteria == (
+        EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA
+    )
+    assert provisional.gate.evaluated_evidence["analysis_result"] == {}
+
+    verified = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    incomplete = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "producing_tasks": producing_tasks[:-1]},
+    )
+    assert not incomplete.verified
+    assert "tasks_incomplete" in incomplete.reason_codes
+
+    missing_child = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "child_goals": children[:-1]},
+    )
+    assert not missing_child.verified
+    assert "child_unverified" in missing_child.reason_codes
+
+    stale_children = copy.deepcopy(children)
+    stale_children[0]["proof_requirements"][0]["freshness"] = "stale"
+    stale = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "child_goals": stale_children},
+    )
+    assert not stale.verified
+    assert "child_proof_stale" in stale.reason_codes
+
+    unbound_coverage = copy.deepcopy(coverage)
+    unbound_coverage["criteria"][0][
+        "validation_receipt_id"
+    ] = "validation:foreign"
+    no_coverage = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "coverage": unbound_coverage},
+    )
+    assert not no_coverage.verified
+    assert "coverage_unverified" in no_coverage.reason_codes
+
+    unsafe = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "analyzer_health": {
+                **health,
+                "safe_for_completion_reasoning": False,
+            },
+        },
+    )
+    assert not unsafe.verified
+    assert "analyzer_unhealthy" in unsafe.reason_codes
+
+    duplicate_quorum = {
+        **quorum,
+        "members": [
+            quorum["members"][0],
+            {
+                **quorum["members"][1],
+                "receipt_cid": quorum["members"][0]["receipt_cid"],
+            },
+        ],
+    }
+    no_quorum = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "exhaustion_quorum": duplicate_quorum},
+    )
+    assert not no_quorum.verified
+    assert any(
+        reason.startswith("exhaustion_quorum")
+        for reason in no_quorum.reason_codes
+    )
+
+    with pytest.raises(ValueError, match="configured ASI-G030 count"):
+        cohort.evaluate_evidence_aware_planning_completion(
+            required_exhaustive_receipts=1,
+            **values,
+        )
+
+    reopened = cohort.evaluate_evidence_aware_planning_completion(
+        current_state=GoalState.VERIFIED_COMPLETE,
+        **{**values, "child_goals": children[:-1]},
+    )
+    assert reopened.state is GoalState.REOPENED
+
+    tampered = cohort.to_dict()
+    tampered["planning_run"]["selection"]["frozen_goal"][
+        "repository_tree_id"
+    ] = "tree:foreign"
+    with pytest.raises(AdaptivePlannerValidationError):
+        EvidenceAwarePlanningCompletionEvidence.from_dict(tampered)
 
 
 def test_replayed_admitted_evidence_is_idempotent_without_more_model_calls() -> None:
@@ -1255,9 +1697,13 @@ def test_formal_unchanged_routing_names_g115_without_claiming_evidence() -> None
         UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
     )
     assert decision.evidence_ids == ()
-    assert decision.to_dict()["requirement_ids"] == [
+    payload = decision.to_dict()
+    assert payload["requirement_ids"] == [
         UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
     ]
+    assert payload["completion_evidence_roles"] == []
+    assert payload["completion_authority"] is False
+    assert payload["safe_for_completion_reasoning"] is False
     assert decision.to_dict()["evidence_ids"] == []
 
 

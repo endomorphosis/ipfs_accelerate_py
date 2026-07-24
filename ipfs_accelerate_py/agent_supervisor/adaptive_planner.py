@@ -24,7 +24,13 @@ from typing import Any, Callable, Final, Iterable, Mapping, Sequence
 
 from .formal_replanner import RepairTransition
 from .formal_verification_contracts import canonical_json, content_identity
+from .adaptive_goal_refiner import (
+    NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
+    UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
+    AdaptiveRefinementReceipt,
+)
 from .plan_evaluator import (
+    EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
     EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION,
     EvidenceAwarePlanCandidate,
     EvidenceAwarePlanEvaluation,
@@ -60,6 +66,22 @@ ADAPTIVE_PLAN_CANDIDATE_SNAPSHOT_SCHEMA: Final = (
 )
 ADAPTIVE_PLANNING_RUN_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adaptive-planning-run@1"
+)
+EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "evidence-aware-planning-completion-evidence@1"
+)
+EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID: Final = "ASI-G030"
+EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION: Final = "ASI-G030@asi-080"
+EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
+EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
+    "ASI-008",
+    "ASI-009",
+)
+EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS: Final[tuple[str, ...]] = (
+    "ASI-G097",
+    "ASI-G098",
+    "ASI-G115",
 )
 
 # ASI-G097: a cheaper authority-violating plan is rejected.
@@ -1678,6 +1700,629 @@ class AdaptivePlanningRunReceipt:
         return result
 
 
+@dataclass(frozen=True)
+class EvidenceAwarePlanningCompletionEvidence:
+    """Typed ASI-G030 runtime cohort, never completion authority by itself."""
+
+    planning_run: AdaptivePlanningRunReceipt
+    changed_refinement_receipt: AdaptiveRefinementReceipt
+    backoff_source_receipt: AdaptiveRefinementReceipt
+    unchanged_backoff_receipt: AdaptiveRefinementReceipt
+    objective_id: str = EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID
+    objective_revision: str = EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION
+    producing_task_ids: tuple[str, ...] = (
+        EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.planning_run, AdaptivePlanningRunReceipt):
+            raise AdaptivePlannerValidationError(
+                "planning completion evidence requires a typed planning run"
+            )
+        for name in (
+            "changed_refinement_receipt",
+            "backoff_source_receipt",
+            "unchanged_backoff_receipt",
+        ):
+            if not isinstance(getattr(self, name), AdaptiveRefinementReceipt):
+                raise AdaptivePlannerValidationError(
+                    f"{name} must be an adaptive refinement receipt"
+                )
+        if self.objective_id != EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID:
+            raise AdaptivePlannerValidationError(
+                "planning completion evidence objective is not ASI-G030"
+            )
+        if self.objective_revision != EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION:
+            raise AdaptivePlannerValidationError(
+                "unsupported ASI-G030 objective revision"
+            )
+        task_ids = tuple(sorted(_strings(self.producing_task_ids, "producing_task_ids")))
+        if task_ids != tuple(sorted(EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS)):
+            raise AdaptivePlannerValidationError(
+                "planning completion evidence must bind every producing task"
+            )
+        object.__setattr__(self, "producing_task_ids", task_ids)
+
+        evaluation = self.planning_run.selection.evaluation
+        if not evaluation.covers_every_planning_dimension:
+            raise AdaptivePlannerValidationError(
+                "planning run does not evaluate every candidate in every dimension"
+            )
+        if self.planning_run.selection.proved_requirement_ids != (
+            AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,
+        ):
+            raise AdaptivePlannerValidationError(
+                "planning run lacks the bound hard-safety requirement witness"
+            )
+        changed = self.changed_refinement_receipt
+        if changed.proved_requirement_ids != (
+            NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
+        ) or changed.new_counterexample_evidence is None:
+            raise AdaptivePlannerValidationError(
+                "changed refinement receipt lacks its counterexample witness"
+            )
+        backed_off = self.unchanged_backoff_receipt
+        if backed_off.proved_requirement_ids != (
+            UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
+        ) or backed_off.unchanged_failure_backoff_evidence is None:
+            raise AdaptivePlannerValidationError(
+                "backoff receipt lacks its unchanged-failure witness"
+            )
+        try:
+            backed_off.unchanged_failure_backoff_evidence.validate_source(
+                self.backoff_source_receipt
+            )
+        except ValueError as exc:
+            raise AdaptivePlannerValidationError(
+                f"backoff source receipt is not authoritative: {exc}"
+            ) from exc
+        tree_ids = {
+            self.planning_run.selection.frozen_goal.repository_tree_id,
+            changed.repository_tree_id,
+            self.backoff_source_receipt.repository_tree_id,
+            backed_off.repository_tree_id,
+        }
+        if len(tree_ids) != 1:
+            raise AdaptivePlannerValidationError(
+                "planning completion cohort must bind one repository tree"
+            )
+
+    @property
+    def repository_tree_id(self) -> str:
+        return self.planning_run.selection.frozen_goal.repository_tree_id
+
+    @property
+    def requirement_ids(self) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                (
+                    AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,
+                    NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
+                    UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
+                )
+            )
+        )
+
+    @property
+    def safe_for_completion_reasoning(self) -> bool:
+        return False
+
+    @property
+    def completion_authority(self) -> bool:
+        return False
+
+    @property
+    def evidence_id(self) -> str:
+        # Nested records are independently content-addressed. Hash their
+        # identities so provider context floats never cross Profile-G's proof
+        # boundary while any nested mutation still changes this cohort.
+        return content_identity(
+            {
+                "schema": EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA,
+                "objective_id": self.objective_id,
+                "objective_revision": self.objective_revision,
+                "repository_tree_id": self.repository_tree_id,
+                "requirement_ids": list(self.requirement_ids),
+                "producing_task_ids": list(self.producing_task_ids),
+                "planning_run_id": self.planning_run.run_id,
+                "changed_refinement_receipt_id": (
+                    self.changed_refinement_receipt.receipt_id
+                ),
+                "backoff_source_receipt_id": (
+                    self.backoff_source_receipt.receipt_id
+                ),
+                "unchanged_backoff_receipt_id": (
+                    self.unchanged_backoff_receipt.receipt_id
+                ),
+            }
+        )
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA,
+            "objective_id": self.objective_id,
+            "objective_revision": self.objective_revision,
+            "repository_tree_id": self.repository_tree_id,
+            "requirement_ids": list(self.requirement_ids),
+            "producing_task_ids": list(self.producing_task_ids),
+            "planning_run": self.planning_run.to_dict(),
+            "changed_refinement_receipt": (
+                self.changed_refinement_receipt.to_dict()
+            ),
+            "backoff_source_receipt": self.backoff_source_receipt.to_dict(),
+            "unchanged_backoff_receipt": (
+                self.unchanged_backoff_receipt.to_dict()
+            ),
+            "completion_authority": False,
+            "safe_for_completion_reasoning": False,
+        }
+        if include_identity:
+            payload["evidence_id"] = self.evidence_id
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "EvidenceAwarePlanningCompletionEvidence":
+        allowed = {
+            "schema",
+            "objective_id",
+            "objective_revision",
+            "repository_tree_id",
+            "requirement_ids",
+            "producing_task_ids",
+            "planning_run",
+            "changed_refinement_receipt",
+            "backoff_source_receipt",
+            "unchanged_backoff_receipt",
+            "completion_authority",
+            "safe_for_completion_reasoning",
+            "evidence_id",
+        }
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise AdaptivePlannerValidationError(
+                "unknown planning completion evidence fields: "
+                + ", ".join(unknown)
+            )
+        if payload.get("schema") != (
+            EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA
+        ):
+            raise AdaptivePlannerValidationError(
+                "unsupported planning completion evidence schema"
+            )
+        if (
+            payload.get("completion_authority") is not False
+            or payload.get("safe_for_completion_reasoning") is not False
+        ):
+            raise AdaptivePlannerValidationError(
+                "operational planning cohort cannot claim completion authority"
+            )
+        try:
+            result = cls(
+                planning_run=AdaptivePlanningRunReceipt.from_dict(
+                    payload["planning_run"]
+                ),
+                changed_refinement_receipt=AdaptiveRefinementReceipt.from_dict(
+                    payload["changed_refinement_receipt"]
+                ),
+                backoff_source_receipt=AdaptiveRefinementReceipt.from_dict(
+                    payload["backoff_source_receipt"]
+                ),
+                unchanged_backoff_receipt=AdaptiveRefinementReceipt.from_dict(
+                    payload["unchanged_backoff_receipt"]
+                ),
+                objective_id=payload.get("objective_id", ""),
+                objective_revision=payload.get("objective_revision", ""),
+                producing_task_ids=tuple(
+                    payload.get("producing_task_ids") or ()
+                ),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AdaptivePlannerValidationError(
+                f"invalid planning completion evidence: {exc}"
+            ) from exc
+        expected = result.to_dict(include_identity=False)
+        for name in ("repository_tree_id", "requirement_ids"):
+            if payload.get(name) != expected[name]:
+                raise AdaptivePlannerValidationError(
+                    f"planning completion {name} projection is inconsistent"
+                )
+        claimed = str(payload.get("evidence_id") or "")
+        if claimed and claimed != result.evidence_id:
+            raise AdaptivePlannerValidationError(
+                "planning completion evidence identity does not match content"
+            )
+        return result
+
+    def evaluate_evidence_aware_planning_completion(
+        self,
+        *,
+        producing_tasks: Sequence[Any] = (),
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = (
+            EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
+        ),
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate the closed ASI-G030 parent completion boundary."""
+
+        from .goal_completion import evaluate_goal_completion
+        from .scan_receipts import ExhaustionQuorumResult
+
+        if (
+            isinstance(required_exhaustive_receipts, bool)
+            or not isinstance(required_exhaustive_receipts, int)
+            or required_exhaustive_receipts
+            != EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
+        ):
+            raise ValueError(
+                "required_exhaustive_receipts must equal the configured "
+                f"ASI-G030 count "
+                f"{EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+            )
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        task_values = [payload(item) for item in producing_tasks]
+        task_ids = [
+            str(item.get("task_id") or item.get("id") or "").strip()
+            for item in task_values
+        ]
+        successful = {
+            "completed",
+            "complete",
+            "verified",
+            "verified_complete",
+            "passed",
+            "success",
+            "succeeded",
+        }
+        producing_tasks_complete = (
+            len(task_ids) == len(set(task_ids))
+            and tuple(sorted(task_ids))
+            == tuple(sorted(EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS))
+            and all(
+                str(item.get("status") or item.get("state") or "")
+                .strip()
+                .lower()
+                in successful
+                for item in task_values
+            )
+        )
+
+        evidence_values = [payload(item) for item in evidence]
+        receipts_by_criterion: dict[str, set[str]] = {}
+        for item in evidence_values:
+            source = item.get("evidence", item)
+            source = source if isinstance(source, Mapping) else item
+            criterion = " ".join(
+                str(source.get("acceptance_criterion") or "")
+                .strip()
+                .lower()
+                .split()
+            )
+            receipt_id = str(
+                source.get(
+                    "provenance_cid",
+                    source.get("receipt_id", source.get("evidence_id", "")),
+                )
+                or ""
+            ).strip()
+            if criterion and receipt_id:
+                receipts_by_criterion.setdefault(criterion, set()).add(
+                    receipt_id
+                )
+
+        coverage_projection = getattr(coverage, "completion_gate_evidence", None)
+        if callable(coverage_projection):
+            try:
+                projected = coverage_projection(
+                    EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID
+                )
+            except (TypeError, ValueError):
+                projected = {}
+            coverage_value = (
+                dict(projected) if isinstance(projected, Mapping) else {}
+            )
+        else:
+            coverage_value = payload(coverage)
+        rows_value = coverage_value.get("criteria")
+        rows = rows_value if isinstance(rows_value, list) else []
+        expected_criteria = {
+            " ".join(item.lower().split())
+            for item in EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA
+        }
+        row_keys = [
+            " ".join(
+                str(
+                    row.get(
+                        "criterion",
+                        row.get("acceptance_criterion", ""),
+                    )
+                    or ""
+                )
+                .lower()
+                .split()
+            )
+            for row in rows
+            if isinstance(row, Mapping)
+        ]
+
+        def implementation_bound(row: Mapping[str, Any]) -> bool:
+            for name in (
+                "implementation",
+                "changed_files",
+                "predicted_files",
+                "ast_symbols",
+                "interfaces",
+            ):
+                value = row.get(name)
+                if isinstance(value, str) and value.strip():
+                    return True
+                if (
+                    isinstance(value, Sequence)
+                    and not isinstance(value, (str, bytes, bytearray))
+                    and any(str(item or "").strip() for item in value)
+                ):
+                    return True
+            return False
+
+        def validation_ids(row: Mapping[str, Any]) -> set[str]:
+            raw: Any = row.get(
+                "validation_receipt_ids",
+                row.get("validation_receipt_id", ()),
+            )
+            if isinstance(raw, str):
+                raw = (raw,)
+            if not isinstance(raw, Sequence):
+                return set()
+            return {
+                str(item or "").strip()
+                for item in raw
+                if str(item or "").strip()
+            }
+
+        coverage_bound = (
+            len(row_keys) == len(expected_criteria)
+            and len(row_keys) == len(set(row_keys))
+            and set(row_keys) == expected_criteria
+            and all(
+                isinstance(row, Mapping)
+                and implementation_bound(row)
+                and bool(
+                    validation_ids(row).intersection(
+                        receipts_by_criterion.get(
+                            " ".join(
+                                str(
+                                    row.get(
+                                        "criterion",
+                                        row.get(
+                                            "acceptance_criterion",
+                                            "",
+                                        ),
+                                    )
+                                    or ""
+                                )
+                                .lower()
+                                .split()
+                            ),
+                            set(),
+                        )
+                    )
+                )
+                for row in rows
+            )
+        )
+        if not coverage_bound:
+            reasons = coverage_value.get("reason_codes")
+            reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": list(
+                    dict.fromkeys(
+                        [
+                            *reasons,
+                            "coverage_validation_receipt_unbound",
+                        ]
+                    )
+                ),
+            }
+
+        expected_binding_fields = {
+            "tree_id": self.repository_tree_id,
+            "objective_id": EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID,
+            "objective_revision": EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION,
+        }
+        health_value = payload(analyzer_health)
+        health_binding = health_value.get("binding")
+        health_binding = (
+            dict(health_binding)
+            if isinstance(health_binding, Mapping)
+            else {}
+        )
+        binding_complete = all(
+            health_binding.get(name) == value
+            for name, value in expected_binding_fields.items()
+        ) and all(
+            str(health_binding.get(name) or "").strip()
+            for name in (
+                "repository_id",
+                "analyzer_version",
+                "configuration_revision",
+            )
+        )
+        health_valid = (
+            str(health_value.get("status") or "").strip().lower()
+            == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+            and binding_complete
+        )
+        if not health_valid:
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        evaluated_quorum = isinstance(
+            exhaustion_quorum, ExhaustionQuorumResult
+        )
+        quorum_value = payload(exhaustion_quorum)
+        members_value = quorum_value.get("members")
+        members = members_value if isinstance(members_value, list) else []
+        quorum_binding = quorum_value.get("binding")
+        quorum_binding = (
+            dict(quorum_binding)
+            if isinstance(quorum_binding, Mapping)
+            else {}
+        )
+        identifiers = tuple(
+            [
+                str(member.get("member_id") or "").strip()
+                for member in members
+                if isinstance(member, Mapping)
+            ],
+        )
+        receipt_ids = tuple(
+            str(member.get("receipt_cid") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        )
+        channels = tuple(
+            str(member.get("evidence_channel") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        )
+
+        def independent(values: Sequence[str]) -> bool:
+            return (
+                len(values) == len(members)
+                and all(values)
+                and len(values) == len(set(values))
+            )
+
+        member_semantics = bool(members) and (
+            evaluated_quorum
+            or all(
+                isinstance(member, Mapping)
+                and member.get("healthy") is True
+                and member.get("safe_for_completion_reasoning") is True
+                and str(member.get("scan_mode") or "").lower()
+                == "exhaustive"
+                for member in members
+            )
+        )
+        quorum_valid = (
+            quorum_value.get("required_members")
+            == EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
+            and quorum_value.get("member_count") == len(members)
+            and len(members)
+            >= EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
+            and quorum_value.get("satisfied") is True
+            and member_semantics
+            and independent(identifiers)
+            and independent(receipt_ids)
+            and independent(channels)
+            and quorum_binding == health_binding
+            and all(
+                isinstance(member, Mapping)
+                and isinstance(member.get("binding"), Mapping)
+                and dict(member["binding"]) == health_binding
+                for member in members
+            )
+        )
+        if not quorum_valid:
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        child_values = [payload(item) for item in child_goals]
+        child_ids = [
+            str(item.get("goal_id") or item.get("id") or "").strip()
+            for item in child_values
+        ]
+        child_population_complete = (
+            len(child_ids) == len(set(child_ids))
+            and tuple(sorted(child_ids))
+            == tuple(sorted(EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS))
+        )
+        child_bindings_complete = child_population_complete and all(
+            isinstance(item.get("completion_gate"), Mapping)
+            and isinstance(
+                item["completion_gate"].get("evaluated_evidence"), Mapping
+            )
+            and item["completion_gate"]["evaluated_evidence"].get(
+                "repository_tree"
+            )
+            == self.repository_tree_id
+            and bool(item.get("proof_requirements"))
+            for item in child_values
+        )
+        if not child_bindings_complete:
+            child_values.append(
+                {
+                    "goal_id": "ASI-G030-required-descendant-population",
+                    "state": "active",
+                    "verified": False,
+                    "completion_gate": {
+                        "passed": False,
+                        "reason_code": (
+                            "required_descendant_population_or_binding_incomplete"
+                        ),
+                    },
+                }
+            )
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": (
+                EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA
+            ),
+            "evidence": evidence,
+            "tasks_complete": bool(
+                tasks_complete and producing_tasks_complete
+            ),
+            "repository_tree": self.repository_tree_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage_value,
+            "analyzer_health": health_value,
+            "exhaustion_quorum": quorum_value,
+            "child_goals": child_values,
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
+
+
 class AdaptivePlanner:
     """Select an admissible branch for one frozen goal and emit its evidence."""
 
@@ -2021,6 +2666,13 @@ __all__ = [
     "ADAPTIVE_PLANNING_RUN_SCHEMA",
     "AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA",
     "AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID",
+    "EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA",
+    "EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS",
+    "EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA",
+    "EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID",
+    "EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION",
+    "EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS",
+    "EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "AdaptivePlanCandidate",
     "AdaptivePlanReceiptStore",
     "AdaptivePlanSelectionReceipt",
@@ -2029,6 +2681,7 @@ __all__ = [
     "AdaptivePlanner",
     "AdaptivePlannerValidationError",
     "AuthorityNonCompensationEvidence",
+    "EvidenceAwarePlanningCompletionEvidence",
     "FrozenPlanningGoal",
     "GateProducerKind",
     "HardConstraintReceipt",

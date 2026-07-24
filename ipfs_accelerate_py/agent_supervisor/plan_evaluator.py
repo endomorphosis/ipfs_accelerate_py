@@ -23,6 +23,19 @@ PLAN_EVALUATOR_VERSION = "objective-plan-evaluator-v1"
 PROOF_AWARE_PLAN_EVALUATOR_VERSION = "proof-aware-plan-evaluator-v1"
 OBJECTIVE_WORK_EVALUATOR_VERSION = "objective-work-evaluator-v1"
 EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION = "evidence-aware-plan-evaluator-v2"
+EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA = (
+    (
+        "Every plan is evaluated for acceptance coverage, assumptions, "
+        "semantics, dependencies, conflicts, validation/proof feasibility, "
+        "novelty, and resource/token cost"
+    ),
+    "hard safety failures cannot be traded away",
+    "unchanged failures back off",
+    (
+        "changed evidence can trigger a bounded verified refinement in the "
+        "next cycle without mutating the frozen root."
+    ),
+)
 # Objective-heap evidence identity for the non-compensable authority gate.
 AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID = (
     "173075880069453142914839090434430341799"
@@ -1929,6 +1942,24 @@ class EvidenceAwarePlanEvaluation:
     @property
     def ranked(self) -> tuple[EvaluatedEvidenceAwarePlan, ...]:
         return (*self.admissible, *self.rejected)
+
+    @property
+    def completion_dimension_population(self) -> tuple[str, ...]:
+        """Closed evaluator semantics bound by the ASI-G030 parent cohort."""
+
+        return tuple(item.value for item in PlanEvaluationDimension)
+
+    @property
+    def covers_every_planning_dimension(self) -> bool:
+        """Whether every candidate carries every reviewed dimension once."""
+
+        expected = set(PlanEvaluationDimension)
+        return bool(self.ranked) and all(
+            len(item.dimensions) == len(expected)
+            and {assessment.dimension for assessment in item.dimensions}
+            == expected
+            for item in self.ranked
+        )
 
     @property
     def evidence_ids(self) -> tuple[str, ...]:
