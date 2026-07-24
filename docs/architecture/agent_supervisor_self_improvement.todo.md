@@ -158,7 +158,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-009 Make goal refinement responsive to typed runtime evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: goal-refinement
