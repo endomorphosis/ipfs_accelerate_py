@@ -1239,7 +1239,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-045 Close objective gap: Prove 312819945606360295782005228058369235550 for Evidence-aware planning and responsive goal refinement
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: planning
