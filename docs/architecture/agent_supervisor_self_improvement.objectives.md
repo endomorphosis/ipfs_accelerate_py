@@ -799,3 +799,193 @@ receipt instead of accepting textual or embedding similarity as completion.
 - State transitioned at: 2026-07-24T14:29:29.529514+00:00
 - State transition reason: Produce completion evidence for: Repeated Python, CLI, and MCP discovery is byte-deterministic and covers the same closed operation/schema population; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
 - Provisional at: 2026-07-24T14:29:29.529514+00:00
+
+## ASI-G106 Prove 127990245919649912156052660092678945998 for High-quality task generation and conflict-aware bundling
+
+- Status: active
+- Parent: ASI-G050
+- Fib priority: 5000
+- Track: task-generation
+- Priority: P1
+- Bundle: agent-supervisor/self-improvement/task-generation
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `127990245919649912156052660092678945998`.
+- Evidence: 127990245919649912156052660092678945998
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/objective_graph.py, ipfs_accelerate_py/agent_supervisor/todo_vector_index.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, test/api/test_agent_supervisor_task_quality.py, test/api/test_agent_supervisor_bundle_optimizer.py
+- Validation: python -m pytest test/api/test_agent_supervisor_task_quality.py test/api/test_agent_supervisor_bundle_optimizer.py -q
+- Refinement depth: 2
+- Embedding query: 127990245919649912156052660092678945998
+- AST query: 127990245919649912156052660092678945998
+- Parallel lane: agent-supervisor/self-improvement/task-generation
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `127990245919649912156052660092678945998` with a narrow, verifiable change.
+
+## ASI-G107 Prove 061582446926920746660485801841658333166 for High-quality task generation and conflict-aware bundling
+
+- Status: active
+- Parent: ASI-G050
+- Fib priority: 5001
+- Track: task-generation
+- Priority: P1
+- Bundle: agent-supervisor/self-improvement/task-generation
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `061582446926920746660485801841658333166`.
+- Evidence: 061582446926920746660485801841658333166
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/objective_graph.py, ipfs_accelerate_py/agent_supervisor/todo_vector_index.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, test/api/test_agent_supervisor_task_quality.py, test/api/test_agent_supervisor_bundle_optimizer.py
+- Validation: python -m pytest test/api/test_agent_supervisor_task_quality.py test/api/test_agent_supervisor_bundle_optimizer.py -q
+- Refinement depth: 2
+- Embedding query: 061582446926920746660485801841658333166
+- AST query: 061582446926920746660485801841658333166
+- Parallel lane: agent-supervisor/self-improvement/task-generation
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `061582446926920746660485801841658333166` with a narrow, verifiable change.
+
+## ASI-G108 Prove 187052702852200236079602798955260586139 for High-quality task generation and conflict-aware bundling
+
+- Status: active
+- Parent: ASI-G050
+- Fib priority: 5002
+- Track: task-generation
+- Priority: P1
+- Bundle: agent-supervisor/self-improvement/task-generation
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `187052702852200236079602798955260586139`.
+- Evidence: 187052702852200236079602798955260586139
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/objective_graph.py, ipfs_accelerate_py/agent_supervisor/todo_vector_index.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, test/api/test_agent_supervisor_task_quality.py, test/api/test_agent_supervisor_bundle_optimizer.py
+- Validation: python -m pytest test/api/test_agent_supervisor_task_quality.py test/api/test_agent_supervisor_bundle_optimizer.py -q
+- Refinement depth: 2
+- Embedding query: 187052702852200236079602798955260586139
+- AST query: 187052702852200236079602798955260586139
+- Parallel lane: agent-supervisor/self-improvement/task-generation
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `187052702852200236079602798955260586139` with a narrow, verifiable change.
+
+## ASI-G109 Prove 020061024173618462922348580596364003627 for Benchmark-driven bounded self-refill
+
+- Status: active
+- Parent: ASI-G080
+- Fib priority: 5000
+- Track: self-refill
+- Priority: P1
+- Bundle: agent-supervisor/self-improvement/refill
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `020061024173618462922348580596364003627`.
+- Evidence: 020061024173618462922348580596364003627
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_improvement.py, ipfs_accelerate_py/agent_supervisor/objective_tracker.py, ipfs_accelerate_py/agent_supervisor/backlog_refinery.py, test/api/test_agent_supervisor_self_improvement_refill.py
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_refill.py -q
+- Refinement depth: 2
+- Embedding query: 020061024173618462922348580596364003627
+- AST query: 020061024173618462922348580596364003627
+- Parallel lane: agent-supervisor/self-improvement/refill
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `020061024173618462922348580596364003627` with a narrow, verifiable change.
+
+## ASI-G110 Prove 065313778069923158401871898168782520190 for Benchmark-driven bounded self-refill
+
+- Status: active
+- Parent: ASI-G080
+- Fib priority: 5001
+- Track: self-refill
+- Priority: P1
+- Bundle: agent-supervisor/self-improvement/refill
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `065313778069923158401871898168782520190`.
+- Evidence: 065313778069923158401871898168782520190
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_improvement.py, ipfs_accelerate_py/agent_supervisor/objective_tracker.py, ipfs_accelerate_py/agent_supervisor/backlog_refinery.py, test/api/test_agent_supervisor_self_improvement_refill.py
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_refill.py -q
+- Refinement depth: 2
+- Embedding query: 065313778069923158401871898168782520190
+- AST query: 065313778069923158401871898168782520190
+- Parallel lane: agent-supervisor/self-improvement/refill
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `065313778069923158401871898168782520190` with a narrow, verifiable change.
+
+## ASI-G111 Prove 119294002389522221490347364495731444366 for Benchmark-driven bounded self-refill
+
+- Status: active
+- Parent: ASI-G080
+- Fib priority: 5002
+- Track: self-refill
+- Priority: P1
+- Bundle: agent-supervisor/self-improvement/refill
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `119294002389522221490347364495731444366`.
+- Evidence: 119294002389522221490347364495731444366
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_improvement.py, ipfs_accelerate_py/agent_supervisor/objective_tracker.py, ipfs_accelerate_py/agent_supervisor/backlog_refinery.py, test/api/test_agent_supervisor_self_improvement_refill.py
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_refill.py -q
+- Refinement depth: 2
+- Embedding query: 119294002389522221490347364495731444366
+- AST query: 119294002389522221490347364495731444366
+- Parallel lane: agent-supervisor/self-improvement/refill
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `119294002389522221490347364495731444366` with a narrow, verifiable change.
+
+## ASI-G112 Prove 109590900757783560279417463762322084165 for Paired rollout, stable exports, and operator adoption
+
+- Status: active
+- Parent: ASI-G090
+- Fib priority: 5000
+- Track: rollout
+- Priority: P2
+- Bundle: agent-supervisor/self-improvement/rollout
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `109590900757783560279417463762322084165`.
+- Evidence: 109590900757783560279417463762322084165
+- Outputs: test/api/test_agent_supervisor_self_improvement_e2e.py, test/api/test_agent_supervisor_self_improvement_benchmark.py, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/guides/AGENT_SUPERVISOR_GUIDE.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_e2e.py test/api/test_agent_supervisor_self_improvement_benchmark.py -q
+- Refinement depth: 2
+- Embedding query: 109590900757783560279417463762322084165
+- AST query: 109590900757783560279417463762322084165
+- Parallel lane: agent-supervisor/self-improvement/rollout
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `109590900757783560279417463762322084165` with a narrow, verifiable change.
+
+## ASI-G113 Prove 146189916032404266364029134505159070240 for Paired rollout, stable exports, and operator adoption
+
+- Status: active
+- Parent: ASI-G090
+- Fib priority: 5001
+- Track: rollout
+- Priority: P2
+- Bundle: agent-supervisor/self-improvement/rollout
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `146189916032404266364029134505159070240`.
+- Evidence: 146189916032404266364029134505159070240
+- Outputs: test/api/test_agent_supervisor_self_improvement_e2e.py, test/api/test_agent_supervisor_self_improvement_benchmark.py, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/guides/AGENT_SUPERVISOR_GUIDE.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_e2e.py test/api/test_agent_supervisor_self_improvement_benchmark.py -q
+- Refinement depth: 2
+- Embedding query: 146189916032404266364029134505159070240
+- AST query: 146189916032404266364029134505159070240
+- Parallel lane: agent-supervisor/self-improvement/rollout
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `146189916032404266364029134505159070240` with a narrow, verifiable change.
+
+## ASI-G114 Prove 300500866741873729474343907613893393545 for Paired rollout, stable exports, and operator adoption
+
+- Status: active
+- Parent: ASI-G090
+- Fib priority: 5002
+- Track: rollout
+- Priority: P2
+- Bundle: agent-supervisor/self-improvement/rollout
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `300500866741873729474343907613893393545`.
+- Evidence: 300500866741873729474343907613893393545
+- Outputs: test/api/test_agent_supervisor_self_improvement_e2e.py, test/api/test_agent_supervisor_self_improvement_benchmark.py, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/guides/AGENT_SUPERVISOR_GUIDE.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_e2e.py test/api/test_agent_supervisor_self_improvement_benchmark.py -q
+- Refinement depth: 2
+- Embedding query: 300500866741873729474343907613893393545
+- AST query: 300500866741873729474343907613893393545
+- Parallel lane: agent-supervisor/self-improvement/rollout
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `300500866741873729474343907613893393545` with a narrow, verifiable change.
+
+## ASI-G115 Prove 312819945606360295782005228058369235550 for Evidence-aware planning and responsive goal refinement
+
+- Status: active
+- Parent: ASI-G030
+- Fib priority: 5000
+- Track: planning
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement/planning
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `312819945606360295782005228058369235550`.
+- Evidence: 312819945606360295782005228058369235550
+- Outputs: ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_planner.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_planner.py test/api/test_agent_supervisor_adaptive_goal_refiner.py -q
+- Refinement depth: 2
+- Embedding query: 312819945606360295782005228058369235550
+- AST query: 312819945606360295782005228058369235550
+- Parallel lane: agent-supervisor/self-improvement/planning
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `312819945606360295782005228058369235550` with a narrow, verifiable change.
