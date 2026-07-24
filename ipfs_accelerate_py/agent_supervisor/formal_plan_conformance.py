@@ -1613,6 +1613,7 @@ class CompletionAdmissionGate:
     proposal_receipt_id: str = ""
     validation_dag_receipt_id: str = ""
     reason_codes: tuple[str, ...] = ()
+    validation_policy_id: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "admitted", bool(self.admitted))
@@ -1628,6 +1629,11 @@ class CompletionAdmissionGate:
                 self.validation_dag_receipt_id,
                 field_name="validation_dag_receipt_id",
             ),
+        )
+        object.__setattr__(
+            self,
+            "validation_policy_id",
+            _text(self.validation_policy_id, field_name="validation_policy_id"),
         )
         object.__setattr__(self, "reason_codes", _strings(self.reason_codes))
         if self.admitted and self.reason_codes:
@@ -1650,6 +1656,8 @@ class CompletionAdmissionGate:
             "validation_dag_receipt_id": self.validation_dag_receipt_id,
             "reason_codes": self.reason_codes,
         }
+        if self.validation_policy_id:
+            payload["validation_policy_id"] = self.validation_policy_id
         if include_id:
             payload["gate_id"] = self.gate_id
         return payload
@@ -1660,12 +1668,18 @@ def evaluate_completion_admission(
     proposal_validation: Any = None,
     validation_dag: Any = None,
     required: bool = False,
+    expected_validation_policy_id: str = "",
 ) -> CompletionAdmissionGate:
     """Fail closed when rejected output is offered as completion evidence."""
 
     reasons: list[str] = []
     proposal_receipt_id = ""
     dag_receipt_id = ""
+    validation_policy_id = ""
+    expected_validation_policy_id = _text(
+        expected_validation_policy_id,
+        field_name="expected_validation_policy_id",
+    )
     proposal_result = None
     if proposal_validation is None:
         if required:
@@ -1691,6 +1705,7 @@ def evaluate_completion_admission(
             else ValidationDAGReceipt.from_dict(validation_dag)
         )
         dag_receipt_id = dag.receipt_id
+        validation_policy_id = dag.policy_id
         if proposal_result is None:
             reasons.append("validation_dag_without_proposal")
         elif dag.proposal_receipt_id != proposal_receipt_id:
@@ -1701,15 +1716,27 @@ def evaluate_completion_admission(
             or dag.objective_id != proposal_result.proposal.objective_id
         ):
             reasons.append("validation_dag_authority_mismatch")
+        if (
+            expected_validation_policy_id
+            and dag.policy_id != expected_validation_policy_id
+        ):
+            reasons.append("validation_dag_policy_mismatch")
+        if not dag.nodes:
+            reasons.append("validation_dag_empty")
+        if dag.uncovered_impact:
+            reasons.append("validation_dag_uncovered_impact")
+        if getattr(dag, "coverage_complete", None) is False:
+            reasons.append("validation_dag_incomplete")
         if not dag.passed:
             reasons.append("validation_dag_failed")
-    elif required:
+    elif required or expected_validation_policy_id:
         reasons.append("validation_dag_missing")
 
     return CompletionAdmissionGate(
         admitted=not reasons,
         proposal_receipt_id=proposal_receipt_id,
         validation_dag_receipt_id=dag_receipt_id,
+        validation_policy_id=validation_policy_id,
         reason_codes=tuple(reasons),
     )
 
@@ -1764,6 +1791,9 @@ class FormalGoalCompletionDecision:
                     ),
                     validation_dag_receipt_id=self.completion_admission.get(
                         "validation_dag_receipt_id", ""
+                    ),
+                    validation_policy_id=self.completion_admission.get(
+                        "validation_policy_id", ""
                     ),
                     reason_codes=tuple(
                         self.completion_admission.get("reason_codes") or ()
@@ -1877,6 +1907,7 @@ def evaluate_formal_goal_completion(
     proposal_validation: Any = None,
     validation_dag: Any = None,
     require_proposal_validation: bool = False,
+    expected_validation_policy_id: str = "",
 ) -> FormalGoalCompletionDecision:
     """Bind trace conformance and independent evidence into goal completion.
 
@@ -1934,11 +1965,13 @@ def evaluate_formal_goal_completion(
             proposal_validation=proposal_validation,
             validation_dag=validation_dag,
             required=require_proposal_validation,
+            expected_validation_policy_id=expected_validation_policy_id,
         )
         if (
             proposal_validation is not None
             or validation_dag is not None
             or require_proposal_validation
+            or expected_validation_policy_id
         )
         else None
     )

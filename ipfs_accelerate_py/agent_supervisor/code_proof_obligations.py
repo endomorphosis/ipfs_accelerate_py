@@ -1793,6 +1793,8 @@ class ImplementationResultBinding:
     proposal_validation_receipt_id: str = ""
     proposal_accepted: bool | None = None
     binding_id: str = ""
+    validation_dag_receipt_id: str = ""
+    validation_policy_id: str = ""
 
     def __post_init__(self) -> None:
         for name in (
@@ -1802,6 +1804,8 @@ class ImplementationResultBinding:
             "changed_scope_set_id",
             "task_id",
             "proposal_validation_receipt_id",
+            "validation_dag_receipt_id",
+            "validation_policy_id",
         ):
             object.__setattr__(self, name, str(getattr(self, name) or "").strip())
         for name in (
@@ -1833,6 +1837,14 @@ class ImplementationResultBinding:
         if self.proposal_validation_receipt_id and self.proposal_accepted is not True:
             raise ValueError(
                 "a proposal validation receipt must represent accepted output"
+            )
+        if bool(self.validation_dag_receipt_id) != bool(self.validation_policy_id):
+            raise ValueError(
+                "validation DAG receipt and policy identities must be supplied together"
+            )
+        if self.validation_dag_receipt_id and not self.proposal_validation_receipt_id:
+            raise ValueError(
+                "a validation DAG receipt must be bound to an accepted proposal receipt"
             )
         object.__setattr__(self, "assumptions", _canonical_mapping(self.assumptions))
         object.__setattr__(self, "validation_bounds", _canonical_mapping(self.validation_bounds))
@@ -1904,6 +1916,9 @@ class ImplementationResultBinding:
                 self.proposal_validation_receipt_id
             )
             payload["proposal_accepted"] = self.proposal_accepted
+        if self.validation_dag_receipt_id:
+            payload["validation_dag_receipt_id"] = self.validation_dag_receipt_id
+            payload["validation_policy_id"] = self.validation_policy_id
         return payload
 
     @property
@@ -1949,6 +1964,9 @@ class ImplementationResultBinding:
                 self.proposal_validation_receipt_id
             )
             payload["proposal_accepted"] = self.proposal_accepted
+        if self.validation_dag_receipt_id:
+            payload["validation_dag_receipt_id"] = self.validation_dag_receipt_id
+            payload["validation_policy_id"] = self.validation_policy_id
         if obligation is not None:
             payload["code_proof_obligation_id"] = obligation.obligation_id
             payload["code_proof_scope_ids"] = obligation.ast_scope_ids
@@ -1986,6 +2004,14 @@ class ImplementationResultBinding:
                 or ""
             ),
             proposal_accepted=payload.get("proposal_accepted"),
+            validation_dag_receipt_id=str(
+                payload.get("validation_dag_receipt_id")
+                or payload.get("validation_receipt_id")
+                or ""
+            ),
+            validation_policy_id=str(
+                payload.get("validation_policy_id") or ""
+            ),
             binding_id=str(payload.get("binding_id") or payload.get("content_id") or ""),
         )
 
@@ -2280,6 +2306,9 @@ def derive_fresh_implementation_obligations(
     plan_trace_bound: int | None = None,
     task_id: str = "",
     proposal_validation: Any = None,
+    validation_dag: Any = None,
+    require_validation_dag: bool = False,
+    expected_validation_policy_id: str = "",
     required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
 ) -> ImplementationObligationSet:
     """Derive fresh post-execution obligations from code and bounded evidence."""
@@ -2355,6 +2384,7 @@ def derive_fresh_implementation_obligations(
 
     proposal_receipt_id = ""
     proposal_accepted: bool | None = None
+    proposal_result = None
     if proposal_validation is not None:
         # Kept local to avoid introducing a module-import cycle.
         from .proposal_validation import ProposalValidationResult
@@ -2378,6 +2408,70 @@ def derive_fresh_implementation_obligations(
         ):
             raise ValueError("proposal and implementation changed scopes do not match")
         proposal_receipt_id = proposal_result.receipt.receipt_id
+
+    validation_dag_receipt_id = ""
+    validation_policy_id = ""
+    expected_validation_policy_id = str(
+        expected_validation_policy_id or ""
+    ).strip()
+    if validation_dag is None:
+        if require_validation_dag or expected_validation_policy_id:
+            raise ValueError(
+                "validation DAG receipt is required to derive implementation proof obligations"
+            )
+    else:
+        # Kept local to avoid introducing a module-import cycle.
+        from .validation_scheduler import ValidationDAGReceipt
+
+        dag = (
+            validation_dag
+            if isinstance(validation_dag, ValidationDAGReceipt)
+            else ValidationDAGReceipt.from_dict(validation_dag)
+        )
+        if proposal_result is None:
+            raise ValueError(
+                "validation DAG requires its accepted proposal validation result"
+            )
+        if dag.proposal_receipt_id != proposal_receipt_id:
+            raise ValueError(
+                "validation DAG and proposal validation receipts do not match"
+            )
+        if dag.repository_tree_id != repository_tree_id:
+            raise ValueError("validation DAG and implementation tree do not match")
+        if dag.objective_id != proposal_result.proposal.objective_id:
+            raise ValueError(
+                "validation DAG and proposal objective authorities do not match"
+            )
+        if tuple(dag.changed_paths) != tuple(scope_set.changed_paths):
+            raise ValueError(
+                "validation DAG and implementation changed scopes do not match"
+            )
+        if (
+            expected_validation_policy_id
+            and dag.policy_id != expected_validation_policy_id
+        ):
+            raise ValueError(
+                "validation DAG policy does not match the expected validation policy"
+            )
+        if not dag.nodes:
+            raise ValueError(
+                "empty validation DAG cannot produce implementation proof obligations"
+            )
+        if dag.uncovered_impact:
+            raise ValueError(
+                "validation DAG with uncovered impact cannot produce implementation proof obligations"
+            )
+        coverage_complete = getattr(dag, "coverage_complete", None)
+        if coverage_complete is False:
+            raise ValueError(
+                "incomplete validation DAG cannot produce implementation proof obligations"
+            )
+        if not dag.passed:
+            raise ValueError(
+                "failed validation DAG cannot produce implementation proof obligations"
+            )
+        validation_dag_receipt_id = dag.receipt_id
+        validation_policy_id = dag.policy_id
 
     evidence = _evidence_values(
         (*tuple(test_evidence), *tuple(runtime_evidence), *tuple(static_analysis_evidence))
@@ -2431,6 +2525,8 @@ def derive_fresh_implementation_obligations(
         task_id=task_id,
         proposal_validation_receipt_id=proposal_receipt_id,
         proposal_accepted=proposal_accepted,
+        validation_dag_receipt_id=validation_dag_receipt_id,
+        validation_policy_id=validation_policy_id,
     )
 
     incomplete: list[str] = []
