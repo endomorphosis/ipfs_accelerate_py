@@ -1569,14 +1569,23 @@ def evaluate_completion_evidence(
                 (EvidenceCheckStatus.SATISFIED, "fresh passing evidence", item)
             )
 
-        passing = [item for item in statuses if item[0] is EvidenceCheckStatus.SATISFIED]
-        if passing:
+        passing = [
+            item
+            for item in statuses
+            if item[0] is EvidenceCheckStatus.SATISFIED
+        ]
+        rejected = [
+            item
+            for item in statuses
+            if item[0] is not EvidenceCheckStatus.SATISFIED
+        ]
+        if passing and not rejected:
             checks.append(
                 EvidenceCheck(
                     kind,
                     EvidenceCheckStatus.SATISFIED,
                     tuple(item.evidence_id for _, _, item in passing),
-                    "at least one exactly bound, fresh, passing receipt satisfies the lane",
+                    "every submitted receipt is exactly bound, fresh, and passing",
                 )
             )
         else:
@@ -1588,7 +1597,8 @@ def evaluate_completion_evidence(
                 EvidenceCheckStatus.STALE: 3,
             }
             status, reason, _item = sorted(
-                statuses, key=lambda value: priority[value[0]]
+                rejected or statuses,
+                key=lambda value: priority[value[0]],
             )[0]
             checks.append(
                 EvidenceCheck(

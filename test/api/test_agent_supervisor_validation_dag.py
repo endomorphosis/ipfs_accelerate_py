@@ -627,6 +627,79 @@ def test_transitive_failure_blocks_dependent_semantic_and_proof_nodes(
     assert nodes["proof-kernel"].blocked_by_failed_node_ids == (failed_id,)
 
 
+def test_fail_fast_same_stage_peer_is_recorded_without_false_dependency(
+    tmp_path: Path,
+) -> None:
+    validation = validate_implementation_proposal(
+        _proposal((_source_change(),)),
+        policy=_policy(),
+    )
+    second_validation_id = "transitive-consumer-secondary"
+    target = "test/api/test_transitive_consumer.py"
+    graph = ImpactDependencyGraph(
+        repository_tree_id=TREE_ID,
+        dependencies={
+            "pkg/consumer.py": ("pkg/source.py",),
+            target: ("pkg/consumer.py",),
+        },
+        validation_targets={
+            VALIDATION_ID: (target,),
+            second_validation_id: (target,),
+        },
+    )
+    commands = (
+        _commands()[0],
+        _commands()[1],
+        ValidationCommand(
+            command="pytest -q test/api/test_transitive_consumer_secondary.py",
+            stage=ValidationStage.TARGETED,
+            impact_paths=(target,),
+            validation_id=second_validation_id,
+            cacheable=False,
+            ordinal=2,
+        ),
+    )
+    calls: list[str] = []
+
+    def runner(*, spec: ValidationCommand, **_kwargs: object) -> dict[str, object]:
+        calls.append(spec.command)
+        if spec.validation_id == VALIDATION_ID:
+            return {
+                "returncode": 7,
+                "seeded_defect_id": "seed:g101",
+            }
+        return {"returncode": 0}
+
+    report = ValidationScheduler(max_workers=1).run_validated(
+        validation,
+        commands,
+        workspace_path=tmp_path,
+        impact_graph=graph,
+        seeded_defect_id="seed:g101",
+        seeded_defect_path="pkg/source.py",
+        dependency_state="fixture",
+        runner=runner,
+    )
+    receipt = ValidationDAGReceipt.from_dict(report["validation_dag_receipt"])
+    nodes = {node.command: node for node in receipt.nodes}
+    peer = nodes[
+        "pytest -q test/api/test_transitive_consumer_secondary.py"
+    ]
+
+    assert calls == [
+        "python -m compileall -q pkg",
+        "pytest -q test/api/test_transitive_consumer.py",
+    ]
+    assert peer.selected and peer.mandatory
+    assert peer.disposition is ValidationNodeDisposition.BLOCKED
+    assert peer.reason == "fail_fast_after_stage_failure"
+    assert peer.blocked_by_failed_node_ids == ()
+    assert receipt.coverage_complete
+    assert receipt.proved_requirement_ids == (
+        G101_TRANSITIVE_IMPACT_REQUIREMENT,
+    )
+
+
 @pytest.mark.parametrize(
     ("graph_dependencies", "returncode", "seed_path", "observed_seed"),
     [

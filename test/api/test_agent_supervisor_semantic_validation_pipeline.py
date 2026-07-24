@@ -24,7 +24,13 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
 )
 from ipfs_accelerate_py.agent_supervisor.formal_plan_conformance import (
     CompletionAdmissionGate,
+    CompletionEvidenceKind,
+    CompletionPolicy,
+    ConformanceBinding,
+    EvidenceCheckStatus,
+    FormalCompletionEvidence,
     evaluate_completion_admission,
+    evaluate_completion_evidence,
     evaluate_transitive_impact_admission_closure,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
@@ -57,6 +63,17 @@ from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
     GoalState,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+    AcceptanceCoverage,
+    CoverageStatus,
+    GoalCoverageMap,
+    ValidationReceiptCoverage,
+)
+from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+    ExhaustionBinding,
+    ExhaustionQuorumMember,
+    ExhaustionQuorumResult,
 )
 from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     ValidationCommand,
@@ -300,13 +317,13 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
     evidence = tuple(
         CompletionEvidence(
             acceptance_criterion=criterion,
-            producing_task_or_scan="ASI-064",
+            producing_task_or_scan="ASI-075",
             validation_receipt=validation_binding,
             validation_passed=True,
             repository_tree=dag.repository_tree_id,
             freshness={"fresh": True},
             observed_at=now,
-            provenance_cid=f"validation:asi-064:{index}",
+            provenance_cid=f"validation:asi-075:{index}",
             metadata={
                 "evidence_source_policy": {
                     "satisfies": True,
@@ -364,9 +381,9 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
         "binding": binding,
         "members": [
             {
-                "member_id": "asi-064-implementation",
+                "member_id": "asi-075-implementation",
                 "evidence_channel": "implementation-validation",
-                "receipt_cid": "scan:asi-064:implementation",
+                "receipt_cid": "scan:asi-075:implementation",
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -374,9 +391,9 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
                 "finished_at": now.isoformat(),
             },
             {
-                "member_id": "asi-064-replay",
+                "member_id": "asi-075-replay",
                 "evidence_channel": "receipt-replay",
-                "receipt_cid": "scan:asi-064:replay",
+                "receipt_cid": "scan:asi-075:replay",
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -410,6 +427,94 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
     )
     assert verified.state is GoalState.VERIFIED_COMPLETE
     assert verified.verified
+
+    canonical_receipts = [
+        ValidationReceiptCoverage(
+            receipt_id=item.provenance_cid,
+            task_id="ASI-075",
+            criterion=item.acceptance_criterion,
+            command=validation_binding["command"],
+            status=CoverageStatus.VERIFIED,
+            passed=True,
+            repository_tree=dag.repository_tree_id,
+            observed_at=now.isoformat(),
+            provenance_cid=item.provenance_cid,
+            explanation="fresh passing ASI-075 criterion validation",
+            outcome="passed",
+            reason_code="validation_verified",
+            fresh=True,
+        )
+        for item in evidence
+    ]
+    canonical_coverage = GoalCoverageMap(
+        criteria=[
+            AcceptanceCoverage(
+                criterion_id=f"criterion:g101:{index}",
+                goal_id=TRANSITIVE_IMPACT_OBJECTIVE_ID,
+                criterion=criterion,
+                status=CoverageStatus.VERIFIED,
+                changed_files=[
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "validation_scheduler.py"
+                ],
+                validation_receipt_ids=[
+                    evidence[index - 1].provenance_cid
+                ],
+                explanation="implementation and validation are exact",
+            )
+            for index, criterion in enumerate(
+                TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+        edges=[],
+        receipts=canonical_receipts,
+        finding_assignments=[],
+        registered_goal_ids=[TRANSITIVE_IMPACT_OBJECTIVE_ID],
+        evaluated_at=now.isoformat(),
+        repository_tree=dag.repository_tree_id,
+    )
+    typed_binding = ExhaustionBinding(
+        repository_id="repo:fixture",
+        tree_id=dag.repository_tree_id,
+        analyzer_version=TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
+        configuration_revision=(
+            TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION
+        ),
+        objective_revision=TRANSITIVE_IMPACT_OBJECTIVE_REVISION,
+    )
+    typed_quorum = ExhaustionQuorumResult(
+        binding=typed_binding,
+        required_members=2,
+        members=(
+            ExhaustionQuorumMember(
+                member_id="asi-075-typed-implementation",
+                evidence_channel="implementation-validation",
+                receipt_cid="scan:asi-075:typed-implementation",
+                binding=typed_binding,
+                scan_mode="exhaustive",
+                finished_at=now.isoformat(),
+            ),
+            ExhaustionQuorumMember(
+                member_id="asi-075-typed-replay",
+                evidence_channel="receipt-replay",
+                receipt_cid="scan:asi-075:typed-replay",
+                binding=typed_binding,
+                scan_mode="exhaustive",
+                finished_at=now.isoformat(),
+            ),
+        ),
+    )
+    canonical = dag.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "coverage": canonical_coverage,
+            "exhaustion_quorum": typed_quorum,
+        },
+    )
+    assert canonical.state is GoalState.VERIFIED_COMPLETE
+    assert canonical.verified
 
     unbound = tuple(
         CompletionEvidence.from_dict(
@@ -457,6 +562,153 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
         code.startswith("exhaustion_quorum")
         for code in no_quorum.reason_codes
     )
+
+    rejected_evidence_populations = [
+        evidence[:-1],
+        (
+            *evidence,
+            CompletionEvidence.from_dict(
+                {
+                    **evidence[0].to_dict(),
+                    "validation_passed": False,
+                    "validation_receipt": {
+                        **validation_binding,
+                        "status": "failed",
+                    },
+                    "provenance_cid": "validation:asi-075:failed-extra",
+                }
+            ),
+        ),
+        tuple(
+            CompletionEvidence.from_dict(
+                {
+                    **item.to_dict(),
+                    **(
+                        {
+                            "observed_at": (
+                                now.replace(hour=14, minute=0).isoformat()
+                            )
+                        }
+                        if index == 0
+                        else {}
+                    ),
+                }
+            )
+            for index, item in enumerate(evidence)
+        ),
+        tuple(
+            CompletionEvidence.from_dict(
+                {
+                    **item.to_dict(),
+                    **(
+                        {
+                            "acceptance_criterion": evidence[0].acceptance_criterion,
+                        }
+                        if index == len(evidence) - 1
+                        else {}
+                    ),
+                }
+            )
+            for index, item in enumerate(evidence)
+        ),
+    ]
+    for rejected_evidence in rejected_evidence_populations:
+        decision = dag.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "evidence": rejected_evidence},
+        )
+        assert decision.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not decision.verified
+        assert decision.gate is not None and not decision.gate.passed
+
+    invalid_health_records = (
+        {},
+        {**health, "healthy": False},
+        {**health, "analyzer_version": "asi-g101:foreign"},
+    )
+    for invalid_health in invalid_health_records:
+        decision = dag.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "analyzer_health": invalid_health},
+        )
+        assert decision.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not decision.verified
+
+    invalid_quorums: list[dict[str, object]] = []
+    insufficient = deepcopy(quorum)
+    insufficient["members"] = insufficient["members"][:1]
+    insufficient["member_count"] = 1
+    invalid_quorums.append(insufficient)
+    stale_member = deepcopy(quorum)
+    stale_member["members"][1]["finished_at"] = now.replace(
+        hour=14,
+        minute=0,
+    ).isoformat()
+    invalid_quorums.append(stale_member)
+    non_exhaustive = deepcopy(quorum)
+    non_exhaustive["members"][1]["scan_mode"] = "partial"
+    invalid_quorums.append(non_exhaustive)
+    unhealthy_member = deepcopy(quorum)
+    unhealthy_member["members"][1]["healthy"] = False
+    invalid_quorums.append(unhealthy_member)
+    foreign_tree = deepcopy(quorum)
+    foreign_tree["binding"]["tree_id"] = "tree:foreign"
+    invalid_quorums.append(foreign_tree)
+    inconsistent_count = deepcopy(quorum)
+    inconsistent_count["member_count"] = 3
+    invalid_quorums.append(inconsistent_count)
+    for invalid_quorum in invalid_quorums:
+        decision = dag.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "exhaustion_quorum": invalid_quorum},
+        )
+        assert decision.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not decision.verified
+        assert decision.gate is not None and not decision.gate.passed
+
+
+def test_formal_completion_rejects_any_submitted_invalid_receipt() -> None:
+    binding = ConformanceBinding(
+        plan_id="plan:asi-075",
+        policy_id="policy:asi-075",
+        repository_tree_id="tree:asi-075",
+    )
+    policy = CompletionPolicy(
+        required_evidence=(CompletionEvidenceKind.TEST,),
+    )
+    passing = FormalCompletionEvidence(
+        kind=CompletionEvidenceKind.TEST,
+        goal_id=TRANSITIVE_IMPACT_OBJECTIVE_ID,
+        artifact_id="receipt:passing",
+        binding=binding,
+        observed_at="2026-07-24T15:00:00Z",
+        verdict="passed",
+        freshness="current",
+    )
+    failed = FormalCompletionEvidence(
+        kind=CompletionEvidenceKind.TEST,
+        goal_id=TRANSITIVE_IMPACT_OBJECTIVE_ID,
+        artifact_id="receipt:failed",
+        binding=binding,
+        observed_at="2026-07-24T15:00:00Z",
+        verdict="failed",
+        freshness="current",
+    )
+
+    result = evaluate_completion_evidence(
+        TRANSITIVE_IMPACT_OBJECTIVE_ID,
+        (passing, failed),
+        policy=policy,
+        binding=binding,
+        evaluated_at="2026-07-24T15:00:01Z",
+    )
+
+    assert not result.satisfied
+    assert result.checks[0].status is EvidenceCheckStatus.FAILED
+    assert set(result.checks[0].evidence_ids) == {
+        passing.evidence_id,
+        failed.evidence_id,
+    }
 
 
 def test_passing_validation_dag_authority_is_bound_into_obligations(

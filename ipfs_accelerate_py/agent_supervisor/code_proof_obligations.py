@@ -2731,6 +2731,7 @@ def transitive_impact_blocks_proof_derivation(
     from .proposal_validation import ProposalValidationResult
     from .validation_scheduler import (
         REQUIRED_AUTHORITY_GATES,
+        TRANSITIVE_IMPACT_OBJECTIVE_ID,
         TRANSITIVE_IMPACT_REQUIREMENT_ID,
         ValidationAuthorityDisposition,
         ValidationDAGReceipt,
@@ -2752,7 +2753,8 @@ def transitive_impact_blocks_proof_derivation(
         receipt_id=dag.proposal_receipt_id,
     )
     return bool(
-        not dag.passed
+        dag.objective_id == TRANSITIVE_IMPACT_OBJECTIVE_ID
+        and not dag.passed
         and dag.coverage_complete
         and not dag.uncovered_impact
         and dag.transitive_evidence is not None
