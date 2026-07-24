@@ -169,7 +169,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Embedding query: task generation sizing deduplication bundle optimization context reuse dependency DAG conflict graph merge locality
 - AST query: generate_objective_todos_result build_todo_vector_index BundleSupervisor canonical_task_identity
 - Goal completion schema version: 1
-- Completion confidence: 0.166667
+- Completion confidence: 0.083333
 - Uncovered criteria: ["Tasks bind one coherent acceptance/effect subset with predicted scope and costs","broad tasks split and compatible tiny tasks coalesce","semantic duplicates are rejected across refills","bundles preserve critical-path width and serialize conflicts","model calls per accepted work item improve without increasing merge conflicts."]
 - Stale evidence: []
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
@@ -251,7 +251,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Embedding query: autonomous self improvement objective refill drained task board benchmark regression novelty cooldown exhaustion quorum
 - AST query: record_objective_backlog_findings ObjectiveMaterializationTransactionResult evaluate_exhaustion_quorum
 - Goal completion schema version: 1
-- Completion confidence: 0.166667
+- Completion confidence: 0.083333
 - Uncovered criteria: ["A drained board triggers one identity-bound evaluation epoch","measured gaps yield bounded goal proposals that pass quality, refinement, novelty, and policy checks","duplicate/cooldown work is suppressed","identical epochs are idempotent","healthy no-gap epochs persist exhaustion quorum and wait for a meaningful trigger instead of looping."]
 - Stale evidence: []
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
@@ -278,7 +278,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Embedding query: agent supervisor paired benchmark rollout shadow assist production smoke exports documentation safety efficiency
 - AST query: evaluate_goal_rollout_promotion agent_supervisor __getattr__ register_native_agent_supervisor_tools
 - Goal completion schema version: 1
-- Completion confidence: 0.166667
+- Completion confidence: 0.083333
 - Uncovered criteria: ["Paired cold/warm, failure, adversarial, parallel, restart, and refill fixtures satisfy every non-negotiable safety gate and the documented token/cache/planning/throughput gates","optional integrations degrade correctly","stable exports remain lazy","operators have verified smoke and production profiles","failed gates retain shadow mode and produce bounded diagnostics."]
 - Stale evidence: []
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
@@ -818,6 +818,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/task-generation
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `127990245919649912156052660092678945998` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["127990245919649912156052660092678945998"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G107 Prove 061582446926920746660485801841658333166 for High-quality task generation and conflict-aware bundling
 
@@ -837,6 +844,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/task-generation
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `061582446926920746660485801841658333166` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["061582446926920746660485801841658333166"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G108 Prove 187052702852200236079602798955260586139 for High-quality task generation and conflict-aware bundling
 
@@ -856,6 +870,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/task-generation
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `187052702852200236079602798955260586139` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["187052702852200236079602798955260586139"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G109 Prove 020061024173618462922348580596364003627 for Benchmark-driven bounded self-refill
 
@@ -875,6 +896,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/refill
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `020061024173618462922348580596364003627` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["020061024173618462922348580596364003627"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G110 Prove 065313778069923158401871898168782520190 for Benchmark-driven bounded self-refill
 
@@ -894,6 +922,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/refill
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `065313778069923158401871898168782520190` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["065313778069923158401871898168782520190"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G111 Prove 119294002389522221490347364495731444366 for Benchmark-driven bounded self-refill
 
@@ -913,6 +948,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/refill
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `119294002389522221490347364495731444366` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["119294002389522221490347364495731444366"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G112 Prove 109590900757783560279417463762322084165 for Paired rollout, stable exports, and operator adoption
 
@@ -932,6 +974,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/rollout
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `109590900757783560279417463762322084165` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["109590900757783560279417463762322084165"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G113 Prove 146189916032404266364029134505159070240 for Paired rollout, stable exports, and operator adoption
 
@@ -951,6 +1000,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/rollout
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `146189916032404266364029134505159070240` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["146189916032404266364029134505159070240"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G114 Prove 300500866741873729474343907613893393545 for Paired rollout, stable exports, and operator adoption
 
@@ -970,6 +1026,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/rollout
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `300500866741873729474343907613893393545` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["300500866741873729474343907613893393545"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G115 Prove 312819945606360295782005228058369235550 for Evidence-aware planning and responsive goal refinement
 
@@ -989,3 +1052,10 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/planning
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `312819945606360295782005228058369235550` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["312819945606360295782005228058369235550"]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
