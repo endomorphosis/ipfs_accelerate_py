@@ -55,6 +55,33 @@ AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID: Final = (
     "173075880069453142914839090434430341799"
 )
 
+# Closed mandatory population used by the ASI-G097 objective-completion
+# bridge. Callers may supply proof records, but may not narrow the objective
+# to a convenient subset of these clauses.
+AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "Deterministic evaluation covers acceptance evidence, assumptions, "
+        "semantics, dependencies, conflicts, validation and proof feasibility, "
+        "novelty, and bounded resource/token cost"
+    ),
+    "authority is a non-compensable gate",
+    (
+        "an authority-safe branch defeats every cheaper authority-violating "
+        "branch"
+    ),
+    (
+        "hard-gate receipts cannot be replayed after any candidate, formal-plan, "
+        "or repair-transition change"
+    ),
+    (
+        "and the selected-plan receipt binds the exact requirement ID, frozen "
+        "goal/tree/policy identities, canonical candidate snapshots, a "
+        "recomputed evaluation, the complete cheaper rejection set, result, "
+        "and digest. Unsupported persisted planner, evaluator, and "
+        "formal-replanner versions fail closed."
+    ),
+)
+
 
 class AdaptivePlannerValidationError(ValueError):
     """Raised when a candidate or receipt crosses the planning boundary badly."""
@@ -991,6 +1018,201 @@ class AdaptivePlanSelectionReceipt:
             else ()
         )
 
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate ASI-G097 without allowing runtime output to self-certify.
+
+        This selection receipt fixes the repository-tree boundary and may
+        carry the objective's runtime witness. It is not, however, a fresh
+        validation run, a criterion-to-implementation coverage map, analyzer
+        health, or an independent exhaustive scan receipt. Those four proof
+        classes must be supplied explicitly and are checked by the canonical
+        two-phase completion gate.
+
+        The acceptance population and repository tree are intentionally not
+        caller arguments. Selection output, evaluator diagnostics, hard-gate
+        receipts, and formal-replanner routing metadata are also never
+        forwarded as analysis or completion authority.
+        """
+
+        from .goal_completion import evaluate_goal_completion
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        # ASI-G097 requires both health and safety to be explicit, never
+        # inferred from a legacy status-only record.
+        health_value = payload(analyzer_health)
+        if not (
+            str(health_value.get("status") or "").strip().lower() == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+        ):
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        # Each coverage row must name both the implementation and its
+        # validation proof. The canonical gate additionally checks the exact
+        # criterion population, verified status, current tree, and freshness.
+        coverage_value = payload(coverage)
+        coverage_rows_value = coverage_value.get("criteria")
+        coverage_rows = (
+            coverage_rows_value
+            if isinstance(coverage_rows_value, list)
+            else []
+        )
+        coverage_bindings_complete = bool(coverage_rows) and all(
+            isinstance(row, Mapping)
+            and bool(str(row.get("implementation") or "").strip())
+            and bool(str(row.get("validation") or "").strip())
+            for row in coverage_rows
+        )
+        if not coverage_bindings_complete:
+            reasons_value = coverage_value.get("reason_codes")
+            reasons = (
+                list(reasons_value)
+                if isinstance(reasons_value, (list, tuple))
+                else []
+            )
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": [
+                    *reasons,
+                    "coverage_missing_implementation_validation_binding",
+                ],
+            }
+
+        # Count, independence, binding, and timestamp freshness remain
+        # canonical-gate responsibilities. This boundary tightens member
+        # semantics: every member is explicitly healthy, completion-safe, and
+        # exhaustive.
+        quorum_value = payload(exhaustion_quorum)
+        quorum_members_value = quorum_value.get("members")
+        quorum_members = (
+            quorum_members_value
+            if isinstance(quorum_members_value, list)
+            else []
+        )
+        quorum_members_healthy = bool(quorum_members) and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            for member in quorum_members
+        )
+        required_members = quorum_value.get("required_members")
+        member_count = quorum_value.get("member_count")
+        configured_count_met = (
+            isinstance(required_members, int)
+            and not isinstance(required_members, bool)
+            and required_members > 0
+            and isinstance(member_count, int)
+            and not isinstance(member_count, bool)
+            and member_count == len(quorum_members)
+            and member_count >= required_members
+        )
+        member_ids = [
+            str(member.get("member_id") or "").strip()
+            for member in quorum_members
+            if isinstance(member, Mapping)
+        ]
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in quorum_members
+            if isinstance(member, Mapping)
+        ]
+        channels = [
+            str(member.get("evidence_channel") or "").strip()
+            for member in quorum_members
+            if isinstance(member, Mapping)
+        ]
+
+        def independent(values: Sequence[str]) -> bool:
+            return (
+                len(values) == len(quorum_members)
+                and all(values)
+                and len(values) == len(set(values))
+            )
+
+        binding_value = quorum_value.get("binding")
+        binding = (
+            dict(binding_value)
+            if isinstance(binding_value, Mapping)
+            else {}
+        )
+        binding_is_current = (
+            binding.get("tree_id") == self.frozen_goal.repository_tree_id
+            and all(
+                isinstance(member, Mapping)
+                and isinstance(member.get("binding"), Mapping)
+                and dict(member["binding"]) == binding
+                for member in quorum_members
+            )
+        )
+        if not (
+            quorum_members_healthy
+            and configured_count_met
+            and independent(member_ids)
+            and independent(receipt_ids)
+            and independent(channels)
+            and binding_is_current
+        ):
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": (
+                AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA
+            ),
+            "evidence": evidence,
+            "tasks_complete": tasks_complete,
+            "repository_tree": self.frozen_goal.repository_tree_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage_value,
+            "analyzer_health": health_value,
+            "exhaustion_quorum": quorum_value,
+            "child_goals": child_goals,
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
+
     @property
     def receipt_id(self) -> str:
         return content_identity(self.to_dict(include_identity=False))
@@ -1317,6 +1539,7 @@ def select_adaptive_plan(
 __all__ = [
     "ADAPTIVE_PLANNER_VERSION",
     "ADAPTIVE_PLAN_SELECTION_SCHEMA",
+    "AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA",
     "AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID",
     "AdaptivePlanCandidate",
     "AdaptivePlanReceiptStore",

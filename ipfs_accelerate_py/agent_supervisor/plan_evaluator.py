@@ -2103,9 +2103,19 @@ def evaluate_evidence_aware_plans(
 ) -> EvidenceAwarePlanEvaluation:
     """Apply frozen-goal hard gates, then rank feasible plans deterministically.
 
-    In particular, authority, scope, semantics, conflicts, proof feasibility,
-    and finite resource bounds are non-compensable.  A cheaper unsafe plan is
-    retained with diagnostics but can never outrank or replace a safe plan.
+    The seven emitted dimensions form the deterministic implementation
+    assessment consumed by ASI-G097: acceptance/evidence, assumptions and
+    semantics, dependencies and critical path, conflicts/scope/authority,
+    validation/proof feasibility, novelty, and bounded resource/token cost.
+    Authority, scope, semantics, conflicts, proof feasibility, and finite
+    resource bounds are non-compensable. A cheaper unsafe plan is retained
+    with diagnostics but can never outrank or replace a safe plan.
+
+    This evaluation remains producer output, not objective-completion proof.
+    The adaptive selection receipt's completion bridge separately requires
+    fresh validation for every closed acceptance clause, current-tree
+    coverage, explicit completion-safe analyzer health, and an independent
+    exhaustive quorum.
     """
 
     resolved_policy = (
