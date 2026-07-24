@@ -26,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
     REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA,
     TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+    TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA,
     MAX_ARTIFACT_REFERENCES,
     MAX_CHANGED_PATHS,
     MAX_DURATION_MS,
@@ -52,6 +53,7 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     StageName,
     StageTiming,
     TerminalAcceptance,
+    TerminalAcceptedWorkEvidence,
     TerminalOutcome,
     TokenUsage,
     WorkCost,
@@ -60,6 +62,7 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     build_efficiency_baseline_fixtures,
     build_delta_retry_promotion_report,
     build_paired_efficiency_report,
+    build_terminal_accepted_work_evidence,
     build_required_context_promotion_report,
 )
 
@@ -202,7 +205,7 @@ def _required_context_fixture():
     )
 
 
-def _paired_required_context_report(context_result):
+def _paired_required_context_report(context_result, *, verified: bool = False):
     candidate_input = context_result.receipt.input_tokens
     baseline_input = max(candidate_input * 2, candidate_input + 1)
     baseline = replace(
@@ -222,7 +225,12 @@ def _paired_required_context_report(context_result):
         tokens=TokenUsage(input_tokens=candidate_input, output_tokens=100),
         output_digest="e" * 64,
     )
-    return build_paired_efficiency_report(
+    builder = (
+        build_terminal_accepted_work_evidence
+        if verified
+        else build_paired_efficiency_report
+    )
+    return builder(
         (baseline,),
         (candidate,),
         required_evidence_by_task={
@@ -231,7 +239,12 @@ def _paired_required_context_report(context_result):
     )
 
 
-def _paired_delta_report(delta_result, *, common_input_tokens: int = 0):
+def _paired_delta_report(
+    delta_result,
+    *,
+    common_input_tokens: int = 0,
+    verified: bool = False,
+):
     delta_receipt = delta_result.receipt
     baseline = replace(
         _fixtures()["cold"],
@@ -258,7 +271,12 @@ def _paired_delta_report(delta_result, *, common_input_tokens: int = 0):
         ),
         output_digest="f" * 64,
     )
-    return build_paired_efficiency_report(
+    builder = (
+        build_terminal_accepted_work_evidence
+        if verified
+        else build_paired_efficiency_report
+    )
+    return builder(
         (baseline,),
         (candidate,),
         required_evidence_by_task={
@@ -550,9 +568,9 @@ def test_paired_report_measures_only_terminal_accepted_tasks_and_charges_attempt
     assert report.paired_task_count == 1
     assert report.population_complete
     assert report.terminal_accepted_work_accounting_proven
-    assert report.evidence_claim_references == (
-        TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
-    )
+    # The compact report is a detached calculation.  Only the replayable
+    # source-population witness below may claim ASI-G093.
+    assert not report.evidence_claim_references
     case = report.cases[0]
     assert case.schema == PAIRED_EFFICIENCY_CASE_SCHEMA
     assert case.task_reference == baseline_terminal.task_reference
@@ -569,6 +587,142 @@ def test_paired_report_measures_only_terminal_accepted_tasks_and_charges_attempt
     assert report.token_gate_passed
     assert report.coverage_gate_passed
     assert report.passed
+
+
+def test_terminal_accepted_work_evidence_replays_complete_source_populations() -> None:
+    fixtures = _fixtures()
+    baseline_terminal = fixtures["cold"]
+    failed_attempt = replace(
+        fixtures["failed"],
+        task_reference=baseline_terminal.task_reference,
+        goal_reference=baseline_terminal.goal_reference,
+        repository_tree_digest=baseline_terminal.repository_tree_digest,
+        policy_digest=baseline_terminal.policy_digest,
+    )
+    failed_only = replace(
+        fixtures["failed"],
+        task_reference="task:failed-only",
+        goal_reference=baseline_terminal.goal_reference,
+        repository_tree_digest=baseline_terminal.repository_tree_digest,
+        policy_digest=baseline_terminal.policy_digest,
+    )
+    candidate_terminal = replace(
+        baseline_terminal,
+        tokens=TokenUsage(input_tokens=2_000, output_tokens=300),
+        inference_cost_microunits=2_600,
+    )
+
+    evidence = build_terminal_accepted_work_evidence(
+        (failed_only, baseline_terminal, failed_attempt),
+        (candidate_terminal, failed_only),
+    )
+
+    assert evidence.schema == TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA
+    assert evidence.proved_requirement_ids == (
+        TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+    )
+    assert evidence.evidence_claim_references == (
+        TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+    )
+    assert evidence.result == "passed"
+    assert evidence.promotion_eligible
+    assert evidence.source_receipt_count == 5
+    assert evidence.task_references == (baseline_terminal.task_reference,)
+    assert evidence.repository_tree_digest == (
+        baseline_terminal.repository_tree_digest
+    )
+    case = evidence.paired_report.cases[0]
+    assert failed_attempt.receipt_id in case.baseline_receipt_ids
+    assert baseline_terminal.receipt_id in case.baseline_receipt_ids
+    assert failed_only.receipt_id not in case.baseline_receipt_ids
+    assert case.baseline_input_tokens == (
+        failed_attempt.input_tokens + baseline_terminal.input_tokens
+    )
+
+    # Source ordering is canonical and the complete typed population survives
+    # serialization so the report can be independently replayed.
+    reordered = build_terminal_accepted_work_evidence(
+        tuple(reversed((failed_only, baseline_terminal, failed_attempt))),
+        tuple(reversed((candidate_terminal, failed_only))),
+    )
+    assert reordered == evidence
+    assert reordered.evidence_id == evidence.evidence_id
+    assert TerminalAcceptedWorkEvidence.from_json(
+        evidence.to_json()
+    ) == evidence
+    identified = evidence.to_dict(include_evidence_id=True)
+    assert TerminalAcceptedWorkEvidence.from_dict(identified) == evidence
+
+
+def test_detached_or_tampered_terminal_accounting_cannot_claim_evidence() -> None:
+    baseline = _fixtures()["cold"]
+    candidate = replace(
+        baseline,
+        tokens=TokenUsage(input_tokens=2_000, output_tokens=300),
+        inference_cost_microunits=2_600,
+    )
+    detached = build_paired_efficiency_report((baseline,), (candidate,))
+    assert detached.terminal_accepted_work_accounting_proven
+    assert detached.passed
+    assert not detached.evidence_claim_references
+
+    evidence = build_terminal_accepted_work_evidence(
+        (baseline,),
+        (candidate,),
+    )
+    payload = json.loads(evidence.to_json())
+    payload["baseline_receipts"][0]["tokens"]["input_tokens"] += 1
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="does not match replayed source",
+    ):
+        TerminalAcceptedWorkEvidence.from_dict(payload)
+
+    omitted = json.loads(evidence.to_json())
+    omitted["baseline_receipts"] = []
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="requires both source arms",
+    ):
+        TerminalAcceptedWorkEvidence.from_dict(omitted)
+
+    wrong_requirement = json.loads(evidence.to_json())
+    wrong_requirement["requirement_id"] = "not-the-objective"
+    with pytest.raises(EfficiencyValidationError, match="unexpected requirement"):
+        TerminalAcceptedWorkEvidence.from_dict(wrong_requirement)
+
+
+def test_terminal_accounting_evidence_rejects_unpaired_or_stale_populations() -> None:
+    fixtures = _fixtures()
+    baseline = fixtures["cold"]
+    candidate = replace(
+        baseline,
+        tokens=TokenUsage(input_tokens=2_000, output_tokens=300),
+        inference_cost_microunits=2_600,
+    )
+    candidate_only = replace(
+        fixtures["warm"],
+        repository_tree_digest=baseline.repository_tree_digest,
+        policy_digest=baseline.policy_digest,
+        goal_reference=baseline.goal_reference,
+    )
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="population-complete",
+    ):
+        build_terminal_accepted_work_evidence(
+            (baseline,),
+            (candidate, candidate_only),
+        )
+
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="repository_tree_digest",
+    ):
+        build_terminal_accepted_work_evidence(
+            (baseline,),
+            (replace(candidate, repository_tree_digest="f" * 64),),
+        )
 
 
 def test_paired_report_couples_token_reduction_to_required_coverage() -> None:
@@ -723,7 +877,7 @@ def test_paired_report_rejects_unfrozen_or_ambiguous_populations() -> None:
 
 def test_required_context_promotion_binds_capsule_to_same_task_gate() -> None:
     result = _required_context_fixture()
-    paired = _paired_required_context_report(result)
+    paired = _paired_required_context_report(result, verified=True)
 
     report = build_required_context_promotion_report(
         paired,
@@ -739,6 +893,7 @@ def test_required_context_promotion_binds_capsule_to_same_task_gate() -> None:
     assert report.token_accounting_consistent
     assert report.typed_context_gate_passed
     assert report.paired_efficiency_gate_passed
+    assert report.terminal_work_evidence == paired
     assert report.evidence_claim_references == (
         REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
     )
@@ -768,6 +923,15 @@ def test_required_context_promotion_binds_capsule_to_same_task_gate() -> None:
 def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
     result = _required_context_fixture()
     paired = _paired_required_context_report(result)
+
+    detached = build_required_context_promotion_report(
+        paired,
+        {"task:required-context": (result,)},
+    )
+    assert detached.typed_context_gate_passed
+    assert not detached.paired_efficiency_gate_passed
+    assert not detached.evidence_claim_references
+    assert not detached.promotion_eligible
 
     missing = build_required_context_promotion_report(paired, {})
     assert missing.missing_proof_task_references == (
@@ -833,7 +997,7 @@ def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
 def test_delta_retry_promotion_binds_typed_result_to_same_task_gate() -> None:
     result = _delta_retry_fixture()
     receipt = result.receipt
-    paired = _paired_delta_report(result)
+    paired = _paired_delta_report(result, verified=True)
 
     report = build_delta_retry_promotion_report(
         paired,
@@ -842,13 +1006,14 @@ def test_delta_retry_promotion_binds_typed_result_to_same_task_gate() -> None:
 
     assert report.schema == DELTA_RETRY_PROMOTION_REPORT_SCHEMA
     assert DELTA_RETRY_CONTEXT_EVIDENCE_ID == DELTA_RETRY_EVIDENCE_ID
-    assert paired.median_input_token_reduction_bps >= 3_500
-    assert paired.coverage_gate_passed
+    assert paired.paired_report.median_input_token_reduction_bps >= 3_500
+    assert paired.paired_report.coverage_gate_passed
     assert report.proof_population_complete
     assert report.token_accounting_consistent
     assert report.median_delta_input_token_reduction_bps >= 3_500
     assert report.typed_delta_gate_passed
     assert report.paired_efficiency_gate_passed
+    assert report.terminal_work_evidence == paired
     assert report.evidence_claim_references == (
         DELTA_RETRY_EVIDENCE_ID,
     )
@@ -901,6 +1066,15 @@ def test_delta_retry_promotion_fails_closed_for_missing_stale_or_unverified_proo
     result = _delta_retry_fixture()
     receipt = result.receipt
     paired = _paired_delta_report(result)
+
+    detached = build_delta_retry_promotion_report(
+        paired,
+        {"task:delta-retry": (result,)},
+    )
+    assert detached.typed_delta_gate_passed
+    assert not detached.paired_efficiency_gate_passed
+    assert not detached.evidence_claim_references
+    assert not detached.promotion_eligible
 
     incomplete = build_delta_retry_promotion_report(paired, {})
     assert incomplete.missing_proof_task_references == (
@@ -1041,7 +1215,7 @@ def test_delta_retry_promotion_fails_closed_for_missing_stale_or_unverified_proo
 
 def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> None:
     requested_result = _delta_retry_fixture(requested_only=True)
-    paired = _paired_delta_report(requested_result)
+    paired = _paired_delta_report(requested_result, verified=True)
     report = build_delta_retry_promotion_report(
         paired,
         {"task:delta-retry": (requested_result,)},
@@ -1054,9 +1228,13 @@ def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> No
     assert report.promotion_eligible
 
     stricter_threshold = binding.input_token_reduction_bps + 1
+    inefficient_paired_report = replace(
+        paired.paired_report,
+        minimum_input_token_reduction_bps=stricter_threshold,
+    )
     inefficient_paired = replace(
         paired,
-        minimum_input_token_reduction_bps=stricter_threshold,
+        paired_report=inefficient_paired_report,
     )
     inefficient = build_delta_retry_promotion_report(
         inefficient_paired,
@@ -1073,12 +1251,15 @@ def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> No
 
     unexplained = build_delta_retry_promotion_report(
         replace(
-            paired,
+            paired.paired_report,
             cases=(
                 replace(
-                    paired.cases[0],
+                    paired.paired_report.cases[0],
                     candidate_input_tokens=(
-                        paired.cases[0].candidate_input_tokens + 1
+                        paired.paired_report.cases[
+                            0
+                        ].candidate_input_tokens
+                        + 1
                     ),
                 ),
             ),

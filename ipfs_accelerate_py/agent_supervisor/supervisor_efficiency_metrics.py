@@ -80,20 +80,24 @@ PAIRED_EFFICIENCY_CASE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/paired-efficiency-case@1"
 )
 PAIRED_EFFICIENCY_REPORT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/paired-efficiency-report@2"
+    "ipfs_accelerate_py/agent-supervisor/paired-efficiency-report@3"
+)
+TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "terminal-accepted-work-evidence@1"
 )
 REQUIRED_CONTEXT_PROOF_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/required-context-proof-binding@1"
 )
 REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "required-context-promotion-report@1"
+    "required-context-promotion-report@2"
 )
 DELTA_RETRY_PROOF_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/delta-retry-proof-binding@2"
 )
 DELTA_RETRY_PROMOTION_REPORT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/delta-retry-promotion-report@2"
+    "ipfs_accelerate_py/agent-supervisor/delta-retry-promotion-report@3"
 )
 
 BASIS_POINTS = 10_000
@@ -394,6 +398,19 @@ def _claim(payload: Mapping[str, Any], actual: str, *names: str) -> None:
             raise ContractValidationError(
                 "content identity does not match the canonical payload"
             )
+
+
+def _canonical_sha256(value: Any) -> str:
+    """Return a stable SHA-256 digest for a bounded JSON-compatible value."""
+
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _coerce_records(
@@ -2635,7 +2652,15 @@ class PairedEfficiencyCase(CanonicalContract):
 
 @dataclass(frozen=True)
 class PairedEfficiencyReport(CanonicalContract):
-    """Paired token/coverage gate over terminal accepted work only."""
+    """Detached paired token/coverage calculation.
+
+    The report deliberately does not claim objective evidence by itself.  It
+    contains compact receipt identifiers and derived totals, so a persisted
+    report cannot independently establish that those identifiers name real
+    terminal receipts or that its source population was exhaustive.  Use
+    :class:`TerminalAcceptedWorkEvidence` for an authority-bearing,
+    source-replayable benchmark receipt.
+    """
 
     SCHEMA: ClassVar[str] = PAIRED_EFFICIENCY_REPORT_SCHEMA
 
@@ -2749,9 +2774,10 @@ class PairedEfficiencyReport(CanonicalContract):
 
     @property
     def evidence_claim_references(self) -> tuple[str, ...]:
-        if not self.terminal_accepted_work_accounting_proven:
-            return ()
-        return (TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,)
+        # A detached calculation is diagnostic, never completion evidence.
+        # Keeping this property explicit prevents older consumers from
+        # interpreting structural arithmetic as a verified source population.
+        return ()
 
     @property
     def token_gate_passed(self) -> bool:
@@ -2903,6 +2929,276 @@ class PairedEfficiencyReport(CanonicalContract):
     ) -> "PairedEfficiencyReport":
         return cls.from_dict(
             _load_json(value, artifact_name="paired efficiency report")
+        )
+
+
+@dataclass(frozen=True)
+class TerminalAcceptedWorkEvidence(CanonicalContract):
+    """Replayable proof of the terminal accepted-work accounting boundary.
+
+    A compact :class:`PairedEfficiencyReport` is useful for dashboards but
+    cannot prove what its receipt IDs contained.  This evidence artifact
+    carries both complete, typed source populations and independently rebuilds
+    the paired report whenever it is constructed or decoded.  Consequently an
+    omitted attempt, forged token total, non-accepted terminal ID, unpaired
+    accepted task, or stale tree/policy binding fails before the objective
+    requirement can be claimed.
+
+    The proof freezes one goal, repository tree, and policy.  Failed-only work
+    may be present in the source population for transparency, but it never
+    enters the accepted-task denominator.
+    """
+
+    SCHEMA: ClassVar[str] = TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA
+
+    paired_report: PairedEfficiencyReport
+    baseline_receipts: tuple[EfficiencyReceipt, ...]
+    candidate_receipts: tuple[EfficiencyReceipt, ...]
+    requirement_id: str = TERMINAL_ACCEPTED_WORK_EVIDENCE_ID
+    result: str = "passed"
+
+    def __post_init__(self) -> None:
+        paired = self.paired_report
+        if isinstance(paired, Mapping):
+            paired = PairedEfficiencyReport.from_dict(paired)
+        if not isinstance(paired, PairedEfficiencyReport):
+            raise ContractValidationError(
+                "terminal accepted-work evidence requires a paired report"
+            )
+        object.__setattr__(self, "paired_report", paired)
+
+        for name in ("baseline_receipts", "candidate_receipts"):
+            receipts = _coerce_records(
+                getattr(self, name),
+                EfficiencyReceipt,
+                EfficiencyReceipt.from_dict,
+                field_name=name,
+                maximum=MAX_RECEIPTS_PER_REPORT,
+            )
+            receipts = tuple(sorted(receipts, key=lambda item: item.receipt_id))
+            if len({item.receipt_id for item in receipts}) != len(receipts):
+                raise ContractValidationError(
+                    f"{name} contains duplicate receipt identities"
+                )
+            object.__setattr__(self, name, receipts)
+
+        if self.requirement_id != TERMINAL_ACCEPTED_WORK_EVIDENCE_ID:
+            raise ContractValidationError(
+                "terminal accepted-work evidence carries an unexpected "
+                "requirement ID"
+            )
+        if self.result != "passed":
+            raise ContractValidationError(
+                "terminal accepted-work evidence result must be passed"
+            )
+        if not self.baseline_receipts or not self.candidate_receipts:
+            raise ContractValidationError(
+                "terminal accepted-work evidence requires both source arms"
+            )
+
+        bindings = {
+            (
+                item.goal_reference,
+                item.repository_tree_digest,
+                item.policy_digest,
+            )
+            for item in self.baseline_receipts + self.candidate_receipts
+        }
+        if len(bindings) != 1:
+            raise ContractValidationError(
+                "terminal accepted-work source receipts must freeze one "
+                "goal, repository tree, and policy"
+            )
+
+        required_evidence_by_task = {
+            case.task_reference: case.required_evidence_references
+            for case in paired.cases
+        }
+        rebuilt = build_paired_efficiency_report(
+            self.baseline_receipts,
+            self.candidate_receipts,
+            required_evidence_by_task=required_evidence_by_task,
+            minimum_input_token_reduction_bps=(
+                paired.minimum_input_token_reduction_bps
+            ),
+        )
+        if rebuilt != paired:
+            raise ContractValidationError(
+                "terminal accepted-work report does not match replayed "
+                "source receipt populations"
+            )
+        if not paired.terminal_accepted_work_accounting_proven:
+            raise ContractValidationError(
+                "terminal accepted-work evidence requires a non-empty, "
+                "population-complete accepted-task comparison"
+            )
+
+        _record_size(
+            self,
+            maximum=MAX_SERIALIZED_REPORT_BYTES,
+            name="terminal accepted-work evidence",
+        )
+
+    @property
+    def evidence_id(self) -> str:
+        return self.content_id
+
+    @property
+    def report_id(self) -> str:
+        return self.paired_report.report_id
+
+    @property
+    def baseline_receipt_ids(self) -> tuple[str, ...]:
+        return tuple(item.receipt_id for item in self.baseline_receipts)
+
+    @property
+    def candidate_receipt_ids(self) -> tuple[str, ...]:
+        return tuple(item.receipt_id for item in self.candidate_receipts)
+
+    @property
+    def source_receipt_count(self) -> int:
+        return len(self.baseline_receipts) + len(self.candidate_receipts)
+
+    @property
+    def task_references(self) -> tuple[str, ...]:
+        return tuple(item.task_reference for item in self.paired_report.cases)
+
+    @property
+    def goal_reference(self) -> str:
+        return self.paired_report.cases[0].goal_reference
+
+    @property
+    def repository_tree_digest(self) -> str:
+        return self.paired_report.cases[0].repository_tree_digest
+
+    @property
+    def policy_digest(self) -> str:
+        return self.paired_report.cases[0].policy_digest
+
+    @property
+    def benchmark_input_digest(self) -> str:
+        return _canonical_sha256(
+            {
+                "baseline_receipt_ids": self.baseline_receipt_ids,
+                "candidate_receipt_ids": self.candidate_receipt_ids,
+                "paired_report_id": self.report_id,
+            }
+        )
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (self.requirement_id,)
+
+    @property
+    def evidence_claim_references(self) -> tuple[str, ...]:
+        return self.proved_requirement_ids
+
+    @property
+    def promotion_eligible(self) -> bool:
+        """Whether the separate token-reduction and coverage gates also pass."""
+
+        return self.paired_report.passed
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "requirement_id": self.requirement_id,
+            "goal_reference": self.goal_reference,
+            "repository_tree_digest": self.repository_tree_digest,
+            "policy_digest": self.policy_digest,
+            "paired_report": self.paired_report,
+            "report_id": self.report_id,
+            "baseline_receipts": self.baseline_receipts,
+            "candidate_receipts": self.candidate_receipts,
+            "baseline_receipt_ids": self.baseline_receipt_ids,
+            "candidate_receipt_ids": self.candidate_receipt_ids,
+            "source_receipt_count": self.source_receipt_count,
+            "task_references": self.task_references,
+            "benchmark_input_digest": self.benchmark_input_digest,
+            "result": self.result,
+            "proved_requirement_ids": self.proved_requirement_ids,
+            "evidence_claim_references": self.evidence_claim_references,
+            "promotion_eligible": self.promotion_eligible,
+        }
+
+    def to_dict(self, *, include_evidence_id: bool = False) -> dict[str, Any]:
+        payload = super().to_dict()
+        if include_evidence_id:
+            payload["evidence_id"] = self.evidence_id
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "TerminalAcceptedWorkEvidence":
+        _schema(payload, cls.SCHEMA, "terminal accepted-work evidence")
+        derived = {
+            "goal_reference",
+            "repository_tree_digest",
+            "policy_digest",
+            "report_id",
+            "baseline_receipt_ids",
+            "candidate_receipt_ids",
+            "source_receipt_count",
+            "task_references",
+            "benchmark_input_digest",
+            "proved_requirement_ids",
+            "evidence_claim_references",
+            "promotion_eligible",
+        }
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "requirement_id",
+                "paired_report",
+                "baseline_receipts",
+                "candidate_receipts",
+                "result",
+                "evidence_id",
+                "content_id",
+                *derived,
+            },
+            artifact_name="terminal accepted-work evidence",
+        )
+        paired_payload = payload.get("paired_report")
+        if not isinstance(paired_payload, Mapping):
+            raise ContractValidationError(
+                "terminal accepted-work evidence requires a paired report"
+            )
+        result = cls(
+            paired_report=PairedEfficiencyReport.from_dict(paired_payload),
+            baseline_receipts=tuple(
+                EfficiencyReceipt.from_dict(item)
+                for item in payload.get("baseline_receipts") or ()
+            ),
+            candidate_receipts=tuple(
+                EfficiencyReceipt.from_dict(item)
+                for item in payload.get("candidate_receipts") or ()
+            ),
+            requirement_id=payload.get("requirement_id", ""),
+            result=payload.get("result", ""),
+        )
+        for name in derived:
+            expected = getattr(result, name)
+            claimed = payload.get(name, expected)
+            if isinstance(expected, tuple):
+                claimed = tuple(claimed)
+            if claimed != expected:
+                raise ContractValidationError(
+                    f"{name} claim does not match terminal accepted-work evidence"
+                )
+        _claim(payload, result.evidence_id, "evidence_id", "content_id")
+        return result
+
+    @classmethod
+    def from_json(
+        cls, value: str | bytes | bytearray
+    ) -> "TerminalAcceptedWorkEvidence":
+        return cls.from_dict(
+            _load_json(value, artifact_name="terminal accepted-work evidence")
         )
 
 
@@ -3275,6 +3571,7 @@ class RequiredContextPromotionReport(CanonicalContract):
 
     paired_report: PairedEfficiencyReport
     proof_bindings: tuple[RequiredContextProofBinding, ...] = ()
+    terminal_work_evidence: TerminalAcceptedWorkEvidence | None = None
 
     def __post_init__(self) -> None:
         paired = self.paired_report
@@ -3285,6 +3582,25 @@ class RequiredContextPromotionReport(CanonicalContract):
                 "paired_report must be a PairedEfficiencyReport"
             )
         object.__setattr__(self, "paired_report", paired)
+        terminal_evidence = self.terminal_work_evidence
+        if isinstance(terminal_evidence, Mapping):
+            terminal_evidence = TerminalAcceptedWorkEvidence.from_dict(
+                terminal_evidence
+            )
+        if terminal_evidence is not None:
+            if not isinstance(
+                terminal_evidence, TerminalAcceptedWorkEvidence
+            ):
+                raise ContractValidationError(
+                    "terminal_work_evidence must be typed accepted-work evidence"
+                )
+            if terminal_evidence.paired_report != paired:
+                raise ContractValidationError(
+                    "terminal accepted-work evidence does not bind the paired report"
+                )
+        object.__setattr__(
+            self, "terminal_work_evidence", terminal_evidence
+        )
         bindings = _coerce_records(
             self.proof_bindings,
             RequiredContextProofBinding,
@@ -3397,7 +3713,10 @@ class RequiredContextPromotionReport(CanonicalContract):
 
     @property
     def paired_efficiency_gate_passed(self) -> bool:
-        return self.paired_report.passed
+        return bool(
+            self.terminal_work_evidence is not None
+            and self.terminal_work_evidence.promotion_eligible
+        )
 
     @property
     def passed(self) -> bool:
@@ -3420,6 +3739,7 @@ class RequiredContextPromotionReport(CanonicalContract):
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
             "paired_report": self.paired_report,
+            "terminal_work_evidence": self.terminal_work_evidence,
             "proof_bindings": self.proof_bindings,
             "proof_task_references": self.proof_task_references,
             "missing_proof_task_references": (
@@ -3475,6 +3795,7 @@ class RequiredContextPromotionReport(CanonicalContract):
                 "schema_version",
                 "contract_version",
                 "paired_report",
+                "terminal_work_evidence",
                 "proof_bindings",
                 "report_id",
                 "content_id",
@@ -3487,8 +3808,22 @@ class RequiredContextPromotionReport(CanonicalContract):
             raise ContractValidationError(
                 "required context promotion report requires a paired report"
             )
+        terminal_payload = payload.get("terminal_work_evidence")
+        if terminal_payload is not None and not isinstance(
+            terminal_payload, Mapping
+        ):
+            raise ContractValidationError(
+                "terminal_work_evidence must be an object"
+            )
         result = cls(
             paired_report=PairedEfficiencyReport.from_dict(paired_payload),
+            terminal_work_evidence=(
+                TerminalAcceptedWorkEvidence.from_dict(
+                    terminal_payload
+                )
+                if terminal_payload is not None
+                else None
+            ),
             proof_bindings=tuple(
                 RequiredContextProofBinding.from_dict(item)
                 for item in payload.get("proof_bindings") or ()
@@ -4002,6 +4337,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
     paired_report: PairedEfficiencyReport
     proof_bindings: tuple[DeltaRetryProofBinding, ...] = ()
+    terminal_work_evidence: TerminalAcceptedWorkEvidence | None = None
 
     def __post_init__(self) -> None:
         paired = self.paired_report
@@ -4012,6 +4348,25 @@ class DeltaRetryPromotionReport(CanonicalContract):
                 "paired_report must be a PairedEfficiencyReport"
             )
         object.__setattr__(self, "paired_report", paired)
+        terminal_evidence = self.terminal_work_evidence
+        if isinstance(terminal_evidence, Mapping):
+            terminal_evidence = TerminalAcceptedWorkEvidence.from_dict(
+                terminal_evidence
+            )
+        if terminal_evidence is not None:
+            if not isinstance(
+                terminal_evidence, TerminalAcceptedWorkEvidence
+            ):
+                raise ContractValidationError(
+                    "terminal_work_evidence must be typed accepted-work evidence"
+                )
+            if terminal_evidence.paired_report != paired:
+                raise ContractValidationError(
+                    "terminal accepted-work evidence does not bind the paired report"
+                )
+        object.__setattr__(
+            self, "terminal_work_evidence", terminal_evidence
+        )
         bindings = _coerce_records(
             self.proof_bindings,
             DeltaRetryProofBinding,
@@ -4149,7 +4504,10 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
     @property
     def paired_efficiency_gate_passed(self) -> bool:
-        return self.paired_report.passed
+        return bool(
+            self.terminal_work_evidence is not None
+            and self.terminal_work_evidence.promotion_eligible
+        )
 
     @property
     def evidence_claim_references(self) -> tuple[str, ...]:
@@ -4172,6 +4530,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
             "paired_report": self.paired_report,
+            "terminal_work_evidence": self.terminal_work_evidence,
             "proof_bindings": self.proof_bindings,
             "proof_task_references": self.proof_task_references,
             "missing_proof_task_references": (
@@ -4242,6 +4601,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
                 "schema_version",
                 "contract_version",
                 "paired_report",
+                "terminal_work_evidence",
                 "proof_bindings",
                 "report_id",
                 "content_id",
@@ -4253,6 +4613,13 @@ class DeltaRetryPromotionReport(CanonicalContract):
         if not isinstance(paired_payload, Mapping):
             raise ContractValidationError(
                 "delta retry promotion report requires a paired report"
+            )
+        terminal_payload = payload.get("terminal_work_evidence")
+        if terminal_payload is not None and not isinstance(
+            terminal_payload, Mapping
+        ):
+            raise ContractValidationError(
+                "terminal_work_evidence must be an object"
             )
         binding_payloads = payload.get("proof_bindings") or ()
         bindings: list[DeltaRetryProofBinding] = []
@@ -4275,6 +4642,13 @@ class DeltaRetryPromotionReport(CanonicalContract):
             )
         result = cls(
             paired_report=PairedEfficiencyReport.from_dict(paired_payload),
+            terminal_work_evidence=(
+                TerminalAcceptedWorkEvidence.from_dict(
+                    terminal_payload
+                )
+                if terminal_payload is not None
+                else None
+            ),
             proof_bindings=tuple(bindings),
         )
         for name in derived:
@@ -4301,8 +4675,36 @@ class DeltaRetryPromotionReport(CanonicalContract):
         )
 
 
+def _coerce_paired_measurement(
+    value: (
+        PairedEfficiencyReport
+        | TerminalAcceptedWorkEvidence
+        | Mapping[str, Any]
+    ),
+) -> tuple[PairedEfficiencyReport, TerminalAcceptedWorkEvidence | None]:
+    """Normalize a diagnostic report or an authority-bearing measurement."""
+
+    if isinstance(value, TerminalAcceptedWorkEvidence):
+        return value.paired_report, value
+    if isinstance(value, Mapping):
+        if value.get("schema") == TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA:
+            evidence = TerminalAcceptedWorkEvidence.from_dict(value)
+            return evidence.paired_report, evidence
+        value = PairedEfficiencyReport.from_dict(value)
+    if not isinstance(value, PairedEfficiencyReport):
+        raise ContractValidationError(
+            "paired measurement must be a PairedEfficiencyReport or "
+            "TerminalAcceptedWorkEvidence"
+        )
+    return value, None
+
+
 def build_required_context_promotion_report(
-    paired_report: PairedEfficiencyReport | Mapping[str, Any],
+    paired_report: (
+        PairedEfficiencyReport
+        | TerminalAcceptedWorkEvidence
+        | Mapping[str, Any]
+    ),
     context_results_by_task: Mapping[str, Sequence[Any]],
 ) -> RequiredContextPromotionReport:
     """Join paired terminal work to capsule-verified context compilations.
@@ -4313,12 +4715,9 @@ def build_required_context_promotion_report(
     corresponding paired task before the requirement ID can be emitted.
     """
 
-    if isinstance(paired_report, Mapping):
-        paired_report = PairedEfficiencyReport.from_dict(paired_report)
-    if not isinstance(paired_report, PairedEfficiencyReport):
-        raise ContractValidationError(
-            "paired_report must be a PairedEfficiencyReport"
-        )
+    paired_report, terminal_evidence = _coerce_paired_measurement(
+        paired_report
+    )
     if not isinstance(context_results_by_task, Mapping):
         raise ContractValidationError(
             "context_results_by_task must be an object"
@@ -4378,11 +4777,16 @@ def build_required_context_promotion_report(
     return RequiredContextPromotionReport(
         paired_report=paired_report,
         proof_bindings=tuple(bindings),
+        terminal_work_evidence=terminal_evidence,
     )
 
 
 def build_delta_retry_promotion_report(
-    paired_report: PairedEfficiencyReport | Mapping[str, Any],
+    paired_report: (
+        PairedEfficiencyReport
+        | TerminalAcceptedWorkEvidence
+        | Mapping[str, Any]
+    ),
     delta_results_by_task: Mapping[str, Sequence[Any]],
 ) -> DeltaRetryPromotionReport:
     """Join a paired report to capsule-verified delta results by task.
@@ -4395,12 +4799,9 @@ def build_delta_retry_promotion_report(
     artifact digest and reconstruction checks can be rerun.
     """
 
-    if isinstance(paired_report, Mapping):
-        paired_report = PairedEfficiencyReport.from_dict(paired_report)
-    if not isinstance(paired_report, PairedEfficiencyReport):
-        raise ContractValidationError(
-            "paired_report must be a PairedEfficiencyReport"
-        )
+    paired_report, terminal_evidence = _coerce_paired_measurement(
+        paired_report
+    )
     if not isinstance(delta_results_by_task, Mapping):
         raise ContractValidationError(
             "delta_results_by_task must be an object"
@@ -4453,6 +4854,7 @@ def build_delta_retry_promotion_report(
     return DeltaRetryPromotionReport(
         paired_report=paired_report,
         proof_bindings=tuple(bindings),
+        terminal_work_evidence=terminal_evidence,
     )
 
 
@@ -4640,6 +5042,41 @@ def build_paired_efficiency_report(
         minimum_input_token_reduction_bps=(
             minimum_input_token_reduction_bps
         ),
+    )
+
+
+def build_terminal_accepted_work_evidence(
+    baseline_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
+    candidate_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
+    *,
+    required_evidence_by_task: Mapping[str, Sequence[str]] | None = None,
+    minimum_input_token_reduction_bps: int = (
+        DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS
+    ),
+) -> TerminalAcceptedWorkEvidence:
+    """Build a replayable ASI-G093 benchmark receipt.
+
+    Both iterables are materialized exactly once, retained as typed source
+    records, and replayed by :class:`TerminalAcceptedWorkEvidence`.  The
+    resulting requirement claim proves the accepted-work accounting boundary;
+    ``promotion_eligible`` additionally reports the independent token and
+    coverage gates.
+    """
+
+    baseline = tuple(baseline_receipts)
+    candidate = tuple(candidate_receipts)
+    report = build_paired_efficiency_report(
+        baseline,
+        candidate,
+        required_evidence_by_task=required_evidence_by_task,
+        minimum_input_token_reduction_bps=(
+            minimum_input_token_reduction_bps
+        ),
+    )
+    return TerminalAcceptedWorkEvidence(
+        paired_report=report,
+        baseline_receipts=baseline,
+        candidate_receipts=candidate,
     )
 
 
@@ -4981,6 +5418,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "STAGE_TIMING_SCHEMA",
     "TERMINAL_ACCEPTANCE_SCHEMA",
+    "TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA",
     "TOKEN_USAGE_SCHEMA",
     "WORK_COST_SCHEMA",
     "ArtifactReference",
@@ -5005,6 +5443,7 @@ __all__ = [
     "SupervisorEfficiencyReport",
     "TERMINAL_ACCEPTED_WORK_EVIDENCE_ID",
     "TerminalAcceptance",
+    "TerminalAcceptedWorkEvidence",
     "TerminalOutcome",
     "TokenUsage",
     "WorkCost",
@@ -5012,6 +5451,7 @@ __all__ = [
     "aggregate_efficiency_receipts",
     "aggregate_receipts",
     "build_paired_efficiency_report",
+    "build_terminal_accepted_work_evidence",
     "build_required_context_promotion_report",
     "build_delta_retry_promotion_report",
     "build_efficiency_baseline_fixtures",
