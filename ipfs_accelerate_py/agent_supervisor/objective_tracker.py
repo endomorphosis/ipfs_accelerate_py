@@ -605,6 +605,161 @@ class ObjectiveMaterializationTransactionResult:
         return payload
 
 
+OBJECTIVE_EVIDENCE_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.objective_evidence_projection.v1"
+)
+
+
+@dataclass(frozen=True)
+class ObjectiveEvidenceProjection:
+    """Stable owner of one evidence requirement in the objective heap.
+
+    Supervisor backlog records can outlive objective refinement.  Consumers
+    must therefore resolve an old aggregate goal to the one current child that
+    owns the requirement instead of recreating the aggregate or appending
+    another child.  This projection is intentionally read-only and
+    content-addressed to the exact heap.
+    """
+
+    requirement_id: str
+    goal_id: str
+    parent_goal_id: str
+    objective_heap_id: str
+    goal_content_id: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "requirement_id",
+            "goal_id",
+            "parent_goal_id",
+            "objective_heap_id",
+            "goal_content_id",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise ValueError(f"{name} is required")
+            object.__setattr__(self, name, value)
+
+    @property
+    def projection_id(self) -> str:
+        return content_identity(
+            {
+                "schema": OBJECTIVE_EVIDENCE_PROJECTION_SCHEMA,
+                "version": 1,
+                "requirement_id": self.requirement_id,
+                "goal_id": self.goal_id,
+                "parent_goal_id": self.parent_goal_id,
+                "objective_heap_id": self.objective_heap_id,
+                "goal_content_id": self.goal_content_id,
+            }
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": OBJECTIVE_EVIDENCE_PROJECTION_SCHEMA,
+            "version": 1,
+            "requirement_id": self.requirement_id,
+            "goal_id": self.goal_id,
+            "parent_goal_id": self.parent_goal_id,
+            "objective_heap_id": self.objective_heap_id,
+            "goal_content_id": self.goal_content_id,
+            "projection_id": self.projection_id,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ObjectiveEvidenceProjection":
+        allowed = {
+            "schema",
+            "version",
+            "requirement_id",
+            "goal_id",
+            "parent_goal_id",
+            "objective_heap_id",
+            "goal_content_id",
+            "projection_id",
+        }
+        unknown = sorted(str(key) for key in payload if str(key) not in allowed)
+        if unknown:
+            raise ValueError(
+                "objective evidence projection contains unknown fields: "
+                + ", ".join(unknown)
+            )
+        if (
+            payload.get("schema") != OBJECTIVE_EVIDENCE_PROJECTION_SCHEMA
+            or payload.get("version") != 1
+        ):
+            raise ValueError("unsupported objective evidence projection schema")
+        result = cls(
+            requirement_id=str(payload.get("requirement_id") or ""),
+            goal_id=str(payload.get("goal_id") or ""),
+            parent_goal_id=str(payload.get("parent_goal_id") or ""),
+            objective_heap_id=str(payload.get("objective_heap_id") or ""),
+            goal_content_id=str(payload.get("goal_content_id") or ""),
+        )
+        if payload.get("projection_id") != result.projection_id:
+            raise ValueError("objective evidence projection identity does not match")
+        return result
+
+
+def resolve_objective_evidence_projection(
+    objective_text: str,
+    *,
+    requirement_id: str,
+    expected_parent_goal_id: str = "",
+    expected_goal_id: str = "",
+) -> ObjectiveEvidenceProjection:
+    """Resolve exactly one current heap owner for an evidence requirement.
+
+    Ambiguous, detached, or unexpectedly renamed owners fail closed.  The
+    caller may omit either expected ID for general use, while objective-gap
+    repairs should bind both IDs so stale supervisor metadata cannot silently
+    redirect completion evidence.
+    """
+
+    requirement = str(requirement_id or "").strip()
+    if not requirement:
+        raise ValueError("requirement_id is required")
+    goals = parse_goal_heap(objective_text)
+    owners = [
+        goal
+        for goal in goals
+        if requirement in {str(item).strip() for item in goal.required_evidence}
+    ]
+    if not owners:
+        raise ValueError(
+            f"objective heap has no owner for evidence requirement {requirement}"
+        )
+    if len(owners) != 1:
+        raise ValueError(
+            f"objective heap has multiple owners for evidence requirement {requirement}"
+        )
+    owner = owners[0]
+    expected_goal = str(expected_goal_id or "").strip()
+    if expected_goal and owner.goal_id != expected_goal:
+        raise ValueError(
+            f"evidence requirement {requirement} is owned by {owner.goal_id}, "
+            f"expected {expected_goal}"
+        )
+    parents = tuple(str(item).strip() for item in owner.parent_goal_ids if str(item).strip())
+    expected_parent = str(expected_parent_goal_id or "").strip()
+    if expected_parent and expected_parent not in parents:
+        raise ValueError(
+            f"evidence owner {owner.goal_id} is not a child of {expected_parent}"
+        )
+    if not parents:
+        raise ValueError(f"evidence owner {owner.goal_id} has no parent goal")
+    parent = expected_parent or parents[0]
+    return ObjectiveEvidenceProjection(
+        requirement_id=requirement,
+        goal_id=owner.goal_id,
+        parent_goal_id=parent,
+        objective_heap_id=objective_heap_content_id(objective_text),
+        goal_content_id=objective_goal_content_id(owner),
+    )
+
+
 @dataclass(frozen=True)
 class RepositoryComponent:
     """A repository component that can participate in interoperability goals."""
