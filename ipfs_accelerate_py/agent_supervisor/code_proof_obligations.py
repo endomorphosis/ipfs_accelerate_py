@@ -2667,6 +2667,56 @@ def derive_fresh_implementation_obligations(
     )
 
 
+def transitive_impact_blocks_proof_derivation(
+    proposal_validation: Any,
+    validation_dag: Any,
+) -> bool:
+    """Revalidate the G101 adversarial DAG at the code-proof boundary.
+
+    A qualifying transitive-impact witness is deliberately a failed
+    validation DAG.  It proves that the defect was found, but must never
+    authorize fresh implementation obligations or code-proof work.
+    """
+
+    from .proposal_validation import ProposalValidationResult
+    from .validation_scheduler import (
+        REQUIRED_AUTHORITY_GATES,
+        TRANSITIVE_IMPACT_REQUIREMENT_ID,
+        ValidationAuthorityDisposition,
+        ValidationDAGReceipt,
+    )
+
+    proposal = (
+        proposal_validation
+        if isinstance(proposal_validation, ProposalValidationResult)
+        else ProposalValidationResult.from_dict(proposal_validation)
+    )
+    dag = (
+        validation_dag
+        if isinstance(validation_dag, ValidationDAGReceipt)
+        else ValidationDAGReceipt.from_dict(validation_dag)
+    )
+    proposal.require_admitted_binding(
+        repository_tree_id=dag.repository_tree_id,
+        objective_id=dag.objective_id,
+        receipt_id=dag.proposal_receipt_id,
+    )
+    return bool(
+        not dag.passed
+        and dag.coverage_complete
+        and not dag.uncovered_impact
+        and dag.transitive_evidence is not None
+        and dag.transitive_evidence.requirement_id
+        == TRANSITIVE_IMPACT_REQUIREMENT_ID
+        and {
+            gate.gate
+            for gate in dag.authority_gates
+            if gate.disposition is ValidationAuthorityDisposition.BLOCKED
+        }
+        == set(REQUIRED_AUTHORITY_GATES)
+    )
+
+
 @dataclass(frozen=True)
 class CodeProofReceiptBindingResult:
     receipt_id: str
@@ -3291,6 +3341,7 @@ __all__ = [
     "obligation_cache_identity",
     "parse_unified_diff",
     "prove_proof_candidate_non_authority",
+    "transitive_impact_blocks_proof_derivation",
     "validate_code_proof_receipt_binding",
     "validate_code_proof_receipt_bindings",
 ]

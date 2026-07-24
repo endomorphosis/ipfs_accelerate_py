@@ -836,6 +836,45 @@ class ProposalValidationResult:
     def completion_authoritative(self) -> bool:
         return False
 
+    def require_admitted_binding(
+        self,
+        *,
+        repository_tree_id: str = "",
+        objective_id: str = "",
+        receipt_id: str = "",
+    ) -> "ProposalValidationResult":
+        """Return this result only when it is the exact accepted authority.
+
+        Downstream validation, proof, and completion bridges use this helper
+        instead of partially repeating proposal binding checks.  Admission
+        never grants proof or completion authority.
+        """
+
+        if not self.accepted:
+            raise ProposalValidationError(
+                "rejected proposal cannot create downstream validation authority"
+            )
+        expected = {
+            "repository_tree_id": str(repository_tree_id or "").strip(),
+            "objective_id": str(objective_id or "").strip(),
+            "receipt_id": str(receipt_id or "").strip(),
+        }
+        actual = {
+            "repository_tree_id": self.proposal.repository_tree_id,
+            "objective_id": self.proposal.objective_id,
+            "receipt_id": self.receipt.receipt_id,
+        }
+        mismatched = tuple(
+            name
+            for name, value in expected.items()
+            if value and value != actual[name]
+        )
+        if mismatched:
+            raise ProposalValidationError(
+                "proposal admission binding mismatch: " + ", ".join(mismatched)
+            )
+        return self
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "proposal": self.proposal.to_dict(),

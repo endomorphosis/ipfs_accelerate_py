@@ -314,6 +314,37 @@ def test_stale_impact_graph_is_rejected_before_runner_dispatch(
     assert calls == []
 
 
+def test_impact_graph_rejects_multi_node_dependency_cycles() -> None:
+    with pytest.raises(ValidationDAGError, match="contains a cycle"):
+        ImpactDependencyGraph(
+            repository_tree_id=TREE_ID,
+            dependencies={
+                "pkg/a.py": ("pkg/b.py",),
+                "pkg/b.py": ("pkg/c.py",),
+                "pkg/c.py": ("pkg/a.py",),
+            },
+        )
+
+
+def test_receipt_rejects_recanonicalized_incomplete_affected_closure(
+    tmp_path: Path,
+) -> None:
+    report, _calls = _failing_transitive_report(tmp_path)
+    payload = deepcopy(report["validation_dag_receipt"])
+    payload["affected_paths"] = [
+        "pkg/source.py",
+        "test/api/test_transitive_consumer.py",
+    ]
+    # Simulate an attacker recomputing all outer identities.  Closure is a
+    # semantic invariant and must fail before an identity can be accepted.
+    payload.pop("receipt_id", None)
+    payload["transitive_evidence"] = None
+    payload["proved_requirement_ids"] = []
+
+    with pytest.raises(ValidationDAGError, match="graph closure"):
+        ValidationDAGReceipt.from_dict(payload)
+
+
 def test_missing_or_uncovered_impact_fails_closed_without_false_completion(
     tmp_path: Path,
 ) -> None:
@@ -501,6 +532,12 @@ def test_transitive_failure_blocks_dependent_semantic_and_proof_nodes(
     assert nodes["proof-kernel"].depends_on == (
         nodes["proof-solver"].node_id,
     )
+    failed_id = nodes[
+        "pytest -q test/api/test_transitive_consumer.py"
+    ].node_id
+    assert nodes["semantic-check"].blocked_by_failed_node_ids == (failed_id,)
+    assert nodes["proof-solver"].blocked_by_failed_node_ids == (failed_id,)
+    assert nodes["proof-kernel"].blocked_by_failed_node_ids == (failed_id,)
 
 
 @pytest.mark.parametrize(
