@@ -1547,7 +1547,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-052 Close objective gap: Prove 119294002389522221490347364495731444366 for Benchmark-driven bounded self-refill
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: self-refill
