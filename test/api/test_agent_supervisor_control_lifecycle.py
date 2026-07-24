@@ -1,16 +1,29 @@
 from __future__ import annotations
 
+import copy
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+    AnalyzerHealthReport,
+    AnalyzerHealthStatus,
+    AnalyzerHealthThresholds,
+)
 from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+    CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA,
+    CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION,
+    CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION,
+    CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
+    CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION,
     CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlContractError,
     EffectKind,
+    ControlMutationCompletionQuorumEvidence,
     ControlMutationGuardEvidence,
     ExpectedEffect,
     IdempotencyKey,
@@ -23,6 +36,21 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     OperationRequest,
     OperationResult,
     OperationStatus,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+    CompletionEvidence,
+    GoalState,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+    AcceptanceCoverage,
+    CoverageStatus,
+    GoalCoverageMap,
+    ValidationReceiptCoverage,
+)
+from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+    ExhaustionBinding,
+    ExhaustionQuorumMember,
+    ExhaustionQuorumResult,
 )
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
     BackendResponse,
@@ -37,7 +65,7 @@ def _binding(repo_root: Path, state_root: Path) -> dict[str, Any]:
         "state_root": str(state_root),
         "repository_id": "repo:fixture",
         "tree_id": "tree:abc",
-        "objective_id": "ASI-G103",
+        "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
         "objective_revision": "objective:1",
         "policy_id": "policy:control",
         "policy_revision": "policy:1",
@@ -148,6 +176,72 @@ def _service(
     )
 
 
+def _mutation_guard_witness(
+    repo_root: Path,
+    state_root: Path,
+    calls: list[str],
+) -> ControlMutationGuardEvidence:
+    service = _service(repo_root, state_root, calls)
+    request = _request(
+        repo_root, state_root, Operation.PAUSE, dry_run=False
+    )
+    before = service.mutation_runtime_state()
+    result = service.execute(request)
+    after_result = service.mutation_runtime_state()
+    replay = service.execute(request)
+    after_replay = service.mutation_runtime_state()
+    canonical = request.to_record()
+
+    def rejected(
+        scenario: str, *removed: str, error_type: str
+    ) -> MutationGuardRejection:
+        payload = dict(canonical)
+        payload.pop("content_id", None)
+        for name in removed:
+            payload.pop(name, None)
+        return MutationGuardRejection(
+            scenario=scenario,
+            request_payload=payload,
+            error_type=error_type,
+        )
+
+    return ControlMutationGuardEvidence(
+        repository_tree=request.tree_id,
+        objective_id=request.objective_id,
+        policy_id=request.policy_id,
+        policy_revision=request.policy_revision,
+        request=request,
+        result=result,
+        replay_result=replay,
+        execution=MutationGuardExecutionObservation(
+            request_id=request.request_id,
+            result_id=result.result_id,
+            audit_receipt_id=result.audit_receipt_id,
+            before=before,
+            after_result=after_result,
+            after_replay=after_replay,
+        ),
+        rejections=(
+            rejected(
+                "missing_authorization",
+                "authorization",
+                error_type="AuthorizationBindingError",
+            ),
+            rejected(
+                "missing_idempotency",
+                "idempotency",
+                error_type="MissingIdempotencyError",
+            ),
+            rejected(
+                "missing_lease_or_fence",
+                "lease_id",
+                "fencing_epoch",
+                error_type="AuthorizationBindingError",
+            ),
+        ),
+    )
+
+
 def test_lifecycle_dry_run_binds_typed_command_without_dispatch(
     tmp_path: Path,
 ) -> None:
@@ -242,71 +336,37 @@ def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(
     repo_root.mkdir()
     state_root.mkdir()
     calls: list[str] = []
-    service = _service(repo_root, state_root, calls)
-    request = _request(
-        repo_root, state_root, Operation.PAUSE, dry_run=False
-    )
-    before = service.mutation_runtime_state()
-    result = service.execute(request)
-    after_result = service.mutation_runtime_state()
-    replay = service.execute(request)
-    after_replay = service.mutation_runtime_state()
-    canonical = request.to_record()
-
-    def rejected(
-        scenario: str, *removed: str, error_type: str
-    ) -> MutationGuardRejection:
-        payload = dict(canonical)
-        payload.pop("content_id", None)
-        for name in removed:
-            payload.pop(name, None)
-        return MutationGuardRejection(
-            scenario=scenario,
-            request_payload=payload,
-            error_type=error_type,
-        )
-
-    evidence = ControlMutationGuardEvidence(
-        repository_tree=request.tree_id,
-        objective_id=request.objective_id,
-        policy_id=request.policy_id,
-        policy_revision=request.policy_revision,
-        request=request,
-        result=result,
-        replay_result=replay,
-        execution=MutationGuardExecutionObservation(
-            request_id=request.request_id,
-            result_id=result.result_id,
-            audit_receipt_id=result.audit_receipt_id,
-            before=before,
-            after_result=after_result,
-            after_replay=after_replay,
-        ),
-        rejections=(
-            rejected(
-                "missing_authorization",
-                "authorization",
-                error_type="AuthorizationBindingError",
-            ),
-            rejected(
-                "missing_idempotency",
-                "idempotency",
-                error_type="MissingIdempotencyError",
-            ),
-            rejected(
-                "missing_lease_or_fence",
-                "lease_id",
-                "fencing_epoch",
-                error_type="AuthorizationBindingError",
-            ),
-        ),
-    )
+    evidence = _mutation_guard_witness(repo_root, state_root, calls)
+    request = evidence.request
+    result = evidence.result
+    assert isinstance(request, OperationRequest)
+    assert isinstance(result, OperationResult)
 
     assert evidence.proved_requirement_ids == (
         CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
     )
     assert calls == [request.request_id]
     assert ControlMutationGuardEvidence.from_dict(evidence.to_record()) == evidence
+
+    foreign_objective = evidence.to_record()
+    foreign_objective.pop("content_id")
+    foreign_objective["objective_id"] = "ASI-G103"
+    with pytest.raises(ControlContractError, match="objective_id"):
+        ControlMutationGuardEvidence.from_dict(foreign_objective)
+
+    detached_rejection = evidence.to_record()
+    detached_rejection.pop("content_id")
+    rejection = dict(detached_rejection["rejections"][0])
+    rejection.pop("content_id")
+    rejection_payload = dict(rejection["request_payload"])
+    rejection_payload["tree_id"] = "tree:foreign"
+    rejection["request_payload"] = rejection_payload
+    detached_rejection["rejections"] = (
+        rejection,
+        *detached_rejection["rejections"][1:],
+    )
+    with pytest.raises(ControlContractError, match="bound request"):
+        ControlMutationGuardEvidence.from_dict(detached_rejection)
 
     for field, message in (
         ("result_id", "detached"),
@@ -341,6 +401,348 @@ def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(
     mismatched_receipt["effects"] = [effect]
     with pytest.raises(ControlContractError, match="must match"):
         OperationResult.from_dict(mismatched_receipt)
+
+
+def test_g104_completion_requires_bound_validation_health_and_quorum(
+    tmp_path: Path,
+) -> None:
+    """ASI-071: a mutation witness cannot self-certify objective completion."""
+
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    operational = _mutation_guard_witness(repo_root, state_root, [])
+    now = datetime(2026, 7, 24, 18, 0, tzinfo=timezone.utc)
+    command = (
+        "python -m pytest test/api/test_agent_supervisor_control_plane.py "
+        "test/api/test_agent_supervisor_control_lifecycle.py "
+        "test/test_unified_cli_agent_supervisor.py "
+        "test/mcp_server/test_agent_supervisor_tools.py -q"
+    )
+    validation_binding = {
+        "status": "passed",
+        "tree_id": operational.repository_tree,
+        "requirement_id": CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
+        "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
+        "operational_receipt_id": operational.content_id,
+        "validation_policy_id": operational.policy_id,
+        "policy_revision": operational.policy_revision,
+        "command": command,
+    }
+    completion_evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-071",
+            producer_kind="task",
+            validation_receipt=validation_binding,
+            validation_passed=True,
+            repository_tree=operational.repository_tree,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-071:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage_receipts = [
+        ValidationReceiptCoverage(
+            receipt_id=item.provenance_cid,
+            task_id="ASI-071",
+            criterion=item.acceptance_criterion,
+            command=command,
+            status=CoverageStatus.VERIFIED,
+            passed=True,
+            repository_tree=operational.repository_tree,
+            observed_at=now.isoformat(),
+            provenance_cid=item.provenance_cid,
+            explanation="fresh passing ASI-071 criterion validation",
+            outcome="passed",
+            reason_code="validation_verified",
+            fresh=True,
+        )
+        for item in completion_evidence
+    ]
+    coverage = GoalCoverageMap(
+        criteria=[
+            AcceptanceCoverage(
+                criterion_id=f"criterion:g104:{index}",
+                goal_id=CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
+                criterion=criterion,
+                status=CoverageStatus.VERIFIED,
+                changed_files=[
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "control_contracts.py"
+                ],
+                validation_receipt_ids=[
+                    completion_evidence[index - 1].provenance_cid
+                ],
+                explanation="implementation and validation are exact",
+            )
+            for index, criterion in enumerate(
+                CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+        edges=[],
+        receipts=coverage_receipts,
+        finding_assignments=[],
+        registered_goal_ids=[CONTROL_MUTATION_GUARD_OBJECTIVE_ID],
+        evaluated_at=now.isoformat(),
+        repository_tree=operational.repository_tree,
+    )
+    health = AnalyzerHealthReport(
+        status=AnalyzerHealthStatus.HEALTHY,
+        reasons=(),
+        thresholds=AnalyzerHealthThresholds(),
+        metrics={
+            "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
+            "repository_tree": operational.repository_tree,
+            "analyzer_version": (
+                CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION
+            ),
+        },
+    )
+    generic_binding = ExhaustionBinding(
+        repository_id="repository:control",
+        tree_id=operational.repository_tree,
+        analyzer_version=(
+            CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION
+        ),
+        configuration_revision=(
+            CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION
+        ),
+        objective_revision=CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION,
+    )
+    generic_quorum = ExhaustionQuorumResult(
+        binding=generic_binding,
+        required_members=2,
+        members=(
+            ExhaustionQuorumMember(
+                member_id="asi-071-implementation",
+                evidence_channel="implementation-validation",
+                receipt_cid="scan:asi-071:implementation",
+                binding=generic_binding,
+                scan_mode="exhaustive",
+                finished_at=now.isoformat(),
+            ),
+            ExhaustionQuorumMember(
+                member_id="asi-071-replay",
+                evidence_channel="receipt-replay-audit",
+                receipt_cid="scan:asi-071:replay",
+                binding=generic_binding,
+                scan_mode="exhaustive",
+                finished_at=now.isoformat(),
+            ),
+        ),
+    )
+    quorum = ControlMutationCompletionQuorumEvidence(
+        validation_policy_id=operational.policy_id,
+        policy_revision=operational.policy_revision,
+        operational_receipt_id=operational.content_id,
+        quorum=generic_quorum,
+    )
+    assert (
+        ControlMutationCompletionQuorumEvidence.from_json(
+            quorum.to_json()
+        ).content_id
+        == quorum.content_id
+    )
+    values = {
+        "evidence": completion_evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    assert operational.completion_authoritative is False
+    no_independent_proof = operational.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        tasks_complete=True,
+        now=now,
+        freshness_seconds=300,
+    )
+    assert no_independent_proof.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not no_independent_proof.verified
+    assert (
+        no_independent_proof.gate is not None
+        and not no_independent_proof.gate.passed
+    )
+
+    provisional = operational.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.gate is not None and provisional.gate.passed
+    assert not provisional.verified
+
+    verified = operational.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    mapping_coverage = {
+        "repository_tree": operational.repository_tree,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "control_contracts.py"
+                ),
+                "validation_receipt_ids": [
+                    completion_evidence[index - 1].provenance_cid
+                ],
+            }
+            for index, criterion in enumerate(
+                CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    mapping_health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
+        "repository_tree": operational.repository_tree,
+        "analyzer_version": (
+            CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION
+        ),
+    }
+    artifact_binding = {
+        **generic_binding.to_dict(),
+        "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
+        "requirement_id": CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
+        "validation_policy_id": operational.policy_id,
+        "policy_revision": operational.policy_revision,
+        "operational_receipt_id": operational.content_id,
+    }
+    mapping_quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": artifact_binding,
+        "members": [
+            {
+                "member_id": f"asi-071-mapping-{index}",
+                "evidence_channel": channel,
+                "receipt_cid": f"scan:asi-071:mapping:{index}",
+                "binding": artifact_binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            }
+            for index, channel in enumerate(
+                ("implementation-validation", "receipt-replay-audit"),
+                start=1,
+            )
+        ],
+    }
+    mapping_values = {
+        **values,
+        "coverage": mapping_coverage,
+        "analyzer_health": mapping_health,
+        "exhaustion_quorum": mapping_quorum,
+    }
+    assert operational.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **mapping_values,
+    ).verified
+
+    detached_evidence = list(completion_evidence)
+    detached_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **detached_evidence[0].to_dict(),
+            "validation_receipt": {
+                **validation_binding,
+                "operational_receipt_id": "sha256:detached",
+            },
+        }
+    )
+    incomplete_coverage = copy.deepcopy(mapping_coverage)
+    incomplete_coverage["criteria"] = incomplete_coverage["criteria"][:-1]
+    unbound_coverage = copy.deepcopy(mapping_coverage)
+    unbound_coverage["criteria"][0]["validation_receipt_ids"] = [
+        "validation:detached"
+    ]
+    unsafe_health = {
+        **mapping_health,
+        "safe_for_completion_reasoning": False,
+    }
+    foreign_health = {
+        **mapping_health,
+        "objective_id": "ASI-G999",
+        "repository_tree": "tree:foreign",
+    }
+    duplicate_quorum = copy.deepcopy(mapping_quorum)
+    duplicate_quorum["members"][1]["evidence_channel"] = (
+        duplicate_quorum["members"][0]["evidence_channel"]
+    )
+    stale_quorum = copy.deepcopy(mapping_quorum)
+    stale_quorum["members"][0]["finished_at"] = (
+        now - timedelta(hours=1)
+    ).isoformat()
+    foreign_quorum = copy.deepcopy(mapping_quorum)
+    foreign_quorum["binding"]["tree_id"] = "tree:foreign"
+    for member in foreign_quorum["members"]:
+        member["binding"]["tree_id"] = "tree:foreign"
+    rejected_inputs = (
+        {"evidence": tuple(detached_evidence)},
+        {"evidence": completion_evidence[:-1]},
+        {"coverage": incomplete_coverage},
+        {"coverage": unbound_coverage},
+        {"analyzer_health": unsafe_health},
+        {"analyzer_health": foreign_health},
+        {"exhaustion_quorum": generic_quorum},
+        {
+            "exhaustion_quorum": ControlMutationCompletionQuorumEvidence(
+                validation_policy_id="policy:foreign",
+                policy_revision=operational.policy_revision,
+                operational_receipt_id=operational.content_id,
+                quorum=generic_quorum,
+            )
+        },
+        {
+            "exhaustion_quorum": ControlMutationCompletionQuorumEvidence(
+                validation_policy_id=operational.policy_id,
+                policy_revision=operational.policy_revision,
+                operational_receipt_id="sha256:detached",
+                quorum=generic_quorum,
+            )
+        },
+        {"exhaustion_quorum": duplicate_quorum},
+        {"exhaustion_quorum": stale_quorum},
+        {"exhaustion_quorum": foreign_quorum},
+    )
+    for replacement in rejected_inputs:
+        rejected = operational.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**mapping_values, **replacement},
+        )
+        assert rejected.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not rejected.verified
+        assert rejected.gate is not None and not rejected.gate.passed
 
 
 def test_lifecycle_rejects_non_lifecycle_operation(

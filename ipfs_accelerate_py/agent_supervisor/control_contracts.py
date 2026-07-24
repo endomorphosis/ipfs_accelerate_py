@@ -86,6 +86,10 @@ MUTATION_GUARD_REJECTION_SCHEMA = (
 CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-mutation-guard-evidence@2"
 )
+CONTROL_MUTATION_COMPLETION_QUORUM_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "control-mutation-completion-quorum-evidence@1"
+)
 CONTROL_MUTATION_RUNTIME_STATE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-mutation-runtime-state@1"
 )
@@ -101,6 +105,31 @@ CONTROL_SURFACE_PARITY_REQUIREMENT_ID: Final[str] = (
 )
 CONTROL_MUTATION_GUARD_REQUIREMENT_ID: Final[str] = (
     "184125100306462690646212311073240043804"
+)
+CONTROL_MUTATION_GUARD_OBJECTIVE_ID: Final[str] = "ASI-G104"
+CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION: Final[str] = (
+    "ASI-G104@asi-071"
+)
+CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION: Final[str] = (
+    "asi-g104-objective-validation@1"
+)
+CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION: Final[str] = (
+    "unified-control-mutation-completion@1"
+)
+CONTROL_MUTATION_GUARD_REQUIRED_EXHAUSTIVE_RECEIPTS: Final[int] = 2
+CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "Unauthorized, unscoped, unfenced, stale, path-escaping, or "
+        "undeclared-effect mutations fail before dispatch on every surface"
+    ),
+    "dry-run stays proposal-only",
+    "a permitted current mutation emits a typed applied-effect audit receipt",
+    "exact retries and restart replay do not duplicate the backend effect",
+    "conflicting reuse fails",
+    (
+        "and only the complete tamper-evident applied/replayed/rejection "
+        "matrix emits the exact requirement ID."
+    ),
 )
 CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID: Final[str] = (
     "186773143401179107362964063059661378722"
@@ -2675,8 +2704,33 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
         than accepted from completion arguments.
         """
 
-        return _evaluate_control_discovery_safety_completion(
+        return _evaluate_control_objective_completion(
             self,
+            objective_id=CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+            requirement_id=CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
+            objective_revision=CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION,
+            analyzer_version=(
+                CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
+            ),
+            configuration_revision=(
+                CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION
+            ),
+            acceptance_criteria=(
+                CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA
+            ),
+            required_exhaustive_receipts=(
+                CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS
+            ),
+            quorum_evidence_type=ControlDiscoveryCompletionQuorumEvidence,
+            operational_complete=bool(
+                self.proved_requirement_ids
+                == (CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,)
+                and tuple(item.surface for item in self.observations)
+                == tuple(sorted(ControlSurface, key=lambda item: item.value))
+                and all(item.side_effect_free for item in self.observations)
+                and not self.capability_report.optional_providers_loaded
+                and not self.capability_report.processes_started
+            ),
             current_state=current_state,
             evidence=evidence,
             tasks_complete=tasks_complete,
@@ -2843,9 +2897,18 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
         return result
 
 
-def _evaluate_control_discovery_safety_completion(
-    receipt: ControlDiscoverySafetyEvidence,
+def _evaluate_control_objective_completion(
+    receipt: Any,
     *,
+    objective_id: str,
+    requirement_id: str,
+    objective_revision: str,
+    analyzer_version: str,
+    configuration_revision: str,
+    acceptance_criteria: Sequence[str],
+    required_exhaustive_receipts: int,
+    quorum_evidence_type: type[Any],
+    operational_complete: bool,
     current_state: Any,
     evidence: Sequence[Any],
     tasks_complete: bool,
@@ -2861,7 +2924,6 @@ def _evaluate_control_discovery_safety_completion(
 ) -> Any:
     """Keep objective-gate policy outside the canonical receipt payload."""
 
-    from .analyzer_health import AnalyzerHealthReport
     from .goal_completion import evaluate_goal_completion
     from .scan_receipts import ExhaustionQuorumResult
 
@@ -2899,24 +2961,14 @@ def _evaluate_control_discovery_safety_completion(
                 return True
         return False
 
-    expected_criteria = {
-        criterion_key(item)
-        for item in CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA
-    }
-    expected_surfaces = tuple(
-        sorted(ControlSurface, key=lambda item: item.value)
-    )
     operational_complete = bool(
-        receipt.objective_id == CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
-        and receipt.requirement_id == CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
-        and receipt.proved_requirement_ids
-        == (CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,)
-        and tuple(item.surface for item in receipt.observations)
-        == expected_surfaces
-        and all(item.side_effect_free for item in receipt.observations)
-        and not receipt.capability_report.optional_providers_loaded
-        and not receipt.capability_report.processes_started
+        operational_complete
+        and receipt.objective_id == objective_id
+        and receipt.requirement_id == requirement_id
     )
+    expected_criteria = {
+        criterion_key(item) for item in acceptance_criteria
+    }
 
     evidence_records: list[dict[str, Any]] = []
     validation_ids_by_criterion: dict[str, set[str]] = {}
@@ -2949,10 +3001,8 @@ def _evaluate_control_discovery_safety_completion(
         validation_bindings_complete = bool(
             validation_bindings_complete
             and key in expected_criteria
-            and validation.get("requirement_id")
-            == CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
-            and validation.get("objective_id")
-            == CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
+            and validation.get("requirement_id") == requirement_id
+            and validation.get("objective_id") == objective_id
             and validation.get("operational_receipt_id") == receipt.content_id
             and validation.get("validation_policy_id") == receipt.policy_id
             and validation.get("policy_revision") == receipt.policy_revision
@@ -2968,9 +3018,7 @@ def _evaluate_control_discovery_safety_completion(
     canonical_coverage = callable(coverage_projection)
     if canonical_coverage:
         try:
-            projected = coverage_projection(
-                CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
-            )
+            projected = coverage_projection(objective_id)
         except (TypeError, ValueError):
             projected = {}
         coverage_value = (
@@ -3045,9 +3093,9 @@ def _evaluate_control_discovery_safety_completion(
         reasons = coverage_value.get("reason_codes")
         reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
         if not operational_complete:
-            reasons.append("active_discovery_safety_evidence_missing")
+            reasons.append("active_operational_evidence_missing")
         if not validation_bindings_complete:
-            reasons.append("validation_not_bound_to_discovery_witness")
+            reasons.append("validation_not_bound_to_operational_witness")
         reasons.append("coverage_missing_implementation_validation_binding")
         coverage_value = {
             **coverage_value,
@@ -3058,7 +3106,7 @@ def _evaluate_control_discovery_safety_completion(
 
     artifact_quorum = isinstance(
         exhaustion_quorum,
-        ControlDiscoveryCompletionQuorumEvidence,
+        quorum_evidence_type,
     )
     if artifact_quorum:
         quorum_value = payload(exhaustion_quorum.quorum)
@@ -3083,19 +3131,18 @@ def _evaluate_control_discovery_safety_completion(
     health_metrics = (
         health_metrics if isinstance(health_metrics, Mapping) else {}
     )
-    analyzer_version = str(
+    reported_analyzer_version = str(
         health_value.get("analyzer_version")
         or health_metrics.get("analyzer_version")
         or ""
     ).strip()
     health_binding_complete = bool(
-        analyzer_version
-        == CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
+        reported_analyzer_version == analyzer_version
         and (
             health_value.get("objective_id")
             or health_metrics.get("objective_id")
         )
-        == CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
+        == objective_id
         and (
             health_value.get("repository_tree")
             or health_metrics.get("repository_tree")
@@ -3120,20 +3167,14 @@ def _evaluate_control_discovery_safety_completion(
     )
     canonical_binding = {
         "tree_id": receipt.repository_tree,
-        "analyzer_version": (
-            CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
-        ),
-        "configuration_revision": (
-            CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION
-        ),
-        "objective_revision": (
-            CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION
-        ),
+        "analyzer_version": analyzer_version,
+        "configuration_revision": configuration_revision,
+        "objective_revision": objective_revision,
     }
     artifact_binding = {
         **canonical_binding,
-        "objective_id": CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
-        "requirement_id": CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
+        "objective_id": objective_id,
+        "requirement_id": requirement_id,
         "validation_policy_id": receipt.policy_id,
         "policy_revision": receipt.policy_revision,
         "operational_receipt_id": receipt.content_id,
@@ -3196,10 +3237,10 @@ def _evaluate_control_discovery_safety_completion(
     )
     quorum_complete = bool(
         quorum_value.get("required_members")
-        == CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        == required_exhaustive_receipts
         and quorum_value.get("member_count") == len(members)
         and len(members)
-        >= CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        >= required_exhaustive_receipts
         and quorum_value.get("satisfied") is True
         and quorum_value.get("quorum_met") is True
         and all(
@@ -3239,9 +3280,7 @@ def _evaluate_control_discovery_safety_completion(
 
     values: dict[str, Any] = {
         "current_state": current_state,
-        "acceptance_criteria": (
-            CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA
-        ),
+        "acceptance_criteria": acceptance_criteria,
         "evidence": evidence,
         "tasks_complete": tasks_complete,
         "repository_tree": receipt.repository_tree,
@@ -3932,6 +3971,10 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             raise ControlContractError(
                 "mutation evidence requirement_id is not the ASI-G104 requirement"
             )
+        if self.objective_id != CONTROL_MUTATION_GUARD_OBJECTIVE_ID:
+            raise ControlContractError(
+                "mutation evidence objective_id is not ASI-G104"
+            )
         request = self.request
         if not isinstance(request, OperationRequest):
             if not isinstance(request, Mapping):
@@ -4013,6 +4056,38 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
                 "mutation evidence requires authorization, idempotency, and "
                 "lease/fence rejection replays"
             )
+        canonical_request = request.to_record()
+        canonical_request.pop("content_id", None)
+        canonical_request = dict(
+            _freeze_value(
+                canonical_request,
+                name="canonical mutation request",
+                max_depth=ABSOLUTE_MAX_CONTROL_DEPTH,
+                max_items=ABSOLUTE_MAX_CONTROL_ITEMS,
+                max_text_bytes=ABSOLUTE_MAX_CONTROL_TEXT_BYTES,
+            )
+        )
+        expected_rejections: dict[str, dict[str, Any]] = {}
+        for scenario, removed_fields in (
+            ("missing_authorization", ("authorization",)),
+            ("missing_idempotency", ("idempotency",)),
+            (
+                "missing_lease_or_fence",
+                ("lease_id", "fencing_epoch"),
+            ),
+        ):
+            rejected_payload = dict(canonical_request)
+            for field_name in removed_fields:
+                rejected_payload.pop(field_name, None)
+            expected_rejections[scenario] = rejected_payload
+        for rejection in rejections:
+            if dict(rejection.request_payload) != expected_rejections[
+                rejection.scenario
+            ]:
+                raise ControlContractError(
+                    "mutation guard rejection is not the bound request with "
+                    f"only {rejection.scenario} bindings removed"
+                )
         object.__setattr__(
             self,
             "rejections",
@@ -4027,6 +4102,94 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
     @property
     def proved_requirement_ids(self) -> tuple[str, ...]:
         return (CONTROL_MUTATION_GUARD_REQUIREMENT_ID,)
+
+    @property
+    def completion_authoritative(self) -> bool:
+        """Operational evidence is input to, never a substitute for, the gate."""
+
+        return False
+
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G104 through its closed, two-phase completion gate.
+
+        The mutation record proves one guarded runtime execution and exact
+        replay.  It cannot promote its own objective: callers must separately
+        supply fresh validation for every immutable criterion, exact
+        implementation/validation coverage, explicit completion-safe analyzer
+        health, and the configured independent exhaustive quorum.
+        """
+
+        result = self.result
+        replay = self.replay_result
+        execution = self.execution
+        assert isinstance(result, OperationResult)
+        assert isinstance(replay, OperationResult)
+        assert isinstance(execution, MutationGuardExecutionObservation)
+        required_rejections = {
+            "missing_authorization",
+            "missing_idempotency",
+            "missing_lease_or_fence",
+        }
+        operational_complete = bool(
+            self.proved_requirement_ids
+            == (CONTROL_MUTATION_GUARD_REQUIREMENT_ID,)
+            and isinstance(self.request, OperationRequest)
+            and self.request.operation.mutating
+            and not self.request.dry_run
+            and result.to_record() == replay.to_record()
+            and bool(result.audit_receipt_id)
+            and any(effect.applied for effect in result.effects)
+            and execution.request_id == self.request.request_id
+            and execution.result_id == result.result_id
+            and execution.audit_receipt_id == result.audit_receipt_id
+            and {item.scenario for item in self.rejections}
+            == required_rejections
+        )
+        return _evaluate_control_objective_completion(
+            self,
+            objective_id=CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
+            requirement_id=CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
+            objective_revision=CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION,
+            analyzer_version=(
+                CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION
+            ),
+            configuration_revision=(
+                CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION
+            ),
+            acceptance_criteria=CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA,
+            required_exhaustive_receipts=(
+                CONTROL_MUTATION_GUARD_REQUIRED_EXHAUSTIVE_RECEIPTS
+            ),
+            quorum_evidence_type=ControlMutationCompletionQuorumEvidence,
+            operational_complete=operational_complete,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
 
     def _payload(self) -> dict[str, Any]:
         assert isinstance(self.request, OperationRequest)
@@ -4085,6 +4248,105 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             rejections=payload.get("rejections", ()),
         )
         _identity(payload, result.content_id, "control mutation guard evidence")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
+    """Bind a generic exhaustive quorum to one G104 mutation witness."""
+
+    SCHEMA: ClassVar[str] = (
+        CONTROL_MUTATION_COMPLETION_QUORUM_EVIDENCE_SCHEMA
+    )
+
+    validation_policy_id: str
+    policy_revision: str
+    operational_receipt_id: str
+    quorum: Any
+    objective_id: str = CONTROL_MUTATION_GUARD_OBJECTIVE_ID
+    requirement_id: str = CONTROL_MUTATION_GUARD_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        from .scan_receipts import ExhaustionQuorumResult
+
+        for name in (
+            "validation_policy_id",
+            "policy_revision",
+            "operational_receipt_id",
+            "objective_id",
+            "requirement_id",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        if self.objective_id != CONTROL_MUTATION_GUARD_OBJECTIVE_ID:
+            raise ControlContractError(
+                "completion quorum objective_id is not ASI-G104"
+            )
+        if self.requirement_id != CONTROL_MUTATION_GUARD_REQUIREMENT_ID:
+            raise ControlContractError(
+                "completion quorum requirement_id is not the ASI-G104 requirement"
+            )
+        quorum = self.quorum
+        if not isinstance(quorum, ExhaustionQuorumResult):
+            if not isinstance(quorum, Mapping):
+                raise ControlContractError(
+                    "completion quorum must contain an ExhaustionQuorumResult"
+                )
+            try:
+                quorum = ExhaustionQuorumResult.from_dict(quorum)
+            except (TypeError, ValueError) as exc:
+                raise ControlContractError(
+                    "completion quorum is malformed"
+                ) from exc
+        object.__setattr__(self, "quorum", quorum)
+        _bounded_record(self, "control mutation completion quorum evidence")
+
+    def _payload(self) -> dict[str, Any]:
+        quorum = self.quorum.to_dict()
+        quorum.pop("confidence", None)
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "requirement_id": self.requirement_id,
+            "objective_id": self.objective_id,
+            "validation_policy_id": self.validation_policy_id,
+            "policy_revision": self.policy_revision,
+            "operational_receipt_id": self.operational_receipt_id,
+            "quorum": quorum,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlMutationCompletionQuorumEvidence":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "requirement_id",
+                "objective_id",
+                "validation_policy_id",
+                "policy_revision",
+                "operational_receipt_id",
+                "quorum",
+                "content_id",
+            },
+            "control mutation completion quorum evidence",
+        )
+        result = cls(
+            requirement_id=payload.get("requirement_id", ""),
+            objective_id=payload.get("objective_id", ""),
+            validation_policy_id=payload.get("validation_policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            operational_receipt_id=payload.get("operational_receipt_id", ""),
+            quorum=payload.get("quorum") or {},
+        )
+        _identity(
+            payload,
+            result.content_id,
+            "control mutation completion quorum evidence",
+        )
         return result
 
 
@@ -4422,7 +4684,14 @@ __all__ = [
     "CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION",
     "CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID",
+    "CONTROL_MUTATION_COMPLETION_QUORUM_EVIDENCE_SCHEMA",
+    "CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA",
+    "CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION",
+    "CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION",
     "CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA",
+    "CONTROL_MUTATION_GUARD_OBJECTIVE_ID",
+    "CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION",
+    "CONTROL_MUTATION_GUARD_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "CONTROL_MUTATION_GUARD_REQUIREMENT_ID",
     "CONTROL_MUTATION_RUNTIME_STATE_SCHEMA",
     "CONTROL_SURFACE_PARITY_CASE_SCHEMA",
@@ -4463,6 +4732,7 @@ __all__ = [
     "ControlDiscoveryRuntimeState",
     "ControlDiscoverySafetyEvidence",
     "ControlLimits",
+    "ControlMutationCompletionQuorumEvidence",
     "ControlMutationGuardEvidence",
     "ControlMutationRuntimeState",
     "ControlOperation",
