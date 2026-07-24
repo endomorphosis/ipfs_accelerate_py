@@ -2873,3 +2873,48 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: goal_packet_aggregate
 - Todo vector key: b0cb67f2f9f3b9a2
 - Acceptance: Objective scan filed this gap for ASI-G109. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-081-objective-gap-c28d97df1330.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (020061024173618462922348580596364003627, 065313778069923158401871898168782520190, 119294002389522221490347364495731444366), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/self_refill/ipfs_accelerate_py/9d87d026b79d; implement a complete, cohesive change that fully advances the packet goals (ASI-G109, ASI-G110, ASI-G111) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-082 Produce completion evidence for Efficient and trustworthy supervisor control loop
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: self-improvement
+- Depends on: 
+- Outputs: data/agent_supervisor/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, docs/architecture/agent_supervisor_self_improvement.todo.md, docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_e2e.py -q
+- Bundle: agent-supervisor/self-improvement/root
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-root.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: none
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/root
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: docs/architecture/agent_supervisor_self_improvement.objectives.md, docs/architecture/agent_supervisor_self_improvement.todo.md, docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Changed paths: 
+- AST symbols: agent-supervisor-self-improvement-v1, agent_supervisor_self_improvement.objectives.md, AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G000
+- Canonical task key: task/v1/92c6fc4c81c8fc81a52866e2edd2d5f2a119735c2da37d17523a1935bcc7122c
+- Canonical task CID: baguqeerasldpytebzd6idjjim3ro3uwv6kqrs424fwrx2f2shimtlpghciwa
+- Evidence obligation key: objective-work/v1/5da092dd3d872f72a99219606961bc9a105d9c32
+- Missing evidence: Complete the goal's producing tasks before requesting completion., Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied., Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Every child goal has fresh tree-bound evidence, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.
+- Embedding query: agent-supervisor-self-improvement-v1 agent_supervisor_self_improvement.objectives.md AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- AST query: agent-supervisor-self-improvement-v1, agent_supervisor_self_improvement.objectives.md, AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Surplus group: ASI-G000
+- Merge key: objective-work/v1/5da092dd3d872f72a99219606961bc9a105d9c32
+- Merge family: ASI-G000
+- Merge role: completion_gate
+- Work item count: 7
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: 5da092dd3d872f72
+- Acceptance: Objective scan filed this gap for ASI-G000. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-082-objective-gap-db30cef45181.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Complete the goal's producing tasks before requesting completion., Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied., Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Every child goal has fresh tree-bound evidence, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.

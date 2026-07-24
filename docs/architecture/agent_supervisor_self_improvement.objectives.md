@@ -12,7 +12,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G000 Efficient and trustworthy supervisor control loop
 
-- Status: active
+- Status: provisionally_complete
 - Parent:
 - Fib priority: 1
 - Track: self-improvement
@@ -34,6 +34,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T22:49:30.024918+00:00
+- State transition reason: Produce completion evidence for: Every child goal has fresh tree-bound evidence; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T22:49:30.024918+00:00
 
 ## ASI-G010 Token-efficient context and end-to-end measurement
 
@@ -933,7 +936,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Gap task: Maintain the explicit canonical completion-binding contract and its adversarial receipt tests while supervisor regeneration reconciles the objective heap with the task-generation backlog.
 - Goal completion schema version: 1
 - Completion confidence: 0.166667
-- Uncovered criteria: ["187052702852200236079602798955260586139"]
+- Uncovered criteria: ["A passing typed receipt binds one completed aggregate to an exact canonical sibling set, proves that all and only explicitly bound siblings propagate, preserves canonical task identities through every projection, and remains invalid when a bound or excluded member, binding, policy input, or receipt digest is changed."]
 - Stale evidence: []
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
