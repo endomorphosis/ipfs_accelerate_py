@@ -123,16 +123,30 @@ def test_accepts_an_exactly_bound_effectful_proposal() -> None:
     assert ProposalValidationResult.from_dict(result.to_dict()) == result
 
 
-def test_admitted_binding_requires_exact_tree_objective_and_receipt() -> None:
-    result = validate_implementation_proposal(_proposal(), policy=_policy())
+def test_admitted_binding_can_require_the_complete_proposal_authority() -> None:
+    policy = _policy()
+    proposal = _proposal()
+    result = validate_implementation_proposal(proposal, policy=policy)
 
     assert result.require_admitted_binding(
+        task_id=TASK_ID,
+        accepted_plan_id=PLAN_ID,
+        repository_id=REPOSITORY_ID,
         repository_tree_id=TREE_ID,
         objective_id=OBJECTIVE_ID,
+        baseline_id=proposal.baseline_id,
+        context_id=proposal.context_id,
+        proposal_id=proposal.proposal_id,
+        policy_id=policy.policy_id,
         receipt_id=result.receipt.receipt_id,
+        diff_digest=proposal.diff_digest,
     ) is result
     with pytest.raises(ProposalValidationError, match="objective_id"):
         result.require_admitted_binding(objective_id="ASI-G999")
+    with pytest.raises(ProposalValidationError, match="policy_id"):
+        result.require_admitted_binding(policy_id="policy:foreign")
+    with pytest.raises(ProposalValidationError, match="diff_digest"):
+        result.require_admitted_binding(diff_digest="sha256:foreign")
 
     rejected = validate_implementation_proposal(
         _proposal(declared_paths=(), candidate_diff=()),
@@ -280,6 +294,15 @@ def test_syntax_and_every_frozen_authority_dimension_fail_closed() -> None:
             "proof_authoritative", True
         ),
         lambda payload: payload.__setitem__("code_proof_authoritative", True),
+        lambda payload: payload.__setitem__(
+            "proved_requirement_ids", [G102_PROOF_CANDIDATE_REQUIREMENT]
+        ),
+        lambda payload: payload["receipt"].__setitem__(
+            "proved_requirement_ids", [G102_PROOF_CANDIDATE_REQUIREMENT]
+        ),
+        lambda payload: payload.__setitem__(
+            "proved_requirement_ids", G102_PROOF_CANDIDATE_REQUIREMENT
+        ),
         lambda payload: payload["receipt"].__setitem__(
             "changed_paths", ["forged.py"]
         ),
@@ -312,3 +335,25 @@ def test_rejection_receipt_rejects_detached_or_mutated_evidence() -> None:
 
     with pytest.raises(ProposalValidationError):
         ProposalValidationReceipt.from_dict(payload)
+
+
+def test_rejection_requirement_projection_cannot_be_erased() -> None:
+    rejected = validate_implementation_proposal(
+        _proposal(declared_paths=(), candidate_diff=()),
+        policy=_policy(),
+    ).with_dispatch_outcome(
+        expensive_node_ids=("semantic", "proof"),
+        expensive_checks_started=0,
+    )
+    assert rejected.proved_requirement_ids == (
+        NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
+    )
+
+    for target in ("result", "receipt"):
+        payload = deepcopy(rejected.to_dict())
+        if target == "result":
+            payload["proved_requirement_ids"] = []
+        else:
+            payload["receipt"]["proved_requirement_ids"] = []
+        with pytest.raises(ProposalValidationError, match="requirement claims"):
+            ProposalValidationResult.from_dict(payload)

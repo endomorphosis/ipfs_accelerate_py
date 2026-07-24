@@ -10,6 +10,11 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
     ImplementationObligationSet,
+    PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA,
+    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION,
+    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION,
+    PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID,
+    PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION,
     PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,
     ProofCandidateNonAuthorityEvidence,
     compile_candidate_proof_scopes,
@@ -78,7 +83,13 @@ def _service_validation() -> ValidationCommand:
     )
 
 
-def _proposal(*, after: str = AFTER, path: str = "pkg/core.py"):
+def _proposal(
+    *,
+    after: str = AFTER,
+    path: str = "pkg/core.py",
+    task_id: str = "ASI-032",
+    objective_id: str = "ASI-G101",
+):
     entry = CandidateDiffEntry(
         old_path=path,
         new_path=path,
@@ -87,22 +98,22 @@ def _proposal(*, after: str = AFTER, path: str = "pkg/core.py"):
         after_source=after,
     )
     proposal = ImplementationProposal(
-        task_id="ASI-032",
+        task_id=task_id,
         accepted_plan_id="plan:strict",
         repository_id="repo:fixture",
         repository_tree_id="tree:candidate",
-        objective_id="ASI-G101",
+        objective_id=objective_id,
         baseline_id="tree:base",
         candidate_diff=(entry,),
         declared_paths=(path,),
     )
     policy = ProposalValidationPolicy(
         allowed_paths=("pkg/",),
-        expected_task_id="ASI-032",
+        expected_task_id=task_id,
         expected_plan_id="plan:strict",
         expected_repository_id="repo:fixture",
         expected_repository_tree_id="tree:candidate",
-        expected_objective_id="ASI-G101",
+        expected_objective_id=objective_id,
     )
     return proposal, policy, entry
 
@@ -608,12 +619,18 @@ def _proof_receipt(
 
 def _passing_authority_chain(
     tmp_path: Path,
+    *,
+    task_id: str = "ASI-070",
+    objective_id: str = PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID,
 ) -> tuple[
     ProposalValidationResult,
     ValidationDAGReceipt,
     ImplementationObligationSet,
 ]:
-    proposal, policy, entry = _proposal()
+    proposal, policy, entry = _proposal(
+        task_id=task_id,
+        objective_id=objective_id,
+    )
     accepted = validate_proposal(proposal, policy=policy)
     graph = ImpactDependencyGraph(
         repository_tree_id=proposal.repository_tree_id,
@@ -691,6 +708,7 @@ def test_provider_proof_candidate_never_becomes_code_completion_evidence(
     assert evidence.proved_requirement_ids == (
         PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,
     )
+    assert evidence.code_proof_authoritative is False
     assert evidence.proof_authoritative is False
     assert evidence.completion_authoritative is False
     assert evidence.completion_admission == admission
@@ -701,10 +719,234 @@ def test_provider_proof_candidate_never_becomes_code_completion_evidence(
     assert CompletionAdmissionGate.from_dict(admission.to_dict()) == admission
 
 
+def test_g102_candidate_witness_rejects_legacy_objective_chain(
+    tmp_path: Path,
+) -> None:
+    accepted, dag, obligations = _passing_authority_chain(
+        tmp_path,
+        task_id="ASI-046",
+        objective_id="ASI-G101",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="must bind the ASI-G102 objective",
+    ):
+        prove_proof_candidate_non_authority(
+            _proof_receipt(obligations, authoritative=False),
+            obligations,
+            objective_id=accepted.proposal.objective_id,
+            proposal_validation=accepted,
+            validation_dag=dag,
+        )
+
+
+def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
+    tmp_path: Path,
+) -> None:
+    accepted, dag, obligations = _passing_authority_chain(tmp_path)
+    witness = prove_proof_candidate_non_authority(
+        _proof_receipt(obligations, authoritative=False),
+        obligations,
+        objective_id=PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID,
+        proposal_validation=accepted,
+        validation_dag=dag,
+    )
+    now = datetime(2026, 7, 24, 16, 0, tzinfo=timezone.utc)
+    validation_binding = {
+        "status": "passed",
+        "repository_id": witness.obligation_set.binding.repository_id,
+        "tree_id": witness.obligation_set.binding.repository_tree_id,
+        "requirement_id": PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,
+        "objective_id": PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID,
+        "operational_receipt_id": witness.evidence_id,
+        "validation_policy_id": witness.validation_dag.policy_id,
+        "command": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_proposal_validation.py "
+            "test/api/test_agent_supervisor_validation_dag.py "
+            "test/api/test_agent_supervisor_semantic_validation_pipeline.py -q"
+        ),
+    }
+    completion_evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-070",
+            validation_receipt=validation_binding,
+            validation_passed=True,
+            repository_tree=witness.obligation_set.binding.repository_tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-070:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": witness.obligation_set.binding.repository_tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "code_proof_obligations.py"
+                ),
+                "validation": (
+                    "test/api/"
+                    "test_agent_supervisor_semantic_validation_pipeline.py"
+                ),
+            }
+            for criterion in PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
+        ],
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": (
+            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+        ),
+    }
+    binding = {
+        "repository_id": witness.obligation_set.binding.repository_id,
+        "tree_id": witness.obligation_set.binding.repository_tree_id,
+        "objective_id": PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID,
+        "objective_revision": (
+            PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION
+        ),
+        "validation_policy_id": witness.validation_dag.policy_id,
+        "operational_receipt_id": witness.evidence_id,
+        "analyzer_version": (
+            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+        ),
+        "configuration_revision": (
+            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-070-implementation",
+                "evidence_channel": "implementation-validation",
+                "receipt_cid": "scan:asi-070:implementation",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-070-replay",
+                "evidence_channel": "receipt-replay",
+                "receipt_cid": "scan:asi-070:replay",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    values = {
+        "evidence": completion_evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    provisional = witness.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.gate is not None and provisional.gate.passed
+    assert not provisional.verified
+
+    verified = witness.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    for receipt_updates in (
+        {"operational_receipt_id": "evidence:foreign-candidate"},
+        {"repository_id": "repo:foreign"},
+        {"tree_id": "tree:foreign"},
+    ):
+        unbound = tuple(
+            CompletionEvidence.from_dict(
+                {
+                    **item.to_dict(),
+                    "validation_receipt": {
+                        **validation_binding,
+                        **receipt_updates,
+                    },
+                }
+            )
+            for item in completion_evidence
+        )
+        rejected = witness.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "evidence": unbound},
+        )
+        assert rejected.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not rejected.verified
+        assert rejected.gate is not None and not rejected.gate.passed
+
+    unsafe = witness.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "analyzer_health": {
+                **health,
+                "safe_for_completion_reasoning": False,
+            },
+        },
+    )
+    assert unsafe.state is GoalState.PROVISIONALLY_COMPLETE
+    assert "analyzer_unhealthy" in unsafe.reason_codes
+
+    duplicate_quorum = deepcopy(quorum)
+    duplicate_quorum["members"][1]["receipt_cid"] = (
+        duplicate_quorum["members"][0]["receipt_cid"]
+    )
+    no_quorum = witness.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "exhaustion_quorum": duplicate_quorum},
+    )
+    assert no_quorum.state is GoalState.PROVISIONALLY_COMPLETE
+    assert any(
+        code.startswith("exhaustion_quorum")
+        for code in no_quorum.reason_codes
+    )
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
         lambda payload: payload.__setitem__("objective_id", "ASI-G999"),
+        lambda payload: payload.__setitem__("code_proof_authoritative", True),
         lambda payload: payload.__setitem__("proof_authoritative", True),
         lambda payload: payload["binding_result"].__setitem__("valid", True),
         lambda payload: payload["completion_admission"].__setitem__(
@@ -752,6 +994,15 @@ def test_independent_kernel_receipt_is_not_candidate_rejection_evidence(
     assert result.valid is True
     assert result.authoritative_assurance is AssuranceLevel.KERNEL_VERIFIED
     assert result.authoritative_verdict is ProofVerdict.PROVED
+    no_dag = evaluate_completion_admission(
+        proposal_validation=accepted,
+        required=True,
+        code_proof_receipts=receipts,
+        implementation_obligations=obligations,
+        require_code_proof=True,
+    )
+    assert no_dag.admitted is False
+    assert "validation_dag_missing" in no_dag.reason_codes
     detached = evaluate_completion_admission(
         proposal_validation=accepted,
         validation_dag=dag,

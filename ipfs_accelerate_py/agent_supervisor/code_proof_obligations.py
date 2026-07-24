@@ -60,6 +60,56 @@ PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA = (
 PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID = (
     "006818797857632260116084792540150258746"
 )
+PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID = "ASI-G102"
+PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION = "ASI-G102@asi-070"
+PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION = (
+    "asi-g102-objective-validation@1"
+)
+PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION = (
+    "strict-proof-candidate-non-authority-completion@1"
+)
+PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA = (
+    (
+        "the accepted proposal and population-complete passing validation DAG "
+        "remain non-authoritative for code proof and completion"
+    ),
+    (
+        "the canonical provider candidate verdict and assurance are "
+        "independently re-derived from typed evidence"
+    ),
+    (
+        "the candidate is rejected against the exact fresh implementation "
+        "obligation and required assurance"
+    ),
+    (
+        "strict completion admission remains closed and replays the candidate "
+        "binding rejection"
+    ),
+    (
+        "tamper, replay, detached summaries, and forged authority fail closed "
+        "across the full current-tree chain"
+    ),
+    (
+        "the exact proof-candidate non-authority requirement is emitted only "
+        "by a tamper-evident current-tree witness"
+    ),
+)
+# Concise public spellings used by the objective-completion bridge.  The
+# longer names preserve the evidence-record namespace and remain the canonical
+# documentation spelling.
+PROOF_CANDIDATE_OBJECTIVE_ID = PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+PROOF_CANDIDATE_OBJECTIVE_REVISION = (
+    PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION
+)
+PROOF_CANDIDATE_COMPLETION_ANALYZER_VERSION = (
+    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+)
+PROOF_CANDIDATE_COMPLETION_CONFIGURATION_REVISION = (
+    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION
+)
+PROOF_CANDIDATE_ACCEPTANCE_CRITERIA = (
+    PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
+)
 
 
 class DiffChangeKind(str, Enum):
@@ -3014,6 +3064,10 @@ class ProofCandidateNonAuthorityEvidence:
         objective_id = str(self.objective_id or "").strip()
         if not objective_id:
             raise ValueError("proof-candidate evidence requires an objective_id")
+        if objective_id != PROOF_CANDIDATE_OBJECTIVE_ID:
+            raise ValueError(
+                "proof-candidate evidence must bind the ASI-G102 objective"
+            )
         object.__setattr__(self, "objective_id", objective_id)
         requirement_id = str(self.requirement_id or "").strip()
         if requirement_id != PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID:
@@ -3153,8 +3207,57 @@ class ProofCandidateNonAuthorityEvidence:
         return False
 
     @property
+    def code_proof_authoritative(self) -> bool:
+        """A rejection witness cannot itself discharge a code obligation."""
+
+        return False
+
+    @property
     def completion_authoritative(self) -> bool:
         return False
+
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = 2,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G102 through its closed current-tree proof gate.
+
+        This is intentionally a second phase after the operational
+        candidate-isolation witness.  The witness proves that a provider
+        candidate did not acquire authority; it cannot mark its own objective
+        complete without separately produced, current-tree validation,
+        coverage, analyzer-health, and exhaustive-quorum evidence.
+        """
+
+        return _evaluate_proof_candidate_objective_completion(
+            self,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            required_exhaustive_receipts=required_exhaustive_receipts,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
 
     def _identity_payload(self) -> dict[str, Any]:
         return {
@@ -3186,6 +3289,7 @@ class ProofCandidateNonAuthorityEvidence:
             "validation_dag_receipt_id": self.validation_dag.receipt_id,
             "proved_requirement_ids": self.proved_requirement_ids,
             "proof_authoritative": False,
+            "code_proof_authoritative": False,
             "completion_authoritative": False,
         }
 
@@ -3199,7 +3303,11 @@ class ProofCandidateNonAuthorityEvidence:
         )
         if schema != PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA:
             raise ValueError(f"unsupported proof-candidate evidence schema: {schema}")
-        for name in ("proof_authoritative", "completion_authoritative"):
+        for name in (
+            "proof_authoritative",
+            "code_proof_authoritative",
+            "completion_authoritative",
+        ):
             if payload.get(name) not in (None, False):
                 raise ValueError(f"proof-candidate evidence cannot claim {name}")
         result = cls(
@@ -3246,6 +3354,245 @@ class ProofCandidateNonAuthorityEvidence:
         return result
 
 
+def _evaluate_proof_candidate_objective_completion(
+    witness: ProofCandidateNonAuthorityEvidence,
+    *,
+    current_state: Any,
+    evidence: Sequence[Any],
+    tasks_complete: bool,
+    coverage: Any,
+    analyzer_health: Any,
+    exhaustion_quorum: Any,
+    required_exhaustive_receipts: int,
+    child_goals: Sequence[Any],
+    now: Any,
+    freshness_seconds: float | None,
+    clock_skew_seconds: float | None,
+    analysis_inconclusive: bool,
+    blocked_reason: str,
+) -> Any:
+    """Bridge the replayed G102 witness into the goal-completion lifecycle."""
+
+    from .goal_completion import evaluate_goal_completion
+
+    binding = witness.obligation_set.binding
+    gate = witness.completion_admission
+    result = witness.binding_result
+    operational_complete = bool(
+        witness.objective_id == PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+        and witness.proved_requirement_ids
+        == (PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,)
+        and witness.proposal_validation.accepted
+        and witness.validation_dag.passed
+        and witness.validation_dag.coverage_complete
+        and not witness.validation_dag.uncovered_impact
+        and witness.candidate_receipt.authoritative_assurance
+        is AssuranceLevel.CANDIDATE
+        and witness.candidate_receipt.authoritative_verdict
+        is ProofVerdict.INCONCLUSIVE
+        and not result.valid
+        and result.binding_id == binding.binding_id
+        and result.receipt_id == witness.candidate_receipt.receipt_id
+        and result.obligation_id == witness.candidate_receipt.obligation_id
+        and {
+            "code_proof_not_proved",
+            "required_code_assurance_not_satisfied",
+        }.issubset(result.reason_codes)
+        and not gate.admitted
+        and result.result_id in gate.code_proof_result_ids
+        and witness.candidate_receipt.receipt_id
+        in gate.proof_candidate_receipt_ids
+        and {
+            "code_proof_candidate_only",
+            "code_proof_not_authoritative",
+            "code_proof_binding_rejected",
+        }.issubset(gate.reason_codes)
+    )
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    expected_criteria = {
+        " ".join(item.lower().split())
+        for item in PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
+    }
+    coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+    normalized_rows = [
+        " ".join(
+            str(
+                row.get("criterion", row.get("acceptance_criterion", ""))
+                if isinstance(row, Mapping)
+                else ""
+            )
+            .lower()
+            .split()
+        )
+        for row in rows
+    ]
+    coverage_complete = bool(
+        operational_complete
+        and len(normalized_rows) == len(expected_criteria)
+        and len(normalized_rows) == len(set(normalized_rows))
+        and set(normalized_rows) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and bool(str(row.get("implementation") or "").strip())
+            and bool(str(row.get("validation") or "").strip())
+            for row in rows
+        )
+    )
+
+    evidence_bound = len(evidence) == len(expected_criteria)
+    for item in evidence:
+        record = (
+            item.to_dict()
+            if hasattr(item, "to_dict") and callable(item.to_dict)
+            else dict(item)
+            if isinstance(item, Mapping)
+            else {}
+        )
+        validation = record.get("validation_receipt")
+        validation = validation if isinstance(validation, Mapping) else {}
+        evidence_bound = bool(
+            evidence_bound
+            and validation.get("requirement_id")
+            == PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID
+            and validation.get("objective_id")
+            == PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID
+            and validation.get("repository_id") == binding.repository_id
+            and validation.get("tree_id") == binding.repository_tree_id
+            and validation.get("operational_receipt_id") == witness.evidence_id
+            and validation.get("validation_policy_id")
+            == witness.validation_dag.policy_id
+        )
+    if not coverage_complete or not evidence_bound:
+        reasons = coverage_value.get("reason_codes")
+        reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+        if not operational_complete:
+            reasons.append("active_operational_evidence_missing")
+        if not coverage_complete:
+            reasons.append("coverage_missing_implementation_validation_binding")
+        if not evidence_bound:
+            reasons.append("validation_not_bound_to_operational_witness")
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "reason_codes": list(dict.fromkeys(reasons)),
+        }
+
+    health_value = payload(analyzer_health)
+    if not (
+        str(health_value.get("status") or "").lower() == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+        and health_value.get("analyzer_version")
+        == PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+    ):
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    expected_binding = {
+        "repository_id": binding.repository_id,
+        "tree_id": binding.repository_tree_id,
+        "objective_id": PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID,
+        "objective_revision": PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION,
+        "validation_policy_id": witness.validation_dag.policy_id,
+        "operational_receipt_id": witness.evidence_id,
+        "analyzer_version": (
+            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
+        ),
+        "configuration_revision": (
+            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    quorum_value = payload(exhaustion_quorum)
+    quorum_binding = quorum_value.get("binding")
+    quorum_binding = (
+        quorum_binding if isinstance(quorum_binding, Mapping) else {}
+    )
+    members_value = quorum_value.get("members")
+    members = members_value if isinstance(members_value, list) else []
+    member_receipts = [
+        str(member.get("receipt_cid") or "")
+        for member in members
+        if isinstance(member, Mapping)
+    ]
+    channels = [
+        str(member.get("evidence_channel") or "")
+        for member in members
+        if isinstance(member, Mapping)
+    ]
+    quorum_complete = bool(
+        not isinstance(required_exhaustive_receipts, bool)
+        and isinstance(required_exhaustive_receipts, int)
+        and required_exhaustive_receipts >= 2
+        and quorum_value.get("required_members") == required_exhaustive_receipts
+        and len(members) >= required_exhaustive_receipts
+        and all(
+            quorum_binding.get(key) == value
+            for key, value in expected_binding.items()
+        )
+        and len(member_receipts) == len(members) == len(set(member_receipts))
+        and len(channels) == len(members) == len(set(channels))
+        and all(member_receipts)
+        and all(channels)
+        and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").lower() == "exhaustive"
+            and isinstance(member.get("binding"), Mapping)
+            and all(
+                member["binding"].get(key) == value
+                for key, value in expected_binding.items()
+            )
+            for member in members
+        )
+    )
+    if not quorum_complete:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    values: dict[str, Any] = {
+        "current_state": current_state,
+        "acceptance_criteria": (
+            PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
+        ),
+        "evidence": evidence,
+        "tasks_complete": tasks_complete,
+        "repository_tree": binding.repository_tree_id,
+        "now": now,
+        "analysis_inconclusive": analysis_inconclusive,
+        "blocked_reason": blocked_reason,
+        "coverage": coverage_value,
+        "analyzer_health": health_value,
+        "exhaustion_quorum": quorum_value,
+        "child_goals": child_goals,
+        "analysis_result": None,
+        "require_completion_gate": True,
+    }
+    if freshness_seconds is not None:
+        values["freshness_seconds"] = freshness_seconds
+    if clock_skew_seconds is not None:
+        values["clock_skew_seconds"] = clock_skew_seconds
+    return evaluate_goal_completion(**values)
+
+
 def prove_proof_candidate_non_authority(
     candidate_receipt: ProofReceipt | Mapping[str, Any],
     obligation_set: ImplementationObligationSet | Mapping[str, Any],
@@ -3289,8 +3636,18 @@ __all__ = [
     "CODE_OBLIGATION_CACHE_KEY_SCHEMA",
     "CODE_OBLIGATION_REQUEST_SCHEMA",
     "CODE_PROOF_BINDING_RESULT_SCHEMA",
+    "PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA",
+    "PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION",
+    "PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION",
     "PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA",
+    "PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID",
+    "PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION",
     "PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID",
+    "PROOF_CANDIDATE_ACCEPTANCE_CRITERIA",
+    "PROOF_CANDIDATE_COMPLETION_ANALYZER_VERSION",
+    "PROOF_CANDIDATE_COMPLETION_CONFIGURATION_REVISION",
+    "PROOF_CANDIDATE_OBJECTIVE_ID",
+    "PROOF_CANDIDATE_OBJECTIVE_REVISION",
     "CandidateChangeKind",
     "CandidateDiffEntry",
     "CandidateFileDiff",

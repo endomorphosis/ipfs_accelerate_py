@@ -1648,6 +1648,18 @@ class ValidationDAGReceipt:
 
         return False
 
+    @property
+    def code_proof_authoritative(self) -> bool:
+        """Validation cannot substitute for fresh authoritative code proofs.
+
+        A complete passing DAG is an input to implementation-obligation
+        derivation.  It is deliberately not evidence that those obligations
+        were discharged, even when solver, kernel, or attestation validation
+        stages ran successfully.
+        """
+
+        return False
+
     def evaluate_objective_completion(
         self,
         *,
@@ -1697,6 +1709,7 @@ class ValidationDAGReceipt:
             ),
             "proved_requirement_ids": self.proved_requirement_ids,
             "proof_authoritative": False,
+            "code_proof_authoritative": False,
             "completion_authoritative": False,
         }
 
@@ -1705,10 +1718,15 @@ class ValidationDAGReceipt:
         schema = str(payload.get("schema") or VALIDATION_DAG_RECEIPT_SCHEMA)
         if schema != VALIDATION_DAG_RECEIPT_SCHEMA:
             raise ValidationDAGError(f"unsupported validation DAG schema: {schema}")
-        if payload.get("completion_authoritative") not in (None, False):
-            raise ValidationDAGError("validation DAG cannot claim completion")
-        if payload.get("proof_authoritative") not in (None, False):
-            raise ValidationDAGError("validation DAG cannot claim code-proof authority")
+        for field_name in (
+            "proof_authoritative",
+            "code_proof_authoritative",
+            "completion_authoritative",
+        ):
+            if payload.get(field_name) not in (None, False):
+                raise ValidationDAGError(
+                    f"validation DAG cannot claim {field_name}"
+                )
         base = cls(
             repository_tree_id=str(payload.get("repository_tree_id") or ""),
             objective_id=str(payload.get("objective_id") or ""),
@@ -2436,6 +2454,7 @@ class ValidationScheduler:
                 "validation_dag_receipt": None,
                 "proved_requirement_ids": bound.receipt.proved_requirement_ids,
                 "proof_authoritative": False,
+                "code_proof_authoritative": False,
                 "completion_authoritative": False,
                 "merge_eligible": False,
             }
@@ -2537,6 +2556,7 @@ class ValidationScheduler:
                 "validation_dag_receipt": receipt.to_dict(),
                 "proved_requirement_ids": (),
                 "proof_authoritative": False,
+                "code_proof_authoritative": False,
                 "completion_authoritative": False,
                 "merge_eligible": False,
                 "impact_graph": None,
@@ -2876,6 +2896,7 @@ class ValidationScheduler:
         report["nodes"] = [node.to_dict() for node in receipt.nodes]
         report["proved_requirement_ids"] = receipt.proved_requirement_ids
         report["proof_authoritative"] = False
+        report["code_proof_authoritative"] = False
         report["completion_authoritative"] = False
         report["merge_eligible"] = False
         report["freshness_authoritative"] = False
