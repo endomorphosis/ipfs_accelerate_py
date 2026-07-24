@@ -5563,6 +5563,7 @@ def record_objective_backlog_findings(
     surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    force_goal_ids: Sequence[str] = (),
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
 ) -> RefillScanResult[dict[str, Any]]:
@@ -5664,6 +5665,7 @@ def record_objective_backlog_findings(
         surplus_min_terms_per_todo=surplus_min_terms_per_todo,
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path,
+        force_goal_ids=force_goal_ids,
     )
     records = list(generation_result.items)
     strategy["last_objective_goal_scan_at"] = utc_now()
@@ -5706,6 +5708,11 @@ def record_objective_backlog_findings(
     strategy["last_objective_surplus_findings_per_goal"] = surplus_findings_per_goal
     strategy["last_objective_surplus_min_terms_per_todo"] = surplus_min_terms_per_todo
     strategy["last_objective_goal_scan_findings"] = appended
+    if mode.startswith("drained") and generation_result.terminal_reason in {
+        ScanTerminalReason.GENERATED,
+        ScanTerminalReason.EXHAUSTED,
+    }:
+        strategy["last_drained_objective_goal_scan_task_count"] = task_count
     write_json(strategy_path, strategy)
     if commit_outputs and records:
         generated_paths = [todo_path]
@@ -5790,6 +5797,7 @@ def record_configured_objective_backlog_findings(
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    force_goal_ids: Sequence[str] = (),
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
 ) -> RefillScanResult[dict[str, Any]]:
@@ -5828,6 +5836,7 @@ def record_configured_objective_backlog_findings(
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path
         or discovery_output_path_for(repo_root, discovery_dir, default=discovery_output_path_default),
+        force_goal_ids=force_goal_ids,
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
     )
@@ -6004,6 +6013,7 @@ class ConfiguredObjectiveBacklogRecorder:
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
     discovery_output_path: str | None = None
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH
+    force_goal_ids: Sequence[str] = ()
     commit_outputs: bool = False
     commit_subject: str = "Agent: record objective backlog findings"
     prepare_environment: Callable[[], None] | None = None
@@ -6236,6 +6246,7 @@ def build_namespace_objective_backlog_recorder(
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str | None = None,
     discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    force_goal_ids: Sequence[str] = (),
     commit_outputs: bool = False,
     commit_subject: str = "Agent: record objective backlog findings",
     prepare_environment: Callable[[], None] | None = None,
@@ -6265,6 +6276,7 @@ def build_namespace_objective_backlog_recorder(
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path,
         discovery_output_path_default=discovery_output_path_default,
+        force_goal_ids=tuple(force_goal_ids),
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
         prepare_environment=prepare_environment,

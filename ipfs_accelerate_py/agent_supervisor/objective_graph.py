@@ -7181,7 +7181,18 @@ def scan_objective_gaps(
     )
 
     goals_by_id = {goal.goal_id: goal for goal in goals}
-    scheduled_goals = [goals_by_id[record.goal_id] for record in objective_heap_schedule(goals) if record.goal_id in goals_by_id]
+    scheduled_goals = [
+        goals_by_id[record.goal_id]
+        for record in objective_heap_schedule(goals)
+        if record.goal_id in goals_by_id
+    ]
+    # ``force_goal_ids`` is used by lifecycle repair and self-refill callers
+    # that have already committed specific heap nodes.  Put those nodes ahead
+    # of ordinary gaps so a bounded scan cannot spend all of its capacity on
+    # unrelated older goals before projecting the requested nodes.
+    scheduled_goals.sort(
+        key=lambda goal: (goal.goal_id not in forced_goal_ids,)
+    )
     evidence_owners = objective_evidence_owner_by_requirement(goals, graph)
     for goal in scheduled_goals:
         if goal.lifecycle_state_value == "provisionally_complete":
@@ -7210,8 +7221,16 @@ def scan_objective_gaps(
                 continue
             missing_terms = objective_goal_validation_gap_terms(goal)
             if not missing_terms:
-                continue
-            validation_gap = True
+                # Explicit lifecycle repair/refill requests must be able to
+                # project a newly committed, fully specified goal even when
+                # its own markdown happens to nominate all of its evidence
+                # terms.  Treat its declared evidence delta as the bounded
+                # work item; source nomination is not completion authority.
+                missing_terms = list(goal.required_evidence)
+                if not missing_terms:
+                    continue
+            else:
+                validation_gap = True
         launch_validation_gap = validation_gap and objective_goal_requires_launch_playwright_validation(goal)
         fields = goal.fields
         present = {term: evidence.get(term, []) for term in terms if evidence.get(term)}
@@ -7422,6 +7441,9 @@ def scan_objective_gaps(
     prioritized = prioritize_larger_work_surface_findings(
         expanded_findings,
         max_findings=len(expanded_findings),
+    )
+    prioritized.sort(
+        key=lambda finding: (finding.goal_id not in forced_goal_ids,)
     )
     unique_findings: list[ObjectiveFinding] = []
     seen_obligations: set[str] = set()
