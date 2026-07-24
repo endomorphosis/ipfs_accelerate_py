@@ -54,6 +54,12 @@ CODE_OBLIGATION_REQUEST_SCHEMA = (
 CODE_OBLIGATION_CACHE_KEY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/code-obligation-cache-key@1"
 )
+PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/proof-candidate-non-authority-evidence@1"
+)
+PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID = (
+    "006818797857632260116084792540150258746"
+)
 
 
 class DiffChangeKind(str, Enum):
@@ -2233,6 +2239,16 @@ class ImplementationObligationSet:
     def complete(self) -> bool:
         return bool(self.obligations) and not self.incomplete_reason_codes
 
+    @property
+    def proof_authoritative(self) -> bool:
+        """Derived obligations describe proof work; they never satisfy it."""
+
+        return False
+
+    @property
+    def completion_authoritative(self) -> bool:
+        return False
+
     def by_kind(
         self, kind: ImplementationObligationKind | str
     ) -> tuple[CodeProofObligation, ...]:
@@ -2254,13 +2270,23 @@ class ImplementationObligationSet:
         }
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self._identity_payload(), "set_id": self.set_id}
+        return {
+            **self._identity_payload(),
+            "set_id": self.set_id,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ImplementationObligationSet":
         schema = str(payload.get("schema") or IMPLEMENTATION_OBLIGATION_SET_SCHEMA)
         if schema != IMPLEMENTATION_OBLIGATION_SET_SCHEMA:
             raise ValueError(f"unsupported implementation obligation-set schema: {schema}")
+        for name in ("proof_authoritative", "completion_authoritative"):
+            if payload.get(name) not in (None, False):
+                raise ValueError(
+                    f"implementation obligation set cannot claim {name}"
+                )
         return cls(
             binding=ImplementationResultBinding.from_dict(payload.get("binding") or {}),
             obligations=tuple(
@@ -2653,8 +2679,57 @@ class CodeProofReceiptBindingResult:
     authoritative_assurance: AssuranceLevel = AssuranceLevel.UNVERIFIED
     authoritative_verdict: ProofVerdict = ProofVerdict.INCONCLUSIVE
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
+    def __post_init__(self) -> None:
+        for name in ("receipt_id", "obligation_id", "binding_id"):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise ValueError(f"code-proof binding result requires {name}")
+            object.__setattr__(self, name, value)
+        for name in ("valid", "stale", "contradictory"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be boolean")
+        object.__setattr__(
+            self, "reason_codes", _canonical_strings(self.reason_codes)
+        )
+        object.__setattr__(
+            self,
+            "authoritative_assurance",
+            AssuranceLevel(self.authoritative_assurance),
+        )
+        object.__setattr__(
+            self,
+            "authoritative_verdict",
+            ProofVerdict(self.authoritative_verdict),
+        )
+        if self.valid and self.reason_codes:
+            raise ValueError("valid code-proof binding cannot contain rejection reasons")
+        if not self.valid and not self.reason_codes:
+            raise ValueError("rejected code-proof binding requires a reason")
+        if self.valid and (
+            self.authoritative_verdict is not ProofVerdict.PROVED
+            or self.authoritative_assurance.rank
+            < AssuranceLevel.KERNEL_VERIFIED.rank
+        ):
+            raise ValueError(
+                "valid code-proof binding requires authoritative proved assurance"
+            )
+
+    @property
+    def result_id(self) -> str:
+        return content_identity(self.to_dict(include_id=False))
+
+    @property
+    def proof_authoritative(self) -> bool:
+        return self.valid
+
+    @property
+    def completion_authoritative(self) -> bool:
+        # A valid code-proof binding is an input to the goal-completion policy.
+        # It is not, by itself, a complete code-completion decision.
+        return False
+
+    def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
+        payload = {
             "schema": CODE_PROOF_BINDING_RESULT_SCHEMA,
             "receipt_id": self.receipt_id,
             "obligation_id": self.obligation_id,
@@ -2665,7 +2740,43 @@ class CodeProofReceiptBindingResult:
             "reason_codes": list(self.reason_codes),
             "authoritative_assurance": self.authoritative_assurance.value,
             "authoritative_verdict": self.authoritative_verdict.value,
+            "proof_authoritative": self.proof_authoritative,
+            "completion_authoritative": False,
         }
+        if include_id:
+            payload["result_id"] = self.result_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CodeProofReceiptBindingResult":
+        schema = str(payload.get("schema") or CODE_PROOF_BINDING_RESULT_SCHEMA)
+        if schema != CODE_PROOF_BINDING_RESULT_SCHEMA:
+            raise ValueError(f"unsupported code-proof binding-result schema: {schema}")
+        result = cls(
+            receipt_id=str(payload.get("receipt_id") or ""),
+            obligation_id=str(payload.get("obligation_id") or ""),
+            binding_id=str(payload.get("binding_id") or ""),
+            valid=payload.get("valid", False),
+            stale=payload.get("stale", False),
+            contradictory=payload.get("contradictory", False),
+            reason_codes=_canonical_strings(payload.get("reason_codes") or ()),
+            authoritative_assurance=AssuranceLevel(
+                payload.get("authoritative_assurance", AssuranceLevel.UNVERIFIED)
+            ),
+            authoritative_verdict=ProofVerdict(
+                payload.get("authoritative_verdict", ProofVerdict.INCONCLUSIVE)
+            ),
+        )
+        if payload.get("proof_authoritative") not in (
+            None,
+            result.proof_authoritative,
+        ):
+            raise ValueError("code-proof binding proof authority does not match result")
+        if payload.get("completion_authoritative") not in (None, False):
+            raise ValueError("code-proof binding result cannot claim completion")
+        if payload.get("result_id") and payload["result_id"] != result.result_id:
+            raise ValueError("code-proof binding-result identity does not match payload")
+        return result
 
 
 def validate_code_proof_receipt_bindings(
@@ -2828,6 +2939,292 @@ def validate_code_proof_receipt_bindings(
     )
 
 
+@dataclass(frozen=True)
+class ProofCandidateNonAuthorityEvidence:
+    """Tamper-evident proof that a provider candidate stayed non-authoritative.
+
+    The complete canonical candidate and every authority-bearing input are
+    embedded so deserialization can repeat both the code-proof binding check
+    and the final completion-admission decision.  Summary fields from a
+    provider, scheduler report, or caller are never trusted.
+    """
+
+    objective_id: str
+    candidate_receipt: ProofReceipt
+    obligation_set: ImplementationObligationSet
+    proposal_validation: Any
+    validation_dag: Any
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED
+    requirement_id: str = PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID
+    binding_result: CodeProofReceiptBindingResult | Mapping[str, Any] | None = None
+    completion_admission: Any = None
+    evidence_id: str = ""
+
+    def __post_init__(self) -> None:
+        objective_id = str(self.objective_id or "").strip()
+        if not objective_id:
+            raise ValueError("proof-candidate evidence requires an objective_id")
+        object.__setattr__(self, "objective_id", objective_id)
+        requirement_id = str(self.requirement_id or "").strip()
+        if requirement_id != PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID:
+            raise ValueError("unexpected proof-candidate non-authority requirement")
+        object.__setattr__(self, "requirement_id", requirement_id)
+        receipt = (
+            self.candidate_receipt
+            if isinstance(self.candidate_receipt, ProofReceipt)
+            else ProofReceipt.from_dict(self.candidate_receipt)
+        )
+        object.__setattr__(self, "candidate_receipt", receipt)
+        obligations = (
+            self.obligation_set
+            if isinstance(self.obligation_set, ImplementationObligationSet)
+            else ImplementationObligationSet.from_dict(self.obligation_set)
+        )
+        object.__setattr__(self, "obligation_set", obligations)
+        required = AssuranceLevel(self.required_assurance)
+        object.__setattr__(self, "required_assurance", required)
+
+        from .proposal_validation import ProposalValidationResult
+        from .validation_scheduler import ValidationDAGReceipt
+
+        proposal = (
+            self.proposal_validation
+            if isinstance(self.proposal_validation, ProposalValidationResult)
+            else ProposalValidationResult.from_dict(self.proposal_validation)
+        )
+        dag = (
+            self.validation_dag
+            if isinstance(self.validation_dag, ValidationDAGReceipt)
+            else ValidationDAGReceipt.from_dict(self.validation_dag)
+        )
+        object.__setattr__(self, "proposal_validation", proposal)
+        object.__setattr__(self, "validation_dag", dag)
+
+        binding = obligations.binding
+        if not proposal.accepted:
+            raise ValueError("candidate-isolation evidence requires an accepted proposal")
+        if not dag.passed or not dag.coverage_complete or dag.uncovered_impact:
+            raise ValueError("candidate-isolation evidence requires a passing complete DAG")
+        if (
+            proposal.proposal.objective_id != objective_id
+            or dag.objective_id != objective_id
+        ):
+            raise ValueError("candidate-isolation objective binding mismatch")
+        if (
+            binding.proposal_validation_receipt_id != proposal.receipt.receipt_id
+            or binding.validation_dag_receipt_id != dag.receipt_id
+            or binding.validation_policy_id != dag.policy_id
+            or binding.repository_tree_id != proposal.proposal.repository_tree_id
+            or binding.repository_tree_id != dag.repository_tree_id
+            or binding.repository_id != proposal.proposal.repository_id
+            or binding.accepted_plan_id != proposal.proposal.accepted_plan_id
+        ):
+            raise ValueError("candidate-isolation authority chain is inconsistent")
+
+        matching = tuple(
+            item
+            for item in obligations.obligations
+            if item.obligation_id == receipt.obligation_id
+        )
+        if len(matching) != 1:
+            raise ValueError(
+                "proof candidate must target exactly one fresh implementation obligation"
+            )
+        recomputed = validate_code_proof_receipt_bindings(
+            receipt,
+            obligations,
+            obligation=matching[0],
+            required_assurance=required,
+        )
+        supplied_result = self.binding_result
+        if supplied_result is not None:
+            normalized_result = (
+                supplied_result
+                if isinstance(supplied_result, CodeProofReceiptBindingResult)
+                else CodeProofReceiptBindingResult.from_dict(supplied_result)
+            )
+            if normalized_result != recomputed:
+                raise ValueError("candidate binding result does not match recomputation")
+        object.__setattr__(self, "binding_result", recomputed)
+
+        if receipt.authoritative_assurance is not AssuranceLevel.CANDIDATE:
+            raise ValueError("receipt is not a proof candidate")
+        if receipt.authoritative_verdict is ProofVerdict.PROVED or recomputed.valid:
+            raise ValueError("authoritative proof receipts are not candidate evidence")
+        if not {
+            "code_proof_not_proved",
+            "required_code_assurance_not_satisfied",
+        }.issubset(recomputed.reason_codes):
+            raise ValueError("proof candidate lacks deterministic authority rejection")
+
+        from .formal_plan_conformance import (
+            CompletionAdmissionGate,
+            evaluate_completion_admission,
+        )
+
+        recomputed_gate = evaluate_completion_admission(
+            proposal_validation=proposal,
+            validation_dag=dag,
+            required=True,
+            expected_validation_policy_id=dag.policy_id,
+            code_proof_results=(recomputed,),
+            require_code_proof=True,
+        )
+        if self.completion_admission is not None:
+            supplied_gate = (
+                self.completion_admission
+                if isinstance(self.completion_admission, CompletionAdmissionGate)
+                else CompletionAdmissionGate.from_dict(self.completion_admission)
+            )
+            if supplied_gate != recomputed_gate:
+                raise ValueError(
+                    "candidate completion gate does not match recomputation"
+                )
+        object.__setattr__(self, "completion_admission", recomputed_gate)
+        if recomputed_gate.admitted or not {
+            "code_proof_candidate_only",
+            "code_proof_not_authoritative",
+        }.issubset(recomputed_gate.reason_codes):
+            raise ValueError("proof candidate did not close completion authority")
+
+        claimed = str(self.evidence_id or "").strip()
+        object.__setattr__(self, "evidence_id", "")
+        derived = content_identity(self._identity_payload())
+        if claimed and claimed != derived:
+            raise ValueError("proof-candidate evidence identity does not match payload")
+        object.__setattr__(self, "evidence_id", derived)
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (self.requirement_id,)
+
+    @property
+    def proof_authoritative(self) -> bool:
+        return False
+
+    @property
+    def completion_authoritative(self) -> bool:
+        return False
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA,
+            "requirement_id": self.requirement_id,
+            "objective_id": self.objective_id,
+            "candidate_receipt": self.candidate_receipt.to_dict(),
+            "obligation_set": self.obligation_set.to_dict(),
+            "proposal_validation": self.proposal_validation.to_dict(),
+            "validation_dag": self.validation_dag.to_dict(),
+            "required_assurance": self.required_assurance.value,
+            "binding_result": self.binding_result.to_dict(),
+            "completion_admission": self.completion_admission.to_dict(),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._identity_payload(),
+            "evidence_id": self.evidence_id,
+            "candidate_receipt_id": self.candidate_receipt.receipt_id,
+            "candidate_authoritative_assurance": (
+                self.candidate_receipt.authoritative_assurance.value
+            ),
+            "candidate_authoritative_verdict": (
+                self.candidate_receipt.authoritative_verdict.value
+            ),
+            "implementation_binding_id": self.obligation_set.binding.binding_id,
+            "proposal_receipt_id": self.proposal_validation.receipt.receipt_id,
+            "validation_dag_receipt_id": self.validation_dag.receipt_id,
+            "proved_requirement_ids": self.proved_requirement_ids,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ProofCandidateNonAuthorityEvidence":
+        schema = str(
+            payload.get("schema")
+            or PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA
+        )
+        if schema != PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA:
+            raise ValueError(f"unsupported proof-candidate evidence schema: {schema}")
+        for name in ("proof_authoritative", "completion_authoritative"):
+            if payload.get(name) not in (None, False):
+                raise ValueError(f"proof-candidate evidence cannot claim {name}")
+        result = cls(
+            objective_id=str(payload.get("objective_id") or ""),
+            candidate_receipt=ProofReceipt.from_dict(
+                payload.get("candidate_receipt") or {}
+            ),
+            obligation_set=ImplementationObligationSet.from_dict(
+                payload.get("obligation_set") or {}
+            ),
+            proposal_validation=payload.get("proposal_validation") or {},
+            validation_dag=payload.get("validation_dag") or {},
+            required_assurance=payload.get(
+                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
+            ),
+            requirement_id=str(payload.get("requirement_id") or ""),
+            binding_result=payload.get("binding_result"),
+            completion_admission=payload.get("completion_admission"),
+            evidence_id=str(payload.get("evidence_id") or ""),
+        )
+        expected_claims = {
+            "candidate_receipt_id": result.candidate_receipt.receipt_id,
+            "candidate_authoritative_assurance": (
+                result.candidate_receipt.authoritative_assurance.value
+            ),
+            "candidate_authoritative_verdict": (
+                result.candidate_receipt.authoritative_verdict.value
+            ),
+            "implementation_binding_id": result.obligation_set.binding.binding_id,
+            "proposal_receipt_id": result.proposal_validation.receipt.receipt_id,
+            "validation_dag_receipt_id": result.validation_dag.receipt_id,
+        }
+        for name, expected in expected_claims.items():
+            if payload.get(name) not in (None, expected):
+                raise ValueError(f"proof-candidate evidence {name} is inconsistent")
+        claimed_requirements = payload.get("proved_requirement_ids")
+        if (
+            claimed_requirements is not None
+            and tuple(claimed_requirements) != result.proved_requirement_ids
+        ):
+            raise ValueError(
+                "proof-candidate evidence requirement projection is inconsistent"
+            )
+        return result
+
+
+def prove_proof_candidate_non_authority(
+    candidate_receipt: ProofReceipt | Mapping[str, Any],
+    obligation_set: ImplementationObligationSet | Mapping[str, Any],
+    *,
+    objective_id: str,
+    proposal_validation: Any,
+    validation_dag: Any,
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+) -> ProofCandidateNonAuthorityEvidence:
+    """Produce the ASI-G102 witness only after revalidating the full chain."""
+
+    return ProofCandidateNonAuthorityEvidence(
+        objective_id=objective_id,
+        candidate_receipt=(
+            candidate_receipt
+            if isinstance(candidate_receipt, ProofReceipt)
+            else ProofReceipt.from_dict(candidate_receipt)
+        ),
+        obligation_set=(
+            obligation_set
+            if isinstance(obligation_set, ImplementationObligationSet)
+            else ImplementationObligationSet.from_dict(obligation_set)
+        ),
+        proposal_validation=proposal_validation,
+        validation_dag=validation_dag,
+        required_assurance=required_assurance,
+    )
+
+
 # Concise compatibility spellings for integration callers.
 derive_implementation_obligations = derive_fresh_implementation_obligations
 compile_implementation_obligations = derive_fresh_implementation_obligations
@@ -2842,6 +3239,8 @@ __all__ = [
     "CODE_OBLIGATION_CACHE_KEY_SCHEMA",
     "CODE_OBLIGATION_REQUEST_SCHEMA",
     "CODE_PROOF_BINDING_RESULT_SCHEMA",
+    "PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA",
+    "PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID",
     "CandidateChangeKind",
     "CandidateDiffEntry",
     "CandidateFileDiff",
@@ -2864,6 +3263,7 @@ __all__ = [
     "ImplementationResultBinding",
     "ImplementationResultEvidence",
     "CodeProofReceiptBindingResult",
+    "ProofCandidateNonAuthorityEvidence",
     "PROOF_SCOPE_SCHEMA",
     "PROOF_SCOPE_SET_SCHEMA",
     "ProofScopeCompilationStats",
@@ -2890,6 +3290,7 @@ __all__ = [
     "materialize_code_proof_obligation",
     "obligation_cache_identity",
     "parse_unified_diff",
+    "prove_proof_candidate_non_authority",
     "validate_code_proof_receipt_binding",
     "validate_code_proof_receipt_bindings",
 ]
