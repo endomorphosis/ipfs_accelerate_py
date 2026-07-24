@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
     Formula,
     FrameLogicProjection,
     FrameProjectionConfig,
+    LOGIC_VOCABULARY_VERSION,
     ReviewedPredicate,
     TDFOLProperty,
     TDFOLVocabulary,
@@ -23,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
     constant,
     evaluate_formula,
     project_frame_logic,
+    subgoal_satisfied,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     Actor,
@@ -45,12 +47,14 @@ from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     PlanEvent,
     PlanTask,
     Precondition,
+    RefinementMode,
     Subgoal,
     TemporalConstraint,
     TemporalConstraintKind,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     AssuranceLevel,
+    content_identity,
 )
 
 
@@ -72,6 +76,7 @@ def _formulas():
 
 def _plan(*, task_dependencies=()):
     ready, done, goal_done = _formulas()
+    subgoal_done = TDFOLVocabulary.subgoal_satisfaction("subgoal:contract", 4)
     requirement = EvidenceRequirement(
         requirement_id="evidence:tests",
         kind=EvidenceRequirementKind.TEST,
@@ -96,7 +101,7 @@ def _plan(*, task_dependencies=()):
     )
     return FormalWorkPlan(
         vocabulary_profile_id="supervisor-reviewed-dcec-tdfol",
-        vocabulary_version=1,
+        vocabulary_version=LOGIC_VOCABULARY_VERSION,
         source_ids=("source:taskboard", "source:objective"),
         repository_tree_id="tree:base",
         trace_bound=4,
@@ -124,7 +129,7 @@ def _plan(*, task_dependencies=()):
             Subgoal(
                 subgoal_id="subgoal:contract",
                 goal_id="goal:formal-plan",
-                satisfaction_formula_id=done.formula_id,
+                satisfaction_formula_id=subgoal_done.formula_id,
                 evidence_requirement_ids=("evidence:tests",),
             ),
         ),
@@ -183,6 +188,13 @@ def _plan(*, task_dependencies=()):
             ),
         ),
         evidence_requirements=(requirement,),
+        formulas=(
+            ready,
+            done,
+            goal_done,
+            subgoal_done,
+            TDFOLVocabulary.deadline("task:implement", 4),
+        ),
     )
 
 
@@ -207,6 +219,7 @@ def test_formal_work_plan_records_every_required_collection_and_round_trips():
             "norms",
             "temporal_constraints",
             "evidence_requirements",
+            "formulas",
         )
     ).issubset(payload)
 
@@ -215,6 +228,7 @@ def test_plan_identity_is_deterministic_for_set_semantic_collections():
     plan = _plan()
     payload = plan.to_dict()
     payload["actors"] = list(reversed(payload["actors"]))
+    payload["formulas"] = list(reversed(payload["formulas"]))
     payload["source_ids"] = list(reversed(payload["source_ids"]))
 
     reordered = FormalWorkPlan.from_dict(payload)
@@ -237,6 +251,199 @@ def test_plan_rejects_unknown_references_cycles_and_out_of_bound_events():
     with pytest.raises(ContractValidationError, match="unknown id"):
         FormalWorkPlan.from_dict(payload)
 
+
+def test_subgoal_satisfaction_is_typed_versioned_and_deterministic():
+    atom_formula = subgoal_satisfied("subgoal:contract")
+    bounded = TDFOLVocabulary.subgoal_satisfaction("subgoal:contract", 4)
+
+    assert atom_formula.predicate is ReviewedPredicate.SUBGOAL_SATISFIED
+    assert atom_formula.terms[0].sort is TermSort.SUBGOAL
+    assert atom_formula.profile_version == LOGIC_VOCABULARY_VERSION
+    assert bounded.operands == (atom_formula,)
+    assert Formula.from_dict(atom_formula.to_dict()).formula_id == atom_formula.formula_id
+    assert subgoal_satisfied("subgoal:contract").formula_id == atom_formula.formula_id
+
+    fact = TraceFact(
+        ReviewedPredicate.SUBGOAL_SATISFIED,
+        (constant(TermSort.SUBGOAL, "subgoal:contract"),),
+    )
+    trace = FiniteTrace(
+        source_plan_id="plan:typed-subgoal",
+        bound=1,
+        steps=(TraceStep(0), TraceStep(1, facts=(fact,))),
+    )
+    assert evaluate_formula(
+        TDFOLVocabulary.subgoal_satisfaction("subgoal:contract", 1), trace
+    )
+
+
+def test_revision_one_formula_identity_is_preserved_and_cannot_use_new_predicate():
+    payload = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+        "vocabulary_version": 1,
+        "profile_id": "supervisor-reviewed",
+        "profile_version": 1,
+        "operator": "atom",
+        "predicate": "goal_satisfied",
+        "terms": [
+            {
+                "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+                "vocabulary_version": 1,
+                "sort": "goal",
+                "kind": "constant",
+                "value": "goal:legacy",
+            }
+        ],
+        "operands": [],
+        "lower_bound": None,
+        "upper_bound": None,
+    }
+    restored = Formula.from_dict(payload)
+    assert restored.to_dict() == payload
+    assert restored.formula_id == content_identity(payload)
+
+    payload["predicate"] = "subgoal_satisfied"
+    payload["terms"][0]["sort"] = "subgoal"
+    with pytest.raises(ContractValidationError, match="requires reviewed vocabulary"):
+        Formula.from_dict(payload)
+
+
+def test_subgoal_refinement_records_parent_and_safe_default_without_root_mutation():
+    plan = _plan()
+    root_formula_id = plan.goals[0].satisfaction_formula_id
+    child_formula = TDFOLVocabulary.subgoal_satisfaction("subgoal:tests", 4)
+    payload = plan.to_dict()
+    payload["subgoals"].append(
+        Subgoal(
+            subgoal_id="subgoal:tests",
+            goal_id="goal:formal-plan",
+            parent_id="subgoal:contract",
+            refinement_mode=RefinementMode.EQUIVALENT,
+            satisfaction_formula_id=child_formula.formula_id,
+            depends_on=("subgoal:contract",),
+            evidence_requirement_ids=("evidence:tests",),
+        ).to_dict()
+    )
+    payload["formulas"].append(child_formula.to_dict())
+
+    refined = FormalWorkPlan.from_dict(payload)
+    direct = next(item for item in refined.subgoals if item.subgoal_id == "subgoal:contract")
+    child = next(item for item in refined.subgoals if item.subgoal_id == "subgoal:tests")
+    assert direct.parent_id == direct.goal_id
+    assert direct.refinement_mode is RefinementMode.SUFFICIENT
+    assert child.parent_id == direct.subgoal_id
+    assert child.refinement_mode is RefinementMode.EQUIVALENT
+    assert refined.goals[0].satisfaction_formula_id == root_formula_id
+    assert FormalWorkPlan.from_dict(refined.to_dict()) == refined
+
+
+def test_legacy_plan_without_subgoals_preserves_shape_and_identity():
+    payload = _plan().to_dict()
+    payload["subgoals"] = []
+    payload["tasks"][0]["subgoal_id"] = ""
+    payload.pop("formulas")
+    payload["vocabulary_version"] = 1
+
+    legacy = FormalWorkPlan.from_dict(payload)
+    assert legacy.subgoals == ()
+    assert legacy.formulas == ()
+    assert "formulas" not in legacy.to_dict()
+    assert FormalWorkPlan.from_dict(legacy.to_dict()).plan_id == legacy.plan_id
+
+    typed = _plan().to_dict()
+    typed["vocabulary_version"] = 1
+    with pytest.raises(ContractValidationError, match="typed subgoals require"):
+        FormalWorkPlan.from_dict(typed)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    (
+        ("operator", "model_invented_operator", "operator must be one of"),
+        ("predicate", "model_invented_predicate", "predicate must be one of"),
+    ),
+)
+def test_plan_rejects_unreviewed_formula_operators_and_predicates(
+    field, value, match
+):
+    payload = _plan().to_dict()
+    formula = next(item for item in payload["formulas"] if item["operator"] == "atom")
+    formula[field] = value
+    with pytest.raises(ContractValidationError, match=match):
+        FormalWorkPlan.from_dict(payload)
+
+
+def test_plan_rejects_unknown_sorts_and_formula_references():
+    payload = _plan().to_dict()
+    formula = next(
+        item
+        for item in payload["formulas"]
+        if item["operator"] == "atom" and item["terms"]
+    )
+    formula["terms"][0]["sort"] = "model_invented_sort"
+    with pytest.raises(ContractValidationError, match="sort must be one of"):
+        FormalWorkPlan.from_dict(payload)
+
+    payload = _plan().to_dict()
+    payload["subgoals"][0]["satisfaction_formula_id"] = "formula:unreviewed"
+    with pytest.raises(ContractValidationError, match="unknown satisfaction formula"):
+        FormalWorkPlan.from_dict(payload)
+
+
+def test_plan_rejects_wrong_subgoal_formula_self_links_and_graph_cycles():
+    payload = _plan().to_dict()
+    payload["subgoals"][0]["satisfaction_formula_id"] = _formulas()[1].formula_id
+    with pytest.raises(ContractValidationError, match="subgoal_satisfied"):
+        FormalWorkPlan.from_dict(payload)
+
+    with pytest.raises(ContractValidationError, match="own parent"):
+        Subgoal(
+            subgoal_id="subgoal:self",
+            goal_id="goal:formal-plan",
+            parent_id="subgoal:self",
+            satisfaction_formula_id=subgoal_satisfied("subgoal:self").formula_id,
+        )
+    with pytest.raises(ContractValidationError, match="depend on itself"):
+        Subgoal(
+            subgoal_id="subgoal:self",
+            goal_id="goal:formal-plan",
+            satisfaction_formula_id=subgoal_satisfied("subgoal:self").formula_id,
+            depends_on=("subgoal:self",),
+        )
+
+    child_formula = subgoal_satisfied("subgoal:child")
+    payload = _plan().to_dict()
+    payload["subgoals"][0]["parent_id"] = "subgoal:child"
+    payload["subgoals"].append(
+        Subgoal(
+            subgoal_id="subgoal:child",
+            goal_id="goal:formal-plan",
+            parent_id="subgoal:contract",
+            satisfaction_formula_id=child_formula.formula_id,
+        ).to_dict()
+    )
+    payload["formulas"].append(child_formula.to_dict())
+    with pytest.raises(ContractValidationError, match="acyclic"):
+        FormalWorkPlan.from_dict(payload)
+
+
+def test_plan_rejects_unknown_and_cross_root_subgoal_parents():
+    payload = _plan().to_dict()
+    payload["subgoals"][0]["parent_id"] = "subgoal:missing"
+    with pytest.raises(ContractValidationError, match="unknown id"):
+        FormalWorkPlan.from_dict(payload)
+
+    payload = _plan().to_dict()
+    payload["goals"].append(
+        Goal(
+            goal_id="goal:other",
+            owner_actor_id="actor:supervisor",
+            satisfaction_formula_id=_formulas()[2].formula_id,
+        ).to_dict()
+    )
+    payload["subgoals"][0]["parent_id"] = "goal:other"
+    with pytest.raises(ContractValidationError, match="does not match goal_id"):
+        FormalWorkPlan.from_dict(payload)
 
 def test_plan_rejects_conflicting_effects_for_one_transition():
     payload = _plan().to_dict()

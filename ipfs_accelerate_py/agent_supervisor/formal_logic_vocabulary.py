@@ -29,10 +29,21 @@ from .formal_verification_contracts import (
 )
 
 
-LOGIC_VOCABULARY_VERSION = 1
+LEGACY_LOGIC_VOCABULARY_VERSION = 1
+LOGIC_VOCABULARY_VERSION = 2
 DCEC_VOCABULARY_VERSION = 1
-TDFOL_VOCABULARY_VERSION = 1
+LEGACY_TDFOL_VOCABULARY_VERSION = 1
+TDFOL_VOCABULARY_VERSION = 2
 FRAME_LOGIC_PROJECTION_VERSION = 1
+
+SUPPORTED_LOGIC_VOCABULARY_VERSIONS = (
+    LEGACY_LOGIC_VOCABULARY_VERSION,
+    LOGIC_VOCABULARY_VERSION,
+)
+SUPPORTED_TDFOL_VOCABULARY_VERSIONS = (
+    LEGACY_TDFOL_VOCABULARY_VERSION,
+    TDFOL_VOCABULARY_VERSION,
+)
 
 FORMULA_SCHEMA = "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1"
 LOGIC_TERM_SCHEMA = "ipfs_accelerate_py/agent-supervisor/logic-term@1"
@@ -80,6 +91,7 @@ class ReviewedPredicate(str, Enum):
     DEPENDENCY_SATISFIED = "dependency_satisfied"
     DEADLINE_MET = "deadline_met"
     GOAL_SATISFIED = "goal_satisfied"
+    SUBGOAL_SATISFIED = "subgoal_satisfied"
     EVIDENCE_AVAILABLE = "evidence_available"
     AUTHORIZED = "authorized"
     SAFE_STATE = "safe_state"
@@ -135,6 +147,7 @@ _PREDICATE_SIGNATURES: Dict[ReviewedPredicate, Tuple[TermSort, ...]] = {
     ReviewedPredicate.DEPENDENCY_SATISFIED: (TermSort.TASK, TermSort.TASK),
     ReviewedPredicate.DEADLINE_MET: (TermSort.TASK, TermSort.TIME),
     ReviewedPredicate.GOAL_SATISFIED: (TermSort.GOAL,),
+    ReviewedPredicate.SUBGOAL_SATISFIED: (TermSort.SUBGOAL,),
     ReviewedPredicate.EVIDENCE_AVAILABLE: (TermSort.EVIDENCE,),
     ReviewedPredicate.AUTHORIZED: (TermSort.ACTOR, TermSort.TASK),
     ReviewedPredicate.SAFE_STATE: (TermSort.SYMBOL,),
@@ -166,10 +179,21 @@ class LogicTerm(CanonicalContract):
     sort: TermSort
     value: Any
     kind: TermKind = TermKind.CONSTANT
+    vocabulary_version: int = LOGIC_VOCABULARY_VERSION
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "sort", _enum(self.sort, TermSort, field_name="sort"))
         object.__setattr__(self, "kind", _enum(self.kind, TermKind, field_name="kind"))
+        object.__setattr__(
+            self,
+            "vocabulary_version",
+            _positive(self.vocabulary_version, "vocabulary_version"),
+        )
+        if self.vocabulary_version not in SUPPORTED_LOGIC_VOCABULARY_VERSIONS:
+            raise ContractValidationError(
+                "unsupported logic-term vocabulary version %s"
+                % self.vocabulary_version
+            )
         value = _canonical_value(self.value)
         if self.kind is TermKind.VARIABLE:
             value = _text(value, field_name="value", required=True)
@@ -189,7 +213,7 @@ class LogicTerm(CanonicalContract):
 
     def _payload(self) -> Dict[str, Any]:
         return {
-            "vocabulary_version": LOGIC_VOCABULARY_VERSION,
+            "vocabulary_version": self.vocabulary_version,
             "sort": self.sort,
             "kind": self.kind,
             "value": self.value,
@@ -202,6 +226,9 @@ class LogicTerm(CanonicalContract):
             sort=payload.get("sort", TermSort.SYMBOL),
             kind=payload.get("kind", TermKind.CONSTANT),
             value=payload.get("value"),
+            vocabulary_version=payload.get(
+                "vocabulary_version", LEGACY_LOGIC_VOCABULARY_VERSION
+            ),
         )
 
 
@@ -238,6 +265,7 @@ class Formula(CanonicalContract):
     upper_bound: Optional[int] = None
     profile_id: str = "supervisor-reviewed"
     profile_version: int = LOGIC_VOCABULARY_VERSION
+    vocabulary_version: int = LOGIC_VOCABULARY_VERSION
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -253,6 +281,16 @@ class Formula(CanonicalContract):
         object.__setattr__(
             self, "profile_version", _positive(self.profile_version, "profile_version")
         )
+        object.__setattr__(
+            self,
+            "vocabulary_version",
+            _positive(self.vocabulary_version, "vocabulary_version"),
+        )
+        if self.vocabulary_version not in SUPPORTED_LOGIC_VOCABULARY_VERSIONS:
+            raise ContractValidationError(
+                "unsupported formula vocabulary version %s"
+                % self.vocabulary_version
+            )
         terms = tuple(_term(item) for item in self.terms)
         operands: List[Formula] = []
         for item in self.operands:
@@ -294,6 +332,14 @@ class Formula(CanonicalContract):
                     "atom formulas require a reviewed predicate"
                 )
             predicate = _enum(self.predicate, ReviewedPredicate, field_name="predicate")
+            if (
+                predicate is ReviewedPredicate.SUBGOAL_SATISFIED
+                and self.vocabulary_version < LOGIC_VOCABULARY_VERSION
+            ):
+                raise ContractValidationError(
+                    "subgoal_satisfied requires reviewed vocabulary version %s"
+                    % LOGIC_VOCABULARY_VERSION
+                )
             object.__setattr__(self, "predicate", predicate)
             signature = _PREDICATE_SIGNATURES[predicate]
             actual = tuple(item.sort for item in self.terms)
@@ -401,7 +447,7 @@ class Formula(CanonicalContract):
 
     def _payload(self) -> Dict[str, Any]:
         return {
-            "vocabulary_version": LOGIC_VOCABULARY_VERSION,
+            "vocabulary_version": self.vocabulary_version,
             "profile_id": self.profile_id,
             "profile_version": self.profile_version,
             "operator": self.operator,
@@ -423,7 +469,15 @@ class Formula(CanonicalContract):
             lower_bound=payload.get("lower_bound"),
             upper_bound=payload.get("upper_bound"),
             profile_id=payload.get("profile_id", "supervisor-reviewed"),
-            profile_version=payload.get("profile_version", LOGIC_VOCABULARY_VERSION),
+            profile_version=payload.get(
+                "profile_version",
+                payload.get(
+                    "vocabulary_version", LEGACY_LOGIC_VOCABULARY_VERSION
+                ),
+            ),
+            vocabulary_version=payload.get(
+                "vocabulary_version", LEGACY_LOGIC_VOCABULARY_VERSION
+            ),
         )
         claimed = payload.get("formula_id") or payload.get("content_id")
         if claimed and claimed != result.formula_id:
@@ -437,6 +491,25 @@ def atom(predicate: ReviewedPredicate, *terms: LogicTerm) -> Formula:
     return Formula(
         operator=FormulaOperator.ATOM, predicate=predicate, terms=tuple(terms)
     )
+
+
+def subgoal_satisfied(subgoal_id: str) -> Formula:
+    """Construct the reviewed, typed satisfaction atom for one subgoal.
+
+    This accepts an identifier, not prose.  The resulting term is statically
+    sorted as ``subgoal`` and the closed predicate signature is validated by
+    :class:`Formula`.
+    """
+
+    return atom(
+        ReviewedPredicate.SUBGOAL_SATISFIED,
+        constant(TermSort.SUBGOAL, subgoal_id),
+    )
+
+
+# A descriptive compatibility spelling for callers that distinguish an atom
+# from the bounded TDFOL satisfaction property below.
+subgoal_satisfaction_atom = subgoal_satisfied
 
 
 def negate(formula: Formula) -> Formula:
@@ -609,6 +682,19 @@ class TDFOLVocabulary:
             profile_version=cls.version,
         )
 
+    @classmethod
+    def subgoal_satisfaction(cls, subgoal_id: str, upper_bound: int) -> Formula:
+        """Build a bounded satisfaction property for a typed subgoal."""
+
+        return Formula(
+            operator=FormulaOperator.GOAL_SATISFACTION,
+            operands=(subgoal_satisfied(subgoal_id),),
+            lower_bound=0,
+            upper_bound=upper_bound,
+            profile_id=cls.profile_id,
+            profile_version=cls.version,
+        )
+
 
 TDFOL = TDFOLVocabulary
 TDFOL_VOCABULARY = TDFOLVocabulary()
@@ -622,9 +708,28 @@ class TraceFact(CanonicalContract):
 
     predicate: ReviewedPredicate
     terms: Tuple[LogicTerm, ...]
+    vocabulary_version: int = TDFOL_VOCABULARY_VERSION
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "vocabulary_version",
+            _positive(self.vocabulary_version, "vocabulary_version"),
+        )
+        if self.vocabulary_version not in SUPPORTED_TDFOL_VOCABULARY_VERSIONS:
+            raise ContractValidationError(
+                "unsupported trace-fact vocabulary version %s"
+                % self.vocabulary_version
+            )
         formula = atom(self.predicate, *tuple(_term(item) for item in self.terms))
+        if (
+            formula.predicate is ReviewedPredicate.SUBGOAL_SATISFIED
+            and self.vocabulary_version < TDFOL_VOCABULARY_VERSION
+        ):
+            raise ContractValidationError(
+                "subgoal_satisfied trace facts require TDFOL vocabulary version %s"
+                % TDFOL_VOCABULARY_VERSION
+            )
         object.__setattr__(self, "predicate", formula.predicate)
         object.__setattr__(self, "terms", formula.terms)
 
@@ -634,7 +739,7 @@ class TraceFact(CanonicalContract):
 
     def _payload(self) -> Dict[str, Any]:
         return {
-            "vocabulary_version": TDFOL_VOCABULARY_VERSION,
+            "vocabulary_version": self.vocabulary_version,
             "predicate": self.predicate,
             "terms": self.terms,
         }
@@ -645,6 +750,9 @@ class TraceFact(CanonicalContract):
         return cls(
             predicate=payload.get("predicate", ReviewedPredicate.SAFE_STATE),
             terms=tuple(payload.get("terms") or ()),
+            vocabulary_version=payload.get(
+                "vocabulary_version", LEGACY_TDFOL_VOCABULARY_VERSION
+            ),
         )
 
 
@@ -655,8 +763,19 @@ class TraceStep(CanonicalContract):
     index: int
     facts: Tuple[TraceFact, ...] = ()
     evidence_ids: Tuple[str, ...] = ()
+    vocabulary_version: int = TDFOL_VOCABULARY_VERSION
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "vocabulary_version",
+            _positive(self.vocabulary_version, "vocabulary_version"),
+        )
+        if self.vocabulary_version not in SUPPORTED_TDFOL_VOCABULARY_VERSIONS:
+            raise ContractValidationError(
+                "unsupported trace-step vocabulary version %s"
+                % self.vocabulary_version
+            )
         object.__setattr__(
             self, "index", _positive(self.index, "index", allow_zero=True)
         )
@@ -675,7 +794,7 @@ class TraceStep(CanonicalContract):
 
     def _payload(self) -> Dict[str, Any]:
         return {
-            "vocabulary_version": TDFOL_VOCABULARY_VERSION,
+            "vocabulary_version": self.vocabulary_version,
             "index": self.index,
             "facts": self.facts,
             "evidence_ids": self.evidence_ids,
@@ -688,6 +807,9 @@ class TraceStep(CanonicalContract):
             index=payload.get("index", -1),
             facts=tuple(payload.get("facts") or ()),
             evidence_ids=tuple(payload.get("evidence_ids") or ()),
+            vocabulary_version=payload.get(
+                "vocabulary_version", LEGACY_TDFOL_VOCABULARY_VERSION
+            ),
         )
 
 
@@ -712,8 +834,19 @@ class FiniteTrace(CanonicalContract):
     steps: Tuple[TraceStep, ...]
     bound: int
     source_plan_id: str
+    vocabulary_version: int = TDFOL_VOCABULARY_VERSION
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "vocabulary_version",
+            _positive(self.vocabulary_version, "vocabulary_version"),
+        )
+        if self.vocabulary_version not in SUPPORTED_TDFOL_VOCABULARY_VERSIONS:
+            raise ContractValidationError(
+                "unsupported finite-trace vocabulary version %s"
+                % self.vocabulary_version
+            )
         object.__setattr__(
             self, "bound", _positive(self.bound, "bound", allow_zero=True)
         )
@@ -744,7 +877,7 @@ class FiniteTrace(CanonicalContract):
 
     def _payload(self) -> Dict[str, Any]:
         return {
-            "vocabulary_version": TDFOL_VOCABULARY_VERSION,
+            "vocabulary_version": self.vocabulary_version,
             "source_plan_id": self.source_plan_id,
             "bound": self.bound,
             "steps": self.steps,
@@ -757,14 +890,28 @@ class FiniteTrace(CanonicalContract):
             source_plan_id=payload.get("source_plan_id", ""),
             bound=payload.get("bound", -1),
             steps=tuple(payload.get("steps") or ()),
+            vocabulary_version=payload.get(
+                "vocabulary_version", LEGACY_TDFOL_VOCABULARY_VERSION
+            ),
         )
 
 
 def _fact_at(formula: Formula, trace: FiniteTrace, index: int) -> bool:
     if formula.operator is not FormulaOperator.ATOM:
         return evaluate_formula(formula, trace, index=index)
-    wanted = TraceFact(predicate=formula.predicate, terms=formula.terms).fact_id
-    return any(item.fact_id == wanted for item in trace.steps[index].facts)
+    # Vocabulary revision participates in record identity, but not in the
+    # extensional truth of the same reviewed predicate over the same terms.
+    return any(
+        item.predicate is formula.predicate
+        and len(item.terms) == len(formula.terms)
+        and all(
+            left.sort is right.sort
+            and left.kind is right.kind
+            and left.value == right.value
+            for left, right in zip(item.terms, formula.terms)
+        )
+        for item in trace.steps[index].facts
+    )
 
 
 def evaluate_formula(formula: Formula, trace: FiniteTrace, *, index: int = 0) -> bool:
@@ -1287,6 +1434,10 @@ __all__ = [
     "FRAME_LOGIC_PROJECTION_VERSION",
     "LOGIC_TERM_SCHEMA",
     "LOGIC_VOCABULARY_VERSION",
+    "LEGACY_LOGIC_VOCABULARY_VERSION",
+    "LEGACY_TDFOL_VOCABULARY_VERSION",
+    "SUPPORTED_LOGIC_VOCABULARY_VERSIONS",
+    "SUPPORTED_TDFOL_VOCABULARY_VERSIONS",
     "TDFOL_VOCABULARY_VERSION",
     "AccessibilityRelation",
     "DCEC",
@@ -1331,5 +1482,7 @@ __all__ = [
     "implies",
     "negate",
     "project_frame_logic",
+    "subgoal_satisfaction_atom",
+    "subgoal_satisfied",
     "variable",
 ]
