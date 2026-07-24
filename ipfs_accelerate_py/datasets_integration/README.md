@@ -469,7 +469,7 @@ fs = FilesystemHandler(ipfs_api='/ip4/127.0.0.1/tcp/5001')
 
 ## Contributing
 
-See main [CONTRIBUTING.md](../../../CONTRIBUTING.md) for general guidelines.
+See main [CONTRIBUTING.md](../../CONTRIBUTING.md) for general guidelines.
 
 For datasets integration:
 1. Maintain backward compatibility
