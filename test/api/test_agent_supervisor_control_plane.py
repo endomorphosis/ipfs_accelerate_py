@@ -1156,6 +1156,7 @@ def test_stale_fence_and_expired_authorization_fail_before_backend(
     assert stale.status is OperationStatus.CONFLICT
     assert stale.error and stale.error.code is ErrorCode.STALE_LEASE
     assert calls == 0
+    assert service.mutation_runtime_state().dispatch_count == 0
 
     expired_service = SupervisorControlService(
         repository_allowlist=(repo_root,),
@@ -1169,6 +1170,7 @@ def test_stale_fence_and_expired_authorization_fail_before_backend(
     assert expired.status is OperationStatus.DENIED
     assert expired.error and expired.error.code is ErrorCode.UNAUTHORIZED
     assert calls == 0
+    assert expired_service.mutation_runtime_state().dispatch_count == 0
 
     denied_service = SupervisorControlService(
         repository_allowlist=(repo_root,),
