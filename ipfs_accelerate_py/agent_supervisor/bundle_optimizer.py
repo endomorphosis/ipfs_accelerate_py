@@ -105,7 +105,12 @@ class BundleOptimizationPolicy:
     validation_weight: int = 4
     merge_locality_weight: int = 3
     goal_weight: int = 2
+    evidence_weight: int = 4
     resource_weight: int = 1
+    provider_batch_weight: int = 4
+    packet_weight: int = 6
+    require_resource_compatibility: bool = True
+    require_provider_compatibility: bool = True
 
     def __post_init__(self) -> None:
         for name in (
@@ -115,7 +120,10 @@ class BundleOptimizationPolicy:
             "validation_weight",
             "merge_locality_weight",
             "goal_weight",
+            "evidence_weight",
             "resource_weight",
+            "provider_batch_weight",
+            "packet_weight",
         ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -134,12 +142,15 @@ class _CanonicalTask:
     task_id: str
     canonical_task_key: str
     canonical_task_cid: str
+    semantic_identity: str
     goal_id: str
+    dependency_depth: int
     goal_packet_key: str
     goal_packet_role: str
     merge_family: str
     merge_fate: str
     context_paths: tuple[str, ...]
+    evidence_keys: tuple[str, ...]
     validation_commands: tuple[str, ...]
     outputs: tuple[str, ...]
     predicted_paths: tuple[str, ...]
@@ -147,7 +158,10 @@ class _CanonicalTask:
     dependencies: tuple[str, ...]
     conflict_keys: tuple[str, ...]
     resource_class: str
+    provider_batch_key: str
     estimated_context_tokens: int
+    work_item_count: int
+    status: str
     completion_task_bindings: tuple[str, ...]
     payload: Mapping[str, Any] = field(compare=False, repr=False)
 
@@ -172,6 +186,19 @@ class _CanonicalTask:
             raise ValueError("estimated_context_tokens must be an integer") from exc
         if context_tokens < 0:
             raise ValueError("estimated_context_tokens must be non-negative")
+        try:
+            dependency_depth = int(
+                _value(payload, "dependency depth", "graph depth", default=0) or 0
+            )
+            work_item_count = int(_value(payload, "work item count", default=1) or 1)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "dependency_depth and work_item_count must be integers"
+            ) from exc
+        if dependency_depth < 0 or work_item_count < 1:
+            raise ValueError(
+                "dependency_depth must be non-negative and work_item_count positive"
+            )
         outputs = _paths(_value(payload, "outputs", "files"))
         predicted_paths = _paths(
             _value(payload, "predicted paths", "predicted files")
@@ -191,13 +218,31 @@ class _CanonicalTask:
             task_id=task_id,
             canonical_task_key=task_key,
             canonical_task_cid=task_cid,
+            semantic_identity=str(
+                _value(
+                    payload,
+                    "canonical semantic identity",
+                    "semantic identity",
+                )
+                or ""
+            ).strip(),
             goal_id=str(_value(payload, "goal id") or "").strip(),
+            dependency_depth=dependency_depth,
             goal_packet_key=str(_value(payload, "goal packet key", "goal packet") or "").strip(),
             goal_packet_role=str(_value(payload, "goal packet role") or "").strip(),
             merge_family=str(_value(payload, "merge family") or "").strip(),
             merge_fate=str(_value(payload, "merge fate") or "").strip(),
             context_paths=_paths(
                 _value(payload, "context paths", "context keys", "context files")
+            ),
+            evidence_keys=_strings(
+                _value(
+                    payload,
+                    "evidence subset",
+                    "evidence keys",
+                    "missing evidence",
+                    "provenance cids",
+                )
             ),
             validation_commands=_strings(
                 _value(payload, "validation commands", "validation")
@@ -208,11 +253,20 @@ class _CanonicalTask:
                 _value(payload, "predicted symbols", "ast symbols")
             ),
             dependencies=_strings(
-                _value(payload, "dependency task cids", "dependencies", "depends on")
+                _value(
+                    payload,
+                    "dependency task cids",
+                    "dependencies",
+                    "depends on",
+                    "graph parents",
+                )
             ),
             conflict_keys=_strings(_value(payload, "conflicts", "conflict keys")),
             resource_class=str(_value(payload, "resource class") or "").strip(),
+            provider_batch_key=_provider_batch_key(payload),
             estimated_context_tokens=context_tokens,
+            work_item_count=work_item_count,
+            status=str(_value(payload, "status") or "").strip().casefold(),
             completion_task_bindings=_strings(
                 _value(payload, "completion task bindings")
             ),
@@ -224,6 +278,66 @@ class _CanonicalTask:
         return self.goal_packet_role.casefold() == "packet_aggregate" or str(
             _value(self.payload, "candidate kind", "merge role") or ""
         ).casefold() in {"goal_packet_aggregate", "packet_aggregate"}
+
+    @property
+    def is_completed(self) -> bool:
+        return self.status in {
+            "complete",
+            "completed",
+            "done",
+            "merged",
+            "success",
+            "succeeded",
+        }
+
+
+def _provider_batch_key(payload: Mapping[str, Any]) -> str:
+    """Return a complete provider compatibility key, or an explicit key.
+
+    Provider batching is safe only when every compatibility dimension matches.
+    A partial provider description is still useful as a separation boundary,
+    so missing dimensions are represented explicitly instead of being dropped.
+    """
+
+    explicit = _value(
+        payload,
+        "provider batch key",
+        "provider compatibility key",
+        "batch compatibility digest",
+    )
+    if explicit not in (None, "", [], ()):
+        if isinstance(explicit, Mapping):
+            return hashlib.sha256(canonical_json_bytes(dict(explicit))).hexdigest()
+        return str(explicit).strip()
+    provider_id = str(
+        _value(payload, "provider id", "llm provider", "provider") or ""
+    ).strip()
+    if not provider_id:
+        return ""
+    material = {
+        "provider_id": provider_id,
+        "route": str(_value(payload, "provider route", "route") or ""),
+        "model": str(_value(payload, "model id", "model") or ""),
+        "operation": str(
+            _value(payload, "provider operation", "operation id", "operation")
+            or ""
+        ),
+        "context_limit": str(
+            _value(payload, "provider context limit", "context limit") or ""
+        ),
+        "policy_digest": str(
+            _value(payload, "provider policy digest", "policy digest") or ""
+        ),
+        "generation_digest": str(
+            _value(
+                payload,
+                "provider generation digest",
+                "generation digest",
+            )
+            or ""
+        ),
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
 
 
 def _canonical_tasks(values: Any) -> tuple[_CanonicalTask, ...]:
@@ -270,11 +384,18 @@ def _dependency_waves(
     tasks: Sequence[_CanonicalTask],
 ) -> tuple[dict[str, int], dict[str, set[str]]]:
     dependencies = _resolve_dependencies(tasks)
-    return _waves_from_dependencies(dependencies), dependencies
+    minimum_waves = {
+        task.canonical_task_cid: task.dependency_depth for task in tasks
+    }
+    return _waves_from_dependencies(
+        dependencies, minimum_waves=minimum_waves
+    ), dependencies
 
 
 def _waves_from_dependencies(
     dependencies: Mapping[str, set[str]],
+    *,
+    minimum_waves: Mapping[str, int] | None = None,
 ) -> dict[str, int]:
     """Return longest-path waves for one finite acyclic prerequisite graph."""
 
@@ -289,8 +410,9 @@ def _waves_from_dependencies(
                 "bundle optimization requires an acyclic canonical dependency graph"
             )
         for cid in ready:
-            waves[cid] = (
-                max((waves[parent] + 1 for parent in dependencies[cid]), default=0)
+            waves[cid] = max(
+                int((minimum_waves or {}).get(cid, 0)),
+                max((waves[parent] + 1 for parent in dependencies[cid]), default=0),
             )
             remaining.remove(cid)
     return waves
@@ -332,6 +454,7 @@ def _affinity(
     policy: BundleOptimizationPolicy,
 ) -> int:
     context = len(set(left.context_paths) & set(right.context_paths))
+    evidence = len(set(left.evidence_keys) & set(right.evidence_keys))
     validation = len(
         set(left.validation_commands) & set(right.validation_commands)
     )
@@ -344,13 +467,101 @@ def _affinity(
     resource = int(
         bool(left.resource_class) and left.resource_class == right.resource_class
     )
+    provider = int(
+        bool(left.provider_batch_key)
+        and left.provider_batch_key == right.provider_batch_key
+    )
+    packet = int(
+        bool(left.goal_packet_key)
+        and left.goal_packet_key == right.goal_packet_key
+        and (
+            left.is_packet_aggregate
+            or right.is_packet_aggregate
+            or left.canonical_task_cid in right.completion_task_bindings
+            or right.canonical_task_cid in left.completion_task_bindings
+        )
+    )
     return (
         policy.context_weight * context
+        + policy.evidence_weight * evidence
         + policy.validation_weight * validation
         + policy.merge_locality_weight * merge
         + policy.goal_weight * goal
         + policy.resource_weight * resource
+        + policy.provider_batch_weight * provider
+        + policy.packet_weight * packet
     )
+
+
+def _compatible(
+    left: _CanonicalTask,
+    right: _CanonicalTask,
+    policy: BundleOptimizationPolicy,
+) -> bool:
+    if (
+        policy.require_resource_compatibility
+        and left.resource_class != right.resource_class
+        and (left.resource_class or right.resource_class)
+    ):
+        return False
+    if (
+        policy.require_provider_compatibility
+        and left.provider_batch_key != right.provider_batch_key
+        and (left.provider_batch_key or right.provider_batch_key)
+    ):
+        return False
+    return True
+
+
+def _conflict_color_order(
+    task_cids: Iterable[str],
+    conflict_pairs: set[frozenset[str]],
+) -> dict[str, int]:
+    """Color one independent dependency wave without destroying graph width."""
+
+    nodes = set(task_cids)
+    adjacency = {
+        cid: {
+            peer
+            for pair in conflict_pairs
+            if cid in pair
+            for peer in pair
+            if peer != cid and peer in nodes
+        }
+        for cid in nodes
+    }
+    colors: dict[str, int] = {}
+    # Highest-degree-first prevents the common A-B-C path from becoming the
+    # artificial chain A->B->C.  The CID is only a deterministic final tie.
+    for cid in sorted(nodes, key=lambda item: (-len(adjacency[item]), item)):
+        unavailable = {colors[peer] for peer in adjacency[cid] if peer in colors}
+        color = 0
+        while color in unavailable:
+            color += 1
+        colors[cid] = color
+    return colors
+
+
+@dataclass(frozen=True)
+class PacketAggregateProjection:
+    """Canonical packet aggregate and the exact siblings it covers."""
+
+    aggregate_task_cid: str
+    aggregate_canonical_task_key: str
+    goal_packet_key: str
+    covered_sibling_task_cids: tuple[str, ...]
+    covered_sibling_canonical_task_keys: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "aggregate_task_cid": self.aggregate_task_cid,
+            "aggregate_canonical_task_key": self.aggregate_canonical_task_key,
+            "goal_packet_key": self.goal_packet_key,
+            "covered_sibling_task_cids": list(self.covered_sibling_task_cids),
+            "covered_sibling_canonical_task_keys": list(
+                self.covered_sibling_canonical_task_keys
+            ),
+        }
 
 
 @dataclass(frozen=True)
@@ -362,10 +573,18 @@ class OptimizedTaskBundle:
     canonical_task_keys: tuple[str, ...]
     display_task_ids: tuple[str, ...]
     execution_wave: int
+    goal_ids: tuple[str, ...]
     validation_commands: tuple[str, ...]
+    shared_validation_commands: tuple[str, ...]
     context_paths: tuple[str, ...]
     shared_context_paths: tuple[str, ...]
+    evidence_keys: tuple[str, ...]
+    shared_evidence_keys: tuple[str, ...]
     resource_classes: tuple[str, ...]
+    provider_batch_keys: tuple[str, ...]
+    merge_localities: tuple[str, ...]
+    packet_aggregate_task_cids: tuple[str, ...]
+    covered_sibling_task_cids: tuple[str, ...]
     dependency_task_cids: tuple[str, ...]
     conflict_weight: int
     estimated_context_tokens: int
@@ -376,14 +595,40 @@ class OptimizedTaskBundle:
             "task_cids",
             "canonical_task_keys",
             "display_task_ids",
+            "goal_ids",
             "validation_commands",
+            "shared_validation_commands",
             "context_paths",
             "shared_context_paths",
+            "evidence_keys",
+            "shared_evidence_keys",
             "resource_classes",
+            "provider_batch_keys",
+            "merge_localities",
+            "packet_aggregate_task_cids",
+            "covered_sibling_task_cids",
             "dependency_task_cids",
         ):
             result[name] = list(result[name])
         return result
+
+
+@dataclass(frozen=True)
+class BundlePlanComparison:
+    """Paired quality/cost metrics for current and optimized planners."""
+
+    current_metrics: Mapping[str, int]
+    optimized_metrics: Mapping[str, int]
+    deltas: Mapping[str, int]
+    improvements: Mapping[str, int]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "current_planner": dict(sorted(self.current_metrics.items())),
+            "optimized_planner": dict(sorted(self.optimized_metrics.items())),
+            "deltas": dict(sorted(self.deltas.items())),
+            "improvements": dict(sorted(self.improvements.items())),
+        }
 
 
 @dataclass(frozen=True)
@@ -393,6 +638,8 @@ class BundleOptimizationResult:
     task_count: int
     execution_width_by_wave: Mapping[int, int]
     metrics: Mapping[str, int]
+    packet_aggregates: tuple[PacketAggregateProjection, ...]
+    comparison: BundlePlanComparison
     conflict_graph: Mapping[str, Any] = field(compare=False, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
@@ -407,58 +654,308 @@ class BundleOptimizationResult:
                 for key, value in sorted(self.execution_width_by_wave.items())
             },
             "metrics": dict(sorted(self.metrics.items())),
+            "packet_aggregates": [
+                aggregate.to_dict() for aggregate in self.packet_aggregates
+            ],
+            "comparison": self.comparison.to_dict(),
             "conflict_graph": dict(self.conflict_graph),
         }
+
+
+_LOWER_IS_BETTER_METRICS: Final = frozenset(
+    {
+        "model_call_count",
+        "model_calls_per_work_item_millionths",
+        "critical_path_wave_count",
+        "merge_conflict_rate_millionths",
+        "blocking_conflict_count",
+        "internal_blocking_conflict_count",
+    }
+)
+
+
+def compare_bundle_plan_metrics(
+    current_metrics: Mapping[str, int],
+    optimized_metrics: Mapping[str, int],
+) -> BundlePlanComparison:
+    """Compare paired planner metrics using explicit metric direction."""
+
+    keys = sorted(set(current_metrics) | set(optimized_metrics))
+    current = {key: int(current_metrics.get(key, 0)) for key in keys}
+    optimized = {key: int(optimized_metrics.get(key, 0)) for key in keys}
+    deltas = {key: optimized[key] - current[key] for key in keys}
+    improvements = {
+        key: (
+            current[key] - optimized[key]
+            if key in _LOWER_IS_BETTER_METRICS
+            else optimized[key] - current[key]
+        )
+        for key in keys
+    }
+    return BundlePlanComparison(
+        current_metrics=current,
+        optimized_metrics=optimized,
+        deltas=deltas,
+        improvements=improvements,
+    )
+
+
+def _packet_aggregate_projections(
+    tasks: Sequence[_CanonicalTask],
+) -> tuple[PacketAggregateProjection, ...]:
+    if not any(task.is_packet_aggregate for task in tasks):
+        return ()
+    by_cid = {task.canonical_task_cid: task for task in tasks}
+    alias_owners: dict[str, set[str]] = defaultdict(set)
+    for task in tasks:
+        for alias in (
+            task.canonical_task_cid,
+            task.canonical_task_key,
+            task.semantic_identity,
+        ):
+            if alias:
+                alias_owners[alias].add(task.canonical_task_cid)
+    ambiguous = sorted(
+        alias for alias, owners in alias_owners.items() if len(owners) != 1
+    )
+    if ambiguous:
+        raise ValueError(
+            "packet aggregate identity aliases must be globally unique: "
+            + ", ".join(ambiguous)
+        )
+    aliases = {
+        alias: next(iter(owners)) for alias, owners in alias_owners.items()
+    }
+    projections: list[PacketAggregateProjection] = []
+    for aggregate in tasks:
+        if not aggregate.is_packet_aggregate:
+            continue
+        unresolved = sorted(
+            binding
+            for binding in aggregate.completion_task_bindings
+            if binding not in aliases
+        )
+        if unresolved:
+            raise ValueError(
+                "packet aggregate completion bindings reference unknown "
+                f"canonical tasks: {', '.join(unresolved)}"
+            )
+        covered_cids = tuple(
+            sorted(
+                {
+                    aliases[binding]
+                    for binding in aggregate.completion_task_bindings
+                    if aliases[binding] != aggregate.canonical_task_cid
+                }
+            )
+        )
+        if any(
+            not aggregate.goal_packet_key
+            or by_cid[cid].goal_packet_key != aggregate.goal_packet_key
+            for cid in covered_cids
+        ):
+            raise ValueError(
+                "packet aggregate completion bindings must remain in one "
+                "explicit goal_packet_key"
+            )
+        projections.append(
+            PacketAggregateProjection(
+                aggregate_task_cid=aggregate.canonical_task_cid,
+                aggregate_canonical_task_key=aggregate.canonical_task_key,
+                goal_packet_key=aggregate.goal_packet_key,
+                covered_sibling_task_cids=covered_cids,
+                covered_sibling_canonical_task_keys=tuple(
+                    by_cid[cid].canonical_task_key for cid in covered_cids
+                ),
+            )
+        )
+    return tuple(
+        sorted(projections, key=lambda item: item.aggregate_task_cid)
+    )
+
+
+def _plan_metrics(
+    *,
+    tasks: Sequence[_CanonicalTask],
+    groups: Sequence[tuple[int, Sequence[_CanonicalTask]]],
+    conflict_pairs: set[frozenset[str]],
+) -> dict[str, int]:
+    raw_context_references = sum(len(task.context_paths) for task in tasks)
+    materialized_context_references = sum(
+        len({path for task in group for path in task.context_paths})
+        for _, group in groups
+    )
+    raw_validation_references = sum(
+        len(task.validation_commands) for task in tasks
+    )
+    materialized_validation_references = sum(
+        len(
+            {
+                command
+                for task in group
+                for command in task.validation_commands
+            }
+        )
+        for _, group in groups
+    )
+    task_wave = {
+        task.canonical_task_cid: wave for wave, group in groups for task in group
+    }
+    concurrent_conflicts = sum(
+        1
+        for pair in conflict_pairs
+        if len({task_wave[cid] for cid in pair if cid in task_wave}) == 1
+    )
+    completed_bundles = sum(
+        1 for _, group in groups if group and all(task.is_completed for task in group)
+    )
+    task_aliases = {
+        alias: task.canonical_task_cid
+        for task in tasks
+        for alias in (
+            task.canonical_task_cid,
+            task.canonical_task_key,
+            task.semantic_identity,
+        )
+        if alias
+    }
+    covered_sibling_cids = {
+        task_aliases[binding]
+        for task in tasks
+        if task.is_packet_aggregate
+        for binding in task.completion_task_bindings
+        if binding in task_aliases
+        and task_aliases[binding] != task.canonical_task_cid
+    }
+    accepted_work_items = sum(
+        task.work_item_count
+        for task in tasks
+        if task.canonical_task_cid not in covered_sibling_cids
+    )
+    bundle_count = len(groups)
+    return {
+        "accepted_task_count": len(tasks),
+        "accepted_work_item_count": accepted_work_items,
+        "covered_sibling_task_count": len(covered_sibling_cids),
+        "model_call_count": bundle_count,
+        "model_calls_per_work_item_millionths": (
+            bundle_count * 1_000_000 // accepted_work_items
+            if accepted_work_items
+            else 0
+        ),
+        "context_reuse_millionths": (
+            (raw_context_references - materialized_context_references)
+            * 1_000_000
+            // raw_context_references
+            if raw_context_references
+            else 0
+        ),
+        "validation_reuse_millionths": (
+            (raw_validation_references - materialized_validation_references)
+            * 1_000_000
+            // raw_validation_references
+            if raw_validation_references
+            else 0
+        ),
+        "critical_path_wave_count": max(task_wave.values(), default=-1) + 1,
+        "blocking_conflict_count": len(conflict_pairs),
+        "internal_blocking_conflict_count": sum(
+            1
+            for _, group in groups
+            for pair in conflict_pairs
+            if pair.issubset(
+                {task.canonical_task_cid for task in group}
+            )
+        ),
+        "merge_conflict_rate_millionths": (
+            concurrent_conflicts * 1_000_000 // len(conflict_pairs)
+            if conflict_pairs
+            else 0
+        ),
+        "completed_bundle_count": completed_bundles,
+        "bundle_completion_millionths": (
+            completed_bundles * 1_000_000 // bundle_count
+            if bundle_count
+            else 0
+        ),
+    }
 
 
 def optimize_task_bundles(
     admitted_tasks: Any,
     *,
     policy: BundleOptimizationPolicy | None = None,
+    current_planner_bundles: Sequence[Any] | None = None,
 ) -> BundleOptimizationResult:
-    """Optimize canonical admitted tasks without changing task admission."""
+    """Optimize canonical admitted tasks without changing task admission.
+
+    ``current_planner_bundles`` optionally supplies the exact baseline grouping
+    as mappings/objects with ``task_cids`` and ``execution_wave`` fields (or as
+    sequences of canonical task CIDs).  When omitted, the legacy one-task-call
+    plan is used.
+    """
 
     selected = policy or BundleOptimizationPolicy()
     tasks = _canonical_tasks(admitted_tasks)
     if not tasks:
+        metrics = _plan_metrics(tasks=(), groups=(), conflict_pairs=set())
+        comparison = compare_bundle_plan_metrics(metrics, metrics)
         return BundleOptimizationResult(
             policy_id=selected.policy_id,
             bundles=(),
             task_count=0,
             execution_width_by_wave={},
-            metrics={
-                "accepted_work_item_count": 0,
-                "model_call_count": 0,
-                "model_calls_per_work_item_millionths": 0,
-                "context_reuse_millionths": 0,
-                "validation_reuse_millionths": 0,
-                "critical_path_wave_count": 0,
-                "blocking_conflict_count": 0,
-                "internal_blocking_conflict_count": 0,
-            },
+            metrics=metrics,
+            packet_aggregates=(),
+            comparison=comparison,
             conflict_graph={},
         )
+    packet_aggregates = _packet_aggregate_projections(tasks)
     waves, dependencies = _dependency_waves(tasks)
-    graph = materialize_task_conflict_graph(
-        [task.payload for task in tasks],
-        max_lanes=None,
-    )
+    graph_tasks: list[dict[str, Any]] = []
+    for task in tasks:
+        graph_task = dict(task.payload)
+        if task.conflict_keys:
+            graph_task["interfaces"] = [
+                *_strings(_value(graph_task, "interfaces")),
+                *[
+                    f"bundle-conflict-key:{key}"
+                    for key in task.conflict_keys
+                ],
+            ]
+        graph_tasks.append(graph_task)
+    graph = materialize_task_conflict_graph(graph_tasks, max_lanes=None)
     conflict_pairs, edge_by_pair = _conflict_pairs(graph, tasks)
 
-    # Turn each blocking conflict into a stable one-way prerequisite.  Ordering
-    # by the original dependency wave prevents a conflict edge from pointing
-    # backwards through the DAG; the CID tie-break is deterministic within one
-    # independent wave.  Recomputing longest paths preserves every dependency
-    # while serializing only the conflicting pairs.
+    # Turn each blocking conflict into a stable one-way prerequisite.  Conflicts
+    # across dependency depths point forward.  Conflicts within one independent
+    # wave use a deterministic graph coloring, so path-shaped conflict graphs
+    # retain the width of their independent endpoints instead of becoming a
+    # needless lexical chain.
     serialized_dependencies = {
         cid: set(prerequisites) for cid, prerequisites in dependencies.items()
     }
-    for pair in conflict_pairs:
-        left, right = sorted(
-            pair, key=lambda cid: (waves[cid], cid)
+    colors_by_cid: dict[str, int] = {}
+    for wave in sorted(set(waves.values())):
+        wave_cids = [cid for cid, value in waves.items() if value == wave]
+        colors_by_cid.update(
+            _conflict_color_order(wave_cids, conflict_pairs)
         )
+    for pair in conflict_pairs:
+        left, right = sorted(pair)
+        if waves[left] != waves[right]:
+            left, right = sorted(pair, key=lambda cid: (waves[cid], cid))
+        else:
+            left, right = sorted(
+                pair, key=lambda cid: (colors_by_cid[cid], cid)
+            )
         serialized_dependencies[right].add(left)
-    effective_wave = _waves_from_dependencies(serialized_dependencies)
+    effective_wave = _waves_from_dependencies(
+        serialized_dependencies,
+        minimum_waves={
+            task.canonical_task_cid: task.dependency_depth for task in tasks
+        },
+    )
     by_wave: dict[int, list[_CanonicalTask]] = defaultdict(list)
     for task in tasks:
         by_wave[effective_wave[task.canonical_task_cid]].append(task)
@@ -469,11 +966,33 @@ def optimize_task_bundles(
             task.canonical_task_cid: task for task in wave_tasks
         }
         while remaining:
-            seed_cid = min(remaining)
+            def seed_rank(item: _CanonicalTask) -> tuple[int, int, str]:
+                compatible_scores = [
+                    _affinity(item, peer, selected)
+                    for peer in remaining.values()
+                    if peer.canonical_task_cid != item.canonical_task_cid
+                    and _compatible(item, peer, selected)
+                    and frozenset(
+                        (item.canonical_task_cid, peer.canonical_task_cid)
+                    )
+                    not in conflict_pairs
+                ]
+                return (
+                    -max(compatible_scores, default=0),
+                    -sum(score > 0 for score in compatible_scores),
+                    item.canonical_task_cid,
+                )
+
+            seed_cid = min(remaining.values(), key=seed_rank).canonical_task_cid
             group = [remaining.pop(seed_cid)]
             while remaining and len(group) < selected.max_tasks_per_bundle:
                 ranked: list[tuple[int, str, _CanonicalTask]] = []
                 for candidate in remaining.values():
+                    if any(
+                        not _compatible(candidate, member, selected)
+                        for member in group
+                    ):
+                        continue
                     if not selected.allow_internal_conflicts and any(
                         frozenset(
                             (candidate.canonical_task_cid, member.canonical_task_cid)
@@ -512,11 +1031,46 @@ def optimize_task_bundles(
         }
         ids_by_cid = {item.canonical_task_cid: item.task_id for item in group}
         contexts = tuple(sorted({path for item in group for path in item.context_paths}))
-        context_sets = [set(item.context_paths) for item in group if item.context_paths]
+        context_sets = [set(item.context_paths) for item in group]
         shared_contexts = (
             tuple(sorted(context_sets[0].intersection(*context_sets[1:])))
-            if context_sets
+            if len(context_sets) > 1
             else ()
+        )
+        evidence = tuple(
+            sorted({key for item in group for key in item.evidence_keys})
+        )
+        evidence_sets = [set(item.evidence_keys) for item in group]
+        shared_evidence = (
+            tuple(sorted(evidence_sets[0].intersection(*evidence_sets[1:])))
+            if len(evidence_sets) > 1
+            else ()
+        )
+        validation_sets = [
+            set(item.validation_commands)
+            for item in group
+        ]
+        shared_validations = (
+            tuple(
+                sorted(
+                    validation_sets[0].intersection(*validation_sets[1:])
+                )
+            )
+            if len(validation_sets) > 1
+            else ()
+        )
+        group_aggregate_cids = tuple(
+            item.canonical_task_cid for item in group if item.is_packet_aggregate
+        )
+        group_covered_cids = tuple(
+            sorted(
+                {
+                    covered
+                    for projection in packet_aggregates
+                    if projection.aggregate_task_cid in group_aggregate_cids
+                    for covered in projection.covered_sibling_task_cids
+                }
+            )
         )
         incident_edges = {
             pair: edge
@@ -539,6 +1093,9 @@ def optimize_task_bundles(
                 canonical_task_keys=tuple(keys_by_cid[cid] for cid in task_cids),
                 display_task_ids=tuple(ids_by_cid[cid] for cid in task_cids),
                 execution_wave=wave,
+                goal_ids=tuple(
+                    sorted({item.goal_id for item in group if item.goal_id})
+                ),
                 validation_commands=tuple(
                     sorted(
                         {
@@ -548,8 +1105,11 @@ def optimize_task_bundles(
                         }
                     )
                 ),
+                shared_validation_commands=shared_validations,
                 context_paths=contexts,
                 shared_context_paths=shared_contexts,
+                evidence_keys=evidence,
+                shared_evidence_keys=shared_evidence,
                 resource_classes=tuple(
                     sorted(
                         {
@@ -559,6 +1119,26 @@ def optimize_task_bundles(
                         }
                     )
                 ),
+                provider_batch_keys=tuple(
+                    sorted(
+                        {
+                            item.provider_batch_key
+                            for item in group
+                            if item.provider_batch_key
+                        }
+                    )
+                ),
+                merge_localities=tuple(
+                    sorted(
+                        {
+                            item.merge_family or item.merge_fate
+                            for item in group
+                            if item.merge_family or item.merge_fate
+                        }
+                    )
+                ),
+                packet_aggregate_task_cids=group_aggregate_cids,
+                covered_sibling_task_cids=group_covered_cids,
                 dependency_task_cids=tuple(
                     sorted(
                         {
@@ -580,52 +1160,89 @@ def optimize_task_bundles(
     bundles.sort(key=lambda item: (item.execution_wave, item.bundle_cid))
     width: dict[int, int] = defaultdict(int)
     for bundle in bundles:
-        width[bundle.execution_wave] += len(bundle.task_cids)
-    raw_context_references = sum(len(task.context_paths) for task in tasks)
-    unique_context_references = len(
-        {path for task in tasks for path in task.context_paths}
+        width[bundle.execution_wave] += 1
+    optimized_groups = [
+        (
+            bundle.execution_wave,
+            [task for task in tasks if task.canonical_task_cid in bundle.task_cids],
+        )
+        for bundle in bundles
+    ]
+    if current_planner_bundles is None:
+        current_groups = [
+            (waves[task.canonical_task_cid], [task]) for task in tasks
+        ]
+    else:
+        by_cid = {task.canonical_task_cid: task for task in tasks}
+        current_groups = []
+        seen_current: set[str] = set()
+        for raw_bundle in current_planner_bundles:
+            if isinstance(raw_bundle, Mapping):
+                raw_cids = raw_bundle.get("task_cids") or ()
+                wave = int(raw_bundle.get("execution_wave") or 0)
+            elif hasattr(raw_bundle, "task_cids"):
+                raw_cids = getattr(raw_bundle, "task_cids")
+                wave = int(getattr(raw_bundle, "execution_wave", 0) or 0)
+            else:
+                raw_cids = raw_bundle
+                wave = 0
+            if isinstance(raw_cids, str):
+                raw_cids = (raw_cids,)
+            cids = tuple(str(cid) for cid in raw_cids)
+            unknown = sorted(set(cids) - set(by_cid))
+            duplicate = sorted(set(cids) & seen_current)
+            if unknown or duplicate or not cids:
+                raise ValueError(
+                    "current planner bundles must be a non-empty exact "
+                    "partition of canonical task CIDs"
+                )
+            seen_current.update(cids)
+            current_groups.append((wave, [by_cid[cid] for cid in cids]))
+        if seen_current != set(by_cid):
+            raise ValueError(
+                "current planner bundles must cover every admitted canonical task"
+            )
+    metrics = _plan_metrics(
+        tasks=tasks,
+        groups=optimized_groups,
+        conflict_pairs=conflict_pairs,
     )
-    raw_validation_references = sum(
-        len(task.validation_commands) for task in tasks
+    current_metrics = _plan_metrics(
+        tasks=tasks,
+        groups=current_groups,
+        conflict_pairs=conflict_pairs,
     )
-    unique_validation_references = len(
-        {command for task in tasks for command in task.validation_commands}
-    )
-    metrics = {
-        "accepted_work_item_count": len(tasks),
-        "model_call_count": len(bundles),
-        "model_calls_per_work_item_millionths": (
-            len(bundles) * 1_000_000 // len(tasks)
-        ),
-        "context_reuse_millionths": (
-            (raw_context_references - unique_context_references) * 1_000_000
-            // raw_context_references
-            if raw_context_references
-            else 0
-        ),
-        "validation_reuse_millionths": (
-            (raw_validation_references - unique_validation_references)
-            * 1_000_000
-            // raw_validation_references
-            if raw_validation_references
-            else 0
-        ),
-        "critical_path_wave_count": max(width, default=-1) + 1,
-        "blocking_conflict_count": len(conflict_pairs),
-        "internal_blocking_conflict_count": sum(
-            1
-            for bundle in bundles
-            for pair in conflict_pairs
-            if pair.issubset(bundle.task_cids)
-        ),
+    comparison = compare_bundle_plan_metrics(current_metrics, metrics)
+    graph_payload = graph.to_dict()
+    existing_pairs = {
+        frozenset(
+            (
+                str(edge.get("left_task_cid") or ""),
+                str(edge.get("right_task_cid") or ""),
+            )
+        )
+        for edge in graph_payload.get("edges", [])
+        if isinstance(edge, Mapping)
     }
+    graph_payload["edges"] = [
+        *graph_payload.get("edges", []),
+        *[
+            edge.to_dict()
+            for pair, edge in sorted(
+                edge_by_pair.items(), key=lambda item: sorted(item[0])
+            )
+            if pair not in existing_pairs
+        ],
+    ]
     return BundleOptimizationResult(
         policy_id=selected.policy_id,
         bundles=tuple(bundles),
         task_count=len(tasks),
         execution_width_by_wave=dict(width),
         metrics=metrics,
-        conflict_graph=graph.to_dict(),
+        packet_aggregates=packet_aggregates,
+        comparison=comparison,
+        conflict_graph=graph_payload,
     )
 
 
@@ -901,9 +1518,12 @@ __all__ = [
     "PACKET_COMPLETION_EVIDENCE_SCHEMA",
     "BundleOptimizationPolicy",
     "BundleOptimizationResult",
+    "BundlePlanComparison",
     "OptimizedTaskBundle",
+    "PacketAggregateProjection",
     "PacketCompletionBindingEvidence",
     "PacketCompletionResult",
+    "compare_bundle_plan_metrics",
     "optimize_task_bundles",
     "propagate_goal_packet_completion",
 ]

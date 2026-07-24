@@ -15,6 +15,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
     TodoIndexRecord,
     build_execution_packet,
 )
+from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+    optimize_bundle_payloads,
+)
+from ipfs_accelerate_py.agent_supervisor.task_identity import (
+    canonical_bundle_identity,
+)
 
 
 def _task(task_id: str, **overrides: object) -> dict[str, object]:
@@ -442,3 +448,385 @@ def test_vector_execution_packet_projects_exact_canonical_completion_binding():
     assert "cid-unbound" not in packet["completion_binding"][
         "bound_sibling_task_cids"
     ]
+
+
+def test_optimizer_uses_evidence_provider_and_resource_compatibility():
+    shared_evidence = _task(
+        "EVIDENCE-A",
+        context_paths=[],
+        validation_commands=[],
+        evidence_subset=["proof/shared"],
+        provider_id="provider-a",
+        provider_route="chat",
+        model_id="model-a",
+    )
+    compatible = _task(
+        "EVIDENCE-B",
+        outputs=["src/evidence-b.py"],
+        predicted_paths=["src/evidence-b.py"],
+        predicted_symbols=["EvidenceB.run"],
+        context_paths=[],
+        validation_commands=[],
+        evidence_subset=["proof/shared"],
+        provider_id="provider-a",
+        provider_route="chat",
+        model_id="model-a",
+    )
+    other_provider = _task(
+        "EVIDENCE-C",
+        outputs=["src/evidence-c.py"],
+        predicted_paths=["src/evidence-c.py"],
+        predicted_symbols=["EvidenceC.run"],
+        context_paths=[],
+        validation_commands=[],
+        evidence_subset=["proof/shared"],
+        provider_id="provider-b",
+        provider_route="chat",
+        model_id="model-a",
+    )
+    other_resource = _task(
+        "EVIDENCE-D",
+        outputs=["src/evidence-d.py"],
+        predicted_paths=["src/evidence-d.py"],
+        predicted_symbols=["EvidenceD.run"],
+        context_paths=[],
+        validation_commands=[],
+        evidence_subset=["proof/shared"],
+        provider_id="provider-a",
+        provider_route="chat",
+        model_id="model-a",
+        resource_class="gpu-large",
+    )
+
+    result = optimize_task_bundles(
+        (other_resource, compatible, other_provider, shared_evidence),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=4),
+    )
+    containing = {
+        cid: bundle for bundle in result.bundles for cid in bundle.task_cids
+    }
+
+    shared_bundle = containing[shared_evidence["canonical_task_cid"]]
+    assert set(shared_bundle.task_cids) == {
+        shared_evidence["canonical_task_cid"],
+        compatible["canonical_task_cid"],
+    }
+    assert shared_bundle.shared_evidence_keys == ("proof/shared",)
+    assert containing[other_provider["canonical_task_cid"]] != shared_bundle
+    assert containing[other_resource["canonical_task_cid"]] != shared_bundle
+    assert len(shared_bundle.provider_batch_keys) == 1
+
+
+def test_conflict_coloring_preserves_independent_width_for_path_graph():
+    left = _task(
+        "PATH-A",
+        context_paths=[],
+        validation_commands=[],
+        conflicts=["edge-ab"],
+    )
+    middle = _task(
+        "PATH-B",
+        outputs=["src/path-b.py"],
+        predicted_paths=["src/path-b.py"],
+        predicted_symbols=["PathB.run"],
+        context_paths=[],
+        validation_commands=[],
+        conflicts=["edge-ab", "edge-bc"],
+    )
+    right = _task(
+        "PATH-C",
+        outputs=["src/path-c.py"],
+        predicted_paths=["src/path-c.py"],
+        predicted_symbols=["PathC.run"],
+        context_paths=[],
+        validation_commands=[],
+        conflicts=["edge-bc"],
+    )
+
+    result = optimize_task_bundles(
+        (right, left, middle),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
+    )
+    wave_by_cid = {
+        bundle.task_cids[0]: bundle.execution_wave for bundle in result.bundles
+    }
+
+    assert result.metrics["critical_path_wave_count"] == 2
+    assert wave_by_cid[left["canonical_task_cid"]] == wave_by_cid[
+        right["canonical_task_cid"]
+    ]
+    assert wave_by_cid[middle["canonical_task_cid"]] != wave_by_cid[
+        left["canonical_task_cid"]
+    ]
+    assert max(result.execution_width_by_wave.values()) == 2
+    assert result.metrics["merge_conflict_rate_millionths"] == 0
+    assert (
+        result.comparison.current_metrics["merge_conflict_rate_millionths"]
+        == 1_000_000
+    )
+
+
+def test_optimizer_serializes_global_ast_conflicts_across_disjoint_files():
+    first = _task(
+        "AST-A",
+        outputs=["src/ast_a.py"],
+        predicted_paths=["src/ast_a.py"],
+        global_ast_symbols=["SharedProtocol.dispatch"],
+    )
+    second = _task(
+        "AST-B",
+        outputs=["src/ast_b.py"],
+        predicted_paths=["src/ast_b.py"],
+        global_ast_symbols=["SharedProtocol.dispatch"],
+    )
+
+    result = optimize_task_bundles(
+        (first, second),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=2),
+    )
+    waves = {
+        task_cid: bundle.execution_wave
+        for bundle in result.bundles
+        for task_cid in bundle.task_cids
+    }
+
+    assert len(result.bundles) == 2
+    assert len(set(waves.values())) == 2
+    assert result.metrics["blocking_conflict_count"] == 1
+    assert result.conflict_graph["edges"][0]["overlaps"]["ast_symbols"] == [
+        "SharedProtocol.dispatch"
+    ]
+
+
+def test_plan_metrics_measure_real_bundle_reuse_and_compare_current_planner():
+    first = _task("METRIC-A", status="completed", work_item_count=2)
+    second = _task(
+        "METRIC-B",
+        status="completed",
+        work_item_count=3,
+        outputs=["src/metric-b.py"],
+        predicted_paths=["src/metric-b.py"],
+        predicted_symbols=["MetricB.run"],
+    )
+    singleton = optimize_task_bundles(
+        (first, second),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
+    )
+    grouped = optimize_task_bundles(
+        (first, second),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=2),
+    )
+
+    assert singleton.metrics["context_reuse_millionths"] == 0
+    assert singleton.metrics["validation_reuse_millionths"] == 0
+    assert grouped.metrics["context_reuse_millionths"] == 500_000
+    assert grouped.metrics["validation_reuse_millionths"] == 500_000
+    assert grouped.metrics["accepted_work_item_count"] == 5
+    assert grouped.metrics["model_calls_per_work_item_millionths"] == 200_000
+    assert grouped.metrics["bundle_completion_millionths"] == 1_000_000
+    assert grouped.comparison.improvements["model_call_count"] == 1
+
+
+def test_optimizer_models_packet_aggregate_and_exact_covered_siblings():
+    aggregate = _task(
+        "AGGREGATE",
+        goal_packet_key="packet/shared",
+        goal_packet_role="packet_aggregate",
+        candidate_kind="goal_packet_aggregate",
+        completion_task_bindings=["cid-covered"],
+    )
+    covered = _task(
+        "COVERED",
+        canonical_task_cid="cid-covered",
+        canonical_task_key="task/v1/covered",
+        goal_packet_key="packet/shared",
+        goal_packet_role="packet_member",
+        outputs=["src/covered.py"],
+        predicted_paths=["src/covered.py"],
+    )
+    same_packet_unbound = _task(
+        "UNBOUND-PACKET",
+        goal_packet_key="packet/shared",
+        goal_packet_role="packet_member",
+        outputs=["src/unbound-packet.py"],
+        predicted_paths=["src/unbound-packet.py"],
+    )
+
+    result = optimize_task_bundles(
+        (same_packet_unbound, aggregate, covered),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=3),
+    )
+
+    assert len(result.packet_aggregates) == 1
+    projection = result.packet_aggregates[0]
+    assert projection.aggregate_task_cid == aggregate["canonical_task_cid"]
+    assert projection.covered_sibling_task_cids == ("cid-covered",)
+    assert same_packet_unbound["canonical_task_cid"] not in (
+        projection.covered_sibling_task_cids
+    )
+    aggregate_bundle = next(
+        bundle
+        for bundle in result.bundles
+        if aggregate["canonical_task_cid"] in bundle.task_cids
+    )
+    assert aggregate_bundle.packet_aggregate_task_cids == (
+        aggregate["canonical_task_cid"],
+    )
+    assert aggregate_bundle.covered_sibling_task_cids == ("cid-covered",)
+
+
+def test_vector_packet_keeps_exact_binding_outside_bounded_active_slice():
+    common = {
+        "priority": "P1",
+        "track": "bundling",
+        "source_line": 1,
+        "bundle_key": "objective/bundling",
+        "goal_packet_key": "packet/large",
+        "merge_family": "packet/large",
+    }
+    siblings = [
+        TodoIndexRecord(
+            task_id=f"MEMBER-{index}",
+            title=f"Member {index}",
+            status="completed" if index == 6 else "todo",
+            canonical_task_key=f"task/v1/member-{index}",
+            task_cid=f"cid-member-{index}",
+            semantic_identity=f"semantic-member-{index}",
+            goal_packet_role="packet_member",
+            **common,
+        )
+        for index in range(7)
+    ]
+    aggregate = TodoIndexRecord(
+        task_id="LARGE-PACKET",
+        title="Large packet",
+        status="todo",
+        canonical_task_key="task/v1/large-packet",
+        task_cid="cid-large-packet",
+        semantic_identity="semantic-large-packet",
+        goal_packet_role="packet_aggregate",
+        candidate_kind="goal_packet_aggregate",
+        completion_task_bindings=[
+            sibling.semantic_identity for sibling in siblings
+        ],
+        **common,
+    )
+
+    packet = build_execution_packet(
+        context={"context_key": "context/large"},
+        records=(*siblings, aggregate),
+        max_tasks=3,
+    )
+
+    assert packet is not None
+    assert len(packet["active_task_ids"]) == 3
+    assert set(packet["completion_binding"]["bound_sibling_task_cids"]) == {
+        sibling.task_cid for sibling in siblings
+    }
+    assert "cid-member-6" in packet["completion_binding"][
+        "bound_sibling_task_cids"
+    ]
+
+
+def test_vector_packet_marks_conflicting_editors_for_serial_execution():
+    common = {
+        "status": "todo",
+        "priority": "P1",
+        "track": "bundling",
+        "source_line": 1,
+        "bundle_key": "objective/conflicting",
+        "outputs": ["src/shared.py"],
+    }
+    first = TodoIndexRecord(
+        task_id="VECTOR-A",
+        title="First editor",
+        canonical_task_key="task/v1/vector-a",
+        task_cid="cid-vector-a",
+        **common,
+    )
+    second = TodoIndexRecord(
+        task_id="VECTOR-B",
+        title="Second editor",
+        canonical_task_key="task/v1/vector-b",
+        task_cid="cid-vector-b",
+        **common,
+    )
+
+    packet = build_execution_packet(
+        context={"context_key": "context/conflicting", "merge_ready": True},
+        records=(first, second),
+    )
+
+    assert packet is not None
+    assert packet["merge_ready"] is False
+    assert packet["serial_execution_required"] is True
+    assert packet["blocking_conflict_count"] == 1
+    assert set(packet["conflict_lane_by_task_cid"]) == {
+        "cid-vector-a",
+        "cid-vector-b",
+    }
+
+
+def test_bundle_supervisor_projects_optimizer_slices_and_comparison():
+    first = _task("SUPERVISOR-A")
+    second = _task(
+        "SUPERVISOR-B",
+        outputs=["src/supervisor-b.py"],
+        predicted_paths=["src/supervisor-b.py"],
+        predicted_symbols=["SupervisorB.run"],
+    )
+    payloads = optimize_bundle_payloads(
+        [
+            {
+                "bundle_key": "objective/shared",
+                "parallel_lane": "shared",
+                "tasks": [first, second],
+            }
+        ],
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=2),
+    )
+
+    assert len(payloads) == 1
+    optimization = payloads[0]["bundle_optimization"]
+    assert optimization["applied"] is True
+    assert set(payloads[0]["execution_slice_task_cids"]) == {
+        first["canonical_task_cid"],
+        second["canonical_task_cid"],
+    }
+    assert optimization["metrics"]["model_call_count"] == 1
+    assert (
+        optimization["comparison"]["current_planner"]["model_call_count"] == 1
+    )
+
+
+def test_split_optimizer_slices_receive_distinct_execution_identities():
+    first = _task("SLICE-A", provider_id="provider-a")
+    second = _task(
+        "SLICE-B",
+        provider_id="provider-b",
+        outputs=["src/slice-b.py"],
+        predicted_paths=["src/slice-b.py"],
+    )
+    payloads = optimize_bundle_payloads(
+        [
+            {
+                "bundle_key": "objective/sliced",
+                "parallel_lane": "sliced",
+                "tasks": [first, second],
+                "profile_g": {
+                    "task_cid": "legacy-shared-task-cid",
+                    "task_spec_cid": "legacy-shared-task-spec-cid",
+                },
+            }
+        ]
+    )
+
+    assert len(payloads) == 2
+    assert len({payload["bundle_key"] for payload in payloads}) == 2
+    assert all("profile_g" not in payload for payload in payloads)
+    assert all(payload["source_profile_g_ref"] for payload in payloads)
+    identities = {
+        canonical_bundle_identity(payload).canonical_task_cid
+        for payload in payloads
+    }
+    assert len(identities) == 2
