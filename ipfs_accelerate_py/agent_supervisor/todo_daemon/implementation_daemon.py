@@ -2202,6 +2202,51 @@ class PortalImplementationDaemon:
             completion_reason="single_task",
         )
 
+    def _completion_receipts_for_task_ids(
+        self,
+        task_ids: Sequence[str],
+    ) -> list[dict[str, Any]]:
+        """Return canonical durable-receipt identities for completed members.
+
+        A packet aggregate changes several board records in one terminal
+        operation.  Preserve each member's canonical identity in that event so
+        dependency planners do not have to treat the aggregate's primary task
+        as the only completed member.
+        """
+
+        parsed_by_id: dict[str, PortalTask] = {}
+        try:
+            parsed_by_id = {
+                task.task_id: task
+                for task in parse_task_file(self.todo_path, self.task_header_prefix)
+            }
+        except (OSError, ValueError):
+            # The already-registered identity table is still useful when a
+            # generated board is concurrently replaced or becomes unreadable.
+            pass
+
+        receipts: list[dict[str, Any]] = []
+        for task_id in dict.fromkeys(str(item).strip() for item in task_ids):
+            if not task_id:
+                continue
+            identity = self._task_identity_by_display_id.get(task_id)
+            task = parsed_by_id.get(task_id)
+            if identity is None and task is not None:
+                identity = self._identity_for_task(task)
+            if identity is None:
+                continue
+            receipts.append(
+                {
+                    "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
+                    "task_id": task_id,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "board_namespace": identity.board_namespace,
+                    "status": "succeeded",
+                }
+            )
+        return receipts
+
     def _mark_task_or_bundle_completed_in_todo(self, task: PortalTask) -> dict[str, Any]:
         work_order = self._bundle_work_order_for_task(task)
         if work_order is None:
@@ -2325,6 +2370,9 @@ class PortalImplementationDaemon:
         inserted_status_task_ids.reverse()
 
         if not updated_task_ids:
+            completed_task_ids = list(
+                dict.fromkeys([*updated_task_ids, *already_completed_task_ids])
+            )
             result = {
                 "updated": False,
                 "task_id": primary_task_id,
@@ -2338,6 +2386,11 @@ class PortalImplementationDaemon:
                 "inserted_status_task_ids": inserted_status_task_ids,
                 "updated_checkbox_task_ids": updated_checkbox_task_ids,
             }
+            completion_receipts = self._completion_receipts_for_task_ids(
+                completed_task_ids
+            )
+            if completion_receipts:
+                result["completion_receipts"] = completion_receipts
             if bundle_work_order is not None:
                 result["bundle_work_order"] = bundle_work_order
             commit_result = self._commit_generated_file_update(
@@ -2379,6 +2432,11 @@ class PortalImplementationDaemon:
             "inserted_status_task_ids": inserted_status_task_ids,
             "updated_checkbox_task_ids": updated_checkbox_task_ids,
         }
+        completion_receipts = self._completion_receipts_for_task_ids(
+            [*updated_task_ids, *already_completed_task_ids]
+        )
+        if completion_receipts:
+            result["completion_receipts"] = completion_receipts
         if bundle_work_order is not None:
             result["bundle_work_order"] = bundle_work_order
         if commit_result:

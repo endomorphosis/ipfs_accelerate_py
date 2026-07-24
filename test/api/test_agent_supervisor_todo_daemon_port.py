@@ -23,6 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     bundle_member_completion_receipts,
     build_arg_parser as build_bundle_arg_parser,
+    launch_bundle_lanes,
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
@@ -11995,6 +11996,18 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
                         "canonical_task_cid": "cid-non-authoritative",
                     }
                 ),
+                json.dumps(
+                    {
+                        "type": "todo_status_updated",
+                        "timestamp": "2026-07-22T12:04:00+00:00",
+                        "task_id": "ACCEL-005",
+                        "updated": True,
+                        "updated_task_ids": ["ACCEL-005"],
+                        "completion_receipts": [
+                            {"task_id": "ACCEL-005", "status": "succeeded"}
+                        ],
+                    }
+                ),
             ]
         )
         + "\n",
@@ -12006,6 +12019,394 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
     assert set(receipts) == {"cid-completed-from-status", "cid-completed-from-merge"}
     assert receipts["cid-completed-from-status"]["event_path"] == str(rotated_path)
     assert receipts["cid-completed-from-merge"]["task_id"] == "ACCEL-002"
+
+
+def test_goal_packet_aggregate_releases_every_covered_member_dependency(
+    monkeypatch,
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "aggregate.todo.md"
+    todo_path.write_text(
+        """# Aggregate packet
+
+## T-COVERED-A Covered packet member A
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Bundle: objective/aggregate
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_member
+- Candidate kind: aggregate
+
+## T-COVERED-B Covered packet member B
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Bundle: objective/aggregate
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_member
+- Candidate kind: aggregate
+
+## T-AGGREGATE Complete the shared goal packet
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Bundle: objective/aggregate
+- Merge family: goal_packet/runtime/shared
+- Merge role: packet_aggregate
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_aggregate
+- Candidate kind: goal_packet_aggregate
+""",
+        encoding="utf-8",
+    )
+    vector_index = repo / "objective_bundles" / "todo_vector_index.json"
+    vector_index.parent.mkdir(parents=True)
+    vector_index.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "task_id": task_id,
+                        "title": task_id,
+                        "bundle_key": "objective/aggregate",
+                        "candidate_kind": candidate_kind,
+                        "merge_family": "goal_packet/runtime/shared",
+                        "merge_role": merge_role,
+                        "goal_packet_key": "goal_packet/runtime/shared",
+                        "goal_packet_role": packet_role,
+                    }
+                    for task_id, candidate_kind, merge_role, packet_role in (
+                        ("T-COVERED-A", "aggregate", "aggregate", "packet_member"),
+                        ("T-COVERED-B", "aggregate", "aggregate", "packet_member"),
+                        (
+                            "T-AGGREGATE",
+                            "goal_packet_aggregate",
+                            "packet_aggregate",
+                            "packet_aggregate",
+                        ),
+                    )
+                ],
+                "execution_packets": [
+                    {
+                        "packet_key": "execution_packet/runtime/shared",
+                        "primary_task_id": "T-AGGREGATE",
+                        "active_task_ids": [
+                            "T-AGGREGATE",
+                            "T-COVERED-A",
+                            "T-COVERED-B",
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    state_root = repo / "state"
+    lane_state = state_root / "objective-aggregate" / "state"
+    lane_state.mkdir(parents=True)
+    strategy_path = lane_state / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "last_objective_todo_vector_index_path": (
+                    "objective_bundles/todo_vector_index.json"
+                )
+            }
+        ),
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=lane_state / "agent_objective_aggregate_task_state.json",
+        strategy_path=strategy_path,
+        events_path=lane_state / "agent_objective_aggregate_events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## T-",
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## T-")
+    daemon._register_task_identities(tasks)
+    aggregate = next(task for task in tasks if task.task_id == "T-AGGREGATE")
+    expected_identities = {
+        task_id: daemon._task_identity_by_display_id[task_id]
+        for task_id in ("T-AGGREGATE", "T-COVERED-A", "T-COVERED-B")
+    }
+
+    completion = daemon._mark_task_or_bundle_completed_in_todo(aggregate)
+    receipts = bundle_member_completion_receipts(state_root)
+
+    assert completion["updated_task_ids"] == [
+        "T-AGGREGATE",
+        "T-COVERED-A",
+        "T-COVERED-B",
+    ]
+    completion_receipts = {
+        receipt["task_id"]: receipt
+        for receipt in completion["completion_receipts"]
+    }
+    assert set(completion_receipts) == set(expected_identities)
+    assert {
+        task_id: receipt["canonical_task_cid"]
+        for task_id, receipt in completion_receipts.items()
+    } == {
+        task_id: identity.canonical_task_cid
+        for task_id, identity in expected_identities.items()
+    }
+    assert all(
+        receipt["status"] == "succeeded"
+        and receipt["schema"].endswith("member_completion_receipt@1")
+        for receipt in completion_receipts.values()
+    )
+    persisted_event = json.loads(
+        (lane_state / "agent_objective_aggregate_events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[-1]
+    )
+    assert persisted_event["completion_receipts"] == completion["completion_receipts"]
+    assert set(receipts) == {
+        identity.canonical_task_cid for identity in expected_identities.values()
+    }
+    assert {
+        receipt["task_id"] for receipt in receipts.values()
+    } == set(expected_identities)
+    assert all(receipt["status"] == "succeeded" for receipt in receipts.values())
+
+    bundle_index = repo / "bundle-index.json"
+    bundle_index.write_text(
+        json.dumps(
+            {
+                "source_todo": str(todo_path),
+                "bundles": {
+                    "objective/aggregate": {
+                        "shard_path": str(todo_path),
+                        "tasks": [
+                            {
+                                "task_id": task_id,
+                                "canonical_task_cid": identity.canonical_task_cid,
+                            }
+                            for task_id, identity in expected_identities.items()
+                        ],
+                    },
+                    "objective/downstream": {
+                        "shard_path": "downstream.todo.md",
+                        "tasks": [
+                            {
+                                "task_id": "T-DOWNSTREAM",
+                                "canonical_task_cid": "cid-downstream",
+                                "depends_on": [
+                                    "T-COVERED-A",
+                                    "T-COVERED-B",
+                                ],
+                            }
+                        ],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lanes = plan_bundle_lanes(
+        bundle_index_path=bundle_index,
+        repo_root=repo,
+        state_root=state_root,
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="## T-",
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert by_key["objective/aggregate"].task_ids == []
+    downstream = by_key["objective/downstream"]
+    assert downstream.claimable is True
+    assert downstream.task_ids == ["T-DOWNSTREAM"]
+    assert downstream.dependency_task_cids == []
+
+    starts = []
+
+    class Process:
+        pid = 4321
+
+    def fake_popen(command, **_kwargs):
+        starts.append(list(command))
+        return Process()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        fake_popen,
+    )
+    launched = launch_bundle_lanes(
+        [downstream],
+        repo_root=repo,
+        coordination_path=repo / "coordination.sqlite3",
+    )
+
+    assert launched[0]["accepted"] is True
+    assert len(starts) == 1
+
+
+def test_legacy_aggregate_member_ids_release_downstream_lane(
+    monkeypatch,
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_root = repo / "state"
+    lane_state = state_root / "objective-legacy" / "state"
+    lane_state.mkdir(parents=True)
+    todo_path = repo / "legacy.todo.md"
+    todo_path.write_text(
+        """# Legacy aggregate board
+
+## T-LEGACY-AGGREGATE Aggregate
+
+- Status: completed
+- Canonical task key: task/v1/legacy-aggregate
+- Canonical task CID: cid-legacy-aggregate
+
+## T-LEGACY-COVERED-A Covered A
+
+- Status: completed
+- Canonical task key: task/v1/legacy-covered-a
+- Canonical task CID: cid-legacy-covered-a
+
+## T-LEGACY-COVERED-B Covered B
+
+- Status: completed
+- Canonical task key: task/v1/legacy-covered-b
+- Canonical task CID: cid-legacy-covered-b
+""",
+        encoding="utf-8",
+    )
+    event_path = lane_state / "agent_objective_legacy_events.jsonl"
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "todo_status_updated",
+                "timestamp": "2026-07-23T12:00:00+00:00",
+                "task_id": "T-LEGACY-AGGREGATE",
+                "canonical_task_key": "task/v1/legacy-aggregate",
+                "canonical_task_cid": "cid-legacy-aggregate",
+                "updated": True,
+                "updated_task_ids": [
+                    "T-LEGACY-AGGREGATE",
+                    "T-LEGACY-COVERED-A",
+                ],
+                "already_completed_task_ids": ["T-LEGACY-COVERED-B"],
+                "completion_reason": "bundle_work_order",
+                "path": str(todo_path),
+                "bundle_work_order": {
+                    "primary_task_id": "T-LEGACY-AGGREGATE",
+                    "covered_task_ids": [
+                        "T-LEGACY-COVERED-A",
+                        "T-LEGACY-COVERED-B",
+                    ],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    receipts = bundle_member_completion_receipts(state_root)
+
+    assert set(receipts) == {
+        "cid-legacy-aggregate",
+        "cid-legacy-covered-a",
+        "cid-legacy-covered-b",
+    }
+    assert receipts["cid-legacy-covered-a"]["task_id"] == "T-LEGACY-COVERED-A"
+    assert (
+        receipts["cid-legacy-covered-a"]["canonical_task_cid"]
+        == "cid-legacy-covered-a"
+    )
+    assert receipts["cid-legacy-covered-b"]["status"] == "succeeded"
+
+    bundle_index = repo / "legacy-bundle-index.json"
+    bundle_index.write_text(
+        json.dumps(
+            {
+                "source_todo": "legacy.todo.md",
+                "bundles": {
+                    "objective/legacy": {
+                        "shard_path": str(todo_path),
+                        "tasks": [
+                            {
+                                "task_id": "T-LEGACY-AGGREGATE",
+                                "canonical_task_cid": "cid-legacy-aggregate",
+                            },
+                            {
+                                "task_id": "T-LEGACY-COVERED-A",
+                                "canonical_task_cid": "cid-legacy-covered-a",
+                            },
+                            {
+                                "task_id": "T-LEGACY-COVERED-B",
+                                "canonical_task_cid": "cid-legacy-covered-b",
+                            },
+                        ],
+                    },
+                    "objective/legacy-downstream": {
+                        "shard_path": "legacy-downstream.todo.md",
+                        "tasks": [
+                            {
+                                "task_id": "T-LEGACY-DOWNSTREAM",
+                                "canonical_task_cid": "cid-legacy-downstream",
+                                "depends_on": [
+                                    "T-LEGACY-COVERED-A",
+                                    "T-LEGACY-COVERED-B",
+                                ],
+                            }
+                        ],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lanes = plan_bundle_lanes(
+        bundle_index_path=bundle_index,
+        repo_root=repo,
+        state_root=state_root,
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="## T-",
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert by_key["objective/legacy"].task_ids == []
+    downstream = by_key["objective/legacy-downstream"]
+    assert downstream.claimable is True
+    assert downstream.task_ids == ["T-LEGACY-DOWNSTREAM"]
+    assert downstream.dependency_task_cids == []
+
+    starts = []
+
+    class Process:
+        pid = 4321
+
+    def fake_popen(command, **_kwargs):
+        starts.append(list(command))
+        return Process()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        fake_popen,
+    )
+    launched = launch_bundle_lanes(
+        [downstream],
+        repo_root=repo,
+        coordination_path=repo / "legacy-coordination.sqlite3",
+    )
+
+    assert launched[0]["accepted"] is True
+    assert len(starts) == 1
 
 
 def test_bundle_supervisor_plans_isolated_lanes(tmp_path):

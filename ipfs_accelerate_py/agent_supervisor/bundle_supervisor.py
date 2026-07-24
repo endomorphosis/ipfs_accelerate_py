@@ -130,13 +130,74 @@ def bundle_member_completion_source_revision(
     return tuple(revisions)
 
 
+def _legacy_completed_member_identities(
+    todo_path: Any,
+    task_ids: Sequence[str],
+) -> dict[str, dict[str, str]]:
+    """Recover explicit canonical identities from a legacy generated board."""
+
+    path = Path(str(todo_path or ""))
+    if not str(todo_path or "").strip() or path.suffix.lower() not in {".md", ".markdown"}:
+        return {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+
+    requested = {str(task_id) for task_id in task_ids if str(task_id)}
+    identities: dict[str, dict[str, str]] = {}
+    current_task_id = ""
+    current: dict[str, str] = {}
+
+    def flush() -> None:
+        if (
+            current_task_id in requested
+            and current.get("canonical_task_cid")
+            and current.get("canonical_task_key")
+        ):
+            identities[current_task_id] = {
+                "task_id": current_task_id,
+                "canonical_task_cid": current["canonical_task_cid"],
+                "canonical_task_key": current["canonical_task_key"],
+                "board_namespace": current.get("board_namespace", path.name),
+            }
+
+    for line in [*lines, "## "]:
+        if line.startswith("## "):
+            flush()
+            header = line[3:].strip()
+            current_task_id = header.split(" ", 1)[0] if header else ""
+            current = {}
+            continue
+        if current_task_id not in requested:
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("- ") or ":" not in stripped:
+            continue
+        key, value = stripped[2:].split(":", 1)
+        normalized_key = key.strip().lower().replace(" ", "_")
+        if normalized_key in {
+            "canonical_task_cid",
+            "canonical_task_key",
+            "board_namespace",
+        }:
+            current[normalized_key] = value.strip()
+    return identities
+
+
 def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, Any]]:
-    """Return successful member-task receipts keyed by canonical task CID.
+    """Return successful member-task receipts keyed by canonical task identity.
 
     Bundle boards are mutable projections, so their current status is not a
     durable completion authority.  The implementation daemon emits terminal
     events after a successful merge; retain those receipts so a source board
     can promote the matching canonical task even after a shard is regenerated.
+
+    New events carry one canonical ``completion_receipts`` entry per member.
+    Legacy packet-aggregate events only carried the primary canonical CID plus
+    ``updated_task_ids``/``already_completed_task_ids``.  For those events,
+    explicit canonical identities are recovered from the generated board named
+    by the terminal event.  A display ID alone never manufactures a receipt.
     """
 
     receipts: dict[str, dict[str, Any]] = {}
@@ -161,21 +222,89 @@ def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, A
                 )
             if not completed:
                 continue
-            canonical_task_cid = str(event.get("canonical_task_cid") or "")
-            if not canonical_task_cid:
-                continue
-            receipt = {
-                "canonical_task_cid": canonical_task_cid,
-                "canonical_task_key": str(event.get("canonical_task_key") or ""),
-                "task_id": task_id,
-                "status": "succeeded",
-                "timestamp": str(event.get("timestamp") or ""),
-                "event_type": event_type,
-                "event_path": str(source),
-            }
-            previous = receipts.get(canonical_task_cid)
-            if previous is None or receipt["timestamp"] >= previous["timestamp"]:
-                receipts[canonical_task_cid] = receipt
+
+            todo_update = (
+                event.get("todo_update_result")
+                if isinstance(event.get("todo_update_result"), Mapping)
+                else {}
+            )
+            completion_payload = event if event_type == "todo_status_updated" else todo_update
+            raw_member_receipts = completion_payload.get(
+                "completion_receipts"
+            ) or completion_payload.get("member_completion_receipts")
+            member_task_ids = list(
+                dict.fromkeys(
+                    [
+                        task_id,
+                        *(
+                            str(item)
+                            for key in (
+                                "updated_task_ids",
+                                "already_completed_task_ids",
+                            )
+                            for item in (completion_payload.get(key) or [])
+                            if str(item)
+                        ),
+                    ]
+                )
+            )
+            explicit_by_task_id = {
+                str(item.get("task_id") or ""): dict(item)
+                for item in raw_member_receipts
+                if isinstance(item, Mapping)
+                and str(item.get("task_id") or "") in member_task_ids
+            } if isinstance(raw_member_receipts, list) else {}
+            # Backward-compatible recovery for terminal aggregate events
+            # written before per-member canonical receipts were included. It
+            # also safely fills a partial new event after a transient board
+            # read failure at write time.
+            legacy_identities = _legacy_completed_member_identities(
+                completion_payload.get("path"),
+                member_task_ids,
+            )
+            member_receipts: list[dict[str, Any]] = []
+            for member_task_id in member_task_ids:
+                member = explicit_by_task_id.get(member_task_id, {})
+                if not str(member.get("canonical_task_cid") or ""):
+                    if (
+                        member_task_id == task_id
+                        and str(event.get("canonical_task_cid") or "")
+                    ):
+                        member = {
+                            "task_id": member_task_id,
+                            "canonical_task_cid": str(
+                                event.get("canonical_task_cid") or ""
+                            ),
+                            "canonical_task_key": str(
+                                event.get("canonical_task_key") or ""
+                            ),
+                            "board_namespace": str(
+                                event.get("board_namespace") or ""
+                            ),
+                        }
+                    else:
+                        member = legacy_identities.get(member_task_id, {})
+                if member:
+                    member_receipts.append(member)
+
+            for member in member_receipts:
+                member_task_id = str(member.get("task_id") or "")
+                canonical_task_cid = str(member.get("canonical_task_cid") or "")
+                if not canonical_task_cid:
+                    continue
+                receipt = {
+                    "canonical_task_cid": canonical_task_cid,
+                    "canonical_task_key": str(member.get("canonical_task_key") or ""),
+                    "task_id": member_task_id,
+                    "board_namespace": str(member.get("board_namespace") or ""),
+                    "status": "succeeded",
+                    "timestamp": str(event.get("timestamp") or ""),
+                    "event_type": event_type,
+                    "event_path": str(source),
+                }
+                previous = receipts.get(canonical_task_cid)
+                if previous is None or receipt["timestamp"] >= previous["timestamp"]:
+                    receipts[canonical_task_cid] = receipt
     return receipts
 
 
