@@ -113,7 +113,9 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_namespace_objective_refill_defaults_factory,
     build_objective_refill_defaults_from_paths,
 )
+from ipfs_accelerate_py.agent_supervisor import git_gc as git_gc_module
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
+from ipfs_accelerate_py.agent_supervisor.git_gc import GitGarbageCollector
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -1202,8 +1204,16 @@ def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
 def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
     todo_path = repo / "todo.md"
     todo_path.write_text("# Todos\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "baseline")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "-b", "implementation/lane", str(linked), "main")
     first = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=repo / "lanes" / "first" / "task_state.json",
@@ -1212,16 +1222,57 @@ def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path)
         repo_root=repo,
     )
     second = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=repo / "lanes" / "second" / "task_state.json",
-        strategy_path=repo / "lanes" / "second" / "strategy.json",
-        events_path=repo / "lanes" / "second" / "events.jsonl",
-        repo_root=repo,
+        todo_path=linked / "todo.md",
+        state_path=linked / "lanes" / "second" / "task_state.json",
+        strategy_path=linked / "lanes" / "second" / "strategy.json",
+        events_path=linked / "lanes" / "second" / "events.jsonl",
+        repo_root=linked,
     )
 
-    expected = repo / "data" / "agent_supervisor" / "gc_state.json"
+    expected = repo / ".git" / "agent_supervisor" / "gc_state.json"
     assert first.git_gc.state_path == expected
     assert second.git_gc.state_path == expected
+    assert first.git_gc.state_path != repo / "data" / "agent_supervisor" / "gc_state.json"
+    assert second.git_gc.state_path != linked / "data" / "agent_supervisor" / "gc_state.json"
+    assert first.git_gc.needs_aggressive_gc() is False
+    assert second.git_gc.needs_aggressive_gc() is False
+
+
+def test_git_gc_first_run_establishes_baseline_without_aggressive_repack(
+    tmp_path,
+    monkeypatch,
+):
+    collector = GitGarbageCollector(
+        repo_root=tmp_path,
+        state_path=tmp_path / "gc-state.json",
+    )
+    monkeypatch.setattr(git_gc_module, "count_loose_objects", lambda _root: 0)
+    monkeypatch.setattr(
+        collector,
+        "_prune_worktrees",
+        lambda: {"step": "prune_worktrees", "success": True},
+    )
+    monkeypatch.setattr(
+        collector,
+        "_expire_reflogs",
+        lambda **_kwargs: {"step": "expire_reflogs", "success": True},
+    )
+    monkeypatch.setattr(
+        collector,
+        "_run_git_gc",
+        lambda **_kwargs: {"step": "git_gc", "success": True},
+    )
+
+    result = collector.run_if_needed()
+
+    assert result["type"] == "standard"
+    assert collector.state.last_gc_time > 0
+    assert collector.state.last_aggressive_gc_time == collector.state.last_gc_time
+    reloaded = GitGarbageCollector(
+        repo_root=tmp_path,
+        state_path=collector.state_path,
+    )
+    assert reloaded.needs_aggressive_gc() is False
 
 
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):

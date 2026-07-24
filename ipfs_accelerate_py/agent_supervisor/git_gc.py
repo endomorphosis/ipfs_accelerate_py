@@ -206,6 +206,8 @@ class GitGarbageCollector:
 
     def needs_aggressive_gc(self) -> bool:
         """Check if aggressive GC should run (less frequent, more thorough)."""
+        if self.state.last_aggressive_gc_time <= 0:
+            return False
         now = time.time()
         return now - self.state.last_aggressive_gc_time >= self.aggressive_interval
 
@@ -256,7 +258,12 @@ class GitGarbageCollector:
         results["finished_at"] = datetime.now(timezone.utc).isoformat()
 
         # Update state
-        self.state.last_gc_time = time.time()
+        now = time.time()
+        self.state.last_gc_time = now
+        if self.state.last_aggressive_gc_time <= 0:
+            # A missing state receipt should establish a baseline through the
+            # cheap auto-GC path, not trigger a full aggressive repack.
+            self.state.last_aggressive_gc_time = now
         self.state.total_gc_runs += 1
         self.state.total_objects_freed += results["objects_freed"]
         self.state.save()

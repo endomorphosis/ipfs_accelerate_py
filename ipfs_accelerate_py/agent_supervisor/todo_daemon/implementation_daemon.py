@@ -21,7 +21,11 @@ from typing import Any, Callable, Mapping, Sequence
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
-from ..checkout_lock import checkout_lock_metadata, checkout_mutation_lock_path
+from ..checkout_lock import (
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
+    git_common_dir,
+)
 from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
 from ..merge_conflict_repair import (
     resolve_append_only_markdown_conflicts,
@@ -1197,7 +1201,9 @@ class PortalImplementationDaemon:
             # Git objects and worktree metadata are repository-wide. A
             # lane-local state file makes every new bundle believe aggressive
             # GC has never run, serializing startup behind a full repack.
-            state_path=self.repo_root / "data" / "agent_supervisor" / "gc_state.json",
+            state_path=git_common_dir(self.repo_root)
+            / "agent_supervisor"
+            / "gc_state.json",
             worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
         )
 
