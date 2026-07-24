@@ -194,7 +194,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-011 Build impact-selected fail-fast validation DAGs
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: output-validation
