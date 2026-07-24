@@ -62,6 +62,37 @@ ASSURANCE_LEVELS: Final = (
     "attested",
 )
 
+# Every quality rate has additive numerator/denominator counters beside it.
+# Rates are recomputed independently for each dimensional row and again from
+# the snapshot-wide counter totals; consumers combining selected rows can use
+# those counters instead of taking a mathematically invalid average of rates.
+PROOF_OPERATIONAL_COUNT_FIELDS: Final = (
+    "availability_check_count",
+    "availability_success_count",
+    "availability_failure_count",
+    "schema_validation_count",
+    "schema_acceptance_count",
+    "schema_rejection_count",
+    "proof_closure_count",
+    "fallback_count",
+    "repair_attempt_count",
+    "repair_convergence_count",
+    "repair_exhaustion_count",
+    "input_token_count",
+    "output_token_count",
+    "token_count",
+    "unsupported_semantics_count",
+    "false_completion_prevention_count",
+)
+PROOF_RATE_FIELDS: Final = (
+    "availability_rate",
+    "schema_acceptance_rate",
+    "proof_closure_rate",
+    "fallback_rate",
+    "repair_convergence_rate",
+    "cache_hit_rate",
+)
+
 # These keys are intentionally rejected even when nested in caller-owned
 # metadata.  The public projection below mostly uses an allow-list; this
 # deny-list also protects extension fields accepted by ``safe_public_value``.
@@ -131,6 +162,8 @@ _PROOF_SNAPSHOT_TABLE_FIELDS: Final = {
             "authoritative_assurance",
             "cpu_milliseconds",
             "memory_peak_bytes",
+            "input_token_count",
+            "output_token_count",
             "token_count",
         )
     ),
@@ -227,11 +260,13 @@ _PROOF_METRIC_COUNT_FIELDS: Final = (
     "cache_rejection_count",
     "resource_sample_count",
     "cancellation_count",
+    *PROOF_OPERATIONAL_COUNT_FIELDS,
 )
 _PROOF_METRIC_ROW_FIELDS: Final = frozenset(
     (
         *PROOF_METRIC_DIMENSIONS,
         *_PROOF_METRIC_COUNT_FIELDS,
+        *PROOF_RATE_FIELDS,
         *PROOF_LATENCY_FIELDS,
         *(field.removesuffix("_ms") + "_seconds" for field in PROOF_LATENCY_FIELDS),
     )
@@ -357,6 +392,61 @@ def _number(value: Any, default: float = 0.0) -> float:
         return max(0.0, float(value))
     except (TypeError, ValueError, OverflowError):
         return default
+
+
+def _ratio(numerator: Any, denominator: Any) -> float:
+    """Return a bounded ratio, using zero for an empty population."""
+
+    bottom = _integer(denominator)
+    if bottom <= 0:
+        return 0.0
+    return round(min(1.0, _integer(numerator) / bottom), 6)
+
+
+def _token_usage(record: Mapping[str, Any]) -> tuple[int, int, int]:
+    """Normalize common provider token accounting without double counting."""
+
+    usage = (
+        record.get("resource_usage")
+        if isinstance(record.get("resource_usage"), Mapping)
+        else {}
+    )
+    token_usage = (
+        record.get("usage")
+        if isinstance(record.get("usage"), Mapping)
+        else {}
+    )
+    sources = (record, usage, token_usage)
+
+    def first(names: Sequence[str]) -> int:
+        for source in sources:
+            for name in names:
+                if source.get(name) not in (None, ""):
+                    return _integer(source[name])
+        return 0
+
+    input_count = first(
+        (
+            "input_token_count",
+            "input_tokens",
+            "prompt_token_count",
+            "prompt_tokens",
+        )
+    )
+    output_count = first(
+        (
+            "output_token_count",
+            "output_tokens",
+            "completion_token_count",
+            "completion_tokens",
+            "generated_tokens",
+        )
+    )
+    reported_total = first(("token_count", "total_tokens", "tokens"))
+    # Some providers report only a total, while others report input/output and
+    # a total.  max() preserves either shape without adding the total twice.
+    total = max(reported_total, input_count + output_count)
+    return input_count, output_count, total
 
 
 def _limit_integer(value: Any) -> int:
@@ -672,6 +762,8 @@ def _base_metrics(identity: Mapping[str, Any]) -> dict[str, Any]:
             "cache_rejection_count": 0,
             "resource_sample_count": 0,
             "cancellation_count": 0,
+            **{field: 0 for field in PROOF_OPERATIONAL_COUNT_FIELDS},
+            **{field: 0.0 for field in PROOF_RATE_FIELDS},
             **{field: 0 for field in PROOF_LATENCY_FIELDS},
         }
     )
@@ -719,6 +811,7 @@ def _public_attempt(
         else {}
     )
     stage = _text(record.get("stage"), "unknown").lower()
+    input_tokens, output_tokens, total_tokens = _token_usage(record)
     return {
         **{name: identity[name] for name in PROOF_METRIC_DIMENSIONS},
         "attempt_id": _text(record.get("attempt_id") or record.get("content_id")),
@@ -749,11 +842,9 @@ def _public_attempt(
             resource_usage.get("memory_peak_bytes")
             or resource_usage.get("peak_memory_bytes")
         ),
-        "token_count": _integer(
-            resource_usage.get("token_count")
-            or resource_usage.get("tokens")
-            or resource_usage.get("total_tokens")
-        ),
+        "input_token_count": input_tokens,
+        "output_token_count": output_tokens,
+        "token_count": total_tokens,
     }
 
 
@@ -917,6 +1008,193 @@ def _public_resource_sample(
     }
 
 
+def _add_operational_observation(
+    metric: dict[str, Any],
+    record: Mapping[str, Any],
+    *,
+    include_tokens: bool,
+) -> None:
+    """Reduce one public operational observation into additive counters.
+
+    Explicit ``*_count`` values take precedence over boolean/status inference
+    for the same metric family.  This permits both individual lifecycle events
+    and already-batched provider telemetry without multiplying observations.
+    """
+
+    kind = _text(
+        record.get("metric")
+        or record.get("phase")
+        or record.get("type")
+        or record.get("event_type")
+    ).lower()
+
+    def add_first(field: str, aliases: Sequence[str]) -> bool:
+        for name in (field, *aliases):
+            if record.get(name) not in (None, ""):
+                metric[field] += _integer(record[name])
+                return True
+        return False
+
+    availability_explicit = (
+        add_first(
+            "availability_check_count",
+            ("capability_check_count", "availability_probe_count", "route_probe_count"),
+        ),
+        add_first(
+            "availability_success_count",
+            ("available_count", "availability_available_count"),
+        ),
+        add_first(
+            "availability_failure_count",
+            ("unavailable_count", "availability_unavailable_count"),
+        ),
+    )
+    if not any(availability_explicit):
+        for name in (
+            "available",
+            "availability",
+            "route_available",
+            "capability_available",
+        ):
+            if record.get(name) is not None:
+                metric["availability_check_count"] += 1
+                if _boolean(record[name]):
+                    metric["availability_success_count"] += 1
+                else:
+                    metric["availability_failure_count"] += 1
+                break
+        else:
+            status = _text(record.get("status")).lower()
+            if any(token in kind for token in ("availability", "capability", "route_probe")):
+                if status in {"available", "ready", "healthy", "success", "succeeded"}:
+                    metric["availability_check_count"] += 1
+                    metric["availability_success_count"] += 1
+                elif status in {"unavailable", "not_ready", "unhealthy", "failed", "error"}:
+                    metric["availability_check_count"] += 1
+                    metric["availability_failure_count"] += 1
+
+    schema_explicit = (
+        add_first(
+            "schema_validation_count",
+            ("schema_check_count", "schema_attempt_count"),
+        ),
+        add_first(
+            "schema_acceptance_count",
+            ("schema_accepted_count", "schema_valid_count"),
+        ),
+        add_first(
+            "schema_rejection_count",
+            ("schema_rejected_count", "schema_invalid_count"),
+        ),
+    )
+    if not any(schema_explicit):
+        for name in (
+            "schema_accepted",
+            "schema_acceptance",
+            "schema_valid",
+        ):
+            if record.get(name) is not None:
+                metric["schema_validation_count"] += 1
+                if _boolean(record[name]):
+                    metric["schema_acceptance_count"] += 1
+                else:
+                    metric["schema_rejection_count"] += 1
+                break
+
+    if not add_first(
+        "proof_closure_count", ("closed_proof_count", "proof_closed_count")
+    ):
+        for name in ("proof_closed", "proof_closure", "authoritative_proof_closed"):
+            if record.get(name) is not None:
+                metric["proof_closure_count"] += int(_boolean(record[name]))
+                break
+
+    if not add_first(
+        "fallback_count",
+        ("deterministic_fallback_count", "fallback_used_count"),
+    ):
+        for name in ("used_fallback", "fallback_used", "deterministic_fallback"):
+            if record.get(name) is not None:
+                metric["fallback_count"] += int(_boolean(record[name]))
+                break
+
+    add_first(
+        "repair_attempt_count",
+        ("repair_attempts", "repair_count", "repair_round_count"),
+    )
+    if not add_first(
+        "repair_convergence_count",
+        ("repair_converged_count", "converged_repair_count"),
+    ):
+        for name in ("repair_converged", "repair_convergence"):
+            if record.get(name) is not None:
+                metric["repair_convergence_count"] += int(_boolean(record[name]))
+                break
+    if not add_first(
+        "repair_exhaustion_count",
+        ("repair_exhausted_count", "exhausted_repair_count"),
+    ):
+        if record.get("repair_exhausted") is not None:
+            metric["repair_exhaustion_count"] += int(
+                _boolean(record["repair_exhausted"])
+            )
+    # A singular repair-attempt marker represents one observation even when
+    # its integer value is a one-based round ordinal.
+    if (
+        not any(
+            record.get(name) not in (None, "")
+            for name in (
+                "repair_attempt_count",
+                "repair_attempts",
+                "repair_count",
+                "repair_round_count",
+            )
+        )
+        and any(
+            record.get(name) not in (None, "", False)
+            for name in ("repair_attempt", "repair_attempted", "repair_round")
+        )
+    ):
+        metric["repair_attempt_count"] += 1
+
+    if not add_first(
+        "unsupported_semantics_count",
+        ("unsupported_semantic_count",),
+    ):
+        semantics = record.get("unsupported_semantics")
+        if isinstance(semantics, Mapping):
+            metric["unsupported_semantics_count"] += len(semantics)
+        elif isinstance(semantics, Sequence) and not isinstance(
+            semantics, (str, bytes, bytearray)
+        ):
+            metric["unsupported_semantics_count"] += len(semantics)
+        elif semantics not in (None, "", False):
+            metric["unsupported_semantics_count"] += 1
+        elif _text(record.get("status")).lower() == "unsupported":
+            metric["unsupported_semantics_count"] += 1
+
+    if not add_first(
+        "false_completion_prevention_count",
+        ("false_completion_prevented_count", "prevented_false_completion_count"),
+    ):
+        for name in (
+            "false_completion_prevented",
+            "prevented_false_completion",
+            "completion_prevented",
+        ):
+            if record.get(name) is not None:
+                metric["false_completion_prevention_count"] += int(
+                    _boolean(record[name])
+                )
+                break
+
+    if include_tokens:
+        input_tokens, output_tokens, total_tokens = _token_usage(record)
+        metric["input_token_count"] += input_tokens
+        metric["output_token_count"] += output_tokens
+        metric["token_count"] += total_tokens
+
+
 def _extract_plan(value: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     plan_object = getattr(value, "plan", None)
     snapshot_object = getattr(value, "snapshot", None)
@@ -968,6 +1246,7 @@ def _validate_snapshot_shape(payload: Mapping[str, Any]) -> None:
     totals = payload.get("totals")
     allowed_totals = {
         *_PROOF_METRIC_COUNT_FIELDS,
+        *PROOF_RATE_FIELDS,
         *PROOF_LATENCY_FIELDS,
         "assurance_counts",
     }
@@ -1363,7 +1642,7 @@ def build_proof_metrics_snapshot(
 
     for row in obligation_rows:
         metrics_for(row)["obligation_count"] += 1
-    for row in attempt_rows:
+    for raw_attempt, row in zip(explicit_attempts, attempt_rows):
         metric = metrics_for(row)
         metric["attempt_count"] += 1
         status = _text(row.get("status")).lower()
@@ -1391,11 +1670,58 @@ def build_proof_metrics_snapshot(
         if status in {"cancelled", "canceled"}:
             metric["cancellation_count"] += 1
             metric["cancellation_latency_ms"] += duration
+        metric["input_token_count"] += _integer(row.get("input_token_count"))
+        metric["output_token_count"] += _integer(row.get("output_token_count"))
+        metric["token_count"] += _integer(row.get("token_count"))
+        _add_operational_observation(
+            metric,
+            raw_attempt,
+            include_tokens=False,
+        )
+    closed_obligations: set[tuple[str, ...]] = set()
     for row in receipt_rows:
         metric = metrics_for(row)
         metric["receipt_count"] += 1
         if row["authoritative"]:
             metric["authoritative_receipt_count"] += 1
+        if row["authoritative"] and row["verdict"] == "proved":
+            closure_key = (
+                *_dimension_key(row),
+                _text(row.get("obligation_id") or row.get("receipt_id")),
+            )
+            if closure_key not in closed_obligations:
+                closed_obligations.add(closure_key)
+                metric["proof_closure_count"] += 1
+    observed_receipt_claims: set[tuple[str, ...]] = set()
+    for raw_receipt in explicit_receipts:
+        claim_key = (
+            _text(raw_receipt.get("receipt_id") or raw_receipt.get("content_id")),
+            _text(raw_receipt.get("attempt_id")),
+            _text(raw_receipt.get("obligation_id")),
+        )
+        if claim_key in observed_receipt_claims:
+            continue
+        observed_receipt_claims.add(claim_key)
+        metric = metrics_for(identity_for(raw_receipt))
+        claimed_verdict = _text(
+            raw_receipt.get("claimed_verdict")
+            or raw_receipt.get("provider_verdict")
+            or raw_receipt.get("verdict")
+        ).lower()
+        authoritative_verdict = _text(
+            raw_receipt.get("authoritative_verdict"),
+            "inconclusive",
+        ).lower()
+        previous_prevention_count = metric["false_completion_prevention_count"]
+        _add_operational_observation(
+            metric,
+            raw_receipt,
+            include_tokens=False,
+        )
+        if claimed_verdict in {"proved", "verified", "complete", "completed"} and (
+            authoritative_verdict not in {"proved", "verified"}
+        ) and metric["false_completion_prevention_count"] == previous_prevention_count:
+            metric["false_completion_prevention_count"] += 1
     for row in dependency_rows:
         metrics_for(row)["dependency_count"] += 1
     for row in cache_rows:
@@ -1441,6 +1767,7 @@ def build_proof_metrics_snapshot(
         if explicit_latency:
             if "cancel" in kind:
                 metric["cancellation_count"] += 1
+            _add_operational_observation(metric, record, include_tokens=True)
             continue
         for prefix, field in (
             ("queue", "queue_latency_ms"),
@@ -1459,6 +1786,7 @@ def build_proof_metrics_snapshot(
                 break
         if "cancel" in kind:
             metric["cancellation_count"] += 1
+        _add_operational_observation(metric, record, include_tokens=True)
 
     metrics = [metric_groups[key] for key in sorted(metric_groups)]
     for row in metrics:
@@ -1466,6 +1794,41 @@ def build_proof_metrics_snapshot(
             row[field.removesuffix("_ms") + "_seconds"] = round(
                 row[field] / 1000.0, 6
             )
+        closure_population = (
+            row["obligation_count"]
+            if row["obligation_count"] > 0
+            else row["receipt_count"]
+        )
+        row.update(
+            {
+                "availability_rate": _ratio(
+                    row["availability_success_count"],
+                    row["availability_check_count"],
+                ),
+                "schema_acceptance_rate": _ratio(
+                    row["schema_acceptance_count"],
+                    row["schema_validation_count"],
+                ),
+                "proof_closure_rate": _ratio(
+                    row["proof_closure_count"],
+                    closure_population,
+                ),
+                "fallback_rate": _ratio(
+                    row["fallback_count"],
+                    row["attempt_count"],
+                ),
+                "repair_convergence_rate": _ratio(
+                    row["repair_convergence_count"],
+                    row["repair_attempt_count"],
+                ),
+                "cache_hit_rate": _ratio(
+                    row["cache_hit_count"],
+                    row["cache_hit_count"]
+                    + row["cache_miss_count"]
+                    + row["cache_rejection_count"],
+                ),
+            }
+        )
 
     assurance_rows_by_key: dict[tuple[str, ...], dict[str, Any]] = {}
     for row in receipt_rows:
@@ -1507,22 +1870,43 @@ def build_proof_metrics_snapshot(
 
     totals = {
         key: sum(_integer(row.get(key)) for row in metrics)
-        for key in (
-            "obligation_count",
-            "attempt_count",
-            "successful_attempt_count",
-            "failed_attempt_count",
-            "receipt_count",
-            "authoritative_receipt_count",
-            "dependency_count",
-            "cache_hit_count",
-            "cache_miss_count",
-            "cache_rejection_count",
-            "resource_sample_count",
-            "cancellation_count",
-            *PROOF_LATENCY_FIELDS,
-        )
+        for key in (*_PROOF_METRIC_COUNT_FIELDS, *PROOF_LATENCY_FIELDS)
     }
+    closure_population = (
+        totals["obligation_count"]
+        if totals["obligation_count"] > 0
+        else totals["receipt_count"]
+    )
+    totals.update(
+        {
+            "availability_rate": _ratio(
+                totals["availability_success_count"],
+                totals["availability_check_count"],
+            ),
+            "schema_acceptance_rate": _ratio(
+                totals["schema_acceptance_count"],
+                totals["schema_validation_count"],
+            ),
+            "proof_closure_rate": _ratio(
+                totals["proof_closure_count"],
+                closure_population,
+            ),
+            "fallback_rate": _ratio(
+                totals["fallback_count"],
+                totals["attempt_count"],
+            ),
+            "repair_convergence_rate": _ratio(
+                totals["repair_convergence_count"],
+                totals["repair_attempt_count"],
+            ),
+            "cache_hit_rate": _ratio(
+                totals["cache_hit_count"],
+                totals["cache_hit_count"]
+                + totals["cache_miss_count"]
+                + totals["cache_rejection_count"],
+            ),
+        }
+    )
     totals["assurance_counts"] = {
         level: sum(
             row["receipt_count"]
@@ -1642,6 +2026,8 @@ __all__ = [
     "MAX_PUBLIC_TEXT_BYTES",
     "PROOF_LATENCY_FIELDS",
     "PROOF_METRIC_DIMENSIONS",
+    "PROOF_OPERATIONAL_COUNT_FIELDS",
+    "PROOF_RATE_FIELDS",
     "PROOF_METRICS_SCHEMA",
     "PROOF_METRICS_SCHEMA_VERSION",
     "ProofMetricsSnapshot",

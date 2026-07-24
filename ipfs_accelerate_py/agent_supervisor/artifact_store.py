@@ -683,6 +683,8 @@ def _proof_metrics_schema(connection: Any) -> None:
             authoritative_assurance VARCHAR,
             cpu_milliseconds BIGINT NOT NULL,
             memory_peak_bytes BIGINT NOT NULL,
+            input_token_count BIGINT NOT NULL,
+            output_token_count BIGINT NOT NULL,
             token_count BIGINT NOT NULL
         )
         """)
@@ -780,6 +782,22 @@ def _proof_metrics_schema(connection: Any) -> None:
             cache_rejection_count BIGINT NOT NULL,
             resource_sample_count BIGINT NOT NULL,
             cancellation_count BIGINT NOT NULL,
+            availability_check_count BIGINT NOT NULL,
+            availability_success_count BIGINT NOT NULL,
+            availability_failure_count BIGINT NOT NULL,
+            schema_validation_count BIGINT NOT NULL,
+            schema_acceptance_count BIGINT NOT NULL,
+            schema_rejection_count BIGINT NOT NULL,
+            proof_closure_count BIGINT NOT NULL,
+            fallback_count BIGINT NOT NULL,
+            repair_attempt_count BIGINT NOT NULL,
+            repair_convergence_count BIGINT NOT NULL,
+            repair_exhaustion_count BIGINT NOT NULL,
+            input_token_count BIGINT NOT NULL,
+            output_token_count BIGINT NOT NULL,
+            token_count BIGINT NOT NULL,
+            unsupported_semantics_count BIGINT NOT NULL,
+            false_completion_prevention_count BIGINT NOT NULL,
             queue_latency_ms BIGINT NOT NULL,
             solver_latency_ms BIGINT NOT NULL,
             kernel_latency_ms BIGINT NOT NULL,
@@ -795,7 +813,13 @@ def _proof_metrics_schema(connection: Any) -> None:
             validation_latency_seconds DOUBLE NOT NULL,
             merge_latency_seconds DOUBLE NOT NULL,
             cancellation_latency_seconds DOUBLE NOT NULL,
-            cache_latency_seconds DOUBLE NOT NULL
+            cache_latency_seconds DOUBLE NOT NULL,
+            availability_rate DOUBLE NOT NULL,
+            schema_acceptance_rate DOUBLE NOT NULL,
+            proof_closure_rate DOUBLE NOT NULL,
+            fallback_rate DOUBLE NOT NULL,
+            repair_convergence_rate DOUBLE NOT NULL,
+            cache_hit_rate DOUBLE NOT NULL
         )
         """)
     for table in (
@@ -1489,7 +1513,7 @@ def _populate_proof_metrics_tables(
     for row in _mapping_items(payload.get("attempts")):
         connection.execute(
             "INSERT INTO proof_attempts VALUES ("
-            + ", ".join("?" for _ in range(25))
+            + ", ".join("?" for _ in range(27))
             + ")",
             (
                 *_proof_dimensions(row),
@@ -1510,6 +1534,8 @@ def _populate_proof_metrics_tables(
                 str(row.get("authoritative_assurance") or "unverified"),
                 _as_int(row.get("cpu_milliseconds")) or 0,
                 _as_int(row.get("memory_peak_bytes")) or 0,
+                _as_int(row.get("input_token_count")) or 0,
+                _as_int(row.get("output_token_count")) or 0,
                 _as_int(row.get("token_count")) or 0,
             ),
         )
@@ -1621,6 +1647,22 @@ def _populate_proof_metrics_tables(
         "cache_rejection_count",
         "resource_sample_count",
         "cancellation_count",
+        "availability_check_count",
+        "availability_success_count",
+        "availability_failure_count",
+        "schema_validation_count",
+        "schema_acceptance_count",
+        "schema_rejection_count",
+        "proof_closure_count",
+        "fallback_count",
+        "repair_attempt_count",
+        "repair_convergence_count",
+        "repair_exhaustion_count",
+        "input_token_count",
+        "output_token_count",
+        "token_count",
+        "unsupported_semantics_count",
+        "false_completion_prevention_count",
     )
     latency_fields = (
         "queue_latency",
@@ -1632,16 +1674,25 @@ def _populate_proof_metrics_tables(
         "cancellation_latency",
         "cache_latency",
     )
+    rate_fields = (
+        "availability_rate",
+        "schema_acceptance_rate",
+        "proof_closure_rate",
+        "fallback_rate",
+        "repair_convergence_rate",
+        "cache_hit_rate",
+    )
     for row in _mapping_items(payload.get("metrics") or payload.get("latency_metrics")):
         connection.execute(
             "INSERT INTO proof_metrics VALUES ("
-            + ", ".join("?" for _ in range(35))
+            + ", ".join("?" for _ in range(57))
             + ")",
             (
                 *_proof_dimensions(row),
                 *(_as_int(row.get(name)) or 0 for name in count_fields),
                 *(_as_int(row.get(f"{name}_ms")) or 0 for name in latency_fields),
                 *(_as_float(row.get(f"{name}_seconds")) or 0.0 for name in latency_fields),
+                *(_as_float(row.get(name)) or 0.0 for name in rate_fields),
             ),
         )
 
