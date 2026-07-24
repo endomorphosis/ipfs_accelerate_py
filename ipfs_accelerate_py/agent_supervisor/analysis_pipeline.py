@@ -54,6 +54,12 @@ from .analysis_retrieval import (
     RetrievalResponse,
     retrieve_analysis_evidence,
 )
+from .ipfs_datasets_analysis_provider import (
+    AnalysisProviderPolicy,
+    AnalysisProviderRequest,
+    AnalysisProviderResult,
+    IpfsDatasetsAnalysisProvider,
+)
 
 
 EXACT_TREE_REUSE_REQUIREMENT_ID: Final = (
@@ -412,6 +418,13 @@ class AnalysisStageContext:
     ast_index: AnalysisASTIndex | None
     retrieval: RetrievalResponse
     provider_result: Any = None
+    provider_evidence_claim_references: tuple[str, ...] = ()
+    provider_request: AnalysisProviderRequest | None = field(
+        default=None, repr=False, compare=False
+    )
+    provider_policy: AnalysisProviderPolicy | None = field(
+        default=None, repr=False, compare=False
+    )
 
 
 @dataclass(frozen=True)
@@ -447,6 +460,7 @@ class OptionalProviderFailure:
 def _optional_provider_violation(
     value: Any,
     request: AnalysisPipelineRequest,
+    provider_request: AnalysisProviderRequest | None = None,
 ) -> str:
     """Return a fail-closed reason for an unsafe provider projection.
 
@@ -457,25 +471,55 @@ def _optional_provider_violation(
     analysis can continue.
     """
 
-    if isinstance(value, Mapping):
-        projected: Mapping[str, Any] = value
-    else:
-        converter = getattr(value, "to_dict", None)
-        projected = converter() if callable(converter) else {}
-        if not isinstance(projected, Mapping):
-            projected = {}
+    try:
+        if isinstance(value, Mapping):
+            projected: Mapping[str, Any] = value
+        else:
+            converter = getattr(value, "to_dict", None)
+            projected = converter() if callable(converter) else {}
+            if inspect.isawaitable(projected):
+                _dispose_optional_awaitable(projected)
+                return "optional_provider_inspection_failed"
+            if not isinstance(projected, Mapping):
+                return "optional_provider_inspection_failed"
+    except Exception:
+        return "optional_provider_inspection_failed"
 
     expected_bindings = {
         "repository_id": request.repository_id,
         "tree_id": request.tree_id,
         "objective_revision": request.objective_revision,
+        "operation": (
+            provider_request.operation.value
+            if provider_request is not None
+            else request.provider_operation
+        ),
     }
     for name, expected in expected_bindings.items():
-        actual = projected.get(name)
+        try:
+            actual = projected.get(name)
+            if actual in (None, ""):
+                actual = getattr(value, name, None)
+            if isinstance(actual, Enum):
+                actual = actual.value
+        except Exception:
+            return "optional_provider_inspection_failed"
         if actual in (None, ""):
-            actual = getattr(value, name, None)
-        if actual not in (None, "", expected):
+            return "optional_provider_identity_missing"
+        if actual != expected:
             return "optional_provider_identity_mismatch"
+
+    if provider_request is not None:
+        try:
+            actual_request_id = projected.get("request_id")
+            if actual_request_id in (None, ""):
+                actual_request_id = getattr(value, "request_id", None)
+        except Exception:
+            return "optional_provider_inspection_failed"
+        if actual_request_id in (None, ""):
+            return "optional_provider_identity_missing"
+        if actual_request_id != provider_request.request_id:
+            return "optional_provider_request_mismatch"
 
     for name in (
         "authoritative",
@@ -484,14 +528,47 @@ def _optional_provider_violation(
         "proof_success",
         "safe_for_completion_reasoning",
     ):
-        claim = projected.get(name)
-        if claim is None:
-            claim = getattr(value, name, None)
-        if callable(claim):
-            continue
+        try:
+            claim = projected.get(name)
+            if claim is None:
+                claim = getattr(value, name, None)
+            if callable(claim):
+                # An optional object exposing an authority method is itself an
+                # attempted authority surface.  Do not execute untrusted code
+                # to ask whether that claim happens to return true.
+                return "optional_provider_authority_claim_rejected"
+            if inspect.isawaitable(claim):
+                _dispose_optional_awaitable(claim)
+                return "optional_provider_inspection_failed"
+        except Exception:
+            return "optional_provider_inspection_failed"
         if claim is not None and claim is not False:
             return "optional_provider_authority_claim_rejected"
     return ""
+
+
+def _dispose_optional_awaitable(value: Any) -> None:
+    """Best-effort disposal of an unsupported optional-provider awaitable."""
+
+    try:
+        close = getattr(value, "close", None)
+    except Exception:
+        close = None
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            pass
+        return
+    try:
+        cancel = getattr(value, "cancel", None)
+    except Exception:
+        cancel = None
+    if callable(cancel):
+        try:
+            cancel()
+        except Exception:
+            pass
 
 
 @dataclass(frozen=True)
@@ -778,6 +855,13 @@ class AnalysisPipelineResult:
     ast_index_id: str = ""
     retrieval_response_id: str = ""
     provider_result: Any = None
+    advisory_evidence_claim_references: tuple[str, ...] = ()
+    provider_request: AnalysisProviderRequest | None = field(
+        default=None, repr=False, compare=False
+    )
+    provider_policy: AnalysisProviderPolicy | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.cache_status, PipelineCacheStatus):
@@ -800,6 +884,69 @@ class AnalysisPipelineResult:
                 for item in self.cache_reason_codes
             ),
         )
+        advisory_claims = tuple(
+            dict.fromkeys(
+                _required_text(item, "advisory evidence claim reference")
+                for item in self.advisory_evidence_claim_references
+            )
+        )
+        object.__setattr__(
+            self, "advisory_evidence_claim_references", advisory_claims
+        )
+        if advisory_claims:
+            if not isinstance(self.provider_result, AnalysisProviderResult):
+                raise AnalysisBindingError(
+                    "advisory provider claims require a typed provider result"
+                )
+            if not isinstance(self.provider_request, AnalysisProviderRequest):
+                raise AnalysisBindingError(
+                    "advisory provider claims require the exact provider request"
+                )
+            if not isinstance(self.provider_policy, AnalysisProviderPolicy):
+                raise AnalysisBindingError(
+                    "advisory provider claims require the provider policy"
+                )
+            provider_request = self.provider_request
+            try:
+                expected_provider_request = AnalysisProviderRequest(
+                    operation=self.request.provider_operation,
+                    repository_id=self.request.repository_id,
+                    tree_id=self.request.tree_id,
+                    objective_revision=self.request.objective_revision,
+                    query=self.request.query,
+                    payload=self.request.provider_payload,
+                    bounds=provider_request.bounds,
+                )
+            except (TypeError, ValueError) as exc:
+                raise AnalysisBindingError(
+                    "pipeline request cannot reproduce the provider request"
+                ) from exc
+            if expected_provider_request.request_id != provider_request.request_id:
+                raise AnalysisBindingError(
+                    "provider request is detached from pipeline request"
+                )
+            policy_bounds = self.provider_policy.bounds
+            if any(
+                getattr(provider_request.bounds, name)
+                > getattr(policy_bounds, name)
+                for name in provider_request.bounds.__dataclass_fields__
+            ):
+                raise AnalysisBindingError(
+                    "provider request bounds expand the provider policy"
+                )
+            proved = tuple(
+                self.provider_result.proved_requirement_ids_for(
+                    provider_request, self.provider_policy
+                )
+            )
+            if any(item not in proved for item in advisory_claims):
+                raise AnalysisBindingError(
+                    "advisory provider claims are not active-request bound"
+                )
+            if EXACT_TREE_REUSE_REQUIREMENT_ID in advisory_claims:
+                raise AnalysisBindingError(
+                    "exact-tree authority cannot be an advisory provider claim"
+                )
         _validate_packet_binding(self.packet, self.request)
         witness = self.exact_tree_reuse_evidence
         if self.cache_status is PipelineCacheStatus.EXACT_HIT:
@@ -860,6 +1007,25 @@ class AnalysisPipelineResult:
 
     @property
     def evidence_claim_references(self) -> tuple[str, ...]:
+        """Established completion-authority evidence channel."""
+
+        return self.authoritative_evidence_claim_references
+
+    @property
+    def all_evidence_claim_references(self) -> tuple[str, ...]:
+        """All claims, including non-authoritative provider diagnostics."""
+
+        authoritative = self.evidence_claim_references
+        return tuple(
+            dict.fromkeys(
+                (*authoritative, *self.advisory_evidence_claim_references)
+            )
+        )
+
+    @property
+    def authoritative_evidence_claim_references(self) -> tuple[str, ...]:
+        """Claims that participate in supervisor completion authority."""
+
         if self.exact_tree_reuse_evidence is None:
             return ()
         return (self.exact_tree_reuse_evidence.requirement_id,)
@@ -891,7 +1057,16 @@ class AnalysisPipelineResult:
                 if self.exact_tree_reuse_evidence is not None
                 else None
             ),
+            "authoritative_evidence_claim_references": list(
+                self.authoritative_evidence_claim_references
+            ),
+            "advisory_evidence_claim_references": list(
+                self.advisory_evidence_claim_references
+            ),
             "evidence_claim_references": list(self.evidence_claim_references),
+            "all_evidence_claim_references": list(
+                self.all_evidence_claim_references
+            ),
             "ast_index_id": self.ast_index_id,
             "retrieval_response_id": self.retrieval_response_id,
             "provider_result": provider,
@@ -1329,6 +1504,9 @@ class AnalysisPipeline:
             **retrieval_values,
         )
         provider_result = None
+        provider_evidence_claim_references: tuple[str, ...] = ()
+        provider_request: AnalysisProviderRequest | None = None
+        provider_policy: AnalysisProviderPolicy | None = None
         if self.provider is not None and self.policy.enable_datasets_provider:
             analyze = getattr(self.provider, "analyze", None)
             if not callable(analyze):
@@ -1337,15 +1515,31 @@ class AnalysisPipeline:
                 )
             if analyze is not None:
                 try:
-                    provider_result = analyze(
-                        request.query,
-                        operation=request.provider_operation,
-                        repository_id=request.repository_id,
-                        tree_id=request.tree_id,
-                        objective_revision=request.objective_revision,
-                        payload=request.provider_payload,
-                        limits=self.policy.retrieval_limits,
-                    )
+                    if isinstance(self.provider, IpfsDatasetsAnalysisProvider):
+                        # Construct the adapter's exact bounded request here so
+                        # its degradation witness can be independently rebound
+                        # before the pipeline advertises the advisory claim.
+                        provider_request = self.provider.build_request(
+                            request.query,
+                            operation=request.provider_operation,
+                            repository_id=request.repository_id,
+                            tree_id=request.tree_id,
+                            objective_revision=request.objective_revision,
+                            payload=request.provider_payload,
+                            limits=self.policy.retrieval_limits,
+                        )
+                        provider_policy = self.provider.policy
+                        provider_result = analyze(provider_request)
+                    else:
+                        provider_result = analyze(
+                            request.query,
+                            operation=request.provider_operation,
+                            repository_id=request.repository_id,
+                            tree_id=request.tree_id,
+                            objective_revision=request.objective_revision,
+                            payload=request.provider_payload,
+                            limits=self.policy.retrieval_limits,
+                        )
                 except Exception:
                     provider_result = OptionalProviderFailure(
                         repository_id=request.repository_id,
@@ -1353,12 +1547,24 @@ class AnalysisPipeline:
                         objective_revision=request.objective_revision,
                     )
                 if inspect.isawaitable(provider_result):
-                    raise AnalysisProducerError(
-                        "async datasets providers require AnalysisPipeline.aanalyze"
+                    _dispose_optional_awaitable(provider_result)
+                    provider_result = OptionalProviderFailure(
+                        repository_id=request.repository_id,
+                        tree_id=request.tree_id,
+                        objective_revision=request.objective_revision,
+                        reason_code=(
+                            "optional_provider_async_result_unsupported"
+                        ),
                     )
-                violation = _optional_provider_violation(
-                    provider_result, request
-                )
+                if isinstance(provider_result, OptionalProviderFailure):
+                    violation = ""
+                else:
+                    try:
+                        violation = _optional_provider_violation(
+                            provider_result, request, provider_request
+                        )
+                    except Exception:
+                        violation = "optional_provider_inspection_failed"
                 if violation:
                     provider_result = OptionalProviderFailure(
                         repository_id=request.repository_id,
@@ -1366,11 +1572,26 @@ class AnalysisPipeline:
                         objective_revision=request.objective_revision,
                         reason_code=violation,
                     )
+                elif (
+                    provider_request is not None
+                    and provider_policy is not None
+                    and isinstance(provider_result, AnalysisProviderResult)
+                ):
+                    provider_evidence_claim_references = tuple(
+                        provider_result.proved_requirement_ids_for(
+                            provider_request, provider_policy
+                        )
+                    )
         return AnalysisStageContext(
             request=request,
             ast_index=ast_index,
             retrieval=retrieval,
             provider_result=provider_result,
+            provider_evidence_claim_references=(
+                provider_evidence_claim_references
+            ),
+            provider_request=provider_request,
+            provider_policy=provider_policy,
         )
 
     def _invoke_analyzer(
@@ -1560,6 +1781,17 @@ class AnalysisPipeline:
             ),
             provider_result=(
                 context.provider_result if context is not None else None
+            ),
+            advisory_evidence_claim_references=(
+                context.provider_evidence_claim_references
+                if context is not None
+                else ()
+            ),
+            provider_request=(
+                context.provider_request if context is not None else None
+            ),
+            provider_policy=(
+                context.provider_policy if context is not None else None
             ),
         )
 

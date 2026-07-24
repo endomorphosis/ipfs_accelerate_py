@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from dataclasses import replace
 
 import pytest
 
@@ -19,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import 
     IpfsDatasetsAnalysisProviderError,
     IpfsDatasetsProviderDegradationEvidence,
     IpfsDatasetsAnalysisProvider,
+    normalize_analysis_provider_operation,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis_retrieval import RetrievalLimits
 
@@ -61,7 +63,8 @@ def test_missing_optional_module_degrades_explicitly_with_typed_evidence() -> No
         raise ModuleNotFoundError(name)
 
     provider = IpfsDatasetsAnalysisProvider(importer=importer)
-    result = provider.analyze(_request())
+    request = provider.build_request(_request())
+    result = provider.analyze(request)
 
     assert calls == ["ipfs_datasets_py"]
     assert result.status is AnalysisProviderStatus.UNAVAILABLE
@@ -69,7 +72,11 @@ def test_missing_optional_module_degrades_explicitly_with_typed_evidence() -> No
     assert result.backend_health is AnalysisProviderHealth.UNAVAILABLE
     assert result.degraded
     assert not result.safe_for_completion_reasoning
-    assert result.proved_requirement_ids == (
+    assert result.proved_requirement_ids == ()
+    assert result.diagnostic_requirement_ids == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+    assert result.proved_requirement_ids_for(request, provider.policy) == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
     assert result.degradation_evidence is not None
@@ -86,10 +93,10 @@ def test_missing_optional_module_degrades_explicitly_with_typed_evidence() -> No
     assert result.degradation_evidence.proof_bound
     assert result.degradation_evidence.policy_id == provider.policy.policy_id
     assert result.degradation_evidence.proves_for(
-        AnalysisProviderRequest.from_value(_request()), provider.policy
+        request, provider.policy
     )
     assert not result.degradation_evidence.proves_for(
-        AnalysisProviderRequest.from_value(_request()),
+        request,
         AnalysisProviderPolicy(
             bounds=AnalysisProviderBounds(max_results=1)
         ),
@@ -107,12 +114,14 @@ def test_unsupported_operation_never_loads_backend() -> None:
         importer=lambda name: calls.append(name),
     )
 
-    result = provider.analyze(_request(operation="dataset_query"))
+    request = provider.build_request(_request(operation="dataset_query"))
+    result = provider.analyze(request)
 
     assert calls == []
     assert result.status is AnalysisProviderStatus.UNSUPPORTED
     assert result.reason_code == "operation_not_allowlisted"
-    assert result.proved_requirement_ids == (
+    assert result.proved_requirement_ids == ()
+    assert result.proved_requirement_ids_for(request, policy) == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
     assert result.degradation_evidence is not None
@@ -247,12 +256,14 @@ def test_disabled_provider_is_explicit_without_import() -> None:
         importer=lambda name: calls.append(name),
     )
 
-    result = provider.analyze(_request())
+    request = provider.build_request(_request())
+    result = provider.analyze(request)
 
     assert calls == []
     assert result.status is AnalysisProviderStatus.DISABLED
     assert result.reason_code == "provider_disabled"
-    assert result.proved_requirement_ids == (
+    assert result.proved_requirement_ids == ()
+    assert result.proved_requirement_ids_for(request, provider.policy) == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
 
@@ -328,7 +339,8 @@ def test_degradation_evidence_cannot_be_detached_or_replayed() -> None:
         raise ModuleNotFoundError(name)
 
     provider = IpfsDatasetsAnalysisProvider(importer=unavailable)
-    original = provider.analyze(_request())
+    request = provider.build_request(_request())
+    original = provider.analyze(request)
     other = provider.analyze(
         _request(
             tree_id="tree:sha256:222",
@@ -336,7 +348,8 @@ def test_degradation_evidence_cannot_be_detached_or_replayed() -> None:
         )
     )
 
-    assert original.proved_requirement_ids == (
+    assert original.proved_requirement_ids == ()
+    assert original.proved_requirement_ids_for(request, provider.policy) == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
     assert AnalysisProviderResult.from_dict(original.to_dict()) == original
@@ -409,6 +422,161 @@ def test_self_consistent_fabricated_degradation_state_cannot_claim_requirement(
     assert fabricated.proved_requirement_ids == ()
     assert result.proved_requirement_ids == ()
     assert not result.safe_for_completion_reasoning
+
+
+def test_requirement_witness_requires_every_semantic_and_binding_dimension(
+) -> None:
+    def unavailable(name):
+        raise ModuleNotFoundError(name)
+
+    request = AnalysisProviderRequest.from_value(_request())
+    policy = AnalysisProviderPolicy()
+    evidence = IpfsDatasetsAnalysisProvider(
+        policy, importer=unavailable
+    ).analyze(request).degradation_evidence
+
+    assert evidence is not None
+    assert evidence.proves_for(request, policy)
+    assert evidence.proved_requirement_ids == ()
+    assert evidence.diagnostic_requirement_ids == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+    assert evidence.proved_requirement_ids_for(request, policy) == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+
+    semantic_mismatches = (
+        replace(evidence, status=AnalysisProviderStatus.FAILED),
+        replace(evidence, reason_code="fabricated_optional_failure"),
+        replace(evidence, import_attempted=False),
+        replace(evidence, backend_health=AnalysisProviderHealth.HEALTHY),
+        replace(evidence, fallback="remote_completion"),
+        replace(evidence, request_id=""),
+        replace(evidence, policy_id=""),
+    )
+    for mismatched in semantic_mismatches:
+        assert not mismatched.proves_requirement
+        assert mismatched.proved_requirement_ids == ()
+        assert not mismatched.proves_for(request, policy)
+
+    binding_mismatches = (
+        replace(evidence, operation=AnalysisProviderOperation.DATASET_QUERY),
+        replace(evidence, repository_id="repo:other"),
+        replace(evidence, tree_id="tree:sha256:222"),
+        replace(evidence, objective_revision="objective@2"),
+        replace(evidence, policy_id=AnalysisProviderPolicy(enabled=False).policy_id),
+    )
+    for mismatched in binding_mismatches:
+        assert not mismatched.proves_for(request, policy)
+
+
+def test_active_policy_semantics_cannot_be_forged_with_matching_policy_id(
+) -> None:
+    request = AnalysisProviderRequest.from_value(_request())
+    enabled_policy = AnalysisProviderPolicy()
+    disabled_policy = AnalysisProviderPolicy(enabled=False)
+    disabled = IpfsDatasetsAnalysisProvider(disabled_policy).analyze(request)
+
+    assert disabled.proves_requirement_for(request, disabled_policy)
+    assert disabled.proved_requirement_ids_for(request, disabled_policy) == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+
+    disabled_evidence = disabled.degradation_evidence
+    assert disabled_evidence is not None
+    forged_disabled = replace(
+        disabled,
+        degradation_evidence=replace(
+            disabled_evidence, policy_id=enabled_policy.policy_id
+        ),
+    )
+    assert forged_disabled.proved_requirement_ids == ()
+    # The explicitly diagnostic property records a semantically shaped claim,
+    # while the active-context API rejects the impossible policy relationship.
+    assert forged_disabled.diagnostic_requirement_ids == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+    assert not forged_disabled.proves_requirement_for(request, enabled_policy)
+    assert forged_disabled.proved_requirement_ids_for(
+        request, enabled_policy
+    ) == ()
+
+    dataset_request = AnalysisProviderRequest.from_value(
+        _request(operation="dataset_query")
+    )
+    restricted_policy = AnalysisProviderPolicy(
+        operations=(AnalysisProviderOperation.GRAPH_RETRIEVAL,)
+    )
+    rejected = IpfsDatasetsAnalysisProvider(restricted_policy).analyze(
+        dataset_request
+    )
+    assert rejected.proves_requirement_for(dataset_request, restricted_policy)
+
+    rejected_evidence = rejected.degradation_evidence
+    assert rejected_evidence is not None
+    forged_allowlist = replace(
+        rejected,
+        degradation_evidence=replace(
+            rejected_evidence, policy_id=enabled_policy.policy_id
+        ),
+    )
+    assert forged_allowlist.proved_requirement_ids == ()
+    assert forged_allowlist.diagnostic_requirement_ids == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+    assert not forged_allowlist.proves_requirement_for(
+        dataset_request, enabled_policy
+    )
+
+
+def test_capability_dependency_failure_records_actual_adapter_import_history(
+) -> None:
+    class MissingCapabilityDependency:
+        def capabilities(self):
+            raise ModuleNotFoundError("optional capability dependency")
+
+    request = AnalysisProviderRequest.from_value(_request())
+    policy = AnalysisProviderPolicy()
+    injected = IpfsDatasetsAnalysisProvider(
+        policy, backend=MissingCapabilityDependency()
+    ).analyze(request)
+    imported = IpfsDatasetsAnalysisProvider(
+        policy, importer=lambda name: MissingCapabilityDependency()
+    ).analyze(request)
+
+    for result, import_attempted in ((injected, False), (imported, True)):
+        assert result.status is AnalysisProviderStatus.UNAVAILABLE
+        assert result.reason_code == "optional_capability_unavailable"
+        assert result.degradation_evidence is not None
+        assert result.degradation_evidence.import_attempted is import_attempted
+    assert injected.proved_requirement_ids == ()
+    assert not injected.proves_requirement_for(request, policy)
+    assert imported.proves_requirement_for(request, policy)
+
+
+def test_public_request_builder_applies_limits_without_loading_backend() -> None:
+    imports = []
+    provider = IpfsDatasetsAnalysisProvider(
+        importer=lambda name: imports.append(name)
+    )
+
+    request = provider.build_request(
+        {"text": "cache authority"},
+        operation="retrieve",
+        repository_id="repo:fixture",
+        tree_id="tree:sha256:111",
+        objective_revision="objective@1",
+        payload={},
+        limits=RetrievalLimits(max_results=2, max_bytes=8_192),
+    )
+
+    assert imports == []
+    assert normalize_analysis_provider_operation(
+        "retrieve"
+    ) is AnalysisProviderOperation.GRAPH_RETRIEVAL
+    assert request.operation is AnalysisProviderOperation.GRAPH_RETRIEVAL
+    assert request.bounds.max_results == 2
+    assert request.bounds.max_response_bytes == 8_192
 
 
 @pytest.mark.parametrize(

@@ -30,6 +30,7 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Final
 
 from .formal_verification_contracts import content_identity
@@ -169,58 +170,60 @@ class AnalysisProviderHealth(str, Enum):
 # degradation.  Other failures remain useful typed diagnostics, but a
 # self-consistent caller-created witness with an arbitrary reason, health, or
 # import history must not emit the objective requirement.
-_PROVING_DEGRADATION_STATES: Final = {
-    "provider_disabled": (
-        AnalysisProviderStatus.DISABLED,
-        frozenset({False}),
-        AnalysisProviderHealth.DEGRADED,
-    ),
-    "operation_not_allowlisted": (
-        AnalysisProviderStatus.UNSUPPORTED,
-        frozenset({False}),
-        AnalysisProviderHealth.INCOMPATIBLE,
-    ),
-    "optional_module_unavailable": (
-        AnalysisProviderStatus.UNAVAILABLE,
-        frozenset({True}),
-        AnalysisProviderHealth.UNAVAILABLE,
-    ),
-    "optional_capability_unavailable": (
-        AnalysisProviderStatus.UNAVAILABLE,
-        frozenset({True}),
-        AnalysisProviderHealth.UNAVAILABLE,
-    ),
-    "optional_dispatch_dependency_unavailable": (
-        AnalysisProviderStatus.UNAVAILABLE,
-        frozenset({False, True}),
-        AnalysisProviderHealth.UNAVAILABLE,
-    ),
-    "protocol_incompatible": (
-        AnalysisProviderStatus.UNSUPPORTED,
-        frozenset({False, True}),
-        AnalysisProviderHealth.INCOMPATIBLE,
-    ),
-    "backend_unhealthy": (
-        AnalysisProviderStatus.UNSUPPORTED,
-        frozenset({False, True}),
-        AnalysisProviderHealth.DEGRADED,
-    ),
-    "no_supported_operations": (
-        AnalysisProviderStatus.UNSUPPORTED,
-        frozenset({False, True}),
-        AnalysisProviderHealth.INCOMPATIBLE,
-    ),
-    "operation_not_supported": (
-        AnalysisProviderStatus.UNSUPPORTED,
-        frozenset({False, True}),
-        AnalysisProviderHealth.INCOMPATIBLE,
-    ),
-    "operation_dispatch_unavailable": (
-        AnalysisProviderStatus.UNSUPPORTED,
-        frozenset({False, True}),
-        AnalysisProviderHealth.INCOMPATIBLE,
-    ),
-}
+_PROVING_DEGRADATION_STATES: Final = MappingProxyType(
+    {
+        "provider_disabled": (
+            AnalysisProviderStatus.DISABLED,
+            frozenset({False}),
+            AnalysisProviderHealth.DEGRADED,
+        ),
+        "operation_not_allowlisted": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False}),
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
+        "optional_module_unavailable": (
+            AnalysisProviderStatus.UNAVAILABLE,
+            frozenset({True}),
+            AnalysisProviderHealth.UNAVAILABLE,
+        ),
+        "optional_capability_unavailable": (
+            AnalysisProviderStatus.UNAVAILABLE,
+            frozenset({True}),
+            AnalysisProviderHealth.UNAVAILABLE,
+        ),
+        "optional_dispatch_dependency_unavailable": (
+            AnalysisProviderStatus.UNAVAILABLE,
+            frozenset({False, True}),
+            AnalysisProviderHealth.UNAVAILABLE,
+        ),
+        "protocol_incompatible": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False, True}),
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
+        "backend_unhealthy": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False, True}),
+            AnalysisProviderHealth.DEGRADED,
+        ),
+        "no_supported_operations": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False, True}),
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
+        "operation_not_supported": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False, True}),
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
+        "operation_dispatch_unavailable": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False, True}),
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
+    }
+)
 
 
 def _canonical_value(value: Any, *, name: str, depth: int = 0) -> Any:
@@ -339,6 +342,12 @@ def _operation(value: Any) -> AnalysisProviderOperation:
         raise IpfsDatasetsAnalysisProviderError(
             f"unsupported analysis provider operation: {raw or '<empty>'}"
         ) from exc
+
+
+def normalize_analysis_provider_operation(value: Any) -> AnalysisProviderOperation:
+    """Return the adapter's canonical operation for a public name or alias."""
+
+    return _operation(value)
 
 
 def _status(value: Any) -> AnalysisProviderStatus:
@@ -931,6 +940,19 @@ class IpfsDatasetsProviderDegradationEvidence:
 
     @property
     def proved_requirement_ids(self) -> tuple[str, ...]:
+        """Fail closed because no active policy is available at this surface.
+
+        Use :meth:`proved_requirement_ids_for` with the active request and
+        policy.  :attr:`diagnostic_requirement_ids` exposes the shaped witness
+        claim for observability without presenting it as proof.
+        """
+
+        return ()
+
+    @property
+    def diagnostic_requirement_ids(self) -> tuple[str, ...]:
+        """Return shaped-but-not-active-context-qualified requirement IDs."""
+
         return (self.requirement_id,) if self.proves_requirement else ()
 
     def proves_for(
@@ -942,8 +964,31 @@ class IpfsDatasetsProviderDegradationEvidence:
 
         normalized_request = AnalysisProviderRequest.from_value(request)
         normalized_policy = AnalysisProviderPolicy.from_value(policy)
+        within_policy_bounds = all(
+            getattr(normalized_request.bounds, name)
+            <= getattr(normalized_policy.bounds, name)
+            for name in AnalysisProviderBounds.__dataclass_fields__
+        )
+        if self.reason_code == "provider_disabled":
+            reason_matches_policy = not normalized_policy.enabled
+        elif self.reason_code == "operation_not_allowlisted":
+            reason_matches_policy = (
+                normalized_policy.enabled
+                and normalized_request.operation
+                not in normalized_policy.operations
+            )
+        else:
+            # All remaining proving states occur after the provider's enabled
+            # and operation-allowlist gates in ``_execute``.
+            reason_matches_policy = (
+                normalized_policy.enabled
+                and normalized_request.operation
+                in normalized_policy.operations
+            )
         return bool(
             self.proves_requirement
+            and within_policy_bounds
+            and reason_matches_policy
             and self.request_id == normalized_request.request_id
             and self.repository_id == normalized_request.repository_id
             and self.tree_id == normalized_request.tree_id
@@ -951,6 +996,19 @@ class IpfsDatasetsProviderDegradationEvidence:
             == normalized_request.objective_revision
             and self.operation is normalized_request.operation
             and self.policy_id == normalized_policy.policy_id
+        )
+
+    def proved_requirement_ids_for(
+        self,
+        request: AnalysisProviderRequest | Mapping[str, Any],
+        policy: AnalysisProviderPolicy | Mapping[str, Any] | None,
+    ) -> tuple[str, ...]:
+        """Return requirement IDs only after active-context verification."""
+
+        return (
+            (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
+            if self.proves_for(request, policy)
+            else ()
         )
 
     @property
@@ -1216,9 +1274,46 @@ class AnalysisProviderResult:
 
     @property
     def proved_requirement_ids(self) -> tuple[str, ...]:
+        """Fail closed because no active request and policy are supplied.
+
+        Use :meth:`proved_requirement_ids_for` for proof decisions, or
+        :attr:`diagnostic_requirement_ids` for shaped witness diagnostics.
+        """
+
+        return ()
+
+    @property
+    def diagnostic_requirement_ids(self) -> tuple[str, ...]:
+        """Return shaped-but-not-active-context-qualified requirement IDs."""
+
         return (
-            self.degradation_evidence.proved_requirement_ids
+            self.degradation_evidence.diagnostic_requirement_ids
             if self.degradation_evidence
+            else ()
+        )
+
+    def proves_requirement_for(
+        self,
+        request: AnalysisProviderRequest | Mapping[str, Any],
+        policy: AnalysisProviderPolicy | Mapping[str, Any] | None,
+    ) -> bool:
+        """Verify the degradation requirement against active execution state."""
+
+        return bool(
+            self.degradation_evidence
+            and self.degradation_evidence.proves_for(request, policy)
+        )
+
+    def proved_requirement_ids_for(
+        self,
+        request: AnalysisProviderRequest | Mapping[str, Any],
+        policy: AnalysisProviderPolicy | Mapping[str, Any] | None,
+    ) -> tuple[str, ...]:
+        """Return requirement IDs only after active-context verification."""
+
+        return (
+            (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
+            if self.proves_requirement_for(request, policy)
             else ()
         )
 
@@ -1830,7 +1925,7 @@ class IpfsDatasetsAnalysisProvider:
                 request,
                 AnalysisProviderStatus.UNAVAILABLE,
                 "optional_capability_unavailable",
-                import_attempted=True,
+                import_attempted=imported,
                 health=AnalysisProviderHealth.UNAVAILABLE,
             )
         except Exception:
@@ -1916,14 +2011,17 @@ class IpfsDatasetsAnalysisProvider:
             )
         return self._normalize_response(request, response, capability)
 
-    def analyze(
+    def build_request(
         self,
         request: AnalysisProviderRequest | Mapping[str, Any] | Any | None = None,
-        *,
-        cancellation_token: Any = None,
         **request_fields: Any,
-    ) -> AnalysisProviderResult:
-        """Run one bounded request, returning typed degradation on failure."""
+    ) -> AnalysisProviderRequest:
+        """Normalize pipeline-compatible input within the provider policy.
+
+        This is the public request-construction boundary for callers that use
+        retrieval-style limits.  It performs no backend import or capability
+        probe and rejects any request that would expand the configured policy.
+        """
 
         if request is None:
             if "limits" in request_fields:
@@ -1964,6 +2062,18 @@ class IpfsDatasetsAnalysisProvider:
             )
         normalized = AnalysisProviderRequest.from_value(request)
         self._validate_policy_bounds(normalized.bounds)
+        return normalized
+
+    def analyze(
+        self,
+        request: AnalysisProviderRequest | Mapping[str, Any] | Any | None = None,
+        *,
+        cancellation_token: Any = None,
+        **request_fields: Any,
+    ) -> AnalysisProviderResult:
+        """Run one bounded request, returning typed degradation on failure."""
+
+        normalized = self.build_request(request, **request_fields)
         if not self.policy.enabled or normalized.operation not in self.policy.operations:
             return self._execute(normalized, cancellation_token)
         if not self._dispatch_slots.acquire(blocking=False):
@@ -2186,6 +2296,7 @@ __all__ = [
     "PROVIDER_REQUEST_SCHEMA",
     "PROVIDER_RESULT_SCHEMA",
     "PROVIDER_DEGRADATION_EVIDENCE_SCHEMA",
+    "normalize_analysis_provider_operation",
     "AnalysisProviderOperation",
     "AnalysisProviderStatus",
     "AnalysisProviderHealth",
