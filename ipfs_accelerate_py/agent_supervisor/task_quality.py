@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from typing import Any
 
-from .task_identity import canonical_json_bytes
+from .task_identity import canonical_json_bytes, canonical_task_identity
 
 
 TASK_QUALITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-quality@1"
@@ -384,6 +384,21 @@ class TaskCandidate:
             ),
             metadata=payload.get("metadata", {}),
         )
+        if validate_identity:
+            supplied_key = str(
+                _mapping_value(payload, "canonical task key") or ""
+            ).strip()
+            supplied_cid = str(
+                _mapping_value(payload, "canonical task cid", "task cid") or ""
+            ).strip()
+            if supplied_key and supplied_key != candidate.canonical_task_key:
+                raise ValueError(
+                    "canonical_task_key does not match canonical semantic task content"
+                )
+            if supplied_cid and supplied_cid != candidate.canonical_task_cid:
+                raise ValueError(
+                    "canonical_task_cid does not match canonical semantic task content"
+                )
         return candidate
 
     from_dict = from_mapping
@@ -395,6 +410,22 @@ class TaskCandidate:
     @property
     def predicted_symbol_breadth(self) -> int:
         return len(self.predicted_symbols)
+
+    @property
+    def canonical_task_key(self) -> str:
+        """Return the repository-wide canonical task key for this candidate."""
+
+        return canonical_task_identity(
+            {"dedupe_key": self.semantic_identity}
+        ).canonical_task_key
+
+    @property
+    def canonical_task_cid(self) -> str:
+        """Return the repository-wide canonical task CID for this candidate."""
+
+        return canonical_task_identity(
+            {"dedupe_key": self.semantic_identity}
+        ).canonical_task_cid
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -416,7 +447,9 @@ class TaskCandidate:
         ):
             result[name] = list(result[name])
         result["canonical_semantic_identity"] = self.semantic_identity
-        result["canonical_task_key"] = self.semantic_identity
+        result["canonical_task_key"] = self.canonical_task_key
+        result["canonical_task_cid"] = self.canonical_task_cid
+        result["task_cid"] = self.canonical_task_cid
         result["predicted_path_breadth"] = self.predicted_path_breadth
         result["predicted_symbol_breadth"] = self.predicted_symbol_breadth
         return result
@@ -1061,6 +1094,7 @@ def is_over_broad(
         or len(candidate.acceptance) > selected.max_acceptance_criteria
         or len(candidate.effects) > selected.max_effects
         or len(candidate.evidence_subset) > selected.max_evidence_items
+        or len(candidate.context_paths) > selected.max_context_paths
         or candidate.estimated_context_tokens > selected.max_context_tokens
         or candidate.estimated_tokens > selected.max_estimated_tokens
     )
@@ -1085,9 +1119,9 @@ def split_task_candidate(
     """Split over-broad work deterministically while preserving dependencies.
 
     Every child retains the acceptance/proof contract, validation, goal, merge
-    fate, and external prerequisites.  Later children additionally depend on
-    the preceding child's semantic identity, giving the split an explicit
-    monotonic effect order without inventing display task IDs.
+    fate, and external prerequisites.  Disjoint children remain independent;
+    their source identity is carried by the admission decision instead of
+    inventing dependency edges which would collapse critical-path width.
     """
 
     item = (
@@ -1105,6 +1139,11 @@ def split_task_candidate(
         math.ceil(len(item.acceptance) / selected.max_acceptance_criteria),
         math.ceil(len(item.effects) / selected.max_effects),
         math.ceil(len(item.evidence_subset) / selected.max_evidence_items),
+        (
+            math.ceil(len(item.context_paths) / selected.max_context_paths)
+            if selected.max_context_paths
+            else 1
+        ),
         (
             math.ceil(item.estimated_context_tokens / selected.max_context_tokens)
             if selected.max_context_tokens
@@ -1129,20 +1168,30 @@ def split_task_candidate(
     evidence_chunks = [
         item.evidence_subset[index::part_count] for index in range(part_count)
     ]
+    context_chunks: list[list[str]] = [[] for _ in range(part_count)]
+    path_part = {
+        path: index
+        for index, chunk in enumerate(path_chunks)
+        for path in chunk
+    }
+    residual_context_index = 0
+    for path in item.context_paths:
+        target = path_part.get(path)
+        if target is None:
+            target = residual_context_index % part_count
+            residual_context_index += 1
+        context_chunks[target].append(path)
     children: list[TaskCandidate] = []
     for index in range(part_count):
         child_paths = tuple(path_chunks[index])
         outputs = tuple(path for path in item.outputs if path in child_paths)
         if not outputs and child_paths:
             outputs = child_paths
-        contexts = tuple(
-            path
-            for path in item.context_paths
-            if path in child_paths
-            or any(path.startswith(f"{output.rsplit('/', 1)[0]}/") for output in child_paths if "/" in output)
-        )
-        if not contexts:
-            contexts = item.context_paths
+        # A task may legitimately need context which is not itself an output.
+        # Partition residual context while keeping exact output context with
+        # its owner; copying whole directories into every child would leave
+        # each split over-broad and collapse independent execution width.
+        contexts = _strings(context_chunks[index], paths=True)
         child = replace(
             item,
             title=f"{item.title} [{index + 1}/{part_count}]",
@@ -1197,10 +1246,10 @@ def coalesce_task_candidates(
 ) -> TaskCandidate:
     """Coalesce compatible tiny candidates into one task or fail closed."""
 
-    items = tuple(
+    items = tuple(sorted((
         item if isinstance(item, TaskCandidate) else TaskCandidate.from_mapping(item)
         for item in candidates
-    )
+    ), key=lambda item: item.semantic_identity))
     if not items:
         raise ValueError("at least one task candidate is required")
     selected = policy or TaskQualityPolicy()

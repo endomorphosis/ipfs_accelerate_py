@@ -86,7 +86,11 @@ class TodoIndexRecord:
     embedding: list[float] = field(default_factory=list)
     ast_symbols: list[str] = field(default_factory=list)
     related_task_ids: list[str] = field(default_factory=list)
+    canonical_task_key: str = ""
     task_cid: str = ""
+    semantic_identity: str = ""
+    completion_goal_bindings: dict[str, list[str]] = field(default_factory=dict)
+    completion_task_bindings: list[str] = field(default_factory=list)
     predicted_files: list[str] = field(default_factory=list)
     changed_paths: list[str] = field(default_factory=list)
     interfaces: list[str] = field(default_factory=list)
@@ -110,6 +114,28 @@ def split_csv(value: str) -> list[str]:
         if item and item.lower() not in {"none", "n/a"} and item not in items:
             items.append(item)
     return items
+
+
+def parse_string_list_mapping(value: Any) -> dict[str, list[str]]:
+    """Parse a canonical JSON mapping used for explicit completion authority."""
+
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(key).strip(): sorted_unique(
+            raw
+            if isinstance(raw, Sequence)
+            and not isinstance(raw, (str, bytes, bytearray))
+            else split_csv(str(raw or ""))
+        )
+        for key, raw in sorted(value.items(), key=lambda item: str(item[0]))
+        if str(key).strip()
+    }
 
 
 def split_acceptance_criteria(value: str | Sequence[str]) -> list[str]:
@@ -715,7 +741,19 @@ def parse_todo_vector_records(
             ast_symbols=sorted_unique(
                 [*split_csv(fields.get("ast_symbols", "")), *collect_output_symbols(repo_root, outputs)]
             ),
+            canonical_task_key=str(fields.get("canonical_task_key") or "").strip(),
             task_cid=str(fields.get("canonical_task_cid") or fields.get("task_cid") or "").strip(),
+            semantic_identity=str(
+                fields.get("canonical_semantic_identity")
+                or fields.get("semantic_identity")
+                or ""
+            ).strip(),
+            completion_goal_bindings=parse_string_list_mapping(
+                fields.get("completion_goal_bindings") or {}
+            ),
+            completion_task_bindings=split_csv(
+                fields.get("completion_task_bindings") or ""
+            ),
             predicted_files=sorted_unique(
                 [*_first_csv(fields, "predicted_files", "files"), *outputs]
             ),
@@ -1268,7 +1306,9 @@ def _compact_execution_packet_text(packet: Mapping[str, Any]) -> str:
     parts = [
         str(packet.get("packet_key") or ""),
         f"primary={packet.get('primary_task_id') or ''}",
+        f"primary_cid={packet.get('primary_task_cid') or ''}",
         f"ids={','.join(packet.get('active_task_ids') or [])}",
+        f"cids={','.join(packet.get('active_task_cids') or [])}",
         f"mf={','.join(packet.get('merge_families') or [])}",
         f"gp={','.join(packet.get('goal_packet_keys') or [])}",
         f"w={packet.get('work_item_count_total') or 0}",
@@ -1330,6 +1370,40 @@ def build_execution_packet(
     selected_records = sorted(active_records, key=execution_packet_record_rank)[: max(2, max_tasks)]
     task_ids = sorted_unique([record.task_id for record in selected_records])
     active_task_ids = ordered_unique([record.task_id for record in selected_records if active_record(record)])
+    records_by_cid = {
+        record.task_cid: record for record in selected_records if record.task_cid
+    }
+    records_with_cid = [record for record in selected_records if record.task_cid]
+    canonical_keys = [
+        record.canonical_task_key
+        for record in selected_records
+        if record.canonical_task_key
+    ]
+    identity_projection_valid = (
+        len(records_by_cid) == len(records_with_cid)
+        and len(canonical_keys) == len(set(canonical_keys))
+    )
+    identity_aliases = {
+        alias: record.task_cid
+        for record in selected_records
+        if record.task_cid
+        for alias in (
+            record.task_cid,
+            record.canonical_task_key,
+            record.semantic_identity,
+        )
+        if alias
+    }
+    task_cids = sorted_unique(
+        [record.task_cid for record in selected_records if record.task_cid]
+    )
+    active_task_cids = ordered_unique(
+        [
+            record.task_cid
+            for record in selected_records
+            if active_record(record) and record.task_cid
+        ]
+    )
     if len(active_task_ids) < 2:
         return None
     all_outputs = sorted_unique([output for record in selected_records for output in record.outputs])
@@ -1356,7 +1430,18 @@ def build_execution_packet(
         "merge_ready": bool(context.get("merge_ready")),
         "task_ids": task_ids,
         "active_task_ids": active_task_ids,
+        "task_cids": task_cids,
+        "active_task_cids": active_task_cids,
+        "canonical_task_keys": sorted_unique(
+            [
+                record.canonical_task_key
+                for record in selected_records
+                if record.canonical_task_key
+            ]
+        ),
         "primary_task_id": selected_records[0].task_id,
+        "primary_task_cid": selected_records[0].task_cid,
+        "primary_canonical_task_key": selected_records[0].canonical_task_key,
         "goal_ids": sorted_unique([record.goal_id for record in selected_records]),
         "graph_parent_ids": sorted_unique([parent for record in selected_records for parent in record.graph_parents]),
         "bundle_keys": sorted_unique([record.bundle_key for record in selected_records]),
@@ -1404,6 +1489,78 @@ def build_execution_packet(
         "task_summaries": [_compact_record_summary(record) for record in selected_records],
         "raw_prompt_tokens": sum(record.token_count for record in selected_records),
     }
+    primary = selected_records[0]
+    aggregate_primary = (
+        primary.candidate_kind.strip().lower() == "goal_packet_aggregate"
+        or primary.goal_packet_role.strip().lower() == "packet_aggregate"
+        or primary.merge_role.strip().lower() == "packet_aggregate"
+    )
+    if (
+        aggregate_primary
+        and primary.task_cid
+        and primary.canonical_task_key
+        and primary.completion_task_bindings
+    ):
+        resolved_bindings = [
+            identity_aliases[binding]
+            for binding in primary.completion_task_bindings
+            if binding in identity_aliases
+        ]
+        unresolved_bindings = sorted(
+            set(primary.completion_task_bindings) - set(identity_aliases)
+        )
+        bound_records = [
+            records_by_cid[cid]
+            for cid in sorted_unique(resolved_bindings)
+            if cid in records_by_cid and cid != primary.task_cid
+        ]
+        invalid_packet_bindings = [
+            record.task_cid
+            for record in bound_records
+            if not primary.goal_packet_key
+            or record.goal_packet_key != primary.goal_packet_key
+            or not record.canonical_task_key
+        ]
+        if (
+            identity_projection_valid
+            and not unresolved_bindings
+            and not invalid_packet_bindings
+        ):
+            bound_cids = [record.task_cid for record in bound_records]
+            projected_keys = {
+                record.task_cid: record.canonical_task_key
+                for record in [primary, *bound_records]
+            }
+            binding_material = {
+                "primary_task_cid": primary.task_cid,
+                "bound_sibling_task_cids": bound_cids,
+                "packet_key": primary.goal_packet_key,
+                "canonical_task_keys": projected_keys,
+            }
+            packet["completion_binding"] = {
+                **binding_material,
+                "binding_id": sha1(
+                    json.dumps(binding_material, sort_keys=True).encode("utf-8")
+                ).hexdigest(),
+                "primary_task_id": primary.task_id,
+                "bound_sibling_task_ids": [
+                    record.task_id for record in bound_records
+                ],
+            }
+        else:
+            packet["completion_binding_rejection"] = {
+                "reason": "unresolved_or_cross_packet_binding",
+                "unresolved_bindings": unresolved_bindings,
+                "cross_packet_task_cids": sorted(invalid_packet_bindings),
+                "identity_projection_valid": identity_projection_valid,
+            }
+    elif aggregate_primary and primary.completion_task_bindings:
+        packet["completion_binding_rejection"] = {
+            "reason": "missing_canonical_primary_identity",
+            "primary_task_cid": primary.task_cid,
+            "primary_canonical_task_key": primary.canonical_task_key,
+            "identity_projection_valid": identity_projection_valid,
+        }
     compact_packet = _compact_execution_packet_text(packet)
     packet["compact_packet"] = compact_packet
     packet["compact_packet_tokens"] = len(objective_tokens(compact_packet))
@@ -1903,6 +2060,15 @@ def update_bundle_index_with_todo_vectors(
             task["goal_packet_goal_ids"] = record.goal_packet_goal_ids
             task["goal_packet_task_count"] = record.goal_packet_task_count
             task["goal_packet_work_item_count"] = record.goal_packet_work_item_count
+            task["canonical_task_key"] = record.canonical_task_key or task.get(
+                "canonical_task_key", ""
+            )
+            task["canonical_task_cid"] = record.task_cid or task.get(
+                "canonical_task_cid", ""
+            )
+            task["canonical_semantic_identity"] = record.semantic_identity
+            task["completion_goal_bindings"] = record.completion_goal_bindings
+            task["completion_task_bindings"] = record.completion_task_bindings
             task["surplus_group"] = record.surplus_group
             task["todo_vector_key"] = record.vector_key
             task["todo_cluster_key"] = cluster_by_task.get(record.task_id, "")

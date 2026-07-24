@@ -552,6 +552,8 @@ class ConflictSurface:
 
     task_id: str
     task_cid: str = ""
+    canonical_task_key: str = ""
+    semantic_identity: str = ""
     files: list[str] = field(default_factory=list)
     changed_paths: list[str] = field(default_factory=list)
     ast_symbols: list[str] = field(default_factory=list)
@@ -623,6 +625,31 @@ def build_conflict_surface(
         or root.get("canonical_task_cid")
         or next((source.get("task_cid") for source in sources[1:] if source.get("task_cid")), "")
         or task_id
+    ).strip()
+    canonical_task_key = str(
+        root.get("canonical_task_key")
+        or next(
+            (
+                source.get("canonical_task_key")
+                for source in sources[1:]
+                if source.get("canonical_task_key")
+            ),
+            "",
+        )
+    ).strip()
+    semantic_identity = str(
+        root.get("canonical_semantic_identity")
+        or root.get("semantic_identity")
+        or next(
+            (
+                source.get("canonical_semantic_identity")
+                or source.get("semantic_identity")
+                for source in sources[1:]
+                if source.get("canonical_semantic_identity")
+                or source.get("semantic_identity")
+            ),
+            "",
+        )
     ).strip()
     if not task_id:
         task_id = task_cid
@@ -772,6 +799,8 @@ def build_conflict_surface(
     return ConflictSurface(
         task_id=task_id,
         task_cid=task_cid,
+        canonical_task_key=canonical_task_key,
+        semantic_identity=semantic_identity,
         files=files,
         changed_paths=normalized_changed_paths,
         ast_symbols=ast_symbols,
@@ -812,6 +841,20 @@ def _merge_duplicate_surfaces(
 
     if left.task_cid != right.task_cid:
         raise ValueError("cannot merge conflict surfaces with different task CIDs")
+    canonical_keys = {
+        value for value in (left.canonical_task_key, right.canonical_task_key) if value
+    }
+    if len(canonical_keys) > 1:
+        raise ValueError(
+            "one canonical task CID cannot project multiple canonical task keys"
+        )
+    semantic_identities = {
+        value for value in (left.semantic_identity, right.semantic_identity) if value
+    }
+    if len(semantic_identities) > 1:
+        raise ValueError(
+            "one canonical task CID cannot project multiple semantic identities"
+        )
 
     ordered = sorted(
         (left, right),
@@ -832,6 +875,8 @@ def _merge_duplicate_surfaces(
     return ConflictSurface(
         task_id=representative.task_id,
         task_cid=representative.task_cid,
+        canonical_task_key=next(iter(canonical_keys), ""),
+        semantic_identity=next(iter(semantic_identities), ""),
         files=sorted(set(left.files) | set(right.files)),
         changed_paths=sorted(set(left.changed_paths) | set(right.changed_paths)),
         ast_symbols=sorted(set(left.ast_symbols) | set(right.ast_symbols)),

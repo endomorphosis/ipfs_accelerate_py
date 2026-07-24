@@ -1136,6 +1136,8 @@ class ObjectiveFinding:
     goal_packet_goal_ids: list[str] = field(default_factory=list)
     goal_packet_task_count: int = 0
     goal_packet_work_item_count: int = 0
+    completion_goal_bindings: dict[str, list[str]] = field(default_factory=dict)
+    completion_task_bindings: list[str] = field(default_factory=list)
     predicted_files: list[str] = field(default_factory=list)
     changed_paths: list[str] = field(default_factory=list)
     ast_symbols: list[str] = field(default_factory=list)
@@ -1175,6 +1177,22 @@ class ObjectiveFinding:
             self.semantic_identity
             or self.dedupe_key
             or f"objective-finding:{self.fingerprint}"
+        )
+        payload["canonical_semantic_identity"] = payload["semantic_identity"]
+        identity = canonical_task_identity(
+            {"dedupe_key": payload["semantic_identity"]},
+            board_namespace="objective-graph",
+            source_path=self.objective_path,
+        )
+        payload["canonical_task_key"] = identity.canonical_task_key
+        payload["canonical_task_cid"] = identity.canonical_task_cid
+        payload["task_cid"] = identity.canonical_task_cid
+        payload["completion_goal_bindings"] = {
+            str(goal_id): list(requirements)
+            for goal_id, requirements in sorted(self.completion_goal_bindings.items())
+        }
+        payload["completion_task_bindings"] = sorted(
+            {str(identity) for identity in self.completion_task_bindings if str(identity)}
         )
         return payload
 
@@ -6429,6 +6447,47 @@ def _unique_strings(values: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
 
 
+def _completion_goal_bindings(value: Any) -> dict[str, list[str]]:
+    """Normalize explicit packet completion authority.
+
+    Packet membership is useful scheduling metadata but is not completion
+    authority.  This bounded mapping is the only current-format projection
+    allowed to make one packet task cover another goal's evidence obligation.
+    """
+
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, list[str]] = {}
+    for raw_goal_id, raw_requirements in sorted(
+        value.items(), key=lambda item: str(item[0])
+    ):
+        goal_id = str(raw_goal_id).strip()
+        if not goal_id:
+            continue
+        requirements = _unique_strings(
+            raw_requirements
+            if isinstance(raw_requirements, Sequence)
+            and not isinstance(raw_requirements, (str, bytes, bytearray))
+            else split_terms(str(raw_requirements or ""))
+        )
+        if requirements:
+            result[goal_id] = requirements
+    return result
+
+
+def _finding_completion_goal_bindings(
+    finding: ObjectiveFinding,
+) -> dict[str, list[str]]:
+    """Return explicit bindings without inferring authority from membership."""
+
+    return _completion_goal_bindings(finding.completion_goal_bindings)
+
+
 def _goal_conflict_terms(goal: ObjectiveGoal, *field_names: str) -> list[str]:
     """Collect normalized conflict-surface declarations from goal fields."""
 
@@ -6571,6 +6630,31 @@ def add_goal_packet_aggregate_findings(
             goal_packet_task_count=len(sorted_group) + 1,
             goal_packet_work_item_count=sum(
                 finding.work_item_count or len(finding.missing_evidence) for finding in sorted_group
+            ),
+            completion_goal_bindings={
+                goal_id: _unique_strings(
+                    term
+                    for finding in sorted_group
+                    if finding.goal_id == goal_id
+                    for term in (
+                        finding.evidence_subset or finding.missing_evidence
+                    )
+                )
+                for goal_id in goal_ids
+            },
+            completion_task_bindings=_unique_strings(
+                canonical_task_identity(
+                    {
+                        "dedupe_key": (
+                            finding.semantic_identity
+                            or finding.dedupe_key
+                            or f"objective-finding:{finding.fingerprint}"
+                        )
+                    },
+                    board_namespace="objective-graph",
+                    source_path=finding.objective_path,
+                ).canonical_task_cid
+                for finding in sorted_group
             ),
             predicted_files=_unique_strings(
                 path for finding in sorted_group for path in (finding.predicted_files or finding.outputs)
@@ -7409,20 +7493,47 @@ def _legacy_task_obligations(
         return []
     candidate_goal_ids = [
         goal_id
-        for name in ("goal id", "goal packet goals", "graph parents")
-        for goal_id in split_terms(fields.get(name, ""))
+        for goal_id in split_terms(fields.get("goal id", ""))
         if goal_id in goals_by_id
     ]
+    bindings = _completion_goal_bindings(
+        fields.get("completion goal bindings", "")
+    )
+    if bindings:
+        candidate_goal_ids.extend(
+            goal_id for goal_id in bindings if goal_id in goals_by_id
+        )
+    if not bindings and not fields.get("goal packet", "").strip() and not fields.get(
+        "goal packet goals", ""
+    ).strip():
+        # Preserve the pre-packet refinement migration: a removed child task
+        # may name only the still-live graph parent which owns its evidence.
+        candidate_goal_ids.extend(
+            goal_id
+            for goal_id in split_terms(fields.get("graph parents", ""))
+            if goal_id in goals_by_id
+        )
     obligations: list[tuple[ObjectiveGoal, list[str]]] = []
     for goal_id in dict.fromkeys(candidate_goal_ids):
         goal = goals_by_id.get(goal_id)
         if goal is None:
             continue
+        bound_requirements = {
+            normalized
+            for term in bindings.get(goal_id, ())
+            for normalized in [normalize_objective_evidence_requirement(term)]
+            if normalized
+        }
         matching_terms = [
             term
             for term in goal.required_evidence
             if normalize_objective_evidence_requirement(term)
             in missing_requirements
+            and (
+                not bound_requirements
+                or normalize_objective_evidence_requirement(term)
+                in bound_requirements
+            )
         ]
         if matching_terms:
             obligations.append((goal, matching_terms))
@@ -7657,6 +7768,15 @@ def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -
             or finding.dedupe_key
             or f"objective-finding:{finding.fingerprint}"
         ),
+        "canonical_semantic_identity": (
+            finding.semantic_identity
+            or finding.dedupe_key
+            or f"objective-finding:{finding.fingerprint}"
+        ),
+        "completion_goal_bindings": _finding_completion_goal_bindings(finding),
+        "completion_task_bindings": _unique_strings(
+            finding.completion_task_bindings
+        ),
         "acceptance_subset": acceptance_subset,
         "preconditions": preconditions,
         "effects": effects,
@@ -7736,6 +7856,15 @@ def render_task_block(
         or finding.dedupe_key
         or f"objective-finding:{finding.fingerprint}"
     )
+    completion_goal_bindings = _finding_completion_goal_bindings(finding)
+    completion_goal_bindings_json = json.dumps(
+        completion_goal_bindings,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    completion_task_bindings = _unique_strings(
+        finding.completion_task_bindings
+    )
     bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
     return f"""## {task_id} {finding.summary}
 
@@ -7789,6 +7918,8 @@ def render_task_block(
 - Goal packet goals: {packet_goals}
 - Goal packet task count: {finding.goal_packet_task_count}
 - Goal packet work item count: {finding.goal_packet_work_item_count}
+- Completion goal bindings: {completion_goal_bindings_json}
+- Completion task bindings: {", ".join(completion_task_bindings)}
 - Candidate kind: {finding.candidate_kind}
 - Todo vector key: {finding.todo_vector_key}
 - Acceptance: Objective scan filed this gap for {finding.goal_id}. Use evidence in {discovery_path}, add code/tests/docs or child goals that prove the missing evidence terms are covered ({missing}), and keep the supervisor-fed backlog aligned with the objective heap. {packet_acceptance} {refinement}
@@ -8077,8 +8208,9 @@ def generate_objective_todos(
                 if normalized
             }
             segments: dict[tuple[str, tuple[str, ...]], set[str]] = {}
+            completion_bindings = _finding_completion_goal_bindings(finding)
             candidate_goal_ids = dict.fromkeys(
-                [finding.goal_id, *finding.goal_packet_goal_ids]
+                [finding.goal_id, *completion_bindings]
             )
             for goal_id in candidate_goal_ids:
                 goal = objective_goals_by_id.get(goal_id)
@@ -8092,7 +8224,14 @@ def generate_objective_todos(
                     ]
                     if normalized
                 }
+                bound_requirements = {
+                    normalize_objective_evidence_requirement(term)
+                    for term in completion_bindings.get(goal_id, ())
+                    if normalize_objective_evidence_requirement(term)
+                }
                 matching = requirements & goal_requirements
+                if bound_requirements:
+                    matching &= bound_requirements
                 if not matching:
                     continue
                 lineage_ids = objective_evidence_lineage_ids(
