@@ -7,6 +7,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     DELTA_RETRY_EVIDENCE_ID,
+    REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID as COMPILER_REQUIRED_CONTEXT_ID,
     ContextCompiler,
 )
 from ipfs_accelerate_py.agent_supervisor.context_contracts import (
@@ -22,6 +23,8 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     EFFICIENCY_REPORT_SCHEMA,
     PAIRED_EFFICIENCY_CASE_SCHEMA,
     PAIRED_EFFICIENCY_REPORT_SCHEMA,
+    REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
+    REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA,
     TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
     MAX_ARTIFACT_REFERENCES,
     MAX_CHANGED_PATHS,
@@ -44,6 +47,8 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     PairedEfficiencyCase,
     PairedEfficiencyReport,
     RetryObservation,
+    RequiredContextProofBinding,
+    RequiredContextPromotionReport,
     StageName,
     StageTiming,
     TerminalAcceptance,
@@ -55,6 +60,7 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     build_efficiency_baseline_fixtures,
     build_delta_retry_promotion_report,
     build_paired_efficiency_report,
+    build_required_context_promotion_report,
 )
 
 
@@ -148,6 +154,81 @@ def _delta_retry_fixture(*, requested_only: bool = False):
             evidence=(required, changed, *optional[1:]),
         )
     return result.receipt
+
+
+def _required_context_fixture():
+    """Compile a fresh ASI-G091 result for the typed promotion join."""
+
+    tree_digest = "sha256:" + "7" * 64
+    policy_digest = "sha256:" + "8" * 64
+    compiler = ContextCompiler(
+        ContextBudget(
+            max_input_tokens=4_000,
+            reserved_output_tokens=200,
+            reserved_tool_tokens=100,
+            max_items=64,
+            max_serialized_bytes=262_144,
+        ),
+        tokenizer=lambda text: max(1, len(text.encode("utf-8")) // 24),
+        provider_context_window=4_500,
+    )
+    required = ContextReference(
+        reference_id="required",
+        kind="benchmark-evidence",
+        tier=ContextTier.INVARIANT,
+        referenced_content_id="sha256:" + "9" * 64,
+        repository_id="repo:efficiency-context",
+        tree_id=tree_digest,
+        token_count=60,
+        metadata={
+            "required": True,
+            "coverage_ids": ("coverage:required",),
+        },
+    )
+    return compiler.compile(
+        repository_id="repo:efficiency-context",
+        tree_id=tree_digest,
+        objective_id="ASI-G091",
+        objective_revision="sha256:" + "a" * 64,
+        policy_id="policy:supervisor",
+        policy_revision=policy_digest,
+        caller="supervisor:efficiency-test",
+        stage="implementation",
+        goal={"id": "ASI-G091", "summary": "Preserve required context"},
+        authority={"mode": "proposal", "allowed_paths": ["src"]},
+        scope={"paths": ["src/context.py"]},
+        acceptance={"criteria": ["retain required coverage"]},
+        evidence=(required,),
+    )
+
+
+def _paired_required_context_report(context_result):
+    candidate_input = context_result.receipt.input_tokens
+    baseline_input = max(candidate_input * 2, candidate_input + 1)
+    baseline = replace(
+        _fixtures()["cold"],
+        task_reference="task:required-context",
+        goal_reference=context_result.receipt.objective_id,
+        repository_tree_digest=context_result.receipt.tree_id,
+        policy_digest=context_result.receipt.policy_revision,
+        tokens=TokenUsage(input_tokens=baseline_input, output_tokens=200),
+        evidence=EvidenceDelta(
+            baseline_references=("coverage:required",),
+            terminal_references=("coverage:required",),
+        ),
+    )
+    candidate = replace(
+        baseline,
+        tokens=TokenUsage(input_tokens=candidate_input, output_tokens=100),
+        output_digest="e" * 64,
+    )
+    return build_paired_efficiency_report(
+        (baseline,),
+        (candidate,),
+        required_evidence_by_task={
+            "task:required-context": ("coverage:required",),
+        },
+    )
 
 
 def _paired_delta_report(delta_receipt):
@@ -595,6 +676,115 @@ def test_paired_report_rejects_unfrozen_or_ambiguous_populations() -> None:
         )
 
 
+def test_required_context_promotion_binds_capsule_to_same_task_gate() -> None:
+    result = _required_context_fixture()
+    paired = _paired_required_context_report(result)
+
+    report = build_required_context_promotion_report(
+        paired,
+        {"task:required-context": (result,)},
+    )
+
+    assert report.schema == REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA
+    assert REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID == (
+        COMPILER_REQUIRED_CONTEXT_ID
+    )
+    assert report.proof_population_complete
+    assert report.coverage_requirements_consistent
+    assert report.token_accounting_consistent
+    assert report.typed_context_gate_passed
+    assert report.paired_efficiency_gate_passed
+    assert report.evidence_claim_references == (
+        REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
+    )
+    assert report.promotion_eligible
+
+    binding = report.proof_bindings[0]
+    assert binding.capsule_id == result.capsule.capsule_id
+    assert binding.receipt_id == result.receipt.receipt_id
+    assert binding.evidence_id == result.receipt.evidence.content_id
+    assert binding.required_reference_ids == ("required",)
+    assert binding.required_coverage_ids == ("coverage:required",)
+    assert binding.required_references_preserved
+    assert binding.required_coverage_preserved
+    assert RequiredContextProofBinding.from_context_compile_result(
+        "task:required-context",
+        result,
+    ) == binding
+
+    assert RequiredContextPromotionReport.from_json(
+        report.to_json()
+    ) == report
+    assert RequiredContextPromotionReport.from_dict(
+        report.to_dict(include_report_id=True)
+    ) == report
+
+
+def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
+    result = _required_context_fixture()
+    paired = _paired_required_context_report(result)
+
+    missing = build_required_context_promotion_report(paired, {})
+    assert missing.missing_proof_task_references == (
+        "task:required-context",
+    )
+    assert not missing.typed_context_gate_passed
+    assert not missing.evidence_claim_references
+    assert not missing.promotion_eligible
+
+    unexplained_tokens = replace(
+        paired,
+        cases=(
+            replace(
+                paired.cases[0],
+                candidate_input_tokens=(
+                    paired.cases[0].candidate_input_tokens + 1
+                ),
+            ),
+        ),
+    )
+    inconsistent = build_required_context_promotion_report(
+        unexplained_tokens,
+        {"task:required-context": (result,)},
+    )
+    assert not inconsistent.token_accounting_consistent
+    assert not inconsistent.evidence_claim_references
+    assert not inconsistent.promotion_eligible
+
+    assert result.receipt.evidence is not None
+    with pytest.raises(EfficiencyValidationError, match="artifact digest"):
+        forged_result = replace(
+            result,
+            receipt=replace(
+                result.receipt,
+                evidence=replace(
+                    result.receipt.evidence,
+                    artifact_digest="sha256:" + "0" * 64,
+                ),
+            ),
+        )
+
+    with pytest.raises(EfficiencyValidationError, match="coverage"):
+        build_required_context_promotion_report(
+            replace(
+                paired,
+                cases=(
+                    replace(
+                        paired.cases[0],
+                        required_evidence_references=("coverage:other",),
+                        baseline_covered_evidence_references=(
+                            "coverage:other",
+                        ),
+                        candidate_covered_evidence_references=(
+                            "coverage:other",
+                        ),
+                    ),
+                ),
+            ),
+            {"task:required-context": (result,)},
+        )
+
+
 def test_delta_retry_promotion_binds_typed_receipt_to_same_task_gate() -> None:
     receipt = _delta_retry_fixture()
     paired = _paired_delta_report(receipt)
@@ -747,6 +937,24 @@ def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> No
     assert not inefficient.typed_delta_gate_passed
     assert not inefficient.evidence_claim_references
     assert not inefficient.promotion_eligible
+
+    unexplained = build_delta_retry_promotion_report(
+        replace(
+            paired,
+            cases=(
+                replace(
+                    paired.cases[0],
+                    candidate_input_tokens=(
+                        paired.cases[0].candidate_input_tokens + 1
+                    ),
+                ),
+            ),
+        ),
+        {"task:delta-retry": (requested_receipt,)},
+    )
+    assert not unexplained.token_accounting_consistent
+    assert not unexplained.evidence_claim_references
+    assert not unexplained.promotion_eligible
 
 
 @pytest.mark.parametrize(

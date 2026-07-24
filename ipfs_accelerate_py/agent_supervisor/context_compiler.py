@@ -382,7 +382,14 @@ class CalibratedTokenEstimator:
 def _reference_tokens(
     estimator: CalibratedTokenEstimator, reference: ContextReference
 ) -> int:
-    return reference.token_count or estimator.estimate(reference.to_record())
+    # A producer-supplied token count is a useful conservative hint, never an
+    # authority boundary.  Always tokenize the canonical descriptor as well
+    # so a large reference cannot claim ``token_count=1`` and escape the
+    # effective provider budget.
+    return max(
+        reference.token_count,
+        estimator.estimate(reference.to_record()),
+    )
 
 
 def _core_payload(
@@ -397,6 +404,50 @@ def _core_payload(
         "authority": authority,
         "scope": scope,
         "acceptance": acceptance,
+    }
+
+
+def context_provider_input_payload(
+    *,
+    repository_id: str,
+    tree_id: str,
+    objective_id: str,
+    objective_revision: str,
+    policy_id: str,
+    policy_revision: str,
+    caller: str,
+    stage: str,
+    goal: Any,
+    authority: Any,
+    scope: Any,
+    acceptance: Any,
+    evidence: Iterable[ContextReference] = (),
+) -> dict[str, Any]:
+    """Return the canonical authority-bearing provider input.
+
+    This is deliberately separate from :class:`ContextCapsule`'s supervisor
+    accounting envelope.  It includes every binding and selected reference
+    sent to the provider while excluding deferred expansion handles and
+    supervisor-only omission diagnostics.
+    """
+
+    return {
+        "contract_version": CONTEXT_COMPILER_VERSION,
+        "repository_id": repository_id,
+        "tree_id": tree_id,
+        "objective_id": objective_id,
+        "objective_revision": objective_revision,
+        "policy_id": policy_id,
+        "policy_revision": policy_revision,
+        "caller": caller,
+        "stage": stage,
+        **_core_payload(
+            goal=goal,
+            authority=authority,
+            scope=scope,
+            acceptance=acceptance,
+        ),
+        "evidence": tuple(item.to_record() for item in evidence),
     }
 
 
@@ -1061,10 +1112,102 @@ class ContextCompileResult:
     decisions: tuple[EvidenceSelectionDecision, ...]
 
     def __post_init__(self) -> None:
-        if self.receipt.capsule_id != self.capsule.capsule_id:
-            raise ContextCompilationError("receipt does not bind compiled capsule")
+        if not isinstance(self.capsule, ContextCapsule):
+            raise ContextCompilationError("capsule must be a ContextCapsule")
+        if not isinstance(self.receipt, ContextCompilationReceipt):
+            raise ContextCompilationError(
+                "receipt must be a ContextCompilationReceipt"
+            )
+        receipt_bindings = {
+            "repository_id": self.capsule.repository_id,
+            "tree_id": self.capsule.tree_id,
+            "objective_id": self.capsule.objective_id,
+            "policy_id": self.capsule.policy_id,
+            "policy_revision": self.capsule.policy_revision,
+            "stage": self.capsule.stage,
+            "capsule_id": self.capsule.capsule_id,
+            "effective_input_limit": self.capsule.budget.max_input_tokens,
+            "input_tokens": self.capsule.input_tokens,
+        }
+        if any(
+            getattr(self.receipt, name) != expected
+            for name, expected in receipt_bindings.items()
+        ):
+            raise ContextCompilationError(
+                "receipt does not bind the complete compiled capsule"
+            )
         if self.decisions != self.receipt.decisions:
             raise ContextCompilationError("result decisions do not match receipt")
+        evidence = self.receipt.evidence
+        if evidence is None:
+            raise ContextCompilationError(
+                "compiled result requires qualifying required-context evidence"
+            )
+        selected_by_id = {
+            item.reference_id: item for item in self.capsule.evidence
+        }
+        expansion_by_id = {
+            item.reference_id: item
+            for item in self.capsule.expansion_references
+        }
+        decision_by_id = {
+            item.reference_id: item for item in self.decisions
+        }
+        if set(decision_by_id) != set(selected_by_id) | set(expansion_by_id):
+            raise ContextCompilationError(
+                "selection decisions do not cover the complete candidate set"
+            )
+        required_ids = {
+            item.reference_id
+            for item in self.capsule.evidence
+            if item.required
+        }
+        if set(evidence.required_reference_ids) != required_ids:
+            raise ContextCompilationError(
+                "required-context evidence does not bind required references"
+            )
+        if set(evidence.selected_reference_ids) != set(selected_by_id):
+            raise ContextCompilationError(
+                "required-context evidence does not bind selected references"
+            )
+        if evidence.required_fields != tuple(
+            sorted(self.capsule.required_field_names)
+        ):
+            raise ContextCompilationError(
+                "required-context evidence does not bind invariant fields"
+            )
+        for reference_id, reference in selected_by_id.items():
+            decision = decision_by_id[reference_id]
+            expected_reason = (
+                InclusionReason.REQUIRED
+                if reference.required
+                else InclusionReason.RANKED_FIT
+            )
+            if (
+                not decision.included
+                or decision.reason is not expected_reason
+                or decision.priority != reference.priority
+            ):
+                raise ContextCompilationError(
+                    "selection decision does not match selected reference"
+                )
+        for reference_id, reference in expansion_by_id.items():
+            decision = decision_by_id[reference_id]
+            if (
+                decision.included
+                or decision.reason
+                not in (ExclusionReason.TOKEN_BUDGET, ExclusionReason.ITEM_LIMIT)
+                or decision.priority != reference.priority
+            ):
+                raise ContextCompilationError(
+                    "selection decision does not match deferred reference"
+                )
+        if evidence.artifact_digest != _canonical_digest(
+            self.capsule.to_record()
+        ):
+            raise ContextCompilationError(
+                "required-context evidence artifact digest does not match capsule"
+            )
 
 
 @dataclass(frozen=True)
@@ -1185,21 +1328,82 @@ class ContextCompiler:
             self.effective_input_limit
         )
 
-    def _base_tokens(
+    def _provider_input_tokens(
         self,
         *,
+        repository_id: str,
+        tree_id: str,
+        objective_id: str,
+        objective_revision: str,
+        policy_id: str,
+        policy_revision: str,
+        caller: str,
+        stage: str,
         goal: Any,
         authority: Any,
         scope: Any,
         acceptance: Any,
+        evidence: Iterable[ContextReference] = (),
     ) -> int:
-        return self.estimator.estimate(
-            _core_payload(
+        selected = tuple(evidence)
+        canonical_count = self.estimator.estimate(
+            context_provider_input_payload(
+                repository_id=repository_id,
+                tree_id=tree_id,
+                objective_id=objective_id,
+                objective_revision=objective_revision,
+                policy_id=policy_id,
+                policy_revision=policy_revision,
+                caller=caller,
+                stage=stage,
                 goal=goal,
                 authority=authority,
                 scope=scope,
                 acceptance=acceptance,
+                evidence=selected,
             )
+        )
+        # Component accounting is conservative for tokenizers whose result is
+        # not additive across JSON boundaries and for references carrying a
+        # larger producer-observed count than the local tokenizer.
+        component_count = self.estimator.estimate(
+            context_provider_input_payload(
+                repository_id=repository_id,
+                tree_id=tree_id,
+                objective_id=objective_id,
+                objective_revision=objective_revision,
+                policy_id=policy_id,
+                policy_revision=policy_revision,
+                caller=caller,
+                stage=stage,
+                goal=goal,
+                authority=authority,
+                scope=scope,
+                acceptance=acceptance,
+                evidence=(),
+            )
+        ) + sum(_reference_tokens(self.estimator, item) for item in selected)
+        return max(canonical_count, component_count)
+
+    def estimate_capsule_input(self, capsule: ContextCapsule) -> int:
+        """Independently recompute conservative provider input accounting."""
+
+        if not isinstance(capsule, ContextCapsule):
+            raise ContextCompilationError("capsule must be a ContextCapsule")
+        return self._provider_input_tokens(
+            repository_id=capsule.repository_id,
+            tree_id=capsule.tree_id,
+            objective_id=capsule.objective_id,
+            objective_revision=capsule.objective_revision,
+            policy_id=capsule.policy_id,
+            policy_revision=capsule.policy_revision,
+            caller=capsule.caller,
+            stage=capsule.stage,
+            goal=capsule.goal,
+            authority=capsule.authority,
+            scope=capsule.scope,
+            acceptance=capsule.acceptance,
+            evidence=capsule.evidence,
         )
 
     def compile(
@@ -1222,11 +1426,23 @@ class ContextCompiler:
         references = _coerce_references(evidence)
         required = tuple(item for item in references if item.required)
         optional = tuple(item for item in references if not item.required)
-        base_tokens = self._base_tokens(
-            goal=goal,
-            authority=authority,
-            scope=scope,
-            acceptance=acceptance,
+        input_arguments = {
+            "repository_id": repository_id,
+            "tree_id": tree_id,
+            "objective_id": objective_id,
+            "objective_revision": objective_revision,
+            "policy_id": policy_id,
+            "policy_revision": policy_revision,
+            "caller": caller,
+            "stage": stage,
+            "goal": goal,
+            "authority": authority,
+            "scope": scope,
+            "acceptance": acceptance,
+        }
+        base_tokens = self._provider_input_tokens(
+            **input_arguments,
+            evidence=(),
         )
         selected: list[ContextReference] = []
         decisions: dict[str, EvidenceSelectionDecision] = {}
@@ -1238,16 +1454,20 @@ class ContextCompiler:
             )
         for item in sorted(required, key=lambda member: member.reference_id):
             tokens = _reference_tokens(self.estimator, item)
+            proposed = self._provider_input_tokens(
+                **input_arguments,
+                evidence=(*selected, item),
+            )
             if (
                 len(selected) >= self.effective_budget.max_items
-                or used + tokens > self.effective_input_limit
+                or proposed > self.effective_input_limit
             ):
                 raise RequiredContextOverflowError(
                     f"required evidence {item.reference_id!r} does not fit "
                     "the effective provider input budget"
                 )
             selected.append(item)
-            used += tokens
+            used = proposed
             decisions[item.reference_id] = EvidenceSelectionDecision(
                 item.reference_id,
                 True,
@@ -1267,13 +1487,17 @@ class ContextCompiler:
         omitted: list[ContextReference] = []
         for item in ranked_optional:
             tokens = _reference_tokens(self.estimator, item)
+            proposed = self._provider_input_tokens(
+                **input_arguments,
+                evidence=(*selected, item),
+            )
             if len(selected) >= self.effective_budget.max_items:
                 reason = ExclusionReason.ITEM_LIMIT
-            elif used + tokens > self.effective_input_limit:
+            elif proposed > self.effective_input_limit:
                 reason = ExclusionReason.TOKEN_BUDGET
             else:
                 selected.append(item)
-                used += tokens
+                used = proposed
                 decisions[item.reference_id] = EvidenceSelectionDecision(
                     item.reference_id,
                     True,
@@ -1442,12 +1666,21 @@ class ContextCompiler:
         combined_by_id = dict(parent_by_id)
         combined_by_id.update(candidate_by_id)
         combined = tuple(combined_by_id[key] for key in sorted(combined_by_id))
-        reconstructed_input_tokens = self._base_tokens(
+        reconstructed_input_tokens = self._provider_input_tokens(
+            repository_id=parent.repository_id,
+            tree_id=parent.tree_id,
+            objective_id=parent.objective_id,
+            objective_revision=parent.objective_revision,
+            policy_id=parent.policy_id,
+            policy_revision=parent.policy_revision,
+            caller=parent.caller,
+            stage=stage or parent.stage,
             goal=parent.goal,
             authority=parent.authority,
             scope=parent.scope,
             acceptance=parent.acceptance,
-        ) + sum(_reference_tokens(self.estimator, item) for item in combined)
+            evidence=combined,
+        )
         reconstructed_limit = min(
             parent.budget.max_input_tokens, self.effective_input_limit
         )
@@ -1469,12 +1702,14 @@ class ContextCompiler:
                 "retry delta exceeds the serialized-byte budget"
             )
         reconstructed = reconstruct_context(parent, delta_capsule)
-        # These are provider-tokenized canonical wire records.  Unlike the
-        # former full ContextCapsule "delta", the compact record does not
-        # serialize the inherited core and then omit it from accounting.
+        # The delta is its compact provider wire record.  Full replay is the
+        # canonical provider input, conservatively floored by the same
+        # component accounting used for the effective-budget check; it does
+        # not include supervisor-only budget or omission metadata.
         delta_tokens = self.estimator.estimate(delta_capsule.to_record())
-        full_replay_tokens = self.estimator.estimate(
-            reconstructed.to_record()
+        full_replay_tokens = max(
+            reconstructed.input_tokens,
+            self.estimator.estimate(reconstructed.provider_input_payload),
         )
         if delta_tokens >= full_replay_tokens:
             raise ContextDeltaError(
@@ -1734,6 +1969,7 @@ __all__ = [
     "build_context_delta",
     "compile_context_capsule",
     "compile_context_delta",
+    "context_provider_input_payload",
     "expand_context",
     "reconstruct_context",
     "reconstruct_context_capsule",

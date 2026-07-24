@@ -82,6 +82,13 @@ PAIRED_EFFICIENCY_CASE_SCHEMA = (
 PAIRED_EFFICIENCY_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/paired-efficiency-report@1"
 )
+REQUIRED_CONTEXT_PROOF_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/required-context-proof-binding@1"
+)
+REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "required-context-promotion-report@1"
+)
 DELTA_RETRY_PROOF_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/delta-retry-proof-binding@1"
 )
@@ -96,6 +103,13 @@ DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS = 3_500
 # this module must not claim them from token receipts alone.
 TERMINAL_ACCEPTED_WORK_EVIDENCE_ID = (
     "248026856102230635452423769994290240744"
+)
+# Verification-side binding to
+# context_compiler.REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID.  Token measurements
+# alone cannot emit this term; the promotion report must consume a typed,
+# capsule-verified compiler result for every paired task.
+REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID = (
+    "208290439421789408250562066350459701853"
 )
 # Verification-side binding to context_compiler.DELTA_RETRY_EVIDENCE_ID.
 # This module never emits the term from token measurements alone: a promotion
@@ -2895,6 +2909,614 @@ class PairedEfficiencyReport(CanonicalContract):
 
 
 @dataclass(frozen=True)
+class RequiredContextProofBinding(CanonicalContract):
+    """Capsule-verified projection of one required-context compiler result."""
+
+    SCHEMA: ClassVar[str] = REQUIRED_CONTEXT_PROOF_BINDING_SCHEMA
+
+    task_reference: str
+    context_capsule: Any
+    context_compilation_receipt: Any
+    capsule_id: str
+    receipt_id: str
+    evidence_id: str
+    repository_id: str
+    tree_id: str
+    objective_id: str
+    policy_id: str
+    policy_revision: str
+    effective_input_limit: int
+    input_tokens: int
+    required_reference_ids: tuple[str, ...]
+    selected_reference_ids: tuple[str, ...]
+    required_coverage_ids: tuple[str, ...]
+    selected_coverage_ids: tuple[str, ...]
+    required_fields: tuple[str, ...]
+    artifact_digest: str
+    requirement_id: str = REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID
+
+    def __post_init__(self) -> None:
+        from .context_compiler import (
+            REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID as COMPILER_REQUIREMENT_ID,
+            ContextCompilationReceipt,
+            ContextCompileResult,
+        )
+        from .context_contracts import ContextCapsule
+
+        capsule = self.context_capsule
+        if isinstance(capsule, Mapping):
+            capsule = ContextCapsule.from_dict(capsule)
+        receipt = self.context_compilation_receipt
+        if isinstance(receipt, Mapping):
+            receipt = ContextCompilationReceipt.from_dict(receipt)
+        if not isinstance(capsule, ContextCapsule) or not isinstance(
+            receipt, ContextCompilationReceipt
+        ):
+            raise ContractValidationError(
+                "required context proof requires a typed capsule and receipt"
+            )
+        # This performs the strong capsule/receipt/witness/decision/digest
+        # cross-check.  A receipt alone is intentionally not sufficient.
+        ContextCompileResult(capsule, receipt, receipt.decisions)
+        evidence = receipt.evidence
+        if (
+            evidence is None
+            or COMPILER_REQUIREMENT_ID != REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID
+            or receipt.evidence_claim_references
+            != (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,)
+        ):
+            raise ContractValidationError(
+                "context compilation receipt lacks qualifying typed evidence"
+            )
+        object.__setattr__(self, "context_capsule", capsule)
+        object.__setattr__(self, "context_compilation_receipt", receipt)
+        for name in (
+            "task_reference",
+            "capsule_id",
+            "receipt_id",
+            "evidence_id",
+            "repository_id",
+            "tree_id",
+            "objective_id",
+            "policy_id",
+            "policy_revision",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _text(
+                    getattr(self, name),
+                    field_name=name,
+                    required=True,
+                    max_bytes=MAX_REFERENCE_BYTES,
+                ),
+            )
+        if self.requirement_id != REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID:
+            raise ContractValidationError(
+                "required context proof carries an unexpected requirement ID"
+            )
+        for name in ("effective_input_limit", "input_tokens"):
+            object.__setattr__(
+                self,
+                name,
+                _integer(
+                    getattr(self, name),
+                    field_name=name,
+                    minimum=1,
+                    maximum=MAX_TOKENS,
+                ),
+            )
+        if self.input_tokens > self.effective_input_limit:
+            raise ContractValidationError(
+                "required context proof exceeds the effective input budget"
+            )
+        for name in (
+            "required_reference_ids",
+            "selected_reference_ids",
+            "required_coverage_ids",
+            "selected_coverage_ids",
+            "required_fields",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _strings(
+                    getattr(self, name),
+                    field_name=name,
+                    maximum=MAX_EVIDENCE_REFERENCES,
+                ),
+            )
+        if not self.required_references_preserved:
+            raise ContractValidationError(
+                "required context proof loses required references"
+            )
+        if not self.required_coverage_preserved:
+            raise ContractValidationError(
+                "required context proof loses required coverage"
+            )
+        if self.required_fields != (
+            "acceptance",
+            "authority",
+            "goal",
+            "scope",
+        ):
+            raise ContractValidationError(
+                "required context proof must preserve every invariant field"
+            )
+        required_coverage = tuple(
+            sorted(
+                {
+                    coverage_id
+                    for reference in capsule.evidence
+                    if reference.required
+                    for coverage_id in reference.coverage_ids
+                }
+            )
+        )
+        source_claims = {
+            "capsule_id": capsule.capsule_id,
+            "receipt_id": receipt.receipt_id,
+            "evidence_id": evidence.content_id,
+            "repository_id": receipt.repository_id,
+            "tree_id": receipt.tree_id,
+            "objective_id": receipt.objective_id,
+            "policy_id": receipt.policy_id,
+            "policy_revision": receipt.policy_revision,
+            "effective_input_limit": receipt.effective_input_limit,
+            "input_tokens": receipt.input_tokens,
+            "required_reference_ids": evidence.required_reference_ids,
+            "selected_reference_ids": evidence.selected_reference_ids,
+            "required_coverage_ids": required_coverage,
+            "selected_coverage_ids": capsule.evidence_coverage_ids,
+            "required_fields": evidence.required_fields,
+            "artifact_digest": evidence.artifact_digest,
+            "requirement_id": evidence.requirement_id,
+        }
+        if any(
+            getattr(self, name) != value
+            for name, value in source_claims.items()
+        ):
+            raise ContractValidationError(
+                "required context proof projection is not bound to its "
+                "typed compiler result"
+            )
+        object.__setattr__(
+            self,
+            "artifact_digest",
+            _digest(self.artifact_digest, field_name="artifact_digest"),
+        )
+        _record_size(
+            self,
+            maximum=MAX_SERIALIZED_RECEIPT_BYTES * 2,
+            name="required context proof binding",
+        )
+
+    @property
+    def binding_id(self) -> str:
+        return self.content_id
+
+    @property
+    def required_references_preserved(self) -> bool:
+        return set(self.required_reference_ids).issubset(
+            self.selected_reference_ids
+        )
+
+    @property
+    def required_coverage_preserved(self) -> bool:
+        return set(self.required_coverage_ids).issubset(
+            self.selected_coverage_ids
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "task_reference": self.task_reference,
+            "context_capsule": self.context_capsule,
+            "context_compilation_receipt": self.context_compilation_receipt,
+            "capsule_id": self.capsule_id,
+            "receipt_id": self.receipt_id,
+            "evidence_id": self.evidence_id,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_id": self.objective_id,
+            "policy_id": self.policy_id,
+            "policy_revision": self.policy_revision,
+            "effective_input_limit": self.effective_input_limit,
+            "input_tokens": self.input_tokens,
+            "required_reference_ids": self.required_reference_ids,
+            "selected_reference_ids": self.selected_reference_ids,
+            "required_coverage_ids": self.required_coverage_ids,
+            "selected_coverage_ids": self.selected_coverage_ids,
+            "required_fields": self.required_fields,
+            "artifact_digest": self.artifact_digest,
+            "requirement_id": self.requirement_id,
+            "required_references_preserved": (
+                self.required_references_preserved
+            ),
+            "required_coverage_preserved": self.required_coverage_preserved,
+        }
+
+    @classmethod
+    def from_context_compile_result(
+        cls,
+        task_reference: str,
+        result: Any,
+    ) -> "RequiredContextProofBinding":
+        from .context_compiler import ContextCompileResult
+
+        if not isinstance(result, ContextCompileResult):
+            raise ContractValidationError(
+                "required context proofs must be ContextCompileResult values"
+            )
+        # Re-run result validation even if a caller constructed the dataclass
+        # before crossing this promotion boundary.
+        ContextCompileResult(result.capsule, result.receipt, result.decisions)
+        evidence = result.receipt.evidence
+        if evidence is None:
+            raise ContractValidationError(
+                "context compilation result lacks qualifying evidence"
+            )
+        required_coverage = tuple(
+            sorted(
+                {
+                    coverage_id
+                    for reference in result.capsule.evidence
+                    if reference.required
+                    for coverage_id in reference.coverage_ids
+                }
+            )
+        )
+        return cls(
+            task_reference=task_reference,
+            context_capsule=result.capsule,
+            context_compilation_receipt=result.receipt,
+            capsule_id=result.capsule.capsule_id,
+            receipt_id=result.receipt.receipt_id,
+            evidence_id=evidence.content_id,
+            repository_id=result.receipt.repository_id,
+            tree_id=result.receipt.tree_id,
+            objective_id=result.receipt.objective_id,
+            policy_id=result.receipt.policy_id,
+            policy_revision=result.receipt.policy_revision,
+            effective_input_limit=result.receipt.effective_input_limit,
+            input_tokens=result.receipt.input_tokens,
+            required_reference_ids=evidence.required_reference_ids,
+            selected_reference_ids=evidence.selected_reference_ids,
+            required_coverage_ids=required_coverage,
+            selected_coverage_ids=result.capsule.evidence_coverage_ids,
+            required_fields=evidence.required_fields,
+            artifact_digest=evidence.artifact_digest,
+            requirement_id=evidence.requirement_id,
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RequiredContextProofBinding":
+        _schema(payload, cls.SCHEMA, "required context proof binding")
+        derived = {
+            "required_references_preserved",
+            "required_coverage_preserved",
+        }
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "task_reference",
+                "context_capsule",
+                "context_compilation_receipt",
+                "capsule_id",
+                "receipt_id",
+                "evidence_id",
+                "repository_id",
+                "tree_id",
+                "objective_id",
+                "policy_id",
+                "policy_revision",
+                "effective_input_limit",
+                "input_tokens",
+                "required_reference_ids",
+                "selected_reference_ids",
+                "required_coverage_ids",
+                "selected_coverage_ids",
+                "required_fields",
+                "artifact_digest",
+                "requirement_id",
+                "binding_id",
+                "content_id",
+                *derived,
+            },
+            artifact_name="required context proof binding",
+        )
+        result = cls(
+            task_reference=payload.get("task_reference", ""),
+            context_capsule=payload.get("context_capsule"),
+            context_compilation_receipt=payload.get(
+                "context_compilation_receipt"
+            ),
+            capsule_id=payload.get("capsule_id", ""),
+            receipt_id=payload.get("receipt_id", ""),
+            evidence_id=payload.get("evidence_id", ""),
+            repository_id=payload.get("repository_id", ""),
+            tree_id=payload.get("tree_id", ""),
+            objective_id=payload.get("objective_id", ""),
+            policy_id=payload.get("policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            effective_input_limit=payload.get("effective_input_limit", 0),
+            input_tokens=payload.get("input_tokens", 0),
+            required_reference_ids=tuple(
+                payload.get("required_reference_ids") or ()
+            ),
+            selected_reference_ids=tuple(
+                payload.get("selected_reference_ids") or ()
+            ),
+            required_coverage_ids=tuple(
+                payload.get("required_coverage_ids") or ()
+            ),
+            selected_coverage_ids=tuple(
+                payload.get("selected_coverage_ids") or ()
+            ),
+            required_fields=tuple(payload.get("required_fields") or ()),
+            artifact_digest=payload.get("artifact_digest", ""),
+            requirement_id=payload.get("requirement_id", ""),
+        )
+        for name in derived:
+            if payload.get(name, getattr(result, name)) != getattr(result, name):
+                raise ContractValidationError(
+                    f"{name} claim does not match required context proof"
+                )
+        _claim(payload, result.binding_id, "binding_id", "content_id")
+        return result
+
+
+@dataclass(frozen=True)
+class RequiredContextPromotionReport(CanonicalContract):
+    """Join paired accepted-work measurement to verified base contexts."""
+
+    SCHEMA: ClassVar[str] = REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA
+
+    paired_report: PairedEfficiencyReport
+    proof_bindings: tuple[RequiredContextProofBinding, ...] = ()
+
+    def __post_init__(self) -> None:
+        paired = self.paired_report
+        if isinstance(paired, Mapping):
+            paired = PairedEfficiencyReport.from_dict(paired)
+        if not isinstance(paired, PairedEfficiencyReport):
+            raise ContractValidationError(
+                "paired_report must be a PairedEfficiencyReport"
+            )
+        object.__setattr__(self, "paired_report", paired)
+        bindings = _coerce_records(
+            self.proof_bindings,
+            RequiredContextProofBinding,
+            RequiredContextProofBinding.from_dict,
+            field_name="proof_bindings",
+            maximum=MAX_RECEIPTS_PER_REPORT,
+        )
+        bindings = tuple(
+            sorted(
+                bindings,
+                key=lambda item: (item.task_reference, item.receipt_id),
+            )
+        )
+        if len({item.receipt_id for item in bindings}) != len(bindings):
+            raise ContractValidationError(
+                "required context report contains duplicate receipt IDs"
+            )
+        object.__setattr__(self, "proof_bindings", bindings)
+        _record_size(
+            self,
+            maximum=MAX_SERIALIZED_REPORT_BYTES,
+            name="required context promotion report",
+        )
+
+    @property
+    def report_id(self) -> str:
+        return self.content_id
+
+    @property
+    def proof_task_references(self) -> tuple[str, ...]:
+        return tuple(
+            sorted({item.task_reference for item in self.proof_bindings})
+        )
+
+    @property
+    def missing_proof_task_references(self) -> tuple[str, ...]:
+        paired = {item.task_reference for item in self.paired_report.cases}
+        return tuple(sorted(paired.difference(self.proof_task_references)))
+
+    @property
+    def unexpected_proof_task_references(self) -> tuple[str, ...]:
+        paired = {item.task_reference for item in self.paired_report.cases}
+        return tuple(
+            sorted(set(self.proof_task_references).difference(paired))
+        )
+
+    @property
+    def proof_population_complete(self) -> bool:
+        return bool(self.paired_report.cases) and not (
+            self.missing_proof_task_references
+            or self.unexpected_proof_task_references
+        )
+
+    @property
+    def context_receipt_count(self) -> int:
+        return len(self.proof_bindings)
+
+    def _coverage_by_task(self) -> dict[str, set[str]]:
+        result: dict[str, set[str]] = {}
+        for binding in self.proof_bindings:
+            result.setdefault(binding.task_reference, set()).update(
+                binding.required_coverage_ids
+            )
+        return result
+
+    @property
+    def coverage_requirements_consistent(self) -> bool:
+        case_by_task = {
+            item.task_reference: item for item in self.paired_report.cases
+        }
+        coverage = self._coverage_by_task()
+        return all(
+            task in coverage
+            and coverage[task] == set(case.required_evidence_references)
+            for task, case in case_by_task.items()
+        ) and not set(coverage).difference(case_by_task)
+
+    @property
+    def token_accounting_consistent(self) -> bool:
+        """Require exact reconciliation with charged candidate input."""
+
+        case_by_task = {
+            item.task_reference: item for item in self.paired_report.cases
+        }
+        totals: dict[str, int] = {}
+        for binding in self.proof_bindings:
+            totals[binding.task_reference] = (
+                totals.get(binding.task_reference, 0) + binding.input_tokens
+            )
+        return all(
+            task in totals
+            and totals[task] == case.candidate_input_tokens
+            for task, case in case_by_task.items()
+        ) and not set(totals).difference(case_by_task)
+
+    @property
+    def typed_context_gate_passed(self) -> bool:
+        return (
+            self.proof_population_complete
+            and bool(self.proof_bindings)
+            and all(
+                item.required_references_preserved
+                and item.required_coverage_preserved
+                and item.input_tokens <= item.effective_input_limit
+                for item in self.proof_bindings
+            )
+            and self.coverage_requirements_consistent
+            and self.token_accounting_consistent
+        )
+
+    @property
+    def paired_efficiency_gate_passed(self) -> bool:
+        return self.paired_report.passed
+
+    @property
+    def passed(self) -> bool:
+        return (
+            self.paired_efficiency_gate_passed
+            and self.typed_context_gate_passed
+        )
+
+    @property
+    def promotion_eligible(self) -> bool:
+        return self.passed
+
+    @property
+    def evidence_claim_references(self) -> tuple[str, ...]:
+        if not self.passed:
+            return ()
+        return (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "paired_report": self.paired_report,
+            "proof_bindings": self.proof_bindings,
+            "proof_task_references": self.proof_task_references,
+            "missing_proof_task_references": (
+                self.missing_proof_task_references
+            ),
+            "unexpected_proof_task_references": (
+                self.unexpected_proof_task_references
+            ),
+            "proof_population_complete": self.proof_population_complete,
+            "context_receipt_count": self.context_receipt_count,
+            "coverage_requirements_consistent": (
+                self.coverage_requirements_consistent
+            ),
+            "token_accounting_consistent": self.token_accounting_consistent,
+            "typed_context_gate_passed": self.typed_context_gate_passed,
+            "paired_efficiency_gate_passed": (
+                self.paired_efficiency_gate_passed
+            ),
+            "evidence_claim_references": self.evidence_claim_references,
+            "passed": self.passed,
+            "promotion_eligible": self.promotion_eligible,
+        }
+
+    def to_dict(self, *, include_report_id: bool = False) -> dict[str, Any]:
+        payload = super().to_dict()
+        if include_report_id:
+            payload["report_id"] = self.report_id
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "RequiredContextPromotionReport":
+        _schema(payload, cls.SCHEMA, "required context promotion report")
+        derived = {
+            "proof_task_references",
+            "missing_proof_task_references",
+            "unexpected_proof_task_references",
+            "proof_population_complete",
+            "context_receipt_count",
+            "coverage_requirements_consistent",
+            "token_accounting_consistent",
+            "typed_context_gate_passed",
+            "paired_efficiency_gate_passed",
+            "evidence_claim_references",
+            "passed",
+            "promotion_eligible",
+        }
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "paired_report",
+                "proof_bindings",
+                "report_id",
+                "content_id",
+                *derived,
+            },
+            artifact_name="required context promotion report",
+        )
+        paired_payload = payload.get("paired_report")
+        if not isinstance(paired_payload, Mapping):
+            raise ContractValidationError(
+                "required context promotion report requires a paired report"
+            )
+        result = cls(
+            paired_report=PairedEfficiencyReport.from_dict(paired_payload),
+            proof_bindings=tuple(
+                RequiredContextProofBinding.from_dict(item)
+                for item in payload.get("proof_bindings") or ()
+            ),
+        )
+        for name in derived:
+            claimed = payload.get(name, getattr(result, name))
+            if isinstance(getattr(result, name), tuple):
+                claimed = tuple(claimed)
+            if claimed != getattr(result, name):
+                raise ContractValidationError(
+                    f"{name} claim does not match required context report"
+                )
+        _claim(payload, result.report_id, "report_id", "content_id")
+        return result
+
+    @classmethod
+    def from_json(
+        cls, value: str | bytes | bytearray
+    ) -> "RequiredContextPromotionReport":
+        return cls.from_dict(
+            _load_json(value, artifact_name="required context promotion report")
+        )
+
+
+@dataclass(frozen=True)
 class DeltaRetryProofBinding(CanonicalContract):
     """Bound projection of one qualifying typed context-delta receipt.
 
@@ -3381,7 +4003,7 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
     @property
     def token_accounting_consistent(self) -> bool:
-        """Whether context-token portions fit their charged lifecycle totals."""
+        """Whether context tokens exactly reconcile charged lifecycle input."""
 
         case_by_task = {
             item.task_reference: item for item in self.paired_report.cases
@@ -3400,9 +4022,9 @@ class DeltaRetryPromotionReport(CanonicalContract):
         return all(
             task in case_by_task
             and full_by_task[task]
-            <= case_by_task[task].baseline_input_tokens
+            == case_by_task[task].baseline_input_tokens
             and delta_by_task[task]
-            <= case_by_task[task].candidate_input_tokens
+            == case_by_task[task].candidate_input_tokens
             for task in set(full_by_task) | set(delta_by_task)
         )
 
@@ -3544,6 +4166,86 @@ class DeltaRetryPromotionReport(CanonicalContract):
         return cls.from_dict(
             _load_json(value, artifact_name="delta retry promotion report")
         )
+
+
+def build_required_context_promotion_report(
+    paired_report: PairedEfficiencyReport | Mapping[str, Any],
+    context_results_by_task: Mapping[str, Sequence[Any]],
+) -> RequiredContextPromotionReport:
+    """Join paired terminal work to capsule-verified context compilations.
+
+    Every provider input charged to the candidate arm must have a typed
+    compiler result.  Their exact input-token sum, repository tree, policy,
+    objective, and required-coverage population are reconciled with the
+    corresponding paired task before the requirement ID can be emitted.
+    """
+
+    if isinstance(paired_report, Mapping):
+        paired_report = PairedEfficiencyReport.from_dict(paired_report)
+    if not isinstance(paired_report, PairedEfficiencyReport):
+        raise ContractValidationError(
+            "paired_report must be a PairedEfficiencyReport"
+        )
+    if not isinstance(context_results_by_task, Mapping):
+        raise ContractValidationError(
+            "context_results_by_task must be an object"
+        )
+    cases = {item.task_reference: item for item in paired_report.cases}
+    unknown = set(context_results_by_task).difference(cases)
+    if unknown:
+        raise ContractValidationError(
+            "required context proofs contain tasks outside the paired population"
+        )
+    bindings: list[RequiredContextProofBinding] = []
+    for task_reference in sorted(context_results_by_task):
+        values = context_results_by_task[task_reference]
+        if not isinstance(values, Sequence) or isinstance(
+            values, (str, bytes, bytearray, memoryview)
+        ):
+            raise ContractValidationError(
+                "each required context proof population must be a sequence"
+            )
+        if len(values) > MAX_STAGES + MAX_RETRIES:
+            raise ContractValidationError(
+                "a task carries too many context compilation results"
+            )
+        case = cases[task_reference]
+        task_bindings: list[RequiredContextProofBinding] = []
+        for result in values:
+            binding = RequiredContextProofBinding.from_context_compile_result(
+                task_reference,
+                result,
+            )
+            if binding.objective_id != case.goal_reference:
+                raise ContractValidationError(
+                    "required context objective does not match its paired task"
+                )
+            if binding.tree_id != case.repository_tree_digest:
+                raise ContractValidationError(
+                    "required context tree does not match its paired task"
+                )
+            if binding.policy_revision != case.policy_digest:
+                raise ContractValidationError(
+                    "required context policy does not match its paired task"
+                )
+            task_bindings.append(binding)
+        required_coverage = {
+            coverage_id
+            for binding in task_bindings
+            for coverage_id in binding.required_coverage_ids
+        }
+        if task_bindings and required_coverage != set(
+            case.required_evidence_references
+        ):
+            raise ContractValidationError(
+                "required context coverage does not match the paired task's "
+                "authoritative evidence population"
+            )
+        bindings.extend(task_bindings)
+    return RequiredContextPromotionReport(
+        paired_report=paired_report,
+        proof_bindings=tuple(bindings),
+    )
 
 
 def build_delta_retry_promotion_report(
@@ -4137,6 +4839,9 @@ __all__ = [
     "MAX_TOKENS",
     "PAIRED_EFFICIENCY_CASE_SCHEMA",
     "PAIRED_EFFICIENCY_REPORT_SCHEMA",
+    "REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID",
+    "REQUIRED_CONTEXT_PROOF_BINDING_SCHEMA",
+    "REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA",
     "RETRY_OBSERVATION_SCHEMA",
     "SCHEMA_VERSION",
     "STAGE_TIMING_SCHEMA",
@@ -4157,6 +4862,8 @@ __all__ = [
     "EvidenceDelta",
     "ExactRatio",
     "RetryObservation",
+    "RequiredContextProofBinding",
+    "RequiredContextPromotionReport",
     "StageName",
     "StageTiming",
     "SupervisorEfficiencyReceipt",
@@ -4170,6 +4877,7 @@ __all__ = [
     "aggregate_efficiency_receipts",
     "aggregate_receipts",
     "build_paired_efficiency_report",
+    "build_required_context_promotion_report",
     "build_delta_retry_promotion_report",
     "build_efficiency_baseline_fixtures",
     "compare_paired_efficiency_receipts",

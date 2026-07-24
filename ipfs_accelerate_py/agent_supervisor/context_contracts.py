@@ -730,6 +730,10 @@ class ContextCapsule(_ContextCanonicalContract):
             raise ContextContractError(
                 "expansion_references must use the expansion tier"
             )
+        if any(item.required for item in expansions):
+            raise ContextContractError(
+                "required evidence cannot be deferred as an expansion reference"
+            )
         identifiers = [item.reference_id for item in evidence + expansions]
         if len(identifiers) != len(set(identifiers)):
             raise ContextContractError(
@@ -809,6 +813,38 @@ class ContextCapsule(_ContextCanonicalContract):
                 "authority": self.authority,
                 "scope": self.scope,
                 "acceptance": self.acceptance,
+            }
+        )
+
+    @property
+    def provider_input_payload(self) -> Mapping[str, Any]:
+        """Canonical information supplied to the model provider.
+
+        Supervisor-only accounting, omission diagnostics, and deferred
+        expansion handles are intentionally excluded.  Repository, objective,
+        policy, caller, and stage bindings remain in the payload so token
+        accounting covers the complete authority-bearing provider input, not
+        merely the four invariant values or caller-declared token estimates.
+        """
+
+        return MappingProxyType(
+            {
+                "contract_version": CONTEXT_CONTRACT_VERSION,
+                "repository_id": self.repository_id,
+                "tree_id": self.tree_id,
+                "objective_id": self.objective_id,
+                "objective_revision": self.objective_revision,
+                "policy_id": self.policy_id,
+                "policy_revision": self.policy_revision,
+                "caller": self.caller,
+                "stage": self.stage,
+                "goal": self.goal,
+                "authority": self.authority,
+                "scope": self.scope,
+                "acceptance": self.acceptance,
+                "evidence": tuple(
+                    item.to_record() for item in self.evidence
+                ),
             }
         )
 
