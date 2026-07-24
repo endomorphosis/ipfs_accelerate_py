@@ -290,13 +290,95 @@ class ObjectiveGoal:
             fib_priority = 999999
         return fib_priority, self.goal_id
 
+    def _string_list_metadata(
+        self,
+        json_field: str,
+        *legacy_fields: str,
+    ) -> list[str]:
+        raw_json = str(self.fields.get(json_field) or "").strip()
+        if raw_json:
+            try:
+                payload = json.loads(raw_json)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = None
+            if isinstance(payload, list) and all(isinstance(item, str) for item in payload):
+                return list(payload)
+        for name in legacy_fields:
+            value = str(self.fields.get(name) or "")
+            if value.strip():
+                return split_terms(value)
+        return []
+
     @property
     def required_evidence(self) -> list[str]:
-        return split_terms(str(self.fields.get("evidence") or self.fields.get("required_evidence") or ""))
+        return self._string_list_metadata(
+            "evidence_requirements_json",
+            "evidence",
+            "required_evidence",
+        )
 
     @property
     def parent_goal_ids(self) -> list[str]:
-        return split_terms(str(self.fields.get("parents") or self.fields.get("parent") or ""))
+        return self._string_list_metadata(
+            "parent_goal_ids_json",
+            "parents",
+            "parent",
+        )
+
+    @property
+    def dependencies(self) -> list[str]:
+        """Return durable planning dependencies attached at admission."""
+
+        return self._string_list_metadata(
+            "dependencies_json",
+            "depends_on",
+            "dependencies",
+        )
+
+    @property
+    def predicted_files(self) -> list[str]:
+        return self._string_list_metadata(
+            "predicted_files_json",
+            "outputs",
+            "predicted_files",
+        )
+
+    @property
+    def predicted_symbols(self) -> list[str]:
+        return self._string_list_metadata(
+            "predicted_symbols_json",
+            "predicted_symbols",
+            "ast_symbols",
+        )
+
+    @property
+    def validation_commands(self) -> list[str]:
+        return self._string_list_metadata(
+            "validation_commands_json",
+            "validation",
+        )
+
+    @property
+    def semantic_key(self) -> str:
+        """Return the admitted proposal's semantic deduplication identity."""
+
+        return str(self.fields.get("semantic_key") or "").strip()
+
+    @property
+    def canonical_proposal_id(self) -> str:
+        """Return the immutable proposal identity which owns this goal."""
+
+        return str(
+            self.fields.get("canonical_proposal_id")
+            or self.fields.get("canonical_id")
+            or ""
+        ).strip()
+
+    @property
+    def lifecycle_owner(self) -> str:
+        """Return the component responsible for lifecycle transitions."""
+
+        return str(self.fields.get("lifecycle_owner") or "").strip()
 
     def bundle_key(self, missing_terms: Sequence[str]) -> str:
         explicit = str(self.fields.get("bundle") or "").strip()
@@ -914,8 +996,16 @@ class ObjectiveWorkProposal:
         object.__setattr__(self, "depth", int(self.depth))
         object.__setattr__(self, "estimated_tokens", int(self.estimated_tokens))
         object.__setattr__(self, "retry_count", int(self.retry_count))
-        object.__setattr__(self, "source", str(self.source or "deterministic").strip())
-        object.__setattr__(self, "source_id", str(self.source_id or "").strip())
+        object.__setattr__(
+            self,
+            "source",
+            " ".join(str(self.source or "deterministic").split()),
+        )
+        object.__setattr__(
+            self,
+            "source_id",
+            " ".join(str(self.source_id or "").split()),
+        )
         object.__setattr__(self, "rationale", " ".join(str(self.rationale or "").split()))
         for name in (
             "parent_objective_terms",
@@ -1053,6 +1143,155 @@ class ObjectiveGenerationResult:
             "final_open_work": self.initial_open_work + len(self.accepted),
             "consumed_tokens": self.consumed_tokens,
             "exhausted": self.exhausted,
+        }
+
+
+@dataclass(frozen=True)
+class ObjectiveGoalMaterializationPolicy:
+    """Fail-closed policy for projecting proposals into the objective heap.
+
+    This policy intentionally contains only graph invariants.  Admission mode,
+    proof authority, and receipt validation belong to the daemon/admission
+    boundary; a caller must satisfy those gates before applying a successful
+    preview.  ``expected_*`` values fence the immutable input used by that
+    boundary so a preview cannot be replayed against a different heap or root.
+    """
+
+    limits: ObjectiveGenerationLimits = field(default_factory=ObjectiveGenerationLimits)
+    root_goal_id: str = ""
+    expected_heap_content_id: str = ""
+    expected_root_content_id: str = ""
+    lifecycle_owner: str = "objective_daemon"
+    require_schedulable_parent: bool = True
+    atomic: bool = True
+    root_parent_aliases: tuple[str, ...] = ("__unmapped__",)
+
+    def __post_init__(self) -> None:
+        limits = self.limits
+        if isinstance(limits, Mapping):
+            limits = ObjectiveGenerationLimits(**dict(limits))
+        if not isinstance(limits, ObjectiveGenerationLimits):
+            raise TypeError("limits must be ObjectiveGenerationLimits or a mapping")
+        object.__setattr__(self, "limits", limits)
+        object.__setattr__(self, "root_goal_id", str(self.root_goal_id or "").strip())
+        object.__setattr__(
+            self,
+            "expected_heap_content_id",
+            str(self.expected_heap_content_id or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "expected_root_content_id",
+            str(self.expected_root_content_id or "").strip(),
+        )
+        owner = " ".join(str(self.lifecycle_owner or "").split())
+        if not owner:
+            raise ValueError("lifecycle_owner must be non-empty")
+        object.__setattr__(self, "lifecycle_owner", owner)
+        object.__setattr__(
+            self,
+            "root_parent_aliases",
+            _objective_work_strings(self.root_parent_aliases),
+        )
+
+
+@dataclass(frozen=True)
+class ObjectiveGoalMaterializationRejection:
+    """One goal/subgoal which cannot be safely projected into the heap."""
+
+    reason: str
+    canonical_id: str
+    source_id: str = ""
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class MaterializedObjectiveGoal:
+    """A proposal's deterministic, reviewable objective-heap projection."""
+
+    proposal: ObjectiveWorkProposal
+    goal: ObjectiveGoal
+    rendered_block: str
+    graph_depth: int
+    parent_goal_ids: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "proposal": self.proposal.to_dict(),
+            "goal": {
+                "goal_id": self.goal.goal_id,
+                "title": self.goal.title,
+                "fields": dict(self.goal.fields),
+            },
+            "rendered_block": self.rendered_block,
+            "graph_depth": self.graph_depth,
+            "parent_goal_ids": list(self.parent_goal_ids),
+        }
+
+
+@dataclass(frozen=True)
+class ObjectiveGoalMaterializationPreview:
+    """An immutable preview which a transactional writer may apply verbatim."""
+
+    base_heap_content_id: str
+    root_goal_id: str
+    root_content_id: str
+    materialized: tuple[MaterializedObjectiveGoal, ...]
+    rejected: tuple[ObjectiveGoalMaterializationRejection, ...]
+    fatal_reasons: tuple[str, ...]
+    candidate_text: str
+    policy: ObjectiveGoalMaterializationPolicy
+
+    @property
+    def ready(self) -> bool:
+        """Whether the complete proposal set is safe to apply atomically."""
+
+        if self.fatal_reasons or not self.materialized:
+            return False
+        return not (self.policy.atomic and self.rejected)
+
+    @property
+    def changed(self) -> bool:
+        return self.ready and bool(self.materialized)
+
+    @property
+    def candidate_heap_content_id(self) -> str:
+        return objective_heap_content_id(self.candidate_text)
+
+    @property
+    def admitted_proposal_ids(self) -> tuple[str, ...]:
+        return tuple(item.proposal.canonical_id for item in self.materialized) if self.ready else ()
+
+    def to_dict(self) -> dict[str, Any]:
+        rejection_counts: dict[str, int] = {}
+        for item in self.rejected:
+            rejection_counts[item.reason] = rejection_counts.get(item.reason, 0) + 1
+        return {
+            "schema": "ipfs_accelerate_py/agent-supervisor/objective-goal-materialization@1",
+            "base_heap_content_id": self.base_heap_content_id,
+            "candidate_heap_content_id": self.candidate_heap_content_id,
+            "root_goal_id": self.root_goal_id,
+            "root_content_id": self.root_content_id,
+            "ready": self.ready,
+            "changed": self.changed,
+            "admitted_proposal_ids": list(self.admitted_proposal_ids),
+            "materialized": [item.to_dict() for item in self.materialized],
+            "rejected": [item.to_dict() for item in self.rejected],
+            "rejection_counts": dict(sorted(rejection_counts.items())),
+            "fatal_reasons": list(self.fatal_reasons),
+            "policy": {
+                "limits": asdict(self.policy.limits),
+                "root_goal_id": self.policy.root_goal_id,
+                "expected_heap_content_id": self.policy.expected_heap_content_id,
+                "expected_root_content_id": self.policy.expected_root_content_id,
+                "lifecycle_owner": self.policy.lifecycle_owner,
+                "require_schedulable_parent": self.policy.require_schedulable_parent,
+                "atomic": self.policy.atomic,
+                "root_parent_aliases": list(self.policy.root_parent_aliases),
+            },
         }
 
 
@@ -3258,6 +3497,669 @@ def goal_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, Any]:
         "evidence_nodes": evidence_nodes,
         "evidence_edges": evidence_edges,
     }
+
+
+def objective_heap_content_id(text: str) -> str:
+    """Return the exact content identity used to fence heap preview writes."""
+
+    if not isinstance(text, str):
+        raise TypeError("objective heap text must be a string")
+    return "objective-heap:sha256:" + sha256(text.encode("utf-8")).hexdigest()
+
+
+def objective_goal_content_id(goal: ObjectiveGoal | Mapping[str, Any]) -> str:
+    """Return a stable semantic identity for one parsed heap goal.
+
+    Unlike :func:`objective_heap_content_id`, this identity ignores markdown
+    layout.  It is used to freeze the root while allowing unrelated metadata
+    or child records to be appended transactionally.
+    """
+
+    if isinstance(goal, ObjectiveGoal):
+        goal_id, title, fields = goal.goal_id, goal.title, goal.fields
+    elif isinstance(goal, Mapping):
+        goal_id = str(goal.get("goal_id") or goal.get("id") or "")
+        title = str(goal.get("title") or "")
+        raw_fields = goal.get("fields") or {}
+        if not isinstance(raw_fields, Mapping):
+            raise TypeError("objective goal fields must be a mapping")
+        fields = {str(key): str(value) for key, value in raw_fields.items()}
+    else:
+        raise TypeError("goal must be ObjectiveGoal or a mapping")
+    material = {
+        "goal_id": str(goal_id or "").strip(),
+        "title": " ".join(str(title or "").split()),
+        "fields": {
+            normalize_field_key(str(key)): " ".join(str(value or "").split())
+            for key, value in sorted(fields.items(), key=lambda pair: normalize_field_key(str(pair[0])))
+        },
+    }
+    return "objective-goal:sha256:" + sha256(
+        json.dumps(
+            material,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _strict_goal_hierarchy_errors(goals: Sequence[ObjectiveGoal]) -> list[str]:
+    """Return structural errors which make a heap unsafe to extend."""
+
+    errors: list[str] = []
+    ids = [goal.goal_id for goal in goals]
+    duplicate_ids = sorted(
+        goal_id for goal_id in set(ids) if ids.count(goal_id) > 1
+    )
+    if duplicate_ids:
+        errors.append("duplicate goal ids: " + ", ".join(duplicate_ids))
+    nodes = {goal.goal_id: goal for goal in goals}
+    missing_edges = sorted(
+        {
+            f"{goal.goal_id}->{parent}"
+            for goal in goals
+            for parent in goal.parent_goal_ids
+            if parent and parent not in nodes
+        }
+    )
+    if missing_edges:
+        errors.append("unresolved parent edges: " + ", ".join(missing_edges))
+
+    state: dict[str, int] = {}
+    stack: list[str] = []
+
+    def visit(goal_id: str) -> None:
+        current = state.get(goal_id, 0)
+        if current == 2:
+            return
+        if current == 1:
+            try:
+                start = stack.index(goal_id)
+            except ValueError:
+                start = 0
+            cycle = stack[start:] + [goal_id]
+            errors.append("parent cycle: " + " -> ".join(cycle))
+            return
+        state[goal_id] = 1
+        stack.append(goal_id)
+        for parent in nodes[goal_id].parent_goal_ids:
+            if parent in nodes:
+                visit(parent)
+        stack.pop()
+        state[goal_id] = 2
+
+    for goal_id in sorted(nodes):
+        visit(goal_id)
+    return sorted(set(errors))
+
+
+def _materialized_goal_fields(
+    proposal: ObjectiveWorkProposal,
+    *,
+    parent_goal_ids: Sequence[str],
+    graph_depth: int,
+    lifecycle_owner: str,
+) -> dict[str, str]:
+    """Project all durable proposal semantics into objective-heap fields."""
+
+    fields: dict[str, str] = {
+        "Status": "active",
+        "Goal": "; ".join(proposal.parent_objective_terms) or proposal.title,
+        "Evidence": ", ".join(proposal.expected_evidence_delta),
+        "Evidence requirements JSON": json.dumps(
+            list(proposal.expected_evidence_delta),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Parents": ", ".join(parent_goal_ids),
+        "Parent goal IDs JSON": json.dumps(
+            list(parent_goal_ids),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Depends on": ", ".join(proposal.dependencies),
+        "Dependencies JSON": json.dumps(
+            list(proposal.dependencies),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Outputs": ", ".join(proposal.predicted_files),
+        "Predicted files JSON": json.dumps(
+            list(proposal.predicted_files),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Predicted symbols": ", ".join(proposal.predicted_symbols),
+        "Predicted symbols JSON": json.dumps(
+            list(proposal.predicted_symbols),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Validation": "; ".join(proposal.validation_commands),
+        "Validation commands JSON": json.dumps(
+            list(proposal.validation_commands),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Graph depth": str(graph_depth),
+        "Canonical proposal ID": proposal.canonical_id,
+        "Semantic key": proposal.semantic_key,
+        "Proposal kind": proposal.kind.value,
+        "Proposal source": proposal.source,
+        "Proposal source ID": proposal.source_id,
+        "Lifecycle owner": lifecycle_owner,
+    }
+    if proposal.rationale:
+        fields["Refinement"] = proposal.rationale
+    # Keep rows present even when their value is empty.  This gives reviewers
+    # an explicit accounting of dependencies/evidence/validation instead of
+    # making absence indistinguishable from a lossy projection.
+    return fields
+
+
+def render_objective_work_goal_block(
+    proposal: ObjectiveWorkProposal | Mapping[str, Any],
+    *,
+    parent_goal_ids: Sequence[str],
+    graph_depth: int,
+    lifecycle_owner: str = "objective_daemon",
+) -> str:
+    """Render one proposal as a canonical objective-heap markdown block."""
+
+    item = (
+        proposal
+        if isinstance(proposal, ObjectiveWorkProposal)
+        else ObjectiveWorkProposal.from_dict(proposal)
+    )
+    if item.kind not in {ObjectiveWorkKind.GOAL, ObjectiveWorkKind.SUBGOAL}:
+        raise ValueError("only goal and subgoal proposals can become objective goals")
+    if isinstance(graph_depth, bool) or int(graph_depth) < 0:
+        raise ValueError("graph_depth must be a non-negative integer")
+    owner = " ".join(str(lifecycle_owner or "").split())
+    if not owner:
+        raise ValueError("lifecycle_owner must be non-empty")
+    parents = _objective_work_strings(parent_goal_ids)
+    rows = [f"## {item.canonical_id} {item.title}", ""]
+    for key, value in _materialized_goal_fields(
+        item,
+        parent_goal_ids=parents,
+        graph_depth=int(graph_depth),
+        lifecycle_owner=owner,
+    ).items():
+        rows.append(f"- {key}: {value}")
+    return "\n".join(rows).rstrip() + "\n"
+
+
+def preview_objective_goal_materialization(
+    objective_text: str,
+    proposals: Iterable[ObjectiveWorkProposal | Mapping[str, Any]],
+    *,
+    policy: ObjectiveGoalMaterializationPolicy | Mapping[str, Any] | None = None,
+    limits: ObjectiveGenerationLimits | Mapping[str, Any] | None = None,
+    root_goal_id: str = "",
+    expected_heap_content_id: str = "",
+    expected_root_content_id: str = "",
+    lifecycle_owner: str = "objective_daemon",
+) -> ObjectiveGoalMaterializationPreview:
+    """Preview an all-or-nothing GOAL/SUBGOAL objective-heap append.
+
+    The function is deliberately pure: it never opens or writes a path.  A
+    tracker can persist ``candidate_text`` only after rechecking
+    ``base_heap_content_id`` under its lease.  The preview independently
+    revalidates canonical identities, hierarchy, lifecycle, finite-generation
+    limits, semantic uniqueness, root immutability, and every rendered block.
+
+    ``policy`` is the preferred interface.  The keyword arguments are a
+    compatibility convenience for callers which already hold generation
+    limits and frozen-root values separately.
+    """
+
+    if not isinstance(objective_text, str):
+        raise TypeError("objective_text must be a string")
+    if policy is None:
+        selected_limits: ObjectiveGenerationLimits
+        if limits is None:
+            selected_limits = ObjectiveGenerationLimits()
+        elif isinstance(limits, ObjectiveGenerationLimits):
+            selected_limits = limits
+        elif isinstance(limits, Mapping):
+            selected_limits = ObjectiveGenerationLimits(**dict(limits))
+        else:
+            raise TypeError("limits must be ObjectiveGenerationLimits or a mapping")
+        selected_policy = ObjectiveGoalMaterializationPolicy(
+            limits=selected_limits,
+            root_goal_id=root_goal_id,
+            expected_heap_content_id=expected_heap_content_id,
+            expected_root_content_id=expected_root_content_id,
+            lifecycle_owner=lifecycle_owner,
+        )
+    elif isinstance(policy, ObjectiveGoalMaterializationPolicy):
+        selected_policy = policy
+    elif isinstance(policy, Mapping):
+        selected_policy = ObjectiveGoalMaterializationPolicy(**dict(policy))
+    else:
+        raise TypeError("policy must be ObjectiveGoalMaterializationPolicy or a mapping")
+    if limits is not None and policy is not None:
+        raise ValueError("supply limits through policy or limits, not both")
+
+    base_content_id = objective_heap_content_id(objective_text)
+    goals = parse_goal_heap(objective_text)
+    graph = goal_graph(goals)
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+    fatal_reasons = _strict_goal_hierarchy_errors(goals)
+    if (
+        selected_policy.expected_heap_content_id
+        and selected_policy.expected_heap_content_id != base_content_id
+    ):
+        fatal_reasons.append("stale objective heap content")
+
+    roots = list(graph["roots"])
+    selected_root_id = selected_policy.root_goal_id
+    if selected_root_id:
+        if selected_root_id not in goals_by_id:
+            fatal_reasons.append(f"frozen root {selected_root_id!r} is not present")
+        elif selected_root_id not in roots:
+            fatal_reasons.append(f"frozen root {selected_root_id!r} is not a heap root")
+    elif len(roots) == 1:
+        selected_root_id = roots[0]
+    elif roots:
+        fatal_reasons.append("root_goal_id is required for a multi-root objective heap")
+
+    root_content_id = (
+        objective_goal_content_id(goals_by_id[selected_root_id])
+        if selected_root_id in goals_by_id
+        else ""
+    )
+    if (
+        selected_policy.expected_root_content_id
+        and selected_policy.expected_root_content_id != root_content_id
+    ):
+        fatal_reasons.append("frozen objective root content changed")
+
+    normalized: list[ObjectiveWorkProposal] = []
+    rejected: list[ObjectiveGoalMaterializationRejection] = []
+    for raw in proposals:
+        try:
+            item = (
+                raw
+                if isinstance(raw, ObjectiveWorkProposal)
+                else ObjectiveWorkProposal.from_dict(raw)
+            )
+        except (TypeError, ValueError) as exc:
+            rejected.append(
+                ObjectiveGoalMaterializationRejection(
+                    reason="invalid_proposal",
+                    canonical_id="",
+                    detail=str(exc),
+                )
+            )
+            continue
+        if item.kind not in {ObjectiveWorkKind.GOAL, ObjectiveWorkKind.SUBGOAL}:
+            rejected.append(
+                ObjectiveGoalMaterializationRejection(
+                    reason="unsupported_kind",
+                    canonical_id=item.canonical_id,
+                    source_id=item.source_id,
+                    detail="only goal and subgoal proposals alter the objective heap",
+                )
+            )
+            continue
+        normalized.append(item)
+
+    def proposal_sort_key(item: ObjectiveWorkProposal) -> tuple[Any, ...]:
+        return (
+            item.depth,
+            item.parent_goal_id.casefold(),
+            0 if item.kind is ObjectiveWorkKind.GOAL else 1,
+            item.semantic_key,
+            item.canonical_id,
+        )
+
+    normalized.sort(key=proposal_sort_key)
+    candidate_ids = {item.canonical_id for item in normalized}
+    groups: dict[str, list[ObjectiveWorkProposal]] = {}
+    for item in normalized:
+        groups.setdefault(item.canonical_id, []).append(item)
+    representatives = {key: values[0] for key, values in groups.items()}
+    prerequisites: dict[str, set[str]] = {}
+    dependents: dict[str, set[str]] = {key: set() for key in representatives}
+    for canonical_id, item in representatives.items():
+        refs = {
+            ref
+            for ref in (item.parent_goal_id, *item.dependencies)
+            if ref in candidate_ids
+        }
+        prerequisites[canonical_id] = refs
+        for ref in refs:
+            dependents.setdefault(ref, set()).add(canonical_id)
+    ready_ids: list[tuple[tuple[Any, ...], str]] = [
+        (proposal_sort_key(item), canonical_id)
+        for canonical_id, item in representatives.items()
+        if not prerequisites[canonical_id]
+    ]
+    heapq.heapify(ready_ids)
+    ordered_ids: list[str] = []
+    while ready_ids:
+        _sort_key, canonical_id = heapq.heappop(ready_ids)
+        ordered_ids.append(canonical_id)
+        for dependent_id in sorted(dependents.get(canonical_id, ())):
+            prerequisites[dependent_id].discard(canonical_id)
+            if not prerequisites[dependent_id]:
+                heapq.heappush(
+                    ready_ids,
+                    (proposal_sort_key(representatives[dependent_id]), dependent_id),
+                )
+    dependency_cycle_ids = set(representatives) - set(ordered_ids)
+    ordered_ids.extend(
+        sorted(
+            dependency_cycle_ids,
+            key=lambda canonical_id: proposal_sort_key(representatives[canonical_id]),
+        )
+    )
+    normalized = [
+        item
+        for canonical_id in ordered_ids
+        for item in groups[canonical_id]
+    ]
+    limits_policy = selected_policy.limits
+    current_depths = {str(key): int(value) for key, value in graph["depths"].items()}
+    child_counts = {
+        # Breadth is a structural bound, not an open-work bound.  Terminal
+        # children remain part of the hierarchy and cannot be ignored to grow
+        # an unbounded branch over repeated admission cycles.
+        str(parent): sum(1 for child_id in children if child_id in goals_by_id)
+        for parent, children in graph["children"].items()
+    }
+    current_open = sum(1 for goal in goals if goal.is_schedulable)
+    existing_semantic_keys = {
+        str(goal.fields.get("semantic_key") or "").strip()
+        for goal in goals
+        if str(goal.fields.get("semantic_key") or "").strip()
+    }
+    exact_ids = set(goals_by_id)
+    accepted_proposals: list[ObjectiveWorkProposal] = []
+    materialized: list[MaterializedObjectiveGoal] = []
+    consumed_tokens = 0
+
+    def reject(item: ObjectiveWorkProposal, reason: str, detail: str) -> None:
+        rejected.append(
+            ObjectiveGoalMaterializationRejection(
+                reason=reason,
+                canonical_id=item.canonical_id,
+                source_id=item.source_id,
+                detail=detail,
+            )
+        )
+
+    if not fatal_reasons:
+        for item in normalized:
+            if item.canonical_id in dependency_cycle_ids:
+                reject(
+                    item,
+                    "dependency_cycle",
+                    "proposal parent/dependency references form an intra-batch cycle",
+                )
+                continue
+            if item.canonical_id in exact_ids:
+                reject(item, "canonical_duplicate", "goal identity already exists in the heap")
+                continue
+            if item.semantic_key in existing_semantic_keys:
+                reject(item, "semantic_duplicate", "semantic work already exists in the heap")
+                continue
+            equivalent = next(
+                (
+                    prior
+                    for prior in accepted_proposals
+                    if _objective_work_similarity(item, prior)
+                    >= limits_policy.semantic_similarity_threshold
+                ),
+                None,
+            )
+            if equivalent is not None:
+                reject(
+                    item,
+                    "semantic_duplicate",
+                    f"equivalent to {equivalent.canonical_id}",
+                )
+                continue
+            unresolved_dependencies = sorted(
+                dependency
+                for dependency in item.dependencies
+                if dependency in candidate_ids and dependency not in exact_ids
+            )
+            if unresolved_dependencies:
+                reject(
+                    item,
+                    "unresolved_dependency",
+                    "intra-batch dependencies were not admitted: "
+                    + ", ".join(unresolved_dependencies),
+                )
+                continue
+            parent_id = item.parent_goal_id
+            if item.kind is ObjectiveWorkKind.GOAL and (
+                not parent_id or parent_id in selected_policy.root_parent_aliases
+            ):
+                parent_id = selected_root_id
+            if not parent_id:
+                # Creating the first root is supported, but a populated heap is
+                # never allowed to gain an accidental unowned root.
+                if goals_by_id or materialized:
+                    reject(item, "unresolved_parent", "proposal has no materializable parent")
+                    continue
+                actual_depth = 0
+                parent_ids: tuple[str, ...] = ()
+            else:
+                parent = goals_by_id.get(parent_id)
+                if parent is None:
+                    detail = (
+                        "parent proposal has not been admitted"
+                        if parent_id in candidate_ids
+                        else f"parent {parent_id!r} is not in the objective heap"
+                    )
+                    reject(item, "unresolved_parent", detail)
+                    continue
+                if selected_policy.require_schedulable_parent and not parent.is_schedulable:
+                    reject(
+                        item,
+                        "parent_lifecycle",
+                        f"parent {parent_id!r} is {parent.lifecycle_state_value}",
+                    )
+                    continue
+                parent_ids = (parent_id,)
+                actual_depth = current_depths[parent_id] + 1
+            if item.depth != actual_depth:
+                reject(
+                    item,
+                    "depth_mismatch",
+                    f"proposal depth {item.depth} does not match hierarchy depth {actual_depth}",
+                )
+                continue
+            if actual_depth > limits_policy.max_depth:
+                reject(
+                    item,
+                    "depth_limit",
+                    f"depth {actual_depth} exceeds {limits_policy.max_depth}",
+                )
+                continue
+            if item.retry_count > limits_policy.max_retries:
+                reject(
+                    item,
+                    "retry_limit",
+                    f"retry {item.retry_count} exceeds {limits_policy.max_retries}",
+                )
+                continue
+            if len(materialized) >= limits_policy.max_new_work:
+                reject(
+                    item,
+                    "cycle_limit",
+                    f"cycle allows {limits_policy.max_new_work} new records",
+                )
+                continue
+            if current_open + len(materialized) >= limits_policy.max_open_work:
+                reject(
+                    item,
+                    "open_work_limit",
+                    f"open work limit is {limits_policy.max_open_work}",
+                )
+                continue
+            parent_key = parent_id or "__root__"
+            if child_counts.get(parent_key, 0) >= limits_policy.max_breadth_per_parent:
+                reject(
+                    item,
+                    "breadth_limit",
+                    f"parent allows {limits_policy.max_breadth_per_parent} children",
+                )
+                continue
+            if consumed_tokens + item.estimated_tokens > limits_policy.token_budget:
+                reject(
+                    item,
+                    "token_budget",
+                    f"cycle token budget is {limits_policy.token_budget}",
+                )
+                continue
+
+            block = render_objective_work_goal_block(
+                item,
+                parent_goal_ids=parent_ids,
+                graph_depth=actual_depth,
+                lifecycle_owner=selected_policy.lifecycle_owner,
+            )
+            parsed = parse_goal_heap(block)
+            if len(parsed) != 1 or parsed[0].goal_id != item.canonical_id:
+                reject(item, "render_validation", "rendered goal did not round-trip")
+                continue
+            projected_goal = parsed[0]
+            projected_parents = tuple(projected_goal.parent_goal_ids)
+            if projected_parents != parent_ids:
+                reject(item, "render_validation", "rendered parent hierarchy changed")
+                continue
+            round_trip_values: tuple[tuple[str, Any, Any], ...] = (
+                ("dependencies", tuple(projected_goal.dependencies), item.dependencies),
+                (
+                    "evidence requirements",
+                    tuple(projected_goal.required_evidence),
+                    item.expected_evidence_delta,
+                ),
+                (
+                    "predicted files",
+                    tuple(projected_goal.predicted_files),
+                    item.predicted_files,
+                ),
+                (
+                    "predicted symbols",
+                    tuple(projected_goal.predicted_symbols),
+                    item.predicted_symbols,
+                ),
+                (
+                    "validation commands",
+                    tuple(projected_goal.validation_commands),
+                    item.validation_commands,
+                ),
+                (
+                    "canonical proposal identity",
+                    projected_goal.canonical_proposal_id,
+                    item.canonical_id,
+                ),
+                ("semantic identity", projected_goal.semantic_key, item.semantic_key),
+                (
+                    "lifecycle owner",
+                    projected_goal.lifecycle_owner,
+                    selected_policy.lifecycle_owner,
+                ),
+                (
+                    "proposal kind",
+                    str(projected_goal.fields.get("proposal_kind") or ""),
+                    item.kind.value,
+                ),
+                (
+                    "graph depth",
+                    str(projected_goal.fields.get("graph_depth") or ""),
+                    str(actual_depth),
+                ),
+            )
+            changed_fields = [
+                name
+                for name, actual, expected in round_trip_values
+                if actual != expected
+            ]
+            if changed_fields:
+                reject(
+                    item,
+                    "render_validation",
+                    "rendered proposal metadata changed: " + ", ".join(changed_fields),
+                )
+                continue
+            materialized.append(
+                MaterializedObjectiveGoal(
+                    proposal=item,
+                    goal=projected_goal,
+                    rendered_block=block,
+                    graph_depth=actual_depth,
+                    parent_goal_ids=parent_ids,
+                )
+            )
+            accepted_proposals.append(item)
+            exact_ids.add(item.canonical_id)
+            existing_semantic_keys.add(item.semantic_key)
+            goals_by_id[item.canonical_id] = projected_goal
+            current_depths[item.canonical_id] = actual_depth
+            child_counts[parent_key] = child_counts.get(parent_key, 0) + 1
+            consumed_tokens += item.estimated_tokens
+
+    proposed_text = objective_text
+    if materialized:
+        separator = "\n\n" if objective_text.rstrip() else ""
+        proposed_text = (
+            objective_text.rstrip()
+            + separator
+            + "\n\n".join(item.rendered_block.strip() for item in materialized)
+            + "\n"
+        )
+        projected_goals = parse_goal_heap(proposed_text)
+        projected_errors = _strict_goal_hierarchy_errors(projected_goals)
+        if projected_errors:
+            fatal_reasons.extend(f"projected heap: {item}" for item in projected_errors)
+        elif selected_root_id:
+            projected_root = next(
+                (goal for goal in projected_goals if goal.goal_id == selected_root_id),
+                None,
+            )
+            if (
+                projected_root is None
+                or objective_goal_content_id(projected_root) != root_content_id
+            ):
+                fatal_reasons.append("projected heap changed the frozen root")
+
+    fatal_reasons = sorted(set(fatal_reasons))
+    if fatal_reasons or (selected_policy.atomic and rejected):
+        candidate_text = objective_text
+    else:
+        candidate_text = proposed_text
+    return ObjectiveGoalMaterializationPreview(
+        base_heap_content_id=base_content_id,
+        root_goal_id=selected_root_id,
+        root_content_id=root_content_id,
+        materialized=tuple(materialized),
+        rejected=tuple(
+            sorted(
+                rejected,
+                key=lambda item: (
+                    item.canonical_id,
+                    item.reason,
+                    item.source_id,
+                    item.detail,
+                ),
+            )
+        ),
+        fatal_reasons=tuple(fatal_reasons),
+        candidate_text=candidate_text,
+        policy=selected_policy,
+    )
+
+
+# Compatibility phrasing used by generation-ledger and tracker callers.
+preview_objective_work_materialization = preview_objective_goal_materialization
 
 
 def priority_rank(value: str) -> int:
