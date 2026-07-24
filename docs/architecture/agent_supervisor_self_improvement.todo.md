@@ -2876,7 +2876,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-082 Produce completion evidence for Efficient and trustworthy supervisor control loop
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: self-improvement
