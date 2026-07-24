@@ -1,17 +1,30 @@
 from __future__ import annotations
 
+import copy
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+    AnalyzerHealthReport,
+    AnalyzerHealthStatus,
+    AnalyzerHealthThresholds,
+)
 from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+    CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA,
+    CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION,
+    CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION,
+    CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+    CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION,
     CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
     CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlBounds,
     ControlContractError,
+    ControlDiscoveryCompletionQuorumEvidence,
     ControlDiscoveryManifest,
     ControlDiscoveryObservation,
     ControlDiscoveryRuntimeState,
@@ -30,6 +43,21 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     OperationStatus,
     operation_request_json_schema,
     operation_result_json_schema,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+    CompletionEvidence,
+    GoalState,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+    AcceptanceCoverage,
+    CoverageStatus,
+    GoalCoverageMap,
+    ValidationReceiptCoverage,
+)
+from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+    ExhaustionBinding,
+    ExhaustionQuorumMember,
+    ExhaustionQuorumResult,
 )
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
     BackendResponse,
@@ -366,6 +394,414 @@ def test_discovery_safety_evidence_is_complete_content_addressed_and_strict(
             capability_report=service.capability_report(),
             observations=observations[:-1],
         )
+    with pytest.raises(ControlContractError, match="objective_id"):
+        ControlDiscoverySafetyEvidence(
+            repository_tree="tree:abc",
+            objective_id="ASI-G999",
+            policy_id="policy:control",
+            policy_revision="policy:1",
+            capability_report=service.capability_report(),
+            observations=observations,
+        )
+
+
+def test_g105_completion_requires_bound_current_tree_validation_health_and_quorum(
+    tmp_path: Path,
+) -> None:
+    """ASI-072: operational discovery proof cannot self-certify completion."""
+
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    service = _service(
+        repo_root,
+        state_root,
+        handlers={
+            operation: (lambda _request: {})
+            for operation in Operation
+            if operation not in {
+                Operation.CAPABILITIES,
+                *tuple(READ_OPERATIONS),
+            }
+        },
+    )
+    runtime_state = ControlDiscoveryRuntimeState()
+    operational = ControlDiscoverySafetyEvidence(
+        repository_tree="tree:asi-072",
+        objective_id=CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+        policy_id="policy:control",
+        policy_revision="policy:asi-072",
+        capability_report=service.capability_report(),
+        observations=tuple(
+            ControlDiscoveryObservation(
+                surface=surface,
+                first_manifest=ControlDiscoveryManifest(surface=surface),
+                second_manifest=ControlDiscoveryManifest(surface=surface),
+                before=runtime_state,
+                after=runtime_state,
+            )
+            for surface in ControlSurface
+        ),
+    )
+    now = datetime(2026, 7, 24, 17, 0, tzinfo=timezone.utc)
+    command = (
+        "python -m pytest test/api/test_agent_supervisor_control_plane.py "
+        "test/api/test_agent_supervisor_control_lifecycle.py "
+        "test/test_unified_cli_agent_supervisor.py "
+        "test/mcp_server/test_agent_supervisor_tools.py -q"
+    )
+    validation_binding = {
+        "status": "passed",
+        "tree_id": operational.repository_tree,
+        "requirement_id": CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
+        "objective_id": CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+        "operational_receipt_id": operational.content_id,
+        "validation_policy_id": operational.policy_id,
+        "policy_revision": operational.policy_revision,
+        "command": command,
+    }
+    completion_evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-072",
+            producer_kind="task",
+            validation_receipt=validation_binding,
+            validation_passed=True,
+            repository_tree=operational.repository_tree,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-072:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    assert operational.completion_authoritative is False
+    coverage_receipts = [
+        ValidationReceiptCoverage(
+            receipt_id=item.provenance_cid,
+            task_id="ASI-072",
+            criterion=item.acceptance_criterion,
+            command=command,
+            status=CoverageStatus.VERIFIED,
+            passed=True,
+            repository_tree=operational.repository_tree,
+            observed_at=now.isoformat(),
+            provenance_cid=item.provenance_cid,
+            explanation="fresh passing ASI-072 criterion validation",
+            outcome="passed",
+            reason_code="validation_verified",
+            fresh=True,
+        )
+        for item in completion_evidence
+    ]
+    canonical_coverage = GoalCoverageMap(
+        criteria=[
+            AcceptanceCoverage(
+                criterion_id=f"criterion:g105:{index}",
+                goal_id=CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+                criterion=criterion,
+                status=CoverageStatus.VERIFIED,
+                changed_files=[
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "control_contracts.py"
+                ],
+                validation_receipt_ids=[
+                    completion_evidence[index - 1].provenance_cid
+                ],
+                explanation="implementation and validation are exact",
+            )
+            for index, criterion in enumerate(
+                CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+        edges=[],
+        receipts=coverage_receipts,
+        finding_assignments=[],
+        registered_goal_ids=[CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID],
+        evaluated_at=now.isoformat(),
+        repository_tree=operational.repository_tree,
+    )
+    health = AnalyzerHealthReport(
+        status=AnalyzerHealthStatus.HEALTHY,
+        reasons=(),
+        thresholds=AnalyzerHealthThresholds(),
+        metrics={
+            "objective_id": CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+            "repository_tree": operational.repository_tree,
+            "analyzer_version": (
+                CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
+            ),
+        },
+    )
+    binding = ExhaustionBinding(
+        repository_id="repository:control",
+        tree_id=operational.repository_tree,
+        analyzer_version=(
+            CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
+        ),
+        configuration_revision=(
+            CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION
+        ),
+        objective_revision=CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION,
+    )
+    generic_quorum = ExhaustionQuorumResult(
+        binding=binding,
+        required_members=2,
+        members=(
+            ExhaustionQuorumMember(
+                member_id="asi-072-implementation",
+                evidence_channel="implementation-validation",
+                receipt_cid="scan:asi-072:implementation",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now.isoformat(),
+            ),
+            ExhaustionQuorumMember(
+                member_id="asi-072-replay",
+                evidence_channel="receipt-replay-audit",
+                receipt_cid="scan:asi-072:replay",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now.isoformat(),
+            ),
+        ),
+    )
+    quorum = ControlDiscoveryCompletionQuorumEvidence(
+        validation_policy_id=operational.policy_id,
+        policy_revision=operational.policy_revision,
+        operational_receipt_id=operational.content_id,
+        quorum=generic_quorum,
+    )
+    assert (
+        ControlDiscoveryCompletionQuorumEvidence.from_json(
+            quorum.to_json()
+        ).content_id
+        == quorum.content_id
+    )
+    values = {
+        "evidence": completion_evidence,
+        "tasks_complete": True,
+        "coverage": canonical_coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    no_independent_proof = operational.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        tasks_complete=True,
+        now=now,
+        freshness_seconds=300,
+    )
+    assert no_independent_proof.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not no_independent_proof.verified
+    assert (
+        no_independent_proof.gate is not None
+        and not no_independent_proof.gate.passed
+    )
+
+    provisional = operational.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.gate is not None and provisional.gate.passed
+    assert not provisional.verified
+
+    verified = operational.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    # Mapping projections remain auditable but must carry the artifact-specific
+    # objective, policy, and receipt bindings omitted from generic quorum types.
+    mapping_coverage = {
+        "repository_tree": operational.repository_tree,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "control_contracts.py"
+                ),
+                "validation_receipt_ids": [
+                    completion_evidence[index - 1].provenance_cid
+                ],
+            }
+            for index, criterion in enumerate(
+                CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    mapping_health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "objective_id": CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+        "repository_tree": operational.repository_tree,
+        "analyzer_version": (
+            CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
+        ),
+    }
+    artifact_binding = {
+        **binding.to_dict(),
+        "objective_id": CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+        "requirement_id": CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
+        "validation_policy_id": operational.policy_id,
+        "policy_revision": operational.policy_revision,
+        "operational_receipt_id": operational.content_id,
+    }
+    mapping_quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": artifact_binding,
+        "members": [
+            {
+                "member_id": f"asi-072-mapping-{index}",
+                "evidence_channel": channel,
+                "receipt_cid": f"scan:asi-072:mapping:{index}",
+                "binding": artifact_binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            }
+            for index, channel in enumerate(
+                ("implementation-validation", "receipt-replay-audit"),
+                start=1,
+            )
+        ],
+    }
+    mapped = operational.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "coverage": mapping_coverage,
+            "analyzer_health": mapping_health,
+            "exhaustion_quorum": mapping_quorum,
+        },
+    )
+    assert mapped.verified
+
+    detached_evidence_populations = []
+    for field_name, detached_value in (
+        ("operational_receipt_id", "sha256:detached"),
+        ("objective_id", "ASI-G999"),
+        ("tree_id", "tree:foreign"),
+        ("validation_policy_id", "policy:foreign"),
+        ("policy_revision", "policy:foreign-revision"),
+    ):
+        detached_evidence = list(completion_evidence)
+        detached_evidence[0] = CompletionEvidence.from_dict(
+            {
+                **detached_evidence[0].to_dict(),
+                "validation_receipt": {
+                    **validation_binding,
+                    field_name: detached_value,
+                },
+            }
+        )
+        detached_evidence_populations.append(tuple(detached_evidence))
+    incomplete_coverage = copy.deepcopy(mapping_coverage)
+    incomplete_coverage["criteria"] = incomplete_coverage["criteria"][:-1]
+    unbound_coverage = copy.deepcopy(mapping_coverage)
+    unbound_coverage["criteria"][0]["validation_receipt_ids"] = [
+        "validation:detached"
+    ]
+    unsafe_health = {**mapping_health, "safe_for_completion_reasoning": False}
+    mismatched_health = {
+        **mapping_health,
+        "analyzer_version": "foreign-analyzer@1",
+    }
+    detached_health = {
+        **mapping_health,
+        "objective_id": "ASI-G999",
+        "repository_tree": "tree:foreign",
+    }
+    unbound_health = {
+        key: value
+        for key, value in mapping_health.items()
+        if key not in {"objective_id", "repository_tree"}
+    }
+    duplicate_quorum = copy.deepcopy(mapping_quorum)
+    duplicate_quorum["members"][1]["evidence_channel"] = (
+        duplicate_quorum["members"][0]["evidence_channel"]
+    )
+    stale_quorum = copy.deepcopy(mapping_quorum)
+    stale_quorum["members"][0]["finished_at"] = (
+        now - timedelta(hours=1)
+    ).isoformat()
+    foreign_quorum = copy.deepcopy(mapping_quorum)
+    foreign_quorum["binding"]["tree_id"] = "tree:foreign"
+    for member in foreign_quorum["members"]:
+        member["binding"]["tree_id"] = "tree:foreign"
+    rejected_inputs = (
+        *(
+            {"evidence": population}
+            for population in detached_evidence_populations
+        ),
+        {"evidence": completion_evidence[:-1]},
+        {"coverage": incomplete_coverage},
+        {"coverage": unbound_coverage},
+        {"analyzer_health": unsafe_health},
+        {"analyzer_health": mismatched_health},
+        {"analyzer_health": detached_health},
+        {"analyzer_health": unbound_health},
+        {"exhaustion_quorum": generic_quorum},
+        {
+            "exhaustion_quorum": ControlDiscoveryCompletionQuorumEvidence(
+                validation_policy_id="policy:foreign",
+                policy_revision=operational.policy_revision,
+                operational_receipt_id=operational.content_id,
+                quorum=generic_quorum,
+            )
+        },
+        {
+            "exhaustion_quorum": ControlDiscoveryCompletionQuorumEvidence(
+                validation_policy_id=operational.policy_id,
+                policy_revision=operational.policy_revision,
+                operational_receipt_id="sha256:detached",
+                quorum=generic_quorum,
+            )
+        },
+        {"exhaustion_quorum": duplicate_quorum},
+        {"exhaustion_quorum": stale_quorum},
+        {"exhaustion_quorum": foreign_quorum},
+    )
+    mapping_values = {
+        **values,
+        "coverage": mapping_coverage,
+        "analyzer_health": mapping_health,
+        "exhaustion_quorum": mapping_quorum,
+    }
+    for replacement in rejected_inputs:
+        rejected = operational.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**mapping_values, **replacement},
+        )
+        assert rejected.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not rejected.verified
+        assert rejected.gate is not None and not rejected.gate.passed
 
 
 def test_read_client_uses_direct_repository_apis_and_bounded_results(

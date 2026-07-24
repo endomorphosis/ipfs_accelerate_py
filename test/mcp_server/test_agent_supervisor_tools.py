@@ -386,11 +386,16 @@ async def test_mcp_result_is_exactly_the_python_service_record(
     request = _request(repo_root, state_root)
 
     expected = service.execute(request).to_record()
+    resolutions_before = agent_supervisor_service_resolution_count()
     actual = await AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.STATUS](
         request=request.to_record()
     )
 
     assert actual == expected
+    assert (
+        agent_supervisor_service_resolution_count()
+        == resolutions_before + 1
+    )
     assert OperationResult.from_dict(actual).result_id == expected["content_id"]
 
 
