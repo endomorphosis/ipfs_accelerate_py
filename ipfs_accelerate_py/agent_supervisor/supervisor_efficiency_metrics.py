@@ -108,6 +108,27 @@ DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS = 3_500
 TERMINAL_ACCEPTED_WORK_EVIDENCE_ID = (
     "248026856102230635452423769994290240744"
 )
+TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID = "ASI-G093"
+TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA = (
+    "The exact requirement ID is emitted only by a bounded, content-addressed "
+    "benchmark receipt carrying the complete typed baseline and candidate "
+    "receipt populations, one frozen goal/tree/policy binding, the "
+    "independently replayed paired result, source and report identities, a "
+    "deterministic input digest, and a passing accounting result. A completion "
+    "gate verifies the artifact against its independently enumerated benchmark "
+    "cohort, so an omitted, duplicated, reordered, or substituted input is "
+    "either canonicalized to the same evidence identity or fails closed. The "
+    "accepted-task population must be non-empty and identical across arms",
+    "failed-only tasks never enter its denominator",
+    "every supplied failed or retried lifecycle for work that eventually "
+    "reaches acceptance remains charged",
+    "duplicate acceptance, omitted or altered embedded receipts, stale "
+    "bindings, forged totals or terminal IDs, detached cases, and "
+    "serialization tampering fail closed. The separate 35 percent "
+    "token-reduction and full-coverage gate does not redefine the accounting "
+    "proof, but context and delta promotion require both the accepted-work "
+    "witness and their own typed compiler evidence.",
+)
 # Deterministic routing metadata for objective scanners and completion gates.
 # The mapping is not evidence by itself; only the typed, replayable artifact
 # returned by the bound producer may claim the requirement.
@@ -3107,6 +3128,298 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
 
         return self.paired_report.passed
 
+    def evaluate_objective_completion(
+        self,
+        baseline_receipts: Iterable[
+            EfficiencyReceipt | Mapping[str, Any]
+        ],
+        candidate_receipts: Iterable[
+            EfficiencyReceipt | Mapping[str, Any]
+        ],
+        *,
+        expected_repository_id: str,
+        expected_goal_reference: str,
+        expected_repository_tree_digest: str,
+        expected_policy_digest: str,
+        expected_objective_revision: str,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = 2,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G093 against an independent current-tree cohort.
+
+        The artifact proves that its embedded populations replay to the
+        accepted-work report.  Completion additionally compares it with the
+        caller's independently enumerated populations and trusted repository
+        binding, then requires fresh per-criterion validations, a complete
+        implementation/validation map, a completion-safe analyzer, and the
+        configured number of independent exhaustive receipts.
+
+        Expected identities and quorum size are trusted completion-gate inputs;
+        none is inferred from the proof or quorum being evaluated.
+        """
+
+        from .goal_completion import evaluate_goal_completion
+
+        configured_receipts = _integer(
+            required_exhaustive_receipts,
+            field_name="required_exhaustive_receipts",
+            minimum=1,
+            maximum=MAX_RECEIPTS_PER_REPORT,
+        )
+        repository_id = _text(
+            expected_repository_id,
+            field_name="expected_repository_id",
+            required=True,
+            max_bytes=MAX_REFERENCE_BYTES,
+        )
+        goal_reference = _text(
+            expected_goal_reference,
+            field_name="expected_goal_reference",
+            required=True,
+            max_bytes=MAX_REFERENCE_BYTES,
+        )
+        repository_tree = _digest(
+            expected_repository_tree_digest,
+            field_name="expected_repository_tree_digest",
+        )
+        policy_revision = _digest(
+            expected_policy_digest,
+            field_name="expected_policy_digest",
+        )
+        objective_revision = _digest(
+            expected_objective_revision,
+            field_name="expected_objective_revision",
+        )
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        population_verified = True
+        try:
+            verify_terminal_accepted_work_evidence(
+                self,
+                baseline_receipts,
+                candidate_receipts,
+                expected_goal_reference=goal_reference,
+                expected_repository_tree_digest=repository_tree,
+                expected_policy_digest=policy_revision,
+            )
+        except ContractValidationError:
+            population_verified = False
+
+        coverage_value = payload(coverage)
+        rows_value = coverage_value.get("criteria")
+        rows = (
+            rows_value
+            if isinstance(rows_value, (list, tuple))
+            else ()
+        )
+        expected_criteria = {
+            " ".join(item.strip().lower().split())
+            for item in TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
+        }
+        mapped_criteria = [
+            " ".join(
+                str(row.get("criterion") or "").strip().lower().split()
+            )
+            for row in rows
+            if isinstance(row, Mapping)
+        ]
+        mappings_complete = bool(rows) and (
+            len(mapped_criteria) == len(expected_criteria)
+            and set(mapped_criteria) == expected_criteria
+            and len(mapped_criteria) == len(set(mapped_criteria))
+            and all(
+                isinstance(row, Mapping)
+                and bool(str(row.get("implementation") or "").strip())
+                and bool(str(row.get("validation") or "").strip())
+                for row in rows
+            )
+        )
+        if not mappings_complete or not population_verified:
+            reasons = coverage_value.get("reason_codes")
+            reasons = (
+                list(reasons)
+                if isinstance(reasons, (list, tuple))
+                else []
+            )
+            if not mappings_complete:
+                reasons.append(
+                    "coverage_missing_implementation_validation_binding"
+                )
+            if not population_verified:
+                reasons.append("terminal_population_verification_failed")
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": reasons,
+            }
+
+        health_value = payload(analyzer_health)
+        analyzer_version = str(
+            health_value.get("analyzer_version") or ""
+        ).strip()
+        health_complete = (
+            str(health_value.get("status") or "").strip().lower()
+            == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+            and bool(analyzer_version)
+        )
+        if not health_complete:
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        quorum_value = payload(exhaustion_quorum)
+        binding_value = quorum_value.get("binding")
+        binding_value = (
+            binding_value if isinstance(binding_value, Mapping) else {}
+        )
+        configuration_revision = str(
+            binding_value.get("configuration_revision") or ""
+        ).strip()
+        expected_binding = {
+            "repository_id": repository_id,
+            "tree_id": repository_tree,
+            "objective_id": TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID,
+            "objective_revision": objective_revision,
+            "goal_reference": goal_reference,
+            "policy_revision": policy_revision,
+            "requirement_id": TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+            "terminal_evidence_id": self.evidence_id,
+            "paired_report_id": self.report_id,
+            "benchmark_input_digest": self.benchmark_input_digest,
+            "analyzer_version": analyzer_version,
+            "configuration_revision": configuration_revision,
+        }
+        binding_complete = bool(configuration_revision) and all(
+            binding_value.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        members_value = quorum_value.get("members")
+        members = (
+            members_value
+            if isinstance(members_value, (list, tuple))
+            else ()
+        )
+        members_complete = bool(members) and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            and all(
+                isinstance(member.get("binding"), Mapping)
+                and member["binding"].get(name) == expected
+                for name, expected in expected_binding.items()
+            )
+            for member in members
+        )
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        member_ids = [
+            str(member.get("member_id") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        channels = [
+            str(
+                member.get("evidence_channel")
+                or member.get("independence_key")
+                or ""
+            ).strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        declared_required = quorum_value.get("required_members")
+        declared_count = quorum_value.get("member_count")
+        receipts_independent = (
+            len(receipt_ids) >= configured_receipts
+            and all(receipt_ids)
+            and all(member_ids)
+            and all(channels)
+            and len(receipt_ids) == len(set(receipt_ids))
+            and len(member_ids) == len(set(member_ids))
+            and len(channels) == len(set(channels))
+        )
+        configured_quorum_complete = (
+            not isinstance(declared_required, bool)
+            and declared_required == configured_receipts
+            and not isinstance(declared_count, bool)
+            and declared_count == len(members)
+            and len(members) >= configured_receipts
+        )
+        identity_complete = bool(
+            population_verified
+            and self.goal_reference == goal_reference
+            and self.repository_tree_digest == repository_tree
+            and self.policy_digest == policy_revision
+            and self.proved_requirement_ids
+            == (TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,)
+        )
+        if not (
+            identity_complete
+            and health_complete
+            and binding_complete
+            and members_complete
+            and receipts_independent
+            and configured_quorum_complete
+        ):
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": (
+                TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
+            ),
+            "evidence": evidence,
+            "tasks_complete": bool(tasks_complete and identity_complete),
+            "repository_tree": repository_tree,
+            "repository_id": repository_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage_value,
+            "analyzer_health": health_value,
+            "exhaustion_quorum": quorum_value,
+            "child_goals": child_goals,
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
@@ -6100,7 +6413,9 @@ __all__ = [
     "SCHEMA_VERSION",
     "STAGE_TIMING_SCHEMA",
     "TERMINAL_ACCEPTANCE_SCHEMA",
+    "TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA",
     "TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA",
+    "TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID",
     "TOKEN_USAGE_SCHEMA",
     "WORK_COST_SCHEMA",
     "ArtifactReference",

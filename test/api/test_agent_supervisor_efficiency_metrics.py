@@ -34,8 +34,10 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     PAIRED_EFFICIENCY_REPORT_SCHEMA,
     REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
     REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA,
+    TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA,
     TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
     TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA,
+    TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID,
     MAX_ARTIFACT_REFERENCES,
     MAX_CHANGED_PATHS,
     MAX_DURATION_MS,
@@ -744,6 +746,398 @@ def test_terminal_evidence_verifier_requires_the_independent_complete_cohort() -
                 "expected_policy_digest": "f" * 64,
             },
         )
+
+
+def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() -> None:
+    fixtures = _fixtures()
+    terminal = fixtures["cold"]
+    failed_attempt = replace(
+        fixtures["failed"],
+        task_reference=terminal.task_reference,
+        goal_reference=terminal.goal_reference,
+        repository_tree_digest=terminal.repository_tree_digest,
+        policy_digest=terminal.policy_digest,
+    )
+    # Accounting is authoritative independently of the separate 35% token
+    # promotion gate.
+    candidate = replace(
+        terminal,
+        tokens=TokenUsage(input_tokens=6_000, output_tokens=300),
+        inference_cost_microunits=7_500,
+    )
+    baseline_population = (failed_attempt, terminal)
+    candidate_population = (candidate,)
+    terminal_evidence = build_terminal_accepted_work_evidence(
+        baseline_population,
+        candidate_population,
+    )
+    assert not terminal_evidence.promotion_eligible
+
+    now = datetime(2026, 7, 24, 15, 0, tzinfo=timezone.utc)
+    repository_id = "repo:agent-supervisor"
+    objective_revision = "sha256:" + "a" * 64
+    command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_efficiency_metrics.py "
+        "test/api/test_agent_supervisor_context_compiler.py "
+        "test/api/test_agent_supervisor_context_delta.py -q"
+    )
+    validations = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-068",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": terminal.repository_tree_digest,
+                "command": command,
+                "terminal_evidence_id": terminal_evidence.evidence_id,
+            },
+            validation_passed=True,
+            repository_id=repository_id,
+            repository_tree=terminal.repository_tree_digest,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-068:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": terminal.repository_tree_digest,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "supervisor_efficiency_metrics.py"
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_efficiency_metrics.py"
+                ),
+            }
+            for criterion in TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
+        ],
+    }
+    analyzer_version = "terminal-accounting-completion@1"
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": analyzer_version,
+    }
+    binding = {
+        "repository_id": repository_id,
+        "tree_id": terminal.repository_tree_digest,
+        "objective_id": TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID,
+        "objective_revision": objective_revision,
+        "goal_reference": terminal.goal_reference,
+        "policy_revision": terminal.policy_digest,
+        "requirement_id": TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+        "terminal_evidence_id": terminal_evidence.evidence_id,
+        "paired_report_id": terminal_evidence.report_id,
+        "benchmark_input_digest": (
+            terminal_evidence.benchmark_input_digest
+        ),
+        "analyzer_version": analyzer_version,
+        "configuration_revision": "sha256:completion-config",
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-068-exhaustive-a",
+                "evidence_channel": "receipt-population",
+                "receipt_cid": "scan:asi-068:exhaustive-a",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-068-exhaustive-b",
+                "evidence_channel": "accounting-lifecycle",
+                "receipt_cid": "scan:asi-068:exhaustive-b",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    expected = {
+        "expected_repository_id": repository_id,
+        "expected_goal_reference": terminal.goal_reference,
+        "expected_repository_tree_digest": (
+            terminal.repository_tree_digest
+        ),
+        "expected_policy_digest": terminal.policy_digest,
+        "expected_objective_revision": objective_revision,
+    }
+    values = {
+        **expected,
+        "evidence": validations,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    provisional = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert provisional.acceptance_criteria == (
+        TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
+    )
+    assert provisional.gate is not None and provisional.gate.passed
+    assert "provisional_transition_required" in provisional.reason_codes
+
+    verified = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    # The completion bridge independently enumerates the cohort; an omitted
+    # charged attempt cannot be hidden by an otherwise valid artifact.
+    incomplete = terminal_evidence.evaluate_objective_completion(
+        (terminal,),
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert not incomplete.verified
+    assert "coverage_unverified" in incomplete.reason_codes
+
+    reordered = terminal_evidence.evaluate_objective_completion(
+        tuple(reversed(baseline_population)),
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert reordered.verified
+
+    failed_validation = replace(
+        validations[0],
+        validation_passed=False,
+        validation_receipt={
+            "status": "failed",
+            "tree_id": terminal.repository_tree_digest,
+            "command": command,
+        },
+        provenance_cid="validation:asi-068:failed",
+    )
+    rejected_validation = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "evidence": (failed_validation, *validations[1:]),
+        },
+    )
+    assert not rejected_validation.verified
+    assert "failed_validation" in rejected_validation.reason_codes
+
+    stale_validation = replace(
+        validations[0],
+        observed_at=now - timedelta(seconds=301),
+        provenance_cid="validation:asi-068:stale",
+    )
+    rejected_stale = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "evidence": (stale_validation, *validations[1:]),
+        },
+    )
+    assert not rejected_stale.verified
+    assert "stale_evidence" in rejected_stale.reason_codes
+
+    # Exact criterion mapping is required: duplicated rows cannot substitute
+    # for a missing mandatory criterion.
+    duplicate_rows = {
+        **coverage,
+        "criteria": [
+            *coverage["criteria"][:-1],
+            coverage["criteria"][0],
+        ],
+    }
+    unmapped = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "coverage": duplicate_rows},
+    )
+    assert not unmapped.verified
+    assert "coverage_missing" in unmapped.reason_codes
+
+    unsafe = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "analyzer_health": {
+                "status": "healthy",
+                "healthy": True,
+                "analyzer_version": analyzer_version,
+            },
+        },
+    )
+    assert not unsafe.verified
+    assert "analyzer_unhealthy" in unsafe.reason_codes
+
+    # A submitted quorum cannot weaken the trusted configured count or reuse
+    # an identity/channel to manufacture independence.
+    weak_quorums = (
+        {
+            **quorum,
+            "required_members": 1,
+            "member_count": 1,
+            "members": quorum["members"][:1],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "receipt_cid": "scan:asi-068:exhaustive-a",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "member_id": "asi-068-exhaustive-a",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "evidence_channel": "receipt-population",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "scan_mode": "audit"},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "healthy": False},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "safe_for_completion_reasoning": False,
+                },
+            ],
+        },
+        {
+            **quorum,
+            "binding": {
+                **binding,
+                "terminal_evidence_id": "sha256:detached",
+            },
+        },
+        {
+            **quorum,
+            "members": [
+                {
+                    **quorum["members"][0],
+                    "finished_at": (
+                        now - timedelta(seconds=301)
+                    ).isoformat(),
+                },
+                quorum["members"][1],
+            ],
+        },
+    )
+    for weak_quorum in weak_quorums:
+        rejected = terminal_evidence.evaluate_objective_completion(
+            baseline_population,
+            candidate_population,
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "exhaustion_quorum": weak_quorum},
+        )
+        assert not rejected.verified
+        assert any(
+            code.startswith("exhaustion_quorum")
+            for code in rejected.reason_codes
+        )
+
+    configured_three = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        required_exhaustive_receipts=3,
+        **values,
+    )
+    assert not configured_three.verified
+    assert any(
+        code.startswith("exhaustion_quorum")
+        for code in configured_three.reason_codes
+    )
+
+    wrong_tree = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "expected_repository_tree_digest": "sha256:" + "0" * 64,
+        },
+    )
+    assert not wrong_tree.verified
+    assert not wrong_tree.tasks_complete
 
 
 def test_terminal_accounting_proof_is_independent_of_promotion_gates() -> None:
