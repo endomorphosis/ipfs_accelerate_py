@@ -2197,12 +2197,17 @@ def get_mcp_server_instance() -> Any:
     return _MCP_SERVER_INSTANCE or _MCP_LIKE_INSTANCE
 
 
-def register_tools(mcp: Any) -> None:
+def register_tools(
+    mcp: Any,
+    *,
+    include_p2p_taskqueue_tools: bool = True,
+) -> None:
     """Register canonical tool set with an MCP-like registry instance.
 
     Convenience wrapper used by callers that expect a ``register_tools(mcp)``
     function analogous to the legacy ``ipfs_accelerate_py.mcp.tools.register_all_tools``.
     """
+    _ = include_p2p_taskqueue_tools
     try:
         from .tools.hardware_tools.native_hardware_tools import hardware_get_info, hardware_recommend
         mcp.register_tool(
@@ -2244,6 +2249,64 @@ def register_tools(mcp: Any) -> None:
                     "device": {"type": "string", "default": "auto"},
                 },
                 "required": ["model_cid", "input_data"],
+            },
+            execution_context="server",
+        )
+    except Exception:
+        pass
+
+    try:
+        from .tools.model_tools.native_model_tools import (
+            model_get_served,
+            model_list_served,
+        )
+        mcp.register_tool(
+            name="model_list_served",
+            function=model_list_served,
+            description="List models currently available from configured inference servers.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "endpoint_url": {"type": "string"},
+                    "timeout": {"type": "number", "default": 2.0, "minimum": 0.1},
+                },
+                "required": [],
+            },
+            execution_context="server",
+        )
+        mcp.register_tool(
+            name="model_get_served",
+            function=model_get_served,
+            description="Get live serving information for a model ID.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "model_id": {"type": "string"},
+                    "endpoint_url": {"type": "string"},
+                    "timeout": {"type": "number", "default": 2.0, "minimum": 0.1},
+                },
+                "required": ["model_id"],
+            },
+            execution_context="server",
+        )
+    except Exception:
+        pass
+
+    try:
+        from .tools.shared_tools.native_shared_tools import generate_text
+        mcp.register_tool(
+            name="generate_text",
+            function=generate_text,
+            description="Generate text through the configured LLM router, including local Leanstral.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "minLength": 1},
+                    "model": {"type": "string", "default": "auto"},
+                    "max_tokens": {"type": "integer", "default": 512, "minimum": 1},
+                    "temperature": {"type": "number", "default": 0.7, "minimum": 0},
+                },
+                "required": ["prompt"],
             },
             execution_context="server",
         )

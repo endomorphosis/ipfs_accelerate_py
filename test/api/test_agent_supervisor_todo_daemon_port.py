@@ -1164,6 +1164,65 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
     assert "agents.max_depth=2" in command
 
 
+def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "agent@example.test"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "config", "user.name", "Agent Test"], cwd=repo, check=True)
+    tracked = repo / "wallet_interface" / "ui" / "tracked.css"
+    tracked.parent.mkdir(parents=True)
+    tracked.write_text("original\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(tracked.relative_to(repo))], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "baseline"], cwd=repo, check=True, capture_output=True)
+    tracked.write_text("local edit\n", encoding="utf-8")
+    untracked = repo / "wallet_interface" / "ui" / "new-context.ts"
+    untracked.write_text("export const context = true;\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    paths = daemon._untracked_worktree_context_paths()
+
+    assert "wallet_interface/ui/new-context.ts" in paths
+    assert "wallet_interface/ui/tracked.css" not in paths
+
+
+def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    first = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "lanes" / "first" / "task_state.json",
+        strategy_path=repo / "lanes" / "first" / "strategy.json",
+        events_path=repo / "lanes" / "first" / "events.jsonl",
+        repo_root=repo,
+    )
+    second = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "lanes" / "second" / "task_state.json",
+        strategy_path=repo / "lanes" / "second" / "strategy.json",
+        events_path=repo / "lanes" / "second" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    expected = repo / "data" / "agent_supervisor" / "gc_state.json"
+    assert first.git_gc.state_path == expected
+    assert second.git_gc.state_path == expected
+
+
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7272,6 +7331,84 @@ def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_pa
     assert reason == ""
 
 
+def test_implementation_supervisor_ignores_stale_agent_log_during_active_merge_resolver(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implementation_log = repo / "implementation.log"
+    implementation_log.write_text("implementation complete\n", encoding="utf-8")
+    old = datetime.now(timezone.utc) - timedelta(seconds=600)
+    os.utime(implementation_log, (old.timestamp(), old.timestamp()))
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        state_dir=repo / "state",
+        stale_seconds=3600,
+        implementation_log_stall_seconds=300,
+    )
+    supervisor = TodoImplementationSupervisor(config)
+    now = datetime.now(timezone.utc)
+    state = TodoTaskState(
+        active_task_id="AUTO-001",
+        active_phase="merge_resolver",
+        active_phase_detail="main_checkout_dirty_conflict",
+        active_phase_started_at=now.isoformat(),
+        heartbeat_at=now.isoformat(),
+        last_progress_at=now.isoformat(),
+        implementation_in_progress=True,
+        active_task_started_at=now.isoformat(),
+        last_implementation_log_path=str(implementation_log),
+    )
+
+    stuck, reason = supervisor.is_stuck(state, now_ts=now.timestamp())
+
+    assert stuck is False
+    assert reason == ""
+
+
+def test_implementation_supervisor_keeps_quiet_live_agent_worker(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implementation_log = repo / "implementation.log"
+    implementation_log.write_text("quiet worker\n", encoding="utf-8")
+    old = datetime.now(timezone.utc) - timedelta(seconds=600)
+    os.utime(implementation_log, (old.timestamp(), old.timestamp()))
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        state_dir=repo / "state",
+        stale_seconds=3600,
+        implementation_timeout=3600,
+        implementation_log_stall_seconds=300,
+    )
+    supervisor = TodoImplementationSupervisor(config)
+    monkeypatch.setattr(supervisor, "_active_agent_subprocess_exists", lambda: True)
+    now = datetime.now(timezone.utc)
+    state = TodoTaskState(
+        active_task_id="AUTO-001",
+        active_phase="implementing",
+        active_phase_detail="agent worker",
+        active_phase_started_at=now.isoformat(),
+        heartbeat_at=now.isoformat(),
+        last_progress_at=now.isoformat(),
+        implementation_in_progress=True,
+        active_task_started_at=now.isoformat(),
+        last_implementation_task_id="AUTO-001",
+        last_implementation_started_at=now.isoformat(),
+        last_implementation_log_path=str(implementation_log),
+    )
+
+    stuck, reason = supervisor.is_stuck(state, now_ts=now.timestamp())
+
+    assert stuck is False
+    assert reason == ""
+
+
 def test_implementation_supervisor_honors_configured_worker_stall_threshold(
     tmp_path, monkeypatch
 ):
@@ -7699,6 +7836,9 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
 
     assert loop_config.status_static_fields["worktree_no_child_stall_seconds"] == 42
     assert loop_config.watchdog_startup_grace_seconds == 300
+    assert loop_config.watchdog_stale_after_seconds >= (
+        config.implementation_timeout + max(30.0, config.check_interval * 2.0)
+    )
 
 
 def test_implementation_supervisor_allows_startup_grace_override(tmp_path):
@@ -7718,6 +7858,44 @@ def test_implementation_supervisor_allows_startup_grace_override(tmp_path):
     loop_config = TodoImplementationSupervisor(config).build_supervisor_loop_config()
 
     assert loop_config.watchdog_startup_grace_seconds == 45
+
+
+def test_implementation_supervisor_treats_legal_ir_runs_as_bounded_active_children(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_supervisor as implementation_supervisor_module,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: 1234)
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "cmdline": (
+                    "bash",
+                    "scripts/ops/legal_ir/run_legal_ir_8h_canary.sh",
+                )
+            }
+        ],
+    )
+
+    assert supervisor._active_validation_subprocess_exists() is True
 
 
 def test_implementation_supervisor_repairs_stale_active_state_after_rewrite(tmp_path):

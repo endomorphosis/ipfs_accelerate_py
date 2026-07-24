@@ -456,6 +456,20 @@ if not SKIP_CORE:
             register_voice_provider,
             clear_voice_router_caches,
             VoiceProvider,
+            VoiceProviderCapabilities,
+            ProviderInfo,
+            DEFAULT_GROUNDED_FALLBACK,
+            GroundingEvidence,
+            VoiceGroundingSource,
+            GroundedSlot,
+            VoiceResponsePlan,
+            VoiceTemplateProvider,
+            GraphRAGVoiceTemplateProvider,
+            VoiceStageTrace,
+            VoiceTurnRequest,
+            VoiceTurnProvenance,
+            VoiceTurnResult,
+            process_voice_turn,
             # backward-compat TTS aliases
             get_tts_provider,
             register_tts_provider,
@@ -469,6 +483,20 @@ if not SKIP_CORE:
         export["register_voice_provider"] = register_voice_provider
         export["clear_voice_router_caches"] = clear_voice_router_caches
         export["VoiceProvider"] = VoiceProvider
+        export["VoiceProviderCapabilities"] = VoiceProviderCapabilities
+        export["ProviderInfo"] = ProviderInfo
+        export["DEFAULT_GROUNDED_FALLBACK"] = DEFAULT_GROUNDED_FALLBACK
+        export["GroundingEvidence"] = GroundingEvidence
+        export["VoiceGroundingSource"] = VoiceGroundingSource
+        export["GroundedSlot"] = GroundedSlot
+        export["VoiceResponsePlan"] = VoiceResponsePlan
+        export["VoiceTemplateProvider"] = VoiceTemplateProvider
+        export["GraphRAGVoiceTemplateProvider"] = GraphRAGVoiceTemplateProvider
+        export["VoiceStageTrace"] = VoiceStageTrace
+        export["VoiceTurnRequest"] = VoiceTurnRequest
+        export["VoiceTurnProvenance"] = VoiceTurnProvenance
+        export["VoiceTurnResult"] = VoiceTurnResult
+        export["process_voice_turn"] = process_voice_turn
         export["get_tts_provider"] = get_tts_provider
         export["register_tts_provider"] = register_tts_provider
         export["clear_tts_router_caches"] = clear_tts_router_caches
@@ -482,6 +510,20 @@ if not SKIP_CORE:
         register_voice_provider = None
         clear_voice_router_caches = None
         VoiceProvider = None
+        VoiceProviderCapabilities = None
+        ProviderInfo = None
+        DEFAULT_GROUNDED_FALLBACK = None
+        GroundingEvidence = None
+        VoiceGroundingSource = None
+        GroundedSlot = None
+        VoiceResponsePlan = None
+        VoiceTemplateProvider = None
+        GraphRAGVoiceTemplateProvider = None
+        VoiceStageTrace = None
+        VoiceTurnRequest = None
+        VoiceTurnProvenance = None
+        VoiceTurnResult = None
+        process_voice_turn = None
         get_tts_provider = None
         register_tts_provider = None
         clear_tts_router_caches = None
@@ -495,6 +537,20 @@ else:
     register_voice_provider = None
     clear_voice_router_caches = None
     VoiceProvider = None
+    VoiceProviderCapabilities = None
+    ProviderInfo = None
+    DEFAULT_GROUNDED_FALLBACK = None
+    GroundingEvidence = None
+    VoiceGroundingSource = None
+    GroundedSlot = None
+    VoiceResponsePlan = None
+    VoiceTemplateProvider = None
+    GraphRAGVoiceTemplateProvider = None
+    VoiceStageTrace = None
+    VoiceTurnRequest = None
+    VoiceTurnProvenance = None
+    VoiceTurnResult = None
+    process_voice_turn = None
     get_tts_provider = None
     register_tts_provider = None
     clear_tts_router_caches = None
@@ -526,6 +582,11 @@ __all__ = [
     'clear_tts_router_caches', 'TTSProvider', 'tts_router_available',
     'speech_to_text', 'get_voice_provider', 'register_voice_provider',
     'clear_voice_router_caches', 'VoiceProvider', 'voice_router_available',
+    'VoiceProviderCapabilities', 'ProviderInfo', 'DEFAULT_GROUNDED_FALLBACK',
+    'GroundingEvidence', 'VoiceGroundingSource', 'GroundedSlot',
+    'VoiceResponsePlan', 'VoiceTemplateProvider', 'GraphRAGVoiceTemplateProvider',
+    'VoiceStageTrace', 'VoiceTurnRequest', 'VoiceTurnProvenance',
+    'VoiceTurnResult', 'process_voice_turn',
 ]
 
 # Package version

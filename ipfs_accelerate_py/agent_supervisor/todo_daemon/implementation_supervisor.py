@@ -54,7 +54,11 @@ from .implementation_daemon import (
     write_json_atomic,
     write_text_atomic,
 )
-from .supervisor import active_codex_exec_workers, descendant_processes, worktree_phase_worker_status
+from .supervisor import (
+    active_codex_exec_workers,
+    descendant_processes,
+    worktree_phase_worker_status,
+)
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
 
@@ -980,6 +984,16 @@ class PortalImplementationSupervisor:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
         proof_rollout_status_fields = self._proof_rollout_status_fields()
+        # The managed daemon blocks while an implementation command is active,
+        # so its task-state heartbeat may legitimately remain unchanged for the
+        # full command timeout. Let the implementation-aware watchdog below
+        # decide whether the live worker or its log has actually stalled.
+        watchdog_stale_after_seconds = max(
+            0.0,
+            float(self.config.stale_seconds),
+            float(self.config.implementation_timeout)
+            + max(30.0, float(self.config.check_interval) * 2.0),
+        )
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
             schema="ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor",
@@ -1011,7 +1025,7 @@ class PortalImplementationSupervisor:
             ),
             heartbeat_seconds=max(0.01, float(self.config.check_interval)),
             poll_seconds=min(1.0, max(0.01, float(self.config.check_interval))),
-            watchdog_stale_after_seconds=max(0.0, float(self.config.stale_seconds)),
+            watchdog_stale_after_seconds=watchdog_stale_after_seconds,
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
@@ -5014,7 +5028,7 @@ class PortalImplementationSupervisor:
         # progress. Their implementation timeout is the authoritative bound.
         if self._implementation_attempt_is_active(state, now_ts=now_ts) and (
             self._active_agent_worker_processes()
-            or state.active_phase == "validating"
+            or state.active_phase in {"validating", "merge_reconciliation", "merge_resolver"}
             or self._active_validation_subprocess_exists()
         ):
             return ""
@@ -5062,6 +5076,11 @@ class PortalImplementationSupervisor:
             "audit-release-evidence-freshness",
             "build-virtual-desktop-release-evidence",
             "tsc --noemit",
+            "run_legal_ir_10m_smoke.sh",
+            "run_legal_ir_8h_canary.sh",
+            "run_hammer_leanstral_smoke.sh",
+            "run_hammer_leanstral_hparam.sh",
+            "uscode_modal_daemon_runner",
         )
         return any(
             any(marker in " ".join(item.get("cmdline") or ()).lower() for marker in markers)

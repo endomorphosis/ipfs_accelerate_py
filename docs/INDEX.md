@@ -7,6 +7,7 @@ Welcome to the complete documentation for IPFS Accelerate Python. This index hel
 - [Getting Started](guides/getting-started/README.md) - Installation and first steps
 - [API Reference](api/overview.md) - Complete API documentation
 - [Architecture](architecture/overview.md) - System architecture and design
+- [Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) - Objective-driven agent control plane
 - [Contributing](../CONTRIBUTING.md) - How to contribute
 - [Project Docs](project/README.md) - Production project status, summaries, and migrations
 - [MCP++ Docs](../mcpplusplus/README.md) - Conformance, cutover, and unification records
@@ -40,6 +41,7 @@ System architecture, design decisions, and technical deep-dives.
 
 - [Architecture Overview](architecture/overview.md) - High-level system design
 - [CI/CD Pipeline](architecture/ci-cd.md) - Continuous integration and deployment
+- [Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) - Planning, execution lanes, evidence, and recovery
 
 ### ⚙️ Features
 

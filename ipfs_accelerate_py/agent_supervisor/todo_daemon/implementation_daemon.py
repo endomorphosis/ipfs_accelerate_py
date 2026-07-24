@@ -1192,7 +1192,10 @@ class PortalImplementationDaemon:
         self._active_canonical_task_cids: set[str] = set()
         self.git_gc = GitGarbageCollector(
             repo_root=self.repo_root,
-            state_path=self.state_path.parent / "gc_state.json",
+            # Git objects and worktree metadata are repository-wide. A
+            # lane-local state file makes every new bundle believe aggressive
+            # GC has never run, serializing startup behind a full repack.
+            state_path=self.repo_root / "data" / "agent_supervisor" / "gc_state.json",
             worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
         )
 
@@ -4709,7 +4712,12 @@ class PortalImplementationDaemon:
         task: PortalTask | None = None,
         overwrite_existing: bool = False,
     ) -> list[str]:
-        """Copy relevant dirty source context into an ephemeral worktree."""
+        """Copy relevant new source context into an ephemeral worktree.
+
+        Modified tracked files belong to the source checkout and must not leak
+        into an isolated implementation branch. Otherwise an unrelated local
+        edit can be committed by the agent and later block the merge train.
+        """
 
         seeded: list[str] = []
         for relative in self._untracked_worktree_context_paths():
@@ -4747,8 +4755,7 @@ class PortalImplementationDaemon:
         candidates: set[str] = set()
         commands = (
             ["git", "ls-files", "--others", "--exclude-standard", "-z"],
-            ["git", "diff", "--name-only", "-z"],
-            ["git", "diff", "--cached", "--name-only", "-z"],
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=A", "-z"],
         )
         for command in commands:
             result = subprocess.run(
