@@ -619,3 +619,21 @@ async def test_python_cli_mcp_matrix_emits_typed_parity_evidence(
     assert evidence.proved_requirement_ids == (
         CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
     )
+    # The independently invoked matrix is the operational witness for G103,
+    # not authority to complete its own objective.  Even with producer tasks
+    # complete, the goal remains provisional until independent criterion
+    # validations, exact coverage, analyzer health, and exhaustive quorum are
+    # supplied to the completion gate.
+    assert evidence.completion_authoritative is False
+    no_independent_completion_proof = (
+        evidence.evaluate_objective_completion(tasks_complete=True)
+    )
+    assert (
+        no_independent_completion_proof.state.value
+        == "provisionally_complete"
+    )
+    assert not no_independent_completion_proof.verified
+    assert (
+        no_independent_completion_proof.gate is not None
+        and not no_independent_completion_proof.gate.passed
+    )

@@ -162,14 +162,7 @@ def _service(
         repository_allowlist=(repo_root,),
         state_allowlist=(state_root,),
         handlers={
-            operation: transition
-            for operation in (
-                Operation.START,
-                Operation.PAUSE,
-                Operation.RESUME,
-                Operation.DRAIN,
-                Operation.STOP,
-            )
+            action.operation: transition for action in LifecycleAction
         },
         lease_validator=lambda request: (
             request.lease_id == "lease:7" and request.fencing_epoch == 7
@@ -357,6 +350,49 @@ def test_authorized_lifecycle_mutation_is_fenced_audited_and_idempotent(
     assert first.effects[0].applied is True
     assert first.audit_receipt_id
     assert calls == [request.request_id]
+
+
+def test_every_lifecycle_action_uses_the_same_typed_fenced_result_contract(
+    tmp_path: Path,
+) -> None:
+    """ASI-067: lifecycle vocabulary and Python dispatch stay exhaustive."""
+
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    calls: list[str] = []
+    service = _service(repo_root, state_root, calls)
+
+    observed: dict[LifecycleAction, OperationResult] = {}
+    for action in LifecycleAction:
+        request = _request(
+            repo_root,
+            state_root,
+            action.operation,
+            dry_run=False,
+        )
+        command = _command(action.operation, dry_run=False)
+
+        result = service.lifecycle(request, command)
+        result.validate_against(request)
+        decoded = OperationResult.from_json(result.to_json())
+
+        assert decoded == result
+        assert decoded.operation is action.operation
+        assert decoded.authority is OperationAuthority.MUTATION
+        assert decoded.status is OperationStatus.SUCCEEDED
+        assert decoded.idempotency_key == request.idempotency_key
+        assert decoded.audit_receipt_id
+        assert len(decoded.effects) == 1
+        assert decoded.effects[0].applied
+        assert decoded.effects[0].receipt_id == decoded.audit_receipt_id
+        observed[action] = decoded
+
+    assert set(observed) == set(LifecycleAction)
+    assert calls == [
+        observed[action].request_id for action in LifecycleAction
+    ]
 
 
 def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(

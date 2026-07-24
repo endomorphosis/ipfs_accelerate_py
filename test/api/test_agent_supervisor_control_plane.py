@@ -20,6 +20,11 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION,
     CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
     CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
+    CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA,
+    CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION,
+    CONTROL_SURFACE_PARITY_COMPLETION_CONFIGURATION_REVISION,
+    CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+    CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION,
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlBounds,
@@ -32,15 +37,20 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     ControlDiscoverySafetyEvidence,
     ControlSurface,
     ControlSurfaceParityCase,
+    ControlSurfaceParityCompletionMemberHealth,
+    ControlSurfaceParityCompletionQuorumEvidence,
     ControlSurfaceParityEvidence,
     EffectKind,
     ErrorCode,
     ExpectedEffect,
     IdempotencyKey,
+    MUTATION_OPERATIONS,
+    PROPOSAL_OPERATIONS,
     READ_OPERATIONS,
     Operation,
     OperationAuthority,
     OperationRequest,
+    OperationResult,
     OperationStatus,
     operation_request_json_schema,
     operation_result_json_schema,
@@ -73,13 +83,18 @@ from ipfs_accelerate_py.agent_supervisor.control_plane import (
 )
 
 
-def _binding(repo_root: Path, state_root: Path) -> dict[str, Any]:
+def _binding(
+    repo_root: Path,
+    state_root: Path,
+    *,
+    objective_id: str = "ASI-G070",
+) -> dict[str, Any]:
     return {
         "repository_root": str(repo_root),
         "state_root": str(state_root),
         "repository_id": "repo:fixture",
         "tree_id": "tree:abc",
-        "objective_id": "ASI-G070",
+        "objective_id": objective_id,
         "objective_revision": "objective:1",
         "policy_id": "policy:supervisor",
         "policy_revision": "policy:1",
@@ -109,8 +124,13 @@ def _mutation_request(
     key: str = "request:one",
     parameters: dict[str, Any] | None = None,
     dry_run: bool = False,
+    objective_id: str = "ASI-G070",
 ) -> OperationRequest:
-    binding = _binding(repo_root, state_root)
+    binding = _binding(
+        repo_root,
+        state_root,
+        objective_id=objective_id,
+    )
     effect = _effect(operation)
     values: dict[str, Any] = {
         "operation": operation,
@@ -155,10 +175,15 @@ def _read_request(
     parameters: dict[str, Any] | None = None,
     *,
     bounds: ControlBounds | None = None,
+    objective_id: str = "ASI-G070",
 ) -> OperationRequest:
     return OperationRequest(
         operation=operation,
-        **_binding(repo_root, state_root),
+        **_binding(
+            repo_root,
+            state_root,
+            objective_id=objective_id,
+        ),
         parameters=parameters or {},
         bounds=bounds or ControlBounds(),
     )
@@ -215,7 +240,12 @@ def _parity_cases(
     requests = (
         (
             "read_success",
-            _read_request(repo_root, state_root, Operation.STATUS),
+            _read_request(
+                repo_root,
+                state_root,
+                Operation.STATUS,
+                objective_id=CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+            ),
         ),
         (
             "proposal_success",
@@ -224,6 +254,7 @@ def _parity_cases(
                 state_root,
                 Operation.PAUSE,
                 dry_run=True,
+                objective_id=CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
             ),
         ),
         (
@@ -233,6 +264,7 @@ def _parity_cases(
                 state_root,
                 Operation.HEALTH,
                 {"health_path": "missing-health.json"},
+                objective_id=CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
             ),
         ),
         (
@@ -242,6 +274,7 @@ def _parity_cases(
                 state_root,
                 Operation.PAUSE,
                 key="parity:mutation",
+                objective_id=CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
             ),
         ),
     )
@@ -1325,6 +1358,98 @@ def test_shared_wire_schemas_cover_every_operation_and_mutation_guard() -> None:
     }.issubset(pause_schema["allOf"][0]["then"]["required"])
 
 
+def test_python_surface_executes_every_closed_operation_with_canonical_results(
+    tmp_path: Path,
+) -> None:
+    """ASI-067: every advertised operation has one typed Python entry point."""
+
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    dispatched: list[Operation] = []
+
+    def operation_handler(request: OperationRequest) -> BackendResponse:
+        dispatched.append(request.operation)
+        return BackendResponse(
+            data={"operation": request.operation.value},
+            changed=bool(request.expected_effects),
+            applied_effect_ids=(
+                tuple(effect.effect_id for effect in request.expected_effects)
+                if request.operation in MUTATION_OPERATIONS
+                else ()
+            ),
+            checks=("closed_operation", "canonical_result"),
+        )
+
+    service = _service(
+        repo_root,
+        state_root,
+        handlers={operation: operation_handler for operation in Operation},
+    )
+    results: dict[Operation, OperationResult] = {}
+    for operation in Operation:
+        if operation in MUTATION_OPERATIONS:
+            request = _mutation_request(
+                repo_root,
+                state_root,
+                operation,
+                key=f"asi-067:{operation.value}",
+            )
+        elif operation in PROPOSAL_OPERATIONS:
+            request = OperationRequest(
+                operation=operation,
+                **_binding(repo_root, state_root),
+                parameters={"target_id": "objective:fixture"},
+                expected_effects=(
+                    ExpectedEffect(
+                        effect_id=f"{operation.value}:proposal",
+                        kind=EffectKind.PROPOSE,
+                        resource="objective:fixture",
+                        paths=("docs/architecture",),
+                        description=f"Preview {operation.value}",
+                    ),
+                ),
+            )
+        else:
+            request = _read_request(repo_root, state_root, operation)
+
+        decoded_request = OperationRequest.from_json(request.to_json())
+        assert decoded_request == request
+        entry_point = getattr(service, operation.value)
+        result = entry_point(decoded_request)
+        result.validate_against(request)
+        decoded_result = OperationResult.from_json(result.to_json())
+        assert decoded_result == result
+        assert decoded_result.operation is operation
+        assert decoded_result.authority is request.effective_authority
+        assert decoded_result.audit_receipt_id
+        if operation in PROPOSAL_OPERATIONS:
+            assert decoded_result.preview is not None
+            assert decoded_result.preview.expected_effects == request.expected_effects
+            assert not any(effect.applied for effect in decoded_result.effects)
+        elif operation in MUTATION_OPERATIONS:
+            assert decoded_result.preview is None
+            assert {effect.effect_id for effect in decoded_result.effects} == {
+                effect.effect_id for effect in request.expected_effects
+            }
+            assert all(effect.applied for effect in decoded_result.effects)
+        else:
+            assert decoded_result.preview is None
+            assert decoded_result.effects == ()
+        results[operation] = decoded_result
+
+    assert set(results) == set(Operation)
+    # Capabilities and receipt queries are intentionally implemented by the
+    # service boundary; every other operation reaches the registered Python
+    # adapter exactly once.
+    assert dispatched == [
+        operation
+        for operation in Operation
+        if operation not in {Operation.CAPABILITIES, Operation.RECEIPTS}
+    ]
+
+
 def test_typed_surface_parity_evidence_proves_exact_requirement(
     tmp_path: Path,
 ) -> None:
@@ -1362,6 +1487,334 @@ def test_typed_surface_parity_evidence_proves_exact_requirement(
     assert evidence.result_schema_id
 
 
+def test_g103_completion_requires_bound_current_tree_validation_health_and_quorum(
+    tmp_path: Path,
+) -> None:
+    """ASI-067: a parity witness cannot self-certify objective completion."""
+
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    service = _parity_service(repo_root, state_root)
+    cases = _parity_cases(service, repo_root, state_root)
+    operational = ControlSurfaceParityEvidence(
+        repository_tree="tree:abc",
+        objective_id=CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+        policy_id="policy:supervisor",
+        policy_revision="policy:1",
+        capability_report=service.capability_report(),
+        cases=cases,
+    )
+    now = datetime(2026, 7, 24, 19, 0, tzinfo=timezone.utc)
+    command = (
+        "python -m pytest test/api/test_agent_supervisor_control_plane.py "
+        "test/api/test_agent_supervisor_control_lifecycle.py "
+        "test/test_unified_cli_agent_supervisor.py "
+        "test/mcp_server/test_agent_supervisor_tools.py -q"
+    )
+    validation_binding = {
+        "status": "passed",
+        "tree_id": operational.repository_tree,
+        "requirement_id": CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
+        "objective_id": CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+        "operational_receipt_id": operational.content_id,
+        "validation_policy_id": operational.policy_id,
+        "policy_revision": operational.policy_revision,
+        "command": command,
+    }
+    completion_evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-067",
+            producer_kind="task",
+            validation_receipt=validation_binding,
+            validation_passed=True,
+            repository_tree=operational.repository_tree,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-067:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = GoalCoverageMap(
+        criteria=[
+            AcceptanceCoverage(
+                criterion_id=f"criterion:g103:{index}",
+                goal_id=CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+                criterion=criterion,
+                status=CoverageStatus.VERIFIED,
+                changed_files=[
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "control_contracts.py",
+                    "ipfs_accelerate_py/agent_supervisor/control_plane.py",
+                ],
+                validation_receipt_ids=[
+                    completion_evidence[index - 1].provenance_cid
+                ],
+                explanation="unified control implementation is exactly validated",
+            )
+            for index, criterion in enumerate(
+                CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+        edges=[],
+        receipts=[
+            ValidationReceiptCoverage(
+                receipt_id=item.provenance_cid,
+                task_id="ASI-067",
+                criterion=item.acceptance_criterion,
+                command=command,
+                status=CoverageStatus.VERIFIED,
+                passed=True,
+                repository_tree=operational.repository_tree,
+                observed_at=now.isoformat(),
+                provenance_cid=item.provenance_cid,
+                explanation="fresh passing ASI-067 criterion validation",
+                outcome="passed",
+                reason_code="validation_verified",
+                fresh=True,
+            )
+            for item in completion_evidence
+        ],
+        finding_assignments=[],
+        registered_goal_ids=[CONTROL_SURFACE_PARITY_OBJECTIVE_ID],
+        evaluated_at=now.isoformat(),
+        repository_tree=operational.repository_tree,
+    )
+    health = AnalyzerHealthReport(
+        status=AnalyzerHealthStatus.HEALTHY,
+        reasons=(),
+        thresholds=AnalyzerHealthThresholds(),
+        metrics={
+            "objective_id": CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+            "repository_tree": operational.repository_tree,
+            "analyzer_version": (
+                CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION
+            ),
+        },
+    )
+    binding = ExhaustionBinding(
+        repository_id="repository:control",
+        tree_id=operational.repository_tree,
+        analyzer_version=(
+            CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION
+        ),
+        configuration_revision=(
+            CONTROL_SURFACE_PARITY_COMPLETION_CONFIGURATION_REVISION
+        ),
+        objective_revision=CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION,
+    )
+    generic_quorum = ExhaustionQuorumResult(
+        binding=binding,
+        required_members=2,
+        members=(
+            ExhaustionQuorumMember(
+                member_id="asi-067-implementation",
+                evidence_channel="implementation-validation",
+                receipt_cid="scan:asi-067:implementation",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now.isoformat(),
+            ),
+            ExhaustionQuorumMember(
+                member_id="asi-067-replay",
+                evidence_channel="receipt-replay-audit",
+                receipt_cid="scan:asi-067:replay",
+                binding=binding,
+                scan_mode="exhaustive",
+                finished_at=now.isoformat(),
+            ),
+        ),
+    )
+    member_health = tuple(
+        ControlSurfaceParityCompletionMemberHealth(
+            member_id=member.member_id,
+            receipt_cid=member.receipt_cid,
+            healthy=True,
+            safe_for_completion_reasoning=True,
+        )
+        for member in generic_quorum.members
+    )
+    quorum = ControlSurfaceParityCompletionQuorumEvidence(
+        validation_policy_id=operational.policy_id,
+        policy_revision=operational.policy_revision,
+        operational_receipt_id=operational.content_id,
+        quorum=generic_quorum,
+        member_health=member_health,
+    )
+    assert (
+        ControlSurfaceParityCompletionQuorumEvidence.from_json(
+            quorum.to_json()
+        )
+        == quorum
+    )
+    values = {
+        "evidence": completion_evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    assert operational.completion_authoritative is False
+    no_independent_proof = operational.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        tasks_complete=True,
+        now=now,
+        freshness_seconds=300,
+    )
+    assert no_independent_proof.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not no_independent_proof.verified
+    assert (
+        no_independent_proof.gate is not None
+        and not no_independent_proof.gate.passed
+    )
+
+    provisional = operational.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.gate is not None and provisional.gate.passed
+    assert not provisional.verified
+
+    verified = operational.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    incomplete_tasks = operational.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "tasks_complete": False},
+    )
+    assert incomplete_tasks.state is GoalState.REOPENED
+    assert not incomplete_tasks.verified
+
+    detached_evidence = list(completion_evidence)
+    detached_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **detached_evidence[0].to_dict(),
+            "validation_receipt": {
+                **validation_binding,
+                "operational_receipt_id": "sha256:detached",
+            },
+        }
+    )
+    stale_evidence = list(completion_evidence)
+    stale_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **stale_evidence[0].to_dict(),
+            "observed_at": (now - timedelta(seconds=301)).isoformat(),
+        }
+    )
+    failed_evidence = list(completion_evidence)
+    failed_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **failed_evidence[0].to_dict(),
+            "validation_passed": False,
+            "validation_receipt": {
+                **validation_binding,
+                "status": "failed",
+            },
+        }
+    )
+    mapping_coverage = coverage.completion_gate_evidence(
+        CONTROL_SURFACE_PARITY_OBJECTIVE_ID
+    )
+    incomplete_coverage = copy.deepcopy(mapping_coverage)
+    incomplete_coverage["criteria"] = incomplete_coverage["criteria"][:-1]
+    unsafe_health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": False,
+        "objective_id": CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+        "repository_tree": operational.repository_tree,
+        "analyzer_version": (
+            CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION
+        ),
+    }
+    wrong_analyzer_health = {
+        **unsafe_health,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": "asi-g103-objective-validation@stale",
+    }
+    with pytest.raises(ControlContractError, match="cover every quorum"):
+        ControlSurfaceParityCompletionQuorumEvidence(
+            validation_policy_id=operational.policy_id,
+            policy_revision=operational.policy_revision,
+            operational_receipt_id=operational.content_id,
+            quorum=generic_quorum,
+            member_health=member_health[:-1],
+        )
+    with pytest.raises(ControlContractError, match="explicitly healthy"):
+        ControlSurfaceParityCompletionQuorumEvidence(
+            validation_policy_id=operational.policy_id,
+            policy_revision=operational.policy_revision,
+            operational_receipt_id=operational.content_id,
+            quorum=generic_quorum,
+            member_health=(
+                ControlSurfaceParityCompletionMemberHealth(
+                    member_id=member_health[0].member_id,
+                    receipt_cid=member_health[0].receipt_cid,
+                    healthy=False,
+                    safe_for_completion_reasoning=True,
+                ),
+                member_health[1],
+            ),
+        )
+    rejected_inputs = (
+        {"evidence": tuple(detached_evidence)},
+        {"evidence": tuple(stale_evidence)},
+        {"evidence": tuple(failed_evidence)},
+        {"evidence": completion_evidence[:-1]},
+        {"coverage": incomplete_coverage},
+        {"analyzer_health": unsafe_health},
+        {"analyzer_health": wrong_analyzer_health},
+        {"exhaustion_quorum": generic_quorum},
+        {
+            "exhaustion_quorum": ControlSurfaceParityCompletionQuorumEvidence(
+                validation_policy_id="policy:foreign",
+                policy_revision=operational.policy_revision,
+                operational_receipt_id=operational.content_id,
+                quorum=generic_quorum,
+                member_health=member_health,
+            )
+        },
+        {
+            "exhaustion_quorum": ControlSurfaceParityCompletionQuorumEvidence(
+                validation_policy_id=operational.policy_id,
+                policy_revision=operational.policy_revision,
+                operational_receipt_id="sha256:detached",
+                quorum=generic_quorum,
+                member_health=member_health,
+            )
+        },
+    )
+    for replacement in rejected_inputs:
+        rejected = operational.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, **replacement},
+        )
+        assert rejected.state is GoalState.PROVISIONALLY_COMPLETE
+        assert not rejected.verified
+        assert rejected.gate is not None and not rejected.gate.passed
+
+
 def test_surface_parity_evidence_rejects_behavior_or_schema_drift(
     tmp_path: Path,
 ) -> None:
@@ -1370,7 +1823,12 @@ def test_surface_parity_evidence_rejects_behavior_or_schema_drift(
     repo_root.mkdir()
     state_root.mkdir()
     service = _parity_service(repo_root, state_root)
-    request = _read_request(repo_root, state_root, Operation.STATUS)
+    request = _read_request(
+        repo_root,
+        state_root,
+        Operation.STATUS,
+        objective_id=CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+    )
     record = service.execute(request).to_record()
     drifted = dict(record)
     drifted["data"] = {"state": "degraded"}
@@ -1386,6 +1844,15 @@ def test_surface_parity_evidence_rejects_behavior_or_schema_drift(
         )
 
     cases = _parity_cases(service, repo_root, state_root)
+    with pytest.raises(ControlContractError, match="objective_id"):
+        ControlSurfaceParityEvidence(
+            repository_tree=request.tree_id,
+            objective_id="ASI-G999",
+            policy_id=request.policy_id,
+            policy_revision=request.policy_revision,
+            capability_report=service.capability_report(),
+            cases=cases,
+        )
     evidence = ControlSurfaceParityEvidence(
         repository_tree=request.tree_id,
         objective_id=request.objective_id,
