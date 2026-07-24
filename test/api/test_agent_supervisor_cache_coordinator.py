@@ -182,6 +182,15 @@ def test_single_flight_evidence_is_active_key_and_publication_bound(
             unattested,
             follower_count=1,
         )
+    attestation = results[0]._single_flight_attestation
+    assert attestation is not None
+    forged_attestation = replace(attestation, seal=object())
+    with pytest.raises(CacheCoordinationError, match="coordinator-attested"):
+        SingleFlightCollapseEvidence.from_result(
+            unattested,
+            follower_count=1,
+            _attestation=forged_attestation,
+        )
 
     forged = replace(
         witness,

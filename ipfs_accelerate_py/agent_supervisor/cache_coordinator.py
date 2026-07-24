@@ -52,6 +52,7 @@ CONCURRENT_IDENTICAL_MISS_COLLAPSE_REQUIREMENT_ID: Final = (
 SINGLE_FLIGHT_COLLAPSE_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/single-flight-collapse-evidence@1"
 )
+_SINGLE_FLIGHT_ATTESTATION_SEAL: Final = object()
 
 
 T = TypeVar("T")
@@ -320,6 +321,7 @@ class SingleFlightCollapseEvidence:
             or entry is None
             or not isinstance(receipt, Mapping)
             or not isinstance(_attestation, _SingleFlightAttestation)
+            or _attestation.seal is not _SINGLE_FLIGHT_ATTESTATION_SEAL
             or _attestation.cache_key_id != result.key.key_id
             or _attestation.flight_id != result.flight_id
             or _attestation.publication_entry_digest != entry.entry_digest
@@ -393,7 +395,7 @@ class SingleFlightCollapseEvidence:
             == self.producer_invocation_count
             and attestation.participant_count == self.participant_count
             and attestation.follower_count == self.follower_count
-            and type(attestation.seal) is object
+            and attestation.seal is _SINGLE_FLIGHT_ATTESTATION_SEAL
         )
 
 
@@ -1001,7 +1003,7 @@ class AnalysisCacheCoordinator:
             producer_invocation_count=result.producer_invocation_count,
             participant_count=follower_count + 1,
             follower_count=follower_count,
-            seal=object(),
+            seal=_SINGLE_FLIGHT_ATTESTATION_SEAL,
         )
         evidence = SingleFlightCollapseEvidence.from_result(
             result,
