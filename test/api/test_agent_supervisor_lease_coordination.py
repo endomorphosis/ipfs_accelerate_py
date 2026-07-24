@@ -626,6 +626,10 @@ def test_bundle_launcher_runs_only_an_accepted_lease(monkeypatch: pytest.MonkeyP
     index.write_text(json.dumps({"bundles": {"objective/test": {
         "shard_path": "test.todo.md", "parallel_lane": "test", "tasks": [{"task_id": "T-1"}]
     }}}), encoding="utf-8")
+    (repo / "test.todo.md").write_text(
+        "## T-1 Planned task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
     lanes = plan_bundle_lanes(
         bundle_index_path=index, repo_root=repo, state_root=repo / "state",
         worktree_root=repo / "worktrees", log_dir=repo / "logs",

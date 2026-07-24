@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -24,6 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     _bundle_lane_pythonpath,
     bundle_member_completion_receipts,
     build_arg_parser as build_bundle_arg_parser,
+    materialize_bundle_lane_taskboard,
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
@@ -6328,6 +6330,160 @@ def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path)
     assert state.task_statuses["ACCEL-003"] == "ready"
 
 
+def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_completion(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shard_path = repo / "generated" / "g002.todo.md"
+    shard_path.parent.mkdir()
+    shard_path.write_text(
+        """# Reviewed bundle input
+
+## ACCEL-001 Completed in another lane
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Reopens after dependency completion
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-001
+""",
+        encoding="utf-8",
+    )
+    source_digest = hashlib.sha256(shard_path.read_bytes()).hexdigest()
+    index_path = repo / "generated" / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "objective/world-aid/g002": {
+                        "shard_path": "generated/g002.todo.md",
+                        "parallel_lane": "objective/world-aid/g002",
+                        "tasks": [
+                            {"task_id": "ACCEL-001"},
+                            {"task_id": "ACCEL-002"},
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    lane = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "runtime",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="ACCEL-",
+    )[0]
+
+    binding = materialize_bundle_lane_taskboard(lane, repo_root=repo)
+
+    assert binding["source_todo_sha256"] == source_digest
+    assert lane.runtime_todo_path is not None
+    assert lane.runtime_todo_path.read_bytes() == shard_path.read_bytes()
+    queue = MergeQueue(repo / "merge-queue")
+    daemon = TodoImplementationDaemon(
+        todo_path=lane.runtime_todo_path,
+        state_path=lane.state_dir / "task_state.json",
+        strategy_path=lane.state_dir / "strategy.json",
+        events_path=lane.state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        merge_queue=queue,
+    )
+    tasks = {
+        task.task_id: task
+        for task in parse_task_file(lane.runtime_todo_path, "## ACCEL-")
+    }
+    request = queue.enqueue(
+        branch_name="implementation/accel-001",
+        task_id="OTHER-001",
+        canonical_task_id=daemon._canonical_ref(tasks["ACCEL-001"]),
+        commit_sha="a" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    queue.complete(claimed)
+    daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+
+    assert hashlib.sha256(shard_path.read_bytes()).hexdigest() == source_digest
+    assert [task.status for task in parse_task_file(shard_path, "## ACCEL-")] == [
+        "todo",
+        "blocked",
+    ]
+    assert [
+        task.status
+        for task in parse_task_file(lane.runtime_todo_path, "## ACCEL-")
+    ] == ["completed", "todo"]
+    assert result["shared_completed_task_ids"] == ["ACCEL-001"]
+    assert result["merged_status_repair"]["updated_task_ids"] == ["ACCEL-001"]
+    state = TodoTaskState.load(daemon.state_path)
+    assert state.task_statuses["ACCEL-001"] == "completed"
+    assert state.task_statuses["ACCEL-002"] == "ready"
+    runtime_after_completion = lane.runtime_todo_path.read_bytes()
+
+    reused = materialize_bundle_lane_taskboard(lane, repo_root=repo)
+
+    assert reused["reused"] is True
+    assert reused["materialized"] is False
+    assert lane.runtime_todo_path.read_bytes() == runtime_after_completion
+    assert hashlib.sha256(shard_path.read_bytes()).hexdigest() == source_digest
+
+
+def test_bundle_runtime_taskboard_rejects_source_digest_change_after_planning(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shard_path = repo / "g002.todo.md"
+    shard_path.write_text(
+        "## ACCEL-001 Reviewed task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    index_path = repo / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "objective/world-aid/g002": {
+                        "shard_path": "g002.todo.md",
+                        "tasks": [{"task_id": "ACCEL-001"}],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    lane = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "runtime",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+    )[0]
+    shard_path.write_text(
+        "## ACCEL-001 Mutated after review\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="source taskboard digest changed"):
+        materialize_bundle_lane_taskboard(lane, repo_root=repo)
+
+    assert lane.runtime_todo_path is not None
+    assert not lane.runtime_todo_path.exists()
+
+
 def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -12251,6 +12407,15 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         ),
         encoding="utf-8",
     )
+    mobile_shard = index_path.parent / "mobile.todo.md"
+    mobile_shard.write_text(
+        "## ACCEL-002 Mobile task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    (index_path.parent / "runtime.todo.md").write_text(
+        "## ACCEL-001 Runtime task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
 
     lanes = plan_bundle_lanes(
         bundle_index_path=index_path,
@@ -12275,6 +12440,15 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         "objective/runtime/kernel",
     ]
     assert lanes[0].todo_path == repo / "data/agent_supervisor/objective_bundles/mobile.todo.md"
+    assert lanes[0].runtime_todo_path == (
+        lanes[0].state_dir / f"{lanes[0].state_prefix}_runtime.todo.md"
+    )
+    assert lanes[0].source_todo_sha256 == hashlib.sha256(
+        mobile_shard.read_bytes()
+    ).hexdigest()
+    assert lanes[0].command[lanes[0].command.index("--todo-path") + 1] == str(
+        lanes[0].runtime_todo_path
+    )
     assert lanes[0].state_dir != lanes[1].state_dir
     assert lanes[0].worktree_root != lanes[1].worktree_root
     assert lanes[0].task_ids == ["ACCEL-002"]
@@ -12288,8 +12462,10 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     assert "--no-retry-budget-guardrail" in lanes[0].command
     assert "--no-dependency-guardrail" in lanes[0].command
     assert "--no-reconciliation-guardrail" in lanes[0].command
+    assert "--no-objective-task-janitor" in lanes[0].command
+    assert "--no-objective-goal-migration" in lanes[0].command
     assert lanes[0].command[lanes[0].command.index("--llm-merge-resolver-command") + 1] == "python resolver.py"
-    assert "--auto-commit-generated-dirty" in lanes[0].command
+    assert "--auto-commit-generated-dirty" not in lanes[0].command
     assert lanes[0].command.count("--generated-dirty-path") == 1
     assert lanes[0].command[lanes[0].command.index("--generated-dirty-path") + 1] == str(
         repo / "docs" / "generated-taskboard.md"
@@ -12331,6 +12507,11 @@ def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
         ),
         encoding="utf-8",
     )
+    source_shard = index_path.parent / "root.todo.md"
+    source_shard.write_text(
+        "## ACCEL-009 Root task\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
     manifest_path = repo / "manifest.json"
     args = build_bundle_arg_parser().parse_args(
         [
@@ -12353,6 +12534,12 @@ def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
     assert payload["started_count"] == 0
     assert manifest["lanes"][0]["bundle_key"] == "objective/ops/root"
     assert manifest["lanes"][0]["todo_path"] == "objective_bundles/root.todo.md"
+    assert manifest["lanes"][0]["runtime_todo_path"].endswith(
+        "/state/agent_objective_ops_root_runtime.todo.md"
+    )
+    assert manifest["lanes"][0]["source_todo_sha256"] == hashlib.sha256(
+        source_shard.read_bytes()
+    ).hexdigest()
     assert "--no-implement" in manifest["lanes"][0]["command"]
 
 

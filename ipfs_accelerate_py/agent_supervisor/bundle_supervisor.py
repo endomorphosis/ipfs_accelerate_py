@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import logging
 import os
@@ -53,6 +54,9 @@ logger = logging.getLogger(__name__)
 COORDINATION_COMPACTION_INTERVAL_CYCLES = 10
 COORDINATION_COMPACTION_MIN_BYTES = 64 * 1024 * 1024
 SCHEDULER_GC_INTERVAL_CYCLES = 10
+BUNDLE_TASKBOARD_INPUT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@1"
+)
 
 _MANIFEST_REFERENCED_BUNDLE_FIELDS = frozenset(
     {
@@ -100,10 +104,11 @@ _MANIFEST_PROFILE_G_REFERENCE_FIELDS = frozenset(
 def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, Any]]:
     """Return successful member-task receipts keyed by canonical task CID.
 
-    Bundle boards are mutable projections, so their current status is not a
-    durable completion authority.  The implementation daemon emits terminal
-    events after a successful merge; retain those receipts so a source board
-    can promote the matching canonical task even after a shard is regenerated.
+    Reviewed bundle shards are immutable inputs, so their current status is
+    not a durable completion authority.  The implementation daemon writes
+    operational copies and emits terminal events; retain those receipts so a
+    source board can promote the matching canonical task without rewriting the
+    reviewed shard.
     """
 
     event_paths = sorted(
@@ -165,6 +170,8 @@ class BundleLaneSpec:
     conflict_policy: str
     command: list[str]
     log_path: Path
+    runtime_todo_path: Path | None = None
+    source_todo_sha256: str = ""
     source_todo: str = ""
     task_cid: str = ""
     goal_cid: str = ""
@@ -201,10 +208,168 @@ class BundleLaneSpec:
             elif isinstance(value, list):
                 value = list(value)
             payload[definition.name] = value
-        for key in ("todo_path", "state_dir", "worktree_root", "log_path"):
+        for key in (
+            "todo_path",
+            "runtime_todo_path",
+            "state_dir",
+            "worktree_root",
+            "log_path",
+        ):
+            if payload[key] is None:
+                continue
             path = Path(payload[key])
-            payload[key] = repo_relative_path(repo_root, path) if repo_root is not None else str(path)
+            payload[key] = (
+                repo_relative_path(repo_root, path)
+                if repo_root is not None
+                else str(path)
+            )
         return payload
+
+
+def _taskboard_sha256(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def bundle_taskboard_input_binding_path(lane: BundleLaneSpec) -> Path:
+    """Return the durable source-to-runtime taskboard binding for one lane."""
+
+    return lane.state_dir / f"{lane.state_prefix}_taskboard_input.json"
+
+
+def _write_bytes_atomically(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_bytes(content)
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def materialize_bundle_lane_taskboard(
+    lane: BundleLaneSpec,
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Copy one digest-bound source shard into lane-owned operational state."""
+
+    runtime_path = lane.runtime_todo_path
+    expected_digest = str(lane.source_todo_sha256 or "").strip().lower()
+    if runtime_path is None:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} has no operational taskboard path"
+        )
+    if len(expected_digest) != 64:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} has no valid source taskboard digest"
+        )
+    source_path = lane.todo_path.resolve()
+    runtime_path = runtime_path.resolve()
+    state_dir = lane.state_dir.resolve()
+    try:
+        runtime_path.relative_to(state_dir)
+    except ValueError as exc:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} runtime taskboard must be inside its state directory"
+        ) from exc
+    if runtime_path == source_path:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} runtime taskboard must not replace its source"
+        )
+    try:
+        content = source_path.read_bytes()
+    except OSError as exc:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} source taskboard is unavailable: {source_path}"
+        ) from exc
+    observed_digest = hashlib.sha256(content).hexdigest()
+    if observed_digest != expected_digest:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} source taskboard digest changed "
+            f"after planning: expected {expected_digest}, observed {observed_digest}"
+        )
+
+    binding_path = bundle_taskboard_input_binding_path(lane)
+    binding_source_path = repo_relative_path(repo_root, source_path)
+    binding_runtime_path = repo_relative_path(repo_root, runtime_path)
+    try:
+        existing_binding = json.loads(binding_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        existing_binding = None
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} taskboard input binding is invalid"
+        ) from exc
+    if existing_binding is not None and not isinstance(existing_binding, dict):
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} taskboard input binding is invalid"
+        )
+    if runtime_path.exists() and isinstance(existing_binding, dict):
+        expected_binding = {
+            "schema": BUNDLE_TASKBOARD_INPUT_SCHEMA,
+            "bundle_key": lane.bundle_key,
+            "source_todo_path": binding_source_path,
+            "source_todo_sha256": expected_digest,
+            "runtime_todo_path": binding_runtime_path,
+            "runtime_initial_sha256": expected_digest,
+        }
+        mismatched = [
+            key
+            for key, value in expected_binding.items()
+            if existing_binding.get(key) != value
+        ]
+        if mismatched:
+            raise ValueError(
+                f"bundle lane {lane.bundle_key!r} runtime taskboard is bound "
+                f"to different input fields: {', '.join(mismatched)}"
+            )
+        return {
+            **existing_binding,
+            "materialized": False,
+            "reused": True,
+            "runtime_current_sha256": _taskboard_sha256(runtime_path),
+        }
+    if existing_binding is not None and not runtime_path.exists():
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} runtime taskboard is missing "
+            "for its existing input binding"
+        )
+    if runtime_path.exists() and _taskboard_sha256(runtime_path) != expected_digest:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} has an unbound modified runtime taskboard"
+        )
+
+    _write_bytes_atomically(runtime_path, content)
+    runtime_digest = _taskboard_sha256(runtime_path)
+    if runtime_digest != expected_digest:
+        raise OSError(
+            f"bundle lane {lane.bundle_key!r} runtime taskboard copy failed digest verification"
+        )
+    if _taskboard_sha256(source_path) != expected_digest:
+        raise ValueError(
+            f"bundle lane {lane.bundle_key!r} source taskboard changed during materialization"
+        )
+    binding = {
+        "schema": BUNDLE_TASKBOARD_INPUT_SCHEMA,
+        "bundle_key": lane.bundle_key,
+        "source_todo_path": binding_source_path,
+        "source_todo_sha256": expected_digest,
+        "runtime_todo_path": binding_runtime_path,
+        "runtime_initial_sha256": runtime_digest,
+        "materialized_at": utc_now(),
+        "materialized": True,
+    }
+    _write_bytes_atomically(
+        binding_path,
+        (json.dumps(binding, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
+    return binding
 
 
 def _compact_bundle_manifest_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -910,12 +1075,14 @@ def implementation_supervisor_command(
         str(implementation_timeout),
         "--log-level",
         log_level,
-        # Bundle boards are projections of the canonical taskboard. Keep lane
-        # workers execution-only so they cannot create shard-local task IDs or
-        # mistake valid cross-bundle dependencies for missing prerequisites.
+        # Bundle workers receive a digest-bound operational copy. Keep them
+        # execution-only so refill/repair code cannot revise reviewed inputs
+        # or create shard-local task IDs.
         "--no-retry-budget-guardrail",
         "--no-dependency-guardrail",
         "--no-reconciliation-guardrail",
+        "--no-objective-task-janitor",
+        "--no-objective-goal-migration",
     ]
     if watchdog_startup_grace_seconds is not None:
         command.extend(
@@ -936,8 +1103,6 @@ def implementation_supervisor_command(
         command.extend(["--llm-merge-resolver-timeout-seconds", str(llm_merge_resolver_timeout_seconds)])
     if merge_reconciliation_max_merges is not None:
         command.extend(["--merge-reconciliation-max-merges", str(merge_reconciliation_max_merges)])
-    if generated_dirty_repair_enabled:
-        command.append("--auto-commit-generated-dirty")
     if generated_dirty_repair_commit_subject:
         command.extend(["--generated-dirty-commit-subject", generated_dirty_repair_commit_subject])
     if not generated_dirty_repair_include_submodule_gitlinks:
@@ -1013,6 +1178,10 @@ def plan_bundle_lanes(
         safe_key = safe_bundle_key(bundle_key)
         todo_path = resolve_repo_path(repo_root, str(payload.get("todo_path") or ""))
         state_dir = state_root / safe_key / "state"
+        runtime_todo_path = (
+            state_dir / f"{lane_state_prefix(bundle_key)}_runtime.todo.md"
+        )
+        source_todo_sha256 = _taskboard_sha256(todo_path)
         lane_worktree_root = worktree_root / safe_key
         log_path = log_dir / f"{safe_key}.log"
         state_prefix = lane_state_prefix(bundle_key)
@@ -1040,7 +1209,7 @@ def plan_bundle_lanes(
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
         command = implementation_supervisor_command(
-            todo_path=todo_path,
+            todo_path=runtime_todo_path,
             state_dir=state_dir,
             worktree_root=lane_worktree_root,
             state_prefix=state_prefix,
@@ -1078,6 +1247,8 @@ def plan_bundle_lanes(
                 conflict_policy=str(payload.get("conflict_policy") or ""),
                 command=command,
                 log_path=log_path,
+                runtime_todo_path=runtime_todo_path,
+                source_todo_sha256=source_todo_sha256,
                 source_todo=str(payload.get("source_todo") or ""),
                 task_cid=str(profile_g.get("task_cid") or ""),
                 goal_cid=str(profile_g.get("goal_cid") or ""),
@@ -1236,6 +1407,7 @@ def _spawn_accepted_lane(
     lane.state_dir.mkdir(parents=True, exist_ok=True)
     lane.worktree_root.mkdir(parents=True, exist_ok=True)
     lane.log_path.parent.mkdir(parents=True, exist_ok=True)
+    materialize_bundle_lane_taskboard(lane, repo_root=repo_root)
     guarded_command = [
         sys.executable,
         "-m",
@@ -1692,14 +1864,21 @@ class DynamicBundleScheduler:
     def _default_lane_disposition(self, lane: BundleLaneSpec) -> str:
         """Project a settled execution slice or shard board to a disposition."""
 
+        operational_todo_path = (
+            lane.runtime_todo_path
+            if lane.runtime_todo_path is not None and lane.runtime_todo_path.exists()
+            else lane.todo_path
+        )
         try:
-            markdown = lane.todo_path.read_text(encoding="utf-8")
+            markdown = operational_todo_path.read_text(encoding="utf-8")
         except OSError:
             markdown = ""
         from .todo_daemon.implementation_daemon import parse_task_file
 
         task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
-        portal_tasks = parse_task_file(lane.todo_path, task_prefix) if markdown else []
+        portal_tasks = (
+            parse_task_file(operational_todo_path, task_prefix) if markdown else []
+        )
         portal_task_ids = {str(task.task_id) for task in portal_tasks}
 
         state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
@@ -1720,7 +1899,7 @@ class DynamicBundleScheduler:
             }
             try:
                 state_mtime_ns = state_path.stat().st_mtime_ns
-                board_mtime_ns = lane.todo_path.stat().st_mtime_ns
+                board_mtime_ns = operational_todo_path.stat().st_mtime_ns
             except OSError:
                 state_covers_current_board = True
             else:

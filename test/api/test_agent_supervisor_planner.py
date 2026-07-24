@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -454,17 +455,25 @@ def _lane(tmp_path: Path, bundle: dict[str, object]) -> BundleLaneSpec:
     key = str(bundle["bundle_key"])
     adapted = adapt_goal_bundle(bundle, created_at_ms=1_783_872_000_000)
     payload = {**bundle, "profile_g": adapted}
+    todo_path = tmp_path / f"{key.replace('/', '-')}.md"
+    todo_path.write_text(
+        f"## {bundle['tasks'][0]['task_id']} Planned task\n\n- Status: todo\n",  # type: ignore[index]
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state" / key.replace("/", "-")
     return BundleLaneSpec(
         bundle_key=key,
         parallel_lane=key,
-        todo_path=tmp_path / f"{key.replace('/', '-')}.md",
-        state_dir=tmp_path / "state" / key.replace("/", "-"),
+        todo_path=todo_path,
+        state_dir=state_dir,
         worktree_root=tmp_path / "worktrees" / key.replace("/", "-"),
         state_prefix=key.replace("/", "_"),
         task_ids=[str(bundle["tasks"][0]["task_id"])],  # type: ignore[index]
         conflict_policy="",
         command=["worker", key],
         log_path=tmp_path / "logs" / f"{key.replace('/', '-')}.log",
+        runtime_todo_path=state_dir / "runtime.todo.md",
+        source_todo_sha256=hashlib.sha256(todo_path.read_bytes()).hexdigest(),
         task_cid=str(adapted["task_cid"]),
         queue_payload=payload,
         dependency_task_cids=list(bundle.get("dependency_task_cids", [])),  # type: ignore[arg-type]
