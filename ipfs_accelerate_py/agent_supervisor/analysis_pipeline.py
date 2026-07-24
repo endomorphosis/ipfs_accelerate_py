@@ -59,8 +59,10 @@ from .analysis_retrieval import (
     retrieve_analysis_evidence,
 )
 from .cache_coordinator import (
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA,
     SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
     CacheAuthority,
+    CacheCoordinationError,
     CacheCoordinationResult,
     CacheCoordinationStatus,
     CacheNamespace,
@@ -68,9 +70,12 @@ from .cache_coordinator import (
     namespace_metadata,
 )
 from .ipfs_datasets_analysis_provider import (
+    IPFS_DATASETS_COMPLETION_ACCEPTANCE_CRITERION,
+    IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     AnalysisProviderPolicy,
     AnalysisProviderRequest,
     AnalysisProviderResult,
+    IpfsDatasetsProviderDegradationEvidence,
     IpfsDatasetsAnalysisProvider,
 )
 
@@ -115,6 +120,39 @@ SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
         "singleton, cache-hit, different-key, non-authoritative, malformed, "
         "detached, or replayed results cannot claim the evidence ID"
     ),
+)
+INTEGRATED_ANALYSIS_OBJECTIVE_ID: Final = "ASI-G020"
+INTEGRATED_ANALYSIS_OBJECTIVE_REVISION: Final = "ASI-G020@asi-079"
+INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
+INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
+    "ASI-003",
+    "ASI-004",
+    "ASI-007",
+)
+INTEGRATED_ANALYSIS_CHILD_GOAL_IDS: Final[tuple[str, ...]] = (
+    "ASI-G094",
+    "ASI-G095",
+    "ASI-G096",
+)
+INTEGRATED_ANALYSIS_LIVE_ANALYZER_IDS: Final[frozenset[str]] = frozenset(
+    {
+        "objective.gap_scan",
+        "objective.low_backlog_analysis",
+    }
+)
+INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "Existing analysis cache, AST index, and retrieval contracts are "
+        "used in the live objective/planning path"
+    ),
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA[0],
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA[1],
+    IPFS_DATASETS_COMPLETION_ACCEPTANCE_CRITERION,
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA[2],
+)
+INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "integrated-analysis-completion-evidence@1"
 )
 ANALYSIS_PIPELINE_VERSION: Final = "analysis-pipeline@1"
 DEFAULT_ANALYZER_VERSION: Final = "supervisor-integrated-analysis@1"
@@ -1576,6 +1614,655 @@ class AnalysisPipelineResult:
             blocked_reason=blocked_reason,
         )
 
+    def evaluate_integrated_analysis_completion(
+        self,
+        *,
+        operational_evidence: (
+            "IntegratedAnalysisCompletionEvidence | Mapping[str, Any] | None"
+        ) = None,
+        producing_tasks: Sequence[Any] = (),
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = (
+            INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
+        ),
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate the closed ASI-G020 parent completion boundary.
+
+        This parent bridge cannot be narrowed by caller-selected criteria or a
+        lower quorum count.  It requires the three completed producing tasks,
+        the exact verified G094/G095/G096 child population, a typed aggregate
+        of the live AST/retrieval/cache/provider runtime, explicit health bound
+        to that runtime, and one fresh validation identity on every exact
+        coverage row.  The operational aggregate remains non-authoritative and
+        is never submitted as validation or exhaustive evidence.
+        """
+
+        if (
+            isinstance(required_exhaustive_receipts, bool)
+            or not isinstance(required_exhaustive_receipts, int)
+            or required_exhaustive_receipts
+            != INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
+        ):
+            raise ValueError(
+                "required_exhaustive_receipts must equal the configured "
+                f"ASI-G020 count "
+                f"{INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+            )
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        operational = operational_evidence
+        if isinstance(operational, Mapping):
+            try:
+                operational = IntegratedAnalysisCompletionEvidence.from_dict(
+                    operational
+                )
+            except (CacheCoordinationError, TypeError, ValueError):
+                operational = None
+        operational_complete = bool(
+            isinstance(operational, IntegratedAnalysisCompletionEvidence)
+            and operational.proves_for(self)
+            and operational.proved_requirement_ids
+            == (
+                EXACT_TREE_REUSE_REQUIREMENT_ID,
+                IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+                SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
+            )
+            and operational.producing_task_ids
+            == tuple(sorted(INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS))
+        )
+
+        task_payloads = [payload(item) for item in producing_tasks]
+        task_ids = [
+            str(
+                item.get(
+                    "task_id",
+                    item.get("id", item.get("goal_id", "")),
+                )
+                or ""
+            ).strip()
+            for item in task_payloads
+        ]
+        successful_statuses = {
+            "completed",
+            "complete",
+            "verified",
+            "verified_complete",
+            "passed",
+            "success",
+            "succeeded",
+        }
+        producing_tasks_complete = bool(task_payloads) and (
+            len(task_ids) == len(set(task_ids))
+            and tuple(sorted(task_ids))
+            == tuple(sorted(INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS))
+            and all(
+                str(item.get("status") or item.get("state") or "")
+                .strip()
+                .lower()
+                in successful_statuses
+                for item in task_payloads
+            )
+        )
+
+        health_value = payload(analyzer_health)
+        health_binding = health_value.get("binding")
+        health_binding = (
+            health_binding if isinstance(health_binding, Mapping) else {}
+        )
+        expected_binding = {
+            "repository_id": self.request.repository_id,
+            "tree_id": self.request.tree_id,
+            "analyzer_version": self.request.analyzer_version,
+            "configuration_revision": self.request.configuration_digest,
+            "objective_revision": self.request.objective_revision,
+        }
+        health_fully_bound = bool(health_binding) and all(
+            health_binding.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        if not health_fully_bound:
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        evidence_payloads = [payload(item) for item in evidence]
+        receipt_ids_by_criterion: dict[str, set[str]] = {}
+        for item in evidence_payloads:
+            criterion = " ".join(
+                str(item.get("acceptance_criterion") or "")
+                .strip()
+                .lower()
+                .split()
+            )
+            receipt_id = str(
+                item.get(
+                    "provenance_cid",
+                    item.get("receipt_id", item.get("evidence_id", "")),
+                )
+                or ""
+            ).strip()
+            if criterion and receipt_id:
+                receipt_ids_by_criterion.setdefault(criterion, set()).add(
+                    receipt_id
+                )
+        coverage_value = payload(coverage)
+        rows = coverage_value.get("criteria")
+        rows = rows if isinstance(rows, list) else []
+        coverage_receipts_bound = bool(rows) and all(
+            isinstance(row, Mapping)
+            and str(row.get("validation_receipt_id") or "").strip()
+            in receipt_ids_by_criterion.get(
+                " ".join(
+                    str(
+                        row.get(
+                            "criterion",
+                            row.get("acceptance_criterion", ""),
+                        )
+                        or ""
+                    )
+                    .strip()
+                    .lower()
+                    .split()
+                ),
+                set(),
+            )
+            for row in rows
+        )
+        if not operational_complete or not coverage_receipts_bound:
+            reasons = coverage_value.get("reason_codes")
+            reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+            if not operational_complete:
+                reasons.append("integrated_operational_evidence_missing")
+            if not coverage_receipts_bound:
+                reasons.append("coverage_validation_receipt_unbound")
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": list(dict.fromkeys(reasons)),
+            }
+
+        child_values = [payload(item) for item in child_goals]
+        child_ids = [
+            str(item.get("goal_id") or item.get("id") or "").strip()
+            for item in child_values
+        ]
+        child_population_complete = (
+            len(child_ids) == len(set(child_ids))
+            and tuple(sorted(child_ids))
+            == tuple(sorted(INTEGRATED_ANALYSIS_CHILD_GOAL_IDS))
+        )
+        if not child_population_complete:
+            child_values.append(
+                {
+                    "goal_id": "ASI-G020-required-child-population",
+                    "state": "active",
+                    "verified": False,
+                    "completion_gate": {
+                        "passed": False,
+                        "reason_code": "required_child_population_incomplete",
+                    },
+                }
+            )
+
+        return self._evaluate_closed_objective_completion(
+            acceptance_criteria=INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA,
+            required_exhaustive_receipts=(
+                INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
+            ),
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=bool(
+                tasks_complete and producing_tasks_complete
+            ),
+            coverage=coverage_value,
+            analyzer_health=health_value,
+            exhaustion_quorum=exhaustion_quorum,
+            child_goals=child_values,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
+
+@dataclass(frozen=True)
+class IntegratedAnalysisCompletionEvidence:
+    """Operational ASI-G020 cohort; never objective-completion authority.
+
+    A single pipeline result cannot simultaneously be the cold provider
+    execution, the concurrent-miss publication, and a later exact cache hit.
+    This record therefore binds those three independently typed witnesses to
+    one live objective/planning request and one measured pipeline.  It proves
+    that the producing runtime exists; fresh criterion validations, analyzer
+    health, exhaustive receipts, producing-task state, and verified child
+    goals remain separate inputs to the completion gate.
+    """
+
+    repository_id: str
+    tree_id: str
+    objective_revision: str
+    analyzer_id: str
+    analyzer_version: str
+    configuration_digest: str
+    cache_key_id: str
+    live_result_id: str
+    live_packet_id: str
+    ast_index_id: str
+    retrieval_response_id: str
+    exact_tree_reuse_evidence: ExactTreeReuseEvidence
+    single_flight_collapse_evidence: SingleFlightCollapseEvidence
+    provider_degradation_evidence: IpfsDatasetsProviderDegradationEvidence
+    metrics: AnalysisPipelineMetrics
+    producing_task_ids: tuple[str, ...] = INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS
+    objective_id: str = INTEGRATED_ANALYSIS_OBJECTIVE_ID
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_id",
+            "tree_id",
+            "objective_revision",
+            "analyzer_id",
+            "analyzer_version",
+            "configuration_digest",
+            "cache_key_id",
+            "live_result_id",
+            "live_packet_id",
+            "ast_index_id",
+            "retrieval_response_id",
+            "objective_id",
+        ):
+            object.__setattr__(
+                self, name, _required_text(getattr(self, name), name)
+            )
+        if self.objective_id != INTEGRATED_ANALYSIS_OBJECTIVE_ID:
+            raise AnalysisBindingError(
+                "integrated completion evidence objective is not ASI-G020"
+            )
+        if self.analyzer_id not in INTEGRATED_ANALYSIS_LIVE_ANALYZER_IDS:
+            raise AnalysisBindingError(
+                "integrated completion evidence is not from a live "
+                "objective/planning analyzer"
+            )
+        task_ids = tuple(
+            sorted(
+                {
+                    _required_text(item, "producing task id")
+                    for item in self.producing_task_ids
+                }
+            )
+        )
+        if task_ids != tuple(sorted(INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS)):
+            raise AnalysisBindingError(
+                "integrated completion evidence must bind every producing task"
+            )
+        object.__setattr__(self, "producing_task_ids", task_ids)
+        if not isinstance(self.exact_tree_reuse_evidence, ExactTreeReuseEvidence):
+            raise AnalysisBindingError("exact-tree reuse evidence must be typed")
+        if not isinstance(
+            self.single_flight_collapse_evidence,
+            SingleFlightCollapseEvidence,
+        ):
+            raise AnalysisBindingError(
+                "single-flight collapse evidence must be typed"
+            )
+        if not isinstance(
+            self.provider_degradation_evidence,
+            IpfsDatasetsProviderDegradationEvidence,
+        ):
+            raise AnalysisBindingError(
+                "provider degradation evidence must be typed"
+            )
+        if not isinstance(self.metrics, AnalysisPipelineMetrics):
+            if not isinstance(self.metrics, Mapping):
+                raise AnalysisBindingError(
+                    "integrated completion metrics must be typed"
+                )
+            allowed_metrics = set(AnalysisPipelineMetrics.__dataclass_fields__)
+            values = {
+                name: self.metrics.get(name, 0)
+                for name in allowed_metrics
+            }
+            try:
+                object.__setattr__(
+                    self, "metrics", AnalysisPipelineMetrics(**values)
+                )
+            except (TypeError, ValueError) as exc:
+                raise AnalysisBindingError(
+                    "integrated completion metrics are malformed"
+                ) from exc
+        for name in AnalysisPipelineMetrics.__dataclass_fields__:
+            value = getattr(self.metrics, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise AnalysisBindingError(
+                    f"integrated completion metric {name} must be non-negative"
+                )
+        exact = self.exact_tree_reuse_evidence
+        collapse = self.single_flight_collapse_evidence
+        provider = self.provider_degradation_evidence
+        expected = {
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_revision": self.objective_revision,
+            "analyzer_version": self.analyzer_version,
+            "configuration_digest": self.configuration_digest,
+        }
+        if any(
+            getattr(exact, name) != value for name, value in expected.items()
+        ):
+            raise AnalysisBindingError(
+                "exact-tree evidence is detached from the integrated binding"
+            )
+        if exact.cache_key_id != self.cache_key_id:
+            raise AnalysisBindingError(
+                "exact-tree evidence uses a different cache key"
+            )
+        collapse_key = collapse.cache_key
+        if (
+            collapse_key.key_id != self.cache_key_id
+            or collapse_key.repository_tree_identity
+            != {
+                "repository_id": self.repository_id,
+                "tree_id": self.tree_id,
+            }
+            or collapse_key.objective_revision != self.objective_revision
+            or collapse_key.analyzer_version != self.analyzer_version
+            or collapse_key.configuration_digest != self.configuration_digest
+            or collapse.receipt_id != self.live_packet_id
+        ):
+            raise AnalysisBindingError(
+                "single-flight evidence is detached from the live binding"
+            )
+        if (
+            provider.repository_id != self.repository_id
+            or provider.tree_id != self.tree_id
+            or provider.objective_revision != self.objective_revision
+            or provider.requirement_id
+            != IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID
+            or not provider.proves_requirement
+        ):
+            raise AnalysisBindingError(
+                "provider degradation evidence is detached or non-proving"
+            )
+        if (
+            self.metrics.requests < 2
+            or self.metrics.reuse_ratio < 0.70
+            or self.metrics.stale_authoritative_hits != 0
+        ):
+            raise AnalysisBindingError(
+                "integrated completion metrics do not prove reuse and stale "
+                "authority thresholds"
+            )
+
+    @classmethod
+    def from_results(
+        cls,
+        *,
+        live_result: AnalysisPipelineResult,
+        exact_reuse_result: AnalysisPipelineResult,
+        collapse_result: AnalysisPipelineResult,
+        metrics: AnalysisPipelineMetrics | Mapping[str, Any],
+        producing_task_ids: Sequence[str] = (
+            INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS
+        ),
+    ) -> "IntegratedAnalysisCompletionEvidence":
+        """Build the parent operational cohort from active typed results."""
+
+        for name, value in (
+            ("live_result", live_result),
+            ("exact_reuse_result", exact_reuse_result),
+            ("collapse_result", collapse_result),
+        ):
+            if not isinstance(value, AnalysisPipelineResult):
+                raise AnalysisBindingError(f"{name} must be a pipeline result")
+        request = live_result.request
+        if any(
+            value.request.cache_key.key_id != request.cache_key.key_id
+            for value in (exact_reuse_result, collapse_result)
+        ):
+            raise AnalysisBindingError(
+                "integrated completion results use different active cache keys"
+            )
+        if (
+            request.analyzer_id not in INTEGRATED_ANALYSIS_LIVE_ANALYZER_IDS
+            or not live_result.safe_for_completion_reasoning
+            or not live_result.ast_index_id
+            or not live_result.retrieval_response_id
+        ):
+            raise AnalysisBindingError(
+                "live result did not execute AST-backed objective/planning "
+                "analysis safely"
+            )
+        exact = exact_reuse_result.exact_tree_reuse_evidence
+        collapse = collapse_result.single_flight_collapse_evidence
+        provider_result = live_result.provider_result
+        provider_request = live_result.provider_request
+        provider_policy = live_result.provider_policy
+        if exact is None or collapse is None:
+            raise AnalysisBindingError(
+                "integrated completion requires exact-reuse and collapse witnesses"
+            )
+        if (
+            not isinstance(provider_result, AnalysisProviderResult)
+            or not isinstance(provider_request, AnalysisProviderRequest)
+            or not isinstance(provider_policy, AnalysisProviderPolicy)
+            or provider_result.proved_requirement_ids_for(
+                provider_request, provider_policy
+            )
+            != (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
+            or provider_result.degradation_evidence is None
+        ):
+            raise AnalysisBindingError(
+                "integrated completion requires active-policy-bound explicit "
+                "provider degradation"
+            )
+        return cls(
+            repository_id=request.repository_id,
+            tree_id=request.tree_id,
+            objective_revision=request.objective_revision,
+            analyzer_id=request.analyzer_id,
+            analyzer_version=request.analyzer_version,
+            configuration_digest=request.configuration_digest,
+            cache_key_id=request.cache_key.key_id,
+            live_result_id=live_result.result_id,
+            live_packet_id=live_result.packet.packet_id,
+            ast_index_id=live_result.ast_index_id,
+            retrieval_response_id=live_result.retrieval_response_id,
+            exact_tree_reuse_evidence=exact,
+            single_flight_collapse_evidence=collapse,
+            provider_degradation_evidence=(
+                provider_result.degradation_evidence
+            ),
+            metrics=metrics,
+            producing_task_ids=tuple(producing_task_ids),
+        )
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (
+            EXACT_TREE_REUSE_REQUIREMENT_ID,
+            IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+            SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
+        )
+
+    @property
+    def safe_for_completion_reasoning(self) -> bool:
+        return False
+
+    @property
+    def is_completion_evidence(self) -> bool:
+        return False
+
+    @property
+    def content_id(self) -> str:
+        return "integrated-analysis-completion:sha256:" + hashlib.sha256(
+            canonical_analysis_json(self._content()).encode("utf-8")
+        ).hexdigest()
+
+    evidence_id = content_id
+
+    def _content(self) -> dict[str, Any]:
+        metrics = {
+            name: getattr(self.metrics, name)
+            for name in AnalysisPipelineMetrics.__dataclass_fields__
+        }
+        return {
+            "schema": INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA,
+            "objective_id": self.objective_id,
+            "requirement_ids": list(self.proved_requirement_ids),
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_revision": self.objective_revision,
+            "analyzer_id": self.analyzer_id,
+            "analyzer_version": self.analyzer_version,
+            "configuration_digest": self.configuration_digest,
+            "cache_key_id": self.cache_key_id,
+            "live_result_id": self.live_result_id,
+            "live_packet_id": self.live_packet_id,
+            "ast_index_id": self.ast_index_id,
+            "retrieval_response_id": self.retrieval_response_id,
+            "exact_tree_reuse_evidence": (
+                self.exact_tree_reuse_evidence.to_dict()
+            ),
+            "single_flight_collapse_evidence": (
+                self.single_flight_collapse_evidence.to_dict()
+            ),
+            "provider_degradation_evidence": (
+                self.provider_degradation_evidence.to_dict()
+            ),
+            "metrics": metrics,
+            "producing_task_ids": list(self.producing_task_ids),
+            "completion_authority": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._content(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "IntegratedAnalysisCompletionEvidence":
+        if not isinstance(value, Mapping):
+            raise AnalysisBindingError(
+                "integrated completion evidence must be an object"
+            )
+        allowed = set(
+            {
+                "content_id",
+                *cls.__dataclass_fields__,
+                "schema",
+                "requirement_ids",
+                "completion_authority",
+                "safe_for_completion_reasoning",
+            }
+        )
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise AnalysisBindingError(
+                "integrated completion evidence has unknown fields: "
+                + ", ".join(unknown)
+            )
+        if value.get("schema") != INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA:
+            raise AnalysisBindingError(
+                "unsupported integrated completion evidence schema"
+            )
+        if (
+            value.get("completion_authority") is not False
+            or value.get("safe_for_completion_reasoning") is not False
+        ):
+            raise AnalysisBindingError(
+                "operational integrated evidence cannot claim completion authority"
+            )
+        try:
+            result = cls(
+                repository_id=value.get("repository_id", ""),
+                tree_id=value.get("tree_id", ""),
+                objective_revision=value.get("objective_revision", ""),
+                analyzer_id=value.get("analyzer_id", ""),
+                analyzer_version=value.get("analyzer_version", ""),
+                configuration_digest=value.get("configuration_digest", ""),
+                cache_key_id=value.get("cache_key_id", ""),
+                live_result_id=value.get("live_result_id", ""),
+                live_packet_id=value.get("live_packet_id", ""),
+                ast_index_id=value.get("ast_index_id", ""),
+                retrieval_response_id=value.get("retrieval_response_id", ""),
+                exact_tree_reuse_evidence=ExactTreeReuseEvidence.from_dict(
+                    value.get("exact_tree_reuse_evidence") or {}
+                ),
+                single_flight_collapse_evidence=(
+                    SingleFlightCollapseEvidence.from_dict(
+                        value.get("single_flight_collapse_evidence") or {}
+                    )
+                ),
+                provider_degradation_evidence=(
+                    IpfsDatasetsProviderDegradationEvidence.from_dict(
+                        value.get("provider_degradation_evidence") or {}
+                    )
+                ),
+                metrics=value.get("metrics") or {},
+                producing_task_ids=tuple(
+                    value.get("producing_task_ids") or ()
+                ),
+                objective_id=value.get("objective_id", ""),
+            )
+        except (CacheCoordinationError, TypeError, ValueError) as exc:
+            if isinstance(exc, AnalysisBindingError):
+                raise
+            raise AnalysisBindingError(
+                "integrated completion evidence is malformed"
+            ) from exc
+        if tuple(value.get("requirement_ids") or ()) != (
+            result.proved_requirement_ids
+        ):
+            raise AnalysisBindingError(
+                "integrated completion requirement population does not match"
+            )
+        if value.get("content_id") != result.content_id:
+            raise AnalysisBindingError(
+                "integrated completion evidence identity does not match"
+            )
+        return result
+
+    def proves_for(self, result: AnalysisPipelineResult) -> bool:
+        return bool(
+            isinstance(result, AnalysisPipelineResult)
+            and result.result_id == self.live_result_id
+            and result.request.repository_id == self.repository_id
+            and result.request.tree_id == self.tree_id
+            and result.request.objective_revision == self.objective_revision
+            and result.request.analyzer_id == self.analyzer_id
+            and result.request.analyzer_version == self.analyzer_version
+            and result.request.configuration_digest
+            == self.configuration_digest
+            and result.request.cache_key.key_id == self.cache_key_id
+            and result.packet.packet_id == self.live_packet_id
+            and result.ast_index_id == self.ast_index_id
+            and result.retrieval_response_id == self.retrieval_response_id
+        )
+
 
 def _validate_packet_binding(
     packet: AnalysisEvidencePacket, request: AnalysisPipelineRequest
@@ -2461,6 +3148,14 @@ __all__ = [
     "EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA",
     "EXACT_TREE_REUSE_EVIDENCE_SCHEMA",
     "EXACT_TREE_REUSE_REQUIREMENT_ID",
+    "INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA",
+    "INTEGRATED_ANALYSIS_CHILD_GOAL_IDS",
+    "INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA",
+    "INTEGRATED_ANALYSIS_LIVE_ANALYZER_IDS",
+    "INTEGRATED_ANALYSIS_OBJECTIVE_ID",
+    "INTEGRATED_ANALYSIS_OBJECTIVE_REVISION",
+    "INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS",
+    "INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA",
     "SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID",
     "AnalysisBindingError",
@@ -2476,6 +3171,7 @@ __all__ = [
     "AnalysisStageContext",
     "ExactTreeReuseEvidence",
     "IntegratedAnalysisPipeline",
+    "IntegratedAnalysisCompletionEvidence",
     "OptionalProviderFailure",
     "PipelineCacheStatus",
     "SingleFlightCollapseEvidence",

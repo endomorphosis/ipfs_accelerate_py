@@ -73,6 +73,14 @@ CONCURRENT_IDENTICAL_MISS_COLLAPSE_REQUIREMENT_ID: Final = (
 SINGLE_FLIGHT_COLLAPSE_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/single-flight-collapse-evidence@1"
 )
+INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    "expensive identical misses collapse across lanes",
+    "stale or negative records never become completion evidence",
+    (
+        "repeated fixtures achieve at least 70 percent cache reuse with "
+        "zero stale authoritative hits."
+    ),
+)
 _SINGLE_FLIGHT_ATTESTATION_SEAL: Final = object()
 
 
@@ -2825,6 +2833,7 @@ __all__ = [
     "CoordinatorMetrics",
     "CoordinatorResult",
     "CoordinatorStatus",
+    "INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA",
     "NamespaceCacheCoordinator",
     "NamespaceCacheEntry",
     "NamespaceCacheLookup",

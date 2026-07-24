@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
     AnalysisCacheReason,
 )
 from ipfs_accelerate_py.agent_supervisor.cache_coordinator import (
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA,
     SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
     AnalysisCacheCoordinator,
     BoundedArtifactReference,
@@ -58,6 +59,23 @@ def _receipt(status: str = "successful", ordinal: int = 1):
     }
 
 
+def test_g020_cache_criteria_keep_runtime_authority_separate_from_completion() -> None:
+    assert INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA == (
+        "expensive identical misses collapse across lanes",
+        "stale or negative records never become completion evidence",
+        (
+            "repeated fixtures achieve at least 70 percent cache reuse with "
+            "zero stale authoritative hits."
+        ),
+    )
+    # A cache key is caller-selected runtime identity. It carries no
+    # criterion, analyzer-health, validation-freshness, or quorum authority.
+    key_payload = _key().to_dict()
+    assert "acceptance_criterion" not in key_payload
+    assert "analyzer_health" not in key_payload
+    assert "exhaustion_quorum" not in key_payload
+
+
 def _common_analysis_key(**changes: object):
     dimensions: dict[str, object] = {
         "repository_tree_identity": "tree:sha256:111",
@@ -75,11 +93,14 @@ def _common_analysis_key(**changes: object):
 def _cross_process_common_cache_worker(
     cache_path: str,
     marker_path: str,
-    start: multiprocessing.synchronize.Event,
+    ready: multiprocessing.synchronize.Barrier,
     output: multiprocessing.queues.Queue,
 ) -> None:
     coordinator = NamespaceCacheCoordinator(cache_path)
-    start.wait(5)
+    # Do not let process-spawn latency turn an intended concurrent miss into
+    # a post-publication cache hit.  Every worker must be ready to perform its
+    # first lookup before any worker may acquire the cross-process lease.
+    ready.wait(10)
 
     def produce():
         with open(marker_path, "a", encoding="utf-8") as stream:
@@ -861,19 +882,18 @@ def test_common_cross_process_single_flight_collapses_one_miss(
     tmp_path: Path,
 ) -> None:
     context = multiprocessing.get_context("spawn")
-    start = context.Event()
+    ready = context.Barrier(3)
     output = context.Queue()
     marker = tmp_path / "producer-markers.txt"
     processes = [
         context.Process(
             target=_cross_process_common_cache_worker,
-            args=(str(tmp_path / "cache"), str(marker), start, output),
+            args=(str(tmp_path / "cache"), str(marker), ready, output),
         )
         for _ in range(3)
     ]
     for process in processes:
         process.start()
-    start.set()
     results = [output.get(timeout=15) for _ in processes]
     for process in processes:
         process.join(timeout=15)

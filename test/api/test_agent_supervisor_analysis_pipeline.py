@@ -20,6 +20,9 @@ from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
 from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
     EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA,
     EXACT_TREE_REUSE_REQUIREMENT_ID,
+    INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA,
+    INTEGRATED_ANALYSIS_CHILD_GOAL_IDS,
+    INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS,
     SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA,
     SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
     AnalysisBindingError,
@@ -28,6 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
     AnalysisPipelineRequest,
     AnalysisPipelineResult,
     ExactTreeReuseEvidence,
+    IntegratedAnalysisCompletionEvidence,
     PipelineCacheStatus,
     make_analysis_stage_receipt,
 )
@@ -2086,6 +2090,7 @@ def test_low_backlog_analysis_uses_pipeline_only_as_bounded_nomination_context(
     assert cold.pipeline_result["cache_status"] == "produced"
     assert warm.pipeline_result["cache_status"] == "exact_hit"
     assert warm.pipeline_result["cache_lookup_status"] == "hit"
+    assert "ast_index_id" in warm.pipeline_result
     assert warm.pipeline_result["retrieval_response_id"] == cold.pipeline_result[
         "retrieval_response_id"
     ]
@@ -2099,3 +2104,428 @@ def test_low_backlog_analysis_uses_pipeline_only_as_bounded_nomination_context(
     assert warm.pipeline_result["safe_for_completion_reasoning"] is False
     assert warm.safe_for_completion_reasoning is False
     assert analyzer.calls == 1
+
+
+def test_live_objective_planner_receives_ast_index_and_retrieval_cache_context(
+    tmp_path: Path,
+) -> None:
+    analyzer = _Analyzer()
+    pipeline = AnalysisPipeline(AnalysisCache(tmp_path / "live-cache"), analyzer)
+    request = _request(
+        analyzer_id="objective.low_backlog_analysis",
+        objective_revision="ASI-G020@asi-079",
+        query={
+            "text": "AnalysisCache lookup",
+            "objective_terms": ["AnalysisCache", "lookup"],
+        },
+        ast_records=(
+            (
+                "src/analysis_cache.py",
+                build_python_ast_blob_record(
+                    "class AnalysisCache:\n"
+                    "    def lookup(self, key):\n"
+                    "        return key\n"
+                ),
+            ),
+        ),
+        retrieval_inputs={},
+    )
+    prompts: list[str] = []
+
+    def router(prompt: str) -> str:
+        prompts.append(prompt)
+        # Force the deterministic proposal fallback after observing the exact
+        # planning context. The fallback remains nomination-only.
+        return "{}"
+
+    policy = AnalysisEscalationPolicy(
+        backlog_target=1,
+        max_router_calls=1,
+        max_router_retries=0,
+    )
+
+    def run_once():
+        return run_low_backlog_analysis(
+            tmp_path,
+            healthy_backlog_count=0,
+            objective_terms=["AnalysisCache", "lookup"],
+            policy=policy,
+            incremental_scanner=lambda: [],
+            ast_scanner=lambda: {
+                "healthy": True,
+                "complete": True,
+                "candidates": [],
+            },
+            router=router,
+            analysis_pipeline=pipeline,
+            analysis_pipeline_request=request,
+        )
+
+    cold = run_once()
+    warm = run_once()
+
+    assert cold.pipeline_result["cache_status"] == "produced"
+    assert warm.pipeline_result["cache_status"] == "exact_hit"
+    assert cold.pipeline_result["ast_index_id"]
+    assert warm.pipeline_result["ast_index_id"] == cold.pipeline_result[
+        "ast_index_id"
+    ]
+    assert warm.pipeline_result["retrieval_response_id"] == cold.pipeline_result[
+        "retrieval_response_id"
+    ]
+    assert len(prompts) == 2
+    assert all(cold.pipeline_result["ast_index_id"] in prompt for prompt in prompts)
+    assert all(
+        cold.pipeline_result["retrieval_response_id"] in prompt
+        for prompt in prompts
+    )
+    assert all(
+        '"nomination_only"' in prompt and "true" in prompt
+        for prompt in prompts
+    )
+    assert not cold.safe_for_completion_reasoning
+    assert not warm.safe_for_completion_reasoning
+    assert analyzer.calls == 1
+
+
+def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gate(
+    tmp_path: Path,
+) -> None:
+    """ASI-G020 stays provisional without every independent proof surface."""
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    def analyzer(context):
+        entered.set()
+        assert context.ast_index is not None
+        assert any(
+            item.get("path") == "src/integrated.py"
+            for item in context.retrieval.to_dict()["results"]
+        )
+        assert release.wait(5)
+        return make_analysis_stage_receipt(
+            context.request,
+            successful=True,
+            reason_code="g020_live_objective_planning_complete",
+        )
+
+    request = _request(
+        objective_revision="ASI-G020@asi-079",
+        analyzer_id="objective.low_backlog_analysis",
+        ast_records=(
+            (
+                "src/integrated.py",
+                build_python_ast_blob_record(
+                    "class AnalysisCache:\n"
+                    "    def lookup(self, key):\n"
+                    "        return key\n"
+                ),
+            ),
+        ),
+        query={
+            "text": "AnalysisCache lookup",
+            "objective_terms": ["AnalysisCache", "lookup"],
+        },
+    )
+    pipeline = AnalysisPipeline(
+        AnalysisCache(tmp_path / "g020-cache"),
+        analyzer,
+        provider=IpfsDatasetsAnalysisProvider(
+            importer=lambda name: (_ for _ in ()).throw(
+                ModuleNotFoundError(name)
+            )
+        ),
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        leader = executor.submit(pipeline.analyze, request)
+        assert entered.wait(5)
+        follower = executor.submit(pipeline.analyze, request)
+        deadline = time.monotonic() + 5
+        while (
+            pipeline.coordinator.metrics().followers < 1
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.001)
+        assert pipeline.coordinator.metrics().followers == 1
+        release.set()
+        cold_results = (
+            leader.result(timeout=10),
+            follower.result(timeout=10),
+        )
+
+    live = next(
+        item
+        for item in cold_results
+        if item.cache_status is PipelineCacheStatus.PRODUCED
+    )
+    warm_results = [pipeline.analyze(request) for _ in range(8)]
+    exact = warm_results[-1]
+    assert exact.cache_status is PipelineCacheStatus.EXACT_HIT
+    assert pipeline.metrics.requests == 10
+    assert pipeline.metrics.reuse_ratio == pytest.approx(0.8)
+    assert pipeline.metrics.stale_authoritative_hits == 0
+
+    operational = IntegratedAnalysisCompletionEvidence.from_results(
+        live_result=live,
+        exact_reuse_result=exact,
+        collapse_result=live,
+        metrics=pipeline.metrics,
+    )
+    restored = IntegratedAnalysisCompletionEvidence.from_dict(
+        operational.to_dict()
+    )
+    assert restored == operational
+    assert restored.proves_for(live)
+    assert not restored.safe_for_completion_reasoning
+    assert not restored.is_completion_evidence
+
+    now = datetime(2026, 7, 24, 18, 30, tzinfo=timezone.utc)
+    command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_analysis_pipeline.py "
+        "test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py "
+        "test/api/test_agent_supervisor_cache_coordinator.py -q"
+    )
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-079",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": live.request.tree_id,
+                "command": command,
+            },
+            validation_passed=True,
+            repository_id=live.request.repository_id,
+            repository_tree=live.request.tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-079:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": live.request.tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "ipfs_datasets_analysis_provider.py"
+                        if index == 4
+                        else (
+                            "cache_coordinator.py"
+                            if index in (2, 3, 5)
+                            else "analysis_pipeline.py"
+                        )
+                    )
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_"
+                    + (
+                        "ipfs_datasets_analysis_provider.py"
+                        if index == 4
+                        else (
+                            "cache_coordinator.py"
+                            if index in (2, 3)
+                            else "analysis_pipeline.py"
+                        )
+                    )
+                ),
+                "validation_receipt_id": evidence[index - 1].provenance_cid,
+            }
+            for index, criterion in enumerate(
+                INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    binding = {
+        "repository_id": live.request.repository_id,
+        "tree_id": live.request.tree_id,
+        "analyzer_version": live.request.analyzer_version,
+        "configuration_revision": live.request.configuration_digest,
+        "objective_revision": live.request.objective_revision,
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": live.request.analyzer_version,
+        "binding": binding,
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-079-ast-runtime",
+                "evidence_channel": "ast-runtime",
+                "receipt_cid": "scan:asi-079:ast-runtime",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-079-cache-validation",
+                "evidence_channel": "cache-validation",
+                "receipt_cid": "scan:asi-079:cache-validation",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    producing_tasks = tuple(
+        {"task_id": task_id, "status": "completed"}
+        for task_id in INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS
+    )
+    children = tuple(
+        {
+            "goal_id": goal_id,
+            "state": "verified_complete",
+            "verified": True,
+            "completion_gate": {"passed": True},
+        }
+        for goal_id in INTEGRATED_ANALYSIS_CHILD_GOAL_IDS
+    )
+    values = {
+        "operational_evidence": operational,
+        "producing_tasks": producing_tasks,
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "child_goals": children,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    provisional = live.evaluate_integrated_analysis_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert provisional.acceptance_criteria == (
+        INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA
+    )
+    assert provisional.gate is not None and provisional.gate.passed
+    assert provisional.gate.evaluated_evidence["analysis_result"] == {}
+
+    verified = live.evaluate_integrated_analysis_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    incomplete_tasks = live.evaluate_integrated_analysis_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "producing_tasks": producing_tasks[:-1]},
+    )
+    assert not incomplete_tasks.verified
+    assert "tasks_incomplete" in incomplete_tasks.reason_codes
+
+    missing_child = live.evaluate_integrated_analysis_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "child_goals": children[:-1]},
+    )
+    assert not missing_child.verified
+    assert "child_unverified" in missing_child.reason_codes
+
+    unsafe_health = live.evaluate_integrated_analysis_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "analyzer_health": live.provider_result.to_dict(),
+        },
+    )
+    assert not unsafe_health.verified
+    assert any(
+        code in unsafe_health.reason_codes
+        for code in ("analyzer_unhealthy", "analyzer_completion_unsafe")
+    )
+
+    failed = replace(
+        evidence[0],
+        validation_passed=False,
+        provenance_cid="validation:asi-079:failed",
+        validation_receipt={
+            "status": "failed",
+            "tree_id": live.request.tree_id,
+            "command": command,
+        },
+    )
+    failed_validation = live.evaluate_integrated_analysis_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (*evidence, failed)},
+    )
+    assert not failed_validation.verified
+    assert "failed_validation" in failed_validation.reason_codes
+
+    duplicate_quorum = {
+        **quorum,
+        "members": [
+            quorum["members"][0],
+            {
+                **quorum["members"][1],
+                "receipt_cid": quorum["members"][0]["receipt_cid"],
+            },
+        ],
+    }
+    no_quorum = live.evaluate_integrated_analysis_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "exhaustion_quorum": duplicate_quorum},
+    )
+    assert not no_quorum.verified
+    assert any(
+        code.startswith("exhaustion_quorum")
+        for code in no_quorum.reason_codes
+    )
+
+    with pytest.raises(ValueError, match="configured ASI-G020 count"):
+        live.evaluate_integrated_analysis_completion(
+            required_exhaustive_receipts=1,
+            **values,
+        )
+
+    tampered = operational.to_dict()
+    tampered["tree_id"] = "tree:sha256:foreign"
+    with pytest.raises(AnalysisBindingError):
+        IntegratedAnalysisCompletionEvidence.from_dict(tampered)
+
+    malformed_collapse = operational.to_dict()
+    malformed_collapse["single_flight_collapse_evidence"][
+        "follower_count"
+    ] = 0
+    malformed_operational = live.evaluate_integrated_analysis_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "operational_evidence": malformed_collapse},
+    )
+    assert not malformed_operational.verified
+    assert "coverage_unverified" in malformed_operational.reason_codes
