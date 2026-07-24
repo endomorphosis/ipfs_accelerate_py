@@ -13,6 +13,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
@@ -29,6 +30,11 @@ from .conflict_graph import (
 from .formal_verification_contracts import (
     AssuranceLevel,
     CodeProofObligation,
+    ContractValidationError,
+    EvidenceFreshness,
+    ProofReceipt,
+    ProofVerdict,
+    assurance_satisfies,
     canonical_json,
     content_identity,
 )
@@ -235,7 +241,7 @@ class CandidateDiffEntry:
         }
         metadata = dict(payload.get("metadata") or {})
         metadata.update({key: payload[key] for key in payload if key not in known})
-        return cls(
+        result = cls(
             old_path=old_path,
             new_path=new_path,
             change_kind=kind,
@@ -263,6 +269,7 @@ class CandidateDiffEntry:
             generated=payload.get("generated", payload.get("is_generated")),
             metadata=metadata,
         )
+        return result
 
 
 @dataclass(frozen=True)
@@ -1565,10 +1572,1123 @@ compile_ast_proof_scopes = compile_candidate_diff_scopes
 compile_candidate_diffs = compile_candidate_diff_scopes
 
 
+IMPLEMENTATION_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/implementation-result-evidence@1"
+)
+IMPLEMENTATION_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/implementation-result-binding@1"
+)
+IMPLEMENTATION_OBLIGATION_SET_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/implementation-obligation-set@1"
+)
+CODE_PROOF_BINDING_RESULT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/code-proof-binding-result@1"
+)
+
+
+class ImplementationEvidenceKind(str, Enum):
+    """Observed implementation evidence; none is itself a code proof."""
+
+    TEST = "test"
+    RUNTIME = "runtime"
+    STATIC_ANALYSIS = "static_analysis"
+    TYPE_CHECK = "type_check"
+
+
+class ImplementationObligationKind(str, Enum):
+    """Closed implementation-conformance families derived after execution."""
+
+    CHANGED_SYMBOL = "changed_symbol"
+    INTERFACE = "interface"
+    EFFECT = "effect"
+    TEST = "test"
+    RUNTIME_EVIDENCE = "runtime_evidence"
+    STATIC_ANALYSIS = "static_analysis"
+
+
+def _canonical_mapping(value: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Validate and normalize a semantic mapping using the proof codec."""
+
+    return json.loads(canonical_json(dict(value or {})))
+
+
+def _canonical_strings(values: Any) -> tuple[str, ...]:
+    if values is None:
+        return ()
+    if isinstance(values, str):
+        values = (values,)
+    elif isinstance(values, Mapping):
+        values = values.keys()
+    try:
+        iterator = iter(values)
+    except TypeError:
+        iterator = iter((values,))
+    return tuple(
+        sorted({str(value).strip() for value in iterator if str(value).strip()})
+    )
+
+
+def _timestamp(value: str | datetime | None) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, str):
+        text = value.strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            value = datetime.fromisoformat(text)
+        except ValueError as exc:
+            raise ValueError("observed_at must be an ISO-8601 timestamp") from exc
+    if not isinstance(value, datetime):
+        raise TypeError("observed_at must be a datetime or ISO-8601 string")
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("observed_at must be timezone-aware")
+    return value.astimezone(timezone.utc).isoformat()
+
+
+@dataclass(frozen=True)
+class ImplementationResultEvidence:
+    """One content-addressed test, runtime, or static-analysis observation.
+
+    This record deliberately has no assurance field.  A passing test, runtime
+    trace, or type check is a bounded observation and cannot be promoted into
+    a theorem about generated code.
+    """
+
+    kind: ImplementationEvidenceKind
+    repository_tree_id: str
+    subject: str = ""
+    evidence_id: str = ""
+    accepted_plan_id: str = ""
+    repository_id: str = ""
+    scope_ids: tuple[str, ...] = ()
+    subject_ids: tuple[str, ...] = ()
+    passed: bool = False
+    observed_at: str | datetime | None = None
+    validation_bounds: Mapping[str, Any] = field(default_factory=dict)
+    assumption_ids: tuple[str, ...] = ()
+    producer_id: str = ""
+    command: str = ""
+    artifact_id: str = ""
+    contradictory: bool = False
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", ImplementationEvidenceKind(self.kind))
+        for name in (
+            "repository_tree_id",
+            "accepted_plan_id",
+            "repository_id",
+            "producer_id",
+            "subject",
+            "command",
+            "artifact_id",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        if not self.repository_tree_id:
+            raise ValueError("implementation evidence requires repository_tree_id")
+        for name in ("scope_ids", "subject_ids", "assumption_ids"):
+            object.__setattr__(
+                self, name, _canonical_strings(getattr(self, name))
+            )
+        if not isinstance(self.passed, bool):
+            raise TypeError("passed must be boolean")
+        if not isinstance(self.contradictory, bool):
+            raise TypeError("contradictory must be boolean")
+        object.__setattr__(self, "observed_at", _timestamp(self.observed_at))
+        object.__setattr__(
+            self, "validation_bounds", _canonical_mapping(self.validation_bounds)
+        )
+        object.__setattr__(self, "metadata", _canonical_mapping(self.metadata))
+        supplied = str(self.evidence_id or "").strip()
+        if not supplied:
+            supplied = content_identity(self._identity_payload())
+        object.__setattr__(self, "evidence_id", supplied)
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": IMPLEMENTATION_EVIDENCE_SCHEMA,
+            "kind": self.kind.value,
+            "subject": self.subject,
+            "accepted_plan_id": self.accepted_plan_id,
+            "repository_id": self.repository_id,
+            "repository_tree_id": self.repository_tree_id,
+            "scope_ids": self.scope_ids,
+            "subject_ids": self.subject_ids,
+            "passed": self.passed,
+            "observed_at": self.observed_at,
+            "validation_bounds": self.validation_bounds,
+            "assumption_ids": self.assumption_ids,
+            "producer_id": self.producer_id,
+            "command": self.command,
+            "artifact_id": self.artifact_id,
+            "contradictory": self.contradictory,
+            "metadata": self.metadata,
+        }
+
+    @property
+    def evidence_digest(self) -> str:
+        """Content digest separate from the producer's receipt identity."""
+
+        return content_identity(self._identity_payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._identity_payload(),
+            "evidence_id": self.evidence_id,
+            "evidence_digest": self.evidence_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ImplementationResultEvidence":
+        schema = str(payload.get("schema") or IMPLEMENTATION_EVIDENCE_SCHEMA)
+        if schema != IMPLEMENTATION_EVIDENCE_SCHEMA:
+            raise ValueError(f"unsupported implementation evidence schema: {schema}")
+        result = cls(
+            kind=payload.get("kind", ImplementationEvidenceKind.TEST),
+            subject=str(payload.get("subject") or ""),
+            accepted_plan_id=str(payload.get("accepted_plan_id") or payload.get("plan_id") or ""),
+            repository_id=str(payload.get("repository_id") or ""),
+            repository_tree_id=str(payload.get("repository_tree_id") or payload.get("tree_id") or ""),
+            scope_ids=tuple(payload.get("scope_ids") or payload.get("ast_scope_ids") or ()),
+            subject_ids=tuple(payload.get("subject_ids") or ()),
+            passed=payload.get("passed", False),
+            observed_at=payload.get("observed_at"),
+            validation_bounds=payload.get("validation_bounds") or payload.get("bounds") or {},
+            assumption_ids=tuple(payload.get("assumption_ids") or ()),
+            producer_id=str(payload.get("producer_id") or ""),
+            command=str(payload.get("command") or ""),
+            artifact_id=str(payload.get("artifact_id") or ""),
+            contradictory=payload.get("contradictory", False),
+            metadata=payload.get("metadata") or {},
+            evidence_id=str(payload.get("evidence_id") or payload.get("content_id") or ""),
+        )
+        claimed_digest = str(payload.get("evidence_digest") or "")
+        if claimed_digest and claimed_digest != result.evidence_digest:
+            raise ValueError("implementation evidence digest does not match payload")
+        return result
+
+
+@dataclass(frozen=True)
+class ImplementationResultBinding:
+    """Frozen semantic context for all post-Codex implementation receipts."""
+
+    accepted_plan_id: str
+    repository_id: str
+    repository_tree_id: str
+    changed_scope_set_id: str
+    changed_scope_ids: tuple[str, ...]
+    changed_paths: tuple[str, ...]
+    assumption_ids: tuple[str, ...] = ()
+    assumptions: Mapping[str, Any] = field(default_factory=dict)
+    validation_bounds: Mapping[str, Any] = field(default_factory=dict)
+    test_evidence_ids: tuple[str, ...] = ()
+    runtime_evidence_ids: tuple[str, ...] = ()
+    static_analysis_evidence_ids: tuple[str, ...] = ()
+    evidence_digests: Mapping[str, str] = field(default_factory=dict)
+    plan_effect_ids: tuple[str, ...] = ()
+    plan_requirement_ids: tuple[str, ...] = ()
+    plan_trace_bound: int | None = None
+    task_id: str = ""
+    binding_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "accepted_plan_id",
+            "repository_id",
+            "repository_tree_id",
+            "changed_scope_set_id",
+            "task_id",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        for name in (
+            "accepted_plan_id",
+            "repository_tree_id",
+            "changed_scope_set_id",
+        ):
+            if not getattr(self, name):
+                raise ValueError(f"{name} is required")
+        for name in (
+            "changed_scope_ids",
+            "changed_paths",
+            "assumption_ids",
+            "test_evidence_ids",
+            "runtime_evidence_ids",
+            "static_analysis_evidence_ids",
+            "plan_effect_ids",
+            "plan_requirement_ids",
+        ):
+            object.__setattr__(
+                self, name, _canonical_strings(getattr(self, name))
+            )
+        if not self.changed_scope_ids or not self.changed_paths:
+            raise ValueError("implementation binding requires a nonempty changed scope")
+        object.__setattr__(self, "assumptions", _canonical_mapping(self.assumptions))
+        object.__setattr__(self, "validation_bounds", _canonical_mapping(self.validation_bounds))
+        digests = {
+            str(key).strip(): str(value).strip()
+            for key, value in dict(self.evidence_digests or {}).items()
+            if str(key).strip() and str(value).strip()
+        }
+        object.__setattr__(self, "evidence_digests", dict(sorted(digests.items())))
+        if (
+            self.plan_trace_bound is not None
+            and (
+                isinstance(self.plan_trace_bound, bool)
+                or not isinstance(self.plan_trace_bound, int)
+                or self.plan_trace_bound <= 0
+            )
+        ):
+            raise ValueError("plan_trace_bound must be a positive integer or None")
+        supplied = str(self.binding_id or "").strip()
+        object.__setattr__(self, "binding_id", "")
+        derived = content_identity(self._identity_payload())
+        if supplied and supplied != derived:
+            raise ValueError("implementation binding identity does not match payload")
+        object.__setattr__(self, "binding_id", derived)
+
+    @property
+    def plan_id(self) -> str:
+        return self.accepted_plan_id
+
+    @property
+    def ast_scope_ids(self) -> tuple[str, ...]:
+        return self.changed_scope_ids
+
+    @property
+    def scope_set_id(self) -> str:
+        return self.changed_scope_set_id
+
+    @property
+    def planned_effect_ids(self) -> tuple[str, ...]:
+        return self.plan_effect_ids
+
+    @property
+    def tree_id(self) -> str:
+        return self.repository_tree_id
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": IMPLEMENTATION_BINDING_SCHEMA,
+            "accepted_plan_id": self.accepted_plan_id,
+            "repository_id": self.repository_id,
+            "repository_tree_id": self.repository_tree_id,
+            "changed_scope_set_id": self.changed_scope_set_id,
+            "changed_scope_ids": self.changed_scope_ids,
+            "changed_paths": self.changed_paths,
+            "assumption_ids": self.assumption_ids,
+            "assumptions": self.assumptions,
+            "validation_bounds": self.validation_bounds,
+            "test_evidence_ids": self.test_evidence_ids,
+            "runtime_evidence_ids": self.runtime_evidence_ids,
+            "static_analysis_evidence_ids": self.static_analysis_evidence_ids,
+            "evidence_digests": self.evidence_digests,
+            "plan_effect_ids": self.plan_effect_ids,
+            "plan_requirement_ids": self.plan_requirement_ids,
+            "plan_trace_bound": self.plan_trace_bound,
+            "task_id": self.task_id,
+        }
+
+    @property
+    def assumptions_digest(self) -> str:
+        return content_identity(
+            {"assumption_ids": self.assumption_ids, "assumptions": self.assumptions}
+        )
+
+    @property
+    def validation_bounds_digest(self) -> str:
+        return content_identity(self.validation_bounds)
+
+    def receipt_metadata(
+        self,
+        *,
+        obligation: CodeProofObligation | None = None,
+    ) -> dict[str, Any]:
+        """Return the complete exact metadata required on a code-proof receipt."""
+
+        payload = {
+            "receipt_purpose": "code_proof",
+            "implementation_binding_id": self.binding_id,
+            "accepted_plan_id": self.accepted_plan_id,
+            "repository_id": self.repository_id,
+            "repository_tree_id": self.repository_tree_id,
+            "changed_scope_set_id": self.changed_scope_set_id,
+            "changed_scope_ids": self.changed_scope_ids,
+            "changed_paths": self.changed_paths,
+            "assumption_ids": self.assumption_ids,
+            "assumptions_digest": self.assumptions_digest,
+            "validation_bounds_digest": self.validation_bounds_digest,
+            "test_evidence_ids": self.test_evidence_ids,
+            "runtime_evidence_ids": self.runtime_evidence_ids,
+            "static_analysis_evidence_ids": self.static_analysis_evidence_ids,
+            "evidence_digests": self.evidence_digests,
+            "plan_effect_ids": self.plan_effect_ids,
+            "plan_requirement_ids": self.plan_requirement_ids,
+            "plan_trace_bound": self.plan_trace_bound,
+            "task_id": self.task_id,
+        }
+        if obligation is not None:
+            payload["code_proof_obligation_id"] = obligation.obligation_id
+            payload["code_proof_scope_ids"] = obligation.ast_scope_ids
+        return json.loads(canonical_json(payload))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._identity_payload(), "binding_id": self.binding_id}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ImplementationResultBinding":
+        schema = str(payload.get("schema") or IMPLEMENTATION_BINDING_SCHEMA)
+        if schema != IMPLEMENTATION_BINDING_SCHEMA:
+            raise ValueError(f"unsupported implementation binding schema: {schema}")
+        return cls(
+            accepted_plan_id=str(payload.get("accepted_plan_id") or payload.get("plan_id") or ""),
+            repository_id=str(payload.get("repository_id") or ""),
+            repository_tree_id=str(payload.get("repository_tree_id") or payload.get("tree_id") or ""),
+            changed_scope_set_id=str(payload.get("changed_scope_set_id") or payload.get("scope_set_id") or ""),
+            changed_scope_ids=tuple(payload.get("changed_scope_ids") or payload.get("ast_scope_ids") or ()),
+            changed_paths=tuple(payload.get("changed_paths") or ()),
+            assumption_ids=tuple(payload.get("assumption_ids") or ()),
+            assumptions=payload.get("assumptions") or {},
+            validation_bounds=payload.get("validation_bounds") or payload.get("bounds") or {},
+            test_evidence_ids=tuple(payload.get("test_evidence_ids") or ()),
+            runtime_evidence_ids=tuple(payload.get("runtime_evidence_ids") or ()),
+            static_analysis_evidence_ids=tuple(payload.get("static_analysis_evidence_ids") or ()),
+            evidence_digests=payload.get("evidence_digests") or {},
+            plan_effect_ids=tuple(payload.get("plan_effect_ids") or payload.get("planned_effect_ids") or payload.get("effect_ids") or ()),
+            plan_requirement_ids=tuple(payload.get("plan_requirement_ids") or ()),
+            plan_trace_bound=payload.get("plan_trace_bound"),
+            task_id=str(payload.get("task_id") or ""),
+            binding_id=str(payload.get("binding_id") or payload.get("content_id") or ""),
+        )
+
+
+_OBLIGATION_STATEMENTS = {
+    ImplementationObligationKind.CHANGED_SYMBOL: (
+        "Every changed executable symbol satisfies its reviewed implementation contract."
+    ),
+    ImplementationObligationKind.INTERFACE: (
+        "Every changed public interface remains compatible with its reviewed consumers."
+    ),
+    ImplementationObligationKind.EFFECT: (
+        "Every changed implementation effect conforms to the accepted plan effects."
+    ),
+    ImplementationObligationKind.TEST: (
+        "Required tests pass against the exact candidate tree and changed scope."
+    ),
+    ImplementationObligationKind.RUNTIME_EVIDENCE: (
+        "Required runtime observations satisfy their declared finite validation bounds."
+    ),
+    ImplementationObligationKind.STATIC_ANALYSIS: (
+        "Required static analysis passes against the exact candidate tree and changed scope."
+    ),
+}
+
+
+@dataclass(frozen=True)
+class ImplementationProofObligation(CodeProofObligation):
+    """A canonical code obligation annotated with its derivation family."""
+
+    kind: ImplementationObligationKind = ImplementationObligationKind.CHANGED_SYMBOL
+    subject: str = ""
+    binding_id: str = ""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        object.__setattr__(self, "kind", ImplementationObligationKind(self.kind))
+        object.__setattr__(self, "subject", str(self.subject or "").strip())
+        object.__setattr__(self, "binding_id", str(self.binding_id or "").strip())
+        if not self.subject:
+            raise ValueError("implementation obligation requires a subject")
+        if not self.binding_id:
+            raise ValueError("implementation obligation requires a binding_id")
+        if self.metadata.get("implementation_binding_id") != self.binding_id:
+            raise ValueError("implementation obligation metadata binding is inconsistent")
+
+    def _payload(self) -> dict[str, Any]:
+        payload = super()._payload()
+        payload.update(
+            {
+                "implementation_obligation_kind": self.kind.value,
+                "implementation_subject": self.subject,
+                "implementation_binding_id": self.binding_id,
+            }
+        )
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ImplementationProofObligation":
+        metadata = payload.get("metadata") or {}
+        result = cls(
+            repository_id=payload.get("repository_id", ""),
+            repository_tree_id=payload.get("repository_tree_id", ""),
+            ast_scope_ids=tuple(payload.get("ast_scope_ids") or ()),
+            statement=payload.get("statement", ""),
+            premise_ids=tuple(payload.get("premise_ids") or ()),
+            template_id=payload.get("template_id", ""),
+            template_version=payload.get("template_version", ""),
+            template_semantic_hash=payload.get("template_semantic_hash", ""),
+            invariant_class=payload.get("invariant_class", ""),
+            task_id=payload.get("task_id", ""),
+            required_assurance=payload.get(
+                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
+            ),
+            fallback_checks=tuple(payload.get("fallback_checks") or ()),
+            metadata=metadata,
+            kind=payload.get(
+                "implementation_obligation_kind",
+                metadata.get("obligation_kind", ImplementationObligationKind.CHANGED_SYMBOL),
+            ),
+            subject=payload.get(
+                "implementation_subject", metadata.get("subject", "")
+            ),
+            binding_id=payload.get(
+                "implementation_binding_id",
+                metadata.get("implementation_binding_id", ""),
+            ),
+        )
+        claimed = payload.get("obligation_id") or payload.get("content_id")
+        if claimed and claimed != result.obligation_id:
+            raise ValueError("implementation obligation identity does not match payload")
+        return result
+
+
+@dataclass(frozen=True)
+class ImplementationObligationSet:
+    """Fresh obligations plus the exact evidence and binding that derived them."""
+
+    binding: ImplementationResultBinding
+    obligations: tuple[ImplementationProofObligation, ...]
+    evidence: tuple[ImplementationResultEvidence, ...] = ()
+    obligation_kinds: Mapping[str, str] = field(default_factory=dict)
+    incomplete_reason_codes: tuple[str, ...] = ()
+    set_id: str = ""
+
+    def __post_init__(self) -> None:
+        binding = (
+            self.binding
+            if isinstance(self.binding, ImplementationResultBinding)
+            else ImplementationResultBinding.from_dict(self.binding)
+        )
+        object.__setattr__(self, "binding", binding)
+        obligations = tuple(
+            sorted(
+                (
+                    item
+                    if isinstance(item, ImplementationProofObligation)
+                    else ImplementationProofObligation.from_dict(item)
+                    for item in self.obligations
+                ),
+                key=lambda item: item.obligation_id,
+            )
+        )
+        if len({item.obligation_id for item in obligations}) != len(obligations):
+            raise ValueError("implementation obligations contain duplicate identities")
+        for item in obligations:
+            if item.repository_tree_id != binding.repository_tree_id:
+                raise ValueError("implementation obligation tree does not match binding")
+            if item.repository_id != binding.repository_id:
+                raise ValueError("implementation obligation repository does not match binding")
+            if item.metadata.get("implementation_binding_id") != binding.binding_id:
+                raise ValueError("implementation obligation is not bound to its result")
+        object.__setattr__(self, "obligations", obligations)
+        evidence = tuple(
+            sorted(
+                (
+                    item
+                    if isinstance(item, ImplementationResultEvidence)
+                    else ImplementationResultEvidence.from_dict(item)
+                    for item in self.evidence
+                ),
+                key=lambda item: item.evidence_id,
+            )
+        )
+        if len({item.evidence_id for item in evidence}) != len(evidence):
+            raise ValueError("implementation evidence contains duplicate identities")
+        evidence_ids_by_kind = {
+            ImplementationEvidenceKind.TEST: tuple(
+                item.evidence_id
+                for item in evidence
+                if item.kind is ImplementationEvidenceKind.TEST
+            ),
+            ImplementationEvidenceKind.RUNTIME: tuple(
+                item.evidence_id
+                for item in evidence
+                if item.kind is ImplementationEvidenceKind.RUNTIME
+            ),
+            ImplementationEvidenceKind.STATIC_ANALYSIS: tuple(
+                item.evidence_id
+                for item in evidence
+                if item.kind
+                in {
+                    ImplementationEvidenceKind.STATIC_ANALYSIS,
+                    ImplementationEvidenceKind.TYPE_CHECK,
+                }
+            ),
+        }
+        if (
+            evidence_ids_by_kind[ImplementationEvidenceKind.TEST]
+            != binding.test_evidence_ids
+            or evidence_ids_by_kind[ImplementationEvidenceKind.RUNTIME]
+            != binding.runtime_evidence_ids
+            or evidence_ids_by_kind[ImplementationEvidenceKind.STATIC_ANALYSIS]
+            != binding.static_analysis_evidence_ids
+        ):
+            raise ValueError(
+                "implementation evidence identities do not match binding"
+            )
+        evidence_digests = {
+            item.evidence_id: item.evidence_digest for item in evidence
+        }
+        if evidence_digests != binding.evidence_digests:
+            raise ValueError("implementation evidence digests do not match binding")
+        object.__setattr__(self, "evidence", evidence)
+        kinds = {
+            str(key): ImplementationObligationKind(value).value
+            for key, value in dict(self.obligation_kinds).items()
+        }
+        if set(kinds) != {item.obligation_id for item in obligations}:
+            raise ValueError("obligation_kinds must classify every obligation exactly")
+        object.__setattr__(self, "obligation_kinds", dict(sorted(kinds.items())))
+        object.__setattr__(
+            self,
+            "incomplete_reason_codes",
+            _canonical_strings(self.incomplete_reason_codes),
+        )
+        supplied = str(self.set_id or "").strip()
+        object.__setattr__(self, "set_id", "")
+        derived = content_identity(self._identity_payload())
+        if supplied and supplied != derived:
+            raise ValueError("implementation obligation-set identity does not match payload")
+        object.__setattr__(self, "set_id", derived)
+
+    @property
+    def binding_id(self) -> str:
+        return self.binding.binding_id
+
+    @property
+    def obligation_set_id(self) -> str:
+        """Descriptive alias for the canonical set identity."""
+
+        return self.set_id
+
+    @property
+    def obligation_ids(self) -> tuple[str, ...]:
+        return tuple(item.obligation_id for item in self.obligations)
+
+    @property
+    def complete(self) -> bool:
+        return bool(self.obligations) and not self.incomplete_reason_codes
+
+    def by_kind(
+        self, kind: ImplementationObligationKind | str
+    ) -> tuple[CodeProofObligation, ...]:
+        normalized = ImplementationObligationKind(kind).value
+        return tuple(
+            item
+            for item in self.obligations
+            if self.obligation_kinds.get(item.obligation_id) == normalized
+        )
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": IMPLEMENTATION_OBLIGATION_SET_SCHEMA,
+            "binding": self.binding.to_dict(),
+            "obligations": tuple(item.to_dict() for item in self.obligations),
+            "evidence": tuple(item.to_dict() for item in self.evidence),
+            "obligation_kinds": self.obligation_kinds,
+            "incomplete_reason_codes": self.incomplete_reason_codes,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._identity_payload(), "set_id": self.set_id}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ImplementationObligationSet":
+        schema = str(payload.get("schema") or IMPLEMENTATION_OBLIGATION_SET_SCHEMA)
+        if schema != IMPLEMENTATION_OBLIGATION_SET_SCHEMA:
+            raise ValueError(f"unsupported implementation obligation-set schema: {schema}")
+        return cls(
+            binding=ImplementationResultBinding.from_dict(payload.get("binding") or {}),
+            obligations=tuple(
+                ImplementationProofObligation.from_dict(item)
+                for item in payload.get("obligations") or ()
+            ),
+            evidence=tuple(
+                ImplementationResultEvidence.from_dict(item)
+                for item in payload.get("evidence") or ()
+            ),
+            obligation_kinds=payload.get("obligation_kinds") or {},
+            incomplete_reason_codes=tuple(payload.get("incomplete_reason_codes") or ()),
+            set_id=str(payload.get("set_id") or payload.get("content_id") or ""),
+        )
+
+
+def _evidence_values(
+    values: Iterable[ImplementationResultEvidence | Mapping[str, Any]],
+) -> tuple[ImplementationResultEvidence, ...]:
+    return tuple(
+        item
+        if isinstance(item, ImplementationResultEvidence)
+        else ImplementationResultEvidence.from_dict(item)
+        for item in values
+    )
+
+
+def derive_fresh_implementation_obligations(
+    scope_set: CodeProofScopeSet,
+    *,
+    accepted_plan_id: str = "",
+    accepted_plan: Any = None,
+    repository_id: str = "",
+    repository_tree_id: str = "",
+    assumption_ids: Iterable[str] = (),
+    assumptions: Mapping[str, Any] | Iterable[str] = (),
+    validation_bounds: Mapping[str, Any] | None = None,
+    test_evidence: Iterable[ImplementationResultEvidence | Mapping[str, Any]] = (),
+    runtime_evidence: Iterable[ImplementationResultEvidence | Mapping[str, Any]] = (),
+    static_analysis_evidence: Iterable[ImplementationResultEvidence | Mapping[str, Any]] = (),
+    planned_effect_ids: Iterable[str] = (),
+    plan_requirement_ids: Iterable[str] = (),
+    plan_trace_bound: int | None = None,
+    task_id: str = "",
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+) -> ImplementationObligationSet:
+    """Derive fresh post-execution obligations from code and bounded evidence."""
+
+    if not isinstance(scope_set, CodeProofScopeSet):
+        raise TypeError("scope_set must be a CodeProofScopeSet")
+    plan = accepted_plan
+    if plan is not None:
+        candidate_plan_id = str(
+            getattr(plan, "plan_id", "")
+            or getattr(plan, "content_id", "")
+            or (plan.get("plan_id", "") if isinstance(plan, Mapping) else "")
+        ).strip()
+        if accepted_plan_id and accepted_plan_id != candidate_plan_id:
+            raise ValueError("accepted plan identity does not match accepted_plan")
+        accepted_plan_id = candidate_plan_id
+        plan_tree = str(
+            getattr(plan, "repository_tree_id", "")
+            or (plan.get("repository_tree_id", "") if isinstance(plan, Mapping) else "")
+        ).strip()
+        if repository_tree_id and plan_tree and repository_tree_id != plan_tree:
+            raise ValueError("accepted plan and implementation tree do not match")
+        repository_tree_id = repository_tree_id or plan_tree
+        plan_effects = (
+            getattr(plan, "effects", ())
+            if not isinstance(plan, Mapping)
+            else plan.get("effects", ())
+        )
+        extracted_effects = [
+            str(
+                getattr(item, "effect_id", "")
+                or (item.get("effect_id", "") if isinstance(item, Mapping) else "")
+            )
+            for item in plan_effects
+        ]
+        planned_effect_ids = (*planned_effect_ids, *extracted_effects)
+        trace_bound = (
+            getattr(plan, "trace_bound", None)
+            if not isinstance(plan, Mapping)
+            else plan.get("trace_bound")
+        )
+        if validation_bounds is None:
+            validation_bounds = (
+                {"trace_bound": trace_bound} if trace_bound is not None else {}
+            )
+        if plan_trace_bound is None:
+            plan_trace_bound = trace_bound
+        plan_requirements = (
+            getattr(plan, "evidence_requirements", ())
+            if not isinstance(plan, Mapping)
+            else plan.get("evidence_requirements", ())
+        )
+        extracted_requirements = [
+            str(
+                getattr(item, "requirement_id", "")
+                or (
+                    item.get("requirement_id", "")
+                    if isinstance(item, Mapping)
+                    else ""
+                )
+            )
+            for item in plan_requirements
+        ]
+        plan_requirement_ids = (*plan_requirement_ids, *extracted_requirements)
+    accepted_plan_id = str(accepted_plan_id or "").strip()
+    repository_tree_id = str(repository_tree_id or "").strip()
+    if not accepted_plan_id:
+        raise ValueError("accepted_plan_id is required")
+    if not repository_tree_id:
+        raise ValueError("repository_tree_id is required")
+    if not scope_set.scopes or not scope_set.changed_paths:
+        raise ValueError("fresh obligations require a nonempty changed scope")
+
+    evidence = _evidence_values(
+        (*tuple(test_evidence), *tuple(runtime_evidence), *tuple(static_analysis_evidence))
+    )
+    expected_kinds = {
+        ImplementationEvidenceKind.TEST: tuple(
+            item.evidence_id for item in evidence if item.kind is ImplementationEvidenceKind.TEST
+        ),
+        ImplementationEvidenceKind.RUNTIME: tuple(
+            item.evidence_id for item in evidence if item.kind is ImplementationEvidenceKind.RUNTIME
+        ),
+        ImplementationEvidenceKind.STATIC_ANALYSIS: tuple(
+            item.evidence_id
+            for item in evidence
+            if item.kind in {
+                ImplementationEvidenceKind.STATIC_ANALYSIS,
+                ImplementationEvidenceKind.TYPE_CHECK,
+            }
+        ),
+    }
+    assumptions_mapping = (
+        _canonical_mapping(assumptions)
+        if isinstance(assumptions, Mapping)
+        else {}
+    )
+    assumptions_combined = _canonical_strings(
+        (
+            *tuple(assumption_ids),
+            *(() if isinstance(assumptions, Mapping) else tuple(assumptions)),
+        )
+    )
+    binding = ImplementationResultBinding(
+        accepted_plan_id=accepted_plan_id,
+        repository_id=str(repository_id or "").strip(),
+        repository_tree_id=repository_tree_id,
+        changed_scope_set_id=scope_set.scope_set_id,
+        changed_scope_ids=scope_set.scope_ids,
+        changed_paths=scope_set.changed_paths,
+        assumption_ids=assumptions_combined,
+        assumptions=assumptions_mapping,
+        validation_bounds=validation_bounds or {},
+        test_evidence_ids=expected_kinds[ImplementationEvidenceKind.TEST],
+        runtime_evidence_ids=expected_kinds[ImplementationEvidenceKind.RUNTIME],
+        static_analysis_evidence_ids=expected_kinds[ImplementationEvidenceKind.STATIC_ANALYSIS],
+        evidence_digests={
+            item.evidence_id: item.evidence_digest for item in evidence
+        },
+        plan_effect_ids=tuple(planned_effect_ids),
+        plan_requirement_ids=tuple(plan_requirement_ids),
+        plan_trace_bound=plan_trace_bound,
+        task_id=task_id,
+    )
+
+    incomplete: list[str] = []
+    if scope_set.conservative:
+        incomplete.append("conservative_changed_scope")
+    for item in evidence:
+        if item.repository_tree_id != repository_tree_id:
+            incomplete.append("evidence_tree_mismatch")
+        if item.repository_id and item.repository_id != binding.repository_id:
+            incomplete.append("evidence_repository_mismatch")
+        if item.accepted_plan_id and item.accepted_plan_id != accepted_plan_id:
+            incomplete.append("evidence_plan_mismatch")
+        if item.scope_ids and not set(item.scope_ids).issubset(binding.changed_scope_ids):
+            incomplete.append("evidence_scope_mismatch")
+        if item.assumption_ids and item.assumption_ids != binding.assumption_ids:
+            incomplete.append("evidence_assumptions_mismatch")
+        if not item.passed:
+            incomplete.append("failed_implementation_evidence")
+        if item.contradictory:
+            incomplete.append("contradictory_implementation_evidence")
+
+    groups: list[tuple[ImplementationObligationKind, tuple[CodeProofScope, ...], tuple[str, ...]]] = []
+    symbols = scope_set.by_kind(ProofScopeKind.QUALIFIED_SYMBOL)
+    interfaces = scope_set.by_kind(ProofScopeKind.INTERFACE)
+    effects = tuple(
+        sorted(
+            (
+                *scope_set.by_kind(ProofScopeKind.CALL),
+                *scope_set.by_kind(ProofScopeKind.STATE_TRANSITION),
+            ),
+            key=lambda item: item.scope_id,
+        )
+    )
+    if symbols:
+        groups.append((ImplementationObligationKind.CHANGED_SYMBOL, symbols, ()))
+    if interfaces:
+        groups.append((ImplementationObligationKind.INTERFACE, interfaces, ()))
+    if effects or binding.planned_effect_ids:
+        groups.append((ImplementationObligationKind.EFFECT, effects or symbols, binding.planned_effect_ids))
+    if binding.test_evidence_ids:
+        groups.append((ImplementationObligationKind.TEST, symbols or tuple(scope_set.scopes), binding.test_evidence_ids))
+    if binding.runtime_evidence_ids:
+        groups.append((ImplementationObligationKind.RUNTIME_EVIDENCE, effects or symbols or tuple(scope_set.scopes), binding.runtime_evidence_ids))
+    if binding.static_analysis_evidence_ids:
+        groups.append((ImplementationObligationKind.STATIC_ANALYSIS, symbols or tuple(scope_set.scopes), binding.static_analysis_evidence_ids))
+    if not groups:
+        incomplete.append("no_derivable_implementation_obligations")
+
+    obligations: list[ImplementationProofObligation] = []
+    kinds: dict[str, str] = {}
+    for kind, scopes, evidence_ids in groups:
+        selected_scope_ids = tuple(
+            sorted(
+                {
+                    item.scope_id
+                    for item in scopes
+                    if item.kind not in {
+                        ProofScopeKind.CHANGED_PATH,
+                        ProofScopeKind.CONSERVATIVE_FILE,
+                    }
+                    and not item.conservative
+                }
+            )
+        )
+        if not selected_scope_ids:
+            incomplete.append(f"no_supported_{kind.value}_scope")
+            continue
+        semantic_definition = {
+            "kind": kind.value,
+            "statement": _OBLIGATION_STATEMENTS[kind],
+            "version": "1",
+        }
+        subject_values = tuple(
+            sorted({item.value for item in scopes if item.value})
+        )
+        subject = ", ".join(subject_values or evidence_ids or binding.plan_effect_ids)
+        obligation = ImplementationProofObligation(
+            repository_id=binding.repository_id,
+            repository_tree_id=binding.repository_tree_id,
+            ast_scope_ids=selected_scope_ids,
+            statement=_OBLIGATION_STATEMENTS[kind],
+            premise_ids=binding.assumption_ids,
+            template_id=f"reviewed-implementation-{kind.value}",
+            template_version="1",
+            template_semantic_hash=content_identity(semantic_definition),
+            invariant_class=f"implementation_{kind.value}",
+            task_id=binding.task_id,
+            required_assurance=required_assurance,
+            metadata={
+                "implementation_binding_id": binding.binding_id,
+                "scope_set_id": binding.changed_scope_set_id,
+                "accepted_plan_id": binding.accepted_plan_id,
+                "assumption_ids": binding.assumption_ids,
+                "validation_bounds": binding.validation_bounds,
+                "evidence_ids": evidence_ids,
+                "obligation_kind": kind.value,
+                "subject": subject,
+            },
+            kind=kind,
+            subject=subject,
+            binding_id=binding.binding_id,
+        )
+        obligations.append(obligation)
+        kinds[obligation.obligation_id] = kind.value
+
+    return ImplementationObligationSet(
+        binding=binding,
+        obligations=tuple(obligations),
+        evidence=evidence,
+        obligation_kinds=kinds,
+        incomplete_reason_codes=tuple(incomplete),
+    )
+
+
+@dataclass(frozen=True)
+class CodeProofReceiptBindingResult:
+    receipt_id: str
+    obligation_id: str
+    binding_id: str
+    valid: bool
+    stale: bool = False
+    contradictory: bool = False
+    reason_codes: tuple[str, ...] = ()
+    authoritative_assurance: AssuranceLevel = AssuranceLevel.UNVERIFIED
+    authoritative_verdict: ProofVerdict = ProofVerdict.INCONCLUSIVE
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CODE_PROOF_BINDING_RESULT_SCHEMA,
+            "receipt_id": self.receipt_id,
+            "obligation_id": self.obligation_id,
+            "binding_id": self.binding_id,
+            "valid": self.valid,
+            "stale": self.stale,
+            "contradictory": self.contradictory,
+            "reason_codes": list(self.reason_codes),
+            "authoritative_assurance": self.authoritative_assurance.value,
+            "authoritative_verdict": self.authoritative_verdict.value,
+        }
+
+
+def validate_code_proof_receipt_bindings(
+    receipt: ProofReceipt | Mapping[str, Any],
+    binding: ImplementationResultBinding | ImplementationObligationSet | Mapping[str, Any],
+    *,
+    obligation: CodeProofObligation | Mapping[str, Any] | None = None,
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    plan_assurance: Any = None,
+) -> CodeProofReceiptBindingResult:
+    """Re-derive every binding needed to accept a code-proof receipt."""
+
+    try:
+        proof = (
+            receipt
+            if isinstance(receipt, ProofReceipt)
+            else ProofReceipt.from_dict(receipt)
+        )
+    except (ContractValidationError, TypeError, ValueError) as exc:
+        raise ValueError(f"invalid canonical code-proof receipt: {exc}") from exc
+    obligation_set = (
+        binding if isinstance(binding, ImplementationObligationSet) else None
+    )
+    if obligation_set is not None:
+        expected_binding = obligation_set.binding
+    elif isinstance(binding, ImplementationResultBinding):
+        expected_binding = binding
+    elif isinstance(binding, Mapping):
+        if "binding" in binding:
+            obligation_set = ImplementationObligationSet.from_dict(binding)
+            expected_binding = obligation_set.binding
+        else:
+            expected_binding = ImplementationResultBinding.from_dict(binding)
+    else:
+        raise TypeError("binding must be an ImplementationResultBinding or obligation set")
+    if obligation is None and obligation_set is not None:
+        matches = [
+            item
+            for item in obligation_set.obligations
+            if item.obligation_id == proof.obligation_id
+        ]
+        obligation = matches[0] if matches else None
+    if isinstance(obligation, Mapping):
+        obligation = CodeProofObligation.from_dict(obligation)
+
+    reasons: list[str] = []
+    stale = False
+    contradictory = proof.authoritative_verdict is ProofVerdict.DISPROVED
+
+    def reject(code: str, *, is_stale: bool = False, is_contradictory: bool = False) -> None:
+        nonlocal stale, contradictory
+        if code not in reasons:
+            reasons.append(code)
+        stale = stale or is_stale
+        contradictory = contradictory or is_contradictory
+
+    if obligation_set is not None and obligation_set.incomplete_reason_codes:
+        reject("implementation_obligation_set_incomplete")
+        for code in obligation_set.incomplete_reason_codes:
+            reject(
+                str(code),
+                is_stale=(
+                    "mismatch" in str(code)
+                    or "conservative" in str(code)
+                ),
+                is_contradictory=(
+                    "contradictory" in str(code)
+                    or str(code).startswith("failed_")
+                ),
+            )
+    if obligation is None:
+        reject("receipt_not_required_by_fresh_obligation_set", is_stale=True)
+    else:
+        if proof.obligation_id != obligation.obligation_id:
+            reject("proof_obligation_mismatch", is_stale=True)
+        if proof.ast_scope_ids != obligation.ast_scope_ids:
+            reject("proof_scope_mismatch", is_stale=True)
+        if proof.premise_ids != expected_binding.assumption_ids:
+            reject("proof_assumptions_or_evidence_mismatch", is_stale=True)
+        obligation_binding = str(
+            obligation.metadata.get("implementation_binding_id") or ""
+        )
+        if obligation_binding and obligation_binding != expected_binding.binding_id:
+            reject("stale_implementation_binding", is_stale=True)
+    if proof.plan_id != expected_binding.accepted_plan_id:
+        reject("proof_plan_mismatch", is_stale=True)
+    if proof.repository_id != expected_binding.repository_id:
+        reject("proof_repository_mismatch", is_stale=True)
+    if proof.repository_tree_id != expected_binding.repository_tree_id:
+        reject("proof_tree_mismatch", is_stale=True)
+    if proof.freshness is not EvidenceFreshness.CURRENT:
+        reject("stale_proof_receipt", is_stale=True)
+        reject("stale_code_proof_receipt", is_stale=True)
+    if proof.authoritative_verdict is not ProofVerdict.PROVED:
+        reject(
+            "code_proof_not_proved",
+            is_contradictory=proof.authoritative_verdict is ProofVerdict.DISPROVED,
+        )
+    required = AssuranceLevel(required_assurance)
+    if not assurance_satisfies(proof.authoritative_assurance, required):
+        reject("required_code_assurance_not_satisfied")
+    metadata_binding = str(
+        proof.metadata.get("implementation_binding_id")
+        or proof.metadata.get("binding_id")
+        or ""
+    )
+    if metadata_binding != expected_binding.binding_id:
+        reject("receipt_binding_mismatch", is_stale=True)
+    expected_metadata = expected_binding.receipt_metadata()
+    for key, expected in expected_metadata.items():
+        if proof.metadata.get(key) != expected:
+            reject(
+                f"receipt_{key}_mismatch",
+                is_contradictory=True,
+            )
+    if proof.metadata.get("receipt_purpose") != "code_proof":
+        reject("receipt_purpose_not_code_proof", is_contradictory=True)
+
+    if plan_assurance is not None:
+        plan_id = str(
+            plan_assurance.get("plan_id", "")
+            if isinstance(plan_assurance, Mapping)
+            else getattr(plan_assurance, "plan_id", "")
+        )
+        consistency = _canonical_strings(
+            plan_assurance.get("consistency_receipt_ids", ())
+            if isinstance(plan_assurance, Mapping)
+            else getattr(plan_assurance, "consistency_receipt_ids", ())
+        )
+        conformance = _canonical_strings(
+            plan_assurance.get("conformance_receipt_ids", ())
+            if isinstance(plan_assurance, Mapping)
+            else getattr(plan_assurance, "conformance_receipt_ids", ())
+        )
+        code_receipts = _canonical_strings(
+            plan_assurance.get("code_proof_receipt_ids", ())
+            if isinstance(plan_assurance, Mapping)
+            else getattr(plan_assurance, "code_proof_receipt_ids", ())
+        )
+        if plan_id != expected_binding.accepted_plan_id:
+            reject("plan_assurance_binding_mismatch", is_stale=True)
+        if proof.receipt_id in set(consistency) | set(conformance):
+            reject("plan_receipt_reused_as_code_proof")
+        if proof.receipt_id not in code_receipts:
+            reject("receipt_not_declared_as_code_proof")
+
+    if contradictory:
+        reject("contradictory_code_proof_receipt", is_contradictory=True)
+
+    return CodeProofReceiptBindingResult(
+        receipt_id=proof.receipt_id,
+        obligation_id=proof.obligation_id,
+        binding_id=expected_binding.binding_id,
+        valid=not reasons,
+        stale=stale,
+        contradictory=contradictory,
+        reason_codes=tuple(reasons),
+        authoritative_assurance=proof.authoritative_assurance,
+        authoritative_verdict=proof.authoritative_verdict,
+    )
+
+
+# Concise compatibility spellings for integration callers.
+derive_implementation_obligations = derive_fresh_implementation_obligations
+compile_implementation_obligations = derive_fresh_implementation_obligations
+validate_code_proof_receipt_binding = validate_code_proof_receipt_bindings
+ImplementationBinding = ImplementationResultBinding
+ImplementationEvidence = ImplementationResultEvidence
+FreshImplementationObligations = ImplementationObligationSet
+
+
 __all__ = [
     "ASTProofScope",
     "CODE_OBLIGATION_CACHE_KEY_SCHEMA",
     "CODE_OBLIGATION_REQUEST_SCHEMA",
+    "CODE_PROOF_BINDING_RESULT_SCHEMA",
     "CandidateChangeKind",
     "CandidateDiffEntry",
     "CandidateFileDiff",
@@ -1578,6 +2698,19 @@ __all__ = [
     "CodeProofScopeSet",
     "CompiledProofScopes",
     "DiffChangeKind",
+    "FreshImplementationObligations",
+    "IMPLEMENTATION_BINDING_SCHEMA",
+    "IMPLEMENTATION_EVIDENCE_SCHEMA",
+    "IMPLEMENTATION_OBLIGATION_SET_SCHEMA",
+    "ImplementationBinding",
+    "ImplementationEvidence",
+    "ImplementationEvidenceKind",
+    "ImplementationObligationKind",
+    "ImplementationObligationSet",
+    "ImplementationProofObligation",
+    "ImplementationResultBinding",
+    "ImplementationResultEvidence",
+    "CodeProofReceiptBindingResult",
     "PROOF_SCOPE_SCHEMA",
     "PROOF_SCOPE_SET_SCHEMA",
     "ProofScopeCompilationStats",
@@ -1598,7 +2731,12 @@ __all__ = [
     "compile_code_proof_scopes",
     "compile_ast_proof_scopes",
     "compile_proof_scopes",
+    "compile_implementation_obligations",
+    "derive_fresh_implementation_obligations",
+    "derive_implementation_obligations",
     "materialize_code_proof_obligation",
     "obligation_cache_identity",
     "parse_unified_diff",
+    "validate_code_proof_receipt_binding",
+    "validate_code_proof_receipt_bindings",
 ]
