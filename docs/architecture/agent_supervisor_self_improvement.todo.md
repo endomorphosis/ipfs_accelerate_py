@@ -320,7 +320,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-018 Add a shared Python supervisor control service
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -839,3 +839,399 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: aggregate
 - Todo vector key: 3326382b6b3fd152
 - Acceptance: Objective scan filed this gap for ASI-G103. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-033-objective-gap-0d78ada68b4b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (031486194157679117987393491870400400279), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/control/ipfs_accelerate_py/41f9dfafffc3; implement a complete, cohesive change that fully advances the packet goals (ASI-G103, ASI-G104) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-034 Close objective gap: Prove 127990245919649912156052660092678945998 for High-quality task generation and conflict-aware bundling
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: task-generation
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/objective_graph.py, ipfs_accelerate_py/agent_supervisor/todo_vector_index.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, test/api/test_agent_supervisor_task_quality.py, test/api/test_agent_supervisor_bundle_optimizer.py
+- Validation: python -m pytest test/api/test_agent_supervisor_task_quality.py test/api/test_agent_supervisor_bundle_optimizer.py -q
+- Bundle: agent-supervisor/self-improvement/task-generation
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-task-generation.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G050
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/task-generation
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/objective_graph.py, ipfs_accelerate_py/agent_supervisor/todo_vector_index.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, test/api/test_agent_supervisor_task_quality.py, test/api/test_agent_supervisor_bundle_optimizer.py
+- Changed paths: 
+- AST symbols: 127990245919649912156052660092678945998
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G106
+- Canonical task key: task/v1/10db9b9dd94af56ab99b28a1578997f5aa2992e1faa2e961ca0f2953e9be013b
+- Canonical task CID: baguqeeracdnzxhozjl2wvom3fcqvpcmx6wvctexb7krosyokb4uvh2n6ae5q
+- Missing evidence: 127990245919649912156052660092678945998
+- Embedding query: 127990245919649912156052660092678945998
+- AST query: 127990245919649912156052660092678945998
+- Surplus group: objective/ASI-G106
+- Merge key: 9d2a9e22c09d4e31
+- Merge family: goal_packet/task_generation/ipfs_accelerate_py/ce70f0ff87a8
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/task_generation/ipfs_accelerate_py/ce70f0ff87a8
+- Goal packet role: packet_anchor
+- Goal packet goals: ASI-G106, ASI-G107
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: aggregate
+- Todo vector key: 7d1a535cbd8caac6
+- Acceptance: Objective scan filed this gap for ASI-G106. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-034-objective-gap-65cde082de67.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (127990245919649912156052660092678945998), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/task_generation/ipfs_accelerate_py/ce70f0ff87a8; implement a complete, cohesive change that fully advances the packet goals (ASI-G106, ASI-G107) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-035 Close objective gap: Prove 061582446926920746660485801841658333166 for High-quality task generation and conflict-aware bundling
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: task-generation
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/objective_graph.py, ipfs_accelerate_py/agent_supervisor/todo_vector_index.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, test/api/test_agent_supervisor_task_quality.py, test/api/test_agent_supervisor_bundle_optimizer.py
+- Validation: python -m pytest test/api/test_agent_supervisor_task_quality.py test/api/test_agent_supervisor_bundle_optimizer.py -q
+- Bundle: agent-supervisor/self-improvement/task-generation
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-task-generation.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G050
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/task-generation
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/objective_graph.py, ipfs_accelerate_py/agent_supervisor/todo_vector_index.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, test/api/test_agent_supervisor_task_quality.py, test/api/test_agent_supervisor_bundle_optimizer.py
+- Changed paths: 
+- AST symbols: 061582446926920746660485801841658333166
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G107
+- Canonical task key: task/v1/2052ea9ff565e2c5faf9ebbc9a40a26f522917a86c5c9859116fa21799512de1
+- Canonical task CID: baguqeeraebjovh7vmxrml6xz5o6juqfcn5jcsf5inrojqwirn6rbpgkrfxqq
+- Missing evidence: 061582446926920746660485801841658333166
+- Embedding query: 061582446926920746660485801841658333166
+- AST query: 061582446926920746660485801841658333166
+- Surplus group: objective/ASI-G107
+- Merge key: 188046114fa5c607
+- Merge family: goal_packet/task_generation/ipfs_accelerate_py/ce70f0ff87a8
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/task_generation/ipfs_accelerate_py/ce70f0ff87a8
+- Goal packet role: packet_member
+- Goal packet goals: ASI-G106, ASI-G107
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: aggregate
+- Todo vector key: 9fe1e62b5ad643a3
+- Acceptance: Objective scan filed this gap for ASI-G107. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-035-objective-gap-f7111607e003.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (061582446926920746660485801841658333166), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/task_generation/ipfs_accelerate_py/ce70f0ff87a8; implement a complete, cohesive change that fully advances the packet goals (ASI-G106, ASI-G107) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-036 Close objective gap: Prove 122080003600146794820964010047426915846 for Adaptive parallel execution and acceptance throughput
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: parallelism
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, ipfs_accelerate_py/agent_supervisor/merge_queue.py, test/api/test_agent_supervisor_adaptive_resources.py, test/api/test_agent_supervisor_provider_batch_scheduler.py, test/api/test_agent_supervisor_parallel_acceptance_flow.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_resources.py test/api/test_agent_supervisor_provider_batch_scheduler.py test/api/test_agent_supervisor_parallel_acceptance_flow.py -q
+- Bundle: agent-supervisor/self-improvement/runtime
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G060
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/runtime
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, ipfs_accelerate_py/agent_supervisor/merge_queue.py, test/api/test_agent_supervisor_adaptive_resources.py, test/api/test_agent_supervisor_provider_batch_scheduler.py, test/api/test_agent_supervisor_parallel_acceptance_flow.py
+- Changed paths: 
+- AST symbols: 122080003600146794820964010047426915846
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G109
+- Canonical task key: task/v1/f57a355062f2b9f870199ae6b661ef416a3eee60e02038e66d84422fa6239554
+- Canonical task CID: baguqeera6v5dkudc6k47q4aztltlmyppifvd53ta4aqdrztnqrbc7jrdsvka
+- Missing evidence: 122080003600146794820964010047426915846
+- Embedding query: 122080003600146794820964010047426915846
+- AST query: 122080003600146794820964010047426915846
+- Surplus group: objective/ASI-G109
+- Merge key: 289d1236ddc0d576
+- Merge family: goal_packet/parallelism/ipfs_accelerate_py/15113ac0da8a
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/parallelism/ipfs_accelerate_py/15113ac0da8a
+- Goal packet role: packet_anchor
+- Goal packet goals: ASI-G109, ASI-G110
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: aggregate
+- Todo vector key: 12b6dab6c9e9edb8
+- Acceptance: Objective scan filed this gap for ASI-G109. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-036-objective-gap-6b24a2957d53.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (122080003600146794820964010047426915846), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/parallelism/ipfs_accelerate_py/15113ac0da8a; implement a complete, cohesive change that fully advances the packet goals (ASI-G109, ASI-G110) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-037 Close objective gap: Prove 124037811551945145648172208272779822741 for Adaptive parallel execution and acceptance throughput
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: parallelism
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, ipfs_accelerate_py/agent_supervisor/merge_queue.py, test/api/test_agent_supervisor_adaptive_resources.py, test/api/test_agent_supervisor_provider_batch_scheduler.py, test/api/test_agent_supervisor_parallel_acceptance_flow.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_resources.py test/api/test_agent_supervisor_provider_batch_scheduler.py test/api/test_agent_supervisor_parallel_acceptance_flow.py -q
+- Bundle: agent-supervisor/self-improvement/runtime
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G060
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/runtime
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, ipfs_accelerate_py/agent_supervisor/merge_queue.py, test/api/test_agent_supervisor_adaptive_resources.py, test/api/test_agent_supervisor_provider_batch_scheduler.py, test/api/test_agent_supervisor_parallel_acceptance_flow.py
+- Changed paths: 
+- AST symbols: 124037811551945145648172208272779822741
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G110
+- Canonical task key: task/v1/555fbd72dc3f28872f022ea2154da114b1d45e52319a2942c73be2e604619f59
+- Canonical task CID: baguqeerakvp324w4h4uiolycf2rbktnbcsy5ixssggncsqwhhprombdbt5mq
+- Missing evidence: 124037811551945145648172208272779822741
+- Embedding query: 124037811551945145648172208272779822741
+- AST query: 124037811551945145648172208272779822741
+- Surplus group: objective/ASI-G110
+- Merge key: cbb9336891d387cb
+- Merge family: goal_packet/parallelism/ipfs_accelerate_py/15113ac0da8a
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/parallelism/ipfs_accelerate_py/15113ac0da8a
+- Goal packet role: packet_member
+- Goal packet goals: ASI-G109, ASI-G110
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: aggregate
+- Todo vector key: 79335d87dc18f4a5
+- Acceptance: Objective scan filed this gap for ASI-G110. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-037-objective-gap-7ecbf43441fa.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (124037811551945145648172208272779822741), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/parallelism/ipfs_accelerate_py/15113ac0da8a; implement a complete, cohesive change that fully advances the packet goals (ASI-G109, ASI-G110) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-038 Close objective gap: Prove 020061024173618462922348580596364003627 for Benchmark-driven bounded self-refill
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: self-refill
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/self_improvement.py, ipfs_accelerate_py/agent_supervisor/objective_tracker.py, ipfs_accelerate_py/agent_supervisor/backlog_refinery.py, test/api/test_agent_supervisor_self_improvement_refill.py
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_refill.py -q
+- Bundle: agent-supervisor/self-improvement/refill
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-refill.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G080
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/refill
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_improvement.py, ipfs_accelerate_py/agent_supervisor/objective_tracker.py, ipfs_accelerate_py/agent_supervisor/backlog_refinery.py, test/api/test_agent_supervisor_self_improvement_refill.py
+- Changed paths: 
+- AST symbols: 020061024173618462922348580596364003627
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G112
+- Canonical task key: task/v1/6f06aebf1cca38911c4bee6bae1e80274fd9956f4b004ab5a2d86406f60fd2a5
+- Canonical task CID: baguqeeran4dk5py4zi4jchcl5zv24huae5h5tflpjmaevnnc3bsan5qp2ksq
+- Missing evidence: 020061024173618462922348580596364003627
+- Embedding query: 020061024173618462922348580596364003627
+- AST query: 020061024173618462922348580596364003627
+- Surplus group: objective/ASI-G112
+- Merge key: 1a89496444f4ae3e
+- Merge family: goal_packet/self_refill/ipfs_accelerate_py/8a96cb4debe6
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/self_refill/ipfs_accelerate_py/8a96cb4debe6
+- Goal packet role: packet_anchor
+- Goal packet goals: ASI-G112, ASI-G113
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: aggregate
+- Todo vector key: 3dad940e85a80f47
+- Acceptance: Objective scan filed this gap for ASI-G112. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-038-objective-gap-a76f6a041f2a.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (020061024173618462922348580596364003627), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/self_refill/ipfs_accelerate_py/8a96cb4debe6; implement a complete, cohesive change that fully advances the packet goals (ASI-G112, ASI-G113) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-039 Close objective gap: Prove 065313778069923158401871898168782520190 for Benchmark-driven bounded self-refill
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: self-refill
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/self_improvement.py, ipfs_accelerate_py/agent_supervisor/objective_tracker.py, ipfs_accelerate_py/agent_supervisor/backlog_refinery.py, test/api/test_agent_supervisor_self_improvement_refill.py
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_refill.py -q
+- Bundle: agent-supervisor/self-improvement/refill
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-refill.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G080
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/refill
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_improvement.py, ipfs_accelerate_py/agent_supervisor/objective_tracker.py, ipfs_accelerate_py/agent_supervisor/backlog_refinery.py, test/api/test_agent_supervisor_self_improvement_refill.py
+- Changed paths: 
+- AST symbols: 065313778069923158401871898168782520190
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G113
+- Canonical task key: task/v1/ce2a4c8fe70c83ad64ec8c004b38bc4ef13d8f302cae61536eec6565e831338f
+- Canonical task CID: baguqeerazyvezd7hbsb22zhmrqaewof4j3yt3dzqfsxgcu3o5rswl2brgohq
+- Missing evidence: 065313778069923158401871898168782520190
+- Embedding query: 065313778069923158401871898168782520190
+- AST query: 065313778069923158401871898168782520190
+- Surplus group: objective/ASI-G113
+- Merge key: dec04523e504c8a4
+- Merge family: goal_packet/self_refill/ipfs_accelerate_py/8a96cb4debe6
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/self_refill/ipfs_accelerate_py/8a96cb4debe6
+- Goal packet role: packet_member
+- Goal packet goals: ASI-G112, ASI-G113
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: aggregate
+- Todo vector key: a2c577fff243d1e9
+- Acceptance: Objective scan filed this gap for ASI-G113. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-039-objective-gap-80145577de5a.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (065313778069923158401871898168782520190), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/self_refill/ipfs_accelerate_py/8a96cb4debe6; implement a complete, cohesive change that fully advances the packet goals (ASI-G112, ASI-G113) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-040 Close objective gap: Prove 109590900757783560279417463762322084165 for Paired rollout, stable exports, and operator adoption
+
+- Status: todo
+- Completion: manual
+- Priority: P2
+- Track: rollout
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, test/api/test_agent_supervisor_self_improvement_e2e.py, test/api/test_agent_supervisor_self_improvement_benchmark.py, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/guides/AGENT_SUPERVISOR_GUIDE.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_e2e.py test/api/test_agent_supervisor_self_improvement_benchmark.py -q
+- Bundle: agent-supervisor/self-improvement/rollout
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-rollout.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G090
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/rollout
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: test/api/test_agent_supervisor_self_improvement_e2e.py, test/api/test_agent_supervisor_self_improvement_benchmark.py, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/guides/AGENT_SUPERVISOR_GUIDE.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Changed paths: 
+- AST symbols: 109590900757783560279417463762322084165
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G115
+- Canonical task key: task/v1/1f119403d60eaee47cdb29ada72a90ed5daec982f9b5a38677c70f05be5d6db3
+- Canonical task CID: baguqeerad4izia6wb2xoi7g3fgw2okuq5vo25smc7g22hbtxy4hqlps5nwzq
+- Missing evidence: 109590900757783560279417463762322084165
+- Embedding query: 109590900757783560279417463762322084165
+- AST query: 109590900757783560279417463762322084165
+- Surplus group: objective/ASI-G115
+- Merge key: 91b802c417899562
+- Merge family: goal_packet/rollout/test/681e7b98bec3
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/rollout/test/681e7b98bec3
+- Goal packet role: packet_anchor
+- Goal packet goals: ASI-G115, ASI-G116
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: aggregate
+- Todo vector key: 3867a7024bb24345
+- Acceptance: Objective scan filed this gap for ASI-G115. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-040-objective-gap-cd799ff05e32.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (109590900757783560279417463762322084165), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/rollout/test/681e7b98bec3; implement a complete, cohesive change that fully advances the packet goals (ASI-G115, ASI-G116) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-041 Close objective gap: Prove 146189916032404266364029134505159070240 for Paired rollout, stable exports, and operator adoption
+
+- Status: todo
+- Completion: manual
+- Priority: P2
+- Track: rollout
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, test/api/test_agent_supervisor_self_improvement_e2e.py, test/api/test_agent_supervisor_self_improvement_benchmark.py, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/guides/AGENT_SUPERVISOR_GUIDE.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Validation: python -m pytest test/api/test_agent_supervisor_self_improvement_e2e.py test/api/test_agent_supervisor_self_improvement_benchmark.py -q
+- Bundle: agent-supervisor/self-improvement/rollout
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-rollout.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G090
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/rollout
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: test/api/test_agent_supervisor_self_improvement_e2e.py, test/api/test_agent_supervisor_self_improvement_benchmark.py, ipfs_accelerate_py/agent_supervisor/__init__.py, docs/guides/AGENT_SUPERVISOR_GUIDE.md, docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md, docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md
+- Changed paths: 
+- AST symbols: 146189916032404266364029134505159070240
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G116
+- Canonical task key: task/v1/40d356fa3119cb536caecf97d6e9f266bb93cd618dd0b9a4543b3d90032cd8a6
+- Canonical task CID: baguqeeraidjvn6rrdhfvg3foz6l5n2psm25zhtlbrxiltjcuhm6zaazm3cta
+- Missing evidence: 146189916032404266364029134505159070240
+- Embedding query: 146189916032404266364029134505159070240
+- AST query: 146189916032404266364029134505159070240
+- Surplus group: objective/ASI-G116
+- Merge key: b593ee621fc1acdb
+- Merge family: goal_packet/rollout/test/681e7b98bec3
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/rollout/test/681e7b98bec3
+- Goal packet role: packet_member
+- Goal packet goals: ASI-G115, ASI-G116
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: aggregate
+- Todo vector key: 1f9f5463d54101f9
+- Acceptance: Objective scan filed this gap for ASI-G116. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-041-objective-gap-a1d0758f5e00.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (146189916032404266364029134505159070240), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/rollout/test/681e7b98bec3; implement a complete, cohesive change that fully advances the packet goals (ASI-G115, ASI-G116) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-042 Close objective gap: Adaptive parallel execution and acceptance throughput
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: parallelism
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, ipfs_accelerate_py/agent_supervisor/merge_queue.py, test/api/test_agent_supervisor_adaptive_resources.py, test/api/test_agent_supervisor_provider_batch_scheduler.py, test/api/test_agent_supervisor_parallel_acceptance_flow.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_resources.py test/api/test_agent_supervisor_provider_batch_scheduler.py test/api/test_agent_supervisor_parallel_acceptance_flow.py -q
+- Bundle: agent-supervisor/self-improvement/runtime
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G000
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/runtime
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/resource_scheduler.py, ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/merge_train.py, ipfs_accelerate_py/agent_supervisor/merge_queue.py, test/api/test_agent_supervisor_adaptive_resources.py, test/api/test_agent_supervisor_provider_batch_scheduler.py, test/api/test_agent_supervisor_parallel_acceptance_flow.py
+- Changed paths: 
+- AST symbols: ResourceScheduler BundleSupervisor ValidationScheduler MergeQueue
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G060
+- Canonical task key: task/v1/1b42975068842a93d2af5808f95166f2cf308c3f1edc4ff19cf00bef1778c4f1
+- Canonical task CID: baguqeeradnbjoudiqqvjhuvplaepsulg6lhtbdb7d3oe74m46af66f3yytyq
+- Missing evidence: 122080003600146794820964010047426915846, 124037811551945145648172208272779822741, 185033715568272291470322170325431455647
+- Embedding query: adaptive parallelism CPU GPU provider batching validation workers merge queue throughput backpressure fairness
+- AST query: ResourceScheduler BundleSupervisor ValidationScheduler MergeQueue
+- Surplus group: objective/ASI-G060
+- Merge key: 449164eeab10c013
+- Merge family: objective/ASI-G060
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: 5dcbcd5e3eb2335e
+- Acceptance: Objective scan filed this gap for ASI-G060. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-042-objective-gap-4de9b02f0a16.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (122080003600146794820964010047426915846, 124037811551945145648172208272779822741, 185033715568272291470322170325431455647), and keep the supervisor-fed backlog aligned with the objective heap.  Split scheduling, provider batching, and validation/merge throughput into separately benchmarked lanes.
