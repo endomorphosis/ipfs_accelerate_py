@@ -49,7 +49,6 @@ import logging
 import math
 import os
 import re
-import string
 import time
 import urllib.error
 import urllib.request
@@ -69,6 +68,11 @@ from typing import (
 )
 
 from .router_deps import RouterDeps, get_default_router_deps
+from .voice_templates import (
+    buildVoiceGraphRagPromptParts,
+    normalize_spoken_text,
+    template_fields,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1207,6 +1211,7 @@ class GraphRAGVoiceTemplateProvider:
             raise ValueError("GraphRAG backend must be provided")
         self.backend = backend
         self.minimum_confidence = float(minimum_confidence)
+        self.last_prompt_parts: Optional[Mapping[str, object]] = None
 
     def _backend_callable(self) -> Callable[..., object]:
         for method_name in (
@@ -1228,16 +1233,45 @@ class GraphRAGVoiceTemplateProvider:
         *,
         context: Optional[Mapping[str, object]] = None,
         language: Optional[str] = None,
-        grounding: Optional[Mapping[str, object]] = None,
+        grounding: Optional[Union[Mapping[str, object], Sequence[object]]] = None,
         max_results: int = 5,
     ) -> Optional[VoiceResponsePlan]:
-        raw = _call_with_supported_keywords(
-            self._backend_callable(),
+        # Build this envelope at the router boundary so every injected backend
+        # sees the same canonical query contract.  It is retained for audit
+        # and debugging, but is never treated as a generated answer or slot
+        # source.  Backends that explicitly opt into ``prompt_parts`` receive
+        # it below; older backends keep their narrow, compatible signatures.
+        prompt_parts = buildVoiceGraphRagPromptParts(
             transcript,
-            context=dict(context or {}),
+            context=context,
             language=language,
-            grounding=dict(grounding or {}),
+            grounding=grounding,
             max_results=max_results,
+        )
+        self.last_prompt_parts = prompt_parts
+        backend = self._backend_callable()
+        backend_kwargs: Dict[str, object] = {
+            "context": dict(prompt_parts["context"]),
+            "language": prompt_parts["language"],
+            "grounding": (
+                dict(grounding)
+                if isinstance(grounding, Mapping)
+                else list(grounding or ())
+            ),
+            "max_results": prompt_parts["max_results"],
+        }
+        try:
+            import inspect
+
+            signature = inspect.signature(backend)
+            if "prompt_parts" in signature.parameters:
+                backend_kwargs["prompt_parts"] = dict(prompt_parts)
+        except (TypeError, ValueError):
+            pass
+        raw = _call_with_supported_keywords(
+            backend,
+            prompt_parts["query"],
+            **backend_kwargs,
         )
         if raw is None:
             return None
@@ -2276,28 +2310,10 @@ def _grounding_override_slots(
 
 
 def _template_fields(template: str) -> Tuple[str, ...]:
-    fields = []
     try:
-        parsed = string.Formatter().parse(template)
-        for _, field_name, format_spec, conversion in parsed:
-            if field_name is None:
-                continue
-            if not field_name:
-                raise ValueError("invalid_template_slot: empty field")
-            if any(marker in field_name for marker in (".", "[", "]")):
-                raise ValueError(
-                    f"invalid_template_slot: unsafe field expression {field_name!r}"
-                )
-            if format_spec or conversion:
-                raise ValueError(
-                    f"invalid_template_slot: formatting is not allowed for {field_name!r}"
-                )
-            fields.append(field_name)
-    except (KeyError, IndexError, ValueError) as error:
-        if str(error).startswith("invalid_template_slot"):
-            raise
-        raise ValueError(f"invalid_template: {error}") from error
-    return tuple(dict.fromkeys(fields))
+        return template_fields(template)
+    except ValueError as error:
+        raise ValueError(f"invalid_template_slot: {error}") from error
 
 
 def _render_grounded_plan(
@@ -2376,30 +2392,7 @@ def _render_grounded_plan(
 
 def _normalize_spoken_text(text: str) -> str:
     """Remove visual citations while retaining their machine provenance."""
-    spoken = str(text or "")
-    spoken = re.sub(
-        r"(?i)\[(?:source|citation|evidence)(?:\s+\d+)?\]"
-        r"\((?:https?|ipfs)://[^)]+\)",
-        "",
-        spoken,
-    )
-    spoken = re.sub(r"\[([^\]]+)\]\((?:https?|ipfs)://[^)]+\)", r"\1", spoken)
-    spoken = re.sub(r"\s*\[\s*\d+(?:\s*,\s*\d+)*\s*\]", "", spoken)
-    spoken = re.sub(
-        r"(?is)\s+(?:sources?|evidence|citations?)\s*:\s*"
-        r"(?:(?:https?|ipfs)://\S+|bafy[a-z0-9]+).*$",
-        "",
-        spoken,
-    )
-    spoken = re.sub(r"(?i)(?:https?|ipfs)://\S+", "", spoken)
-    spoken = re.sub(r"\bbafy[a-z0-9]{20,}\b", "", spoken, flags=re.IGNORECASE)
-    spoken = re.sub(r"[ \t]+", " ", spoken)
-    spoken = re.sub(r"\s+([,.;:!?])", r"\1", spoken)
-    spoken = re.sub(r"([.!?])(?:\s*\1)+", r"\1", spoken)
-    spoken = re.sub(r"\s*\n+\s*", " ", spoken).strip(" \t\r\n-")
-    if not spoken:
-        raise ValueError("empty_spoken_response_after_citation_stripping")
-    return spoken
+    return normalize_spoken_text(text)
 
 
 def _audio_format(audio: Optional[bytes], requested: Optional[str]) -> Optional[str]:
@@ -3030,6 +3023,7 @@ __all__ = [
     "VoiceResponsePlan",
     "VoiceTemplateProvider",
     "GraphRAGVoiceTemplateProvider",
+    "buildVoiceGraphRagPromptParts",
     "VoiceStageTrace",
     "VoiceTurnRequest",
     "VoiceTurnProvenance",

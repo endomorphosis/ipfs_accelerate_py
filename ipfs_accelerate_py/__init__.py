@@ -469,6 +469,7 @@ if not SKIP_CORE:
             VoiceResponsePlan,
             VoiceTemplateProvider,
             GraphRAGVoiceTemplateProvider,
+            buildVoiceGraphRagPromptParts,
             VoiceStageTrace,
             VoiceTurnRequest,
             VoiceTurnProvenance,
@@ -501,6 +502,7 @@ if not SKIP_CORE:
         export["VoiceResponsePlan"] = VoiceResponsePlan
         export["VoiceTemplateProvider"] = VoiceTemplateProvider
         export["GraphRAGVoiceTemplateProvider"] = GraphRAGVoiceTemplateProvider
+        export["buildVoiceGraphRagPromptParts"] = buildVoiceGraphRagPromptParts
         export["VoiceStageTrace"] = VoiceStageTrace
         export["VoiceTurnRequest"] = VoiceTurnRequest
         export["VoiceTurnProvenance"] = VoiceTurnProvenance
@@ -533,6 +535,7 @@ if not SKIP_CORE:
         VoiceResponsePlan = None
         VoiceTemplateProvider = None
         GraphRAGVoiceTemplateProvider = None
+        buildVoiceGraphRagPromptParts = None
         VoiceStageTrace = None
         VoiceTurnRequest = None
         VoiceTurnProvenance = None
@@ -565,6 +568,7 @@ else:
     VoiceResponsePlan = None
     VoiceTemplateProvider = None
     GraphRAGVoiceTemplateProvider = None
+    buildVoiceGraphRagPromptParts = None
     VoiceStageTrace = None
     VoiceTurnRequest = None
     VoiceTurnProvenance = None
@@ -607,6 +611,7 @@ __all__ = [
     'VOICE_STAGE_STATUSES', 'VOICE_TURN_STATUSES', 'DEFAULT_GROUNDED_FALLBACK',
     'GroundingEvidence', 'VoiceGroundingSource', 'GroundedSlot',
     'VoiceResponsePlan', 'VoiceTemplateProvider', 'GraphRAGVoiceTemplateProvider',
+    'buildVoiceGraphRagPromptParts',
     'VoiceStageTrace', 'VoiceTurnRequest', 'VoiceTurnProvenance',
     'VoiceTurnResult', 'voice_turn_cache_key', 'process_voice_turn',
 ]
