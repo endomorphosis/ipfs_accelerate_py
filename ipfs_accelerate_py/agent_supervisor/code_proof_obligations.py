@@ -1790,6 +1790,8 @@ class ImplementationResultBinding:
     plan_requirement_ids: tuple[str, ...] = ()
     plan_trace_bound: int | None = None
     task_id: str = ""
+    proposal_validation_receipt_id: str = ""
+    proposal_accepted: bool | None = None
     binding_id: str = ""
 
     def __post_init__(self) -> None:
@@ -1799,6 +1801,7 @@ class ImplementationResultBinding:
             "repository_tree_id",
             "changed_scope_set_id",
             "task_id",
+            "proposal_validation_receipt_id",
         ):
             object.__setattr__(self, name, str(getattr(self, name) or "").strip())
         for name in (
@@ -1823,6 +1826,14 @@ class ImplementationResultBinding:
             )
         if not self.changed_scope_ids or not self.changed_paths:
             raise ValueError("implementation binding requires a nonempty changed scope")
+        if self.proposal_accepted is not None and not isinstance(
+            self.proposal_accepted, bool
+        ):
+            raise TypeError("proposal_accepted must be boolean or None")
+        if self.proposal_validation_receipt_id and self.proposal_accepted is not True:
+            raise ValueError(
+                "a proposal validation receipt must represent accepted output"
+            )
         object.__setattr__(self, "assumptions", _canonical_mapping(self.assumptions))
         object.__setattr__(self, "validation_bounds", _canonical_mapping(self.validation_bounds))
         digests = {
@@ -1868,7 +1879,7 @@ class ImplementationResultBinding:
         return self.repository_tree_id
 
     def _identity_payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": IMPLEMENTATION_BINDING_SCHEMA,
             "accepted_plan_id": self.accepted_plan_id,
             "repository_id": self.repository_id,
@@ -1888,6 +1899,12 @@ class ImplementationResultBinding:
             "plan_trace_bound": self.plan_trace_bound,
             "task_id": self.task_id,
         }
+        if self.proposal_validation_receipt_id or self.proposal_accepted is not None:
+            payload["proposal_validation_receipt_id"] = (
+                self.proposal_validation_receipt_id
+            )
+            payload["proposal_accepted"] = self.proposal_accepted
+        return payload
 
     @property
     def assumptions_digest(self) -> str:
@@ -1927,6 +1944,11 @@ class ImplementationResultBinding:
             "plan_trace_bound": self.plan_trace_bound,
             "task_id": self.task_id,
         }
+        if self.proposal_validation_receipt_id:
+            payload["proposal_validation_receipt_id"] = (
+                self.proposal_validation_receipt_id
+            )
+            payload["proposal_accepted"] = self.proposal_accepted
         if obligation is not None:
             payload["code_proof_obligation_id"] = obligation.obligation_id
             payload["code_proof_scope_ids"] = obligation.ast_scope_ids
@@ -1958,6 +1980,12 @@ class ImplementationResultBinding:
             plan_requirement_ids=tuple(payload.get("plan_requirement_ids") or ()),
             plan_trace_bound=payload.get("plan_trace_bound"),
             task_id=str(payload.get("task_id") or ""),
+            proposal_validation_receipt_id=str(
+                payload.get("proposal_validation_receipt_id")
+                or payload.get("proposal_receipt_id")
+                or ""
+            ),
+            proposal_accepted=payload.get("proposal_accepted"),
             binding_id=str(payload.get("binding_id") or payload.get("content_id") or ""),
         )
 
@@ -2251,6 +2279,7 @@ def derive_fresh_implementation_obligations(
     plan_requirement_ids: Iterable[str] = (),
     plan_trace_bound: int | None = None,
     task_id: str = "",
+    proposal_validation: Any = None,
     required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
 ) -> ImplementationObligationSet:
     """Derive fresh post-execution obligations from code and bounded evidence."""
@@ -2324,6 +2353,32 @@ def derive_fresh_implementation_obligations(
     if not scope_set.scopes or not scope_set.changed_paths:
         raise ValueError("fresh obligations require a nonempty changed scope")
 
+    proposal_receipt_id = ""
+    proposal_accepted: bool | None = None
+    if proposal_validation is not None:
+        # Kept local to avoid introducing a module-import cycle.
+        from .proposal_validation import ProposalValidationResult
+
+        proposal_result = (
+            proposal_validation
+            if isinstance(proposal_validation, ProposalValidationResult)
+            else ProposalValidationResult.from_dict(proposal_validation)
+        )
+        proposal_accepted = proposal_result.accepted
+        if not proposal_accepted:
+            raise ValueError(
+                "rejected proposal cannot produce implementation proof obligations"
+            )
+        if proposal_result.proposal.accepted_plan_id != accepted_plan_id:
+            raise ValueError("proposal and implementation plan do not match")
+        if proposal_result.proposal.repository_tree_id != repository_tree_id:
+            raise ValueError("proposal and implementation tree do not match")
+        if tuple(proposal_result.proposal.changed_paths) != tuple(
+            scope_set.changed_paths
+        ):
+            raise ValueError("proposal and implementation changed scopes do not match")
+        proposal_receipt_id = proposal_result.receipt.receipt_id
+
     evidence = _evidence_values(
         (*tuple(test_evidence), *tuple(runtime_evidence), *tuple(static_analysis_evidence))
     )
@@ -2374,6 +2429,8 @@ def derive_fresh_implementation_obligations(
         plan_requirement_ids=tuple(plan_requirement_ids),
         plan_trace_bound=plan_trace_bound,
         task_id=task_id,
+        proposal_validation_receipt_id=proposal_receipt_id,
+        proposal_accepted=proposal_accepted,
     )
 
     incomplete: list[str] = []
