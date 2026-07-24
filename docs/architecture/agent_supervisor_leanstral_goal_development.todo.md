@@ -119,7 +119,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-009 Add end-to-end shadow-mode integration
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: leanstral-goal-development
