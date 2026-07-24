@@ -446,12 +446,60 @@ def test_counterexample_witness_tampering_fails_closed() -> None:
         AdaptiveRefinementReceipt.from_dict(payload)
 
 
+def test_persisted_objective_receipts_fail_closed_on_unreviewed_shape() -> None:
+    result = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, current: _verification(current),
+        clock=lambda: 100,
+    ).refine(_request())
+    payload = result.receipt.to_dict()
+
+    unsupported = dict(payload)
+    unsupported["version"] = 2
+    with pytest.raises(AdaptiveGoalRefinementError, match="receipt version"):
+        AdaptiveRefinementReceipt.from_dict(unsupported)
+
+    unknown = dict(payload)
+    unknown["unreviewed_claim"] = "proved"
+    with pytest.raises(AdaptiveGoalRefinementError, match="unknown refinement receipt"):
+        AdaptiveRefinementReceipt.from_dict(unknown)
+
+    missing_identity = dict(payload)
+    missing_identity.pop("receipt_id")
+    with pytest.raises(AdaptiveGoalRefinementError, match="identity is required"):
+        AdaptiveRefinementReceipt.from_dict(missing_identity)
+
+    unknown_witness = result.receipt.to_dict()
+    unknown_witness["new_counterexample_evidence"]["unreviewed_claim"] = "proved"
+    with pytest.raises(
+        AdaptiveGoalRefinementError,
+        match="unknown counterexample-refinement evidence",
+    ):
+        AdaptiveRefinementReceipt.from_dict(unknown_witness)
+
+
 def test_bare_boolean_verifier_cannot_assert_proof() -> None:
     result = AdaptiveGoalRefiner(
         _candidate, lambda candidate, current: True, clock=lambda: 100
     ).refine(_request())
     assert result.decision is RefinementDecision.VERIFICATION_FAILED
     assert "boolean" in result.receipt.reason
+
+
+def test_non_boolean_verification_status_cannot_assert_proof() -> None:
+    request = _request()
+    malformed = _Verification(
+        verified="false",  # type: ignore[arg-type]
+        frozen_context=request.frozen_context,
+        candidate_plan_id=_plan(with_child=True).content_id,
+    )
+    result = AdaptiveGoalRefiner(
+        _candidate, lambda candidate, current: malformed, clock=lambda: 100
+    ).refine(request)
+
+    assert result.decision is RefinementDecision.VERIFICATION_FAILED
+    assert result.receipt.requirement_ids == ()
+    assert "must be boolean" in result.receipt.reason
 
 
 def test_depth_and_per_root_budgets_stop_before_generation() -> None:
@@ -498,6 +546,18 @@ def test_changed_goal_declaration_and_change_budget_are_enforced() -> None:
     ).refine(request)
     assert result.decision is RefinementDecision.CANDIDATE_REJECTED
     assert "omitted changed goals" in result.receipt.reason
+
+    overdeclared = replace(
+        _candidate(request),
+        changed_goal_ids=("goal:child", "goal:unchanged-or-unknown"),
+    )
+    result = AdaptiveGoalRefiner(
+        lambda current: overdeclared,
+        lambda candidate, current: _verification(current),
+        clock=lambda: 100,
+    ).refine(request)
+    assert result.decision is RefinementDecision.CANDIDATE_REJECTED
+    assert "unchanged or unknown goals" in result.receipt.reason
 
     result = AdaptiveGoalRefiner(
         _candidate,
