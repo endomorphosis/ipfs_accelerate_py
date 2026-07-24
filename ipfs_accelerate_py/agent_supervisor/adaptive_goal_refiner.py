@@ -143,6 +143,35 @@ def _claimed(payload: Mapping[str, Any], actual: str, noun: str) -> None:
         raise AdaptiveGoalRefinementError(f"{noun} content identity does not match")
 
 
+def _restored_record(
+    payload: Mapping[str, Any],
+    *,
+    noun: str,
+    schema: str,
+    allowed_fields: frozenset[str],
+    version: int | None = None,
+    identity_field: str,
+) -> None:
+    """Fail closed before restoring an authoritative persisted record."""
+
+    if not isinstance(payload, Mapping) or any(
+        not isinstance(key, str) for key in payload
+    ):
+        raise AdaptiveGoalRefinementError(f"{noun} must be an object")
+    if payload.get("schema") != schema:
+        raise AdaptiveGoalRefinementError(f"unsupported {noun} schema")
+    if version is not None and payload.get("version") != version:
+        raise AdaptiveGoalRefinementError(f"unsupported {noun} version")
+    unknown = sorted(set(payload) - allowed_fields)
+    if unknown:
+        raise AdaptiveGoalRefinementError(
+            f"unknown {noun} fields: {', '.join(unknown)}"
+        )
+    identity = payload.get(identity_field)
+    if not isinstance(identity, str) or not identity.strip():
+        raise AdaptiveGoalRefinementError(f"{noun} identity is required")
+
+
 class RefinementSignalKind(str, Enum):
     """Closed set of runtime changes that may justify goal refinement."""
 
@@ -732,10 +761,34 @@ class NewCounterexampleRefinementEvidence:
     def from_dict(
         cls, payload: Mapping[str, Any]
     ) -> "NewCounterexampleRefinementEvidence":
-        if payload.get("schema") != REQUIREMENT_EVIDENCE_SCHEMA:
-            raise AdaptiveGoalRefinementError(
-                "unsupported counterexample-refinement evidence schema"
-            )
+        _restored_record(
+            payload,
+            noun="counterexample-refinement evidence",
+            schema=REQUIREMENT_EVIDENCE_SCHEMA,
+            allowed_fields=frozenset(
+                {
+                    "schema",
+                    "requirement_id",
+                    "evidence_producer_kind",
+                    "counterexample_signal_id",
+                    "request_id",
+                    "evidence_fingerprint",
+                    "root_goal_id",
+                    "root_goal_content_id",
+                    "assumption_ids",
+                    "policy_id",
+                    "repository_tree_id",
+                    "previous_plan_id",
+                    "candidate_plan_id",
+                    "verification_receipt_id",
+                    "producer_id",
+                    "producer_kind",
+                    "refinement_index",
+                    "evidence_id",
+                }
+            ),
+            identity_field="evidence_id",
+        )
         result = cls(
             counterexample_signal_id=payload.get("counterexample_signal_id", ""),
             request_id=payload.get("request_id", ""),
@@ -754,8 +807,8 @@ class NewCounterexampleRefinementEvidence:
             requirement_id=payload.get("requirement_id", ""),
             evidence_producer_kind=payload.get("evidence_producer_kind", ""),
         )
-        claimed = str(payload.get("evidence_id") or "")
-        if claimed and claimed != result.evidence_id:
+        claimed = str(payload["evidence_id"])
+        if claimed != result.evidence_id:
             raise AdaptiveGoalRefinementError(
                 "counterexample-refinement evidence identity does not match"
             )
@@ -1003,8 +1056,43 @@ class AdaptiveRefinementReceipt:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveRefinementReceipt":
-        if payload.get("schema") not in (None, "", RECEIPT_SCHEMA):
-            raise AdaptiveGoalRefinementError("unsupported refinement receipt schema")
+        _restored_record(
+            payload,
+            noun="refinement receipt",
+            schema=RECEIPT_SCHEMA,
+            version=ADAPTIVE_GOAL_REFINER_VERSION,
+            allowed_fields=frozenset(
+                {
+                    "schema",
+                    "version",
+                    "decision",
+                    "request_id",
+                    "evidence_fingerprint",
+                    "root_goal_id",
+                    "root_goal_content_id",
+                    "assumption_ids",
+                    "policy_id",
+                    "repository_tree_id",
+                    "producer_id",
+                    "producer_kind",
+                    "previous_plan_id",
+                    "candidate_plan_id",
+                    "verification_receipt_id",
+                    "model_called",
+                    "attempted_at",
+                    "retry_after",
+                    "attempt_index",
+                    "refinement_index",
+                    "reason",
+                    "signal_ids",
+                    "signal_kinds",
+                    "requirement_ids",
+                    "new_counterexample_evidence",
+                    "receipt_id",
+                }
+            ),
+            identity_field="receipt_id",
+        )
         result = cls(
             decision=payload.get("decision", ""),
             request_id=payload.get("request_id", ""),
@@ -1036,7 +1124,10 @@ class AdaptiveRefinementReceipt:
                 else None
             ),
         )
-        _claimed(payload, result.receipt_id, "refinement receipt")
+        if payload["receipt_id"] != result.receipt_id:
+            raise AdaptiveGoalRefinementError(
+                "refinement receipt content identity does not match"
+            )
         return result
 
 
@@ -1549,8 +1640,11 @@ class AdaptiveGoalRefiner:
             if before.get(goal_id) != after.get(goal_id)
             and goal_id != request.root_goal_id
         }
-        if not actual.issubset(set(candidate.changed_goal_ids)):
+        declared = set(candidate.changed_goal_ids)
+        if not actual.issubset(declared):
             return "candidate omitted changed goals from its bounded change declaration"
+        if declared != actual:
+            return "candidate declared unchanged or unknown goals as changed"
         return ""
 
     @staticmethod
@@ -1562,7 +1656,10 @@ class AdaptiveGoalRefiner:
         if isinstance(value, bool):
             # A bare boolean has no independently auditable receipt.
             return False, "", "verifier returned a boolean instead of a receipt"
-        verified = bool(getattr(value, "verified", False))
+        raw_verified = getattr(value, "verified", None)
+        if not isinstance(raw_verified, bool):
+            return False, "", "verification status must be boolean"
+        verified = raw_verified
         verification_id = str(
             getattr(value, "content_id", "")
             or getattr(value, "receipt_id", "")
