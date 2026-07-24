@@ -248,7 +248,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-014 Optimize bundles for context reuse, conflicts, and critical path
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: bundling
