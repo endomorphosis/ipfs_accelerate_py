@@ -754,7 +754,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-032 Close objective gap: Prove 266404049326363900535699811645710804440 for Strict output, code, test, semantic, and proof validation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: validation
