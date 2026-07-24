@@ -720,6 +720,7 @@ from .formal_counterexamples import (
 )
 from .formal_replanner import (
     BOUNDED_REFINEMENT_EVIDENCE_ID,
+    UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
     CODEX_REPAIR_PACKET_SCHEMA,
     FORMAL_REPLANNER_VERSION,
     OBJECTIVE_COMPLETION_EVIDENCE_ROLES,
@@ -1010,10 +1011,14 @@ from .adaptive_planner import (
 )
 from .adaptive_goal_refiner import (
     ADAPTIVE_GOAL_REFINER_VERSION,
+    ADAPTIVE_REFINEMENT_RECEIPT_VERSION,
     NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA,
     NEW_EVIDENCE_REFINEMENT_GOAL_ID,
     NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
     UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
+    UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA,
+    UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA,
+    UNCHANGED_FAILURE_BACKOFF_GOAL_ID,
     AdaptiveGoalRefinementError,
     AdaptiveGoalRefiner,
     AdaptiveRefinementCandidate,
@@ -1041,11 +1046,13 @@ from .adaptive_goal_refiner import (
     RefinementReceiptStore,
     RefinementSignal,
     RefinementSignalKind,
+    UnchangedFailureBackoffEvidence,
     refine_goal_from_evidence,
 )
 
 __all__ = [
     "ADAPTIVE_GOAL_REFINER_VERSION",
+    "ADAPTIVE_REFINEMENT_RECEIPT_VERSION",
     "ADAPTIVE_PLAN_SELECTION_SCHEMA",
     "ADAPTIVE_PLANNER_VERSION",
     "AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA",
@@ -1059,6 +1066,10 @@ __all__ = [
     "OBJECTIVE_COMPLETION_EVIDENCE_ROLES",
     "RESPONSIVE_REPLAN_DECISION_SCHEMA",
     "UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID",
+    "UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA",
+    "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID",
+    "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA",
+    "UNCHANGED_FAILURE_BACKOFF_GOAL_ID",
     "AdaptiveGoalRefinementError",
     "AdaptiveGoalRefiner",
     "AdaptivePlanCandidate",
@@ -1094,6 +1105,7 @@ __all__ = [
     "InMemoryRefinementStore",
     "JsonlRefinementStore",
     "NewCounterexampleRefinementEvidence",
+    "UnchangedFailureBackoffEvidence",
     "PlanDimensionAssessment",
     "PlanEvaluationDimension",
     "RefinementDecision",

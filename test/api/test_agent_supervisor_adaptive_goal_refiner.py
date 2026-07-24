@@ -14,8 +14,12 @@ from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
 )
 from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     ADAPTIVE_GOAL_REFINER_VERSION,
+    ADAPTIVE_REFINEMENT_RECEIPT_VERSION,
     NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
     NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA,
+    UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA,
+    UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA,
+    UNCHANGED_FAILURE_BACKOFF_GOAL_ID,
     UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
     AdaptiveGoalRefinementError,
     AdaptiveGoalRefiner,
@@ -31,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     RefinementProducerKind,
     RefinementSignal,
     RefinementSignalKind,
+    UnchangedFailureBackoffEvidence,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     Actor,
@@ -38,6 +43,11 @@ from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     FormalWorkPlan,
     Goal,
     PlanTask,
+)
+from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
+    ResponsiveReplanDecision,
+    ReplanStopReason,
+    UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
 )
 from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
     FrozenRefinementContext,
@@ -693,14 +703,38 @@ def test_unchanged_failure_signature_backs_off_without_another_model_call() -> N
     )
 
     assert failed.decision is RefinementDecision.VERIFICATION_FAILED
+    assert failed.receipt.requirement_ids == ()
+    assert failed.receipt.evidence_ids == ()
     assert backed_off.decision is RefinementDecision.BACKED_OFF
     assert not backed_off.model_called
     assert backed_off.receipt.retry_after == 130
     assert calls == {"generator": 1, "verifier": 1}
-    assert (
-        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
-        in backed_off.receipt.requirement_ids
+    receipt = backed_off.receipt
+    assert receipt.requirement_ids == (
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
     )
+    assert receipt.proved_requirement_ids == receipt.requirement_ids
+    witness = receipt.unchanged_failure_backoff_evidence
+    assert isinstance(witness, UnchangedFailureBackoffEvidence)
+    assert witness.repeated_failure_signal_id == request.signals[0].evidence_id
+    assert witness.failure_signature == request.signals[0].failure_signature
+    assert witness.source_failure_receipt_id == failed.receipt.receipt_id
+    assert witness.source_failure_decision == failed.decision.value
+    assert witness.source_failure_model_called
+    assert witness.source_failure_attempted_at == 100
+    assert witness.source_failure_retry_after == 130
+    assert witness.source_failure_attempt_index == 1
+    assert witness.suppressed_attempt_index == 2
+    assert witness.request_id == backed_off.receipt.request_id
+    assert witness.cycle_id == "cycle:unchanged"
+    assert witness.evidence_fingerprint == request.evidence_fingerprint
+    assert witness.root_goal_content_id == request.root_goal_content_id
+    assert witness.repository_tree_id == request.repository_tree_id
+    assert witness.policy_id == controller.policy.content_id
+    assert witness.previous_plan_id == request.plan.content_id
+    assert witness.model_call_suppressed
+    assert receipt.evidence_ids == (witness.evidence_id,)
+    assert AdaptiveRefinementReceipt.from_dict(receipt.to_dict()) == receipt
 
 
 def test_changed_evidence_bypasses_old_backoff_in_the_next_cycle() -> None:
@@ -730,6 +764,151 @@ def test_changed_evidence_bypasses_old_backoff_in_the_next_cycle() -> None:
     assert (
         first.receipt.evidence_fingerprint
         != changed.receipt.evidence_fingerprint
+    )
+
+
+def test_changed_plan_state_cannot_replay_an_old_failure_backoff() -> None:
+    calls = 0
+    store = InMemoryRefinementStore()
+    signal = _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
+
+    def generate(request: AdaptiveRefinementRequest) -> AdaptiveRefinementCandidate:
+        nonlocal calls
+        calls += 1
+        return _candidate(request)
+
+    controller = AdaptiveGoalRefiner(
+        generate,
+        lambda candidate, request: _verification(request, verified=False),
+        store=store,
+        clock=lambda: 101,
+    )
+    first = controller.refine(_request(signal))
+    changed_plan = _plan(with_child=True)
+    changed = controller.refine(
+        replace(
+            _request(signal, plan=changed_plan),
+            cycle_id="cycle:changed-plan",
+        )
+    )
+
+    assert first.decision is RefinementDecision.VERIFICATION_FAILED
+    assert changed.decision is not RefinementDecision.BACKED_OFF
+    assert changed.model_called
+    assert changed.receipt.previous_plan_id == changed_plan.content_id
+    assert calls == 2
+
+
+def test_retry_deadline_reopens_generation_without_stale_backoff_authority() -> None:
+    now = [100]
+    calls = 0
+
+    def generate(request: AdaptiveRefinementRequest) -> AdaptiveRefinementCandidate:
+        nonlocal calls
+        calls += 1
+        return _candidate(request)
+
+    controller = AdaptiveGoalRefiner(
+        generate,
+        lambda candidate, request: _verification(request, verified=False),
+        policy=AdaptiveRefinementPolicy(
+            initial_backoff_seconds=10, max_backoff_seconds=40
+        ),
+        clock=lambda: now[0],
+    )
+    request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
+    first = controller.refine(request)
+    now[0] = first.receipt.retry_after
+    retry = controller.refine(replace(request, cycle_id="cycle:deadline"))
+
+    assert retry.decision is RefinementDecision.VERIFICATION_FAILED
+    assert retry.model_called
+    assert retry.receipt.requirement_ids == ()
+    assert retry.receipt.evidence_ids == ()
+    assert retry.receipt.unchanged_failure_backoff_evidence is None
+    assert retry.receipt.retry_after == now[0] + 20
+    assert calls == 2
+
+
+def test_suppressed_polls_do_not_inflate_exponential_failure_backoff() -> None:
+    now = [100]
+    request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
+    controller = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, current: _verification(current, verified=False),
+        policy=AdaptiveRefinementPolicy(
+            initial_backoff_seconds=10, max_backoff_seconds=80
+        ),
+        clock=lambda: now[0],
+    )
+    first = controller.refine(request)
+    assert first.receipt.retry_after == 110
+    for index, timestamp in enumerate((101, 102, 103), start=1):
+        now[0] = timestamp
+        poll = controller.refine(
+            replace(request, cycle_id=f"cycle:poll:{index}")
+        )
+        assert poll.decision is RefinementDecision.BACKED_OFF
+        assert poll.receipt.retry_after == 110
+
+    now[0] = 110
+    second_failure = controller.refine(
+        replace(request, cycle_id="cycle:second-failure")
+    )
+    assert second_failure.decision is RefinementDecision.VERIFICATION_FAILED
+    assert second_failure.receipt.attempt_index == 5
+    assert second_failure.receipt.retry_after == 130
+
+
+def test_jsonl_restart_suppresses_unchanged_failure_without_generator_call(
+    tmp_path,
+) -> None:
+    path = tmp_path / "failure-backoff.jsonl"
+    signal = _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
+    request = _request(signal)
+    first_calls = 0
+
+    def first_generate(
+        current: AdaptiveRefinementRequest,
+    ) -> AdaptiveRefinementCandidate:
+        nonlocal first_calls
+        first_calls += 1
+        return _candidate(current)
+
+    failed = AdaptiveGoalRefiner(
+        first_generate,
+        lambda candidate, current: _verification(current, verified=False),
+        store=JsonlRefinementStore(path),
+        policy=AdaptiveRefinementPolicy(initial_backoff_seconds=30),
+        clock=lambda: 100,
+    ).refine(request)
+    restarted_calls = {"generator": 0, "verifier": 0}
+
+    def restarted_generate(current: AdaptiveRefinementRequest):
+        restarted_calls["generator"] += 1
+        return _candidate(current)
+
+    def restarted_verify(candidate, current):
+        restarted_calls["verifier"] += 1
+        return _verification(current)
+
+    backed_off = AdaptiveGoalRefiner(
+        restarted_generate,
+        restarted_verify,
+        store=JsonlRefinementStore(path),
+        policy=AdaptiveRefinementPolicy(initial_backoff_seconds=30),
+        clock=lambda: 110,
+    ).refine(replace(request, cycle_id="cycle:restart"))
+
+    assert first_calls == 1
+    assert restarted_calls == {"generator": 0, "verifier": 0}
+    assert backed_off.decision is RefinementDecision.BACKED_OFF
+    witness = backed_off.receipt.unchanged_failure_backoff_evidence
+    assert witness is not None
+    assert witness.source_failure_receipt_id == failed.receipt.receipt_id
+    assert JsonlRefinementStore(path).receipts() == (
+        failed.receipt,
+        backed_off.receipt,
     )
 
 
@@ -926,6 +1105,155 @@ def test_counterexample_witness_tampering_fails_closed() -> None:
         AdaptiveRefinementReceipt.from_dict(payload)
 
 
+def test_backoff_witness_tampering_and_detached_sources_fail_closed() -> None:
+    now = [100]
+    store = InMemoryRefinementStore()
+    request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
+    controller = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, current: _verification(current, verified=False),
+        store=store,
+        clock=lambda: now[0],
+    )
+    failed = controller.refine(request)
+    now[0] = 110
+    backed_off = controller.refine(replace(request, cycle_id="cycle:backoff"))
+    payload = backed_off.receipt.to_dict()
+
+    missing = copy.deepcopy(payload)
+    missing["unchanged_failure_backoff_evidence"] = None
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="missing its causal witness"
+    ):
+        AdaptiveRefinementReceipt.from_dict(missing)
+
+    tampered = copy.deepcopy(payload)
+    tampered["unchanged_failure_backoff_evidence"]["retry_after"] += 1
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="backoff deadline|identity"
+    ):
+        AdaptiveRefinementReceipt.from_dict(tampered)
+
+    unknown = copy.deepcopy(payload)
+    unknown["unchanged_failure_backoff_evidence"]["unreviewed_claim"] = True
+    with pytest.raises(
+        AdaptiveGoalRefinementError,
+        match="unknown unchanged-failure backoff evidence",
+    ):
+        AdaptiveRefinementReceipt.from_dict(unknown)
+
+    unsupported = copy.deepcopy(payload)
+    unsupported["unchanged_failure_backoff_evidence"]["schema"] = (
+        UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA + "/future"
+    )
+    with pytest.raises(
+        AdaptiveGoalRefinementError,
+        match="unsupported unchanged-failure backoff evidence schema",
+    ):
+        AdaptiveRefinementReceipt.from_dict(unsupported)
+
+    witness = backed_off.receipt.unchanged_failure_backoff_evidence
+    assert witness is not None
+    detached = replace(witness, source_failure_receipt_id="receipt:detached")
+    detached_receipt = replace(
+        backed_off.receipt,
+        unchanged_failure_backoff_evidence=detached,
+    )
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="source failure is absent"
+    ):
+        InMemoryRefinementStore((failed.receipt, detached_receipt))
+
+
+def test_only_typed_repeated_failure_backoff_can_claim_asi_g115() -> None:
+    calls = 0
+    now = [100]
+    request = _request(_signal(kind=RefinementSignalKind.COUNTEREXAMPLE))
+
+    def generate(current):
+        nonlocal calls
+        calls += 1
+        return _candidate(current)
+
+    controller = AdaptiveGoalRefiner(
+        generate,
+        lambda candidate, current: _verification(current, verified=False),
+        clock=lambda: now[0],
+    )
+    controller.refine(request)
+    now[0] = 101
+    backed_off = controller.refine(replace(request, cycle_id="cycle:replay"))
+
+    assert backed_off.decision is RefinementDecision.BACKED_OFF
+    assert not backed_off.model_called
+    assert calls == 1
+    assert backed_off.receipt.requirement_ids == ()
+    assert backed_off.receipt.proved_requirement_ids == ()
+    assert backed_off.receipt.evidence_ids == ()
+    assert backed_off.receipt.unchanged_failure_backoff_evidence is None
+
+
+def test_g115_completion_bridge_fixes_goal_and_closed_criterion_population() -> None:
+    now = [100]
+    request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
+    controller = AdaptiveGoalRefiner(
+        _candidate,
+        lambda candidate, current: _verification(current, verified=False),
+        clock=lambda: now[0],
+    )
+    controller.refine(request)
+    now[0] = 101
+    backed_off = controller.refine(replace(request, cycle_id="cycle:backoff"))
+    projected_goal_ids: list[str] = []
+
+    class _CoverageProbe:
+        def completion_gate_evidence(self, goal_id: str):
+            projected_goal_ids.append(goal_id)
+            return {"verified": False, "criteria": []}
+
+    decision = backed_off.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        tasks_complete=True,
+        coverage=_CoverageProbe(),
+        analyzer_health={},
+        exhaustion_quorum={},
+    )
+
+    assert UNCHANGED_FAILURE_BACKOFF_GOAL_ID == "ASI-G115"
+    assert projected_goal_ids == [UNCHANGED_FAILURE_BACKOFF_GOAL_ID]
+    assert not decision.verified
+    assert decision.acceptance_criteria == (
+        UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA
+    )
+    assert set((*decision.missing_criteria, *decision.invalid_criteria)) == set(
+        UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA
+    )
+
+
+def test_formal_unchanged_routing_names_g115_without_claiming_evidence() -> None:
+    decision = ResponsiveReplanDecision(
+        counterexample_id="counterexample:same",
+        previous_counterexample_id="counterexample:same",
+        changed=False,
+        stop_reason=ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF,
+        result=None,
+        backoff_attempt=2,
+        backoff_seconds=4,
+    )
+
+    assert UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID == (
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
+    )
+    assert decision.requirement_ids == (
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
+    )
+    assert decision.evidence_ids == ()
+    assert decision.to_dict()["requirement_ids"] == [
+        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
+    ]
+    assert decision.to_dict()["evidence_ids"] == []
+
+
 def test_persisted_objective_receipts_fail_closed_on_unreviewed_shape() -> None:
     result = AdaptiveGoalRefiner(
         _candidate,
@@ -935,7 +1263,7 @@ def test_persisted_objective_receipts_fail_closed_on_unreviewed_shape() -> None:
     payload = result.receipt.to_dict()
 
     unsupported = dict(payload)
-    unsupported["version"] = ADAPTIVE_GOAL_REFINER_VERSION + 1
+    unsupported["version"] = ADAPTIVE_REFINEMENT_RECEIPT_VERSION + 1
     with pytest.raises(AdaptiveGoalRefinementError, match="receipt version"):
         AdaptiveRefinementReceipt.from_dict(unsupported)
 

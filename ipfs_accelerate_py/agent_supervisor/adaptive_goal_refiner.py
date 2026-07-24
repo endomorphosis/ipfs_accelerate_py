@@ -45,6 +45,7 @@ from .goal_refinement_verification import (
 
 
 ADAPTIVE_GOAL_REFINER_VERSION: Final = 2
+ADAPTIVE_REFINEMENT_RECEIPT_VERSION: Final = 3
 NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID: Final = (
     "003778425160038348524906247302938706902"
 )
@@ -52,6 +53,7 @@ NEW_EVIDENCE_REFINEMENT_GOAL_ID: Final = "ASI-G098"
 UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID: Final = (
     "312819945606360295782005228058369235550"
 )
+UNCHANGED_FAILURE_BACKOFF_GOAL_ID: Final = "ASI-G115"
 
 SIGNAL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/refinement-signal@1"
 QUALITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/goal-quality@1"
@@ -59,9 +61,12 @@ REQUEST_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement
 CANDIDATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-candidate@1"
 )
-RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-receipt@1"
+RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-receipt@2"
 REQUIREMENT_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/new-counterexample-refinement-evidence@1"
+)
+UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/unchanged-failure-backoff-evidence@1"
 )
 
 # This is the closed mandatory population for the objective completion bridge
@@ -90,6 +95,37 @@ NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA: Final = (
         "Non-counterexample admissions remain non-authoritative for this "
         "requirement, and restored objective receipts reject unsupported "
         "versions, missing identities, and unknown fields"
+    ),
+)
+
+UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA: Final = (
+    (
+        "A persisted failed refinement attempt starts a finite policy-bounded "
+        "retry window"
+    ),
+    (
+        "A semantically unchanged typed repeated failure observed before the "
+        "deadline suppresses candidate generation and independent verification"
+    ),
+    (
+        "Observation time and occurrence-count changes do not disguise the "
+        "same failure, while changed failure evidence or plan state bypasses "
+        "the old backoff"
+    ),
+    (
+        "The backoff witness binds the exact requirement, repeated-failure "
+        "signal and signature, request and evidence fingerprint, frozen root, "
+        "assumptions, repository tree, policy, and previous plan"
+    ),
+    (
+        "The witness causally binds the source failure receipt, decision, "
+        "model call, attempts, timestamps, retry deadline, and suppressed "
+        "no-model-call decision"
+    ),
+    (
+        "Only a source-bound in-window backoff is authoritative, and restored "
+        "receipts reject unsupported schemas, versions, identities, fields, "
+        "or detached and tampered witnesses"
     ),
 )
 
@@ -243,6 +279,16 @@ class RefinementDecision(str, Enum):
     CANDIDATE_REJECTED = "candidate_rejected"
     VERIFICATION_FAILED = "verification_failed"
     COMMIT_FAILED = "commit_failed"
+
+
+REFINEMENT_FAILURE_DECISIONS: Final[frozenset[RefinementDecision]] = frozenset(
+    {
+        RefinementDecision.GENERATION_FAILED,
+        RefinementDecision.CANDIDATE_REJECTED,
+        RefinementDecision.VERIFICATION_FAILED,
+        RefinementDecision.COMMIT_FAILED,
+    }
+)
 
 
 class RefinementProducerKind(str, Enum):
@@ -846,6 +892,257 @@ class NewCounterexampleRefinementEvidence:
 
 
 @dataclass(frozen=True)
+class UnchangedFailureBackoffEvidence:
+    """Concrete causal witness for the ASI-G115 no-second-call criterion.
+
+    A backoff decision is authoritative only when it references the exact
+    persisted failed attempt that opened the retry window.  Delivery metadata
+    may change, but the repeated-failure signal's semantic identity, frozen
+    planning context, policy, repository tree, and previous plan must not.
+    """
+
+    repeated_failure_signal_id: str
+    failure_signature: str
+    request_id: str
+    cycle_id: str
+    evidence_fingerprint: str
+    root_goal_id: str
+    root_goal_content_id: str
+    assumption_ids: tuple[str, ...]
+    policy_id: str
+    repository_tree_id: str
+    previous_plan_id: str
+    source_failure_receipt_id: str
+    source_failure_decision: str
+    source_failure_model_called: bool
+    source_failure_attempted_at: int
+    source_failure_retry_after: int
+    source_failure_attempt_index: int
+    source_failure_refinement_index: int
+    suppressed_at: int
+    suppressed_attempt_index: int
+    retry_after: int
+    model_call_suppressed: bool = True
+    requirement_id: str = UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
+    evidence_producer_kind: str = "adaptive_goal_refinement"
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repeated_failure_signal_id",
+            "failure_signature",
+            "request_id",
+            "cycle_id",
+            "evidence_fingerprint",
+            "root_goal_id",
+            "root_goal_content_id",
+            "policy_id",
+            "repository_tree_id",
+            "previous_plan_id",
+            "source_failure_receipt_id",
+            "source_failure_decision",
+            "requirement_id",
+            "evidence_producer_kind",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(
+            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
+        )
+        for name in (
+            "source_failure_attempted_at",
+            "source_failure_retry_after",
+            "source_failure_attempt_index",
+            "source_failure_refinement_index",
+            "suppressed_at",
+            "suppressed_attempt_index",
+            "retry_after",
+        ):
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
+        try:
+            source_decision = RefinementDecision(self.source_failure_decision)
+        except ValueError as exc:
+            raise AdaptiveGoalRefinementError(
+                "unsupported backoff source failure decision"
+            ) from exc
+        if source_decision not in REFINEMENT_FAILURE_DECISIONS:
+            raise AdaptiveGoalRefinementError(
+                "backoff source must be a failed refinement decision"
+            )
+        if self.source_failure_model_called is not True:
+            raise AdaptiveGoalRefinementError(
+                "backoff source must record the preceding model call"
+            )
+        if self.model_call_suppressed is not True:
+            raise AdaptiveGoalRefinementError(
+                "backoff evidence must record a suppressed model call"
+            )
+        if not (
+            self.source_failure_attempted_at
+            <= self.suppressed_at
+            < self.source_failure_retry_after
+        ):
+            raise AdaptiveGoalRefinementError(
+                "backoff suppression must occur inside the source retry window"
+            )
+        if self.retry_after != self.source_failure_retry_after:
+            raise AdaptiveGoalRefinementError(
+                "backoff deadline must match the source failure deadline"
+            )
+        if self.suppressed_attempt_index <= self.source_failure_attempt_index:
+            raise AdaptiveGoalRefinementError(
+                "backoff attempt must follow the source failure attempt"
+            )
+        if self.requirement_id != UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID:
+            raise AdaptiveGoalRefinementError(
+                "unsupported unchanged-failure backoff requirement id"
+            )
+        if self.evidence_producer_kind != "adaptive_goal_refinement":
+            raise AdaptiveGoalRefinementError(
+                "unsupported unchanged-failure backoff evidence producer"
+            )
+
+    @property
+    def evidence_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    @property
+    def content_id(self) -> str:
+        return self.evidence_id
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA,
+            "requirement_id": self.requirement_id,
+            "evidence_producer_kind": self.evidence_producer_kind,
+            "repeated_failure_signal_id": self.repeated_failure_signal_id,
+            "failure_signature": self.failure_signature,
+            "request_id": self.request_id,
+            "cycle_id": self.cycle_id,
+            "evidence_fingerprint": self.evidence_fingerprint,
+            "root_goal_id": self.root_goal_id,
+            "root_goal_content_id": self.root_goal_content_id,
+            "assumption_ids": self.assumption_ids,
+            "policy_id": self.policy_id,
+            "repository_tree_id": self.repository_tree_id,
+            "previous_plan_id": self.previous_plan_id,
+            "source_failure_receipt_id": self.source_failure_receipt_id,
+            "source_failure_decision": self.source_failure_decision,
+            "source_failure_model_called": self.source_failure_model_called,
+            "source_failure_attempted_at": self.source_failure_attempted_at,
+            "source_failure_retry_after": self.source_failure_retry_after,
+            "source_failure_attempt_index": self.source_failure_attempt_index,
+            "source_failure_refinement_index": (
+                self.source_failure_refinement_index
+            ),
+            "suppressed_at": self.suppressed_at,
+            "suppressed_attempt_index": self.suppressed_attempt_index,
+            "retry_after": self.retry_after,
+            "model_call_suppressed": self.model_call_suppressed,
+        }
+        if include_identity:
+            payload["evidence_id"] = self.evidence_id
+        return payload
+
+    def validate_source(self, source: "AdaptiveRefinementReceipt") -> None:
+        """Reconcile this witness with the persisted attempt it references."""
+
+        if not isinstance(source, AdaptiveRefinementReceipt):
+            raise AdaptiveGoalRefinementError(
+                "backoff source must be an adaptive refinement receipt"
+            )
+        expected = {
+            "source_failure_receipt_id": source.receipt_id,
+            "source_failure_decision": source.decision.value,
+            "source_failure_model_called": source.model_called,
+            "source_failure_attempted_at": source.attempted_at,
+            "source_failure_retry_after": source.retry_after,
+            "source_failure_attempt_index": source.attempt_index,
+            "source_failure_refinement_index": source.refinement_index,
+            "evidence_fingerprint": source.evidence_fingerprint,
+            "root_goal_id": source.root_goal_id,
+            "root_goal_content_id": source.root_goal_content_id,
+            "assumption_ids": source.assumption_ids,
+            "policy_id": source.policy_id,
+            "repository_tree_id": source.repository_tree_id,
+            "previous_plan_id": source.previous_plan_id,
+        }
+        mismatched = [
+            name for name, value in expected.items() if getattr(self, name) != value
+        ]
+        if mismatched:
+            raise AdaptiveGoalRefinementError(
+                "backoff evidence does not match its source failure: "
+                + ", ".join(mismatched)
+            )
+        if (
+            source.decision not in REFINEMENT_FAILURE_DECISIONS
+            or source.requirement_ids
+            or source.signal_ids != (self.repeated_failure_signal_id,)
+            or source.signal_kinds
+            != (RefinementSignalKind.REPEATED_FAILURE.value,)
+        ):
+            raise AdaptiveGoalRefinementError(
+                "backoff source is not the exact non-authoritative repeated "
+                "failure attempt"
+            )
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "UnchangedFailureBackoffEvidence":
+        fields = {
+            "schema",
+            "requirement_id",
+            "evidence_producer_kind",
+            "repeated_failure_signal_id",
+            "failure_signature",
+            "request_id",
+            "cycle_id",
+            "evidence_fingerprint",
+            "root_goal_id",
+            "root_goal_content_id",
+            "assumption_ids",
+            "policy_id",
+            "repository_tree_id",
+            "previous_plan_id",
+            "source_failure_receipt_id",
+            "source_failure_decision",
+            "source_failure_model_called",
+            "source_failure_attempted_at",
+            "source_failure_retry_after",
+            "source_failure_attempt_index",
+            "source_failure_refinement_index",
+            "suppressed_at",
+            "suppressed_attempt_index",
+            "retry_after",
+            "model_call_suppressed",
+            "evidence_id",
+        }
+        _restored_record(
+            payload,
+            noun="unchanged-failure backoff evidence",
+            schema=UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA,
+            allowed_fields=frozenset(fields),
+            identity_field="evidence_id",
+        )
+        values = {
+            name: payload.get(name)
+            for name in fields
+            if name
+            not in {
+                "schema",
+                "evidence_id",
+            }
+        }
+        values["assumption_ids"] = tuple(payload.get("assumption_ids") or ())
+        result = cls(**values)
+        if payload["evidence_id"] != result.evidence_id:
+            raise AdaptiveGoalRefinementError(
+                "unchanged-failure backoff evidence identity does not match"
+            )
+        return result
+
+
+@dataclass(frozen=True)
 class AdaptiveRefinementReceipt:
     """Durable evidence for one decision at the adaptive trust boundary."""
 
@@ -873,6 +1170,9 @@ class AdaptiveRefinementReceipt:
     signal_kinds: tuple[str, ...]
     requirement_ids: tuple[str, ...]
     new_counterexample_evidence: NewCounterexampleRefinementEvidence | None = None
+    unchanged_failure_backoff_evidence: (
+        UnchangedFailureBackoffEvidence | None
+    ) = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -960,6 +1260,50 @@ class AdaptiveRefinementReceipt:
                     "counterexample evidence requires exactly one bound "
                     "counterexample signal"
                 )
+        backoff_evidence = self.unchanged_failure_backoff_evidence
+        if backoff_evidence is not None:
+            if not isinstance(
+                backoff_evidence, UnchangedFailureBackoffEvidence
+            ):
+                raise AdaptiveGoalRefinementError(
+                    "invalid unchanged-failure backoff evidence"
+                )
+            expected = {
+                "request_id": self.request_id,
+                "cycle_id": self.cycle_id,
+                "evidence_fingerprint": self.evidence_fingerprint,
+                "root_goal_id": self.root_goal_id,
+                "root_goal_content_id": self.root_goal_content_id,
+                "assumption_ids": self.assumption_ids,
+                "policy_id": self.policy_id,
+                "repository_tree_id": self.repository_tree_id,
+                "previous_plan_id": self.previous_plan_id,
+                "suppressed_at": self.attempted_at,
+                "suppressed_attempt_index": self.attempt_index,
+                "retry_after": self.retry_after,
+                "model_call_suppressed": not self.model_called,
+            }
+            mismatched = [
+                name
+                for name, value in expected.items()
+                if getattr(backoff_evidence, name) != value
+            ]
+            if mismatched:
+                raise AdaptiveGoalRefinementError(
+                    "backoff evidence does not match receipt bindings: "
+                    + ", ".join(mismatched)
+                )
+            if (
+                len(self.signal_ids) != 1
+                or self.signal_kinds
+                != (RefinementSignalKind.REPEATED_FAILURE.value,)
+                or backoff_evidence.repeated_failure_signal_id
+                != self.signal_ids[0]
+            ):
+                raise AdaptiveGoalRefinementError(
+                    "backoff evidence requires exactly one bound repeated-failure "
+                    "signal"
+                )
         if not isinstance(self.model_called, bool):
             raise AdaptiveGoalRefinementError("model_called must be boolean")
         for name in (
@@ -991,11 +1335,10 @@ class AdaptiveRefinementReceipt:
             if (
                 self.signal_kinds
                 == (RefinementSignalKind.REPEATED_FAILURE.value,)
-                and UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
-                not in self.requirement_ids
+                and backoff_evidence is None
             ):
                 raise AdaptiveGoalRefinementError(
-                    "backoff receipt is missing its objective evidence binding"
+                    "repeated-failure backoff receipt is missing its causal witness"
                 )
             if NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID in self.requirement_ids:
                 raise AdaptiveGoalRefinementError(
@@ -1015,11 +1358,11 @@ class AdaptiveRefinementReceipt:
                     "only an admitted receipt may carry counterexample evidence"
                 )
             expected_requirements.append(NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID)
-        if (
-            self.decision is RefinementDecision.BACKED_OFF
-            and self.signal_kinds
-            == (RefinementSignalKind.REPEATED_FAILURE.value,)
-        ):
+        if backoff_evidence is not None:
+            if self.decision is not RefinementDecision.BACKED_OFF:
+                raise AdaptiveGoalRefinementError(
+                    "only a backoff receipt may carry unchanged-failure evidence"
+                )
             expected_requirements.append(UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID)
         if self.requirement_ids != tuple(sorted(expected_requirements)):
             raise AdaptiveGoalRefinementError(
@@ -1038,22 +1381,28 @@ class AdaptiveRefinementReceipt:
     def proved_requirement_ids(self) -> tuple[str, ...]:
         """Requirements backed by a concrete witness in this receipt."""
 
-        return self.requirement_ids
+        result: list[str] = []
+        if self.new_counterexample_evidence is not None:
+            result.append(self.new_counterexample_evidence.requirement_id)
+        if self.unchanged_failure_backoff_evidence is not None:
+            result.append(self.unchanged_failure_backoff_evidence.requirement_id)
+        return tuple(sorted(result))
 
     @property
     def evidence_ids(self) -> tuple[str, ...]:
         """Content identities of concrete objective evidence witnesses."""
 
-        return (
-            (self.new_counterexample_evidence.evidence_id,)
-            if self.new_counterexample_evidence is not None
-            else ()
-        )
+        result: list[str] = []
+        if self.new_counterexample_evidence is not None:
+            result.append(self.new_counterexample_evidence.evidence_id)
+        if self.unchanged_failure_backoff_evidence is not None:
+            result.append(self.unchanged_failure_backoff_evidence.evidence_id)
+        return tuple(sorted(result))
 
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": RECEIPT_SCHEMA,
-            "version": ADAPTIVE_GOAL_REFINER_VERSION,
+            "version": ADAPTIVE_REFINEMENT_RECEIPT_VERSION,
             "decision": self.decision.value,
             "request_id": self.request_id,
             "cycle_id": self.cycle_id,
@@ -1082,6 +1431,11 @@ class AdaptiveRefinementReceipt:
                 if self.new_counterexample_evidence is not None
                 else None
             ),
+            "unchanged_failure_backoff_evidence": (
+                self.unchanged_failure_backoff_evidence.to_dict()
+                if self.unchanged_failure_backoff_evidence is not None
+                else None
+            ),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -1093,7 +1447,7 @@ class AdaptiveRefinementReceipt:
             payload,
             noun="refinement receipt",
             schema=RECEIPT_SCHEMA,
-            version=ADAPTIVE_GOAL_REFINER_VERSION,
+            version=ADAPTIVE_REFINEMENT_RECEIPT_VERSION,
             allowed_fields=frozenset(
                 {
                     "schema",
@@ -1122,6 +1476,7 @@ class AdaptiveRefinementReceipt:
                     "signal_kinds",
                     "requirement_ids",
                     "new_counterexample_evidence",
+                    "unchanged_failure_backoff_evidence",
                     "receipt_id",
                 }
             ),
@@ -1158,6 +1513,13 @@ class AdaptiveRefinementReceipt:
                 if payload.get("new_counterexample_evidence") is not None
                 else None
             ),
+            unchanged_failure_backoff_evidence=(
+                UnchangedFailureBackoffEvidence.from_dict(
+                    payload["unchanged_failure_backoff_evidence"]
+                )
+                if payload.get("unchanged_failure_backoff_evidence") is not None
+                else None
+            ),
         )
         if payload["receipt_id"] != result.receipt_id:
             raise AdaptiveGoalRefinementError(
@@ -1167,6 +1529,32 @@ class AdaptiveRefinementReceipt:
 
 
 GoalRefinementReceipt = AdaptiveRefinementReceipt
+
+
+def _validate_receipt_history(
+    receipts: Iterable[AdaptiveRefinementReceipt],
+) -> tuple[AdaptiveRefinementReceipt, ...]:
+    """Require every causal backoff witness to reference an earlier journal row."""
+
+    result: list[AdaptiveRefinementReceipt] = []
+    by_id: dict[str, AdaptiveRefinementReceipt] = {}
+    for receipt in receipts:
+        if not isinstance(receipt, AdaptiveRefinementReceipt):
+            raise AdaptiveGoalRefinementError(
+                "refinement history contains a non-receipt value"
+            )
+        witness = receipt.unchanged_failure_backoff_evidence
+        if witness is not None:
+            source = by_id.get(witness.source_failure_receipt_id)
+            if source is None:
+                raise AdaptiveGoalRefinementError(
+                    "backoff evidence source failure is absent or not earlier "
+                    "in the receipt journal"
+                )
+            witness.validate_source(source)
+        result.append(receipt)
+        by_id[receipt.receipt_id] = receipt
+    return tuple(result)
 
 
 @dataclass(frozen=True)
@@ -1220,7 +1608,7 @@ class AdaptiveRefinementResult:
         analysis_inconclusive: bool = False,
         blocked_reason: str = "",
     ) -> "GoalCompletionDecision":
-        """Evaluate ASI-G098 without promoting runtime output into proof.
+        """Evaluate the receipt's refinement objective without self-promotion.
 
         The adaptive receipt fixes the repository-tree boundary, but it is not
         itself a validation run, criterion-coverage map, analyzer-health
@@ -1236,6 +1624,13 @@ class AdaptiveRefinementResult:
         """
 
         from .goal_completion import evaluate_goal_completion
+
+        if self.receipt.unchanged_failure_backoff_evidence is not None:
+            objective_goal_id = UNCHANGED_FAILURE_BACKOFF_GOAL_ID
+            acceptance_criteria = UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA
+        else:
+            objective_goal_id = NEW_EVIDENCE_REFINEMENT_GOAL_ID
+            acceptance_criteria = NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA
 
         def payload(value: Any) -> dict[str, Any]:
             if isinstance(value, Mapping):
@@ -1268,7 +1663,7 @@ class AdaptiveRefinementResult:
         coverage_projection = getattr(coverage, "completion_gate_evidence", None)
         if callable(coverage_projection):
             try:
-                projected = coverage_projection(NEW_EVIDENCE_REFINEMENT_GOAL_ID)
+                projected = coverage_projection(objective_goal_id)
             except (TypeError, ValueError):
                 projected = {}
             coverage_value = (
@@ -1280,7 +1675,7 @@ class AdaptiveRefinementResult:
         coverage_rows = coverage_rows if isinstance(coverage_rows, list) else []
         criterion_keys = {
             " ".join(item.strip().lower().split())
-            for item in NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA
+            for item in acceptance_criteria
         }
         relevant_coverage_rows = [
             row
@@ -1496,9 +1891,7 @@ class AdaptiveRefinementResult:
 
         values: dict[str, Any] = {
             "current_state": current_state,
-            "acceptance_criteria": (
-                NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA
-            ),
+            "acceptance_criteria": acceptance_criteria,
             "evidence": evidence,
             "tasks_complete": tasks_complete,
             "repository_tree": self.receipt.repository_tree_id,
@@ -1533,7 +1926,7 @@ class InMemoryRefinementStore:
 
     def __init__(self, receipts: Iterable[AdaptiveRefinementReceipt] = ()) -> None:
         self._lock = threading.RLock()
-        self._receipts = list(receipts)
+        self._receipts = list(_validate_receipt_history(receipts))
 
     @property
     def lock(self) -> threading.RLock:
@@ -1557,6 +1950,7 @@ class InMemoryRefinementStore:
             )
         with self._lock:
             if all(item.receipt_id != receipt.receipt_id for item in self._receipts):
+                _validate_receipt_history((*self._receipts, receipt))
                 self._receipts.append(receipt)
 
 
@@ -1619,7 +2013,7 @@ class JsonlRefinementStore:
                 raise RefinementPersistenceError(
                     f"could not read refinement receipt journal: {exc}"
                 ) from exc
-            return tuple(result)
+            return _validate_receipt_history(result)
 
     def append(self, receipt: AdaptiveRefinementReceipt) -> None:
         if not isinstance(receipt, AdaptiveRefinementReceipt):
@@ -1630,6 +2024,7 @@ class JsonlRefinementStore:
             existing = self.receipts()
             if any(item.receipt_id == receipt.receipt_id for item in existing):
                 return
+            _validate_receipt_history((*existing, receipt))
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 with self.path.open("a", encoding="utf-8") as handle:
@@ -1725,6 +2120,7 @@ class AdaptiveGoalRefiner:
                 for item in history
                 if item.evidence_fingerprint == request.evidence_fingerprint
                 and item.policy_id == self.policy.content_id
+                and item.previous_plan_id == request.plan.content_id
             )
             admitted = next(
                 (
@@ -1750,13 +2146,7 @@ class AdaptiveGoalRefiner:
                 (
                     item
                     for item in reversed(matching)
-                    if item.decision
-                    in {
-                        RefinementDecision.GENERATION_FAILED,
-                        RefinementDecision.CANDIDATE_REJECTED,
-                        RefinementDecision.VERIFICATION_FAILED,
-                        RefinementDecision.COMMIT_FAILED,
-                    }
+                    if item.decision in REFINEMENT_FAILURE_DECISIONS
                 ),
                 None,
             )
@@ -1773,6 +2163,7 @@ class AdaptiveGoalRefiner:
                     retry_after=latest_failure.retry_after,
                     attempt_index=len(matching) + 1,
                     refinement_index=latest_failure.refinement_index,
+                    backoff_source=latest_failure,
                 )
                 self._persist_nonadmission(receipt)
                 return AdaptiveRefinementResult(receipt)
@@ -1818,6 +2209,13 @@ class AdaptiveGoalRefiner:
                 )
 
             attempt_index = len(matching) + 1
+            failure_index = (
+                sum(
+                    item.decision in REFINEMENT_FAILURE_DECISIONS
+                    for item in matching
+                )
+                + 1
+            )
             refinement_index = len(root_admissions) + 1
             try:
                 raw_candidate = self.generator(request)
@@ -1830,6 +2228,7 @@ class AdaptiveGoalRefiner:
                     attempt_index,
                     refinement_index,
                     f"candidate generation failed closed: {type(exc).__name__}: {exc}",
+                    failure_index=failure_index,
                 )
 
             invalid = self._candidate_violation(candidate, request)
@@ -1841,6 +2240,7 @@ class AdaptiveGoalRefiner:
                     attempt_index,
                     refinement_index,
                     invalid,
+                    failure_index=failure_index,
                     producer_id=candidate.producer_id,
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
@@ -1865,6 +2265,7 @@ class AdaptiveGoalRefiner:
                     attempt_index,
                     refinement_index,
                     verification_reason or "child sufficiency was not verified",
+                    failure_index=failure_index,
                     producer_id=candidate.producer_id,
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
@@ -1899,7 +2300,7 @@ class AdaptiveGoalRefiner:
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
                     verification_receipt_id=verification_id,
-                    retry_after=self._retry_after(now, len(matching) + 1),
+                    retry_after=self._retry_after(now, failure_index),
                     attempt_index=attempt_index,
                     refinement_index=refinement_index,
                 )
@@ -2080,6 +2481,8 @@ class AdaptiveGoalRefiner:
         attempt_index: int,
         refinement_index: int,
         reason: str,
+        *,
+        failure_index: int,
         **fields: Any,
     ) -> AdaptiveRefinementResult:
         receipt = self._receipt(
@@ -2088,7 +2491,7 @@ class AdaptiveGoalRefiner:
             now,
             model_called=True,
             reason=reason,
-            retry_after=self._retry_after(now, attempt_index),
+            retry_after=self._retry_after(now, failure_index),
             attempt_index=attempt_index,
             refinement_index=refinement_index,
             **fields,
@@ -2150,9 +2553,11 @@ class AdaptiveGoalRefiner:
         retry_after: int = 0,
         attempt_index: int = 1,
         refinement_index: int = 0,
+        backoff_source: AdaptiveRefinementReceipt | None = None,
     ) -> AdaptiveRefinementReceipt:
         requirement_ids: list[str] = []
         counterexample_evidence: NewCounterexampleRefinementEvidence | None = None
+        backoff_evidence: UnchangedFailureBackoffEvidence | None = None
         if (
             decision is RefinementDecision.ADMITTED
             and len(request.signals) == 1
@@ -2180,6 +2585,37 @@ class AdaptiveGoalRefiner:
             and len(request.signals) == 1
             and request.signals[0].kind is RefinementSignalKind.REPEATED_FAILURE
         ):
+            if backoff_source is None:
+                raise AdaptiveGoalRefinementError(
+                    "repeated-failure backoff requires its persisted source failure"
+                )
+            signal = request.signals[0]
+            backoff_evidence = UnchangedFailureBackoffEvidence(
+                repeated_failure_signal_id=signal.evidence_id,
+                failure_signature=signal.failure_signature,
+                request_id=request.content_id,
+                cycle_id=request.cycle_id,
+                evidence_fingerprint=request.evidence_fingerprint,
+                root_goal_id=request.root_goal_id,
+                root_goal_content_id=request.root_goal_content_id,
+                assumption_ids=request.assumption_ids,
+                policy_id=self.policy.content_id,
+                repository_tree_id=request.repository_tree_id,
+                previous_plan_id=request.plan.content_id,
+                source_failure_receipt_id=backoff_source.receipt_id,
+                source_failure_decision=backoff_source.decision.value,
+                source_failure_model_called=backoff_source.model_called,
+                source_failure_attempted_at=backoff_source.attempted_at,
+                source_failure_retry_after=backoff_source.retry_after,
+                source_failure_attempt_index=backoff_source.attempt_index,
+                source_failure_refinement_index=(
+                    backoff_source.refinement_index
+                ),
+                suppressed_at=now,
+                suppressed_attempt_index=attempt_index,
+                retry_after=retry_after,
+            )
+            backoff_evidence.validate_source(backoff_source)
             requirement_ids.append(UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID)
         return AdaptiveRefinementReceipt(
             decision=decision,
@@ -2206,6 +2642,7 @@ class AdaptiveGoalRefiner:
             signal_kinds=tuple(item.kind.value for item in request.signals),
             requirement_ids=tuple(requirement_ids),
             new_counterexample_evidence=counterexample_evidence,
+            unchanged_failure_backoff_evidence=backoff_evidence,
         )
 
 
@@ -2231,10 +2668,14 @@ def refine_goal_from_evidence(
 
 __all__ = [
     "ADAPTIVE_GOAL_REFINER_VERSION",
+    "ADAPTIVE_REFINEMENT_RECEIPT_VERSION",
     "NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID",
     "NEW_EVIDENCE_REFINEMENT_GOAL_ID",
     "UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID",
+    "UNCHANGED_FAILURE_BACKOFF_GOAL_ID",
+    "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA",
     "NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA",
+    "UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA",
     "AdaptiveGoalRefinementError",
     "RefinementPersistenceError",
     "RefinementSignalKind",
@@ -2254,6 +2695,7 @@ __all__ = [
     "GoalRefinementCandidate",
     "GoalRefinementProposal",
     "NewCounterexampleRefinementEvidence",
+    "UnchangedFailureBackoffEvidence",
     "AdaptiveRefinementReceipt",
     "GoalRefinementReceipt",
     "AdaptiveRefinementResult",
