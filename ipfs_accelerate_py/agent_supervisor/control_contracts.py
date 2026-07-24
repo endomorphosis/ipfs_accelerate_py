@@ -84,6 +84,14 @@ CONTROL_SURFACE_PARITY_CASE_SCHEMA = (
 CONTROL_SURFACE_PARITY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-surface-parity-evidence@1"
 )
+CONTROL_SURFACE_PARITY_COMPLETION_QUORUM_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "control-surface-parity-completion-quorum-evidence@1"
+)
+CONTROL_SURFACE_PARITY_COMPLETION_MEMBER_HEALTH_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "control-surface-parity-completion-member-health@1"
+)
 MUTATION_GUARD_REJECTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/mutation-guard-rejection@2"
 )
@@ -110,6 +118,33 @@ MUTATION_GUARD_EXECUTION_OBSERVATION_SCHEMA = (
 # intentionally not completion evidence.
 CONTROL_SURFACE_PARITY_REQUIREMENT_ID: Final[str] = (
     "031486194157679117987393491870400400279"
+)
+CONTROL_SURFACE_PARITY_OBJECTIVE_ID: Final[str] = "ASI-G103"
+CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION: Final[str] = "ASI-G103@asi-067"
+CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION: Final[str] = (
+    "asi-g103-objective-validation@1"
+)
+CONTROL_SURFACE_PARITY_COMPLETION_CONFIGURATION_REVISION: Final[str] = (
+    "unified-control-surface-parity-completion@1"
+)
+CONTROL_SURFACE_PARITY_REQUIRED_EXHAUSTIVE_RECEIPTS: Final[int] = 2
+CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    "The shared schema describes all operations",
+    (
+        "every CLI/MCP adapter decodes and dispatches the canonical request "
+        "directly"
+    ),
+    "canonical records are exactly equal to Python behavior",
+    "bounded reads and watches cannot exceed contract limits",
+    (
+        "unsafe CLI defaults and unconfigured MCP mutation authority fail "
+        "closed"
+    ),
+    (
+        "and the exact requirement ID appears only in a "
+        "tree/objective/policy-bound parity evidence record that rejects any "
+        "surface, vocabulary, schema, or behavior drift."
+    ),
 )
 CONTROL_MUTATION_GUARD_REQUIREMENT_ID: Final[str] = (
     "184125100306462690646212311073240043804"
@@ -3694,6 +3729,10 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
             raise ControlContractError(
                 "parity evidence requirement_id is not the ASI-G103 requirement"
             )
+        if self.objective_id != CONTROL_SURFACE_PARITY_OBJECTIVE_ID:
+            raise ControlContractError(
+                "parity evidence objective_id is not ASI-G103"
+            )
         report = self.capability_report
         if not isinstance(report, CapabilityReport):
             if not isinstance(report, Mapping):
@@ -3791,6 +3830,83 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
     def proved_requirement_ids(self) -> tuple[str, ...]:
         return (CONTROL_SURFACE_PARITY_REQUIREMENT_ID,)
 
+    @property
+    def completion_authoritative(self) -> bool:
+        """Operational evidence is input to, never a substitute for, the gate."""
+
+        return False
+
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G103 through its closed, two-phase completion gate.
+
+        The parity receipt is the operational witness, not permission to
+        declare its objective complete.  Every immutable criterion needs a
+        separate current-tree validation and implementation binding, analyzer
+        health must explicitly permit completion reasoning, and the configured
+        independent exhaustive quorum must bind this exact witness and policy.
+        """
+
+        expected_operations = tuple(
+            sorted(Operation, key=lambda item: item.value)
+        )
+        expected_surfaces = tuple(
+            sorted(ControlSurface, key=lambda item: item.value)
+        )
+        return _evaluate_control_objective_completion(
+            self,
+            objective_id=CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+            requirement_id=CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
+            objective_revision=CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION,
+            analyzer_version=(
+                CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION
+            ),
+            configuration_revision=(
+                CONTROL_SURFACE_PARITY_COMPLETION_CONFIGURATION_REVISION
+            ),
+            acceptance_criteria=CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA,
+            required_exhaustive_receipts=(
+                CONTROL_SURFACE_PARITY_REQUIRED_EXHAUSTIVE_RECEIPTS
+            ),
+            quorum_evidence_type=ControlSurfaceParityCompletionQuorumEvidence,
+            operational_complete=bool(
+                self.proved_requirement_ids
+                == (CONTROL_SURFACE_PARITY_REQUIREMENT_ID,)
+                and self.operations == expected_operations
+                and self.surfaces == expected_surfaces
+                and self.capability_report.supported_operations
+                == expected_operations
+                and {item.behavior_class for item in self.cases}
+                == set(ControlBehaviorClass)
+            ),
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
     def _payload(self) -> dict[str, Any]:
         assert isinstance(self.capability_report, CapabilityReport)
         return {
@@ -3855,6 +3971,221 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
                     f"parity evidence {name} does not match the shared schema"
                 )
         _identity(payload, result.content_id, "control surface parity evidence")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlSurfaceParityCompletionMemberHealth(_ControlCanonicalContract):
+    """Explicit completion-safety attestation for one G103 receipt."""
+
+    SCHEMA: ClassVar[str] = (
+        CONTROL_SURFACE_PARITY_COMPLETION_MEMBER_HEALTH_SCHEMA
+    )
+
+    member_id: str
+    receipt_cid: str
+    healthy: bool
+    safe_for_completion_reasoning: bool
+
+    def __post_init__(self) -> None:
+        for name in ("member_id", "receipt_cid"):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        for name in ("healthy", "safe_for_completion_reasoning"):
+            if not isinstance(getattr(self, name), bool):
+                raise ControlContractError(f"{name} must be a boolean")
+        _bounded_record(self, "control surface parity completion member health")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "member_id": self.member_id,
+            "receipt_cid": self.receipt_cid,
+            "healthy": self.healthy,
+            "safe_for_completion_reasoning": (
+                self.safe_for_completion_reasoning
+            ),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlSurfaceParityCompletionMemberHealth":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "member_id",
+                "receipt_cid",
+                "healthy",
+                "safe_for_completion_reasoning",
+                "content_id",
+            },
+            "control surface parity completion member health",
+        )
+        result = cls(
+            member_id=payload.get("member_id", ""),
+            receipt_cid=payload.get("receipt_cid", ""),
+            healthy=payload.get("healthy", False),
+            safe_for_completion_reasoning=payload.get(
+                "safe_for_completion_reasoning", False
+            ),
+        )
+        _identity(
+            payload,
+            result.content_id,
+            "control surface parity completion member health",
+        )
+        return result
+
+
+@dataclass(frozen=True)
+class ControlSurfaceParityCompletionQuorumEvidence(
+    _ControlCanonicalContract
+):
+    """Bind a healthy exhaustive quorum to one G103 parity witness."""
+
+    SCHEMA: ClassVar[str] = (
+        CONTROL_SURFACE_PARITY_COMPLETION_QUORUM_EVIDENCE_SCHEMA
+    )
+
+    validation_policy_id: str
+    policy_revision: str
+    operational_receipt_id: str
+    quorum: Any
+    member_health: tuple[
+        ControlSurfaceParityCompletionMemberHealth | Mapping[str, Any], ...
+    ]
+    objective_id: str = CONTROL_SURFACE_PARITY_OBJECTIVE_ID
+    requirement_id: str = CONTROL_SURFACE_PARITY_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        from .scan_receipts import ExhaustionQuorumResult
+
+        for name in (
+            "validation_policy_id",
+            "policy_revision",
+            "operational_receipt_id",
+            "objective_id",
+            "requirement_id",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        if self.objective_id != CONTROL_SURFACE_PARITY_OBJECTIVE_ID:
+            raise ControlContractError(
+                "completion quorum objective_id is not ASI-G103"
+            )
+        if self.requirement_id != CONTROL_SURFACE_PARITY_REQUIREMENT_ID:
+            raise ControlContractError(
+                "completion quorum requirement_id is not the ASI-G103 "
+                "requirement"
+            )
+        quorum = self.quorum
+        if not isinstance(quorum, ExhaustionQuorumResult):
+            if not isinstance(quorum, Mapping):
+                raise ControlContractError(
+                    "completion quorum must contain an ExhaustionQuorumResult"
+                )
+            try:
+                quorum = ExhaustionQuorumResult.from_dict(quorum)
+            except (TypeError, ValueError) as exc:
+                raise ControlContractError(
+                    "completion quorum is malformed"
+                ) from exc
+        object.__setattr__(self, "quorum", quorum)
+        member_health = _coerce_tuple(
+            self.member_health,
+            ControlSurfaceParityCompletionMemberHealth,
+            ControlSurfaceParityCompletionMemberHealth.from_dict,
+            "member_health",
+        )
+        expected_members = {
+            (member.member_id, member.receipt_cid)
+            for member in quorum.members
+        }
+        attested_members = {
+            (member.member_id, member.receipt_cid)
+            for member in member_health
+        }
+        if (
+            len(member_health) != len(attested_members)
+            or attested_members != expected_members
+        ):
+            raise ControlContractError(
+                "completion member health must cover every quorum receipt "
+                "exactly"
+            )
+        if not all(
+            member.healthy and member.safe_for_completion_reasoning
+            for member in member_health
+        ):
+            raise ControlContractError(
+                "every exhaustive receipt must be explicitly healthy and "
+                "safe for completion reasoning"
+            )
+        object.__setattr__(
+            self,
+            "member_health",
+            tuple(sorted(member_health, key=lambda item: item.member_id)),
+        )
+        _bounded_record(
+            self,
+            "control surface parity completion quorum evidence",
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        quorum = self.quorum.to_dict()
+        quorum.pop("confidence", None)
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "requirement_id": self.requirement_id,
+            "objective_id": self.objective_id,
+            "validation_policy_id": self.validation_policy_id,
+            "policy_revision": self.policy_revision,
+            "operational_receipt_id": self.operational_receipt_id,
+            "quorum": quorum,
+            "member_health": tuple(
+                item.to_record() for item in self.member_health
+            ),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlSurfaceParityCompletionQuorumEvidence":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "requirement_id",
+                "objective_id",
+                "validation_policy_id",
+                "policy_revision",
+                "operational_receipt_id",
+                "quorum",
+                "member_health",
+                "content_id",
+            },
+            "control surface parity completion quorum evidence",
+        )
+        result = cls(
+            requirement_id=payload.get("requirement_id", ""),
+            objective_id=payload.get("objective_id", ""),
+            validation_policy_id=payload.get("validation_policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            operational_receipt_id=payload.get("operational_receipt_id", ""),
+            quorum=payload.get("quorum") or {},
+            member_health=payload.get("member_health", ()),
+        )
+        _identity(
+            payload,
+            result.content_id,
+            "control surface parity completion quorum evidence",
+        )
         return result
 
 
@@ -5110,7 +5441,15 @@ __all__ = [
     "CONTROL_MUTATION_GUARD_REQUIREMENT_ID",
     "CONTROL_MUTATION_RUNTIME_STATE_SCHEMA",
     "CONTROL_SURFACE_PARITY_CASE_SCHEMA",
+    "CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA",
+    "CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION",
+    "CONTROL_SURFACE_PARITY_COMPLETION_CONFIGURATION_REVISION",
+    "CONTROL_SURFACE_PARITY_COMPLETION_MEMBER_HEALTH_SCHEMA",
+    "CONTROL_SURFACE_PARITY_COMPLETION_QUORUM_EVIDENCE_SCHEMA",
     "CONTROL_SURFACE_PARITY_EVIDENCE_SCHEMA",
+    "CONTROL_SURFACE_PARITY_OBJECTIVE_ID",
+    "CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION",
+    "CONTROL_SURFACE_PARITY_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "CONTROL_SURFACE_PARITY_REQUIREMENT_ID",
     "DRY_RUN_PREVIEW_SCHEMA",
     "EFFECT_CLAIM_SCHEMA",
@@ -5155,6 +5494,8 @@ __all__ = [
     "ControlOperation",
     "ControlSurface",
     "ControlSurfaceParityCase",
+    "ControlSurfaceParityCompletionMemberHealth",
+    "ControlSurfaceParityCompletionQuorumEvidence",
     "ControlSurfaceParityEvidence",
     "DryRunPreview",
     "EffectClaim",

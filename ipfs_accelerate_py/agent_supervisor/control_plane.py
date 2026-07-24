@@ -34,6 +34,7 @@ from typing import Any, Final, Protocol, Union
 from .control_contracts import (
     CONTROL_CONTRACT_VERSION,
     MUTATION_OPERATIONS,
+    PROPOSAL_OPERATIONS,
     READ_OPERATIONS,
     AuthorizationBindingError,
     CapabilityReport,
@@ -1580,7 +1581,7 @@ class SupervisorControlService:
         if request.dry_run and request.operation in MUTATION_OPERATIONS:
             preview = self._preview(request, response)
             authority = OperationAuthority.PROPOSAL
-        elif request.operation is Operation.OBJECTIVE_PREVIEW:
+        elif request.operation in PROPOSAL_OPERATIONS:
             preview = self._preview(request, response)
         result = OperationResult(
             request_id=request.request_id,
