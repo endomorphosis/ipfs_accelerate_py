@@ -77,7 +77,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-006 Materialize admitted goal and subgoal proposals transactionally
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: leanstral-goal-development
