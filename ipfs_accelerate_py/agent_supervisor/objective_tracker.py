@@ -8,9 +8,10 @@ import re
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass, field
+from enum import Enum
 from hashlib import sha1, sha256
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .goal_completion import (
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
@@ -27,10 +28,13 @@ from .objective_graph import (
     DEFAULT_EMBEDDING_MIN_SCORE,
     ObjectiveFinding,
     ObjectiveGoal,
+    ObjectiveGoalMaterializationPreview,
     canonical_interoperability_component,
     evidence_index,
     goal_graph,
     normalize_field_key,
+    objective_goal_content_id,
+    objective_heap_content_id,
     objective_heap_schedule,
     parse_goal_heap,
     safe_bundle_key,
@@ -132,6 +136,60 @@ class ObjectiveGoalMigrationResult:
             "objective_path": str(self.objective_path),
             "changed": self.changed,
         })
+        return payload
+
+
+class ObjectiveMaterializationTransactionState(str, Enum):
+    """Durable state of an objective-heap materialization transaction."""
+
+    PREPARED = "prepared"
+    COMMITTED = "committed"
+    BLOCKED = "blocked"
+
+
+@dataclass(frozen=True)
+class ObjectiveMaterializationTransactionResult:
+    """Outcome of applying one immutable objective materialization preview."""
+
+    objective_path: Path
+    journal_path: Path
+    transaction_id: str
+    state: ObjectiveMaterializationTransactionState
+    admitted_proposal_ids: tuple[str, ...] = ()
+    changed: bool = False
+    resumed: bool = False
+    reason_codes: tuple[str, ...] = ()
+    base_heap_content_id: str = ""
+    candidate_heap_content_id: str = ""
+    repository_tree_id: str = ""
+    root_goal_id: str = ""
+    root_content_id: str = ""
+
+    @property
+    def committed(self) -> bool:
+        return self.state is ObjectiveMaterializationTransactionState.COMMITTED
+
+    @property
+    def resumable(self) -> bool:
+        return self.state is not ObjectiveMaterializationTransactionState.COMMITTED
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload.update(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "objective_materialization_transaction_result@1"
+                ),
+                "objective_path": str(self.objective_path),
+                "journal_path": str(self.journal_path),
+                "state": self.state.value,
+                "admitted_proposal_ids": list(self.admitted_proposal_ids),
+                "reason_codes": list(self.reason_codes),
+                "committed": self.committed,
+                "resumable": self.resumable,
+            }
+        )
         return payload
 
 
@@ -414,31 +472,89 @@ def _git_output(repo_root: Path, *arguments: str, binary: bool = False) -> str |
     return completed.stdout if binary else str(completed.stdout).strip()
 
 
-def completion_tree_identity(repo_root: Path, *, objective_path: Path) -> RepositoryTreeIdentity:
-    """Return source-tree identity without self-invalidating tracker writes.
-
-    The objective document is mutable supervisor state.  Persisting a
-    lifecycle transition must not immediately make otherwise-current evidence
-    stale.  This calculation is byte-for-byte compatible with ``scan_identity``
-    while excluding only that control document; every code, test, task-board,
-    configuration, tracked, and untracked change remains in the digest.
-    """
+def _control_tree_identity(
+    repo_root: Path,
+    *,
+    excluded_paths: Sequence[Path],
+) -> RepositoryTreeIdentity:
+    """Return source-tree identity while excluding supervisor control files."""
 
     root = repo_root.resolve()
     top_text = str(_git_output(root, "rev-parse", "--show-toplevel") or "")
     if not top_text:
-        return scan_identity(root)
+        excluded_files = {
+            path.resolve()
+            for path in excluded_paths
+            if not path.exists() or not path.is_dir()
+        }
+        excluded_directories = {
+            path.resolve()
+            for path in excluded_paths
+            if path.exists() and path.is_dir()
+        }
+
+        def excluded(candidate: Path) -> bool:
+            resolved = candidate.resolve()
+            if resolved in excluded_files:
+                return True
+            return any(
+                resolved == directory or directory in resolved.parents
+                for directory in excluded_directories
+            )
+
+        # Git-less workspaces still need a real compare-and-swap fence.  The
+        # generic scan identity is path-derived for such directories, so hash
+        # names and bytes here while omitting only supervisor-owned controls.
+        digest = sha256()
+        for candidate in sorted(
+            root.rglob("*"),
+            key=lambda path: path.relative_to(root).as_posix(),
+        ):
+            if excluded(candidate):
+                continue
+            relative = candidate.relative_to(root).as_posix()
+            try:
+                if candidate.is_symlink():
+                    digest.update(b"\0symlink\0")
+                    digest.update(relative.encode("utf-8"))
+                    digest.update(candidate.readlink().as_posix().encode("utf-8"))
+                elif candidate.is_file():
+                    digest.update(b"\0file\0")
+                    digest.update(relative.encode("utf-8"))
+                    digest.update(
+                        str(candidate.stat().st_mode & 0o777).encode("ascii")
+                    )
+                    with candidate.open("rb") as stream:
+                        for chunk in iter(
+                            lambda: stream.read(1024 * 1024), b""
+                        ):
+                            digest.update(chunk)
+            except OSError as exc:
+                # A concurrently removed or unreadable source is itself a
+                # distinct, fail-closed identity rather than an ignored file.
+                digest.update(b"\0unreadable\0")
+                digest.update(relative.encode("utf-8"))
+                digest.update(type(exc).__name__.encode("ascii"))
+        return RepositoryTreeIdentity(
+            repository_id=str(root),
+            tree_id=f"sha256:{digest.hexdigest()}",
+        )
     top = Path(top_text).resolve()
-    try:
-        relative = objective_path.resolve().relative_to(top).as_posix()
-    except ValueError:
+    relatives: list[str] = []
+    for path in excluded_paths:
+        try:
+            relative = path.resolve().relative_to(top).as_posix()
+        except ValueError:
+            continue
+        if relative and relative not in relatives:
+            relatives.append(relative)
+    if not relatives:
         return scan_identity(root)
     base = scan_identity(root)
     head_tree = str(_git_output(root, "rev-parse", "HEAD^{tree}") or "")
     if not head_tree:
         return base
-    exclude = f":(exclude){relative}"
-    pathspec = ("--", ".", exclude)
+    pathspec = ("--", ".", *(f":(exclude){relative}" for relative in relatives))
     status = _git_output(
         top,
         "status",
@@ -493,6 +609,45 @@ def completion_tree_identity(repo_root: Path, *, objective_path: Path) -> Reposi
     return RepositoryTreeIdentity(
         repository_id=base.repository_id,
         tree_id=f"sha256:{digest.hexdigest()}",
+    )
+
+
+def completion_tree_identity(repo_root: Path, *, objective_path: Path) -> RepositoryTreeIdentity:
+    """Return source-tree identity without self-invalidating tracker writes.
+
+    The objective document is mutable supervisor state.  Persisting a
+    lifecycle transition must not immediately make otherwise-current evidence
+    stale.  This calculation is byte-for-byte compatible with ``scan_identity``
+    while excluding only that control document; every code, test, task-board,
+    configuration, tracked, and untracked change remains in the digest.
+    """
+
+    return _control_tree_identity(
+        repo_root,
+        excluded_paths=(objective_path,),
+    )
+
+
+def objective_materialization_tree_identity(
+    repo_root: Path,
+    *,
+    objective_path: Path,
+    journal_path: Path,
+    control_paths: Sequence[Path] = (),
+) -> RepositoryTreeIdentity:
+    """Return a tree fence which ignores only this transaction's own files."""
+
+    lock_path = objective_path.with_name(
+        f".{objective_path.name}.admission.lock"
+    )
+    return _control_tree_identity(
+        repo_root,
+        excluded_paths=(
+            objective_path,
+            journal_path,
+            lock_path,
+            *(Path(path) for path in control_paths),
+        ),
     )
 
 
@@ -573,9 +728,700 @@ def _atomic_rewrite(path: Path, text: str) -> None:
             os.fsync(stream.fileno())
         os.chmod(temporary, mode)
         os.replace(temporary, path)
+        _fsync_parent_directory(path)
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def _fsync_parent_directory(path: Path) -> None:
+    """Durably retain a preceding rename when the platform supports it."""
+
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path.parent, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Atomically and durably replace a small tracker-owned JSON artifact."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        _fsync_parent_directory(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+_OBJECTIVE_MATERIALIZATION_JOURNAL_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.objective_materialization_journal@1"
+)
+
+
+def _load_objective_materialization_journal(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "schema": _OBJECTIVE_MATERIALIZATION_JOURNAL_SCHEMA,
+            "transactions": {},
+        }
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError("objective materialization journal must be a JSON object")
+    if payload.get("schema") != _OBJECTIVE_MATERIALIZATION_JOURNAL_SCHEMA:
+        raise ValueError("unsupported objective materialization journal schema")
+    transactions = payload.get("transactions")
+    if not isinstance(transactions, Mapping) or any(
+        not isinstance(key, str) or not isinstance(value, Mapping)
+        for key, value in transactions.items()
+    ):
+        raise ValueError("objective materialization transactions must be an object")
+    return {
+        "schema": _OBJECTIVE_MATERIALIZATION_JOURNAL_SCHEMA,
+        "transactions": {
+            str(key): dict(value) for key, value in transactions.items()
+        },
+        **(
+            {"latest_transaction_id": str(payload["latest_transaction_id"])}
+            if payload.get("latest_transaction_id")
+            else {}
+        ),
+    }
+
+
+def _objective_materialization_transaction_id(
+    preview: ObjectiveGoalMaterializationPreview,
+) -> str:
+    material = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "objective_materialization_transaction@1"
+        ),
+        "base_heap_content_id": preview.base_heap_content_id,
+        "candidate_heap_content_id": preview.candidate_heap_content_id,
+        "root_goal_id": preview.root_goal_id,
+        "root_content_id": preview.root_content_id,
+        "proposal_ids": list(preview.admitted_proposal_ids),
+        "lifecycle_owner": preview.policy.lifecycle_owner,
+    }
+    digest = sha256(
+        json.dumps(
+            material,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    return f"objective-materialization:sha256:{digest}"
+
+
+def _objective_transaction_result(
+    *,
+    objective_path: Path,
+    journal_path: Path,
+    preview: ObjectiveGoalMaterializationPreview,
+    transaction_id: str,
+    state: ObjectiveMaterializationTransactionState,
+    repository_tree_id: str,
+    changed: bool = False,
+    resumed: bool = False,
+    reason_codes: Iterable[str] = (),
+) -> ObjectiveMaterializationTransactionResult:
+    return ObjectiveMaterializationTransactionResult(
+        objective_path=objective_path,
+        journal_path=journal_path,
+        transaction_id=transaction_id,
+        state=state,
+        admitted_proposal_ids=(
+            preview.admitted_proposal_ids
+            if state is ObjectiveMaterializationTransactionState.COMMITTED
+            else ()
+        ),
+        changed=bool(changed),
+        resumed=bool(resumed),
+        reason_codes=tuple(
+            dict.fromkeys(
+                str(item).strip() for item in reason_codes if str(item).strip()
+            )
+        ),
+        base_heap_content_id=preview.base_heap_content_id,
+        candidate_heap_content_id=preview.candidate_heap_content_id,
+        repository_tree_id=repository_tree_id,
+        root_goal_id=preview.root_goal_id,
+        root_content_id=preview.root_content_id,
+    )
+
+
+def _materialization_record_matches_preview(
+    record: Mapping[str, Any],
+    preview: ObjectiveGoalMaterializationPreview,
+) -> bool:
+    return (
+        str(record.get("base_heap_content_id") or "")
+        == preview.base_heap_content_id
+        and str(record.get("candidate_heap_content_id") or "")
+        == preview.candidate_heap_content_id
+        and str(record.get("root_goal_id") or "") == preview.root_goal_id
+        and str(record.get("root_content_id") or "") == preview.root_content_id
+        and tuple(record.get("proposal_ids") or ())
+        == preview.admitted_proposal_ids
+        and str(record.get("candidate_text") or "") == preview.candidate_text
+    )
+
+
+def _materialization_goal_errors(
+    text: str,
+    preview: ObjectiveGoalMaterializationPreview,
+    *,
+    require_all: bool,
+) -> list[str]:
+    """Reparse and compare every field whose preservation is contractual."""
+
+    goals = parse_goal_heap(text)
+    ids = [goal.goal_id for goal in goals]
+    errors: list[str] = []
+    duplicate_ids = sorted(
+        goal_id for goal_id in set(ids) if ids.count(goal_id) > 1
+    )
+    if duplicate_ids:
+        errors.append("duplicate_goal_id")
+    by_id = {goal.goal_id: goal for goal in goals}
+    known_ids = set(by_id)
+    if any(
+        parent not in known_ids
+        for goal in goals
+        for parent in goal.parent_goal_ids
+    ):
+        errors.append("unresolved_parent")
+
+    state: dict[str, int] = {}
+
+    def visit(goal_id: str) -> bool:
+        marker = state.get(goal_id, 0)
+        if marker == 1:
+            return False
+        if marker == 2:
+            return True
+        state[goal_id] = 1
+        valid = all(
+            visit(parent)
+            for parent in by_id[goal_id].parent_goal_ids
+            if parent in by_id
+        )
+        state[goal_id] = 2
+        return valid
+
+    if any(not visit(goal_id) for goal_id in sorted(by_id)):
+        errors.append("parent_cycle")
+
+    for materialized in preview.materialized:
+        proposal = materialized.proposal
+        goal = by_id.get(proposal.canonical_id)
+        if goal is None:
+            if require_all:
+                errors.append(f"missing_goal:{proposal.canonical_id}")
+            continue
+        fields = goal.fields
+        exact_values = {
+            "canonical_proposal_id": proposal.canonical_id,
+            "semantic_key": proposal.semantic_key,
+            "proposal_kind": proposal.kind.value,
+            "proposal_source": proposal.source,
+            "proposal_source_id": proposal.source_id,
+            "lifecycle_owner": preview.policy.lifecycle_owner,
+            "goal": "; ".join(proposal.parent_objective_terms) or proposal.title,
+            "evidence": ", ".join(proposal.expected_evidence_delta),
+            "depends_on": ", ".join(proposal.dependencies),
+            "outputs": ", ".join(proposal.predicted_files),
+            "predicted_symbols": ", ".join(proposal.predicted_symbols),
+            "validation": "; ".join(proposal.validation_commands),
+            "graph_depth": str(materialized.graph_depth),
+            "parent_goal_ids_json": json.dumps(
+                list(materialized.parent_goal_ids),
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ),
+            "dependencies_json": json.dumps(
+                list(proposal.dependencies),
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ),
+            "evidence_requirements_json": json.dumps(
+                list(proposal.expected_evidence_delta),
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ),
+            "predicted_files_json": json.dumps(
+                list(proposal.predicted_files),
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ),
+            "predicted_symbols_json": json.dumps(
+                list(proposal.predicted_symbols),
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ),
+            "validation_commands_json": json.dumps(
+                list(proposal.validation_commands),
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ),
+        }
+        for key, expected in exact_values.items():
+            if str(fields.get(key) or "") != expected:
+                errors.append(f"metadata_mismatch:{proposal.canonical_id}:{key}")
+        if tuple(goal.parent_goal_ids) != materialized.parent_goal_ids:
+            errors.append(f"parent_mismatch:{proposal.canonical_id}")
+        if materialized.graph_depth != proposal.depth:
+            errors.append(f"depth_mismatch:{proposal.canonical_id}")
+    return sorted(set(errors))
+
+
+def _append_materialized_prefix(
+    base_text: str,
+    preview: ObjectiveGoalMaterializationPreview,
+    count: int,
+) -> str:
+    selected = preview.materialized[: max(0, int(count))]
+    if not selected:
+        return base_text
+    separator = "\n\n" if base_text.rstrip() else ""
+    return (
+        base_text.rstrip()
+        + separator
+        + "\n\n".join(item.rendered_block.strip() for item in selected)
+        + "\n"
+    )
+
+
+def _validate_materialization_lease(
+    lease_guard: Callable[..., Any] | None,
+    expected_lease_token: str | int | None,
+) -> str:
+    """Run a caller-supplied fencing check immediately before heap mutation."""
+
+    if lease_guard is None:
+        return (
+            "lease guard is required for the expected fencing token"
+            if expected_lease_token is not None
+            else ""
+        )
+    try:
+        value = (
+            lease_guard(expected_lease_token)
+            if expected_lease_token is not None
+            else lease_guard()
+        )
+    except Exception as exc:
+        return f"{type(exc).__name__}: {exc}"
+    if value is False or value is None:
+        return "lease guard did not confirm ownership"
+    if expected_lease_token is None:
+        return ""
+    if isinstance(value, Mapping):
+        actual = value.get(
+            "fencing_token",
+            value.get("lease_token", value.get("token")),
+        )
+    else:
+        actual = getattr(
+            value,
+            "fencing_token",
+            getattr(value, "lease_token", value),
+        )
+    if str(actual) != str(expected_lease_token):
+        return "lease fencing token changed"
+    return ""
+
+
+def commit_objective_goal_materialization(
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    journal_path: Path,
+    preview: ObjectiveGoalMaterializationPreview,
+    expected_repository_tree_id: str = "",
+    lease_guard: Callable[..., Any] | None = None,
+    expected_lease_token: str | int | None = None,
+    lock_timeout_seconds: float = 30.0,
+    control_paths: Sequence[Path] = (),
+) -> ObjectiveMaterializationTransactionResult:
+    """Commit a preview with durable CAS fencing and idempotent recovery.
+
+    The journal is written ``prepared`` before the heap replacement.  If the
+    process stops after replacing the heap but before marking the journal
+    committed, a later call recognizes either the exact candidate or an exact
+    prefix of its rendered blocks and safely completes the same transaction.
+    Stale source trees, roots, heap content, and lease fencing tokens leave the
+    prepared record intact for a fresh preview or lease to resume.
+    """
+
+    if not isinstance(preview, ObjectiveGoalMaterializationPreview):
+        raise TypeError("preview must be ObjectiveGoalMaterializationPreview")
+    if not preview.ready or not preview.changed:
+        reasons = [
+            "preview_not_ready",
+            *preview.fatal_reasons,
+            *(item.reason for item in preview.rejected),
+        ]
+        return _objective_transaction_result(
+            objective_path=objective_path,
+            journal_path=journal_path,
+            preview=preview,
+            transaction_id=_objective_materialization_transaction_id(preview),
+            state=ObjectiveMaterializationTransactionState.BLOCKED,
+            repository_tree_id=str(expected_repository_tree_id or ""),
+            reason_codes=reasons,
+        )
+
+    objective_path = objective_path.resolve()
+    journal_path = journal_path.resolve()
+    repo_root = repo_root.resolve()
+    if objective_path == journal_path:
+        raise ValueError("journal_path must be separate from objective_path")
+    transaction_id = _objective_materialization_transaction_id(preview)
+    lock_path = objective_path.with_name(f".{objective_path.name}.admission.lock")
+
+    from .duckdb_state import exclusive_file_lock
+
+    try:
+        lock = exclusive_file_lock(
+            lock_path, timeout_seconds=max(0.0, float(lock_timeout_seconds))
+        )
+        with lock:
+            journal = _load_objective_materialization_journal(journal_path)
+            transactions = dict(journal["transactions"])
+            prior = transactions.get(transaction_id)
+            resumed = prior is not None
+            if prior is not None and not _materialization_record_matches_preview(
+                prior, preview
+            ):
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.BLOCKED,
+                    repository_tree_id=str(
+                        prior.get("repository_tree_id")
+                        or expected_repository_tree_id
+                        or ""
+                    ),
+                    resumed=True,
+                    reason_codes=("transaction_identity_conflict",),
+                )
+
+            current_text = (
+                objective_path.read_text(encoding="utf-8")
+                if objective_path.exists()
+                else ""
+            )
+            current_goals = parse_goal_heap(current_text)
+            current_root = next(
+                (
+                    goal
+                    for goal in current_goals
+                    if goal.goal_id == preview.root_goal_id
+                ),
+                None,
+            )
+            if (
+                preview.root_goal_id
+                and (
+                    current_root is None
+                    or objective_goal_content_id(current_root)
+                    != preview.root_content_id
+                )
+            ):
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.BLOCKED,
+                    repository_tree_id=str(expected_repository_tree_id or ""),
+                    resumed=resumed,
+                    reason_codes=("changed_root",),
+                )
+
+            current_content_id = objective_heap_content_id(current_text)
+            metadata_errors = _materialization_goal_errors(
+                current_text, preview, require_all=False
+            )
+            conflicting_metadata = [
+                item for item in metadata_errors if item.startswith("metadata_mismatch:")
+            ]
+            if conflicting_metadata:
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.BLOCKED,
+                    repository_tree_id=str(expected_repository_tree_id or ""),
+                    resumed=resumed,
+                    reason_codes=("partial_write_conflict", *conflicting_metadata),
+                )
+
+            # A committed record remains idempotent after later transactions
+            # append unrelated goals.  Revalidate its exact nodes and root
+            # instead of requiring the entire historical heap digest.
+            if prior is not None and prior.get("state") == "committed":
+                complete_errors = _materialization_goal_errors(
+                    current_text, preview, require_all=True
+                )
+                if not complete_errors:
+                    return _objective_transaction_result(
+                        objective_path=objective_path,
+                        journal_path=journal_path,
+                        preview=preview,
+                        transaction_id=transaction_id,
+                        state=ObjectiveMaterializationTransactionState.COMMITTED,
+                        repository_tree_id=str(
+                            prior.get("repository_tree_id")
+                            or expected_repository_tree_id
+                            or ""
+                        ),
+                        resumed=True,
+                    )
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.BLOCKED,
+                    repository_tree_id=str(
+                        prior.get("repository_tree_id")
+                        or expected_repository_tree_id
+                        or ""
+                    ),
+                    resumed=True,
+                    reason_codes=("committed_heap_conflict", *complete_errors),
+                )
+
+            identity = objective_materialization_tree_identity(
+                repo_root,
+                objective_path=objective_path,
+                journal_path=journal_path,
+                control_paths=control_paths,
+            )
+            frozen_tree_id = str(
+                (prior or {}).get("repository_tree_id")
+                or expected_repository_tree_id
+                or identity.tree_id
+            )
+            if expected_repository_tree_id and (
+                str(expected_repository_tree_id) != frozen_tree_id
+            ):
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.BLOCKED,
+                    repository_tree_id=frozen_tree_id,
+                    resumed=resumed,
+                    reason_codes=("transaction_tree_conflict",),
+                )
+            if identity.tree_id != frozen_tree_id:
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.BLOCKED,
+                    repository_tree_id=frozen_tree_id,
+                    resumed=resumed,
+                    reason_codes=("stale_repository_tree",),
+                )
+
+            prefix_count = -1
+            base_text = str((prior or {}).get("base_text") or "")
+            if current_content_id == preview.base_heap_content_id:
+                prefix_count = 0
+                base_text = current_text
+            elif prior is not None and base_text:
+                for count in range(1, len(preview.materialized) + 1):
+                    if objective_heap_content_id(
+                        _append_materialized_prefix(base_text, preview, count)
+                    ) == current_content_id:
+                        prefix_count = count
+                        break
+            if current_content_id == preview.candidate_heap_content_id:
+                prefix_count = len(preview.materialized)
+            if prefix_count < 0:
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.BLOCKED,
+                    repository_tree_id=frozen_tree_id,
+                    resumed=resumed,
+                    reason_codes=("stale_objective_heap",),
+                )
+
+            now = utc_now()
+            prepared = dict(prior or {})
+            prepared.update(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "objective_materialization_transaction@1"
+                    ),
+                    "transaction_id": transaction_id,
+                    "state": "prepared",
+                    "prepared_at": str(prepared.get("prepared_at") or now),
+                    "updated_at": now,
+                    "objective_path": str(objective_path),
+                    "base_heap_content_id": preview.base_heap_content_id,
+                    "candidate_heap_content_id": preview.candidate_heap_content_id,
+                    "root_goal_id": preview.root_goal_id,
+                    "root_content_id": preview.root_content_id,
+                    "repository_id": identity.repository_id,
+                    "repository_tree_id": frozen_tree_id,
+                    "proposal_ids": list(preview.admitted_proposal_ids),
+                    "candidate_text": preview.candidate_text,
+                    "base_text": base_text,
+                    "rendered_block_digests": {
+                        item.proposal.canonical_id: sha256(
+                            item.rendered_block.encode("utf-8")
+                        ).hexdigest()
+                        for item in preview.materialized
+                    },
+                    "lifecycle_owner": preview.policy.lifecycle_owner,
+                    "last_error": "",
+                }
+            )
+            transactions[transaction_id] = prepared
+            journal.update(
+                {
+                    "transactions": transactions,
+                    "latest_transaction_id": transaction_id,
+                }
+            )
+            _atomic_write_json(journal_path, journal)
+
+            lease_error = _validate_materialization_lease(
+                lease_guard, expected_lease_token
+            )
+            if lease_error:
+                prepared["updated_at"] = utc_now()
+                prepared["last_error"] = lease_error
+                prepared["reason_codes"] = ["lease_conflict"]
+                transactions[transaction_id] = prepared
+                journal["transactions"] = transactions
+                _atomic_write_json(journal_path, journal)
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.PREPARED,
+                    repository_tree_id=frozen_tree_id,
+                    resumed=resumed,
+                    reason_codes=("lease_conflict",),
+                )
+
+            changed = prefix_count < len(preview.materialized)
+            if changed:
+                _atomic_rewrite(objective_path, preview.candidate_text)
+            persisted_text = objective_path.read_text(encoding="utf-8")
+            if (
+                objective_heap_content_id(persisted_text)
+                != preview.candidate_heap_content_id
+            ):
+                prepared["updated_at"] = utc_now()
+                prepared["last_error"] = "objective heap replacement was incomplete"
+                prepared["reason_codes"] = ["partial_write"]
+                transactions[transaction_id] = prepared
+                journal["transactions"] = transactions
+                _atomic_write_json(journal_path, journal)
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.PREPARED,
+                    repository_tree_id=frozen_tree_id,
+                    changed=changed,
+                    resumed=resumed,
+                    reason_codes=("partial_write",),
+                )
+            persisted_errors = _materialization_goal_errors(
+                persisted_text, preview, require_all=True
+            )
+            if persisted_errors:
+                prepared["updated_at"] = utc_now()
+                prepared["last_error"] = "; ".join(persisted_errors)
+                prepared["reason_codes"] = ["partial_write"]
+                transactions[transaction_id] = prepared
+                journal["transactions"] = transactions
+                _atomic_write_json(journal_path, journal)
+                return _objective_transaction_result(
+                    objective_path=objective_path,
+                    journal_path=journal_path,
+                    preview=preview,
+                    transaction_id=transaction_id,
+                    state=ObjectiveMaterializationTransactionState.PREPARED,
+                    repository_tree_id=frozen_tree_id,
+                    changed=changed,
+                    resumed=resumed,
+                    reason_codes=("partial_write", *persisted_errors),
+                )
+
+            prepared.update(
+                {
+                    "state": "committed",
+                    "committed_at": utc_now(),
+                    "updated_at": utc_now(),
+                    "last_error": "",
+                    "reason_codes": [],
+                }
+            )
+            transactions[transaction_id] = prepared
+            journal["transactions"] = transactions
+            _atomic_write_json(journal_path, journal)
+            return _objective_transaction_result(
+                objective_path=objective_path,
+                journal_path=journal_path,
+                preview=preview,
+                transaction_id=transaction_id,
+                state=ObjectiveMaterializationTransactionState.COMMITTED,
+                repository_tree_id=frozen_tree_id,
+                changed=changed,
+                resumed=resumed or prefix_count > 0,
+            )
+    except TimeoutError:
+        return _objective_transaction_result(
+            objective_path=objective_path,
+            journal_path=journal_path,
+            preview=preview,
+            transaction_id=transaction_id,
+            state=ObjectiveMaterializationTransactionState.BLOCKED,
+            repository_tree_id=str(expected_repository_tree_id or ""),
+            reason_codes=("lease_conflict",),
+        )
+
+
+# Compatibility spellings for generation-ledger callers.
+commit_objective_work_materialization = commit_objective_goal_materialization
+apply_objective_goal_materialization = commit_objective_goal_materialization
 
 
 def migrate_legacy_objective_goals(

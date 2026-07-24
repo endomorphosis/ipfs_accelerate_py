@@ -4,19 +4,31 @@ import json
 
 import pytest
 
+import ipfs_accelerate_py.agent_supervisor.objective_tracker as objective_tracker_module
 from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
     UNMAPPED_GOAL_ID,
     goal_coverage_work_seeds,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     ObjectiveGenerationLimits,
+    ObjectiveGoalMaterializationPolicy,
     ObjectiveWorkKind,
     ObjectiveWorkProposal,
     materialize_bounded_objective_work,
+    objective_goal_content_id,
+    preview_objective_goal_materialization,
+    parse_goal_heap,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+    load_objective_admission_records,
     load_objective_generation_work,
+    materialize_admitted_objective_work,
     materialize_objective_generation_cycle,
+)
+from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+    ObjectiveMaterializationTransactionState,
+    commit_objective_goal_materialization,
+    objective_materialization_tree_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
     AnalysisProposal,
@@ -287,3 +299,371 @@ def test_daemon_generation_ledger_prevents_cross_cycle_regeneration(tmp_path) ->
         second_artifact["generated_work"]
     )
     assert json.loads(artifact.read_text(encoding="utf-8"))["cycle_count"] == 2
+
+
+def _objective_heap() -> str:
+    return """# Objective Heap
+
+## ROOT Frozen objective
+
+- Status: active
+- Goal: Deliver the root objective
+- Evidence: root proof
+- Graph depth: 0
+"""
+
+
+def _hierarchical_goal_work() -> tuple[ObjectiveWorkProposal, ObjectiveWorkProposal]:
+    goal = _proposal(
+        kind="goal",
+        title="Establish API evidence goal",
+        parent_goal_id="ROOT",
+        parent_objective_terms=("Deliver the root objective",),
+        expected_evidence_delta=("API evidence",),
+        dependencies=("bootstrap",),
+        predicted_files=("src/api.py",),
+        predicted_symbols=("ApiClient",),
+        validation_commands=("pytest tests/test_api.py -q",),
+        depth=1,
+        source_id="proposal:api-goal",
+    )
+    subgoal = _proposal(
+        kind="subgoal",
+        title="Verify API evidence",
+        parent_goal_id=goal.canonical_id,
+        parent_objective_terms=("API evidence",),
+        expected_evidence_delta=("API validation receipt",),
+        dependencies=(goal.canonical_id,),
+        predicted_files=("tests/test_api.py",),
+        predicted_symbols=("test_api",),
+        validation_commands=("pytest tests/test_api.py -q",),
+        depth=2,
+        source_id="proposal:api-subgoal",
+    )
+    return goal, subgoal
+
+
+def test_goal_materialization_is_preview_first_lossless_and_transactional(
+    tmp_path,
+) -> None:
+    objective_path = tmp_path / "repo" / "objective-heap.md"
+    objective_path.parent.mkdir()
+    objective_path.write_text(_objective_heap(), encoding="utf-8")
+    original = objective_path.read_bytes()
+    goal, subgoal = _hierarchical_goal_work()
+
+    preview = preview_objective_goal_materialization(
+        objective_path.read_text(encoding="utf-8"),
+        (subgoal, goal),  # provider order cannot change hierarchy
+        policy=ObjectiveGoalMaterializationPolicy(root_goal_id="ROOT"),
+    )
+
+    assert preview.ready
+    assert objective_path.read_bytes() == original
+    assert preview.admitted_proposal_ids == (goal.canonical_id, subgoal.canonical_id)
+    result = commit_objective_goal_materialization(
+        repo_root=objective_path.parent,
+        objective_path=objective_path,
+        journal_path=tmp_path / "admission-journal.json",
+        preview=preview,
+    )
+
+    assert result.state is ObjectiveMaterializationTransactionState.COMMITTED
+    assert result.changed
+    materialized = {
+        item.goal_id: item
+        for item in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    }
+    assert materialized[goal.canonical_id].parent_goal_ids == ["ROOT"]
+    child = materialized[subgoal.canonical_id]
+    assert child.parent_goal_ids == [goal.canonical_id]
+    assert child.dependencies == [goal.canonical_id]
+    assert child.required_evidence == ["API validation receipt"]
+    assert child.semantic_key == subgoal.semantic_key
+    assert child.canonical_proposal_id == subgoal.canonical_id
+    assert child.lifecycle_owner == "objective_daemon"
+    assert child.status == "active"
+
+    replay = commit_objective_goal_materialization(
+        repo_root=objective_path.parent,
+        objective_path=objective_path,
+        journal_path=tmp_path / "admission-journal.json",
+        preview=preview,
+    )
+    assert replay.committed and replay.resumed and not replay.changed
+    assert objective_path.read_text(encoding="utf-8").count(
+        f"## {subgoal.canonical_id} "
+    ) == 1
+
+
+def test_goal_materialization_keeps_semantic_and_structural_breadth_bounds() -> None:
+    goal, _subgoal = _hierarchical_goal_work()
+    first = preview_objective_goal_materialization(
+        _objective_heap(),
+        (goal,),
+        root_goal_id="ROOT",
+    )
+    assert first.ready
+
+    semantic_replay = _proposal(
+        kind="goal",
+        title="Reworded API evidence goal",
+        parent_goal_id=goal.parent_goal_id,
+        parent_objective_terms=goal.parent_objective_terms,
+        expected_evidence_delta=goal.expected_evidence_delta,
+        dependencies=goal.dependencies,
+        predicted_files=goal.predicted_files,
+        predicted_symbols=goal.predicted_symbols,
+        validation_commands=goal.validation_commands,
+        depth=goal.depth,
+        source_id="proposal:different-provider-identity",
+    )
+    assert semantic_replay.canonical_id != goal.canonical_id
+    assert semantic_replay.semantic_key == goal.semantic_key
+    duplicate = preview_objective_goal_materialization(
+        first.candidate_text,
+        (semantic_replay,),
+        root_goal_id="ROOT",
+    )
+    assert not duplicate.ready
+    assert duplicate.candidate_text == first.candidate_text
+    assert [item.reason for item in duplicate.rejected] == ["semantic_duplicate"]
+
+    terminal_child_heap = (
+        _objective_heap()
+        + "\n## TERMINAL Historical child\n\n"
+        "- Status: verified\n"
+        "- Goal: Historical bounded branch\n"
+        "- Parents: ROOT\n"
+        "- Graph depth: 1\n"
+    )
+    breadth = preview_objective_goal_materialization(
+        terminal_child_heap,
+        (goal,),
+        policy=ObjectiveGoalMaterializationPolicy(
+            root_goal_id="ROOT",
+            limits=ObjectiveGenerationLimits(max_breadth_per_parent=1),
+        ),
+    )
+    assert not breadth.ready
+    assert breadth.candidate_text == terminal_child_heap
+    assert [item.reason for item in breadth.rejected] == ["breadth_limit"]
+
+
+def test_stale_heap_and_lease_conflict_fail_closed_and_remain_resumable(
+    tmp_path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    objective_path = repo_root / "objective-heap.md"
+    objective_path.write_text(_objective_heap(), encoding="utf-8")
+    goal, _subgoal = _hierarchical_goal_work()
+    preview = preview_objective_goal_materialization(
+        objective_path.read_text(encoding="utf-8"),
+        (goal,),
+        root_goal_id="ROOT",
+    )
+
+    objective_path.write_text(
+        _objective_heap() + "\n## HUMAN Concurrent goal\n\n- Status: active\n- Parent: ROOT\n",
+        encoding="utf-8",
+    )
+    concurrent = objective_path.read_bytes()
+    stale = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=tmp_path / "stale-journal.json",
+        preview=preview,
+    )
+    assert stale.state is ObjectiveMaterializationTransactionState.BLOCKED
+    assert stale.reason_codes == ("stale_objective_heap",)
+    assert objective_path.read_bytes() == concurrent
+
+    objective_path.write_text(_objective_heap(), encoding="utf-8")
+    tree_journal = tmp_path / "tree-journal.json"
+    tree_preview = preview_objective_goal_materialization(
+        _objective_heap(),
+        (goal,),
+        root_goal_id="ROOT",
+    )
+    expected_tree = objective_materialization_tree_identity(
+        repo_root,
+        objective_path=objective_path,
+        journal_path=tree_journal,
+    ).tree_id
+    (repo_root / "concurrent-source.py").write_text(
+        "CONCURRENT = True\n", encoding="utf-8"
+    )
+    stale_tree = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=tree_journal,
+        preview=tree_preview,
+        expected_repository_tree_id=expected_tree,
+    )
+    assert stale_tree.state is ObjectiveMaterializationTransactionState.BLOCKED
+    assert stale_tree.reason_codes == ("stale_repository_tree",)
+    assert objective_path.read_text(encoding="utf-8") == _objective_heap()
+
+    fresh = preview_objective_goal_materialization(
+        objective_path.read_text(encoding="utf-8"),
+        (goal,),
+        root_goal_id="ROOT",
+    )
+    journal = tmp_path / "lease-journal.json"
+    blocked = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=journal,
+        preview=fresh,
+        lease_guard=lambda token: False,
+        expected_lease_token="fence-7",
+    )
+    assert blocked.state is ObjectiveMaterializationTransactionState.PREPARED
+    assert blocked.resumable
+    assert objective_path.read_text(encoding="utf-8") == _objective_heap()
+
+    resumed = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=journal,
+        preview=fresh,
+        lease_guard=lambda token: {"fencing_token": token},
+        expected_lease_token="fence-7",
+    )
+    assert resumed.committed and resumed.resumed
+    assert goal.canonical_id in {
+        item.goal_id
+        for item in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    }
+
+
+def test_partial_heap_write_remains_prepared_and_resumes_exactly(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    objective_path = repo_root / "objective-heap.md"
+    objective_path.write_text(_objective_heap(), encoding="utf-8")
+    goal, subgoal = _hierarchical_goal_work()
+    preview = preview_objective_goal_materialization(
+        _objective_heap(),
+        (goal, subgoal),
+        root_goal_id="ROOT",
+    )
+    journal = tmp_path / "partial-journal.json"
+    partial_text = (
+        _objective_heap().rstrip()
+        + "\n\n"
+        + preview.materialized[0].rendered_block.strip()
+        + "\n"
+    )
+    real_rewrite = objective_tracker_module._atomic_rewrite
+    monkeypatch.setattr(
+        objective_tracker_module,
+        "_atomic_rewrite",
+        lambda path, _text: path.write_text(partial_text, encoding="utf-8"),
+    )
+
+    partial = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=journal,
+        preview=preview,
+    )
+    assert partial.state is ObjectiveMaterializationTransactionState.PREPARED
+    assert partial.resumable
+    assert partial.reason_codes[0] == "partial_write"
+    assert goal.canonical_id in objective_path.read_text(encoding="utf-8")
+    assert subgoal.canonical_id not in objective_path.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(objective_tracker_module, "_atomic_rewrite", real_rewrite)
+    resumed = commit_objective_goal_materialization(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        journal_path=journal,
+        preview=preview,
+    )
+    assert resumed.committed and resumed.resumed
+    materialized_ids = [
+        item.goal_id
+        for item in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    ]
+    assert materialized_ids.count(goal.canonical_id) == 1
+    assert materialized_ids.count(subgoal.canonical_id) == 1
+
+
+def test_shadow_never_mutates_and_assist_persists_review_only(tmp_path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    objective_path = repo_root / "objective-heap.md"
+    objective_path.write_text(_objective_heap(), encoding="utf-8")
+    generation_path = tmp_path / "state" / "objective-generation.json"
+    goal, subgoal = _hierarchical_goal_work()
+    original = objective_path.read_bytes()
+
+    shadow = materialize_admitted_objective_work(
+        (goal, subgoal),
+        repo_root=repo_root,
+        objective_path=objective_path,
+        generation_path=generation_path,
+        mode="shadow",
+        root_goal_id="ROOT",
+    )
+    assert shadow.status == "shadow"
+    assert objective_path.read_bytes() == original
+    assert not generation_path.exists()
+
+    assist = materialize_admitted_objective_work(
+        (goal, subgoal),
+        repo_root=repo_root,
+        objective_path=objective_path,
+        generation_path=generation_path,
+        mode="assist",
+        root_goal_id="ROOT",
+    )
+    assert assist.status == "review_required"
+    assert assist.review_persisted and assist.resumable
+    assert objective_path.read_bytes() == original
+    records = load_objective_admission_records(generation_path)
+    assert set(records) == {goal.canonical_id, subgoal.canonical_id}
+    assert {item["status"] for item in records.values()} == {"review_required"}
+    assert all(item["preview"] for item in records.values())
+
+
+def test_auto_safe_without_bound_authority_fails_closed_and_is_reviewable(
+    tmp_path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    objective_path = repo_root / "objective-heap.md"
+    objective_path.write_text(_objective_heap(), encoding="utf-8")
+    generation_path = tmp_path / "state" / "objective-generation.json"
+    goal, _subgoal = _hierarchical_goal_work()
+    root = parse_goal_heap(_objective_heap())[0]
+
+    result = materialize_admitted_objective_work(
+        (goal,),
+        repo_root=repo_root,
+        objective_path=objective_path,
+        generation_path=generation_path,
+        mode="auto_safe",
+        root_goal_id="ROOT",
+        expected_root_content_id=objective_goal_content_id(root),
+        new_assumption_ids=("assumption:hidden",),
+        unsupported_semantics=("formula:invented",),
+        hard_policy_gates={"scope": False},
+    )
+
+    assert result.status == "rejected"
+    assert {
+        "new_assumptions",
+        "unsupported_semantics",
+        "hard_policy_gate:scope",
+        "unresolved_authoritative_receipts",
+    }.issubset(result.reason_codes)
+    assert objective_path.read_text(encoding="utf-8") == _objective_heap()
+    record = load_objective_admission_records(generation_path)[goal.canonical_id]
+    assert record["status"] == "rejected"
+    assert record["lifecycle_owner"] == "objective_daemon"
