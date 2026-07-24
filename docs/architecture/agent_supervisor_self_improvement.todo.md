@@ -2786,7 +2786,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-080 Produce completion evidence for Evidence-aware planning and responsive goal refinement
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: planning
