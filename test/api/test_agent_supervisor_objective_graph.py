@@ -1477,6 +1477,7 @@ def test_existing_packet_task_covers_each_sibling_goal_obligation(tmp_path):
 - Status: todo
 - Goal id: VAIOS-G101
 - Goal packet goals: VAIOS-G101, VAIOS-G102
+- Completion goal bindings: {"VAIOS-G101":["scheduler_policy","scheduler_metrics"],"VAIOS-G102":["fallback_route","fallback_metrics"]}
 - Graph parents: VAIOS-G100
 - Missing evidence: scheduler_policy, scheduler_metrics, fallback_route, fallback_metrics
 - Candidate kind: goal_packet_aggregate

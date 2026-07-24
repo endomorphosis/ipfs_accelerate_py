@@ -11324,17 +11324,104 @@ class PortalImplementationDaemon:
             )
             covered_packet_task_ids: list[str] = []
             if aggregate_primary:
+                records_with_cid = [
+                    candidate
+                    for candidate in by_task.values()
+                    if str(
+                        candidate.get("task_cid")
+                        or candidate.get("canonical_task_cid")
+                        or ""
+                    )
+                ]
+                records_by_cid = {
+                    str(candidate.get("task_cid") or candidate.get("canonical_task_cid") or ""): candidate
+                    for candidate in records_with_cid
+                }
+                canonical_keys = [
+                    str(candidate.get("canonical_task_key") or "")
+                    for candidate in records_with_cid
+                    if str(candidate.get("canonical_task_key") or "")
+                ]
+                identity_projection_valid = (
+                    len(records_by_cid) == len(records_with_cid)
+                    and len(canonical_keys) == len(set(canonical_keys))
+                )
+                primary_task_cid = str(
+                    record.get("task_cid") or record.get("canonical_task_cid") or ""
+                )
                 for execution_packet in execution_packets:
-                    packet_task_ids = execution_packet.get("active_task_ids") or execution_packet.get("task_ids")
-                    if not isinstance(packet_task_ids, list):
+                    binding = execution_packet.get("completion_binding")
+                    if not isinstance(binding, Mapping):
                         continue
-                    primary_task_id = str(execution_packet.get("primary_task_id") or "")
-                    if primary_task_id and primary_task_id != task.task_id:
+                    if str(binding.get("primary_task_id") or "") != task.task_id:
                         continue
-                    for packet_task_id in packet_task_ids:
-                        normalized = str(packet_task_id)
-                        if normalized and normalized != task.task_id and normalized not in covered_packet_task_ids:
-                            covered_packet_task_ids.append(normalized)
+                    if (
+                        not primary_task_cid
+                        or str(binding.get("primary_task_cid") or "") != primary_task_cid
+                    ):
+                        continue
+                    bound_cids = [
+                        str(value)
+                        for value in binding.get("bound_sibling_task_cids", [])
+                        if str(value)
+                    ]
+                    raw_projected_keys = binding.get("canonical_task_keys")
+                    if not isinstance(raw_projected_keys, Mapping):
+                        continue
+                    projected_keys = {
+                        str(cid): str(key)
+                        for cid, key in raw_projected_keys.items()
+                        if str(cid) and str(key)
+                    }
+                    expected_cids = {primary_task_cid, *bound_cids}
+                    if (
+                        not identity_projection_valid
+                        or set(projected_keys) != expected_cids
+                    ):
+                        continue
+                    binding_material = {
+                        "primary_task_cid": primary_task_cid,
+                        "bound_sibling_task_cids": bound_cids,
+                        "packet_key": str(binding.get("packet_key") or ""),
+                        "canonical_task_keys": projected_keys,
+                    }
+                    expected_binding_id = hashlib.sha1(
+                        json.dumps(binding_material, sort_keys=True).encode("utf-8")
+                    ).hexdigest()
+                    if str(binding.get("binding_id") or "") != expected_binding_id:
+                        continue
+                    packet_key = str(record.get("goal_packet_key") or "")
+                    if (
+                        not packet_key
+                        or binding_material["packet_key"] != packet_key
+                        or primary_task_cid in bound_cids
+                        or projected_keys.get(primary_task_cid)
+                        != str(record.get("canonical_task_key") or "")
+                    ):
+                        continue
+                    candidate_ids: list[str] = []
+                    valid = True
+                    for bound_cid in bound_cids:
+                        candidate = records_by_cid.get(bound_cid)
+                        if (
+                            not isinstance(candidate, dict)
+                            or str(candidate.get("goal_packet_key") or "") != packet_key
+                            or projected_keys.get(bound_cid)
+                            != str(candidate.get("canonical_task_key") or "")
+                        ):
+                            valid = False
+                            break
+                        candidate_id = str(candidate.get("task_id") or "")
+                        if not candidate_id or candidate_id == task.task_id:
+                            valid = False
+                            break
+                        candidate_ids.append(candidate_id)
+                    if valid:
+                        covered_packet_task_ids.extend(
+                            candidate_id
+                            for candidate_id in candidate_ids
+                            if candidate_id not in covered_packet_task_ids
+                        )
             include_related_records = not (
                 aggregate_primary and covered_packet_task_ids
             )

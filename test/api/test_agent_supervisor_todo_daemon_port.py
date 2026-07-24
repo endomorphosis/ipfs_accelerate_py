@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -11193,12 +11194,24 @@ def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(
     )
     index_path = repo / "objective_bundles" / "todo_vector_index.json"
     index_path.parent.mkdir(parents=True)
+    binding_material = {
+        "primary_task_cid": "cid-packet-aggregate",
+        "bound_sibling_task_cids": ["cid-scheduler", "cid-fallback"],
+        "packet_key": "goal_packet/runtime/src/abc",
+        "canonical_task_keys": {
+            "cid-packet-aggregate": "task/v1/packet-aggregate",
+            "cid-scheduler": "task/v1/scheduler",
+            "cid-fallback": "task/v1/fallback",
+        },
+    }
     index_path.write_text(
         json.dumps(
             {
                 "records": [
                     {
                         "task_id": "ACCEL-001",
+                        "canonical_task_key": "task/v1/scheduler",
+                        "task_cid": "cid-scheduler",
                         "title": "Close scheduler gap",
                         "bundle_key": "objective/runtime/shard-a",
                         "candidate_kind": "aggregate",
@@ -11210,6 +11223,8 @@ def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(
                     },
                     {
                         "task_id": "ACCEL-002",
+                        "canonical_task_key": "task/v1/fallback",
+                        "task_cid": "cid-fallback",
                         "title": "Close fallback gap",
                         "bundle_key": "objective/runtime/shard-a",
                         "candidate_kind": "aggregate",
@@ -11221,6 +11236,8 @@ def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(
                     },
                     {
                         "task_id": "ACCEL-003",
+                        "canonical_task_key": "task/v1/packet-aggregate",
+                        "task_cid": "cid-packet-aggregate",
                         "title": "Close packet aggregate",
                         "bundle_key": "objective/runtime/shard-a",
                         "candidate_kind": "goal_packet_aggregate",
@@ -11231,6 +11248,10 @@ def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(
                         "goal_packet_goal_ids": ["VAIOS-G101", "VAIOS-G102"],
                         "goal_packet_work_item_count": 6,
                         "work_item_count": 6,
+                        "completion_task_bindings": [
+                            "cid-scheduler",
+                            "cid-fallback",
+                        ],
                     },
                     {
                         "task_id": "ACCEL-004",
@@ -11265,6 +11286,20 @@ def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(
                             "ACCEL-005",
                         ],
                         "work_item_count_total": 14,
+                        "completion_binding": {
+                            **binding_material,
+                            "binding_id": hashlib.sha1(
+                                json.dumps(
+                                    binding_material,
+                                    sort_keys=True,
+                                ).encode("utf-8")
+                            ).hexdigest(),
+                            "primary_task_id": "ACCEL-003",
+                            "bound_sibling_task_ids": [
+                                "ACCEL-001",
+                                "ACCEL-002",
+                            ],
+                        },
                     }
                 ],
             }
@@ -11425,6 +11460,8 @@ def test_implementation_daemon_prefers_goal_packet_aggregate_as_primary_work(tmp
 - Goal packet task count: 3
 - Goal packet work item count: 6
 - Candidate kind: aggregate
+- Canonical task key: task/v1/scheduler
+- Canonical task CID: cid-01-scheduler
 - Acceptance: Add scheduler proof.
 
 ## ACCEL-002 Close fallback gap
@@ -11449,6 +11486,8 @@ def test_implementation_daemon_prefers_goal_packet_aggregate_as_primary_work(tmp
 - Goal packet task count: 3
 - Goal packet work item count: 6
 - Candidate kind: aggregate
+- Canonical task key: task/v1/fallback
+- Canonical task CID: cid-02-fallback
 - Acceptance: Add fallback proof.
 
 ## ACCEL-003 Close objective gap packet: VAIOS-G101, VAIOS-G102
@@ -11474,6 +11513,9 @@ def test_implementation_daemon_prefers_goal_packet_aggregate_as_primary_work(tmp
 - Goal packet task count: 3
 - Goal packet work item count: 6
 - Candidate kind: goal_packet_aggregate
+- Canonical task key: task/v1/packet-aggregate
+- Canonical task CID: cid-packet-aggregate
+- Completion task bindings: cid-01-scheduler, cid-02-fallback
 - Acceptance: Close the packet-level scheduler and fallback proof in one cohesive change.
 """,
         encoding="utf-8",
@@ -12320,6 +12362,8 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
                 "records": [
                     {
                         "task_id": task_id,
+                        "canonical_task_cid": f"cid-{task_id.casefold()}",
+                        "canonical_task_key": f"task/v1/{task_id.casefold()}",
                         "title": task_id,
                         "bundle_key": "objective/aggregate",
                         "candidate_kind": candidate_kind,
@@ -12343,11 +12387,48 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
                     {
                         "packet_key": "execution_packet/runtime/shared",
                         "primary_task_id": "T-AGGREGATE",
+                        "primary_task_cid": "cid-t-aggregate",
                         "active_task_ids": [
                             "T-AGGREGATE",
                             "T-COVERED-A",
                             "T-COVERED-B",
                         ],
+                        "completion_binding": {
+                            "primary_task_id": "T-AGGREGATE",
+                            "primary_task_cid": "cid-t-aggregate",
+                            "bound_sibling_task_ids": [
+                                "T-COVERED-A",
+                                "T-COVERED-B",
+                            ],
+                            "bound_sibling_task_cids": [
+                                "cid-t-covered-a",
+                                "cid-t-covered-b",
+                            ],
+                            "packet_key": "goal_packet/runtime/shared",
+                            "canonical_task_keys": {
+                                "cid-t-aggregate": "task/v1/t-aggregate",
+                                "cid-t-covered-a": "task/v1/t-covered-a",
+                                "cid-t-covered-b": "task/v1/t-covered-b",
+                            },
+                            "binding_id": hashlib.sha1(
+                                json.dumps(
+                                    {
+                                        "primary_task_cid": "cid-t-aggregate",
+                                        "bound_sibling_task_cids": [
+                                            "cid-t-covered-a",
+                                            "cid-t-covered-b",
+                                        ],
+                                        "packet_key": "goal_packet/runtime/shared",
+                                        "canonical_task_keys": {
+                                            "cid-t-aggregate": "task/v1/t-aggregate",
+                                            "cid-t-covered-a": "task/v1/t-covered-a",
+                                            "cid-t-covered-b": "task/v1/t-covered-b",
+                                        },
+                                    },
+                                    sort_keys=True,
+                                ).encode("utf-8")
+                            ).hexdigest(),
+                        },
                     }
                 ],
             }

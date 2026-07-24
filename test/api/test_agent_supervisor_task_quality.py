@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     ensure_task_blocks_present,
     next_task_id,
@@ -73,6 +75,33 @@ def test_candidate_contract_has_stable_canonical_semantic_identity():
     assert first.evidence_subset
     assert first.resource_class == "cpu-medium"
     assert first.token_class == "medium"
+
+
+def test_candidate_projection_round_trip_preserves_identity_and_rejects_tampering():
+    candidate = _candidate(source_id="ASI-051")
+    projection = candidate.to_dict()
+
+    restored = TaskCandidate.from_dict(projection)
+
+    assert restored == candidate
+    assert restored.semantic_identity == projection["canonical_semantic_identity"]
+    assert projection["canonical_task_key"] == candidate.canonical_task_key
+    assert projection["canonical_task_cid"] == candidate.canonical_task_cid
+    assert projection["task_cid"] == candidate.canonical_task_cid
+    assert projection["source_id"] == "ASI-051"
+
+    projection["canonical_semantic_identity"] = "task-quality/v1/not-the-content"
+    with pytest.raises(
+        ValueError,
+        match="semantic_identity does not match canonical semantic task content",
+    ):
+        TaskCandidate.from_dict(projection)
+
+    for field_name in ("canonical_task_key", "canonical_task_cid"):
+        projection = candidate.to_dict()
+        projection[field_name] = f"tampered-{field_name}"
+        with pytest.raises(ValueError, match=field_name):
+            TaskCandidate.from_dict(projection)
 
 
 def test_quality_score_is_multidimensional_and_rejects_incomplete_contracts():
@@ -299,6 +328,77 @@ def test_refinement_rejects_existing_semantic_duplicate_and_bounds_open_work():
     assert pressure_result.accepted == ()
     assert pressure_result.rejected
     assert pressure_result.final_open_work == 3
+
+
+def test_refinement_projection_retains_canonical_source_lineage_after_resizing():
+    broad = _candidate(
+        source_id="ASI-051",
+        predicted_paths=[f"src/part_{index}.py" for index in range(4)],
+        outputs=[f"src/part_{index}.py" for index in range(4)],
+        predicted_symbols=[f"Part{index}.run" for index in range(4)],
+        estimated_tokens=8_000,
+    )
+    result = refine_task_candidates(
+        (broad,),
+        policy=TaskQualityPolicy(
+            max_predicted_paths=2,
+            max_predicted_symbols=2,
+            max_estimated_tokens=4_000,
+            coalesce_tiny=False,
+        ),
+    )
+
+    assert len(result.accepted) == 2
+    assert all(
+        decision.source_identities == (broad.semantic_identity,)
+        for decision in result.decisions
+    )
+    projection = result.to_dict()
+    assert {
+        item["candidate"]["canonical_semantic_identity"]
+        for item in projection["decisions"]
+    } == {item.semantic_identity for item in result.accepted}
+    assert all(
+        item["source_identities"] == [broad.semantic_identity]
+        for item in projection["decisions"]
+    )
+
+
+def test_refinement_projection_retains_all_sources_when_tiny_tasks_coalesce():
+    left = _candidate(
+        source_id="ASI-051-A",
+        title="Cover cache hit",
+        acceptance_criteria=["Cache hits are covered"],
+        effects=["Cache-hit coverage exists"],
+        evidence_subset=["cache-hit-evidence"],
+        predicted_symbols=["test_cache_hit"],
+        estimated_tokens=300,
+    )
+    right = _candidate(
+        source_id="ASI-051-B",
+        title="Cover cache miss",
+        acceptance_criteria=["Cache misses are covered"],
+        effects=["Cache-miss coverage exists"],
+        evidence_subset=["cache-miss-evidence"],
+        predicted_symbols=["test_cache_miss"],
+        estimated_tokens=300,
+    )
+
+    result = refine_task_candidates(
+        (right, left),
+        policy=TaskQualityPolicy(tiny_max_paths=2),
+    )
+
+    assert len(result.accepted) == 1
+    decision = result.decisions[0]
+    assert decision.status.value == "coalesced"
+    assert set(decision.source_identities) == {
+        left.semantic_identity,
+        right.semantic_identity,
+    }
+    assert result.to_dict()["decisions"][0]["source_identities"] == list(
+        decision.source_identities
+    )
 
 
 def test_legacy_heading_prefix_is_normalized_once_and_ids_remain_monotonic():
