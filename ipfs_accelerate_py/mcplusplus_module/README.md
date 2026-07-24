@@ -140,9 +140,9 @@ Key milestones:
 
 ## References
 
-- [MCP++ Specification](./../../mcplusplus/README.md)
+- [MCP++ Specification](../mcplusplus/)
 - [MCP Trio Roadmap](../../docs/MCP_TRIO_ROADMAP.md)
-- [MCP++ Architecture](./../../mcplusplus/docs/ARCHITECTURE.md)
+- [MCP++ Architecture](../../docs/UNIFIED_ARCHITECTURE.md)
 - [Original MCP Implementation](../mcp/README.md)
 
 ## License
