@@ -230,7 +230,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-013 Improve task sizing, quality, and semantic deduplication
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: task-generation
