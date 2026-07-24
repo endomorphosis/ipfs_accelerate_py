@@ -2061,6 +2061,13 @@ class DynamicBundleScheduler:
             task_cid = str(item.get("task_cid") or "")
             lane = by_task_cid.get(task_cid)
             state = self._projection_state(item)
+            if (
+                state == "ready"
+                and lane is not None
+                and lane.queue_payload.get("external_active_member_fence")
+            ):
+                state = "blocked"
+                item.setdefault("blocked_reason", "external_active_member")
             if state == "accepted" and task_cid not in running_ids:
                 state = "blocked"
             elif state == "accepted":
@@ -2117,6 +2124,13 @@ class DynamicBundleScheduler:
             lane = lanes_by_task_cid.get(str(detailed.get("task_cid") or ""))
             if lane is None:
                 lane = lanes_by_bundle_key.get(str(detailed.get("bundle_key") or ""))
+            if (
+                detailed["state"] == "ready"
+                and lane is not None
+                and lane.queue_payload.get("external_active_member_fence")
+            ):
+                detailed["state"] = "blocked"
+                detailed.setdefault("blocked_reason", "external_active_member")
             normalized.append(_compact_task_manifest_payload(detailed))
         ready = [item for item in normalized if item["state"] == "ready"]
         completed = [item for item in normalized if item["state"] == "completed"]
@@ -2309,10 +2323,19 @@ class DynamicBundleScheduler:
                     include_claimability=True,
                 )
                 decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
+                registered_by_task_cid = {
+                    lane.task_cid: lane for lane in registered
+                }
                 snapshot_ready = {
                     str(item.get("task_cid") or "")
                     for item in decision_projection
                     if self._projection_state(item) == "ready"
+                    and (
+                        registered_by_task_cid.get(str(item.get("task_cid") or "")) is None
+                        or not registered_by_task_cid[
+                            str(item.get("task_cid") or "")
+                        ].queue_payload.get("external_active_member_fence")
+                    )
                 }
                 decisions: list[dict[str, Any]] = []
                 running_by_bundle_key = {
