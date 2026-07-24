@@ -356,6 +356,15 @@ class RepairTransition:
         return self.transition_id
 
     def to_dict(self, *, include_schema: bool = True) -> dict[str, Any]:
+        """Serialize versioned transition provenance for snapshot binding.
+
+        An adaptive-plan candidate incorporates this complete value into its
+        canonical snapshot, so changing a formal plan or repair transition
+        invalidates every prior hard-gate receipt. The transition is still
+        runtime provenance rather than criterion validation, analyzer health,
+        or exhaustion-quorum evidence for objective completion.
+        """
+
         value = {
             "replanner_version": FORMAL_REPLANNER_VERSION,
             "transition_id": self.transition_id if include_schema else "",
