@@ -75,6 +75,25 @@ def test_missing_optional_module_degrades_explicitly_with_typed_evidence() -> No
     assert result.degradation_evidence is not None
     assert result.degradation_evidence.import_attempted
     assert result.degradation_evidence.fallback == "local_deterministic_analysis"
+    assert result.degradation_evidence.request_id == result.request_id
+    assert result.degradation_evidence.repository_id == result.repository_id
+    assert result.degradation_evidence.tree_id == result.tree_id
+    assert (
+        result.degradation_evidence.objective_revision
+        == result.objective_revision
+    )
+    assert result.degradation_evidence.request_bound
+    assert result.degradation_evidence.proof_bound
+    assert result.degradation_evidence.policy_id == provider.policy.policy_id
+    assert result.degradation_evidence.proves_for(
+        AnalysisProviderRequest.from_value(_request()), provider.policy
+    )
+    assert not result.degradation_evidence.proves_for(
+        AnalysisProviderRequest.from_value(_request()),
+        AnalysisProviderPolicy(
+            bounds=AnalysisProviderBounds(max_results=1)
+        ),
+    )
     assert result.degradation_evidence.evidence_id
 
 
@@ -304,6 +323,149 @@ def test_serialized_invariants_and_content_ids_are_fail_closed() -> None:
         )
 
 
+def test_degradation_evidence_cannot_be_detached_or_replayed() -> None:
+    def unavailable(name):
+        raise ModuleNotFoundError(name)
+
+    provider = IpfsDatasetsAnalysisProvider(importer=unavailable)
+    original = provider.analyze(_request())
+    other = provider.analyze(
+        _request(
+            tree_id="tree:sha256:222",
+            objective_revision="objective@2",
+        )
+    )
+
+    assert original.proved_requirement_ids == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+    assert AnalysisProviderResult.from_dict(original.to_dict()) == original
+
+    replayed = original.to_dict()
+    replayed["degradation_evidence"] = (
+        other.degradation_evidence.to_dict()
+    )
+    with pytest.raises(
+        IpfsDatasetsAnalysisProviderError,
+        match="is not result-bound",
+    ):
+        AnalysisProviderResult.from_dict(replayed)
+
+    mismatched = IpfsDatasetsProviderDegradationEvidence(
+        status=AnalysisProviderStatus.FAILED,
+        operation=AnalysisProviderOperation.DATASET_QUERY,
+        reason_code="backend_execution_failed",
+        import_attempted=True,
+    )
+    with pytest.raises(
+        IpfsDatasetsAnalysisProviderError,
+        match="is not request/policy-bound",
+    ):
+        AnalysisProviderResult(
+            request_id=original.request_id,
+            operation=original.operation,
+            repository_id=original.repository_id,
+            tree_id=original.tree_id,
+            objective_revision=original.objective_revision,
+            status=original.status,
+            reason_code=original.reason_code,
+            backend_health=original.backend_health,
+            degradation_evidence=mismatched,
+        )
+
+
+@pytest.mark.parametrize(
+    ("backend", "status", "reason_code", "health"),
+    [
+        (
+            type(
+                "IncompatibleBackend",
+                (_Backend,),
+                {
+                    "capabilities": lambda self: {
+                        "protocol_versions": [999],
+                        "available": True,
+                        "operations": ["graph_retrieval"],
+                    }
+                },
+            )(),
+            AnalysisProviderStatus.UNSUPPORTED,
+            "protocol_incompatible",
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
+        (
+            type(
+                "UnhealthyBackend",
+                (_Backend,),
+                {
+                    "capabilities": lambda self: {
+                        "protocol_versions": [1],
+                        "available": False,
+                        "operations": ["graph_retrieval"],
+                    }
+                },
+            )(),
+            AnalysisProviderStatus.UNSUPPORTED,
+            "backend_unhealthy",
+            AnalysisProviderHealth.DEGRADED,
+        ),
+        (
+            type(
+                "MalformedCapabilityBackend",
+                (_Backend,),
+                {"capabilities": lambda self: {"available": "false"}},
+            )(),
+            AnalysisProviderStatus.MALFORMED,
+            "malformed_capability",
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
+    ],
+)
+def test_capability_degradation_is_typed_bound_and_non_authoritative(
+    backend, status, reason_code, health
+) -> None:
+    result = IpfsDatasetsAnalysisProvider(backend=backend).analyze(_request())
+
+    assert result.status is status
+    assert result.reason_code == reason_code
+    assert result.backend_health is health
+    assert result.degradation_evidence is not None
+    assert result.degradation_evidence.backend_health is health
+    assert result.degradation_evidence.request_bound
+    assert result.degradation_evidence.proof_bound
+    assert not result.is_completion_evidence
+    assert not result.safe_for_completion_reasoning
+
+
+def test_cancelled_and_failed_paths_are_explicit_without_false_authority() -> None:
+    imports = []
+    provider = IpfsDatasetsAnalysisProvider(
+        importer=lambda name: imports.append(name)
+    )
+    cancelled = provider.analyze(
+        _request(), cancellation_token=type("Token", (), {"cancelled": True})()
+    )
+
+    def broken_import(name):
+        raise RuntimeError("broken optional installation")
+
+    failed = IpfsDatasetsAnalysisProvider(
+        importer=broken_import
+    ).analyze(_request())
+
+    assert imports == []
+    assert cancelled.status is AnalysisProviderStatus.CANCELLED
+    assert cancelled.reason_code == "cancelled_before_import"
+    assert not cancelled.degradation_evidence.import_attempted
+    assert failed.status is AnalysisProviderStatus.FAILED
+    assert failed.reason_code == "optional_import_failed"
+    assert failed.degradation_evidence.import_attempted
+    for result in (cancelled, failed):
+        assert result.degradation_evidence.request_bound
+        assert result.proved_requirement_ids == ()
+        assert not result.safe_for_completion_reasoning
+
+
 def test_explicit_empty_operation_policy_is_not_expanded() -> None:
     with pytest.raises(
         IpfsDatasetsAnalysisProviderError, match="must not be empty"
@@ -356,3 +518,11 @@ def test_repeated_timeouts_have_bounded_backend_concurrency() -> None:
         result.status is AnalysisProviderStatus.TIMED_OUT for result in results
     )
     assert results[-1].reason_code == "provider_capacity_exhausted"
+    assert all(result.degradation_evidence is not None for result in results)
+    assert all(
+        result.degradation_evidence.request_bound for result in results
+    )
+    assert all(
+        not result.degradation_evidence.import_attempted for result in results
+    )
+    assert all(result.proved_requirement_ids == () for result in results)

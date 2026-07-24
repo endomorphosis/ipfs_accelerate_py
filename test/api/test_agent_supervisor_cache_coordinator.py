@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
 from ipfs_accelerate_py.agent_supervisor.cache_coordinator import (
     AnalysisCacheCoordinator,
     CacheCoordinationStatus,
+    CachePublication,
 )
 
 
@@ -184,6 +185,28 @@ def test_negative_cache_record_cannot_bypass_producer(tmp_path: Path) -> None:
     assert calls == 1
     assert result.status is CacheCoordinationStatus.PRODUCED
     assert result.is_completion_evidence
+
+
+def test_publication_inherits_or_overrides_call_ttl(tmp_path: Path) -> None:
+    now = 1_000.0
+    cache = AnalysisCache(tmp_path, clock=lambda: now)
+    coordinator = AnalysisCacheCoordinator(cache)
+
+    inherited = coordinator.get_or_compute(
+        _key(query_digest="sha256:inherit"),
+        lambda: CachePublication(_receipt()),
+        ttl_seconds=7,
+    )
+    overridden = coordinator.get_or_compute(
+        _key(query_digest="sha256:override"),
+        lambda: CachePublication(_receipt(ordinal=2), ttl_seconds=11),
+        ttl_seconds=7,
+    )
+
+    assert inherited.entry is not None
+    assert overridden.entry is not None
+    assert inherited.entry.expires_at_ms - inherited.entry.created_at_ms == 7_000
+    assert overridden.entry.expires_at_ms - overridden.entry.created_at_ms == 11_000
 
 
 def test_async_identical_misses_share_the_sync_safe_flight(

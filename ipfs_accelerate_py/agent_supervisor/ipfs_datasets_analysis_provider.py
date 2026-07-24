@@ -54,11 +54,11 @@ PROVIDER_REQUEST_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-analysis-request@1"
 )
 PROVIDER_RESULT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-analysis-result@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-analysis-result@2"
 )
 PROVIDER_DEGRADATION_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-lazy-degradation-evidence@1"
+    "ipfs-datasets-lazy-degradation-evidence@2"
 )
 
 DEFAULT_OPTIONAL_MODULE: Final = "ipfs_datasets_py"
@@ -452,6 +452,18 @@ class AnalysisProviderPolicy:
             bounds=AnalysisProviderBounds.from_value(value.get("bounds")),
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "module_name": self.module_name,
+            "operations": [item.value for item in self.operations],
+            "bounds": self.bounds.to_dict(),
+        }
+
+    @property
+    def policy_id(self) -> str:
+        return _content_id(self.to_dict(), name="analysis-provider-policy")
+
 
 @dataclass(frozen=True)
 class AnalysisProviderRequest:
@@ -771,6 +783,12 @@ class IpfsDatasetsProviderDegradationEvidence:
     operation: AnalysisProviderOperation
     reason_code: str
     import_attempted: bool
+    request_id: str = ""
+    repository_id: str = ""
+    tree_id: str = ""
+    objective_revision: str = ""
+    policy_id: str = ""
+    backend_health: AnalysisProviderHealth = AnalysisProviderHealth.DEGRADED
     fallback: str = "local_deterministic_analysis"
     requirement_id: str = IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID
 
@@ -790,6 +808,29 @@ class IpfsDatasetsProviderDegradationEvidence:
             raise IpfsDatasetsAnalysisProviderError(
                 "import_attempted must be a boolean"
             )
+        for name in (
+            "request_id",
+            "repository_id",
+            "tree_id",
+            "objective_revision",
+            "policy_id",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _text(
+                    getattr(self, name),
+                    name,
+                    required=False,
+                    max_bytes=1024,
+                ),
+            )
+        if not isinstance(self.backend_health, AnalysisProviderHealth):
+            object.__setattr__(
+                self,
+                "backend_health",
+                AnalysisProviderHealth(str(self.backend_health)),
+            )
         object.__setattr__(
             self, "fallback", _text(self.fallback, "fallback", max_bytes=128)
         )
@@ -800,15 +841,59 @@ class IpfsDatasetsProviderDegradationEvidence:
 
     @property
     def proves_requirement(self) -> bool:
-        return self.status in {
-            AnalysisProviderStatus.DISABLED,
-            AnalysisProviderStatus.UNAVAILABLE,
-            AnalysisProviderStatus.UNSUPPORTED,
-        }
+        # A bare or detached occurrence of the requirement ID is never proof.
+        # Only the adapter-created witness for a concrete bounded request may
+        # claim the requirement.  Other failure states remain typed and
+        # non-authoritative, but do not by themselves establish lazy
+        # degradation.
+        return bool(
+            self.proof_bound
+            and self.status
+            in {
+                AnalysisProviderStatus.DISABLED,
+                AnalysisProviderStatus.UNAVAILABLE,
+                AnalysisProviderStatus.UNSUPPORTED,
+            }
+        )
+
+    @property
+    def request_bound(self) -> bool:
+        return all(
+            (
+                self.request_id,
+                self.repository_id,
+                self.tree_id,
+                self.objective_revision,
+            )
+        )
+
+    @property
+    def proof_bound(self) -> bool:
+        return self.request_bound and bool(self.policy_id)
 
     @property
     def proved_requirement_ids(self) -> tuple[str, ...]:
         return (self.requirement_id,) if self.proves_requirement else ()
+
+    def proves_for(
+        self,
+        request: AnalysisProviderRequest | Mapping[str, Any],
+        policy: AnalysisProviderPolicy | Mapping[str, Any] | None,
+    ) -> bool:
+        """Independently bind this witness to the active request and policy."""
+
+        normalized_request = AnalysisProviderRequest.from_value(request)
+        normalized_policy = AnalysisProviderPolicy.from_value(policy)
+        return bool(
+            self.proves_requirement
+            and self.request_id == normalized_request.request_id
+            and self.repository_id == normalized_request.repository_id
+            and self.tree_id == normalized_request.tree_id
+            and self.objective_revision
+            == normalized_request.objective_revision
+            and self.operation is normalized_request.operation
+            and self.policy_id == normalized_policy.policy_id
+        )
 
     @property
     def evidence_id(self) -> str:
@@ -827,6 +912,14 @@ class IpfsDatasetsProviderDegradationEvidence:
             "status": self.status.value,
             "operation": self.operation.value,
             "reason_code": self.reason_code,
+            "request_id": self.request_id,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_revision": self.objective_revision,
+            "policy_id": self.policy_id,
+            "backend_health": self.backend_health.value,
+            "request_bound": self.request_bound,
+            "proof_bound": self.proof_bound,
             "lazy_import": True,
             "import_attempted": self.import_attempted,
             "explicit_fallback": True,
@@ -854,6 +947,14 @@ class IpfsDatasetsProviderDegradationEvidence:
             "status",
             "operation",
             "reason_code",
+            "request_id",
+            "repository_id",
+            "tree_id",
+            "objective_revision",
+            "policy_id",
+            "backend_health",
+            "request_bound",
+            "proof_bound",
             "lazy_import",
             "import_attempted",
             "explicit_fallback",
@@ -877,6 +978,14 @@ class IpfsDatasetsProviderDegradationEvidence:
             operation=value.get("operation", ""),
             reason_code=value.get("reason_code", ""),
             import_attempted=value.get("import_attempted", False),
+            request_id=value.get("request_id", ""),
+            repository_id=value.get("repository_id", ""),
+            tree_id=value.get("tree_id", ""),
+            objective_revision=value.get("objective_revision", ""),
+            policy_id=value.get("policy_id", ""),
+            backend_health=value.get(
+                "backend_health", AnalysisProviderHealth.DEGRADED
+            ),
             fallback=value.get("fallback", "local_deterministic_analysis"),
             requirement_id=value.get("requirement_id", ""),
         )
@@ -896,6 +1005,14 @@ class IpfsDatasetsProviderDegradationEvidence:
         if value.get("completion_authority") is not False:
             raise IpfsDatasetsAnalysisProviderError(
                 "degradation evidence cannot claim completion authority"
+            )
+        if value.get("request_bound") is not result.request_bound:
+            raise IpfsDatasetsAnalysisProviderError(
+                "degradation evidence request binding claim does not match"
+            )
+        if value.get("proof_bound") is not result.proof_bound:
+            raise IpfsDatasetsAnalysisProviderError(
+                "degradation evidence proof binding claim does not match"
             )
         return result
 
@@ -997,6 +1114,27 @@ class AnalysisProviderResult:
             raise IpfsDatasetsAnalysisProviderError(
                 "degradation_evidence must be typed"
             )
+        evidence = self.degradation_evidence
+        if evidence is not None:
+            if not evidence.proof_bound:
+                raise IpfsDatasetsAnalysisProviderError(
+                    "degradation evidence is not request/policy-bound"
+                )
+            expected = {
+                "request_id": self.request_id,
+                "repository_id": self.repository_id,
+                "tree_id": self.tree_id,
+                "objective_revision": self.objective_revision,
+                "operation": self.operation,
+                "status": self.status,
+                "reason_code": self.reason_code,
+                "backend_health": self.backend_health,
+            }
+            for name, expected_value in expected.items():
+                if getattr(evidence, name) != expected_value:
+                    raise IpfsDatasetsAnalysisProviderError(
+                        f"degradation evidence {name} is not result-bound"
+                    )
 
     @property
     def successful(self) -> bool:
@@ -1276,6 +1414,12 @@ class IpfsDatasetsAnalysisProvider:
             operation=request.operation,
             reason_code=reason_code,
             import_attempted=import_attempted,
+            request_id=request.request_id,
+            repository_id=request.repository_id,
+            tree_id=request.tree_id,
+            objective_revision=request.objective_revision,
+            policy_id=self.policy.policy_id,
+            backend_health=health,
         )
         return AnalysisProviderResult(
             request_id=request.request_id,
@@ -1784,7 +1928,7 @@ class IpfsDatasetsAnalysisProvider:
                         normalized,
                         AnalysisProviderStatus.FAILED,
                         "adapter_execution_failed",
-                        import_attempted=True,
+                        import_attempted=self._backend is None,
                         health=AnalysisProviderHealth.DEGRADED,
                     )
                 output.put(result)
@@ -1814,7 +1958,7 @@ class IpfsDatasetsAnalysisProvider:
                 normalized,
                 AnalysisProviderStatus.TIMED_OUT,
                 "provider_timeout",
-                import_attempted=True,
+                import_attempted=self._backend is None,
                 health=AnalysisProviderHealth.DEGRADED,
             )
 

@@ -516,3 +516,47 @@ def test_raising_optional_adapter_is_projected_and_local_analysis_continues(
         == "optional_provider_invocation_failed"
     )
     assert not result.provider_result.safe_for_completion_reasoning
+
+
+@pytest.mark.parametrize(
+    "provider_result",
+    [
+        {
+            "repository_id": "repo:other",
+            "tree_id": "tree:sha256:111",
+            "objective_revision": "objective@1",
+            "safe_for_completion_reasoning": False,
+        },
+        {
+            "repository_id": "repo:fixture",
+            "tree_id": "tree:sha256:111",
+            "objective_revision": "objective@1",
+            "completion_authority": True,
+        },
+    ],
+)
+def test_optional_provider_rebinding_or_authority_claim_is_rejected_advisory(
+    tmp_path: Path,
+    provider_result,
+) -> None:
+    class UntrustedProvider:
+        def analyze(self, *args, **kwargs):
+            return provider_result
+
+    analyzer = _Analyzer()
+    pipeline = AnalysisPipeline(
+        AnalysisCache(tmp_path),
+        analyzer,
+        provider=UntrustedProvider(),
+    )
+
+    result = pipeline.analyze(_request())
+
+    assert result.safe_for_completion_reasoning
+    assert result.provider_result.status == "failed"
+    assert result.provider_result.reason_code in {
+        "optional_provider_identity_mismatch",
+        "optional_provider_authority_claim_rejected",
+    }
+    assert not result.provider_result.safe_for_completion_reasoning
+    assert analyzer.contexts[0].provider_result is result.provider_result
