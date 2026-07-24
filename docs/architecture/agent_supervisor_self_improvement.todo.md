@@ -1458,7 +1458,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-048 Close objective gap: Prove 184125100306462690646212311073240043804 for Goal packet aggregate for ASI-G104, ASI-G105
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -1502,7 +1502,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-049 Close objective gap: Prove 186773143401179107362964063059661378722 for Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
 
-- Status: blocked
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -1544,7 +1544,6 @@ planner, and refill behavior defaults to shadow mode.
 - Todo vector key: 35cedc6db34e16a9
 - Acceptance: Objective scan filed this gap for ASI-G128. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-049-objective-gap-74155e075b42.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (186773143401179107362964063059661378722), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
 
-- Blocked reason: Retired by objective-task janitor during launch steering because orphaned_goal_reference.
 ## ASI-050 Close objective gap: Prove 248026856102230635452423769994290240744 for Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
 
 - Status: completed
