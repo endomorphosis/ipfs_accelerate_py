@@ -28,7 +28,13 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
 from .scan_receipts import RefillScanResult, ScanTerminalReason, build_scan_result
-from .task_identity import TaskIdentity, canonical_bundle_identity, canonical_task_identity
+from .task_identity import (
+    TaskIdentity,
+    canonical_bundle_identity,
+    canonical_task_identity,
+    normalize_identity_path,
+    normalize_identity_text,
+)
 from .taskboard_store import (
     locked_taskboard,
     replace_locked_taskboard,
@@ -5758,13 +5764,68 @@ Allow concurrent with: {", ".join(finding.allow_concurrent_with) or "none"}
     return path
 
 
+def _objective_finding_task_contract(finding: ObjectiveFinding) -> dict[str, Any]:
+    """Return stable execution-contract material for one objective finding.
+
+    Discovery locations and objective-heap paths are provenance, so they are
+    deliberately absent.  The remaining fields come from the source goal or
+    its deterministic execution projection and must invalidate prior task
+    receipts when the work or acceptance contract changes.
+    """
+
+    def text(value: Any) -> str:
+        return normalize_identity_text(value)
+
+    def texts(values: Sequence[Any]) -> list[str]:
+        return sorted({text(value) for value in values if text(value)})
+
+    def paths(values: Sequence[Any]) -> list[str]:
+        return sorted(
+            {
+                normalize_identity_path(value)
+                for value in values
+                if normalize_identity_path(value)
+            }
+        )
+
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/objective-finding-task-contract@1",
+        "finding_fingerprint": text(finding.fingerprint),
+        "goal_id": text(finding.goal_id),
+        "title": text(finding.title),
+        "goal": text(finding.goal),
+        "refinement": text(finding.refinement),
+        "gap_task": text(finding.gap_task),
+        "missing_evidence": texts(finding.missing_evidence),
+        "outputs": paths(finding.outputs),
+        "validation": text(finding.validation),
+        "parent_goal_ids": texts(finding.parent_goal_ids),
+        "predicted_files": paths(finding.predicted_files),
+        "interfaces": texts(finding.interfaces),
+        "submodules": paths(finding.submodules),
+        "generated_artifacts": paths(finding.generated_artifacts),
+        "conflict_policy": text(finding.conflict_policy),
+        "allow_concurrent_with": texts(finding.allow_concurrent_with),
+    }
+
+
 def objective_finding_task_identity(task_id: str, finding: ObjectiveFinding) -> TaskIdentity:
-    """Return the stable work identity for an objective finding."""
+    """Return the revision-bound work identity for an objective finding."""
+
+    contract = _objective_finding_task_contract(finding)
+    contract_fingerprint = sha256(
+        json.dumps(
+            contract,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
 
     return canonical_task_identity(
         {
             "task_id": task_id,
-            "dedupe_key": f"objective-finding:{finding.fingerprint}",
+            "dedupe_key": f"objective-finding-contract/v1/{contract_fingerprint}",
         },
         board_namespace="objective-graph",
         source_path=finding.objective_path,

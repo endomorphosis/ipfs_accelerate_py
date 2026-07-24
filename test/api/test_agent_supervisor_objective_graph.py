@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import types
+from dataclasses import replace
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor import (
@@ -31,10 +32,12 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_goal_completion_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    ObjectiveFinding,
     materialize_task_dependency_dag,
     materialize_task_planning_graph,
     objective_fingerprint,
     objective_finding_conflict_record,
+    objective_finding_task_identity,
     write_bundle_shards,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
@@ -150,6 +153,98 @@ def test_objective_goal_heap_accepts_package_specific_goal_ids():
     assert len(goals) == 1
     assert goals[0].goal_id == "APP.GOAL-001"
     assert goals[0].title == "Package-specific proof"
+
+
+def test_objective_finding_task_identity_binds_source_contract_not_alias_or_provenance():
+    finding = ObjectiveFinding(
+        fingerprint="finding:world-aid-storage",
+        goal_id="WORLDCOIN-G002",
+        title="Freeze the storage integration boundary",
+        summary="Close objective gap: Freeze the storage integration boundary",
+        priority="P0",
+        track="world-aid-discovery",
+        missing_evidence=["objective validation repair"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="docs/planning/WORLDCOIN_HUMAN_AID_OBJECTIVE_HEAP.md",
+        outputs=["docs/reports/audit.md", "data/worldcoin/audit.json"],
+        validation="python -m pytest -q tests/world_aid/test_audit.py",
+        goal="Record the reviewed storage integration boundary.",
+        refinement="Inventory Python/DuckDB inputs and preserve the single-writer boundary.",
+        gap_task="Repair the objective validation evidence.",
+        parent_goal_ids=["WORLDCOIN-G001"],
+        predicted_files=["docs/reports/audit.md", "data/worldcoin/audit.json"],
+        interfaces=["WorldAidDuckDBWriter", "wallet repository"],
+        submodules=["ipfs_datasets_py"],
+        generated_artifacts=["data/worldcoin/audit.json"],
+        conflict_policy="Keep unrelated wallet work intact.",
+        allow_concurrent_with=["WORLDCOIN-G041"],
+    )
+
+    original = objective_finding_task_identity("WORLDCOIN-AUTO-001", finding)
+    alias = objective_finding_task_identity(
+        "LOCAL-999",
+        replace(
+            finding,
+            objective_path=(
+                "/tmp/generated-root/discovery/"
+                "WORLDCOIN_HUMAN_AID_OBJECTIVE_HEAP.md"
+            ),
+            outputs=list(reversed(finding.outputs)),
+            missing_evidence=["  OBJECTIVE   validation repair  "],
+        ),
+    )
+    revised = objective_finding_task_identity(
+        "WORLDCOIN-AUTO-001",
+        replace(
+            finding,
+            refinement=(
+                "Inventory Python/PostgreSQL inputs and preserve the "
+                "service boundary."
+            ),
+        ),
+    )
+
+    assert alias.canonical_task_key == original.canonical_task_key
+    assert alias.canonical_task_cid == original.canonical_task_cid
+    assert alias.namespaced_alias != original.namespaced_alias
+    assert revised.canonical_task_key != original.canonical_task_key
+    assert revised.canonical_task_cid != original.canonical_task_cid
+    assert finding.fingerprint == "finding:world-aid-storage"
+
+
+def test_objective_finding_task_identity_changes_with_execution_contract():
+    finding = ObjectiveFinding(
+        fingerprint="finding:runtime-contract",
+        goal_id="G-RUNTIME",
+        title="Verify the runtime",
+        summary="Close objective gap: Verify the runtime",
+        priority="P1",
+        track="runtime",
+        missing_evidence=["runtime receipt"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="docs/objectives.md",
+        outputs=["runtime.lock"],
+        validation="python -m pytest -q tests/test_runtime.py",
+        refinement="Verify the selected runtime offline.",
+    )
+    original = objective_finding_task_identity("AUTO-001", finding)
+
+    changed_output = objective_finding_task_identity(
+        "AUTO-001",
+        replace(finding, outputs=["runtime-v2.lock"]),
+    )
+    changed_validation = objective_finding_task_identity(
+        "AUTO-001",
+        replace(
+            finding,
+            validation="python -m pytest -q tests/test_runtime_v2.py",
+        ),
+    )
+
+    assert changed_output.canonical_task_cid != original.canonical_task_cid
+    assert changed_validation.canonical_task_cid != original.canonical_task_cid
 
 
 def test_objective_heap_schedule_uses_fibonacci_then_work_surface():
