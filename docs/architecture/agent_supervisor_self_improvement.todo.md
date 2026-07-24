@@ -710,7 +710,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-031 Close objective gap: Prove 314133036252270790078901745919131980427 for Strict output, code, test, semantic, and proof validation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -2074,3 +2074,91 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: generated_task
 - Todo vector key: 4a791f0bd99c42fa
 - Acceptance: Objective scan filed this gap for ASI-G091. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-061-objective-gap-d4f0c26b57ee.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: The compiler derives the effective input limit from the supervisor ceiling, provider input/window limits, and reserved output/tool tokens, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
+
+## ASI-062 Close objective gap: Prove 189057730455837902155591890661235220962 for Integrated analysis, caching, and ipfs_datasets_py offload
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: analysis
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_cache_coordinator.py
+- Validation: python -m pytest test/api/test_agent_supervisor_analysis_pipeline.py test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py test/api/test_agent_supervisor_cache_coordinator.py -q
+- Bundle: agent-supervisor/self-improvement/analysis
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-analysis.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G020
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/analysis
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_cache_coordinator.py
+- Changed paths: 
+- AST symbols: EXACT_TREE_REUSE_REQUIREMENT_ID ExactTreeReuseEvidence AnalysisPipeline AnalysisCacheKey
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G094
+- Canonical task key: task/v1/df5afe2392bb4895bf395e11652ac34b014d952e57ba42766a8258c30a5c773c
+- Canonical task CID: baguqeera35np4i4sxnejlpzzlyiwkkwdjmau3fjok65ee5tkqjmmgcs4o46a
+- Missing evidence: objective validation repair
+- Embedding query: 189057730455837902155591890661235220962
+- AST query: EXACT_TREE_REUSE_REQUIREMENT_ID ExactTreeReuseEvidence AnalysisPipeline AnalysisCacheKey
+- Surplus group: objective/ASI-G094
+- Merge key: e4e0d4c943916e15
+- Merge family: goal_packet/analysis/ipfs_accelerate_py/073d1a3271bf
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair; goal_subgoal_packet
+- Goal packet: goal_packet/analysis/ipfs_accelerate_py/073d1a3271bf
+- Goal packet role: packet_anchor
+- Goal packet goals: ASI-G094, ASI-G095
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: validation_gate
+- Todo vector key: 42e82e7c5a525c25
+- Acceptance: Objective scan filed this gap for ASI-G094. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-062-objective-gap-ad4026a19334.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/analysis/ipfs_accelerate_py/073d1a3271bf; implement a complete, cohesive change that fully advances the packet goals (ASI-G094, ASI-G095) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-063 Close objective gap: Prove 184801846437522667882915494501685213497 for Integrated analysis, caching, and ipfs_datasets_py offload
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: analysis
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py, ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py, test/api/test_agent_supervisor_analysis_pipeline.py
+- Validation: python -m pytest test/api/test_agent_supervisor_analysis_pipeline.py test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py test/api/test_agent_supervisor_cache_coordinator.py -q
+- Bundle: agent-supervisor/self-improvement/analysis
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-analysis.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G020
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/analysis
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py, ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py, test/api/test_agent_supervisor_analysis_pipeline.py
+- Changed paths: 
+- AST symbols: IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID IpfsDatasetsProviderDegradationEvidence IpfsDatasetsAnalysisProvider
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G095
+- Canonical task key: task/v1/94932abf8e726ea1389727349d44b64ee0a09339943c818892f2f31d5ac2eca0
+- Canonical task CID: baguqeerassjsvp4oojxkcoexe42j2rfwj3qkbezzsq6idces6lzr2wwc5sqa
+- Missing evidence: objective validation repair
+- Embedding query: 184801846437522667882915494501685213497
+- AST query: IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID IpfsDatasetsProviderDegradationEvidence IpfsDatasetsAnalysisProvider
+- Surplus group: objective/ASI-G095
+- Merge key: 64c04da6f929a58d
+- Merge family: goal_packet/analysis/ipfs_accelerate_py/073d1a3271bf
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair; goal_subgoal_packet
+- Goal packet: goal_packet/analysis/ipfs_accelerate_py/073d1a3271bf
+- Goal packet role: packet_member
+- Goal packet goals: ASI-G094, ASI-G095
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Candidate kind: validation_gate
+- Todo vector key: 12f72804bb681d1d
+- Acceptance: Objective scan filed this gap for ASI-G095. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-063-objective-gap-f83e780176b0.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/analysis/ipfs_accelerate_py/073d1a3271bf; implement a complete, cohesive change that fully advances the packet goals (ASI-G094, ASI-G095) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
