@@ -61,4 +61,4 @@ The CI/CD integration for the Distributed Testing Framework provides comprehensi
 
 ### Usage Instructions
 
-See [CI_CD_INTEGRATION_GUIDE.md](/home/barberb/ipfs_accelerate_py/test/duckdb_api/distributed_testing/CI_CD_INTEGRATION_GUIDE.md) for detailed usage instructions and customization options.
+See [CI_CD_INTEGRATION_GUIDE.md](duckdb_api/distributed_testing/CI_CD_INTEGRATION_GUIDE.md) for detailed usage instructions and customization options.
