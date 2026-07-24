@@ -67,6 +67,10 @@ CONTROL_DISCOVERY_OBSERVATION_SCHEMA = (
 CONTROL_DISCOVERY_SAFETY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-discovery-safety-evidence@1"
 )
+CONTROL_DISCOVERY_COMPLETION_QUORUM_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "control-discovery-completion-quorum-evidence@1"
+)
 LIFECYCLE_COMMAND_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/lifecycle-command@1"
 )
@@ -100,6 +104,34 @@ CONTROL_MUTATION_GUARD_REQUIREMENT_ID: Final[str] = (
 )
 CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID: Final[str] = (
     "186773143401179107362964063059661378722"
+)
+CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID: Final[str] = "ASI-G105"
+CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION: Final[str] = (
+    "ASI-G105@asi-072"
+)
+CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION: Final[str] = (
+    "asi-g105-objective-validation@1"
+)
+CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION: Final[str] = (
+    "unified-control-discovery-completion@1"
+)
+CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS: Final[int] = 2
+CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "Repeated Python, CLI, and MCP discovery is byte-deterministic and "
+        "covers the same closed operation/schema population"
+    ),
+    "no backend or configured service factory is called",
+    (
+        "optional supervisor provider imports and process starts remain "
+        "independently observed at zero delta"
+    ),
+    "agent CLI discovery does not construct unrelated runtime state",
+    "only tool execution can increment MCP service resolution",
+    (
+        "and only the complete current-tree three-surface evidence emits the "
+        "exact requirement ID."
+    ),
 )
 # Compatibility spelling for callers which describe this boundary as
 # discovery isolation rather than discovery safety.
@@ -2553,6 +2585,10 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
             raise ControlContractError(
                 "discovery evidence requirement_id is not the ASI-G105 requirement"
             )
+        if self.objective_id != CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID:
+            raise ControlContractError(
+                "discovery evidence objective_id is not ASI-G105"
+            )
         report = self.capability_report
         if not isinstance(report, CapabilityReport):
             if not isinstance(report, Mapping):
@@ -2606,6 +2642,55 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
     def proved_requirement_ids(self) -> tuple[str, ...]:
         return (CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,)
 
+    @property
+    def completion_authoritative(self) -> bool:
+        """Operational evidence is input to, never a substitute for, the gate."""
+
+        return False
+
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G105 through its closed, two-phase completion gate.
+
+        The discovery record is the operational witness, not permission to
+        declare its own objective complete.  Callers must separately supply a
+        fresh validation for every immutable criterion, exact implementation
+        and validation coverage, explicit completion-safe analyzer health, and
+        the configured independent exhaustive quorum.  The tree, objective,
+        policy, and receipt identities are derived from this record rather
+        than accepted from completion arguments.
+        """
+
+        return _evaluate_control_discovery_safety_completion(
+            self,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
     def _payload(self) -> dict[str, Any]:
         assert isinstance(self.capability_report, CapabilityReport)
         return {
@@ -2654,6 +2739,527 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
         )
         _identity(payload, result.content_id, "control discovery safety evidence")
         return result
+
+
+@dataclass(frozen=True)
+class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
+    """Bind a generic exhaustive quorum to one G105 operational witness."""
+
+    SCHEMA: ClassVar[str] = (
+        CONTROL_DISCOVERY_COMPLETION_QUORUM_EVIDENCE_SCHEMA
+    )
+
+    validation_policy_id: str
+    policy_revision: str
+    operational_receipt_id: str
+    quorum: Any
+    objective_id: str = CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
+    requirement_id: str = CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        from .scan_receipts import ExhaustionQuorumResult
+
+        for name in (
+            "validation_policy_id",
+            "policy_revision",
+            "operational_receipt_id",
+            "objective_id",
+            "requirement_id",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        if self.objective_id != CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID:
+            raise ControlContractError(
+                "completion quorum objective_id is not ASI-G105"
+            )
+        if self.requirement_id != CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID:
+            raise ControlContractError(
+                "completion quorum requirement_id is not the ASI-G105 requirement"
+            )
+        quorum = self.quorum
+        if not isinstance(quorum, ExhaustionQuorumResult):
+            if not isinstance(quorum, Mapping):
+                raise ControlContractError(
+                    "completion quorum must contain an ExhaustionQuorumResult"
+                )
+            try:
+                quorum = ExhaustionQuorumResult.from_dict(quorum)
+            except (TypeError, ValueError) as exc:
+                raise ControlContractError(
+                    "completion quorum is malformed"
+                ) from exc
+        object.__setattr__(self, "quorum", quorum)
+        _bounded_record(self, "control discovery completion quorum evidence")
+
+    def _payload(self) -> dict[str, Any]:
+        quorum = self.quorum.to_dict()
+        # ExhaustionQuorumResult exposes a derived float confidence for UI
+        # consumers.  Canonical proof contracts encode the exact integer
+        # counts instead and deliberately exclude floats.
+        quorum.pop("confidence", None)
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "requirement_id": self.requirement_id,
+            "objective_id": self.objective_id,
+            "validation_policy_id": self.validation_policy_id,
+            "policy_revision": self.policy_revision,
+            "operational_receipt_id": self.operational_receipt_id,
+            "quorum": quorum,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlDiscoveryCompletionQuorumEvidence":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "requirement_id",
+                "objective_id",
+                "validation_policy_id",
+                "policy_revision",
+                "operational_receipt_id",
+                "quorum",
+                "content_id",
+            },
+            "control discovery completion quorum evidence",
+        )
+        result = cls(
+            requirement_id=payload.get("requirement_id", ""),
+            objective_id=payload.get("objective_id", ""),
+            validation_policy_id=payload.get("validation_policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            operational_receipt_id=payload.get("operational_receipt_id", ""),
+            quorum=payload.get("quorum") or {},
+        )
+        _identity(
+            payload,
+            result.content_id,
+            "control discovery completion quorum evidence",
+        )
+        return result
+
+
+def _evaluate_control_discovery_safety_completion(
+    receipt: ControlDiscoverySafetyEvidence,
+    *,
+    current_state: Any,
+    evidence: Sequence[Any],
+    tasks_complete: bool,
+    coverage: Any,
+    analyzer_health: Any,
+    exhaustion_quorum: Any,
+    child_goals: Sequence[Any],
+    now: Any,
+    freshness_seconds: float | None,
+    clock_skew_seconds: float | None,
+    analysis_inconclusive: bool,
+    blocked_reason: str,
+) -> Any:
+    """Keep objective-gate policy outside the canonical receipt payload."""
+
+    from .analyzer_health import AnalyzerHealthReport
+    from .goal_completion import evaluate_goal_completion
+    from .scan_receipts import ExhaustionQuorumResult
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    def criterion_key(value: Any) -> str:
+        if isinstance(value, Mapping):
+            value = value.get(
+                "criterion",
+                value.get(
+                    "acceptance_criterion",
+                    value.get("acceptance", ""),
+                ),
+            )
+        return " ".join(str(value or "").strip().lower().split())
+
+    def populated(row: Mapping[str, Any], *names: str) -> bool:
+        for name in names:
+            value = row.get(name)
+            if isinstance(value, str) and value.strip():
+                return True
+            if (
+                isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes, bytearray))
+                and any(str(item or "").strip() for item in value)
+            ):
+                return True
+        return False
+
+    expected_criteria = {
+        criterion_key(item)
+        for item in CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA
+    }
+    expected_surfaces = tuple(
+        sorted(ControlSurface, key=lambda item: item.value)
+    )
+    operational_complete = bool(
+        receipt.objective_id == CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
+        and receipt.requirement_id == CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
+        and receipt.proved_requirement_ids
+        == (CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,)
+        and tuple(item.surface for item in receipt.observations)
+        == expected_surfaces
+        and all(item.side_effect_free for item in receipt.observations)
+        and not receipt.capability_report.optional_providers_loaded
+        and not receipt.capability_report.processes_started
+    )
+
+    evidence_records: list[dict[str, Any]] = []
+    validation_ids_by_criterion: dict[str, set[str]] = {}
+    for item in evidence:
+        record = payload(item)
+        if isinstance(record.get("evidence"), Mapping):
+            record = dict(record["evidence"])
+        evidence_records.append(record)
+        key = criterion_key(record)
+        identity = str(
+            record.get(
+                "provenance_cid",
+                record.get("receipt_cid", ""),
+            )
+            or ""
+        ).strip()
+        if key and identity:
+            validation_ids_by_criterion.setdefault(key, set()).add(identity)
+
+    validation_bindings_complete = bool(
+        operational_complete
+        and len(evidence_records) == len(expected_criteria)
+    )
+    evidence_criteria: list[str] = []
+    for record in evidence_records:
+        key = criterion_key(record)
+        evidence_criteria.append(key)
+        validation = record.get("validation_receipt")
+        validation = validation if isinstance(validation, Mapping) else {}
+        validation_bindings_complete = bool(
+            validation_bindings_complete
+            and key in expected_criteria
+            and validation.get("requirement_id")
+            == CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
+            and validation.get("objective_id")
+            == CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
+            and validation.get("operational_receipt_id") == receipt.content_id
+            and validation.get("validation_policy_id") == receipt.policy_id
+            and validation.get("policy_revision") == receipt.policy_revision
+            and validation.get("tree_id") == receipt.repository_tree
+        )
+    validation_bindings_complete = bool(
+        validation_bindings_complete
+        and len(evidence_criteria) == len(set(evidence_criteria))
+        and set(evidence_criteria) == expected_criteria
+    )
+
+    coverage_projection = getattr(coverage, "completion_gate_evidence", None)
+    canonical_coverage = callable(coverage_projection)
+    if canonical_coverage:
+        try:
+            projected = coverage_projection(
+                CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
+            )
+        except (TypeError, ValueError):
+            projected = {}
+        coverage_value = (
+            dict(projected) if isinstance(projected, Mapping) else {}
+        )
+    else:
+        coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+    row_keys = [
+        criterion_key(row) if isinstance(row, Mapping) else ""
+        for row in rows
+    ]
+
+    def validation_bound(row: Mapping[str, Any]) -> bool:
+        raw_ids = row.get("validation_receipt_ids")
+        if not (
+            isinstance(raw_ids, Sequence)
+            and not isinstance(raw_ids, (str, bytes, bytearray))
+        ):
+            return False
+        row_receipts = {
+            str(item or "").strip()
+            for item in raw_ids
+            if str(item or "").strip()
+        }
+        return bool(
+            row_receipts
+            and row_receipts.intersection(
+                validation_ids_by_criterion.get(criterion_key(row), set())
+            )
+        )
+
+    canonical_coverage_complete = True
+    if canonical_coverage:
+        freshness = coverage_value.get("freshness")
+        freshness = freshness if isinstance(freshness, Mapping) else {}
+        binding = coverage_value.get("binding")
+        binding = binding if isinstance(binding, Mapping) else {}
+        canonical_coverage_complete = bool(
+            coverage_value.get("verified") is True
+            and coverage_value.get("repository_tree")
+            == receipt.repository_tree
+            and freshness.get("all_receipts_fresh") is True
+            and binding.get("all_receipts_bound") is True
+            and binding.get("repository_tree") == receipt.repository_tree
+        )
+    coverage_complete = bool(
+        operational_complete
+        and validation_bindings_complete
+        and canonical_coverage_complete
+        and coverage_value.get("verified") is True
+        and coverage_value.get("repository_tree") == receipt.repository_tree
+        and len(row_keys) == len(expected_criteria)
+        and len(row_keys) == len(set(row_keys))
+        and set(row_keys) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and populated(
+                row,
+                "implementation",
+                "changed_files",
+                "predicted_files",
+                "ast_symbols",
+                "interfaces",
+            )
+            and validation_bound(row)
+            for row in rows
+        )
+    )
+    if not coverage_complete:
+        reasons = coverage_value.get("reason_codes")
+        reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+        if not operational_complete:
+            reasons.append("active_discovery_safety_evidence_missing")
+        if not validation_bindings_complete:
+            reasons.append("validation_not_bound_to_discovery_witness")
+        reasons.append("coverage_missing_implementation_validation_binding")
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "passed": False,
+            "reason_codes": list(dict.fromkeys(reasons)),
+        }
+
+    artifact_quorum = isinstance(
+        exhaustion_quorum,
+        ControlDiscoveryCompletionQuorumEvidence,
+    )
+    if artifact_quorum:
+        quorum_value = payload(exhaustion_quorum.quorum)
+        artifact_quorum_binding = {
+            "objective_id": exhaustion_quorum.objective_id,
+            "requirement_id": exhaustion_quorum.requirement_id,
+            "validation_policy_id": exhaustion_quorum.validation_policy_id,
+            "policy_revision": exhaustion_quorum.policy_revision,
+            "operational_receipt_id": (
+                exhaustion_quorum.operational_receipt_id
+            ),
+        }
+    else:
+        quorum_value = payload(exhaustion_quorum)
+        artifact_quorum_binding = {}
+    quorum_binding = quorum_value.get("binding")
+    quorum_binding = (
+        quorum_binding if isinstance(quorum_binding, Mapping) else {}
+    )
+    health_value = payload(analyzer_health)
+    health_metrics = health_value.get("metrics")
+    health_metrics = (
+        health_metrics if isinstance(health_metrics, Mapping) else {}
+    )
+    analyzer_version = str(
+        health_value.get("analyzer_version")
+        or health_metrics.get("analyzer_version")
+        or ""
+    ).strip()
+    health_binding_complete = bool(
+        analyzer_version
+        == CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
+        and (
+            health_value.get("objective_id")
+            or health_metrics.get("objective_id")
+        )
+        == CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
+        and (
+            health_value.get("repository_tree")
+            or health_metrics.get("repository_tree")
+        )
+        == receipt.repository_tree
+    )
+    if not (
+        str(health_value.get("status") or "").strip().lower() == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+        and health_binding_complete
+    ):
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    evaluated_quorum = artifact_quorum and isinstance(
+        exhaustion_quorum.quorum,
+        ExhaustionQuorumResult,
+    )
+    canonical_binding = {
+        "tree_id": receipt.repository_tree,
+        "analyzer_version": (
+            CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
+        ),
+        "configuration_revision": (
+            CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION
+        ),
+        "objective_revision": (
+            CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION
+        ),
+    }
+    artifact_binding = {
+        **canonical_binding,
+        "objective_id": CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
+        "requirement_id": CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
+        "validation_policy_id": receipt.policy_id,
+        "policy_revision": receipt.policy_revision,
+        "operational_receipt_id": receipt.content_id,
+    }
+    members_value = quorum_value.get("members")
+    members = members_value if isinstance(members_value, list) else []
+    if evaluated_quorum:
+        quorum_binding = {
+            **quorum_binding,
+            **artifact_quorum_binding,
+        }
+        members = [
+            {
+                **member,
+                "binding": {
+                    **(
+                        member.get("binding")
+                        if isinstance(member.get("binding"), Mapping)
+                        else {}
+                    ),
+                    **artifact_quorum_binding,
+                },
+            }
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+    required_binding = artifact_binding
+    member_ids = [
+        str(item.get("member_id") or "").strip()
+        for item in members
+        if isinstance(item, Mapping)
+    ]
+    receipt_ids = [
+        str(item.get("receipt_cid") or "").strip()
+        for item in members
+        if isinstance(item, Mapping)
+    ]
+    channels = [
+        str(item.get("evidence_channel") or "").strip()
+        for item in members
+        if isinstance(item, Mapping)
+    ]
+
+    def independent(values: Sequence[str]) -> bool:
+        return bool(
+            len(values) == len(members)
+            and all(values)
+            and len(values) == len(set(values))
+        )
+
+    evaluated_members_complete = bool(
+        evaluated_quorum
+        and quorum_value.get("satisfied") is True
+        and all(
+            isinstance(member, Mapping)
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            for member in members
+        )
+    )
+    quorum_complete = bool(
+        quorum_value.get("required_members")
+        == CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("member_count") == len(members)
+        and len(members)
+        >= CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("satisfied") is True
+        and quorum_value.get("quorum_met") is True
+        and all(
+            quorum_binding.get(name) == value
+            for name, value in required_binding.items()
+        )
+        and independent(member_ids)
+        and independent(receipt_ids)
+        and independent(channels)
+        and all(
+            isinstance(member, Mapping)
+            and isinstance(member.get("binding"), Mapping)
+            and all(
+                member["binding"].get(name) == value
+                for name, value in required_binding.items()
+            )
+            for member in members
+        )
+        and (
+            evaluated_members_complete
+            or all(
+                isinstance(member, Mapping)
+                and member.get("healthy") is True
+                and member.get("safe_for_completion_reasoning") is True
+                and str(member.get("scan_mode") or "").strip().lower()
+                == "exhaustive"
+                for member in members
+            )
+        )
+    )
+    if not quorum_complete:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    values: dict[str, Any] = {
+        "current_state": current_state,
+        "acceptance_criteria": (
+            CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA
+        ),
+        "evidence": evidence,
+        "tasks_complete": tasks_complete,
+        "repository_tree": receipt.repository_tree,
+        "now": now,
+        "analysis_inconclusive": analysis_inconclusive,
+        "blocked_reason": blocked_reason,
+        "coverage": coverage_value,
+        "analyzer_health": health_value,
+        "exhaustion_quorum": quorum_value,
+        "child_goals": child_goals,
+        "analysis_result": None,
+        "require_completion_gate": True,
+    }
+    if freshness_seconds is not None:
+        values["freshness_seconds"] = freshness_seconds
+    if clock_skew_seconds is not None:
+        values["clock_skew_seconds"] = clock_skew_seconds
+    return evaluate_goal_completion(**values)
 
 
 # Alternate terminology retained for integrations which use "isolation".
@@ -3807,7 +4413,14 @@ __all__ = [
     "CONTROL_DISCOVERY_MANIFEST_SCHEMA",
     "CONTROL_DISCOVERY_OBSERVATION_SCHEMA",
     "CONTROL_DISCOVERY_RUNTIME_STATE_SCHEMA",
+    "CONTROL_DISCOVERY_COMPLETION_QUORUM_EVIDENCE_SCHEMA",
+    "CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA",
+    "CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION",
+    "CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION",
     "CONTROL_DISCOVERY_SAFETY_EVIDENCE_SCHEMA",
+    "CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID",
+    "CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION",
+    "CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID",
     "CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA",
     "CONTROL_MUTATION_GUARD_REQUIREMENT_ID",
@@ -3845,6 +4458,7 @@ __all__ = [
     "ControlError",
     "ControlDiscoveryIsolationEvidence",
     "ControlDiscoveryManifest",
+    "ControlDiscoveryCompletionQuorumEvidence",
     "ControlDiscoveryObservation",
     "ControlDiscoveryRuntimeState",
     "ControlDiscoverySafetyEvidence",
