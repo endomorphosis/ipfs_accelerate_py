@@ -1899,7 +1899,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-060 Produce completion evidence for Prove 306437607356117177048620815571362227127 for Token-efficient context and end-to-end measurement
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
