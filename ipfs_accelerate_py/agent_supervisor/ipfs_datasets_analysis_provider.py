@@ -852,6 +852,35 @@ class AnalysisProviderCapability:
         return result
 
 
+def inspect_analysis_provider_capability(
+    policy: AnalysisProviderPolicy | Mapping[str, Any] | None = None,
+) -> AnalysisProviderCapability:
+    """Return the deterministic metadata-only capability declaration.
+
+    The inspection boundary accepts policy data, not a provider, importer, or
+    backend.  It therefore cannot import ``ipfs_datasets_py``, negotiate with
+    optional code, consume a dispatch slot, or mutate provider runtime state.
+    Runtime health is intentionally reported as ``lazy`` until a bounded,
+    policy-allowed request enters dispatch.
+    """
+
+    selected = AnalysisProviderPolicy.from_value(policy)
+    return AnalysisProviderCapability(
+        health=(
+            AnalysisProviderHealth.LAZY
+            if selected.enabled
+            else AnalysisProviderHealth.DEGRADED
+        ),
+        operations=selected.operations,
+        imported=False,
+        reason_code=(
+            "lazy_not_probed" if selected.enabled else "provider_disabled"
+        ),
+        provider_version="unknown",
+        bounds=selected.bounds,
+    )
+
+
 @dataclass(frozen=True)
 class IpfsDatasetsProviderDegradationEvidence:
     status: AnalysisProviderStatus
@@ -1543,20 +1572,7 @@ class IpfsDatasetsAnalysisProvider:
     def capabilities(self) -> AnalysisProviderCapability:
         """Return the local lazy declaration without importing the backend."""
 
-        return AnalysisProviderCapability(
-            health=(
-                AnalysisProviderHealth.LAZY
-                if self.policy.enabled
-                else AnalysisProviderHealth.DEGRADED
-            ),
-            operations=self.policy.operations,
-            imported=False,
-            reason_code=(
-                "lazy_not_probed" if self.policy.enabled else "provider_disabled"
-            ),
-            provider_version="unknown",
-            bounds=self.policy.bounds,
-        )
+        return inspect_analysis_provider_capability(self.policy)
 
     capability = capabilities
 
@@ -2306,6 +2322,7 @@ __all__ = [
     "PROVIDER_RESULT_SCHEMA",
     "PROVIDER_DEGRADATION_EVIDENCE_SCHEMA",
     "normalize_analysis_provider_operation",
+    "inspect_analysis_provider_capability",
     "AnalysisProviderOperation",
     "AnalysisProviderStatus",
     "AnalysisProviderHealth",
