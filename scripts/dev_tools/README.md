@@ -156,9 +156,9 @@ Scripts support multiple output formats:
 
 ## Related Documentation
 
-- [VSCode Tasks](.vscode/README.md) - IDE integration
-- [CI/CD Workflows](.github/workflows/) - Automation integration
-- [docs/AUTOMATION_README.md](../docs/AUTOMATION_README.md) - Complete automation guide
+- [VSCode Tasks](../../.vscode/README.md) - IDE integration
+- [CI/CD Workflows](../../.github/workflows/) - Automation integration
+- [docs/features/automation/AUTOMATION_README.md](../../docs/features/automation/AUTOMATION_README.md) - Complete automation guide
 
 ---
 
