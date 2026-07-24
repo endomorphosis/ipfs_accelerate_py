@@ -18,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
     AnalysisCacheReason,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
+    EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA,
     EXACT_TREE_REUSE_REQUIREMENT_ID,
     SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
     AnalysisBindingError,
@@ -1155,6 +1156,343 @@ def test_restart_preserves_ranked_retrieval_health_and_truncation_semantics(
     )
     assert first_analyzer.calls == 1
     assert restarted_analyzer.calls == 0
+
+
+def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
+    tmp_path: Path,
+) -> None:
+    """G094 cannot narrow or self-supply its mandatory completion evidence."""
+
+    request = _request(
+        ast_records=(
+            (
+                "src/integrated.py",
+                build_python_ast_blob_record(
+                    "class IntegratedAnalysis:\n"
+                    "    def retrieve(self):\n"
+                    "        return 'cache ast vector graph'\n"
+                ),
+            ),
+        ),
+        retrieval_inputs={
+            "records": [
+                {
+                    "record_id": "record-cache",
+                    "title": "bounded cache analysis",
+                    "task_id": "ASI-065",
+                }
+            ],
+            "todo_records": [
+                {
+                    "task_id": "ASI-065",
+                    "title": "integrated AST retrieval",
+                    "status": "active",
+                }
+            ],
+        },
+    )
+    analyzer = _Analyzer()
+    pipeline = AnalysisPipeline(
+        AnalysisCache(tmp_path / "cache"),
+        analyzer,
+        provider=IpfsDatasetsAnalysisProvider(
+            importer=lambda name: (_ for _ in ()).throw(
+                ModuleNotFoundError(name)
+            )
+        ),
+    )
+    cold = pipeline.analyze(request)
+    result = pipeline.analyze(request)
+
+    assert cold.cache_status is PipelineCacheStatus.PRODUCED
+    assert cold.ast_index_id
+    assert cold.retrieval_response_id
+    assert cold.provider_result is not None
+    assert result.cache_status is PipelineCacheStatus.EXACT_HIT
+    assert result.evidence_claim_references == (
+        EXACT_TREE_REUSE_REQUIREMENT_ID,
+    )
+    assert analyzer.calls == 1
+
+    now = datetime(2026, 7, 24, 14, 0, tzinfo=timezone.utc)
+    validation_command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_analysis_pipeline.py "
+        "test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py "
+        "test/api/test_agent_supervisor_cache_coordinator.py -q"
+    )
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-065",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": result.request.tree_id,
+                "command": validation_command,
+            },
+            validation_passed=True,
+            repository_id=result.request.repository_id,
+            repository_tree=result.request.tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-065:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA, start=1
+        )
+    )
+    coverage = {
+        "repository_tree": result.request.tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "analysis_pipeline.py"
+                    if index != 5
+                    else (
+                        "ipfs_accelerate_py/agent_supervisor/"
+                        "cache_coordinator.py"
+                    )
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_"
+                    "analysis_pipeline.py"
+                    if index != 5
+                    else (
+                        "test/api/test_agent_supervisor_"
+                        "cache_coordinator.py"
+                    )
+                ),
+            }
+            for index, criterion in enumerate(
+                EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA, start=1
+            )
+        ],
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": result.request.analyzer_version,
+    }
+    binding = {
+        "repository_id": result.request.repository_id,
+        "tree_id": result.request.tree_id,
+        "analyzer_version": result.request.analyzer_version,
+        "configuration_revision": result.request.configuration_digest,
+        "objective_revision": result.request.objective_revision,
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-065-exhaustive-a",
+                "evidence_channel": "ast-and-runtime",
+                "receipt_cid": "scan:asi-065:exhaustive-a",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-065-exhaustive-b",
+                "evidence_channel": "cache-and-validation",
+                "receipt_cid": "scan:asi-065:exhaustive-b",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    values = {
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    provisional = result.evaluate_exact_tree_reuse_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert provisional.acceptance_criteria == (
+        EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA
+    )
+    assert provisional.gate is not None and provisional.gate.passed
+    assert provisional.gate.evaluated_evidence["analysis_result"] == {}
+    assert "provisional_transition_required" in provisional.reason_codes
+
+    verified = result.evaluate_exact_tree_reuse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    failed = replace(
+        evidence[0],
+        provenance_cid="validation:asi-065:failed",
+        validation_passed=False,
+        validation_receipt={
+            "status": "failed",
+            "tree_id": result.request.tree_id,
+            "command": validation_command,
+        },
+    )
+    failed_validation = result.evaluate_exact_tree_reuse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (*evidence, failed)},
+    )
+    assert not failed_validation.verified
+    assert "failed_validation" in failed_validation.reason_codes
+
+    missing = result.evaluate_exact_tree_reuse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": evidence[:-1]},
+    )
+    assert not missing.verified
+    assert EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA[-1] in missing.missing_criteria
+
+    missing_binding = {
+        **coverage,
+        "criteria": [
+            *coverage["criteria"][:-1],
+            {**coverage["criteria"][-1], "validation": ""},
+        ],
+    }
+    unmapped = result.evaluate_exact_tree_reuse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "coverage": missing_binding},
+    )
+    assert not unmapped.verified
+    assert "coverage_unverified" in unmapped.reason_codes
+
+    for invalid_health in (
+        {"status": "healthy"},
+        {**health, "safe_for_completion_reasoning": False},
+        {**health, "healthy": False},
+        {**health, "analyzer_version": "fixture-analyzer@foreign"},
+    ):
+        unhealthy = result.evaluate_exact_tree_reuse_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "analyzer_health": invalid_health},
+        )
+        assert not unhealthy.verified
+        assert any(
+            code in unhealthy.reason_codes
+            for code in ("analyzer_unhealthy", "analyzer_completion_unsafe")
+        )
+
+    invalid_quorums = (
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "evidence_channel": "ast-and-runtime",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "receipt_cid": "scan:asi-065:exhaustive-a",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "scan_mode": "audit"},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "healthy": False},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "finished_at": "2026-07-24T12:00:00+00:00",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "binding": {**binding, "tree_id": "tree:sha256:foreign"},
+                },
+            ],
+        },
+        {
+            **quorum,
+            "binding": {
+                **binding,
+                "configuration_revision": "sha256:foreign",
+            },
+        },
+    )
+    for invalid_quorum in invalid_quorums:
+        no_quorum = result.evaluate_exact_tree_reuse_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "exhaustion_quorum": invalid_quorum},
+        )
+        assert not no_quorum.verified
+        assert any(
+            code.startswith("exhaustion_quorum")
+            for code in no_quorum.reason_codes
+        )
+
+    foreign_tree = replace(
+        evidence[0],
+        repository_tree="tree:sha256:foreign",
+        tree_id="tree:sha256:foreign",
+        provenance_cid="validation:asi-065:foreign",
+    )
+    detached = result.evaluate_exact_tree_reuse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (foreign_tree, *evidence[1:])},
+    )
+    assert not detached.verified
+    assert "repository_tree_mismatch" in detached.reason_codes
 
 
 def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(

@@ -1033,6 +1033,34 @@ class AnalysisCacheCoordinator:
         )
         return shared
 
+    def _validated_shared_result(
+        self,
+        result: CacheCoordinationResult,
+        key: AnalysisCacheKey,
+        completion_validator: CompletionValidator | None,
+    ) -> CacheCoordinationResult:
+        """Reapply a waiter's artifact gate before sharing authority.
+
+        Validators may close over caller-local artifact stores or other
+        request-bound state.  A leader accepting its compact publication does
+        not prove that a follower can load the same external artifact.
+        Followers therefore revalidate the exact published lookup with their
+        own validator.  Rejection fails closed instead of returning a shared
+        result whose ``is_completion_evidence`` flag would grant authority.
+        """
+
+        if (
+            completion_validator is not None
+            and result.is_completion_evidence
+            and not self._is_accepted_completion_hit(
+                result.lookup, key, completion_validator
+            )
+        ):
+            raise CacheCoordinationError(
+                "shared completion result rejected by caller artifact validator"
+            )
+        return self._shared_result(result)
+
     def _timeout(
         self, key: AnalysisCacheKey, timeout: float | None
     ) -> CacheCoordinationTimeout:
@@ -1113,7 +1141,9 @@ class AnalysisCacheCoordinator:
             result = flight.future.result(timeout=timeout)
         except FutureTimeoutError as exc:
             raise self._timeout(cache_key, timeout) from exc
-        return self._shared_result(result)
+        return self._validated_shared_result(
+            result, cache_key, completion_validator
+        )
 
     def _validate_timeout(self, value: float | None) -> float | None:
         if value is None:
@@ -1191,7 +1221,9 @@ class AnalysisCacheCoordinator:
                 )
         except asyncio.TimeoutError as exc:
             raise self._timeout(cache_key, timeout) from exc
-        return self._shared_result(result)
+        return self._validated_shared_result(
+            result, cache_key, completion_validator
+        )
 
     # Conventional synchronous spellings.
     coordinate = get_or_compute

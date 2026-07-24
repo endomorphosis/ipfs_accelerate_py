@@ -385,6 +385,66 @@ def test_completion_validator_must_return_literal_boolean(
         )
 
 
+def test_joined_caller_reapplies_its_own_completion_validator(
+    tmp_path: Path,
+) -> None:
+    coordinator = AnalysisCacheCoordinator(AnalysisCache(tmp_path))
+    entered = threading.Event()
+    release = threading.Event()
+    follower_called = False
+
+    def leader_producer():
+        entered.set()
+        assert release.wait(5)
+        return _receipt(ordinal=1)
+
+    def follower_producer():
+        nonlocal follower_called
+        follower_called = True
+        return _receipt(ordinal=2)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        leader = pool.submit(
+            coordinator.get_or_compute,
+            _key(),
+            leader_producer,
+            completion_validator=lambda lookup: (
+                lookup.receipt is not None
+                and lookup.receipt.get("receipt_id") == "receipt-1"
+            ),
+        )
+        assert entered.wait(5)
+        follower = pool.submit(
+            coordinator.get_or_compute,
+            _key(),
+            follower_producer,
+            completion_validator=lambda lookup: (
+                lookup.receipt is not None
+                and lookup.receipt.get("receipt_id") == "receipt-2"
+            ),
+        )
+        deadline = time.monotonic() + 5
+        while (
+            coordinator.metrics().followers < 1
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.005)
+        release.set()
+
+        produced = leader.result(timeout=5)
+        with pytest.raises(
+            CacheCoordinationError,
+            match="shared completion result rejected",
+        ):
+            follower.result(timeout=5)
+
+    assert produced.status is CacheCoordinationStatus.PRODUCED
+    assert produced.is_completion_evidence
+    assert not follower_called
+    assert coordinator.metrics().cache_validation_rejections == 1
+    assert coordinator.metrics().active_flights == 0
+
+
 def test_publication_inherits_or_overrides_call_ttl(tmp_path: Path) -> None:
     now = 1_000.0
     cache = AnalysisCache(tmp_path, clock=lambda: now)
