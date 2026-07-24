@@ -20,6 +20,7 @@ import heapq
 import json
 import os
 import re
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -39,6 +40,9 @@ from .control_contracts import (
     ControlBounds,
     ControlBoundsError,
     ControlContractError,
+    ControlDiscoveryManifest,
+    ControlDiscoveryRuntimeState,
+    ControlSurface,
     DryRunPreview,
     EffectClaim,
     ErrorCode,
@@ -67,6 +71,12 @@ CONTROL_BACKEND_RESPONSE_SCHEMA: Final[str] = (
 DEFAULT_QUERY_LIMIT: Final[int] = 50
 DEFAULT_MAX_QUERY_ITEMS: Final[int] = 256
 DEFAULT_MAX_OFFSET: Final[int] = 1_000_000
+CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES: Final[tuple[str, ...]] = (
+    "ipfs_datasets_py",
+    "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_",
+    "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
+    "ipfs_accelerate_py.agent_supervisor.formal_verification_provider",
+)
 
 
 class SupervisorControlError(RuntimeError):
@@ -122,6 +132,73 @@ def _utc_timestamp(now_ms: int) -> str:
         datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc)
         .isoformat()
         .replace("+00:00", "Z")
+    )
+
+
+def _current_child_process_ids() -> tuple[int, ...]:
+    """Read the current OS child inventory without importing a process API."""
+
+    process_id = os.getpid()
+    children_path = Path(
+        f"/proc/{process_id}/task/{process_id}/children"
+    )
+    try:
+        raw = children_path.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError):
+        return ()
+    result: set[int] = set()
+    for item in raw.split():
+        try:
+            child_id = int(item)
+        except ValueError:
+            continue
+        if child_id > 0:
+            result.add(child_id)
+    return tuple(sorted(result))
+
+
+def capture_control_discovery_runtime_state(
+    *,
+    service_resolution_count: int = 0,
+    optional_provider_load_count: int = 0,
+    process_start_count: int = 0,
+    optional_provider_prefixes: Sequence[
+        str
+    ] = CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES,
+) -> ControlDiscoveryRuntimeState:
+    """Capture a read-only discovery state for an independently instrumented run.
+
+    Callers which intercept service resolution, optional-provider loading, or
+    process starts pass their cumulative counters here.  Module and child
+    inventories supplement those counters without importing a provider or a
+    process-management package merely to inspect discovery.
+    """
+
+    prefixes = tuple(
+        sorted(
+            {
+                str(item).strip()
+                for item in optional_provider_prefixes
+                if str(item).strip()
+            }
+        )
+    )
+    loaded = tuple(
+        sorted(
+            name
+            for name in sys.modules
+            if any(
+                name == prefix or name.startswith(prefix)
+                for prefix in prefixes
+            )
+        )
+    )
+    return ControlDiscoveryRuntimeState(
+        optional_provider_modules=loaded,
+        child_process_ids=_current_child_process_ids(),
+        service_resolution_count=service_resolution_count,
+        optional_provider_load_count=optional_provider_load_count,
+        process_start_count=process_start_count,
     )
 
 
@@ -1125,6 +1202,16 @@ class SupervisorControlService:
 
         return self._capability_report
 
+    def discovery_manifest(self) -> ControlDiscoveryManifest:
+        """Return deterministic Python discovery metadata without dispatch."""
+
+        expected = tuple(sorted(Operation, key=lambda item: item.value))
+        if self._capability_report.supported_operations != expected:
+            raise OperationUnavailableError(
+                "Python discovery requires the complete control vocabulary"
+            )
+        return ControlDiscoveryManifest(surface=ControlSurface.PYTHON)
+
     def client(
         self,
         target: Union[SupervisorTarget, Mapping[str, Any], None] = None,
@@ -1897,6 +1984,7 @@ ControlService = SupervisorControlService
 __all__ = [
     "CONTROL_AUDIT_RECEIPT_SCHEMA",
     "CONTROL_BACKEND_RESPONSE_SCHEMA",
+    "CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES",
     "CONTROL_SERVICE_VERSION",
     "BackendCancelledError",
     "BackendConflictError",
@@ -1925,4 +2013,5 @@ __all__ = [
     "SupervisorTarget",
     "TargetNotAllowedError",
     "TargetIdentityValidator",
+    "capture_control_discovery_runtime_state",
 ]
