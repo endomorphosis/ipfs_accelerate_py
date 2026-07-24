@@ -1414,7 +1414,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-047 Close objective gap: Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -2424,3 +2424,47 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: validation_gate
 - Todo vector key: bd187c1d5f6279c6
 - Acceptance: Objective scan filed this gap for ASI-G096. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-069-objective-gap-17b2c8bb470e.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-070 Close objective gap: Prove 006818797857632260116084792540150258746 for Strict output, code, test, semantic, and proof validation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: validation
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/proposal_validation.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_accelerate_py/agent_supervisor/formal_plan_conformance.py, test/api/test_agent_supervisor_proposal_validation.py, test/api/test_agent_supervisor_validation_dag.py, test/api/test_agent_supervisor_semantic_validation_pipeline.py
+- Validation: python -m pytest test/api/test_agent_supervisor_proposal_validation.py test/api/test_agent_supervisor_validation_dag.py test/api/test_agent_supervisor_semantic_validation_pipeline.py -q
+- Bundle: agent-supervisor/self-improvement/validation
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-validation.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G040
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/validation
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proposal_validation.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_accelerate_py/agent_supervisor/formal_plan_conformance.py, test/api/test_agent_supervisor_proposal_validation.py, test/api/test_agent_supervisor_validation_dag.py, test/api/test_agent_supervisor_semantic_validation_pipeline.py
+- Changed paths: 
+- AST symbols: PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID ProofCandidateNonAuthorityEvidence prove_proof_candidate_non_authority CodeProofReceiptBindingResult.result_id CompletionAdmissionGate.code_proof_result_ids CompletionAdmissionGate.proof_candidate_receipt_ids evaluate_completion_admission
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G102
+- Canonical task key: task/v1/3e919b2299b719f97b14ede7b1ebabd186d8fe46c144c5f6c1e62e2f73d2d6de
+- Canonical task CID: baguqeerah2izwiuzw4m7s6yu5xt3d25l2gdnr7sgyfcml5wb4yxc646s23pa
+- Missing evidence: objective validation repair
+- Embedding query: 006818797857632260116084792540150258746
+- AST query: PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID ProofCandidateNonAuthorityEvidence prove_proof_candidate_non_authority CodeProofReceiptBindingResult.result_id CompletionAdmissionGate.code_proof_result_ids CompletionAdmissionGate.proof_candidate_receipt_ids evaluate_completion_admission
+- Surplus group: objective/ASI-G102
+- Merge key: c37601a178a7ebc7
+- Merge family: objective/ASI-G102
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: validation_gate
+- Todo vector key: e35575306c606b9e
+- Acceptance: Objective scan filed this gap for ASI-G102. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-070-objective-gap-843224fc1fa9.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
