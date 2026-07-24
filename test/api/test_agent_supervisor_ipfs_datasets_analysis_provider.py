@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
 import pytest
@@ -21,6 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import 
     IpfsDatasetsAnalysisProviderError,
     IpfsDatasetsProviderDegradationEvidence,
     IpfsDatasetsAnalysisProvider,
+    inspect_analysis_provider_capability,
     normalize_analysis_provider_operation,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis_retrieval import RetrievalLimits
@@ -40,20 +42,72 @@ def _request(**changes):
 
 def test_construction_and_capability_declaration_do_not_import() -> None:
     calls = []
+    backend_calls = []
 
     def importer(name):
         calls.append(name)
         raise AssertionError("capability declaration imported optional code")
 
-    provider = IpfsDatasetsAnalysisProvider(importer=importer)
-    first = provider.capabilities()
-    second = provider.capabilities()
+    class ExplosiveBackend:
+        def capabilities(self):
+            backend_calls.append("capabilities")
+            raise AssertionError("local inspection probed optional backend")
 
+    provider = IpfsDatasetsAnalysisProvider(
+        importer=importer,
+        backend=ExplosiveBackend(),
+    )
+    state_before = {name: id(value) for name, value in vars(provider).items()}
+    dispatch_threads_before = {
+        thread.ident
+        for thread in threading.enumerate()
+        if thread.name == "ipfs-datasets-analysis-provider"
+    }
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        capabilities = tuple(
+            executor.map(lambda _: provider.capabilities(), range(32))
+        )
+    first = capabilities[0]
+    second = provider.capability()
+
+    assert all(item == first for item in capabilities)
+    assert all(item.to_dict() == first.to_dict() for item in capabilities)
+    assert all(item.capability_id == first.capability_id for item in capabilities)
     assert calls == []
+    assert backend_calls == []
+    assert {name: id(value) for name, value in vars(provider).items()} == state_before
+    assert {
+        thread.ident
+        for thread in threading.enumerate()
+        if thread.name == "ipfs-datasets-analysis-provider"
+    } == dispatch_threads_before
     assert first == second
     assert first.health is AnalysisProviderHealth.LAZY
     assert first.imported is False
     assert first.non_authoritative
+    assert AnalysisProviderCapability.from_dict(first.to_dict()) == first
+
+    # The standalone inspection surface depends only on canonical policy
+    # metadata. Operation order and duplicate inputs cannot change its ID.
+    pure = inspect_analysis_provider_capability(
+        {
+            "operations": [
+                "dataset_query",
+                "graph_retrieval",
+                "dataset_query",
+            ]
+        }
+    )
+    reordered = inspect_analysis_provider_capability(
+        {
+            "operations": [
+                "graph_retrieval",
+                "dataset_query",
+            ]
+        }
+    )
+    assert pure.to_dict() == reordered.to_dict()
+    assert pure.capability_id == reordered.capability_id
 
 
 def test_missing_optional_module_degrades_explicitly_with_typed_evidence() -> None:
@@ -594,6 +648,20 @@ def test_public_request_builder_applies_limits_without_loading_backend() -> None
     assert request.operation is AnalysisProviderOperation.GRAPH_RETRIEVAL
     assert request.bounds.max_results == 2
     assert request.bounds.max_response_bytes == 8_192
+
+    bounded = IpfsDatasetsAnalysisProvider(
+        bounds=AnalysisProviderBounds(max_results=2)
+    )
+    with pytest.raises(
+        IpfsDatasetsAnalysisProviderError,
+        match="cannot expand provider policy",
+    ):
+        bounded.build_request(
+            {
+                **_request(),
+                "bounds": AnalysisProviderBounds(max_results=3).to_dict(),
+            }
+        )
 
 
 @pytest.mark.parametrize(

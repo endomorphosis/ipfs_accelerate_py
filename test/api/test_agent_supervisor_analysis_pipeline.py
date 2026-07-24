@@ -4,6 +4,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,34 @@ from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import 
     IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     AnalysisProviderStatus,
     IpfsDatasetsAnalysisProvider,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+    CompletionEvidence,
+    GoalState,
+)
+
+
+G095_ACCEPTANCE_CRITERIA = (
+    "Capability inspection is deterministic and side-effect free",
+    "Dispatch lazily imports only a supported requested operation",
+    "Provider policy is a non-expandable resource envelope",
+    (
+        "Capability and result payloads are canonical, bounded, compact, "
+        "and identity checked"
+    ),
+    (
+        "Timed-out non-cooperative backends cannot create unbounded "
+        "dispatch threads"
+    ),
+    (
+        "Unavailable, unsupported, disabled, unhealthy, timed-out, failed, "
+        "malformed, and cancelled results state exact reasons and "
+        "deterministic fallback"
+    ),
+    (
+        "No provider result, including a backend-supplied authority claim, "
+        "is completion evidence"
+    ),
 )
 
 
@@ -1126,6 +1155,221 @@ def test_restart_preserves_ranked_retrieval_health_and_truncation_semantics(
     )
     assert first_analyzer.calls == 1
     assert restarted_analyzer.calls == 0
+
+
+def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
+    tmp_path: Path,
+) -> None:
+    """The analysis/provider result cannot bypass the objective proof gate."""
+
+    result = AnalysisPipeline(
+        AnalysisCache(tmp_path / "cache"),
+        _Analyzer(),
+        provider=IpfsDatasetsAnalysisProvider(
+            importer=lambda name: (_ for _ in ()).throw(
+                ModuleNotFoundError(name)
+            )
+        ),
+    ).analyze(_request())
+    now = datetime(2026, 7, 24, 14, 0, tzinfo=timezone.utc)
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-066",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": result.request.tree_id,
+                "command": (
+                    "python -m pytest "
+                    "test/api/test_agent_supervisor_analysis_pipeline.py "
+                    "test/api/test_agent_supervisor_"
+                    "ipfs_datasets_analysis_provider.py "
+                    "test/api/test_agent_supervisor_cache_coordinator.py -q"
+                ),
+            },
+            validation_passed=True,
+            repository_id=result.request.repository_id,
+            repository_tree=result.request.tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-066:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(G095_ACCEPTANCE_CRITERIA, start=1)
+    )
+    coverage = {
+        "repository_tree": result.request.tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "ipfs_datasets_analysis_provider.py"
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_"
+                    "ipfs_datasets_analysis_provider.py"
+                ),
+            }
+            for criterion in G095_ACCEPTANCE_CRITERIA
+        ],
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": result.request.analyzer_version,
+    }
+    binding = {
+        "repository_id": result.request.repository_id,
+        "tree_id": result.request.tree_id,
+        "analyzer_version": result.request.analyzer_version,
+        "configuration_revision": result.request.configuration_digest,
+        "objective_revision": result.request.objective_revision,
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-066-exhaustive",
+                "evidence_channel": "exhaustive",
+                "receipt_cid": "scan:asi-066:exhaustive",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-066-audit",
+                "evidence_channel": "audit",
+                "receipt_cid": "scan:asi-066:audit",
+                "binding": binding,
+                "scan_mode": "audit",
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    values = {
+        "acceptance_criteria": G095_ACCEPTANCE_CRITERIA,
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    # Even a fully passing gate cannot jump directly from active to verified.
+    provisional = result.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.verified is False
+    assert provisional.gate is not None and provisional.gate.passed
+    assert "provisional_transition_required" in provisional.reason_codes
+    assert provisional.gate.evaluated_evidence["analysis_result"] == {}
+
+    verified = result.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified is True
+    assert verified.gate is not None and verified.gate.passed
+
+    # Every submitted validation is authoritative: a failed extra receipt
+    # cannot be hidden by the seven valid records.
+    failed = replace(
+        evidence[0],
+        provenance_cid="validation:asi-066:failed",
+        validation_passed=False,
+        validation_receipt={
+            "status": "failed",
+            "tree_id": result.request.tree_id,
+        },
+    )
+    invalid_validation = result.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (*evidence, failed)},
+    )
+    assert invalid_validation.state is GoalState.PROVISIONALLY_COMPLETE
+    assert invalid_validation.verified is False
+    assert invalid_validation.gate is not None
+    assert "failed_validation" in invalid_validation.reason_codes
+    assert (
+        "validation_evidence_incomplete"
+        in invalid_validation.gate.fail_reason_codes
+    )
+
+    missing_criterion = result.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": evidence[:-1]},
+    )
+    assert missing_criterion.state is GoalState.PROVISIONALLY_COMPLETE
+    assert G095_ACCEPTANCE_CRITERIA[-1] in missing_criterion.missing_criteria
+    assert "validation_evidence_incomplete" in (
+        missing_criterion.gate.fail_reason_codes
+    )
+
+    unsafe_health = result.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "analyzer_health": {
+                **health,
+                "safe_for_completion_reasoning": False,
+            },
+        },
+    )
+    assert unsafe_health.state is GoalState.PROVISIONALLY_COMPLETE
+    assert "analyzer_completion_unsafe" in unsafe_health.reason_codes
+
+    duplicate_quorum = {
+        **quorum,
+        "members": [
+            quorum["members"][0],
+            {
+                **quorum["members"][1],
+                "evidence_channel": "exhaustive",
+            },
+        ],
+    }
+    insufficient_independence = result.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "exhaustion_quorum": duplicate_quorum},
+    )
+    assert insufficient_independence.state is GoalState.PROVISIONALLY_COMPLETE
+    assert "exhaustion_quorum_inconsistent" in (
+        insufficient_independence.reason_codes
+    )
+
+    foreign_tree = replace(
+        evidence[0],
+        repository_tree="tree:sha256:foreign",
+        tree_id="tree:sha256:foreign",
+        provenance_cid="validation:asi-066:foreign",
+    )
+    wrong_tree = result.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (foreign_tree, *evidence[1:])},
+    )
+    assert wrong_tree.state is GoalState.PROVISIONALLY_COMPLETE
+    assert "repository_tree_mismatch" in wrong_tree.reason_codes
 
 
 def test_low_backlog_analysis_uses_pipeline_only_as_bounded_nomination_context(

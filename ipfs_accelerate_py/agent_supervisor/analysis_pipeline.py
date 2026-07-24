@@ -25,7 +25,10 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from .goal_completion import GoalCompletionDecision
 
 from .analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
 from .analysis_cache import (
@@ -1193,6 +1196,67 @@ class AnalysisPipelineResult:
         if include_result_id:
             payload["result_id"] = self.result_id
         return payload
+
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        acceptance_criteria: Sequence[str] | str | None,
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate task completion against the pipeline's exact tree binding.
+
+        Integrated analysis packets and optional-provider results solve a
+        different problem from objective completion.  In particular, the
+        datasets adapter is advisory and an analysis packet does not prove
+        acceptance-criterion coverage, analyzer health, or an independent
+        exhaustive quorum.  This bridge therefore supplies neither as
+        completion evidence.  Callers must submit those typed records
+        explicitly; :mod:`goal_completion` then validates every record and
+        preserves the mandatory provisional transition.
+
+        Repository identity is derived from this result rather than accepted
+        from the caller.  A completion receipt for another checkout therefore
+        cannot be evaluated accidentally against a successful pipeline run.
+        The full completion gate is always enabled.
+        """
+
+        from .goal_completion import evaluate_goal_completion
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": acceptance_criteria,
+            "evidence": evidence,
+            "tasks_complete": tasks_complete,
+            "repository_tree": self.request.tree_id,
+            "repository_id": self.request.repository_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage,
+            "analyzer_health": analyzer_health,
+            "exhaustion_quorum": exhaustion_quorum,
+            "child_goals": child_goals,
+            # A pipeline result is bounded nomination/analysis context, not
+            # an exhaustive audit receipt.  Do not implicitly promote it.
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
 
 
 def _validate_packet_binding(
