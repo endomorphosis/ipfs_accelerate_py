@@ -21,7 +21,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-002 Make subgoal satisfaction first-class in the reviewed type system
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
