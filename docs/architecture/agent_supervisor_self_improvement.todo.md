@@ -622,7 +622,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-029 Close objective gap: Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -1235,3 +1235,399 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: aggregate
 - Todo vector key: 5dcbcd5e3eb2335e
 - Acceptance: Objective scan filed this gap for ASI-G060. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-042-objective-gap-4de9b02f0a16.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (122080003600146794820964010047426915846, 124037811551945145648172208272779822741, 185033715568272291470322170325431455647), and keep the supervisor-fed backlog aligned with the objective heap.  Split scheduling, provider batching, and validation/merge throughput into separately benchmarked lanes.
+
+## ASI-043 Close objective gap: Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: token-efficiency
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py, ipfs_accelerate_py/agent_supervisor/context_contracts.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, test/api/test_agent_supervisor_efficiency_metrics.py, test/api/test_agent_supervisor_context_compiler.py, test/api/test_agent_supervisor_context_delta.py
+- Validation: python -m pytest test/api/test_agent_supervisor_efficiency_metrics.py test/api/test_agent_supervisor_context_compiler.py test/api/test_agent_supervisor_context_delta.py -q
+- Bundle: agent-supervisor/self-improvement/context
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-context.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G010
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/context
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py, ipfs_accelerate_py/agent_supervisor/context_contracts.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, test/api/test_agent_supervisor_efficiency_metrics.py, test/api/test_agent_supervisor_context_compiler.py, test/api/test_agent_supervisor_context_delta.py
+- Changed paths: 
+- AST symbols: 248026856102230635452423769994290240744
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G093
+- Canonical task key: task/v1/c70cd0b5a933152e0775e5720c6be26c5c10726d8bb0d17f1a9a1672d595b6d6
+- Canonical task CID: baguqeeray4gnbnnjgmks4b3v4vzay27cnroba4tnroync7y2tilhfvmvw3la
+- Missing evidence: 248026856102230635452423769994290240744
+- Embedding query: 248026856102230635452423769994290240744
+- AST query: 248026856102230635452423769994290240744
+- Surplus group: objective/ASI-G093
+- Merge key: 0cc3e91ad5b303b6
+- Merge family: objective/ASI-G093
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: 7461411bbf6d3dc5
+- Acceptance: Objective scan filed this gap for ASI-G093. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-043-objective-gap-b8e23817e136.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (248026856102230635452423769994290240744), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-044 Close objective gap: Prove 206259342916458424196977899134352826879 for Integrated analysis, caching, and ipfs_datasets_py offload
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: analysis
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py, test/api/test_agent_supervisor_cache_coordinator.py
+- Validation: python -m pytest test/api/test_agent_supervisor_analysis_pipeline.py test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py test/api/test_agent_supervisor_cache_coordinator.py -q
+- Bundle: agent-supervisor/self-improvement/analysis
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-analysis.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G020
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/analysis
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py, test/api/test_agent_supervisor_cache_coordinator.py
+- Changed paths: 
+- AST symbols: 206259342916458424196977899134352826879
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G096
+- Canonical task key: task/v1/96e3ea0840a67006ab77cbbb29a8e263a002a54bbe61758c1d8c6939d27a1e8e
+- Canonical task CID: baguqeeras3r6uccauzyank3xzo5stkhcmoqafjklxzqxlda5rruttut2d2ha
+- Missing evidence: 206259342916458424196977899134352826879
+- Embedding query: 206259342916458424196977899134352826879
+- AST query: 206259342916458424196977899134352826879
+- Surplus group: objective/ASI-G096
+- Merge key: e94efed435cd071a
+- Merge family: objective/ASI-G096
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: 52887ef3a6297733
+- Acceptance: Objective scan filed this gap for ASI-G096. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-044-objective-gap-df6e813b5a82.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (206259342916458424196977899134352826879), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-045 Close objective gap: Prove 312819945606360295782005228058369235550 for Evidence-aware planning and responsive goal refinement
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: planning
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_planner.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_planner.py test/api/test_agent_supervisor_adaptive_goal_refiner.py -q
+- Bundle: agent-supervisor/self-improvement/planning
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-planning.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G030
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/planning
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_planner.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Changed paths: 
+- AST symbols: 312819945606360295782005228058369235550
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G099
+- Canonical task key: task/v1/ea3104920bad8db28bbb7c39891af202a0fddd970dc147475cc77d5d81c1aeec
+- Canonical task CID: baguqeera5iyqjeqlvwg3fc53pq4ysgxsakqp3xmxbxauor24y56v3aobv3wa
+- Missing evidence: 312819945606360295782005228058369235550
+- Embedding query: 312819945606360295782005228058369235550
+- AST query: 312819945606360295782005228058369235550
+- Surplus group: objective/ASI-G099
+- Merge key: 05e94edb3f7e80b7
+- Merge family: objective/ASI-G099
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: 5a79dbca2016c5eb
+- Acceptance: Objective scan filed this gap for ASI-G099. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-045-objective-gap-3a1dd4ba61a6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (312819945606360295782005228058369235550), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-046 Close objective gap: Prove 006818797857632260116084792540150258746 for Strict output, code, test, semantic, and proof validation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: validation
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/proposal_validation.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_accelerate_py/agent_supervisor/formal_plan_conformance.py, test/api/test_agent_supervisor_proposal_validation.py, test/api/test_agent_supervisor_validation_dag.py, test/api/test_agent_supervisor_semantic_validation_pipeline.py
+- Validation: python -m pytest test/api/test_agent_supervisor_proposal_validation.py test/api/test_agent_supervisor_validation_dag.py test/api/test_agent_supervisor_semantic_validation_pipeline.py -q
+- Bundle: agent-supervisor/self-improvement/validation
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-validation.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G040
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/validation
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proposal_validation.py, ipfs_accelerate_py/agent_supervisor/validation_scheduler.py, ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_accelerate_py/agent_supervisor/formal_plan_conformance.py, test/api/test_agent_supervisor_proposal_validation.py, test/api/test_agent_supervisor_validation_dag.py, test/api/test_agent_supervisor_semantic_validation_pipeline.py
+- Changed paths: 
+- AST symbols: 006818797857632260116084792540150258746
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G102
+- Canonical task key: task/v1/9ff16a874e6d330b5f91fed5f8444933adfeac1881789e5bdd088b777438a83c
+- Canonical task CID: baguqeerat7ywvb2onuzqwx4r73k7qrcjgow75layqf4j4w65bcfxo5byva6a
+- Missing evidence: 006818797857632260116084792540150258746
+- Embedding query: 006818797857632260116084792540150258746
+- AST query: 006818797857632260116084792540150258746
+- Surplus group: objective/ASI-G102
+- Merge key: 75e6b8e71f056e34
+- Merge family: objective/ASI-G102
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: 5485dd864cd292e7
+- Acceptance: Objective scan filed this gap for ASI-G102. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-046-objective-gap-9b35a8996689.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (006818797857632260116084792540150258746), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-047 Close objective gap: Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: control
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools, test/api/test_agent_supervisor_control_plane.py, test/test_unified_cli_agent_supervisor.py, test/mcp_server/test_agent_supervisor_tools.py
+- Validation: python -m pytest test/api/test_agent_supervisor_control_plane.py test/api/test_agent_supervisor_control_lifecycle.py test/test_unified_cli_agent_supervisor.py test/mcp_server/test_agent_supervisor_tools.py -q
+- Bundle: agent-supervisor/self-improvement/control
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-control.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G070
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/control
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools, test/api/test_agent_supervisor_control_plane.py, test/test_unified_cli_agent_supervisor.py, test/mcp_server/test_agent_supervisor_tools.py
+- Changed paths: 
+- AST symbols: 186773143401179107362964063059661378722
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G105
+- Canonical task key: task/v1/643f9c49953d62ac30d5419e15803f9815184bf569e2957715089e41a8cfe2a7
+- Canonical task CID: baguqeeramq7zysmvhvrkymgvigpblab7takrqs7vnhrjk5yvbcpedkgp4ktq
+- Missing evidence: 186773143401179107362964063059661378722
+- Embedding query: 186773143401179107362964063059661378722
+- AST query: 186773143401179107362964063059661378722
+- Surplus group: objective/ASI-G105
+- Merge key: c6c5499ad7d86bbe
+- Merge family: objective/ASI-G105
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: 863ab773f7c60c6a
+- Acceptance: Objective scan filed this gap for ASI-G105. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-047-objective-gap-a69188ffd3d4.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (186773143401179107362964063059661378722), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-048 Close objective gap: Prove 184125100306462690646212311073240043804 for Goal packet aggregate for ASI-G104, ASI-G105
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: control
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools, test/api/test_agent_supervisor_control_plane.py, test/test_unified_cli_agent_supervisor.py, test/mcp_server/test_agent_supervisor_tools.py
+- Validation: python -m pytest test/api/test_agent_supervisor_control_plane.py test/api/test_agent_supervisor_control_lifecycle.py test/test_unified_cli_agent_supervisor.py test/mcp_server/test_agent_supervisor_tools.py -q
+- Bundle: agent-supervisor/self-improvement/control
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-control.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G104
+- Graph depth: 3
+- Parallel lane: agent-supervisor/self-improvement/control
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools, test/api/test_agent_supervisor_control_plane.py, test/test_unified_cli_agent_supervisor.py, test/mcp_server/test_agent_supervisor_tools.py
+- Changed paths: 
+- AST symbols: 184125100306462690646212311073240043804
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G126
+- Canonical task key: task/v1/a88f368d99aa61fa80bc24787c9dde5063cb558e6b0f1da59fa786171981940b
+- Canonical task CID: baguqeeravchtndmzvjq7vaf4er4hzho6kbr4wvmonmhr3jm7u6dbogmbsqfq
+- Missing evidence: 184125100306462690646212311073240043804
+- Embedding query: 184125100306462690646212311073240043804
+- AST query: 184125100306462690646212311073240043804
+- Surplus group: objective/ASI-G126
+- Merge key: b578d1a541de54ff
+- Merge family: objective/ASI-G126
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: 2cb91fb4ff005012
+- Acceptance: Objective scan filed this gap for ASI-G126. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-048-objective-gap-c740cf99d5d9.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (184125100306462690646212311073240043804), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-049 Close objective gap: Prove 186773143401179107362964063059661378722 for Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: control
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools, test/api/test_agent_supervisor_control_plane.py, test/test_unified_cli_agent_supervisor.py, test/mcp_server/test_agent_supervisor_tools.py
+- Validation: python -m pytest test/api/test_agent_supervisor_control_plane.py test/api/test_agent_supervisor_control_lifecycle.py test/test_unified_cli_agent_supervisor.py test/mcp_server/test_agent_supervisor_tools.py -q
+- Bundle: agent-supervisor/self-improvement/control
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-control.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G105
+- Graph depth: 3
+- Parallel lane: agent-supervisor/self-improvement/control
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control_plane.py, ipfs_accelerate_py/agent_supervisor/control_cli.py, ipfs_accelerate_py/cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools, test/api/test_agent_supervisor_control_plane.py, test/test_unified_cli_agent_supervisor.py, test/mcp_server/test_agent_supervisor_tools.py
+- Changed paths: 
+- AST symbols: 186773143401179107362964063059661378722
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G128
+- Canonical task key: task/v1/79325c9ca7ee97c17092258b2e8b0b89d5d5087c1b68687ff36df79a7fd77477
+- Canonical task CID: baguqeerapezfzhfh52l4c4esewfs5cylrhk5kcd4dnugq77tnx3zu76xor3q
+- Missing evidence: 186773143401179107362964063059661378722
+- Embedding query: 186773143401179107362964063059661378722
+- AST query: 186773143401179107362964063059661378722
+- Surplus group: objective/ASI-G128
+- Merge key: c88211ee36217155
+- Merge family: objective/ASI-G128
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: 35cedc6db34e16a9
+- Acceptance: Objective scan filed this gap for ASI-G128. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-049-objective-gap-74155e075b42.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (186773143401179107362964063059661378722), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-050 Close objective gap: Prove 248026856102230635452423769994290240744 for Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: token-efficiency
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py, ipfs_accelerate_py/agent_supervisor/context_contracts.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, test/api/test_agent_supervisor_efficiency_metrics.py, test/api/test_agent_supervisor_context_compiler.py, test/api/test_agent_supervisor_context_delta.py
+- Validation: python -m pytest test/api/test_agent_supervisor_efficiency_metrics.py test/api/test_agent_supervisor_context_compiler.py test/api/test_agent_supervisor_context_delta.py -q
+- Bundle: agent-supervisor/self-improvement/context
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-context.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G093
+- Graph depth: 3
+- Parallel lane: agent-supervisor/self-improvement/context
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py, ipfs_accelerate_py/agent_supervisor/context_contracts.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, test/api/test_agent_supervisor_efficiency_metrics.py, test/api/test_agent_supervisor_context_compiler.py, test/api/test_agent_supervisor_context_delta.py
+- Changed paths: 
+- AST symbols: 248026856102230635452423769994290240744
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G129
+- Canonical task key: task/v1/73b9f0599f6b786f434e00ca501f9ad882b4efdd123e8547e441a6026b05fe75
+- Canonical task CID: baguqeeraoo47awm7nn4g6q2oadffah423cblj365ci7ikr7eigtae2yf7z2q
+- Missing evidence: 248026856102230635452423769994290240744
+- Embedding query: 248026856102230635452423769994290240744
+- AST query: 248026856102230635452423769994290240744
+- Surplus group: objective/ASI-G129
+- Merge key: e1c8c9c67b3aabc5
+- Merge family: objective/ASI-G129
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: bb4e4883d0c177ef
+- Acceptance: Objective scan filed this gap for ASI-G129. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-050-objective-gap-b2ca6ee61aa5.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (248026856102230635452423769994290240744), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-051 Close objective gap: High-quality task generation and conflict-aware bundling
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: task-generation
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/objective_graph.py, ipfs_accelerate_py/agent_supervisor/todo_vector_index.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, test/api/test_agent_supervisor_task_quality.py, test/api/test_agent_supervisor_bundle_optimizer.py
+- Validation: python -m pytest test/api/test_agent_supervisor_task_quality.py test/api/test_agent_supervisor_bundle_optimizer.py -q
+- Bundle: agent-supervisor/self-improvement/task-generation
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-task-generation.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G000
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/task-generation
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/task_quality.py, ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py, ipfs_accelerate_py/agent_supervisor/objective_graph.py, ipfs_accelerate_py/agent_supervisor/todo_vector_index.py, ipfs_accelerate_py/agent_supervisor/conflict_graph.py, test/api/test_agent_supervisor_task_quality.py, test/api/test_agent_supervisor_bundle_optimizer.py
+- Changed paths: 
+- AST symbols: generate_objective_todos_result build_todo_vector_index BundleSupervisor canonical_task_identity
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G050
+- Canonical task key: task/v1/f9407d87ab81844617f0fd63b4707977286026a8eeb4fd84cfdc37c705fe37ff
+- Canonical task CID: baguqeera7fah3b5lqgcemf7q7vr3i4dzo4ugajvi522p3bgp3q34obp6g77q
+- Missing evidence: 187052702852200236079602798955260586139
+- Embedding query: task generation sizing deduplication bundle optimization context reuse dependency DAG conflict graph merge locality
+- AST query: generate_objective_todos_result build_todo_vector_index BundleSupervisor canonical_task_identity
+- Surplus group: objective/ASI-G050
+- Merge key: 4a14a4caaba4b526
+- Merge family: objective/ASI-G050
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: aggregate
+- Todo vector key: aa83309d7f8d56f9
+- Acceptance: Objective scan filed this gap for ASI-G050. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-051-objective-gap-badae2b53597.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (187052702852200236079602798955260586139), and keep the supervisor-fed backlog aligned with the objective heap.  Separate task admission from bundle optimization and preserve canonical identities through every projection.
