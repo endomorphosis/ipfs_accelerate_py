@@ -63,6 +63,7 @@ from .scan_receipts import (
     scan_configuration_revision,
     scan_identity,
 )
+from .task_identity import TaskIdentity, canonical_task_identity
 from .todo_daemon.implementation_daemon import (
     is_retry_budget_repair_task,
     parse_task_file,
@@ -115,6 +116,9 @@ DEFAULT_RECONCILIATION_GUARDRAIL_MAX_FINDINGS = int(
 )
 DEFAULT_TASK_ID_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = "## AUTO-"
+DEFAULT_REFILL_OPEN_TASK_HEADROOM = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_REFILL_OPEN_TASK_HEADROOM", "1")
+)
 CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
 CODEBASE_AUDIT_SCANNER_VERSION = "codebase-audit/v1"
 CODEBASE_SCAN_REASON_SAMPLE_LIMIT = 10
@@ -304,18 +308,68 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+_MARKDOWN_HEADING_PREFIX_RE = re.compile(r"^\s*#{1,6}\s*")
+
+
 def task_id_prefix(value: str) -> str:
-    value = str(value or DEFAULT_TASK_ID_PREFIX).strip()
-    if value.startswith("## "):
-        value = value[3:].strip()
-    return value or DEFAULT_TASK_ID_PREFIX
+    """Return a canonical display-ID prefix without Markdown rendering.
+
+    Older wrapper configurations used values such as ``"## AUTO-"``.  Treat
+    that form as a boundary adapter, including malformed values that acquired
+    more than one heading marker, and keep every internal ID operation on the
+    canonical ``"AUTO-"`` form.
+    """
+
+    normalized = str(value or DEFAULT_TASK_ID_PREFIX).strip()
+    while _MARKDOWN_HEADING_PREFIX_RE.match(normalized):
+        normalized = _MARKDOWN_HEADING_PREFIX_RE.sub("", normalized, count=1).strip()
+    return normalized or DEFAULT_TASK_ID_PREFIX
 
 
 def task_header_prefix(value: str) -> str:
-    value = str(value or DEFAULT_TASK_HEADER_PREFIX).strip()
-    if value.startswith("## "):
-        return value
-    return f"## {value}"
+    """Render a canonical task ID prefix as one level-two Markdown heading."""
+
+    return f"## {task_id_prefix(value or DEFAULT_TASK_HEADER_PREFIX)}"
+
+
+def normalize_task_id(value: Any) -> str:
+    """Normalize a task-ID alias supplied in legacy heading form."""
+
+    normalized = str(value or "").strip()
+    while _MARKDOWN_HEADING_PREFIX_RE.match(normalized):
+        normalized = _MARKDOWN_HEADING_PREFIX_RE.sub("", normalized, count=1).strip()
+    return normalized.split(None, 1)[0] if normalized else ""
+
+
+def task_id_pattern(task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> re.Pattern[str]:
+    """Return the strict Markdown heading parser for one numeric task family."""
+
+    prefix = task_id_prefix(task_prefix)
+    return re.compile(
+        rf"^##\s+({re.escape(prefix)}(?P<number>\d+))(?=\s|$)",
+        flags=re.MULTILINE,
+    )
+
+
+def normalize_task_block_heading(block: str, task_id: str) -> str:
+    """Render the first task-block heading exactly once.
+
+    Callers may still provide a legacy block beginning ``## ## AUTO-001``.
+    Normalize that input at this append boundary without rewriting the body.
+    """
+
+    text = str(block or "").strip()
+    canonical_id = normalize_task_id(task_id)
+    if not text or not canonical_id:
+        return text
+    lines = text.splitlines()
+    heading = lines[0].strip()
+    while _MARKDOWN_HEADING_PREFIX_RE.match(heading):
+        heading = _MARKDOWN_HEADING_PREFIX_RE.sub("", heading, count=1).strip()
+    parts = heading.split(None, 1)
+    title = parts[1] if len(parts) > 1 and normalize_task_id(parts[0]) == canonical_id else ""
+    lines[0] = f"## {canonical_id}{f' {title}' if title else ''}"
+    return "\n".join(lines)
 
 
 def split_csv(values: Iterable[str] | str) -> list[str]:
@@ -330,24 +384,40 @@ def split_csv(values: Iterable[str] | str) -> list[str]:
 
 
 def task_ids_from_todo_text(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> list[str]:
-    prefix = task_id_prefix(task_prefix)
-    ids: list[str] = []
-    for line in todo_text.splitlines():
-        if not line.startswith(f"## {prefix}"):
-            continue
-        parts = line[3:].strip().split(" ", 1)
-        if parts:
-            ids.append(parts[0])
-    return ids
+    return [match.group(1) for match in task_id_pattern(task_prefix).finditer(todo_text)]
 
 
 def task_block_is_present(todo_text: str, task_id: str) -> bool:
     """Return whether a markdown task block for ``task_id`` is already present."""
 
-    escaped_task_id = re.escape(str(task_id).strip())
+    escaped_task_id = re.escape(normalize_task_id(task_id))
     if not escaped_task_id:
         return False
     return re.search(rf"^##\s+{escaped_task_id}(?:\s|$)", todo_text, flags=re.MULTILINE) is not None
+
+
+def task_block_semantic_identities(text: str) -> set[str]:
+    """Collect explicit canonical identities suitable for exact deduplication."""
+
+    identities: set[str] = set()
+    fields = (
+        "Canonical task key",
+        "Canonical task CID",
+        "Semantic identity",
+        "Evidence obligation key",
+        "Dedupe key",
+        "Todo vector key",
+    )
+    for field_name in fields:
+        for match in re.finditer(
+            rf"^-\s*{re.escape(field_name)}:\s*(\S+)\s*$",
+            text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        ):
+            value = match.group(1).strip().casefold()
+            if value and value not in {"none", "n/a"}:
+                identities.add(f"identity:{value}")
+    return identities
 
 
 def ensure_task_blocks_present(
@@ -359,12 +429,24 @@ def ensure_task_blocks_present(
     if not todo_path.exists():
         return False
     todo_text = todo_path.read_text(encoding="utf-8")
+    existing_semantic_identities = task_block_semantic_identities(todo_text)
     entries = task_blocks.items() if isinstance(task_blocks, Mapping) else task_blocks
-    additions = [
-        block.strip()
-        for task_id, block in entries
-        if block.strip() and not task_block_is_present(todo_text, task_id)
-    ]
+    additions: list[str] = []
+    for raw_task_id, raw_block in entries:
+        task_id = normalize_task_id(raw_task_id)
+        block = normalize_task_block_heading(raw_block, task_id)
+        semantic_identities = task_block_semantic_identities(block)
+        is_semantic_duplicate = bool(
+            semantic_identities and semantic_identities & existing_semantic_identities
+        )
+        if (
+            block
+            and task_id
+            and not task_block_is_present(todo_text, task_id)
+            and not is_semantic_duplicate
+        ):
+            additions.append(block)
+            existing_semantic_identities.update(semantic_identities)
     if not additions:
         return False
     todo_path.write_text(todo_text.rstrip() + "\n\n" + "\n\n".join(additions) + "\n", encoding="utf-8")
@@ -397,29 +479,32 @@ def next_task_id(
 ) -> str:
     prefix = task_id_prefix(task_prefix)
     highest = 0
+    width = 3
     task_ids = [
         *task_ids_from_todo_text(todo_text, task_prefix=prefix),
         *(str(item) for item in reserved_task_ids),
     ]
+    id_re = re.compile(rf"^{re.escape(prefix)}(?P<number>\d+)$")
     for current in task_ids:
-        try:
-            current_prefix, number = current.rsplit("-", 1)
-            if f"{current_prefix}-" != prefix:
-                continue
-            highest = max(highest, int(number))
-        except (IndexError, ValueError):
+        match = id_re.fullmatch(normalize_task_id(current))
+        if match is None:
             continue
-    return f"{prefix}{highest + 1:03d}"
+        number = match.group("number")
+        highest = max(highest, int(number))
+        width = max(width, len(number))
+    return f"{prefix}{highest + 1:0{width}d}"
 
 
 def task_statuses_from_todo_text(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> dict[str, str]:
-    prefix = task_id_prefix(task_prefix)
     statuses: dict[str, str] = {}
     current_task_id = ""
     for line in todo_text.splitlines():
-        if line.startswith(f"## {prefix}"):
-            parts = line[3:].strip().split(" ", 1)
-            current_task_id = parts[0] if parts else ""
+        heading = task_id_pattern(task_prefix).match(line)
+        if heading is not None:
+            current_task_id = heading.group(1)
+            continue
+        if line.startswith("## "):
+            current_task_id = ""
             continue
         if current_task_id and line.startswith("- Status:"):
             statuses[current_task_id] = line.split(":", 1)[1].strip().lower()
@@ -463,11 +548,10 @@ def mark_task_statuses_in_todo_text(
 ) -> tuple[str, list[str]]:
     """Return todo text with selected task status lines rewritten."""
 
-    prefix = task_id_prefix(task_prefix)
     target_task_ids = {
-        str(task_id).strip()
+        normalize_task_id(task_id)
         for task_id in task_ids
-        if str(task_id).strip()
+        if normalize_task_id(task_id)
     }
     if not target_task_ids:
         return todo_text, []
@@ -476,9 +560,12 @@ def mark_task_statuses_in_todo_text(
     current_task_id = ""
     updated_task_ids: list[str] = []
     for index, line in enumerate(lines):
-        if line.startswith(f"## {prefix}"):
-            parts = line[3:].strip().split(" ", 1)
-            current_task_id = parts[0] if parts else ""
+        heading = task_id_pattern(task_prefix).match(line)
+        if heading is not None:
+            current_task_id = heading.group(1)
+            continue
+        if line.startswith("## "):
+            current_task_id = ""
             continue
         if current_task_id not in target_task_ids or not line.startswith("- Status:"):
             continue
@@ -678,6 +765,25 @@ def should_refill_backlog(
     if elapsed >= cooldown_seconds:
         return True, "runnable_drained_low_backlog" if no_ready_existing_work else "low_backlog", current_open, task_count
     return False, "cooldown", current_open, task_count
+
+
+def refill_open_task_capacity(
+    *,
+    current_open: int,
+    min_open_tasks: int,
+    max_findings: int,
+    headroom: int = DEFAULT_REFILL_OPEN_TASK_HEADROOM,
+) -> int:
+    """Bound one refill so generated work cannot create unbounded pressure.
+
+    The existing low-watermark behavior scans when the board is at or below
+    ``min_open_tasks``.  One item of headroom prevents refill thrashing at the
+    exact watermark while still placing a hard ceiling on newly opened work.
+    """
+
+    target = max(0, int(min_open_tasks)) + max(0, int(headroom))
+    available = max(0, target - max(0, int(current_open)))
+    return min(max(0, int(max_findings)), available)
 
 
 def git_toplevel_for_path(cwd: Path) -> Path | None:
@@ -2031,6 +2137,24 @@ so the supervisor does not keep re-adding the same work.
     return path
 
 
+def codebase_finding_task_identity(finding: CodebaseFinding) -> TaskIdentity:
+    """Return the canonical work identity for one codebase-scan finding."""
+
+    return canonical_task_identity(
+        {
+            "dedupe_key": f"codebase-scan:{finding.fingerprint}",
+            "title": finding.summary,
+            "outputs": [finding.root_relative_path],
+            "acceptance": [
+                f"Resolve {finding.kind} at "
+                f"{finding.root_relative_path}:{finding.line_number}"
+            ],
+        },
+        board_namespace="codebase-scan",
+        source_path=finding.root_relative_path,
+    )
+
+
 def codebase_scan_task_block(
     *,
     task_id: str,
@@ -2043,6 +2167,7 @@ def codebase_scan_task_block(
     ast_symbols: Sequence[str] = (),
 ) -> str:
     outputs = [discovery_output_path, finding.root_relative_path]
+    identity = codebase_finding_task_identity(finding)
     planning_lines: list[str] = []
     if bundle_key:
         parent_goal = "/".join(bundle_key.split("/")[:2])
@@ -2058,6 +2183,18 @@ def codebase_scan_task_block(
             f"- AST symbols: {', '.join(ast_symbols)}",
             "- AST symbol scope: file",
             f"- Goal id: {bundle_key}",
+            f"- Canonical task key: {identity.canonical_task_key}",
+            f"- Canonical task CID: {identity.canonical_task_cid}",
+            f"- Semantic identity: {identity.semantic_fingerprint}",
+            f"- Acceptance subset: Resolve {finding.kind} at {finding.root_relative_path}:{finding.line_number}",
+            f"- Preconditions: {finding.root_relative_path} exists and the scan evidence remains applicable",
+            f"- Effects: resolve {finding.kind} in {finding.root_relative_path} and pass focused validation",
+            f"- Evidence subset: {finding.root_relative_path}:{finding.line_number}, {discovery_path}",
+            "- Resource class: cpu-small",
+            "- Token class: small",
+            "- Resources: python, focused validation runner",
+            f"- Merge fate: {finding.root_relative_path}",
+            "- Rejection reasons: none",
             f"- Missing evidence: {finding.summary}",
             f"- Merge key: {bundle_key}",
             f"- Merge family: {finding.root_relative_path}",
@@ -2069,6 +2206,26 @@ def codebase_scan_task_block(
             f"- Todo vector key: {finding.fingerprint[:16]}",
         ]
     planning = ("\n" + "\n".join(planning_lines)) if planning_lines else ""
+    if not planning_lines:
+        planning = "\n" + "\n".join(
+            [
+                f"- Canonical task key: {identity.canonical_task_key}",
+                f"- Canonical task CID: {identity.canonical_task_cid}",
+                f"- Semantic identity: {identity.semantic_fingerprint}",
+                f"- Acceptance subset: Resolve {finding.kind} at {finding.root_relative_path}:{finding.line_number}",
+                f"- Preconditions: {finding.root_relative_path} exists and the scan evidence remains applicable",
+                f"- Effects: resolve {finding.kind} in {finding.root_relative_path} and pass focused validation",
+                f"- Evidence subset: {finding.root_relative_path}:{finding.line_number}, {discovery_path}",
+                "- Resource class: cpu-small",
+                "- Token class: small",
+                "- Resources: python, focused validation runner",
+                f"- Merge fate: {finding.root_relative_path}",
+                "- Rejection reasons: none",
+                "- Candidate kind: codebase_scan",
+                "- Goal registration: dynamic",
+                f"- Todo vector key: {finding.fingerprint[:16]}",
+            ]
+        )
     return f"""## {task_id} {finding.summary}
 
 - Status: todo
@@ -4742,6 +4899,9 @@ def record_codebase_scan_findings(
 ) -> RefillScanResult[dict[str, Any]]:
     """Feed a low backlog and return a typed account of the scan attempt."""
 
+    # Normalize the legacy Markdown-style option once at this public boundary.
+    # Downstream ID allocation and rendering only receive the canonical prefix.
+    task_prefix = task_id_prefix(task_prefix)
     started_at = datetime.now(timezone.utc)
     initial_identity = scan_identity(repo_root)
     health_policy = AnalyzerHealthThresholds.from_value(health_thresholds)
@@ -4827,6 +4987,28 @@ def record_codebase_scan_findings(
                 "task_count": task_count,
             },
         )
+    refill_capacity = refill_open_task_capacity(
+        current_open=current_open,
+        min_open_tasks=min_open_tasks,
+        max_findings=max_findings,
+    )
+    if refill_capacity <= 0:
+        return build_scan_result(
+            ScanTerminalReason.THRESHOLD_SATISFIED,
+            "open_task_pressure_bound",
+            CODEBASE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            metadata={
+                **policy_metadata,
+                **empty_codebase_scan_accounting_metadata(),
+                "open_task_count": current_open,
+                "task_count": task_count,
+                "refill_capacity": 0,
+                "open_task_target": max(0, int(min_open_tasks))
+                + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
+            },
+        )
 
     canaries = run_codebase_analyzer_canaries()
     scan_metadata = analyzer_health_metadata(
@@ -4836,7 +5018,7 @@ def record_codebase_scan_findings(
     try:
         inventory = scan_codebase_findings(
             repo_root,
-            max_findings=max_findings,
+            max_findings=refill_capacity,
             seen_fingerprints=seen,
             exhaustive=mode.endswith("drained_exhaustive"),
             skip_prefixes=skip_prefixes,
@@ -5030,6 +5212,7 @@ def record_codebase_scan_findings(
             task_prefix=task_prefix,
         )
         for finding in findings:
+            identity = codebase_finding_task_identity(finding)
             follow_up_task_id = next_task_id(
                 todo_text,
                 task_prefix=task_prefix,
@@ -5067,6 +5250,9 @@ def record_codebase_scan_findings(
                 "kind": finding.kind,
                 "source": f"{finding.root_relative_path}:{finding.line_number}",
                 "discovery_path": str(discovery_path),
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "semantic_identity": identity.semantic_fingerprint,
             }
             if bundle_key:
                 finding_record.update({"bundle_key": bundle_key, "bundle_shard": bundle_shard})
@@ -5078,6 +5264,9 @@ def record_codebase_scan_findings(
                         "task_block": task_block,
                         "task_payload": {
                             "task_id": follow_up_task_id,
+                            "canonical_task_key": identity.canonical_task_key,
+                            "canonical_task_cid": identity.canonical_task_cid,
+                            "semantic_identity": identity.semantic_fingerprint,
                             "status": "todo",
                             "title": finding.summary,
                             "priority": finding.priority,
@@ -5088,6 +5277,23 @@ def record_codebase_scan_findings(
                             "parent_goal_ids": [parent_goal],
                             "graph_depth": 1,
                             "rationale": finding.summary,
+                            "preconditions": [
+                                f"{finding.root_relative_path} exists",
+                                "scan evidence remains applicable",
+                            ],
+                            "effects": [
+                                f"resolve {finding.kind} in {finding.root_relative_path}",
+                                "pass focused validation",
+                            ],
+                            "evidence_subset": [
+                                f"{finding.root_relative_path}:{finding.line_number}",
+                                repo_relative_path(repo_root, discovery_path),
+                            ],
+                            "resource_class": "cpu-small",
+                            "token_class": "small",
+                            "resources": ["python", "focused-validation-runner"],
+                            "merge_fate": finding.root_relative_path,
+                            "rejection_reasons": [],
                             "acceptance": [
                                 f"Resolve the {finding.kind} finding at "
                                 f"{finding.root_relative_path}:{finding.line_number}."
@@ -5193,6 +5399,9 @@ def record_codebase_scan_findings(
             "duplicate_count": detected_count - len(appended),
             "open_task_count": current_open,
             "task_count": task_count,
+            "refill_capacity": refill_capacity,
+            "open_task_target": max(0, int(min_open_tasks))
+            + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
         },
     )
 
@@ -5249,6 +5458,9 @@ def record_objective_backlog_findings(
 ) -> RefillScanResult[dict[str, Any]]:
     """Feed a todo board from objective gaps and return a typed scan result."""
 
+    # Objective generation is an external write boundary, so never forward a
+    # legacy ``"## PREFIX-"`` value to its heading renderer.
+    task_prefix = task_id_prefix(task_prefix)
     started_at = datetime.now(timezone.utc)
     if max_findings <= 0:
         return build_scan_result(
@@ -5301,6 +5513,26 @@ def record_objective_backlog_findings(
             started_at,
             metadata={"open_task_count": current_open, "task_count": task_count},
         )
+    refill_capacity = refill_open_task_capacity(
+        current_open=current_open,
+        min_open_tasks=min_open_tasks,
+        max_findings=max_findings,
+    )
+    if refill_capacity <= 0:
+        return build_scan_result(
+            ScanTerminalReason.THRESHOLD_SATISFIED,
+            "open_task_pressure_bound",
+            OBJECTIVE_SCAN_ANALYZER_VERSION,
+            repo_root,
+            started_at,
+            metadata={
+                "open_task_count": current_open,
+                "task_count": task_count,
+                "refill_capacity": 0,
+                "open_task_target": max(0, int(min_open_tasks))
+                + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
+            },
+        )
 
     seen = {str(item) for item in strategy.get("objective_goal_seen_fingerprints", []) if str(item).strip()}
     generation_result = generate_objective_todos_result(
@@ -5313,7 +5545,7 @@ def record_objective_backlog_findings(
         dataset_dir=dataset_dir,
         task_prefix=task_prefix,
         depends_on=depends_on,
-        max_findings=max_findings,
+        max_findings=refill_capacity,
         seen_fingerprints=seen,
         persist_ast_dataset=persist_ast_dataset,
         write_todo_vector_index=write_todo_vector_index,
@@ -5405,6 +5637,9 @@ def record_objective_backlog_findings(
             **generation_result.metadata,
             "open_task_count": current_open,
             "task_count": task_count,
+            "refill_capacity": refill_capacity,
+            "open_task_target": max(0, int(min_open_tasks))
+            + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
         },
     )
 

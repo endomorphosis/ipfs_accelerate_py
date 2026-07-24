@@ -73,6 +73,7 @@ DEFAULT_SCAN_OVERSAMPLE_MULTIPLIER = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_OVERSAMPLE_MULTIPLIER", "2")
 )
 DEFAULT_TASK_PREFIX = "AUTO-"
+DEFAULT_TASK_HEADER_PREFIX = f"## {DEFAULT_TASK_PREFIX}"
 OBJECTIVE_SCAN_ANALYZER_VERSION = "objective-gap-analyzer/v1"
 DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
 AST_DATASET_RECORD_SCHEMA_VERSION = 2
@@ -116,6 +117,44 @@ SKIP_DIRS = {
     "playwright-report",
     "test-results",
 }
+
+
+def normalize_task_id_prefix(value: Any = DEFAULT_TASK_PREFIX) -> str:
+    """Return the canonical, heading-free prefix used in display task IDs.
+
+    Older supervisor entry points accepted a Markdown heading prefix (for
+    example ``"## AUTO-"``) in the same argument that newer code treats as an
+    identifier prefix.  Normalize that legacy spelling at the boundary so ID
+    allocation, durable artifact discovery, and Markdown rendering never
+    disagree or produce headings such as ``"## ## AUTO-001"``.
+    """
+
+    text = str(value or DEFAULT_TASK_PREFIX).strip()
+    heading = re.match(r"^#{1,6}(?:\s+|$)", text)
+    while heading is not None:
+        text = text[heading.end() :].strip()
+        heading = re.match(r"^#{1,6}(?:\s+|$)", text)
+    text = text.rstrip("-").strip()
+    if (
+        not text
+        or any(character.isspace() for character in text)
+        or "#" in text
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", text)
+    ):
+        raise ValueError(f"invalid task ID prefix: {value!r}")
+    return f"{text}-"
+
+
+def task_markdown_heading_prefix(value: Any = DEFAULT_TASK_PREFIX) -> str:
+    """Render a canonical task-ID prefix as a level-two Markdown heading."""
+
+    return f"## {normalize_task_id_prefix(value)}"
+
+
+# Short aliases match the vocabulary used by backlog-refinery callers while
+# retaining explicit names for code that wants to distinguish IDs from prose.
+task_id_prefix = normalize_task_id_prefix
+task_header_prefix = task_markdown_heading_prefix
 
 OPAQUE_EVIDENCE_REQUIREMENT_PATTERN = re.compile(r"^[0-9]{20,}$")
 EVIDENCE_SOURCE_POLICY_SCHEMA = (
@@ -1105,9 +1144,39 @@ class ObjectiveFinding:
     generated_artifacts: list[str] = field(default_factory=list)
     allow_concurrent_with: list[str] = field(default_factory=list)
     dedupe_key: str = ""
+    acceptance_subset: list[str] = field(default_factory=list)
+    preconditions: list[str] = field(default_factory=list)
+    effects: list[str] = field(default_factory=list)
+    evidence_subset: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
+    conflicts: list[str] = field(default_factory=list)
+    context_paths: list[str] = field(default_factory=list)
+    resource_class: str = "cpu-medium"
+    token_class: str = "medium"
+    estimated_tokens: int = 0
+    resources: list[str] = field(default_factory=list)
+    merge_fate: str = ""
+    semantic_identity: str = ""
+    rejection_reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        # Interchange aliases let the quality gate consume findings without
+        # importing this module (which would create a planning-layer cycle).
+        payload["acceptance_criteria"] = list(
+            self.acceptance_subset or self.evidence_subset or self.missing_evidence
+        )
+        payload["context_keys"] = list(
+            self.context_paths or self.predicted_files or self.outputs
+        )
+        payload["validation_commands"] = [self.validation] if self.validation else []
+        payload["predicted_paths"] = list(self.predicted_files or self.outputs)
+        payload["semantic_identity"] = (
+            self.semantic_identity
+            or self.dedupe_key
+            or f"objective-finding:{self.fingerprint}"
+        )
+        return payload
 
 
 @dataclass(frozen=True)
@@ -1118,6 +1187,7 @@ class ObjectiveTaskRecord:
     task_block: str
     finding: ObjectiveFinding
     discovery_path: Path
+    depends_on: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1516,7 +1586,7 @@ def semantic_objective_work_key(value: Any) -> str:
     """Return a stable semantic key which ignores display IDs and ordering."""
 
     payload = value.to_dict() if isinstance(value, ObjectiveWorkProposal) else _task_record_mapping(value)
-    material = {
+    material: dict[str, Any] = {
         "kind": str(_objective_work_value(payload, "kind", "work_kind") or "task").casefold(),
         "parent_goal_id": _objective_work_normalized_text(
             _objective_work_value(payload, "parent_goal_id", "parent_objective_id", "goal_id")
@@ -1557,9 +1627,74 @@ def semantic_objective_work_key(value: Any) -> str:
             )
         ),
     }
+    optional_semantic_fields = {
+        "acceptance_subset": _objective_work_value(
+            payload,
+            "acceptance_subset",
+            "acceptance",
+            "acceptance_criteria",
+        ),
+        "preconditions": _objective_work_value(
+            payload, "preconditions", "required_preconditions"
+        ),
+        "effects": _objective_work_value(payload, "effects", "expected_effects"),
+        "evidence_subset": _objective_work_value(
+            payload, "evidence_subset", "evidence_requirements"
+        ),
+    }
+    normalized_objective_terms = list(material["objective_terms"])
+    normalized_evidence_delta = list(material["evidence_delta"])
+    normalized_dependencies = sorted(
+        _objective_work_normalized_text(item)
+        for item in _objective_work_strings(
+            _objective_work_value(payload, "dependencies", "depends_on")
+        )
+        if _objective_work_normalized_text(item)
+    )
+    for name, raw in optional_semantic_fields.items():
+        normalized = sorted(
+            _objective_work_normalized_text(item)
+            for item in _objective_work_strings(raw)
+            if _objective_work_normalized_text(item)
+        )
+        # Defaults materialized by ObjectiveWorkProposal are explicit metadata
+        # but not new semantic work; omitting these equal projections preserves
+        # identities written by the v1 proposal schema.
+        if name == "acceptance_subset" and normalized in (
+            sorted(normalized_objective_terms),
+            sorted(normalized_evidence_delta),
+        ):
+            continue
+        default_goal_precondition = _objective_work_normalized_text(
+            f"objective goal {_objective_work_value(payload, 'parent_goal_id', 'parent_objective_id', 'goal_id')} is schedulable"
+        )
+        if name == "preconditions" and normalized in (
+            normalized_dependencies,
+            [default_goal_precondition],
+        ):
+            continue
+        if name in {"effects", "evidence_subset"} and normalized in (
+            sorted(normalized_evidence_delta),
+            sorted(normalized_objective_terms),
+        ):
+            continue
+        if normalized:
+            material[name] = normalized
     # A title is only identity material when no objective/evidence surface was
     # supplied.  This keeps harmless wording changes from regenerating work.
-    if not any(material[key] for key in ("objective_terms", "evidence_delta", "files", "symbols")):
+    if not any(
+        material.get(key)
+        for key in (
+            "objective_terms",
+            "evidence_delta",
+            "acceptance_subset",
+            "preconditions",
+            "effects",
+            "evidence_subset",
+            "files",
+            "symbols",
+        )
+    ):
         material["title"] = _objective_work_normalized_text(
             _objective_work_value(payload, "title", "summary")
         )
@@ -1572,7 +1707,7 @@ def canonical_objective_work_identity(value: Any) -> str:
 
     payload = value.to_dict() if isinstance(value, ObjectiveWorkProposal) else _task_record_mapping(value)
     semantic_key = str(payload.get("semantic_key") or semantic_objective_work_key(payload))
-    material = {
+    material: dict[str, Any] = {
         "schema": "ipfs_accelerate_py/agent-supervisor/objective-work@1",
         "semantic_key": semantic_key,
         "title": _objective_work_normalized_text(
@@ -1594,6 +1729,42 @@ def canonical_objective_work_identity(value: Any) -> str:
             _objective_work_value(payload, "estimated_tokens", "token_cost") or 0
         ),
     }
+    conflicts = sorted(
+        _objective_work_normalized_text(item)
+        for item in _objective_work_strings(
+            _objective_work_value(payload, "conflicts", "conflict_keys")
+        )
+        if _objective_work_normalized_text(item)
+    )
+    context_paths = sorted(
+        str(item).strip().replace("\\", "/").casefold()
+        for item in _objective_work_strings(
+            _objective_work_value(payload, "context_paths", "context", "context_files")
+        )
+        if str(item).strip()
+    )
+    resource_class = _objective_work_normalized_text(
+        _objective_work_value(payload, "resource_class") or "cpu-medium"
+    )
+    token_class = _objective_work_normalized_text(
+        _objective_work_value(payload, "token_class", "token_budget_class") or "medium"
+    )
+    merge_fate = _objective_work_normalized_text(
+        _objective_work_value(payload, "merge_fate", "merge_family")
+    )
+    if conflicts:
+        material["conflicts"] = conflicts
+    if context_paths:
+        material["context_paths"] = context_paths
+    # Preserve v1 identities for proposals which use the compatibility
+    # defaults; non-default scheduling/merge constraints remain identity
+    # material because they change how the work may be admitted.
+    if resource_class != "cpu medium":
+        material["resource_class"] = resource_class
+    if token_class != "medium":
+        material["token_class"] = token_class
+    if merge_fate:
+        material["merge_fate"] = merge_fate
     return "objective-work:" + sha256(
         json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -1623,6 +1794,16 @@ class ObjectiveWorkProposal:
     rationale: str = ""
     semantic_key: str = ""
     canonical_id: str = ""
+    acceptance_subset: tuple[str, ...] = ()
+    preconditions: tuple[str, ...] = ()
+    effects: tuple[str, ...] = ()
+    evidence_subset: tuple[str, ...] = ()
+    conflicts: tuple[str, ...] = ()
+    context_paths: tuple[str, ...] = ()
+    resource_class: str = "cpu-medium"
+    token_class: str = "medium"
+    merge_fate: str = ""
+    rejection_reasons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         try:
@@ -1667,6 +1848,15 @@ class ObjectiveWorkProposal:
             " ".join(str(self.source_id or "").split()),
         )
         object.__setattr__(self, "rationale", " ".join(str(self.rationale or "").split()))
+        for name, default in (
+            ("resource_class", "cpu-medium"),
+            ("token_class", "medium"),
+            ("merge_fate", ""),
+        ):
+            normalized = " ".join(str(getattr(self, name) or default).split())
+            if name != "merge_fate" and not normalized:
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, normalized)
         for name in (
             "parent_objective_terms",
             "expected_evidence_delta",
@@ -1674,8 +1864,54 @@ class ObjectiveWorkProposal:
             "predicted_files",
             "predicted_symbols",
             "validation_commands",
+            "acceptance_subset",
+            "preconditions",
+            "effects",
+            "evidence_subset",
+            "conflicts",
+            "context_paths",
+            "rejection_reasons",
         ):
             object.__setattr__(self, name, _objective_work_strings(getattr(self, name)))
+        if not self.acceptance_subset:
+            object.__setattr__(
+                self,
+                "acceptance_subset",
+                self.parent_objective_terms or self.expected_evidence_delta,
+            )
+        if not self.preconditions:
+            object.__setattr__(
+                self,
+                "preconditions",
+                self.dependencies
+                or (
+                    (f"objective goal {self.parent_goal_id} is schedulable",)
+                    if self.kind is ObjectiveWorkKind.TASK
+                    else ()
+                ),
+            )
+        if not self.effects:
+            object.__setattr__(
+                self,
+                "effects",
+                self.expected_evidence_delta
+                or (
+                    self.parent_objective_terms
+                    if self.kind is ObjectiveWorkKind.TASK
+                    else ()
+                ),
+            )
+        if not self.evidence_subset:
+            object.__setattr__(
+                self,
+                "evidence_subset",
+                self.expected_evidence_delta
+                or (
+                    self.parent_objective_terms
+                    if self.kind is ObjectiveWorkKind.TASK
+                    else ()
+                ),
+            )
         expected_semantic_key = semantic_objective_work_key(self)
         supplied_semantic_key = str(self.semantic_key or "").strip()
         if supplied_semantic_key and supplied_semantic_key != expected_semantic_key:
@@ -1727,8 +1963,52 @@ class ObjectiveWorkProposal:
             source=_objective_work_value(payload, "source", "proposal_source") or "deterministic",
             source_id=_objective_work_value(payload, "source_id", "criterion_id", "finding_id", "receipt_id"),
             rationale=_objective_work_value(payload, "rationale", "explanation", "reason"),
-            semantic_key=str(payload.get("semantic_key") or ""),
+            semantic_key=str(
+                payload.get("semantic_key")
+                or payload.get("semantic_identity")
+                or ""
+            ),
             canonical_id=str(payload.get("canonical_id") or payload.get("work_id") or ""),
+            acceptance_subset=_objective_work_strings(
+                _objective_work_value(
+                    payload,
+                    "acceptance_subset",
+                    "acceptance",
+                    "acceptance_criteria",
+                )
+            ),
+            preconditions=_objective_work_strings(
+                _objective_work_value(payload, "preconditions", "required_preconditions")
+            ),
+            effects=_objective_work_strings(
+                _objective_work_value(payload, "effects", "expected_effects")
+            ),
+            evidence_subset=_objective_work_strings(
+                _objective_work_value(
+                    payload,
+                    "evidence_subset",
+                    "evidence_requirements",
+                )
+            ),
+            conflicts=_objective_work_strings(
+                _objective_work_value(payload, "conflicts", "conflict_keys")
+            ),
+            context_paths=_objective_work_strings(
+                _objective_work_value(payload, "context_paths", "context", "context_files")
+            ),
+            resource_class=str(
+                _objective_work_value(payload, "resource_class") or "cpu-medium"
+            ),
+            token_class=str(
+                _objective_work_value(payload, "token_class", "token_budget_class")
+                or "medium"
+            ),
+            merge_fate=str(
+                _objective_work_value(payload, "merge_fate", "merge_family") or ""
+            ),
+            rejection_reasons=_objective_work_strings(
+                _objective_work_value(payload, "rejection_reasons")
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -1741,14 +2021,26 @@ class ObjectiveWorkProposal:
             "predicted_files",
             "predicted_symbols",
             "validation_commands",
+            "acceptance_subset",
+            "preconditions",
+            "effects",
+            "evidence_subset",
+            "conflicts",
+            "context_paths",
+            "rejection_reasons",
         ):
             payload[name] = list(payload[name])
         # Task consumers already understand these canonical identity names.
         payload["canonical_task_key"] = self.semantic_key
+        payload["semantic_identity"] = self.semantic_key
         payload["dedupe_key"] = self.semantic_key
         payload["cost"] = self.estimated_cost
         payload["validation"] = list(self.validation_commands)
         payload["parent_objective_id"] = self.parent_goal_id
+        payload["acceptance_criteria"] = list(self.acceptance_subset)
+        payload["context_keys"] = list(self.context_paths)
+        payload["predicted_paths"] = list(self.predicted_files)
+        payload["resources"] = [self.resource_class]
         return payload
 
 
@@ -4520,6 +4812,38 @@ def _materialized_goal_fields(
             separators=(",", ":"),
             ensure_ascii=False,
         ),
+        "Acceptance subset": ", ".join(proposal.acceptance_subset),
+        "Acceptance subset JSON": json.dumps(
+            list(proposal.acceptance_subset),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Preconditions": ", ".join(proposal.preconditions),
+        "Preconditions JSON": json.dumps(
+            list(proposal.preconditions),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Effects": ", ".join(proposal.effects),
+        "Effects JSON": json.dumps(
+            list(proposal.effects),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Evidence subset": ", ".join(
+            proposal.evidence_subset or proposal.expected_evidence_delta
+        ),
+        "Evidence subset JSON": json.dumps(
+            list(proposal.evidence_subset or proposal.expected_evidence_delta),
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        "Conflicts": ", ".join(proposal.conflicts),
+        "Context paths": ", ".join(proposal.context_paths),
+        "Resource class": proposal.resource_class,
+        "Token class": proposal.token_class,
+        "Merge fate": proposal.merge_fate,
+        "Rejection reasons": ", ".join(proposal.rejection_reasons),
         "Graph depth": str(graph_depth),
         "Canonical proposal ID": proposal.canonical_id,
         "Semantic key": proposal.semantic_key,
@@ -6263,7 +6587,55 @@ def add_goal_packet_aggregate_findings(
             allow_concurrent_with=_unique_strings(
                 task for finding in sorted_group for task in finding.allow_concurrent_with
             ),
+            acceptance_subset=_unique_strings(
+                criterion
+                for finding in sorted_group
+                for criterion in finding.acceptance_subset
+            ),
+            preconditions=_unique_strings(
+                condition
+                for finding in sorted_group
+                for condition in finding.preconditions
+            ),
+            effects=_unique_strings(
+                effect for finding in sorted_group for effect in finding.effects
+            ),
+            evidence_subset=missing_terms,
+            dependencies=_unique_strings(
+                dependency
+                for finding in sorted_group
+                for dependency in finding.dependencies
+            ),
+            conflicts=_unique_strings(
+                conflict for finding in sorted_group for conflict in finding.conflicts
+            ),
+            context_paths=_unique_strings(
+                path for finding in sorted_group for path in finding.context_paths
+            ),
+            resource_class=anchor.resource_class,
+            token_class=anchor.token_class,
+            estimated_tokens=sum(finding.estimated_tokens for finding in sorted_group),
+            resources=_unique_strings(
+                resource for finding in sorted_group for resource in finding.resources
+            ),
+            merge_fate=packet_key,
             dedupe_key=(
+                "objective-evidence-packet/v1/"
+                + sha256(
+                    json.dumps(
+                        {
+                            "packet_key": packet_key,
+                            "requirements": sorted(
+                                normalize_objective_evidence_requirement(term)
+                                for term in missing_terms
+                            ),
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+            ),
+            semantic_identity=(
                 "objective-evidence-packet/v1/"
                 + sha256(
                     json.dumps(
@@ -6771,6 +7143,12 @@ def scan_objective_gaps(
             if fingerprint in seen and not forced_goal:
                 continue
             bundle_key = goal.bundle_key(candidate_missing_terms)
+            obligation_key = objective_evidence_obligation_key(
+                goal,
+                candidate_missing_terms,
+                graph=graph,
+                candidate_kind=candidate_kind,
+            )
             finding = ObjectiveFinding(
                 fingerprint=fingerprint,
                 goal_id=goal.goal_id,
@@ -6875,12 +7253,73 @@ def scan_objective_gaps(
                     "allow_concurrent_with",
                     "concurrency_overrides",
                 ),
-                dedupe_key=objective_evidence_obligation_key(
+                dedupe_key=obligation_key,
+                acceptance_subset=_goal_conflict_terms(
                     goal,
-                    candidate_missing_terms,
-                    graph=graph,
-                    candidate_kind=candidate_kind,
+                    "acceptance_subset",
+                    "acceptance",
+                    "acceptance_criteria",
                 ),
+                preconditions=(
+                    _goal_conflict_terms(
+                        goal,
+                        "preconditions",
+                        "required_preconditions",
+                    )
+                    or [f"objective goal {goal.goal_id} is schedulable"]
+                ),
+                effects=(
+                    _goal_conflict_terms(goal, "effects", "expected_effects")
+                    or [
+                        f"satisfy evidence requirement: {term}"
+                        for term in candidate_missing_terms
+                    ]
+                ),
+                evidence_subset=list(candidate_missing_terms),
+                dependencies=goal.dependencies,
+                conflicts=_goal_conflict_terms(
+                    goal,
+                    "conflicts",
+                    "conflict_keys",
+                ),
+                context_paths=_unique_strings(
+                    [
+                        *split_terms(str(fields.get("outputs") or "")),
+                        *_goal_conflict_terms(
+                            goal,
+                            "context",
+                            "context_paths",
+                            "context_files",
+                        ),
+                    ]
+                ),
+                resource_class=str(
+                    fields.get("resource_class") or "cpu-medium"
+                ).strip(),
+                token_class=str(
+                    fields.get("token_class")
+                    or fields.get("token_budget_class")
+                    or "medium"
+                ).strip(),
+                estimated_tokens=max(
+                    0,
+                    _parse_int(
+                        fields.get("estimated_tokens")
+                        or fields.get("token_cost"),
+                        0,
+                    ),
+                ),
+                resources=_goal_conflict_terms(
+                    goal,
+                    "resources",
+                    "required_resources",
+                ),
+                merge_fate=str(
+                    fields.get("merge_fate")
+                    or fields.get("merge_family")
+                    or objective_surplus_group(goal)
+                ).strip(),
+                semantic_identity=obligation_key,
             )
             findings.append(finding)
             if not forced_goal:
@@ -6912,14 +7351,18 @@ def scan_objective_gaps(
 
 
 def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX) -> list[str]:
-    ids: list[str] = []
-    header_prefix = f"## {task_prefix}"
-    for line in todo_text.splitlines():
-        if line.startswith(header_prefix):
-            parts = line[3:].strip().split(" ", 1)
-            if parts:
-                ids.append(parts[0])
-    return ids
+    """Parse canonical task IDs for ``task_prefix`` from Markdown headings."""
+
+    prefix = normalize_task_id_prefix(task_prefix)
+    header = re.compile(
+        rf"^##\s+(?P<task_id>{re.escape(prefix)}\d+)(?=\s|$)"
+    )
+    return [
+        match.group("task_id")
+        for line in todo_text.splitlines()
+        for match in [header.match(line)]
+        if match is not None
+    ]
 
 
 def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
@@ -7065,20 +7508,26 @@ def next_task_id(
     reserved_task_ids: Iterable[str] = (),
 ) -> str:
     highest = 0
-    normalized = task_prefix.rstrip("-")
+    prefix = normalize_task_id_prefix(task_prefix)
     task_ids = [
-        *task_ids_from_todo(todo_text, task_prefix=f"{normalized}-"),
+        *task_ids_from_todo(todo_text, task_prefix=prefix),
         *(str(item) for item in reserved_task_ids),
     ]
     for task_id in task_ids:
+        normalized_task_id = str(task_id or "").strip()
+        heading = re.match(r"^#{1,6}(?:\s+|$)", normalized_task_id)
+        while heading is not None:
+            normalized_task_id = normalized_task_id[heading.end() :].strip()
+            heading = re.match(r"^#{1,6}(?:\s+|$)", normalized_task_id)
+        normalized_task_id = normalized_task_id.split(None, 1)[0]
         try:
-            prefix, number = task_id.rsplit("-", 1)
-            if prefix != normalized:
+            candidate_prefix, number = normalized_task_id.rsplit("-", 1)
+            if f"{candidate_prefix}-" != prefix:
                 continue
             highest = max(highest, int(number))
         except (IndexError, ValueError):
             continue
-    return f"{normalized}-{highest + 1:03d}"
+    return f"{prefix}{highest + 1:03d}"
 
 
 def bundle_path(bundle_dir: Path, bundle_key: str) -> Path:
@@ -7130,6 +7579,18 @@ Interfaces: {", ".join(finding.interfaces) or "none"}
 Submodules: {", ".join(finding.submodules) or "none"}
 Generated artifacts: {", ".join(finding.generated_artifacts) or "none"}
 Allow concurrent with: {", ".join(finding.allow_concurrent_with) or "none"}
+Semantic identity: {finding.semantic_identity or finding.dedupe_key or f"objective-finding:{finding.fingerprint}"}
+Acceptance subset: {", ".join(finding.acceptance_subset or finding.evidence_subset or finding.missing_evidence)}
+Preconditions: {", ".join(finding.preconditions) or f"objective goal {finding.goal_id} is schedulable"}
+Effects: {", ".join(finding.effects) or ", ".join(f"satisfy evidence requirement: {term}" for term in (finding.evidence_subset or finding.missing_evidence))}
+Evidence subset: {", ".join(finding.evidence_subset or finding.missing_evidence)}
+Dependencies: {", ".join(finding.dependencies) or "none"}
+Resource class: {finding.resource_class or "cpu-medium"}
+Token class: {finding.token_class or "medium"}
+Estimated tokens: {max(0, _parse_int(finding.estimated_tokens, 0))}
+Resources: {", ".join(finding.resources or [finding.resource_class or "cpu-medium"])}
+Merge fate: {finding.merge_fate or finding.merge_family or finding.merge_key or "none"}
+Rejection reasons: {", ".join(finding.rejection_reasons) or "none (accepted)"}
 
 ## Goal
 
@@ -7158,7 +7619,8 @@ def objective_finding_task_identity(task_id: str, finding: ObjectiveFinding) -> 
         {
             "task_id": task_id,
             "dedupe_key": (
-                finding.dedupe_key
+                finding.semantic_identity
+                or finding.dedupe_key
                 or f"objective-finding:{finding.fingerprint}"
             ),
         },
@@ -7168,14 +7630,53 @@ def objective_finding_task_identity(task_id: str, finding: ObjectiveFinding) -> 
 
 
 def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -> dict[str, Any]:
-    """Return the canonical conflict-surface fields for a generated finding."""
+    """Return canonical transition, identity, and conflict metadata."""
 
     identity = objective_finding_task_identity(task_id, finding)
     predicted_files = _unique_strings([*(finding.predicted_files or finding.outputs), *finding.outputs])
+    evidence_subset = _unique_strings(finding.evidence_subset or finding.missing_evidence)
+    acceptance_subset = _unique_strings(finding.acceptance_subset or evidence_subset)
+    preconditions = _unique_strings(
+        finding.preconditions
+        or [f"objective goal {finding.goal_id} is schedulable"]
+    )
+    effects = _unique_strings(
+        finding.effects
+        or [
+            f"satisfy evidence requirement: {term}"
+            for term in evidence_subset
+        ]
+    )
     return {
         "task_id": task_id,
+        "canonical_task_key": identity.canonical_task_key,
         "canonical_task_cid": identity.canonical_task_cid,
         "task_cid": identity.canonical_task_cid,
+        "semantic_identity": (
+            finding.semantic_identity
+            or finding.dedupe_key
+            or f"objective-finding:{finding.fingerprint}"
+        ),
+        "acceptance_subset": acceptance_subset,
+        "preconditions": preconditions,
+        "effects": effects,
+        "evidence_subset": evidence_subset,
+        "depends_on": _unique_strings(finding.dependencies),
+        "dependency_task_ids": _unique_strings(finding.dependencies),
+        "conflicts": _unique_strings(finding.conflicts),
+        "context_paths": _unique_strings(finding.context_paths or predicted_files),
+        "resource_class": str(finding.resource_class or "cpu-medium"),
+        "token_class": str(finding.token_class or "medium"),
+        "estimated_tokens": max(0, _parse_int(finding.estimated_tokens, 0)),
+        "resources": _unique_strings(
+            finding.resources or [finding.resource_class or "cpu-medium"]
+        ),
+        "merge_fate": str(
+            finding.merge_fate
+            or finding.merge_family
+            or finding.merge_key
+        ),
+        "rejection_reasons": _unique_strings(finding.rejection_reasons),
         "predicted_files": predicted_files,
         "files": predicted_files,
         "changed_paths": _unique_strings(finding.changed_paths),
@@ -7212,6 +7713,29 @@ def render_task_block(
         else ""
     )
     identity = objective_finding_task_identity(task_id, finding)
+    dependency_ids = _unique_strings([*depends_on, *finding.dependencies])
+    evidence_subset = _unique_strings(
+        finding.evidence_subset or finding.missing_evidence
+    )
+    acceptance_subset = _unique_strings(
+        finding.acceptance_subset or evidence_subset
+    )
+    preconditions = _unique_strings(
+        finding.preconditions
+        or [f"objective goal {finding.goal_id} is schedulable"]
+    )
+    effects = _unique_strings(
+        finding.effects
+        or [
+            f"satisfy evidence requirement: {term}"
+            for term in evidence_subset
+        ]
+    )
+    semantic_identity = (
+        finding.semantic_identity
+        or finding.dedupe_key
+        or f"objective-finding:{finding.fingerprint}"
+    )
     bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
     return f"""## {task_id} {finding.summary}
 
@@ -7219,7 +7743,7 @@ def render_task_block(
 - Completion: manual
 - Priority: {finding.priority}
 - Track: {finding.track}
-- Depends on: {", ".join(depends_on)}
+- Depends on: {", ".join(dependency_ids)}
 - Outputs: {", ".join(unique_outputs)}
 - Validation: {finding.validation}
 - Bundle: {finding.bundle_key}
@@ -7239,6 +7763,17 @@ def render_task_block(
 - Goal id: {finding.goal_id}
 - Canonical task key: {identity.canonical_task_key}
 - Canonical task CID: {identity.canonical_task_cid}
+- Semantic identity: {semantic_identity}
+- Acceptance subset: {", ".join(acceptance_subset)}
+- Preconditions: {", ".join(preconditions)}
+- Effects: {", ".join(effects)}
+- Evidence subset: {", ".join(evidence_subset)}
+- Resource class: {finding.resource_class or "cpu-medium"}
+- Token class: {finding.token_class or "medium"}
+- Estimated tokens: {max(0, _parse_int(finding.estimated_tokens, 0))}
+- Resources: {", ".join(finding.resources or [finding.resource_class or "cpu-medium"])}
+- Merge fate: {finding.merge_fate or finding.merge_family or finding.merge_key}
+- Rejection reasons: {", ".join(finding.rejection_reasons) or "none (accepted)"}
 - Evidence obligation key: {finding.dedupe_key}
 - Missing evidence: {missing}
 - Embedding query: {finding.embedding_query}
@@ -7280,6 +7815,9 @@ def write_bundle_shards(
             {
                 **objective_finding_conflict_record(record.task_id, record.finding),
                 "task_id": record.task_id,
+                "depends_on": _unique_strings(
+                    [*record.depends_on, *record.finding.dependencies]
+                ),
                 "canonical_task_cid": objective_finding_task_identity(record.task_id, record.finding).canonical_task_cid,
                 "goal_id": record.finding.goal_id,
                 "parent_goal_ids": record.finding.parent_goal_ids,
@@ -7369,6 +7907,12 @@ def write_bundle_shards(
                 "goal_packet_work_item_count": record.finding.goal_packet_work_item_count,
                 "candidate_kind": record.finding.candidate_kind,
                 "todo_vector_key": record.finding.todo_vector_key,
+                "depends_on": _unique_strings(
+                    [*record.depends_on, *record.finding.dependencies]
+                ),
+                "dependency_task_ids": _unique_strings(
+                    [*record.depends_on, *record.finding.dependencies]
+                ),
                 "dependency_task_cids": sorted(generated_incoming.get(identity.canonical_task_cid, set())),
                 "critical_path_length": schedule_record.critical_path_length if schedule_record else 1,
                 "slack": schedule_record.slack if schedule_record else 0,
@@ -7469,6 +8013,10 @@ def generate_objective_todos(
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
+    # This is the sole compatibility boundary for legacy callers which still
+    # pass a Markdown heading prefix (``"## AUTO-"``).  Everything below this
+    # point deals only in canonical display-ID prefixes.
+    task_prefix = normalize_task_id_prefix(task_prefix)
     records: list[ObjectiveTaskRecord] = []
     if precomputed_findings is None:
         findings = scan_objective_gaps(
@@ -7623,6 +8171,9 @@ def generate_objective_todos(
                     task_block=task_block,
                     finding=finding,
                     discovery_path=discovery_path,
+                    depends_on=tuple(
+                        _unique_strings([*depends_on, *finding.dependencies])
+                    ),
                 )
             )
 
@@ -7635,14 +8186,11 @@ def generate_objective_todos(
     if write_todo_vector_index:
         from .todo_vector_index import write_todo_vector_index as write_index
 
-        task_header_prefix = task_prefix.strip()
-        if not task_header_prefix.startswith("## "):
-            task_header_prefix = f"## {task_header_prefix.rstrip('-')}-"
         write_index(
             repo_root=repo_root,
             todo_path=todo_path,
             index_path=todo_vector_index_path or bundle_dir / "todo_vector_index.json",
-            task_header_prefix=task_header_prefix,
+            task_header_prefix=task_markdown_heading_prefix(task_prefix),
             objective_path=objective_path,
             bundle_index_path=bundle_result.index_path,
             dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
