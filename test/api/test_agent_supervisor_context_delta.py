@@ -298,6 +298,47 @@ def test_reconstruction_rejects_stale_parent_and_delta_omits_invariant_core() ->
         ContextDeltaCapsule.from_dict(wire)
 
 
+def test_reconstruction_rejects_undeclared_unchanged_evidence_replay() -> None:
+    _, parent, required, _ = _parent()
+    replay = ContextDeltaCapsule(
+        parent_capsule_id=parent.capsule_id,
+        stage=parent.stage,
+        evidence=(required,),
+        reconstructed_input_tokens=parent.input_tokens,
+    )
+
+    with pytest.raises(ContextDeltaError, match="replays unchanged evidence"):
+        reconstruct_context(parent, replay)
+
+    requested = replace(
+        replay,
+        requested_reference_ids=(required.reference_id,),
+    )
+    assert reconstruct_context(parent, requested) == parent
+
+
+def test_delta_is_deterministic_across_candidate_and_request_order() -> None:
+    compiler, parent, required, optional = _parent()
+    first_new = _reference("first-new", "first", 15)
+    second_new = _reference("second-new", "second", 15)
+
+    forward = compiler.compile_delta(
+        parent,
+        evidence=(required, optional, first_new, second_new),
+        requested_reference_ids=("diagnostic", "second-new"),
+    )
+    reverse = compiler.compile_delta(
+        parent,
+        evidence=(second_new, first_new, optional, required),
+        requested_reference_ids=("second-new", "diagnostic"),
+    )
+
+    assert reverse.delta_capsule == forward.delta_capsule
+    assert reverse.decisions == forward.decisions
+    assert reverse.receipt == forward.receipt
+    assert reverse.reconstructed_capsule == forward.reconstructed_capsule
+
+
 def test_requested_unchanged_reference_is_not_masqueraded_as_changed() -> None:
     compiler, parent, required, optional = _parent()
 

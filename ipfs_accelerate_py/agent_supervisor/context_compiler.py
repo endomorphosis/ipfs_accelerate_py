@@ -69,6 +69,36 @@ REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
 DELTA_RETRY_EVIDENCE_ID: Final = (
     "306437607356117177048620815571362227127"
 )
+DELTA_RETRY_OBJECTIVE_ID: Final = "ASI-G092"
+DELTA_RETRY_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "A compact retry references its exact parent capsule without replaying "
+        "the invariant core and transmits only deterministic changed or newly "
+        "requested evidence"
+    ),
+    (
+        "applying it reconstructs goal, authority, scope, acceptance, deferred "
+        "expansion handles, omission diagnostics, and all required evidence "
+        "without loss or requiredness downgrade. Reconstructed input accounting "
+        "includes the inherited core and every retained or replaced reference "
+        "and fails closed above the effective budget"
+    ),
+    "changed and requested-but-unchanged references remain distinct",
+    "stale parents and forged counts or digests fail closed",
+    (
+        "and canonical provider-tokenized delta input is smaller than canonical "
+        "full replay. The exact requirement ID is emitted only in a witness "
+        "binding the repository tree, policy, parent, delta, and reconstructed "
+        "identities, changed/requested/retained references, required fields and "
+        "coverage, token counts, result, and content digest. A "
+        "population-complete same-task promotion report must consume "
+        "compiler-backed `ContextDeltaResult` values rather than receipt-only "
+        "claims, rerun canonical provider-token measurement, retain full required "
+        "coverage, exactly reconcile every charged lifecycle input token without "
+        "an unattributed remainder, and meet the 35 percent median per-task "
+        "input-token reduction gate before promotion."
+    ),
+)
 CONTEXT_EVIDENCE_PRODUCERS: Final = {
     REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID: "context_compiler",
     DELTA_RETRY_EVIDENCE_ID: "context_delta_compiler",
@@ -2078,6 +2108,10 @@ def reconstruct_context(
         )
     if delta.parent_capsule_id != parent.capsule_id:
         raise ContextDeltaError("delta is not bound to the supplied parent")
+    parent_by_id = {
+        item.reference_id: item for item in parent.evidence
+    }
+    requested_ids = set(delta.requested_reference_ids)
     for item in delta.evidence:
         if item.repository_id and item.repository_id != parent.repository_id:
             raise ContextDeltaError(
@@ -2087,7 +2121,14 @@ def reconstruct_context(
             raise ContextDeltaError(
                 "delta evidence changes immutable tree identity"
             )
-    combined = {item.reference_id: item for item in parent.evidence}
+        if (
+            parent_by_id.get(item.reference_id) == item
+            and item.reference_id not in requested_ids
+        ):
+            raise ContextDeltaError(
+                "delta replays unchanged evidence without an explicit request"
+            )
+    combined = dict(parent_by_id)
     combined.update({item.reference_id: item for item in delta.evidence})
     required_ids = {
         item.reference_id for item in parent.evidence if item.required
@@ -2234,8 +2275,10 @@ __all__ = [
     "CONTEXT_COMPILER_VERSION",
     "CONTEXT_DELTA_RECEIPT_SCHEMA",
     "CONTEXT_EVIDENCE_PRODUCERS",
+    "DELTA_RETRY_ACCEPTANCE_CRITERIA",
     "DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA",
     "DELTA_RETRY_EVIDENCE_ID",
+    "DELTA_RETRY_OBJECTIVE_ID",
     "REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA",
     "REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID",
     "REQUIRED_CONTEXT_BUDGET_EVIDENCE_SCHEMA",
