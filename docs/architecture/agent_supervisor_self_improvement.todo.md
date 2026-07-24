@@ -122,7 +122,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-007 Coordinate analysis, context, plan, proof, and validation caches
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: caching
