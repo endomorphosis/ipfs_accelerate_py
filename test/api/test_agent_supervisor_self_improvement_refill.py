@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     validate_completion_evidence,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    ObjectiveWorkProposal,
     completion_evidence_source_decision,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
@@ -23,12 +24,16 @@ from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
 )
 from ipfs_accelerate_py.agent_supervisor.self_improvement import (
     DEFAULT_BENCHMARK_DIMENSIONS,
+    EPOCH_IDEMPOTENCY_REQUIREMENT_ID,
     HEALTHY_EXHAUSTION_REQUIREMENT_ID,
+    SUCCESSOR_REFILL_REQUIREMENT_ID,
     BenchmarkDisposition,
     BenchmarkObservation,
+    EpochReplayEvidence,
     HealthyExhaustionEvidence,
     SelfImprovementEpochStatus,
     SelfImprovementPolicy,
+    SuccessorRefillEvidence,
     run_self_improvement_epoch,
 )
 
@@ -43,12 +48,33 @@ def _digest(value: str) -> str:
 def _objective_heap() -> str:
     return f"""# Objective Heap
 
+## ASI-G000 Root objective
+
+- Status: active
+- Evidence: root-proof
+
 ## ASI-G080 Benchmark-driven bounded self-refill
 
 - Status: active
 - Parent: ASI-G000
 - Goal: Reconcile the program and record healthy exhaustion
-- Evidence: other-refill-term
+- Evidence: {SUCCESSOR_REFILL_REQUIREMENT_ID}, {EPOCH_IDEMPOTENCY_REQUIREMENT_ID}, {HEALTHY_EXHAUSTION_REQUIREMENT_ID}
+
+## ASI-G109 Prove bounded successor refill
+
+- Status: active
+- Parent: ASI-G080
+- Goal: A drained actionable epoch creates bounded novel successors
+- Evidence: {SUCCESSOR_REFILL_REQUIREMENT_ID}
+- Refinement depth: 2
+
+## ASI-G110 Prove epoch idempotency
+
+- Status: active
+- Parent: ASI-G080
+- Goal: An identical self-improvement epoch is idempotent
+- Evidence: {EPOCH_IDEMPOTENCY_REQUIREMENT_ID}
+- Refinement depth: 2
 
 ## ASI-G111 Prove healthy exhaustion
 
@@ -73,7 +99,7 @@ def _drained_board() -> str:
 
 def _paths(tmp_path: Path) -> dict[str, Path]:
     repo = tmp_path / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True)
     objective = repo / "objectives.md"
     todo = repo / "todo.md"
     objective.write_text(_objective_heap(), encoding="utf-8")
@@ -132,6 +158,32 @@ def _observations(
                 )
             )
     return tuple(result)
+
+
+def _successor_proposal(
+    *,
+    title: str = "Repair measured cache regression",
+    evidence: str = "successor-runtime-proof-unique",
+    source_id: str = "benchmark-gap:cache",
+) -> ObjectiveWorkProposal:
+    return ObjectiveWorkProposal(
+        kind="subgoal",
+        title=title,
+        parent_goal_id="ASI-G080",
+        parent_objective_terms=("repair measured benchmark regression",),
+        expected_evidence_delta=(evidence,),
+        dependencies=(),
+        predicted_files=("src/successor.py",),
+        predicted_symbols=("repair_successor",),
+        validation_commands=("python -m pytest tests/test_successor.py -q",),
+        confidence=0.95,
+        estimated_cost=1.0,
+        novelty=0.95,
+        depth=2,
+        estimated_tokens=200,
+        source="self-improvement-benchmark",
+        source_id=source_id,
+    )
 
 
 def test_healthy_no_gap_epoch_proves_requirement_and_creates_no_busywork(
@@ -476,3 +528,188 @@ def test_stale_aggregate_goal_projects_to_existing_g111_without_refinement() -> 
             expected_goal_id="ASI-G099",
             expected_parent_goal_id="ASI-G080",
         )
+
+
+def test_parent_packet_evidence_projects_to_each_unique_leaf_owner() -> None:
+    expected = {
+        SUCCESSOR_REFILL_REQUIREMENT_ID: "ASI-G109",
+        EPOCH_IDEMPOTENCY_REQUIREMENT_ID: "ASI-G110",
+        HEALTHY_EXHAUSTION_REQUIREMENT_ID: "ASI-G111",
+    }
+    for requirement_id, goal_id in expected.items():
+        projection = resolve_objective_evidence_projection(
+            _objective_heap(),
+            requirement_id=requirement_id,
+            expected_goal_id=goal_id,
+            expected_parent_goal_id="ASI-G080",
+        )
+        assert projection.goal_id == goal_id
+
+    ambiguous = _objective_heap() + f"""
+
+## ASI-G199 Ambiguous sibling owner
+
+- Status: active
+- Parent: ASI-G080
+- Evidence: {SUCCESSOR_REFILL_REQUIREMENT_ID}
+"""
+    with pytest.raises(ValueError, match="ambiguous owners"):
+        resolve_objective_evidence_projection(
+            ambiguous,
+            requirement_id=SUCCESSOR_REFILL_REQUIREMENT_ID,
+            expected_goal_id="ASI-G109",
+            expected_parent_goal_id="ASI-G080",
+        )
+
+
+def test_actionable_epoch_creates_bounded_successor_and_exact_replay_is_noop(
+    tmp_path: Path,
+) -> None:
+    paths = _paths(tmp_path)
+    provider_calls = 0
+    proposal_calls = 0
+
+    def provider(binding):
+        nonlocal provider_calls
+        provider_calls += 1
+        return _observations(binding, disposition=BenchmarkDisposition.REGRESSION)
+
+    def proposals(_binding, _observations):
+        nonlocal proposal_calls
+        proposal_calls += 1
+        return (_successor_proposal(),)
+
+    kwargs = {
+        **paths,
+        "observation_provider": provider,
+        "proposal_provider": proposals,
+        "capability_snapshot_id": "capabilities:actionable-v1",
+        "observation_window": "window:actionable-1",
+        "observed_at": NOW,
+        "materialization_journal_path": tmp_path / "state" / "materialization.json",
+        "discovery_dir": tmp_path / "discovery",
+        "bundle_dir": tmp_path / "bundles",
+    }
+    first = run_self_improvement_epoch(**kwargs)
+
+    assert first.status is SelfImprovementEpochStatus.SUCCESSORS_CREATED
+    assert first.proved_requirement_ids == (SUCCESSOR_REFILL_REQUIREMENT_ID,)
+    assert first.receipt.successor_evidence is not None
+    restored_successor = SuccessorRefillEvidence.from_dict(
+        first.receipt.successor_evidence.to_dict()
+    )
+    successor_validation = validate_completion_evidence(
+        restored_successor.completion_evidence(),
+        repository_id=restored_successor.binding.repository_id,
+        repository_tree=restored_successor.binding.repository_tree,
+        now=restored_successor.observed_at,
+    )
+    assert successor_validation.valid, successor_validation.reason_codes
+    assert len(first.receipt.created_goal_ids) == 1
+    assert len(first.receipt.created_task_ids) == 1
+    goal_id = first.receipt.created_goal_ids[0]
+    task_id = first.receipt.created_task_ids[0]
+    assert paths["objective_path"].read_text(encoding="utf-8").count(
+        f"## {goal_id} "
+    ) == 1
+    assert paths["todo_path"].read_text(encoding="utf-8").count(
+        f"## {task_id} "
+    ) == 1
+    objective_after = paths["objective_path"].read_bytes()
+    taskboard_after = paths["todo_path"].read_bytes()
+
+    second = run_self_improvement_epoch(**{**kwargs, "observed_at": NOW + timedelta(minutes=1)})
+
+    assert second.replayed
+    assert second.receipt.receipt_id == first.receipt.receipt_id
+    assert EPOCH_IDEMPOTENCY_REQUIREMENT_ID in second.proved_requirement_ids
+    assert second.replay_evidence is not None
+    restored_replay = EpochReplayEvidence.from_dict(
+        second.replay_evidence.to_dict()
+    )
+    assert restored_replay.evidence_id == second.replay_evidence.evidence_id
+    assert validate_completion_evidence(
+        restored_replay.completion_evidence(),
+        repository_id=restored_replay.binding.repository_id,
+        repository_tree=restored_replay.binding.repository_tree,
+        now=restored_replay.replayed_at,
+    ).valid
+    assert provider_calls == 1
+    assert proposal_calls == 1
+    assert paths["objective_path"].read_bytes() == objective_after
+    assert paths["todo_path"].read_bytes() == taskboard_after
+
+
+def test_successor_policy_bounds_batch_and_foreign_actionable_fails_closed(
+    tmp_path: Path,
+) -> None:
+    paths = _paths(tmp_path)
+    proposal_calls = 0
+
+    def bounded_proposals(_binding, _observations):
+        nonlocal proposal_calls
+        proposal_calls += 1
+        return (
+            _successor_proposal(),
+            _successor_proposal(
+                title="Repair measured planning regression",
+                evidence="successor-planning-proof-unique",
+                source_id="benchmark-gap:planning",
+            ),
+        )
+
+    bounded = run_self_improvement_epoch(
+        **paths,
+        observation_provider=lambda binding: _observations(
+            binding, disposition=BenchmarkDisposition.REGRESSION
+        ),
+        proposal_provider=bounded_proposals,
+        capability_snapshot_id="capabilities:bounded-v1",
+        observation_window="window:bounded",
+        policy=SelfImprovementPolicy(max_new_successor_goals=1),
+        observed_at=NOW,
+        materialization_journal_path=tmp_path / "state" / "materialization.json",
+        discovery_dir=tmp_path / "discovery",
+        bundle_dir=tmp_path / "bundles",
+    )
+
+    assert bounded.status is SelfImprovementEpochStatus.SUCCESSORS_CREATED
+    assert len(bounded.receipt.created_goal_ids) == 1
+    assert (
+        len(
+            bounded.receipt.successor_evidence.candidate_proposal_ids  # type: ignore[union-attr]
+        )
+        == 2
+    )
+    assert proposal_calls == 1
+
+    foreign_paths = _paths(tmp_path / "foreign")
+    foreign_proposal_calls = 0
+
+    def foreign_provider(binding):
+        records = list(
+            _observations(binding, disposition=BenchmarkDisposition.REGRESSION)
+        )
+        payload = records[0].to_dict()
+        payload["policy_id"] = "foreign-policy"
+        payload["receipt_id"] = ""
+        records[0] = BenchmarkObservation.from_dict(payload)
+        return records
+
+    def forbidden_proposals(_binding, _observations):
+        nonlocal foreign_proposal_calls
+        foreign_proposal_calls += 1
+        return (_successor_proposal(),)
+
+    foreign = run_self_improvement_epoch(
+        **foreign_paths,
+        observation_provider=foreign_provider,
+        proposal_provider=forbidden_proposals,
+        capability_snapshot_id="capabilities:foreign-v1",
+        observation_window="window:foreign",
+        observed_at=NOW,
+    )
+    assert foreign.status is SelfImprovementEpochStatus.INELIGIBLE
+    assert "benchmark_binding_mismatch" in foreign.receipt.blocker_codes
+    assert foreign_proposal_calls == 0
+    assert not foreign.receipt.created_goal_ids

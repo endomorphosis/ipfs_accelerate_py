@@ -731,17 +731,60 @@ def resolve_objective_evidence_projection(
         raise ValueError(
             f"objective heap has no owner for evidence requirement {requirement}"
         )
-    if len(owners) != 1:
-        raise ValueError(
-            f"objective heap has multiple owners for evidence requirement {requirement}"
-        )
-    owner = owners[0]
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+
+    def ancestor_ids(goal: ObjectiveGoal) -> set[str]:
+        pending = list(goal.parent_goal_ids)
+        result: set[str] = set()
+        while pending:
+            goal_id = str(pending.pop()).strip()
+            if not goal_id or goal_id in result:
+                continue
+            result.add(goal_id)
+            parent = goals_by_id.get(goal_id)
+            if parent is not None:
+                pending.extend(parent.parent_goal_ids)
+        return result
+
     expected_goal = str(expected_goal_id or "").strip()
-    if expected_goal and owner.goal_id != expected_goal:
-        raise ValueError(
-            f"evidence requirement {requirement} is owned by {owner.goal_id}, "
-            f"expected {expected_goal}"
+    if expected_goal:
+        owner = next(
+            (goal for goal in owners if goal.goal_id == expected_goal),
+            None,
         )
+        if owner is None:
+            owner_ids = ", ".join(sorted(goal.goal_id for goal in owners))
+            raise ValueError(
+                f"evidence requirement {requirement} is owned by "
+                f"{owner_ids}, expected {expected_goal}"
+            )
+        ancestors = ancestor_ids(owner)
+        incomparable = sorted(
+            goal.goal_id
+            for goal in owners
+            if goal.goal_id != owner.goal_id and goal.goal_id not in ancestors
+        )
+        if incomparable:
+            raise ValueError(
+                f"objective heap has ambiguous owners for evidence requirement "
+                f"{requirement}: {', '.join(incomparable + [owner.goal_id])}"
+            )
+    else:
+        maximal = [
+            goal
+            for goal in owners
+            if all(
+                other.goal_id == goal.goal_id
+                or other.goal_id in ancestor_ids(goal)
+                for other in owners
+            )
+        ]
+        if len(maximal) != 1:
+            raise ValueError(
+                f"objective heap has multiple owners for evidence requirement "
+                f"{requirement}"
+            )
+        owner = maximal[0]
     parents = tuple(str(item).strip() for item in owner.parent_goal_ids if str(item).strip())
     expected_parent = str(expected_parent_goal_id or "").strip()
     if expected_parent and expected_parent not in parents:
