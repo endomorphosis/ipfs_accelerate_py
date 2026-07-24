@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+import threading
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
+    ChangedASTSymbol,
+    CodeImpactIndex,
+)
 from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
@@ -21,13 +26,19 @@ from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     ValidationStage,
 )
 from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
+    ImpactSelectedValidationDAG,
     ImpactDependencyGraph,
+    ImpactValidationCheck,
+    ImpactValidationDAGReceipt,
+    ImpactValidationKind,
+    RepositoryValidationPolicy,
     TRANSITIVE_IMPACT_REQUIREMENT_ID,
     ValidationDAGError,
     ValidationDAGNodeRecord,
     ValidationDAGReceipt,
     ValidationNodeDisposition,
     ValidationScheduler,
+    build_impact_selected_validation_dag,
 )
 
 
@@ -880,3 +891,266 @@ def test_validation_dag_receipt_rejects_tampering(
 
     with pytest.raises(ValidationDAGError):
         ValidationDAGReceipt.from_dict(payload)
+
+
+IMPACT_TREE_ID = "tree:ast-impact-candidate"
+ACCEPTANCE_CRITERION = "The changed public value is preserved by consumers."
+
+
+def _ast_impact_index(
+    tree_id: str = IMPACT_TREE_ID,
+) -> CodeImpactIndex:
+    return CodeImpactIndex(
+        repository_tree_id=tree_id,
+        symbol_paths={
+            "pkg.source.value": "pkg/source.py",
+            "pkg.consumer.read": "pkg/consumer.py",
+            "tests.integration.test_read": (
+                "test/integration/test_consumer.py"
+            ),
+            "pkg.unrelated.noop": "pkg/unrelated.py",
+        },
+        symbol_dependencies={
+            "pkg.consumer.read": ("pkg.source.value",),
+            "tests.integration.test_read": ("pkg.consumer.read",),
+        },
+        path_dependencies={
+            "pkg/consumer.py": ("pkg/source.py",),
+            "test/integration/test_consumer.py": ("pkg/consumer.py",),
+            "pkg/unrelated.py": (),
+        },
+        validation_targets={
+            "integration": ("tests.integration.test_read",),
+        },
+    )
+
+
+def _impact_checks(
+    *,
+    cacheable: bool = False,
+) -> tuple[ImpactValidationCheck, ...]:
+    return (
+        ImpactValidationCheck(
+            check_id="syntax",
+            kind=ImpactValidationKind.SYNTAX,
+            command="python -m compileall -q pkg",
+            cacheable=cacheable,
+        ),
+        ImpactValidationCheck(
+            check_id="type",
+            kind=ImpactValidationKind.TYPE,
+            command="python -m mypy pkg",
+            cacheable=cacheable,
+        ),
+        ImpactValidationCheck(
+            check_id="interface",
+            kind=ImpactValidationKind.INTERFACE,
+            command="python scripts/check_interface.py",
+            cacheable=cacheable,
+        ),
+        ImpactValidationCheck(
+            check_id="unit",
+            kind=ImpactValidationKind.UNIT,
+            command="pytest -q test/unit/test_source.py",
+            cacheable=cacheable,
+        ),
+        ImpactValidationCheck(
+            check_id="integration",
+            kind=ImpactValidationKind.INTEGRATION,
+            command="pytest -q test/integration/test_consumer.py",
+            targets=("tests.integration.test_read",),
+            cacheable=cacheable,
+        ),
+        ImpactValidationCheck(
+            check_id="contract",
+            kind=ImpactValidationKind.CONTRACT,
+            command="pytest -q test/contract/test_public_api.py",
+            acceptance_criteria=(ACCEPTANCE_CRITERION,),
+            cacheable=cacheable,
+        ),
+        ImpactValidationCheck(
+            check_id="runtime",
+            kind=ImpactValidationKind.RUNTIME,
+            command="python scripts/smoke.py",
+            cacheable=cacheable,
+        ),
+        ImpactValidationCheck(
+            check_id="unrelated-unit",
+            kind=ImpactValidationKind.UNIT,
+            command="pytest -q test/unit/test_unrelated.py",
+            targets=("pkg.unrelated.noop",),
+            cacheable=cacheable,
+        ),
+    )
+
+
+def _changed_public_symbol() -> ChangedASTSymbol:
+    return ChangedASTSymbol(
+        symbol="pkg.source.value",
+        path="pkg/source.py",
+        interface_changed=True,
+    )
+
+
+def test_ast_impact_index_selects_transitive_consumer_outside_changed_path() -> None:
+    index = _ast_impact_index()
+    impact = index.impact(changed_symbols=(_changed_public_symbol(),))
+
+    assert impact.changed_symbols == ("pkg.source.value",)
+    assert impact.affected_symbols == (
+        "pkg.consumer.read",
+        "pkg.source.value",
+        "tests.integration.test_read",
+    )
+    assert impact.affected_paths == (
+        "pkg/consumer.py",
+        "pkg/source.py",
+        "test/integration/test_consumer.py",
+    )
+    assert impact.dependency_chains["tests.integration.test_read"] == (
+        "pkg.source.value",
+        "pkg.consumer.read",
+        "tests.integration.test_read",
+    )
+    assert impact.required_validation_ids == ("integration",)
+    assert CodeImpactIndex.from_dict(index.to_dict()) == index
+
+
+def test_dag_derives_all_mandatory_kinds_acceptance_and_skip_reasons() -> None:
+    plan = build_impact_selected_validation_dag(
+        impact_index=_ast_impact_index(),
+        checks=_impact_checks(),
+        changed_symbols=(_changed_public_symbol(),),
+        acceptance_criteria=(ACCEPTANCE_CRITERION,),
+        repository_policy=RepositoryValidationPolicy(),
+    )
+    restored = ImpactSelectedValidationDAG.from_dict(plan.to_dict())
+    selected = {node.check_id: node for node in plan.selected_nodes}
+
+    assert restored.dag_id == plan.dag_id
+    assert plan.coverage_complete
+    assert {node.check.kind for node in selected.values()} == set(
+        ImpactValidationKind
+    )
+    assert "changed_ast_interface" in selected["interface"].selection_reasons
+    assert (
+        "dependency_graph_validation_target"
+        in selected["integration"].selection_reasons
+    )
+    assert (
+        f"task_acceptance:{ACCEPTANCE_CRITERION}"
+        in selected["contract"].selection_reasons
+    )
+    assert selected["interface"].depends_on == ("type",)
+    assert selected["unit"].depends_on == ("type",)
+    assert selected["integration"].depends_on == ("interface", "unit")
+    assert selected["contract"].depends_on == ("interface", "unit")
+    assert selected["runtime"].depends_on == ("contract", "integration")
+    unrelated = next(
+        node for node in plan.nodes if node.check_id == "unrelated-unit"
+    )
+    assert unrelated.selected is False
+    assert (
+        unrelated.skipped_reason
+        == "no_changed_symbol_dependency_acceptance_or_policy_match"
+    )
+    forged = deepcopy(plan.to_dict())
+    forged["impact"]["affected_symbols"] = ["pkg.source.value"]
+    forged.pop("dag_id")
+    with pytest.raises(ValidationDAGError, match="complete graph closure"):
+        ImpactSelectedValidationDAG.from_dict(forged)
+
+
+def test_uncovered_acceptance_or_mandatory_kind_fails_closed(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    def runner(*, spec: ValidationCommand, **_kwargs: object) -> dict[str, object]:
+        calls.append(spec.command)
+        return {"returncode": 0}
+
+    checks = tuple(
+        check
+        for check in _impact_checks()
+        if check.kind is not ImpactValidationKind.RUNTIME
+    )
+    report = ValidationScheduler().run_impact_selected(
+        checks,
+        workspace_path=tmp_path,
+        impact_index=_ast_impact_index(),
+        changed_symbols=(_changed_public_symbol(),),
+        acceptance_criteria=("An unmapped criterion.",),
+        dependency_state="fixture",
+        runner=runner,
+    )
+
+    assert calls == []
+    assert report["attempted"] is False
+    assert report["passed"] is False
+    assert report["error"] == "uncovered_validation_impact"
+    assert "missing_mandatory_runtime_check" in report["uncovered_impact"]
+    assert (
+        "uncovered_acceptance:An unmapped criterion."
+        in report["uncovered_impact"]
+    )
+    assert report["time_to_first_useful_failure_ms"] == 0.0
+    assert len(report["nodes"]) == len(checks)
+
+
+def test_dependency_aware_dag_parallelism_fail_fast_and_complete_receipt(
+    tmp_path: Path,
+) -> None:
+    interface_and_unit = threading.Barrier(2)
+    calls: list[str] = []
+    calls_lock = threading.Lock()
+
+    def runner(*, spec: ValidationCommand, **_kwargs: object) -> dict[str, object]:
+        with calls_lock:
+            calls.append(spec.validation_id)
+        if spec.validation_id in {"interface", "unit"}:
+            interface_and_unit.wait(timeout=5)
+        failed = spec.validation_id == "integration"
+        return {
+            "returncode": 7 if failed else 0,
+            "seeded_defect_id": "seed:provider-defect" if failed else "",
+        }
+
+    report = ValidationScheduler(
+        max_workers=2,
+        resource_budget=2,
+    ).run_impact_selected(
+        _impact_checks(),
+        workspace_path=tmp_path,
+        impact_index=_ast_impact_index(),
+        changed_symbols=(_changed_public_symbol(),),
+        acceptance_criteria=(ACCEPTANCE_CRITERION,),
+        dependency_state="fixture",
+        runner=runner,
+    )
+    receipt = ImpactValidationDAGReceipt.from_dict(
+        report["impact_validation_receipt"]
+    )
+    nodes = {node.check_id: node for node in receipt.nodes}
+
+    assert report["passed"] is False
+    assert report["first_useful_failure_check_id"] == "integration"
+    assert report["time_to_first_useful_failure_ms"] >= 0
+    assert set(calls).issuperset(
+        {"syntax", "type", "interface", "unit", "integration"}
+    )
+    assert nodes["integration"].disposition is ValidationNodeDisposition.FAILED
+    assert (
+        nodes["integration"].observed_seeded_defect_id
+        == "seed:provider-defect"
+    )
+    assert nodes["runtime"].disposition is ValidationNodeDisposition.BLOCKED
+    assert nodes["runtime"].blocked_by == ("integration",)
+    assert (
+        nodes["unrelated-unit"].disposition
+        is ValidationNodeDisposition.OMITTED
+    )
+    assert len(nodes) == len(_impact_checks())
+    assert report["selection_reasons"]["integration"]
+    assert report["skipped_reasons"]["unrelated-unit"]
+    assert receipt.receipt_id == report["impact_validation_receipt"]["receipt_id"]
