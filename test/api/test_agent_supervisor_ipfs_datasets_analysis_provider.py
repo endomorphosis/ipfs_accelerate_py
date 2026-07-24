@@ -374,6 +374,43 @@ def test_degradation_evidence_cannot_be_detached_or_replayed() -> None:
         )
 
 
+def test_self_consistent_fabricated_degradation_state_cannot_claim_requirement(
+) -> None:
+    request = AnalysisProviderRequest.from_value(_request())
+    policy = AnalysisProviderPolicy()
+    fabricated = IpfsDatasetsProviderDegradationEvidence(
+        status=AnalysisProviderStatus.UNAVAILABLE,
+        operation=request.operation,
+        reason_code="fabricated_optional_failure",
+        import_attempted=False,
+        request_id=request.request_id,
+        repository_id=request.repository_id,
+        tree_id=request.tree_id,
+        objective_revision=request.objective_revision,
+        policy_id=policy.policy_id,
+        backend_health=AnalysisProviderHealth.HEALTHY,
+        fallback="remote_completion",
+    )
+    result = AnalysisProviderResult(
+        request_id=request.request_id,
+        operation=request.operation,
+        repository_id=request.repository_id,
+        tree_id=request.tree_id,
+        objective_revision=request.objective_revision,
+        status=fabricated.status,
+        reason_code=fabricated.reason_code,
+        backend_health=fabricated.backend_health,
+        degradation_evidence=fabricated,
+    )
+
+    assert fabricated.proof_bound
+    assert not fabricated.proves_requirement
+    assert not fabricated.proves_for(request, policy)
+    assert fabricated.proved_requirement_ids == ()
+    assert result.proved_requirement_ids == ()
+    assert not result.safe_for_completion_reasoning
+
+
 @pytest.mark.parametrize(
     ("backend", "status", "reason_code", "health"),
     [

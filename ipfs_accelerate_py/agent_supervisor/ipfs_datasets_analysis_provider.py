@@ -165,6 +165,64 @@ class AnalysisProviderHealth(str, Enum):
     INCOMPATIBLE = "incompatible"
 
 
+# Only adapter states in this closed table may prove lazy, explicit
+# degradation.  Other failures remain useful typed diagnostics, but a
+# self-consistent caller-created witness with an arbitrary reason, health, or
+# import history must not emit the objective requirement.
+_PROVING_DEGRADATION_STATES: Final = {
+    "provider_disabled": (
+        AnalysisProviderStatus.DISABLED,
+        frozenset({False}),
+        AnalysisProviderHealth.DEGRADED,
+    ),
+    "operation_not_allowlisted": (
+        AnalysisProviderStatus.UNSUPPORTED,
+        frozenset({False}),
+        AnalysisProviderHealth.INCOMPATIBLE,
+    ),
+    "optional_module_unavailable": (
+        AnalysisProviderStatus.UNAVAILABLE,
+        frozenset({True}),
+        AnalysisProviderHealth.UNAVAILABLE,
+    ),
+    "optional_capability_unavailable": (
+        AnalysisProviderStatus.UNAVAILABLE,
+        frozenset({True}),
+        AnalysisProviderHealth.UNAVAILABLE,
+    ),
+    "optional_dispatch_dependency_unavailable": (
+        AnalysisProviderStatus.UNAVAILABLE,
+        frozenset({False, True}),
+        AnalysisProviderHealth.UNAVAILABLE,
+    ),
+    "protocol_incompatible": (
+        AnalysisProviderStatus.UNSUPPORTED,
+        frozenset({False, True}),
+        AnalysisProviderHealth.INCOMPATIBLE,
+    ),
+    "backend_unhealthy": (
+        AnalysisProviderStatus.UNSUPPORTED,
+        frozenset({False, True}),
+        AnalysisProviderHealth.DEGRADED,
+    ),
+    "no_supported_operations": (
+        AnalysisProviderStatus.UNSUPPORTED,
+        frozenset({False, True}),
+        AnalysisProviderHealth.INCOMPATIBLE,
+    ),
+    "operation_not_supported": (
+        AnalysisProviderStatus.UNSUPPORTED,
+        frozenset({False, True}),
+        AnalysisProviderHealth.INCOMPATIBLE,
+    ),
+    "operation_dispatch_unavailable": (
+        AnalysisProviderStatus.UNSUPPORTED,
+        frozenset({False, True}),
+        AnalysisProviderHealth.INCOMPATIBLE,
+    ),
+}
+
+
 def _canonical_value(value: Any, *, name: str, depth: int = 0) -> Any:
     if depth > 8:
         raise IpfsDatasetsAnalysisProviderError(f"{name} exceeds maximum depth")
@@ -846,14 +904,14 @@ class IpfsDatasetsProviderDegradationEvidence:
         # claim the requirement.  Other failure states remain typed and
         # non-authoritative, but do not by themselves establish lazy
         # degradation.
+        expected = _PROVING_DEGRADATION_STATES.get(self.reason_code)
         return bool(
             self.proof_bound
-            and self.status
-            in {
-                AnalysisProviderStatus.DISABLED,
-                AnalysisProviderStatus.UNAVAILABLE,
-                AnalysisProviderStatus.UNSUPPORTED,
-            }
+            and self.fallback == "local_deterministic_analysis"
+            and expected is not None
+            and self.status is expected[0]
+            and self.import_attempted in expected[1]
+            and self.backend_health is expected[2]
         )
 
     @property

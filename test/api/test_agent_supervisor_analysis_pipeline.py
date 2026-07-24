@@ -19,8 +19,12 @@ from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
     AnalysisPipelinePolicy,
     AnalysisPipelineRequest,
     AnalysisPipelineResult,
+    ExactTreeReuseEvidence,
     PipelineCacheStatus,
     make_analysis_stage_receipt,
+)
+from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+    build_python_ast_blob_record,
 )
 from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import (
     IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
@@ -94,6 +98,15 @@ def test_exact_reuse_is_content_bound_and_emits_the_requirement(
         == warm.request.cache_key.key_id
     )
     assert warm.exact_tree_reuse_evidence.tree_id == request.tree_id
+    assert warm.cache_lookup is not None
+    assert warm.exact_tree_reuse_evidence.proves_for(
+        warm.request, warm.packet, warm.cache_lookup
+    )
+    restored = ExactTreeReuseEvidence.from_dict(
+        warm.exact_tree_reuse_evidence.to_dict()
+    )
+    assert restored == warm.exact_tree_reuse_evidence
+    assert restored.proves_for(warm.request, warm.packet, warm.cache_lookup)
     assert analyzer.calls == 1
 
 
@@ -220,6 +233,64 @@ def test_missing_packet_artifact_forces_recompute_instead_of_cache_authority(
     assert cache.lookup(
         repaired.request.cache_key, require_completion_evidence=True
     ).is_completion_evidence
+
+
+def test_concurrent_invalid_artifact_repairs_remain_single_flight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workers = 8
+    analyzer = _Analyzer()
+    cache = AnalysisCache(tmp_path)
+    pipeline = AnalysisPipeline(cache, analyzer)
+    request = _request()
+    cold = pipeline.analyze(request)
+    lookup = cache.lookup(
+        cold.request.cache_key, require_completion_evidence=True
+    )
+    assert lookup.receipt is not None
+    Path(lookup.receipt["artifact_refs"][0]["path"]).unlink()
+
+    # Hold every caller in its optimistic artifact read so all of them observe
+    # the same invalid binding before any repair can publish a replacement.
+    artifact_barrier = threading.Barrier(workers)
+    original_get = pipeline._artifacts.get
+    call_lock = threading.Lock()
+    invalid_reads = 0
+
+    def synchronized_get(reference):
+        nonlocal invalid_reads
+        with call_lock:
+            invalid_reads += 1
+            ordinal = invalid_reads
+        if ordinal <= workers:
+            artifact_barrier.wait(timeout=10)
+            raise FileNotFoundError("fixture removed packet artifact")
+        return original_get(reference)
+
+    monkeypatch.setattr(pipeline._artifacts, "get", synchronized_get)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [
+            executor.submit(pipeline.analyze, request) for _ in range(workers)
+        ]
+        repaired = [future.result(timeout=15) for future in futures]
+
+    assert analyzer.calls == 2
+    assert sum(
+        item.cache_status is PipelineCacheStatus.PRODUCED for item in repaired
+    ) == 1
+    assert all(
+        item.cache_status
+        in {
+            PipelineCacheStatus.PRODUCED,
+            PipelineCacheStatus.JOINED,
+            PipelineCacheStatus.EXACT_HIT,
+        }
+        for item in repaired
+    )
+    assert {item.packet.packet_id for item in repaired} == {cold.packet.packet_id}
+    assert pipeline.coordinator.metrics().cache_validation_rejections >= 1
+    assert pipeline.metrics.stale_authoritative_hits == 0
 
 
 def test_negative_result_never_short_circuits_a_later_producer(
@@ -380,8 +451,9 @@ def test_exact_reuse_witness_cannot_be_forged_or_detached(
     pipeline.analyze(_request())
     warm = pipeline.analyze(_request())
     assert warm.exact_tree_reuse_evidence is not None
+    assert warm.cache_lookup is not None
 
-    with pytest.raises(AnalysisBindingError, match="authoritative HIT"):
+    with pytest.raises(AnalysisBindingError, match="authoritative HIT lookup"):
         AnalysisPipelineResult(
             request=warm.request,
             packet=warm.packet,
@@ -390,7 +462,7 @@ def test_exact_reuse_witness_cannot_be_forged_or_detached(
             cache_reason_codes=("cache_miss",),
             exact_tree_reuse_evidence=warm.exact_tree_reuse_evidence,
         )
-    with pytest.raises(AnalysisBindingError, match="tree_id"):
+    with pytest.raises(AnalysisBindingError, match="typed lookup"):
         AnalysisPipelineResult(
             request=warm.request,
             packet=warm.packet,
@@ -401,6 +473,41 @@ def test_exact_reuse_witness_cannot_be_forged_or_detached(
                 warm.exact_tree_reuse_evidence,
                 tree_id="tree:sha256:forged",
             ),
+            cache_lookup=warm.cache_lookup,
+        )
+    assert warm.cache_lookup.entry is not None
+    forged_lookup = replace(
+        warm.cache_lookup,
+        entry=replace(
+            warm.cache_lookup.entry,
+            entry_digest="sha256:" + ("f" * 64),
+        ),
+    )
+    assert not warm.exact_tree_reuse_evidence.proves_for(
+        warm.request, warm.packet, forged_lookup
+    )
+    with pytest.raises(AnalysisBindingError, match="typed lookup"):
+        AnalysisPipelineResult(
+            request=warm.request,
+            packet=warm.packet,
+            cache_status=PipelineCacheStatus.EXACT_HIT,
+            cache_lookup_status=AnalysisCacheLookupStatus.HIT,
+            cache_reason_codes=("exact_key_hit",),
+            exact_tree_reuse_evidence=warm.exact_tree_reuse_evidence,
+            cache_lookup=forged_lookup,
+        )
+    with pytest.raises(AnalysisBindingError, match="typed lookup"):
+        AnalysisPipelineResult(
+            request=warm.request,
+            packet=warm.packet,
+            cache_status=PipelineCacheStatus.EXACT_HIT,
+            cache_lookup_status=AnalysisCacheLookupStatus.HIT,
+            cache_reason_codes=("exact_key_hit",),
+            exact_tree_reuse_evidence=replace(
+                warm.exact_tree_reuse_evidence,
+                cache_entry_digest="sha256:" + ("0" * 64),
+            ),
+            cache_lookup=warm.cache_lookup,
         )
 
 
@@ -465,6 +572,39 @@ def test_retrieval_is_integrated_and_bounded_before_local_analysis(
     assert context.retrieval.results
     assert context.retrieval.results[0].evidence_id
     assert context.retrieval.truncation.returned_count == 1
+
+
+def test_incremental_ast_index_is_projected_into_live_retrieval(
+    tmp_path: Path,
+) -> None:
+    analyzer = _Analyzer()
+    pipeline = AnalysisPipeline(AnalysisCache(tmp_path), analyzer)
+    ast_record = build_python_ast_blob_record(
+        """class AnalysisCache:
+    def lookup(self, key):
+        return key
+""",
+        blob_identity="blob:analysis-cache-v1",
+    )
+    request = _request(
+        query={
+            "text": "AnalysisCache lookup",
+            "objective_terms": ["AnalysisCache", "lookup"],
+        },
+        ast_records=(("src/analysis_cache.py", ast_record),),
+        retrieval_inputs={},
+    )
+
+    result = pipeline.analyze(request)
+    context = analyzer.contexts[0]
+
+    assert context.ast_index is not None
+    assert result.ast_index_id == context.ast_index.index_id
+    assert context.retrieval.results
+    assert any(
+        item.path == "src/analysis_cache.py"
+        for item in context.retrieval.results
+    )
 
 
 def test_optional_provider_degrades_explicitly_without_poisoning_local_result(

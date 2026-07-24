@@ -41,6 +41,7 @@ from .analysis_cache import (
 
 
 T = TypeVar("T")
+CompletionValidator = Callable[[AnalysisCacheLookupResult], bool]
 ProducerValue = Union[
     Mapping[str, Any],
     AnalysisReceipt,
@@ -250,6 +251,7 @@ class CacheCoordinatorMetrics:
     requests: int = 0
     cache_hits: int = 0
     cache_misses: int = 0
+    cache_validation_rejections: int = 0
     leaders: int = 0
     followers: int = 0
     produced: int = 0
@@ -277,6 +279,7 @@ class CacheCoordinatorMetrics:
             "requests": self.requests,
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
+            "cache_validation_rejections": self.cache_validation_rejections,
             "leaders": self.leaders,
             "followers": self.followers,
             "produced": self.produced,
@@ -383,6 +386,36 @@ class AnalysisCacheCoordinator:
             and lookup.is_completion_evidence
         )
 
+    def _is_accepted_completion_hit(
+        self,
+        lookup: AnalysisCacheLookupResult,
+        key: AnalysisCacheKey,
+        completion_validator: CompletionValidator | None,
+    ) -> bool:
+        """Apply a caller's outer-artifact gate to an exact cache hit.
+
+        ``AnalysisCache`` proves the compact entry.  Some consumers also keep
+        content-addressed bodies outside that entry and must independently
+        validate those bodies before the hit can bypass production.  Running
+        that validation inside both lookup phases preserves the
+        lookup-to-flight race closure: an invalid outer artifact becomes a
+        keyed miss, while a valid repair published by a preceding leader can
+        still be reused.
+        """
+
+        if not self._is_exact_completion_hit(lookup, key):
+            return False
+        if completion_validator is None:
+            return True
+        accepted = completion_validator(lookup)
+        if not isinstance(accepted, bool):
+            raise CacheCoordinationError(
+                "completion_validator must return a boolean"
+            )
+        if not accepted:
+            self._increment("cache_validation_rejections")
+        return accepted
+
     def _cache_hit_result(
         self,
         key: AnalysisCacheKey,
@@ -395,7 +428,9 @@ class AnalysisCacheCoordinator:
         )
 
     def _begin(
-        self, key: AnalysisCacheKey
+        self,
+        key: AnalysisCacheKey,
+        completion_validator: CompletionValidator | None = None,
     ) -> tuple[
         CacheCoordinationResult | None,
         _Flight | None,
@@ -405,7 +440,9 @@ class AnalysisCacheCoordinator:
 
         self._increment("requests")
         lookup = self._completion_lookup(key)
-        if self._is_exact_completion_hit(lookup, key):
+        if self._is_accepted_completion_hit(
+            lookup, key, completion_validator
+        ):
             self._increment("cache_hits")
             self._increment("completion_results")
             return self._cache_hit_result(key, lookup), None, False
@@ -414,7 +451,9 @@ class AnalysisCacheCoordinator:
             # Close the lookup-to-registration race.  A preceding leader may
             # have populated the exact cache immediately before this lock.
             lookup = self._completion_lookup(key)
-            if self._is_exact_completion_hit(lookup, key):
+            if self._is_accepted_completion_hit(
+                lookup, key, completion_validator
+            ):
                 self._metric_values["cache_hits"] += 1
                 self._metric_values["completion_results"] += 1
                 return self._cache_hit_result(key, lookup), None, False
@@ -568,17 +607,29 @@ class AnalysisCacheCoordinator:
         *,
         ttl_seconds: int | None = None,
         wait_timeout_seconds: float | None = None,
+        completion_validator: CompletionValidator | None = None,
     ) -> CacheCoordinationResult:
         """Return an exact completion hit or run ``producer`` once.
 
-        ``producer`` is called with no arguments.  Use
-        :meth:`async_get_or_compute` for coroutine producers.
+        ``producer`` is called with no arguments.  ``completion_validator``
+        may add a fail-closed gate for content-addressed bodies kept outside
+        the compact cache entry.  Use :meth:`async_get_or_compute` for
+        coroutine producers.
         """
 
         if not callable(producer):
             raise ValueError("producer must be callable")
+        if completion_validator is not None and not callable(
+            completion_validator
+        ):
+            raise ValueError("completion_validator must be callable or None")
         cache_key = self._coerce_key(key)
-        cached, flight, leader = self._begin(cache_key)
+        if completion_validator is None:
+            cached, flight, leader = self._begin(cache_key)
+        else:
+            cached, flight, leader = self._begin(
+                cache_key, completion_validator
+            )
         if cached is not None:
             return cached
         assert flight is not None
@@ -635,13 +686,23 @@ class AnalysisCacheCoordinator:
         *,
         ttl_seconds: int | None = None,
         wait_timeout_seconds: float | None = None,
+        completion_validator: CompletionValidator | None = None,
     ) -> CacheCoordinationResult:
         """Async counterpart that shares flights with synchronous callers."""
 
         if not callable(producer):
             raise ValueError("producer must be callable")
+        if completion_validator is not None and not callable(
+            completion_validator
+        ):
+            raise ValueError("completion_validator must be callable or None")
         cache_key = self._coerce_key(key)
-        cached, flight, leader = self._begin(cache_key)
+        if completion_validator is None:
+            cached, flight, leader = self._begin(cache_key)
+        else:
+            cached, flight, leader = self._begin(
+                cache_key, completion_validator
+            )
         if cached is not None:
             return cached
         assert flight is not None
@@ -713,6 +774,7 @@ __all__ = [
     "CacheCoordinatorResult",
     "CacheCoordinatorStatus",
     "CacheProducerResultError",
+    "CompletionValidator",
     "CoordinatorMetrics",
     "CoordinatorResult",
     "CoordinatorStatus",

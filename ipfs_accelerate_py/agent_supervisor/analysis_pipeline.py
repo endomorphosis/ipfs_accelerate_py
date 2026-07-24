@@ -567,6 +567,171 @@ class ExactTreeReuseEvidence:
     def to_dict(self) -> dict[str, Any]:
         return {**self._content(), "evidence_id": self.evidence_id}
 
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ExactTreeReuseEvidence":
+        """Restore a witness while checking schema and content identity."""
+
+        if not isinstance(value, Mapping):
+            raise AnalysisBindingError("exact-tree evidence must be an object")
+        allowed = {
+            "schema",
+            "evidence_id",
+            "requirement_id",
+            "request_id",
+            "cache_key_id",
+            "packet_id",
+            "cache_entry_digest",
+            "repository_id",
+            "tree_id",
+            "objective_revision",
+            "analyzer_version",
+            "schema_version",
+            "configuration_digest",
+            "query_digest",
+            "policy_digest",
+            "lookup_reason",
+        }
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise AnalysisBindingError(
+                "exact-tree evidence has unknown fields: "
+                + ", ".join(unknown)
+            )
+        if value.get("schema") != EXACT_TREE_REUSE_EVIDENCE_SCHEMA:
+            raise AnalysisBindingError("unsupported exact-tree evidence schema")
+        restored = cls(
+            request_id=value.get("request_id", ""),
+            cache_key_id=value.get("cache_key_id", ""),
+            packet_id=value.get("packet_id", ""),
+            cache_entry_digest=value.get("cache_entry_digest", ""),
+            repository_id=value.get("repository_id", ""),
+            tree_id=value.get("tree_id", ""),
+            objective_revision=value.get("objective_revision", ""),
+            analyzer_version=value.get("analyzer_version", ""),
+            schema_version=value.get("schema_version", ""),
+            configuration_digest=value.get("configuration_digest", ""),
+            query_digest=value.get("query_digest", ""),
+            policy_digest=value.get("policy_digest", ""),
+            lookup_reason=value.get("lookup_reason", ""),
+            requirement_id=value.get("requirement_id", ""),
+        )
+        if value.get("evidence_id") != restored.evidence_id:
+            raise AnalysisBindingError(
+                "exact-tree evidence identity does not match its content"
+            )
+        return restored
+
+    @classmethod
+    def from_lookup(
+        cls,
+        request: AnalysisPipelineRequest,
+        packet: AnalysisEvidencePacket,
+        lookup: AnalysisCacheLookupResult,
+    ) -> "ExactTreeReuseEvidence":
+        """Build a witness only from a verified, exact completion lookup."""
+
+        entry = (
+            lookup.entry
+            if isinstance(lookup, AnalysisCacheLookupResult)
+            else None
+        )
+        if entry is None:
+            raise AnalysisBindingError(
+                "exact-tree evidence requires a typed cache entry"
+            )
+        witness = cls(
+            request_id=request.request_id,
+            cache_key_id=request.cache_key.key_id,
+            packet_id=packet.packet_id,
+            cache_entry_digest=entry.entry_digest,
+            repository_id=request.repository_id,
+            tree_id=request.tree_id,
+            objective_revision=request.objective_revision,
+            analyzer_version=request.analyzer_version,
+            schema_version=request.schema_version,
+            configuration_digest=request.configuration_digest,
+            query_digest=request.query_digest,
+            policy_digest=request.effective_policy_digest,
+            lookup_reason=lookup.reason_code,
+        )
+        if not witness.proves_for(request, packet, lookup):
+            raise AnalysisBindingError(
+                "exact-tree evidence is not bound to the verified cache lookup"
+            )
+        return witness
+
+    def proves_for(
+        self,
+        request: AnalysisPipelineRequest,
+        packet: AnalysisEvidencePacket,
+        lookup: AnalysisCacheLookupResult,
+    ) -> bool:
+        """Independently verify this witness against its authority sources."""
+
+        if (
+            not isinstance(request, AnalysisPipelineRequest)
+            or not isinstance(packet, AnalysisEvidencePacket)
+            or not isinstance(lookup, AnalysisCacheLookupResult)
+            or lookup.status is not AnalysisCacheLookupStatus.HIT
+            or lookup.key != request.cache_key
+            or not lookup.is_completion_evidence
+            or lookup.reason_code != "exact_key_hit"
+            or lookup.entry is None
+            or not packet.safe_for_completion_reasoning
+        ):
+            return False
+        entry = lookup.entry
+        if (
+            not entry.entry_digest
+            or entry.entry_digest != entry.computed_digest
+            or self.cache_entry_digest != entry.entry_digest
+        ):
+            return False
+        try:
+            _validate_packet_binding(packet, request)
+        except (TypeError, ValueError, AnalysisPipelineError):
+            return False
+        summary = entry.receipt.get("summary")
+        if not isinstance(summary, Mapping):
+            return False
+        expected_summary = {
+            "repository_id": request.repository_id,
+            "tree_id": request.tree_id,
+            "objective_revision": request.objective_revision,
+            "analyzer_version": request.analyzer_version,
+            "schema_version": request.schema_version,
+            "configuration_digest": request.configuration_digest,
+            "query_digest": request.query_digest,
+            "policy_digest": request.effective_policy_digest,
+            "packet_id": packet.packet_id,
+            "safe_for_completion_reasoning": True,
+        }
+        if any(
+            summary.get(name) != expected
+            for name, expected in expected_summary.items()
+        ):
+            return False
+        expected_witness = {
+            "request_id": request.request_id,
+            "cache_key_id": request.cache_key.key_id,
+            "packet_id": packet.packet_id,
+            "cache_entry_digest": entry.entry_digest,
+            "repository_id": request.repository_id,
+            "tree_id": request.tree_id,
+            "objective_revision": request.objective_revision,
+            "analyzer_version": request.analyzer_version,
+            "schema_version": request.schema_version,
+            "configuration_digest": request.configuration_digest,
+            "query_digest": request.query_digest,
+            "policy_digest": request.effective_policy_digest,
+            "lookup_reason": "exact_key_hit",
+            "requirement_id": EXACT_TREE_REUSE_REQUIREMENT_ID,
+        }
+        return all(
+            getattr(self, name) == expected
+            for name, expected in expected_witness.items()
+        )
+
 
 @dataclass(frozen=True)
 class AnalysisPipelineMetrics:
@@ -607,6 +772,9 @@ class AnalysisPipelineResult:
     producer_executed: bool = False
     joined_existing_flight: bool = False
     exact_tree_reuse_evidence: ExactTreeReuseEvidence | None = None
+    cache_lookup: AnalysisCacheLookupResult | None = field(
+        default=None, repr=False, compare=False
+    )
     ast_index_id: str = ""
     retrieval_response_id: str = ""
     provider_result: Any = None
@@ -651,29 +819,26 @@ class AnalysisPipelineResult:
                 raise AnalysisBindingError(
                     "exact cache hits cannot claim producer or follower work"
                 )
+            lookup = self.cache_lookup
+            if not isinstance(lookup, AnalysisCacheLookupResult):
+                raise AnalysisBindingError(
+                    "exact cache hits require the typed authoritative lookup"
+                )
+            if (
+                lookup.status is not self.cache_lookup_status
+                or tuple(lookup.reason_codes) != self.cache_reason_codes
+            ):
+                raise AnalysisBindingError(
+                    "exact cache hit diagnostics are detached from the lookup"
+                )
             if not self.packet.safe_for_completion_reasoning:
                 raise AnalysisBindingError(
                     "inconclusive packets cannot carry exact-tree reuse evidence"
                 )
-            expected = {
-                "request_id": self.request.request_id,
-                "cache_key_id": self.request.cache_key.key_id,
-                "packet_id": self.packet.packet_id,
-                "repository_id": self.request.repository_id,
-                "tree_id": self.request.tree_id,
-                "objective_revision": self.request.objective_revision,
-                "analyzer_version": self.request.analyzer_version,
-                "schema_version": self.request.schema_version,
-                "configuration_digest": self.request.configuration_digest,
-                "query_digest": self.request.query_digest,
-                "policy_digest": self.request.effective_policy_digest,
-                "lookup_reason": "exact_key_hit",
-            }
-            for name, expected_value in expected.items():
-                if getattr(witness, name) != expected_value:
-                    raise AnalysisBindingError(
-                        f"exact-tree evidence {name} is not request-bound"
-                    )
+            if not witness.proves_for(self.request, self.packet, lookup):
+                raise AnalysisBindingError(
+                    "exact-tree evidence is not bound to the typed lookup"
+                )
         elif witness is not None:
             if self.cache_status is not PipelineCacheStatus.EXACT_HIT:
                 raise AnalysisBindingError(
@@ -1072,6 +1237,38 @@ class AnalysisPipeline:
             receipt, request, require_completion_evidence=True
         )
 
+    def _exact_hit_result(
+        self,
+        lookup: AnalysisCacheLookupResult,
+        request: AnalysisPipelineRequest,
+    ) -> AnalysisPipelineResult:
+        """Revalidate and project one exact cache lookup as pipeline authority."""
+
+        packet = self._load_cached_packet(lookup, request)
+        witness = ExactTreeReuseEvidence.from_lookup(request, packet, lookup)
+        return AnalysisPipelineResult(
+            request=request,
+            packet=packet,
+            cache_status=PipelineCacheStatus.EXACT_HIT,
+            cache_lookup_status=lookup.status,
+            cache_reason_codes=tuple(lookup.reason_codes),
+            exact_tree_reuse_evidence=witness,
+            cache_lookup=lookup,
+        )
+
+    def _accept_completion_lookup(
+        self,
+        lookup: AnalysisCacheLookupResult,
+        request: AnalysisPipelineRequest,
+    ) -> bool:
+        """Fail closed when a compact hit's external packet is unusable."""
+
+        try:
+            self._exact_hit_result(lookup, request)
+        except (OSError, TypeError, ValueError, AnalysisPipelineError):
+            return False
+        return True
+
     def _build_context(
         self, request: AnalysisPipelineRequest
     ) -> AnalysisStageContext:
@@ -1217,7 +1414,6 @@ class AnalysisPipeline:
         lookup = self.cache.lookup(
             request.cache_key, require_completion_evidence=True
         )
-        force_recompute = False
         initial_reasons = tuple(lookup.reason_codes)
         if lookup.status is AnalysisCacheLookupStatus.INVALIDATED:
             self._metrics["invalidated"] += 1
@@ -1228,8 +1424,8 @@ class AnalysisPipeline:
                 self._metrics["negative_rejections"] += 1
         if lookup.hit and lookup.is_completion_evidence:
             try:
-                packet = self._load_cached_packet(lookup, request)
-            except (OSError, ValueError, AnalysisPipelineError):
+                result = self._exact_hit_result(lookup, request)
+            except (OSError, TypeError, ValueError, AnalysisPipelineError):
                 # A compact entry whose referenced packet is unavailable or
                 # fails its second binding check is a miss, never authority.
                 lookup = AnalysisCacheLookupResult(
@@ -1239,34 +1435,9 @@ class AnalysisPipeline:
                 )
                 initial_reasons = tuple(lookup.reason_codes)
                 self._metrics["invalidated"] += 1
-                force_recompute = True
             else:
-                entry = lookup.entry
-                assert entry is not None
-                witness = ExactTreeReuseEvidence(
-                    request_id=request.request_id,
-                    cache_key_id=request.cache_key.key_id,
-                    packet_id=packet.packet_id,
-                    cache_entry_digest=entry.entry_digest,
-                    repository_id=request.repository_id,
-                    tree_id=request.tree_id,
-                    objective_revision=request.objective_revision,
-                    analyzer_version=request.analyzer_version,
-                    schema_version=request.schema_version,
-                    configuration_digest=request.configuration_digest,
-                    query_digest=request.query_digest,
-                    policy_digest=request.effective_policy_digest,
-                    lookup_reason=lookup.reason_code,
-                )
                 self._metrics["exact_hits"] += 1
-                return AnalysisPipelineResult(
-                    request=request,
-                    packet=packet,
-                    cache_status=PipelineCacheStatus.EXACT_HIT,
-                    cache_lookup_status=lookup.status,
-                    cache_reason_codes=tuple(lookup.reason_codes),
-                    exact_tree_reuse_evidence=witness,
-                )
+                return result
 
         produced: dict[str, Any] = {}
 
@@ -1294,11 +1465,9 @@ class AnalysisPipeline:
             )
 
         coordinate = (
-            None
-            if force_recompute
-            else getattr(self.coordinator, "single_flight", None)
+            getattr(self.coordinator, "single_flight", None)
         )
-        if coordinate is None and not force_recompute:
+        if coordinate is None:
             coordinate = getattr(self.coordinator, "run", None)
         if coordinate is None:
             receipt = produce()
@@ -1331,6 +1500,9 @@ class AnalysisPipeline:
                 request.cache_key,
                 coordinated_produce,
                 ttl_seconds=None,
+                completion_validator=lambda candidate: (
+                    self._accept_completion_lookup(candidate, request)
+                ),
             )
             joined = bool(
                 getattr(coordinated, "shared", False)
@@ -1360,32 +1532,8 @@ class AnalysisPipeline:
             if coordinated_status == "cache_hit":
                 # A leader may have filled the cache between our optimistic
                 # lookup and flight registration.  Treat this as exact reuse.
-                entry = refreshed.entry
-                assert entry is not None
-                witness = ExactTreeReuseEvidence(
-                    request_id=request.request_id,
-                    cache_key_id=request.cache_key.key_id,
-                    packet_id=packet.packet_id,
-                    cache_entry_digest=entry.entry_digest,
-                    repository_id=request.repository_id,
-                    tree_id=request.tree_id,
-                    objective_revision=request.objective_revision,
-                    analyzer_version=request.analyzer_version,
-                    schema_version=request.schema_version,
-                    configuration_digest=request.configuration_digest,
-                    query_digest=request.query_digest,
-                    policy_digest=request.effective_policy_digest,
-                    lookup_reason=refreshed.reason_code,
-                )
                 self._metrics["exact_hits"] += 1
-                return AnalysisPipelineResult(
-                    request=request,
-                    packet=packet,
-                    cache_status=PipelineCacheStatus.EXACT_HIT,
-                    cache_lookup_status=refreshed.status,
-                    cache_reason_codes=tuple(refreshed.reason_codes),
-                    exact_tree_reuse_evidence=witness,
-                )
+                return self._exact_hit_result(refreshed, request)
         if joined:
             self._metrics["joined"] += 1
             status = PipelineCacheStatus.JOINED
