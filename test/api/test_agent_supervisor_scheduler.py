@@ -290,7 +290,7 @@ def test_dependency_blocked_candidate_does_not_consume_admission_capacity(
     assert decision["reason"] == "snapshot_not_ready"
 
 
-def test_planner_blocked_lane_ignores_stale_ready_metric_identity(
+def test_live_lease_claimability_overrides_stale_planner_hint(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -316,10 +316,10 @@ def test_planner_blocked_lane_ignores_stale_ready_metric_identity(
 
     manifest = scheduler.reconcile_once()
 
-    assert not launcher.starts
-    assert manifest["counts"]["ready"] == 0
-    assert manifest["counts"]["blocked"] == 1
-    assert manifest["scheduler_decisions"][0]["reason"] == "snapshot_not_ready"
+    assert len(launcher.starts) == 1
+    assert manifest["counts"]["active"] == 1
+    assert manifest["counts"]["blocked"] == 0
+    assert manifest["scheduler_decisions"][0]["decision"] == "launched"
 
 
 def test_lease_race_backfills_the_admission_slot_in_the_same_cycle(
