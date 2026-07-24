@@ -19,6 +19,10 @@ Environment variables:
 - `IPFS_ACCELERATE_PY_STT_MODEL`: HF model name for STT (default: openai/whisper-base)
 - `IPFS_ACCELERATE_PY_VOICE_DEVICE`: device for local adapters (cpu/cuda)
 - `IPFS_ACCELERATE_PY_TTS_OUTPUT_FORMAT`: audio output format hint (wav/mp3)
+- `IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS`: ordered Abby IndexTTS HTTP URLs
+- `IPFS_ACCELERATE_PY_ABBY_WHISPER_BASE_URL`: Abby Whisper HTTP model base URL
+- `IPFS_ACCELERATE_PY_ABBY_*_TOKEN`: optional remote-provider credentials
+- `IPFS_ACCELERATE_PY_ABBY_*_TIMEOUT_SECONDS`: bounded provider timeouts
 
 Additional optional providers (opt-in by selecting provider):
 - `openai`: OpenAI TTS + Whisper ASR
@@ -372,6 +376,14 @@ def register_voice_provider(
 
 
 _BUILTIN_PROVIDER_CAPABILITIES: Mapping[str, VoiceProviderCapabilities] = {
+    "abby_indextts": VoiceProviderCapabilities(
+        transcription=False,
+        audio_formats=("wav", "mp3", "flac", "ogg"),
+    ),
+    "abby_whisper": VoiceProviderCapabilities(
+        synthesis=False,
+        audio_formats=("wav", "mp3", "flac", "ogg", "webm", "m4a"),
+    ),
     "openai": VoiceProviderCapabilities(),
     "elevenlabs": VoiceProviderCapabilities(transcription=False),
     "assemblyai": VoiceProviderCapabilities(synthesis=False),
@@ -380,6 +392,10 @@ _BUILTIN_PROVIDER_CAPABILITIES: Mapping[str, VoiceProviderCapabilities] = {
 }
 
 _BUILTIN_PROVIDER_ALIASES: Mapping[str, str] = {
+    "abby_index_tts": "abby_indextts",
+    "indextts": "abby_indextts",
+    "abby_hf_whisper": "abby_whisper",
+    "hf_whisper": "abby_whisper",
     "openai_voice": "openai",
     "eleven_labs": "elevenlabs",
     "eleven": "elevenlabs",
@@ -1862,6 +1878,34 @@ def _provider_cache_key() -> tuple:
         os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_STT_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_VOICE_DEVICE", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_FALLBACK_URL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TOKEN", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_MODEL", "").strip(),
+        os.getenv("WALLET_INDEXTTS_SPACE_URL", "").strip(),
+        os.getenv("WALLET_INDEXTTS_FALLBACK_SPACE_URL", "").strip(),
+        os.getenv("WALLET_INDEXTTS_MODEL_NAME", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_URLS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_BASE_URL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_TOKEN", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_MODEL", "").strip(),
+        os.getenv("WALLET_HF_WHISPER_BASE_URL", "").strip(),
+        os.getenv("WALLET_HF_WHISPER_TOKEN", "").strip(),
+        os.getenv("WALLET_HF_WHISPER_MODEL_NAME", "").strip(),
+        os.getenv("HF_TOKEN", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_HF_BILL_TO", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_HF_BILL_TO", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TIMEOUT_SECONDS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_TIMEOUT_SECONDS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_MAX_RETRIES", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_MAX_RETRIES", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_MAX_RETRIES", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_RETRY_BACKOFF_SECONDS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_RETRY_BACKOFF_MULTIPLIER", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_RETRY_MAX_BACKOFF_SECONDS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_CIRCUIT_FAILURE_THRESHOLD", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_CIRCUIT_RECOVERY_SECONDS", "").strip(),
     )
 
 
@@ -1869,6 +1913,14 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[VoiceProv
     key = (name or "").strip().lower()
     if not key:
         return None
+    if key in {"abby_indextts", "abby_index_tts", "indextts"}:
+        from .voice_providers.abby import IndexTTSHTTPProvider
+
+        return IndexTTSHTTPProvider.from_environment()
+    if key in {"abby_whisper", "abby_hf_whisper", "hf_whisper"}:
+        from .voice_providers.abby import HuggingFaceWhisperHTTPProvider
+
+        return HuggingFaceWhisperHTTPProvider.from_environment()
     if key in {"openai", "openai_voice"}:
         return _get_openai_provider()
     if key in {"elevenlabs", "eleven_labs", "eleven"}:
@@ -1999,7 +2051,9 @@ def _collaborator_cache_identity(
     return f"{type_name}::{id(collaborator)}"
 
 
-def _safe_stage_error(error: Exception) -> str:
+def _safe_stage_error(
+    error: Exception, *, sensitive_values: Sequence[object] = ()
+) -> str:
     """Normalize adapter errors without embedding caller audio or tracebacks."""
     message = " ".join(str(error).replace("\x00", "").split())
     # Credentials occasionally appear as URL query values in remote errors.
@@ -2008,6 +2062,37 @@ def _safe_stage_error(error: Exception) -> str:
         r"\1=[redacted]",
         message,
     )
+    message = re.sub(
+        r"(?i)(authorization\s*:\s*bearer\s+|bearer\s+)[^\s,;]+",
+        r"\1[redacted]",
+        message,
+    )
+    message = re.sub(
+        r"(?i)([?&](?:api[_-]?key|token|access_token|secret)=)[^&#\s]+",
+        r"\1[redacted]",
+        message,
+    )
+    for sensitive in sensitive_values:
+        if isinstance(sensitive, bytes):
+            sample = (
+                sensitive
+                if len(sensitive) <= 8192
+                else sensitive[:4096] + sensitive[-4096:]
+            )
+            decoded = sample.decode("utf-8", errors="ignore")
+            fragments = re.findall(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{7,}", decoded)
+            for fragment in tuple(fragments):
+                pieces = fragment.split("-")
+                fragments.extend(
+                    "-".join(pieces[index:])
+                    for index in range(1, len(pieces))
+                    if len("-".join(pieces[index:])) >= 8
+                )
+        else:
+            decoded = str(sensitive or "").strip()
+            fragments = [decoded] if len(decoded) >= 8 else []
+        for fragment in sorted(set(fragments), key=len, reverse=True):
+            message = message.replace(fragment, "[redacted-input]")
     if len(message) > 240:
         message = message[:237] + "..."
     prefix = error.__class__.__name__
@@ -2119,13 +2204,42 @@ def _provider_candidates(
         except Exception as error:
             candidates.append((name, None, error))
 
-    if not candidates:
+    # An explicit provider chain is authoritative even when every named
+    # provider was filtered out by capabilities. Falling through to automatic
+    # selection would invoke an unrequested provider and defeat policy.
+    explicit_chain = primary is not None or bool(preferred) or bool(fallbacks)
+    if not candidates and not explicit_chain:
         try:
             provider = get_voice_provider(None, deps=deps)
             candidates.append((_provider_display_name(provider, "auto"), provider, None))
         except Exception as error:
             candidates.append(("auto", None, error))
     return tuple(candidates)
+
+
+def _provider_receipt_details(provider: object) -> Dict[str, object]:
+    """Return a provider's privacy-safe last-call receipt, when available."""
+    receipt = getattr(provider, "last_receipt", None)
+    to_dict = getattr(receipt, "to_dict", None)
+    if not callable(to_dict):
+        return {}
+    try:
+        value = to_dict()
+    except Exception:
+        return {}
+    return {"provider_receipt": _json_safe(value)}
+
+
+def _close_awaitable_result(value: object) -> None:
+    """Close an unexpected coroutine returned through the synchronous API."""
+    if not hasattr(value, "__await__"):
+        return
+    close = getattr(value, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            pass
 
 
 def _grounding_override_slots(
@@ -2380,6 +2494,7 @@ def process_voice_turn(
                     **dict(request.stt_options),
                 )
                 if not isinstance(raw_transcript, str) or not raw_transcript.strip():
+                    _close_awaitable_result(raw_transcript)
                     raise TypeError("transcribe returned no non-empty text")
                 transcript = raw_transcript.strip()
                 used_stt_provider = provider_name
@@ -2389,9 +2504,13 @@ def process_voice_turn(
                         "succeeded",
                         _duration_ms(started_at),
                         provider=provider_name,
+                        details=_provider_receipt_details(provider_object),
                     )
                 )
-                if transcription_failures:
+                provider_receipt = getattr(provider_object, "last_receipt", None)
+                if transcription_failures or bool(
+                    getattr(provider_receipt, "degraded", False)
+                ):
                     fallback_reasons.append("stt_provider_fallback")
                 break
             except Exception as error:
@@ -2402,7 +2521,10 @@ def process_voice_turn(
                         "failed",
                         _duration_ms(started_at),
                         provider=provider_name,
-                        error=_safe_stage_error(error),
+                        error=_safe_stage_error(
+                            error, sensitive_values=(request.audio,)
+                        ),
+                        details=_provider_receipt_details(provider_object),
                     )
                 )
         if not transcript:
@@ -2548,6 +2670,7 @@ def process_voice_turn(
                 **dict(request.tts_options),
             )
             if not isinstance(raw_audio, bytes) or not raw_audio:
+                _close_awaitable_result(raw_audio)
                 raise TypeError("synthesize returned no non-empty audio bytes")
             output_audio = raw_audio
             used_tts_provider = provider_name
@@ -2557,10 +2680,16 @@ def process_voice_turn(
                     "succeeded",
                     _duration_ms(started_at),
                     provider=provider_name,
-                    details={"audio_size_bytes": len(raw_audio)},
+                    details={
+                        "audio_size_bytes": len(raw_audio),
+                        **_provider_receipt_details(provider_object),
+                    },
                 )
             )
-            if synthesis_failures:
+            provider_receipt = getattr(provider_object, "last_receipt", None)
+            if synthesis_failures or bool(
+                getattr(provider_receipt, "degraded", False)
+            ):
                 fallback_reasons.append("tts_provider_fallback")
             break
         except Exception as error:
@@ -2571,7 +2700,10 @@ def process_voice_turn(
                     "failed",
                     _duration_ms(started_at),
                     provider=provider_name,
-                    error=_safe_stage_error(error),
+                    error=_safe_stage_error(
+                        error, sensitive_values=(response_text,)
+                    ),
+                    details=_provider_receipt_details(provider_object),
                 )
             )
     if output_audio is None:
@@ -2692,6 +2824,7 @@ def text_to_speech(
             **kwargs,
         )
         if not isinstance(audio_bytes, bytes):
+            _close_awaitable_result(audio_bytes)
             raise RuntimeError(f"Voice provider synthesize() returned {type(audio_bytes).__name__}, expected bytes")
 
         if _response_cache_enabled():
@@ -2813,6 +2946,7 @@ def speech_to_text(
             **kwargs,
         )
         if not isinstance(transcription, str):
+            _close_awaitable_result(transcription)
             raise RuntimeError(f"Voice provider transcribe() returned {type(transcription).__name__}, expected str")
 
         if _response_cache_enabled():
