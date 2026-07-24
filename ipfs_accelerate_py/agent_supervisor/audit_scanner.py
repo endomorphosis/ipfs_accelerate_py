@@ -1043,6 +1043,7 @@ def run_low_backlog_analysis(
                 "cache_reason_codes": list(
                     pipeline_projection.get("cache_reason_codes") or ()
                 ),
+                "ast_index_id": pipeline_projection.get("ast_index_id", ""),
                 "retrieval_response_id": pipeline_projection.get(
                     "retrieval_response_id", ""
                 ),
