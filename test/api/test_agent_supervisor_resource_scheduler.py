@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,12 +13,18 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleS
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
 from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
+    GoalRuntimeResourceScheduler,
     HostResourceSnapshot,
     LaneResourceRequirements,
+    ProofResourceClass,
+    ProofWorkKind,
+    ProofWorkRequest,
+    ProofWorkStatus,
     ProviderCapacity,
     ResourcePolicy,
     ResourceScheduler,
     normalize_provider_capacity,
+    resource_class_for_work_kind,
     sample_host_resources,
 )
 
@@ -569,3 +577,338 @@ def test_leased_lane_measures_active_resources_then_advertises_idle_capacity(
     assert latest["resource_class"] == "cpu-small"
     assert latest["provider_id"] == "provider-a"
     assert {"cpu_percent", "memory_percent", "disk_percent"} <= latest.keys()
+
+
+def test_goal_runtime_work_kinds_have_four_distinct_resource_classes() -> None:
+    classes = {
+        kind: resource_class_for_work_kind(kind)
+        for kind in ProofWorkKind
+    }
+
+    assert classes == {
+        ProofWorkKind.MODEL_DRAFT: ProofResourceClass.MODEL_DRAFT.value,
+        ProofWorkKind.TYPE_CHECK: ProofResourceClass.TYPE_CHECK.value,
+        ProofWorkKind.SOLVER_PORTFOLIO: ProofResourceClass.SOLVER.value,
+        ProofWorkKind.KERNEL_RECONSTRUCTION: ProofResourceClass.KERNEL.value,
+    }
+    assert len(set(classes.values())) == 4
+    assert ProofResourceClass.TYPE_CHECK.value != ProofResourceClass.VALIDATION.value
+
+
+def test_route_unavailability_returns_observable_deterministic_fallback() -> None:
+    primary_called = False
+    fallback_reasons: list[tuple[str, ...]] = []
+    scheduler = GoalRuntimeResourceScheduler(
+        policy=ResourcePolicy(max_lanes=1),
+        host_resource_source=_host(
+            worker_limit=1,
+            available_worker_capacity=1,
+        ),
+        provider_capacity_source=[_provider(healthy=False)],
+    )
+
+    def primary(_context: object) -> None:
+        nonlocal primary_called
+        primary_called = True
+
+    def fallback(context: object) -> dict[str, str]:
+        fallback_reasons.append(context.reason_codes)
+        return {"source": "deterministic", "reason": context.fallback_reason}
+
+    result = scheduler.execute(
+        ProofWorkRequest(
+            work_id="draft:unavailable",
+            work_kind=ProofWorkKind.MODEL_DRAFT,
+            provider_id="provider-a",
+            token_budget=100,
+        ),
+        primary,
+        fallback=fallback,
+    )
+
+    assert not primary_called
+    assert result.status is ProofWorkStatus.FALLBACK
+    assert result.successful and result.used_fallback
+    assert not result.primary_succeeded
+    assert result.fallback_succeeded
+    assert result.to_dict()["primary_succeeded"] is False
+    assert result.fallback_reason == "provider_unhealthy"
+    assert fallback_reasons == [("provider_unhealthy",)]
+    assert result.admission is not None
+    assert not result.admission.admitted
+    assert result.value["source"] == "deterministic"
+    assert scheduler.queued_count == scheduler.running_count == 0
+
+
+def test_model_and_type_check_classes_can_execute_concurrently() -> None:
+    entered: set[ProofWorkKind] = set()
+    lock = threading.Lock()
+    both_entered = threading.Event()
+    release = threading.Event()
+    results: dict[str, object] = {}
+    scheduler = GoalRuntimeResourceScheduler(
+        policy=ResourcePolicy(
+            max_lanes=2,
+            max_cpu_proof_concurrency=1,
+            max_model_concurrency=1,
+            resource_class_limits={
+                ProofResourceClass.MODEL_DRAFT.value: 1,
+                ProofResourceClass.TYPE_CHECK.value: 1,
+            },
+        ),
+        max_queued_tasks=2,
+        host_resource_source=_host(
+            worker_limit=2,
+            available_worker_capacity=2,
+        ),
+        provider_capacity_source=[_provider(max_concurrency=1)],
+    )
+
+    def execute(context: object) -> str:
+        with lock:
+            entered.add(context.request.work_kind)
+            if len(entered) == 2:
+                both_entered.set()
+        assert release.wait(2)
+        return context.request.work_kind.value
+
+    requests = (
+        ProofWorkRequest(
+            work_id="draft:one",
+            work_kind=ProofWorkKind.MODEL_DRAFT,
+            provider_id="provider-a",
+            token_budget=10,
+            max_queue_wait_ms=1_000,
+        ),
+        ProofWorkRequest(
+            work_id="type:one",
+            work_kind=ProofWorkKind.TYPE_CHECK,
+            max_queue_wait_ms=1_000,
+        ),
+    )
+    threads = [
+        threading.Thread(
+            target=lambda item=item: results.setdefault(
+                item.work_id, scheduler.execute(item, execute)
+            )
+        )
+        for item in requests
+    ]
+    for thread in threads:
+        thread.start()
+    assert both_entered.wait(2)
+    assert scheduler.running_count == 2
+    release.set()
+    for thread in threads:
+        thread.join(2)
+
+    assert set(entered) == {
+        ProofWorkKind.MODEL_DRAFT,
+        ProofWorkKind.TYPE_CHECK,
+    }
+    assert all(
+        result.status is ProofWorkStatus.SUCCEEDED
+        for result in results.values()
+    )
+    assert scheduler.resource_scheduler.active_leases == ()
+
+
+def test_bounded_queue_backpressure_and_cancellation_are_observable() -> None:
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    results: dict[str, object] = {}
+    fallback_calls: list[str] = []
+    scheduler = GoalRuntimeResourceScheduler(
+        policy=ResourcePolicy(
+            max_lanes=1,
+            max_cpu_proof_concurrency=1,
+            resource_class_limits={ProofResourceClass.SOLVER.value: 1},
+        ),
+        max_queued_tasks=1,
+        queue_retry_ms=5,
+        host_resource_source=_host(
+            worker_limit=1,
+            available_worker_capacity=1,
+        ),
+    )
+
+    def first(_context: object) -> str:
+        first_entered.set()
+        assert release_first.wait(2)
+        return "first"
+
+    first_thread = threading.Thread(
+        target=lambda: results.setdefault(
+            "first",
+            scheduler.execute(
+                ProofWorkRequest(
+                    work_id="solver:first",
+                    work_kind=ProofWorkKind.SOLVER_PORTFOLIO,
+                ),
+                first,
+            ),
+        )
+    )
+    first_thread.start()
+    assert first_entered.wait(2)
+
+    second_thread = threading.Thread(
+        target=lambda: results.setdefault(
+            "second",
+            scheduler.execute(
+                ProofWorkRequest(
+                    work_id="solver:second",
+                    work_kind=ProofWorkKind.SOLVER_PORTFOLIO,
+                    max_queue_wait_ms=1_000,
+                ),
+                lambda _context: "must-not-run",
+                fallback=lambda _context: fallback_calls.append("second"),
+            ),
+        )
+    )
+    second_thread.start()
+    deadline = time.monotonic() + 2
+    while scheduler.queued_count != 1 and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert scheduler.queued_work_ids == ("solver:second",)
+
+    third = scheduler.execute(
+        ProofWorkRequest(
+            work_id="solver:third",
+            work_kind=ProofWorkKind.SOLVER_PORTFOLIO,
+        ),
+        lambda _context: "must-not-run",
+        fallback=lambda context: fallback_calls.append(context.fallback_reason)
+        or "safe",
+    )
+    assert third.status is ProofWorkStatus.FALLBACK
+    assert third.fallback_reason == "queue_capacity"
+    assert third.reason_codes == ("queue_capacity",)
+
+    assert scheduler.cancel("solver:second", "goal_closed")
+    second_thread.join(2)
+    release_first.set()
+    first_thread.join(2)
+
+    assert results["second"].status is ProofWorkStatus.CANCELLED
+    assert results["second"].fallback_reason == "goal_closed"
+    assert fallback_calls == ["queue_capacity"]
+    assert results["first"].status is ProofWorkStatus.SUCCEEDED
+    assert scheduler.queued_count == scheduler.running_count == 0
+    assert scheduler.resource_scheduler.active_leases == ()
+
+
+def test_fallback_remains_registered_running_and_cooperatively_cancellable() -> None:
+    fallback_entered = threading.Event()
+    results: dict[str, object] = {}
+    scheduler = GoalRuntimeResourceScheduler(
+        policy=ResourcePolicy(max_lanes=1),
+        max_fallback_concurrency=1,
+        host_resource_source=_host(
+            worker_limit=1,
+            available_worker_capacity=1,
+        ),
+        provider_capacity_source=[_provider(healthy=False)],
+    )
+
+    def fallback(context: object) -> str:
+        fallback_entered.set()
+        assert context.cancellation_token.wait(2)
+        return "discarded-after-cancellation"
+
+    thread = threading.Thread(
+        target=lambda: results.setdefault(
+            "result",
+            scheduler.execute(
+                ProofWorkRequest(
+                    work_id="draft:cancel-fallback",
+                    work_kind=ProofWorkKind.MODEL_DRAFT,
+                    provider_id="provider-a",
+                ),
+                lambda _context: "must-not-run",
+                fallback=fallback,
+            ),
+        )
+    )
+    thread.start()
+    assert fallback_entered.wait(2)
+
+    assert scheduler.running_work_ids == ("draft:cancel-fallback",)
+    assert scheduler.running_count == 1
+    assert scheduler.fallback_running_count == 1
+    assert scheduler.cancel("draft:cancel-fallback", "root_changed")
+    thread.join(2)
+
+    result = results["result"]
+    assert result.status is ProofWorkStatus.CANCELLED
+    assert not result.successful
+    assert not result.primary_succeeded
+    assert result.fallback_reason == "root_changed"
+    assert scheduler.running_count == scheduler.fallback_running_count == 0
+    assert not scheduler.cancel("draft:cancel-fallback")
+
+
+def test_concurrent_fallbacks_obey_explicit_fallback_capacity() -> None:
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    results: dict[str, object] = {}
+    second_fallback_called = False
+    scheduler = GoalRuntimeResourceScheduler(
+        policy=ResourcePolicy(max_lanes=2),
+        max_fallback_concurrency=1,
+        host_resource_source=_host(
+            worker_limit=2,
+            available_worker_capacity=2,
+        ),
+        provider_capacity_source=[_provider(healthy=False)],
+    )
+
+    def first_fallback(_context: object) -> str:
+        first_entered.set()
+        assert release_first.wait(2)
+        return "first-safe-result"
+
+    first_thread = threading.Thread(
+        target=lambda: results.setdefault(
+            "first",
+            scheduler.execute(
+                ProofWorkRequest(
+                    work_id="draft:fallback-one",
+                    work_kind=ProofWorkKind.MODEL_DRAFT,
+                    provider_id="provider-a",
+                ),
+                lambda _context: "must-not-run",
+                fallback=first_fallback,
+            ),
+        )
+    )
+    first_thread.start()
+    assert first_entered.wait(2)
+    assert scheduler.fallback_running_count == 1
+
+    def second_fallback(_context: object) -> str:
+        nonlocal second_fallback_called
+        second_fallback_called = True
+        return "must-not-run"
+
+    second = scheduler.execute(
+        ProofWorkRequest(
+            work_id="draft:fallback-two",
+            work_kind=ProofWorkKind.MODEL_DRAFT,
+            provider_id="provider-a",
+        ),
+        lambda _context: "must-not-run",
+        fallback=second_fallback,
+    )
+
+    assert second.status is ProofWorkStatus.BACKPRESSURED
+    assert not second.successful
+    assert not second.used_fallback
+    assert "fallback_capacity" in second.reason_codes
+    assert not second_fallback_called
+    assert scheduler.running_work_ids == ("draft:fallback-one",)
+
+    release_first.set()
+    first_thread.join(2)
+    assert results["first"].status is ProofWorkStatus.FALLBACK
+    assert scheduler.running_count == scheduler.fallback_running_count == 0

@@ -12,7 +12,9 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.formal_verification_cache import (
     CacheLookupStatus,
     CacheRejectionReason,
+    DraftCacheKey,
     FormalVerificationCache,
+    build_draft_cache_key,
     build_proof_cache_key,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
@@ -54,6 +56,22 @@ def _key(**changes: object):
     }
     values.update(changes)
     return build_proof_cache_key(**values)
+
+
+def _draft_key(**changes: object) -> DraftCacheKey:
+    values = {
+        "goal_digest": "sha256:goal-1",
+        "repository_tree_digest": "sha256:tree-1",
+        "vocabulary_digest": "sha256:vocabulary-1",
+        "compiler_digest": "sha256:compiler-1",
+        "model_route_digest": "sha256:route-1",
+        "model_version": "leanstral:7b@sha256:model-1",
+        "assumptions_digest": "sha256:assumptions-1",
+        "bounds_digest": "sha256:bounds-1",
+        "policy_digest": "sha256:policy-1",
+    }
+    values.update(changes)
+    return build_draft_cache_key(**values)
 
 
 def _kernel_evidence(
@@ -127,6 +145,169 @@ def test_key_binds_every_semantic_execution_and_candidate_input() -> None:
     assert baseline.key_id == _key(premises=("premise-b", "premise-a")).key_id
     for name, value in mutations.items():
         assert _key(**{name: value}).key_id != baseline.key_id, name
+
+
+def test_draft_key_binds_every_route_aware_reuse_dimension() -> None:
+    baseline = _draft_key()
+    mutations = {
+        "goal_digest": "sha256:goal-2",
+        "repository_tree_digest": "sha256:tree-2",
+        "vocabulary_digest": "sha256:vocabulary-2",
+        "compiler_digest": "sha256:compiler-2",
+        "model_route_digest": "sha256:route-2",
+        "model_version": "leanstral:7b@sha256:model-2",
+        "assumptions_digest": "sha256:assumptions-2",
+        "bounds_digest": "sha256:bounds-2",
+        "policy_digest": "sha256:policy-2",
+    }
+
+    assert DraftCacheKey.from_dict(baseline.to_dict()) == baseline
+    for name, value in mutations.items():
+        assert _draft_key(**{name: value}).key_id != baseline.key_id, name
+
+
+def test_untrusted_drafts_are_physically_and_logically_separate_from_receipts(
+    tmp_path: Path,
+) -> None:
+    cache = FormalVerificationCache(tmp_path)
+    draft = {
+        "draft_id": "draft:1",
+        "proposal": {"goals": ["child-a"]},
+        "verified": False,
+        "authoritative": False,
+        "complete": False,
+        "trust": "untrusted",
+    }
+
+    stored = cache.put_draft(_draft_key(), draft)
+    assert stored.stored
+    assert stored.entry is not None
+    serialized = stored.entry.to_dict()
+    assert serialized["trust"] == "untrusted"
+    assert serialized["authoritative"] is False
+    assert serialized["completion_evidence"] is False
+
+    hit = cache.lookup_draft(_draft_key())
+    assert hit.status is CacheLookupStatus.HIT
+    assert hit.draft == draft
+    assert hit.authoritative is False
+    assert hit.completion_evidence is False
+    assert cache.lookup(_key()).status is CacheLookupStatus.MISS
+
+    connection = duckdb.connect(str(cache.db_path))
+    try:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM proof_draft_cache_entries"
+        ).fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT COUNT(*) FROM proof_cache_entries"
+        ).fetchone()[0] == 0
+    finally:
+        connection.close()
+
+    # Restarting must retain the same integrity-checked, explicitly untrusted
+    # projection.
+    restarted = FormalVerificationCache(tmp_path)
+    assert restarted.get_draft(_draft_key()) == draft
+
+
+def test_explicit_draft_context_bindings_must_match_the_route_aware_key(
+    tmp_path: Path,
+) -> None:
+    cache = FormalVerificationCache(tmp_path)
+    mismatch = cache.put_draft(
+        _draft_key(),
+        {
+            "draft_id": "draft:wrong-route",
+            "goal_digest": "sha256:goal-1",
+            "repository_tree_digest": "sha256:tree-1",
+            "vocabulary_digest": "sha256:vocabulary-1",
+            "compiler_digest": "sha256:compiler-1",
+            "model_route_digest": "sha256:route-wrong",
+            "model_version": "leanstral:7b@sha256:model-1",
+            "assumptions_digest": "sha256:assumptions-1",
+            "bounds_digest": "sha256:bounds-1",
+            "policy_digest": "sha256:policy-1",
+        },
+    )
+    assert not mismatch.stored
+    assert (
+        mismatch.reason_code
+        == CacheRejectionReason.DRAFT_BINDING_MISMATCH.value
+    )
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        {"verified": True},
+        {"authoritative": True},
+        {"complete": True},
+        {"assurance": "kernel_verified"},
+        {"nested": {"proof_success": True}},
+        {"nested": {"verdict": "proved"}},
+    ],
+)
+def test_draft_cache_rejects_nested_authority_and_completion_claims(
+    tmp_path: Path,
+    claim: dict[str, object],
+) -> None:
+    cache = FormalVerificationCache(tmp_path)
+    result = cache.put_draft(
+        _draft_key(),
+        {"draft_id": "draft:unsafe", **claim},
+    )
+    assert not result.stored
+    assert result.reason_codes == (
+        CacheRejectionReason.DRAFT_TRUST_CLAIM.value,
+    )
+    assert cache.lookup_draft(_draft_key()).status is CacheLookupStatus.MISS
+
+
+def test_draft_ttl_size_bound_and_corruption_fail_closed(tmp_path: Path) -> None:
+    now = [1000.0]
+    cache = FormalVerificationCache(
+        tmp_path,
+        max_draft_bytes=100,
+        clock=lambda: now[0],
+    )
+    oversized = cache.put_draft(
+        _draft_key(),
+        {"draft_id": "draft:large", "text": "x" * 100},
+    )
+    assert not oversized.stored
+    assert oversized.reason_code == CacheRejectionReason.DRAFT_TOO_LARGE.value
+
+    assert cache.put_draft(
+        _draft_key(), {"draft_id": "draft:1"}, ttl_seconds=2
+    )
+    now[0] += 3
+    stale = cache.lookup_draft(_draft_key())
+    assert stale.status is CacheLookupStatus.REJECTED
+    assert stale.reason_code == CacheRejectionReason.DRAFT_STALE.value
+    assert cache.purge_expired() == 1
+    assert cache.lookup_draft(_draft_key()).status is CacheLookupStatus.MISS
+
+    # Re-store a current row and alter its content without recomputing the
+    # entry digest. It must never be returned as a usable model draft.
+    assert cache.put_draft(_draft_key(), {"draft_id": "draft:2"})
+    connection = duckdb.connect(str(cache.db_path))
+    try:
+        raw = connection.execute(
+            "SELECT entry_json FROM proof_draft_cache_entries"
+        ).fetchone()[0]
+        payload = json.loads(raw)
+        payload["draft"]["draft_id"] = "draft:tampered"
+        connection.execute(
+            "UPDATE proof_draft_cache_entries SET entry_json=?",
+            (json.dumps(payload, sort_keys=True, separators=(",", ":")),),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    poisoned = cache.lookup_draft(_draft_key())
+    assert poisoned.status is CacheLookupStatus.REJECTED
+    assert poisoned.reason_code == CacheRejectionReason.DRAFT_POISONED.value
 
 
 def test_only_current_receipts_meeting_requested_assurance_are_hits(
@@ -294,6 +475,63 @@ def test_single_flight_deduplicates_threads(tmp_path: Path) -> None:
     assert all(not thread.is_alive() for thread in threads)
     assert counter == [1]
     assert results == [{"proof": "shared", "ordinal": 1}] * 8
+
+
+def test_draft_single_flight_uses_the_route_aware_namespace(
+    tmp_path: Path,
+) -> None:
+    cache = FormalVerificationCache(tmp_path)
+    barrier = threading.Barrier(6)
+    counter = [0]
+    lock = threading.Lock()
+    results: list[dict[str, object]] = []
+
+    def execute() -> dict[str, object]:
+        with lock:
+            counter[0] += 1
+        time.sleep(0.1)
+        return {"draft_id": "draft:shared", "trust": "untrusted"}
+
+    def worker() -> None:
+        barrier.wait()
+        result = cache.single_flight_draft(_draft_key(), execute)
+        with lock:
+            results.append(result)
+
+    threads = [threading.Thread(target=worker) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert counter == [1]
+    assert results == [
+        {"draft_id": "draft:shared", "trust": "untrusted"}
+    ] * 6
+
+
+def test_draft_single_flight_rejects_authority_before_publishing(
+    tmp_path: Path,
+) -> None:
+    cache = FormalVerificationCache(tmp_path)
+    with pytest.raises(PermissionError, match="claims proof authority"):
+        cache.single_flight_draft(
+            _draft_key(),
+            lambda: {"draft_id": "draft:unsafe", "verdict": "proved"},
+        )
+
+    connection = duckdb.connect(str(cache.db_path))
+    try:
+        row = connection.execute(
+            "SELECT status, outcome_json FROM proof_flight_outcomes"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row is not None
+    assert row[0] == "error"
+    assert "draft:unsafe" not in row[1]
+    assert "proved" not in row[1]
 
 
 def test_single_flight_heartbeats_long_running_leader(tmp_path: Path) -> None:

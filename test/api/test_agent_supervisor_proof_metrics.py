@@ -15,6 +15,8 @@ from ipfs_accelerate_py.agent_supervisor.proof_metrics import (
     PROOF_LATENCY_FIELDS,
     PROOF_METRIC_DIMENSIONS,
     PROOF_METRICS_SCHEMA,
+    PROOF_OPERATIONAL_COUNT_FIELDS,
+    PROOF_RATE_FIELDS,
     build_proof_metrics_snapshot,
     normalize_proof_metric_identity,
     write_proof_metrics_snapshot,
@@ -396,3 +398,131 @@ def test_multiple_plans_are_aggregated_with_plan_scoped_step_identity() -> None:
         "provider:lean",
         "provider:second",
     }
+
+
+def test_operational_quality_metrics_are_dimensioned_and_sum_safe(
+    tmp_path: Path,
+) -> None:
+    common = {
+        **IDENTITY,
+        "repository_tree_id": "tree:candidate",
+        "template_id": "template:lease-uniqueness",
+        "resource_class": "llm-proof-draft",
+    }
+    snapshot = build_proof_metrics_snapshot(
+        _plan(),
+        attempts=[
+            {
+                **common,
+                "attempt_id": "attempt:model",
+                "plan_id": "plan:proof-metrics",
+                "step_id": "model",
+                "obligation_id": "obligation:lease",
+                "provider_id": "provider:route-a",
+                "stage": "model_draft",
+                "status": "succeeded",
+                "schema_accepted": True,
+                "deterministic_fallback": True,
+                "repair_attempts": 2,
+                "repair_converged": True,
+                "unsupported_semantics": ["temporal:unbounded", "deontic:exception"],
+                "resource_usage": {
+                    "prompt_tokens": 80,
+                    "completion_tokens": 20,
+                    "total_tokens": 100,
+                },
+            }
+        ],
+        receipts=[
+            {
+                **common,
+                "receipt_id": "receipt:closed",
+                "attempt_id": "attempt:model",
+                "plan_id": "plan:proof-metrics",
+                "obligation_id": "obligation:lease",
+                "provider_id": "provider:route-a",
+                "authoritative_verdict": "proved",
+                "authoritative_assurance": "kernel_verified",
+            }
+        ],
+        cache_outcomes=[
+            {**common, "provider_id": "provider:route-a", "outcome": "hit"},
+            {**common, "provider_id": "provider:route-a", "outcome": "miss"},
+        ],
+        events=[
+            {
+                **common,
+                "provider_id": "provider:route-a",
+                "type": "route_availability",
+                "availability_check_count": 1,
+                "availability_success_count": 1,
+            },
+            {
+                **common,
+                "provider_id": "provider:route-b",
+                "type": "route_availability",
+                "availability_check_count": 3,
+                "availability_success_count": 1,
+                "availability_failure_count": 2,
+                "schema_accepted": False,
+                "false_completion_prevented": True,
+            },
+        ],
+    )
+
+    totals = snapshot["totals"]
+    assert set(PROOF_OPERATIONAL_COUNT_FIELDS) <= set(totals)
+    assert set(PROOF_RATE_FIELDS) <= set(totals)
+    assert totals["availability_check_count"] == 4
+    assert totals["availability_success_count"] == 2
+    assert totals["availability_failure_count"] == 2
+    assert totals["availability_rate"] == 0.5
+    assert totals["schema_validation_count"] == 2
+    assert totals["schema_acceptance_count"] == 1
+    assert totals["schema_rejection_count"] == 1
+    assert totals["schema_acceptance_rate"] == 0.5
+    assert totals["proof_closure_count"] == 1
+    assert totals["proof_closure_rate"] == 1.0
+    assert totals["fallback_count"] == 1
+    assert totals["fallback_rate"] == 1.0
+    assert totals["repair_attempt_count"] == 2
+    assert totals["repair_convergence_count"] == 1
+    assert totals["repair_convergence_rate"] == 0.5
+    assert totals["input_token_count"] == 80
+    assert totals["output_token_count"] == 20
+    assert totals["token_count"] == 100
+    assert totals["cache_hit_rate"] == 0.5
+    assert totals["unsupported_semantics_count"] == 2
+    assert totals["false_completion_prevention_count"] == 1
+
+    route_rows = {
+        row["provider_id"]: row
+        for row in snapshot["metrics"]
+        if row["availability_check_count"]
+    }
+    assert route_rows["provider:route-a"]["availability_rate"] == 1.0
+    assert route_rows["provider:route-b"]["availability_rate"] == pytest.approx(
+        1 / 3, abs=1e-6
+    )
+    # The total is recomputed from additive counters, never by averaging the
+    # two provider-local ratios.
+    assert totals["availability_rate"] != pytest.approx(
+        sum(row["availability_rate"] for row in route_rows.values())
+        / len(route_rows)
+    )
+
+    path = tmp_path / "operational-proof-metrics.json"
+    write_proof_metrics_snapshot(path, snapshot)
+    persisted_metrics = query_artifact(
+        path,
+        table="proof_metrics",
+        limit=100,
+    )["rows"]
+    persisted_attempts = query_artifact(
+        path,
+        table="proof_attempts",
+        limit=100,
+    )["rows"]
+    assert persisted_metrics == snapshot["metrics"]
+    assert persisted_attempts[0]["input_token_count"] == 80
+    assert persisted_attempts[0]["output_token_count"] == 20

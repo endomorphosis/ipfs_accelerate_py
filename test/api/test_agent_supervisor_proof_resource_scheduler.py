@@ -108,6 +108,7 @@ def test_canonical_resource_classes_distinguish_every_proof_work_type() -> None:
         "cpu-proof-translate",
         "cpu-proof-solver",
         "cpu-proof-kernel",
+        "cpu-proof-type-check",
         "cpu-validation",
         "llm-proof-draft",
         "io-artifact",
@@ -118,6 +119,7 @@ def test_canonical_resource_classes_distinguish_every_proof_work_type() -> None:
     )
     assert normalize_resource_class("solve") == ProofResourceClass.SOLVER.value
     assert normalize_resource_class("kernel_verify") == ProofResourceClass.KERNEL.value
+    assert normalize_resource_class("type_check") == ProofResourceClass.TYPE_CHECK.value
     assert normalize_resource_class("validate") == ProofResourceClass.VALIDATION.value
     assert normalize_resource_class("model_draft") == ProofResourceClass.MODEL_DRAFT.value
     assert normalize_resource_class("persist") == ProofResourceClass.ARTIFACT.value
