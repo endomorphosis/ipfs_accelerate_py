@@ -69,7 +69,11 @@ CONTROL_DISCOVERY_SAFETY_EVIDENCE_SCHEMA = (
 )
 CONTROL_DISCOVERY_COMPLETION_QUORUM_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "control-discovery-completion-quorum-evidence@1"
+    "control-discovery-completion-quorum-evidence@2"
+)
+CONTROL_DISCOVERY_COMPLETION_MEMBER_HEALTH_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "control-discovery-completion-member-health@1"
 )
 LIFECYCLE_COMMAND_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/lifecycle-command@1"
@@ -136,7 +140,7 @@ CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID: Final[str] = (
 )
 CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID: Final[str] = "ASI-G105"
 CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION: Final[str] = (
-    "ASI-G105@asi-072"
+    "ASI-G105@asi-076"
 )
 CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION: Final[str] = (
     "asi-g105-objective-validation@1"
@@ -2298,6 +2302,20 @@ class ControlDiscoveryManifest(_ControlCanonicalContract):
             }
         )
 
+    @property
+    def schema_population_id(self) -> str:
+        """Identify the transport-independent closed discovery population."""
+
+        return content_identity(
+            {
+                "operations": tuple(
+                    operation.value for operation in self.operations
+                ),
+                "request_schema_ids": dict(self.request_schema_ids),
+                "result_schema_ids": dict(self.result_schema_ids),
+            }
+        )
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": CONTROL_CONTRACT_VERSION,
@@ -2509,11 +2527,11 @@ class ControlDiscoveryObservation(_ControlCanonicalContract):
                 "discovery manifest surface does not match its observation"
             )
         if (
-            self.first_manifest.to_record()
-            != self.second_manifest.to_record()
+            self.first_manifest.canonical_bytes()
+            != self.second_manifest.canonical_bytes()
         ):
             raise ControlContractError(
-                "repeated control discovery is not deterministic"
+                "repeated control discovery is not byte-deterministic"
             )
         for name in (
             "optional_provider_modules",
@@ -2656,6 +2674,12 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
             raise ControlContractError(
                 "discovery evidence requires one Python, CLI, and MCP observation"
             )
+        if len(
+            {item.manifest.schema_population_id for item in observations}
+        ) != 1:
+            raise ControlContractError(
+                "Python, CLI, and MCP discovery schema populations differ"
+            )
         object.__setattr__(
             self,
             "observations",
@@ -2796,6 +2820,71 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
 
 
 @dataclass(frozen=True)
+class ControlDiscoveryCompletionMemberHealth(_ControlCanonicalContract):
+    """Explicit completion-safety attestation for one exhaustive receipt."""
+
+    SCHEMA: ClassVar[str] = CONTROL_DISCOVERY_COMPLETION_MEMBER_HEALTH_SCHEMA
+
+    member_id: str
+    receipt_cid: str
+    healthy: bool
+    safe_for_completion_reasoning: bool
+
+    def __post_init__(self) -> None:
+        for name in ("member_id", "receipt_cid"):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        for name in ("healthy", "safe_for_completion_reasoning"):
+            if not isinstance(getattr(self, name), bool):
+                raise ControlContractError(f"{name} must be a boolean")
+        _bounded_record(self, "control discovery completion member health")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "member_id": self.member_id,
+            "receipt_cid": self.receipt_cid,
+            "healthy": self.healthy,
+            "safe_for_completion_reasoning": (
+                self.safe_for_completion_reasoning
+            ),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlDiscoveryCompletionMemberHealth":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "member_id",
+                "receipt_cid",
+                "healthy",
+                "safe_for_completion_reasoning",
+                "content_id",
+            },
+            "control discovery completion member health",
+        )
+        result = cls(
+            member_id=payload.get("member_id", ""),
+            receipt_cid=payload.get("receipt_cid", ""),
+            healthy=payload.get("healthy", False),
+            safe_for_completion_reasoning=payload.get(
+                "safe_for_completion_reasoning", False
+            ),
+        )
+        _identity(
+            payload,
+            result.content_id,
+            "control discovery completion member health",
+        )
+        return result
+
+
+@dataclass(frozen=True)
 class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
     """Bind a generic exhaustive quorum to one G105 operational witness."""
 
@@ -2807,6 +2896,9 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
     policy_revision: str
     operational_receipt_id: str
     quorum: Any
+    member_health: tuple[
+        ControlDiscoveryCompletionMemberHealth | Mapping[str, Any], ...
+    ]
     objective_id: str = CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
     requirement_id: str = CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
 
@@ -2842,6 +2934,40 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
                     "completion quorum is malformed"
                 ) from exc
         object.__setattr__(self, "quorum", quorum)
+        member_health = _coerce_tuple(
+            self.member_health,
+            ControlDiscoveryCompletionMemberHealth,
+            ControlDiscoveryCompletionMemberHealth.from_dict,
+            "member_health",
+        )
+        expected_members = {
+            (member.member_id, member.receipt_cid)
+            for member in quorum.members
+        }
+        attested_members = {
+            (member.member_id, member.receipt_cid)
+            for member in member_health
+        }
+        if (
+            len(member_health) != len(attested_members)
+            or attested_members != expected_members
+        ):
+            raise ControlContractError(
+                "completion member health must cover every quorum receipt exactly"
+            )
+        if not all(
+            member.healthy and member.safe_for_completion_reasoning
+            for member in member_health
+        ):
+            raise ControlContractError(
+                "every exhaustive receipt must be explicitly healthy and "
+                "safe for completion reasoning"
+            )
+        object.__setattr__(
+            self,
+            "member_health",
+            tuple(sorted(member_health, key=lambda item: item.member_id)),
+        )
         _bounded_record(self, "control discovery completion quorum evidence")
 
     def _payload(self) -> dict[str, Any]:
@@ -2858,6 +2984,9 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
             "policy_revision": self.policy_revision,
             "operational_receipt_id": self.operational_receipt_id,
             "quorum": quorum,
+            "member_health": tuple(
+                item.to_record() for item in self.member_health
+            ),
         }
 
     @classmethod
@@ -2877,6 +3006,7 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
                 "policy_revision",
                 "operational_receipt_id",
                 "quorum",
+                "member_health",
                 "content_id",
             },
             "control discovery completion quorum evidence",
@@ -2888,6 +3018,7 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
             policy_revision=payload.get("policy_revision", ""),
             operational_receipt_id=payload.get("operational_receipt_id", ""),
             quorum=payload.get("quorum") or {},
+            member_health=payload.get("member_health", ()),
         )
         _identity(
             payload,
@@ -3182,6 +3313,10 @@ def _evaluate_control_objective_completion(
     members_value = quorum_value.get("members")
     members = members_value if isinstance(members_value, list) else []
     if evaluated_quorum:
+        member_health = {
+            (item.member_id, item.receipt_cid): item
+            for item in getattr(exhaustion_quorum, "member_health", ())
+        }
         quorum_binding = {
             **quorum_binding,
             **artifact_quorum_binding,
@@ -3197,6 +3332,28 @@ def _evaluate_control_objective_completion(
                     ),
                     **artifact_quorum_binding,
                 },
+                **(
+                    {
+                        "healthy": member_health[
+                            (
+                                str(member.get("member_id") or ""),
+                                str(member.get("receipt_cid") or ""),
+                            )
+                        ].healthy,
+                        "safe_for_completion_reasoning": member_health[
+                            (
+                                str(member.get("member_id") or ""),
+                                str(member.get("receipt_cid") or ""),
+                            )
+                        ].safe_for_completion_reasoning,
+                    }
+                    if (
+                        str(member.get("member_id") or ""),
+                        str(member.get("receipt_cid") or ""),
+                    )
+                    in member_health
+                    else {}
+                ),
             }
             for member in members
             if isinstance(member, Mapping)
@@ -3232,6 +3389,13 @@ def _evaluate_control_objective_completion(
             isinstance(member, Mapping)
             and str(member.get("scan_mode") or "").strip().lower()
             == "exhaustive"
+            and (
+                not hasattr(exhaustion_quorum, "member_health")
+                or (
+                    member.get("healthy") is True
+                    and member.get("safe_for_completion_reasoning") is True
+                )
+            )
             for member in members
         )
     )
@@ -4676,6 +4840,7 @@ __all__ = [
     "CONTROL_DISCOVERY_OBSERVATION_SCHEMA",
     "CONTROL_DISCOVERY_RUNTIME_STATE_SCHEMA",
     "CONTROL_DISCOVERY_COMPLETION_QUORUM_EVIDENCE_SCHEMA",
+    "CONTROL_DISCOVERY_COMPLETION_MEMBER_HEALTH_SCHEMA",
     "CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA",
     "CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION",
     "CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION",
@@ -4728,6 +4893,7 @@ __all__ = [
     "ControlDiscoveryIsolationEvidence",
     "ControlDiscoveryManifest",
     "ControlDiscoveryCompletionQuorumEvidence",
+    "ControlDiscoveryCompletionMemberHealth",
     "ControlDiscoveryObservation",
     "ControlDiscoveryRuntimeState",
     "ControlDiscoverySafetyEvidence",
