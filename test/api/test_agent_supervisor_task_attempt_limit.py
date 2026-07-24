@@ -178,6 +178,53 @@ def test_max_task_attempts_defaults_to_unlimited() -> None:
     assert parse_daemon_args([]).max_task_attempts == 0
 
 
+def test_merge_target_branch_threads_from_bundle_to_daemon_command(tmp_path) -> None:
+    bundle_args = build_bundle_arg_parser().parse_args(
+        [
+            "--bundle-index-path",
+            str(tmp_path / "bundles.json"),
+            "--merge-target-branch",
+            "world-aid-duckdb-supervisor",
+        ]
+    )
+    supervisor_command = implementation_supervisor_command(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_dir=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        state_prefix="task",
+        task_prefix="## TASK-",
+        implement=True,
+        daemon_interval=1.0,
+        stale_seconds=2.0,
+        check_interval=3.0,
+        watchdog_startup_grace_seconds=None,
+        max_restarts=0,
+        implementation_timeout=4.0,
+        merge_target_branch=bundle_args.merge_target_branch,
+    )
+    supervisor_flag = supervisor_command.index("--merge-target-branch")
+    assert supervisor_command[supervisor_flag + 1] == "world-aid-duckdb-supervisor"
+
+    supervisor_args = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.todo.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implement",
+            "--merge-target-branch",
+            supervisor_command[supervisor_flag + 1],
+        ]
+    )
+    config = supervisor_config_from_args(supervisor_args, repo_root=tmp_path)
+    daemon_command = PortalImplementationSupervisor(config)._build_daemon_command()
+    daemon_flag = daemon_command.index("--merge-target-branch")
+    assert daemon_command[daemon_flag + 1] == "world-aid-duckdb-supervisor"
+    assert parse_daemon_args(
+        ["--merge-target-branch", daemon_command[daemon_flag + 1]]
+    ).merge_target_branch == "world-aid-duckdb-supervisor"
+
+
 def test_started_attempt_survives_abrupt_daemon_death(
     tmp_path,
     monkeypatch,

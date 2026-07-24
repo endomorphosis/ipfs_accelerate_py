@@ -12427,6 +12427,7 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         implement=True,
         watchdog_startup_grace_seconds=420,
         implementation_command="codex exec --full-auto",
+        merge_target_branch="world-aid-duckdb-supervisor",
         llm_merge_resolver_command="python resolver.py",
         generated_dirty_repair_enabled=True,
         generated_dirty_repair_paths=(repo / "docs" / "generated-taskboard.md",),
@@ -12455,6 +12456,9 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     assert "--implement" in lanes[0].command
     assert "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor" in lanes[0].command
     assert "--implementation-command" in lanes[0].command
+    assert lanes[0].command[
+        lanes[0].command.index("--merge-target-branch") + 1
+    ] == "world-aid-duckdb-supervisor"
     assert lanes[0].command[
         lanes[0].command.index("--watchdog-startup-grace-seconds") + 1
     ] == "420"

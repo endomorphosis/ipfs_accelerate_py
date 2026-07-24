@@ -1037,6 +1037,7 @@ def implementation_supervisor_command(
     implementation_timeout: float,
     max_task_attempts: int = 0,
     implementation_command: str = "",
+    merge_target_branch: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
     merge_reconciliation_max_merges: int | None = None,
@@ -1100,6 +1101,8 @@ def implementation_supervisor_command(
     command.append("--implement" if implement else "--no-implement")
     if implementation_command:
         command.extend(["--implementation-command", implementation_command])
+    if merge_target_branch:
+        command.extend(["--merge-target-branch", merge_target_branch])
     if llm_merge_resolver_command:
         command.extend(["--llm-merge-resolver-command", llm_merge_resolver_command])
     if llm_merge_resolver_timeout_seconds is not None:
@@ -1139,6 +1142,7 @@ def plan_bundle_lanes(
     implementation_timeout: float = 1800.0,
     max_task_attempts: int = 0,
     implementation_command: str = "",
+    merge_target_branch: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
     merge_reconciliation_max_merges: int | None = None,
@@ -1227,6 +1231,7 @@ def plan_bundle_lanes(
             implementation_timeout=implementation_timeout,
             max_task_attempts=max_task_attempts,
             implementation_command=implementation_command,
+            merge_target_branch=merge_target_branch,
             llm_merge_resolver_command=llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=llm_merge_resolver_timeout_seconds,
             merge_reconciliation_max_merges=merge_reconciliation_max_merges,
@@ -1817,7 +1822,7 @@ class DynamicBundleScheduler:
             allowed = {
                 "task_prefix", "implement", "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "max_task_attempts", "implementation_timeout",
-                "implementation_command", "llm_merge_resolver_command",
+                "implementation_command", "merge_target_branch", "llm_merge_resolver_command",
                 "llm_merge_resolver_timeout_seconds", "merge_reconciliation_max_merges",
                 "generated_dirty_repair_enabled", "generated_dirty_repair_commit_subject",
                 "generated_dirty_repair_include_submodule_gitlinks",
@@ -2875,6 +2880,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
+    parser.add_argument(
+        "--merge-target-branch",
+        default="",
+        help=(
+            "Existing branch that receives each isolated lane merge. When omitted, "
+            "the child supervisor retains its main/master/current-branch fallback."
+        ),
+    )
     parser.add_argument("--llm-merge-resolver-command", default="")
     parser.add_argument("--llm-merge-resolver-timeout-seconds", type=float, default=None)
     parser.add_argument("--merge-reconciliation-max-merges", type=int, default=None)
@@ -2944,6 +2957,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
         implementation_timeout=args.implementation_timeout,
         implementation_command=args.implementation_command,
+        merge_target_branch=args.merge_target_branch,
         llm_merge_resolver_command=args.llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
