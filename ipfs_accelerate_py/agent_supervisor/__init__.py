@@ -1901,6 +1901,13 @@ __all__ = [
     "dependency_closed_ready_slice",
     "normalize_prover_resource_class",
     "AdmissionDecision",
+    "ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID",
+    "ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA",
+    "AdaptiveResourceMetrics",
+    "AdaptiveStageCapacity",
+    "AdaptiveStageMetrics",
+    "AdaptiveThroughputBenchmarkReceipt",
+    "AdaptiveThroughputRun",
     "ChildResourceLimits",
     "DEFAULT_RESOURCE_CLASSES",
     "FormalVerificationResourceScheduler",
@@ -1931,6 +1938,20 @@ __all__ = [
     "normalize_resource_class",
     "resource_class_for_work_kind",
     "resource_pool",
+    "benchmark_adaptive_execution",
+    "evaluate_adaptive_throughput_benchmark",
+    "normalize_adaptive_stage",
+    "PARTIAL_CANCELLATION_REQUIREMENT_ID",
+    "ProviderBatchCapacity",
+    "ProviderBatchEvidenceReceipt",
+    "ProviderBatchKey",
+    "ProviderBatchMemberEvidence",
+    "ProviderBatchMetrics",
+    "ProviderBatchRequest",
+    "ProviderBatchResult",
+    "ProviderBatchScheduler",
+    "ProviderBatchSchedulerConfig",
+    "ProviderBatchStatus",
     "ActionContractCodegenConfig",
     "ActionContractSyncSpec",
     "ActionContractSyncTarget",
@@ -2710,6 +2731,13 @@ def __getattr__(name: str):
         return getattr(bundle_supervisor, name)
     if name in {
         "AdmissionDecision",
+        "ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID",
+        "ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA",
+        "AdaptiveResourceMetrics",
+        "AdaptiveStageCapacity",
+        "AdaptiveStageMetrics",
+        "AdaptiveThroughputBenchmarkReceipt",
+        "AdaptiveThroughputRun",
         "ChildResourceLimits",
         "DEFAULT_RESOURCE_CLASSES",
         "FormalVerificationResourceScheduler",
@@ -2742,11 +2770,30 @@ def __getattr__(name: str):
         "normalize_resource_class",
         "resource_class_for_work_kind",
         "resource_pool",
+        "benchmark_adaptive_execution",
+        "evaluate_adaptive_throughput_benchmark",
+        "normalize_adaptive_stage",
         "sample_host_resources",
     }:
         from . import resource_scheduler
 
         return getattr(resource_scheduler, name)
+    if name in {
+        "PARTIAL_CANCELLATION_REQUIREMENT_ID",
+        "ProviderBatchCapacity",
+        "ProviderBatchEvidenceReceipt",
+        "ProviderBatchKey",
+        "ProviderBatchMemberEvidence",
+        "ProviderBatchMetrics",
+        "ProviderBatchRequest",
+        "ProviderBatchResult",
+        "ProviderBatchScheduler",
+        "ProviderBatchSchedulerConfig",
+        "ProviderBatchStatus",
+    }:
+        from . import provider_batch_scheduler
+
+        return getattr(provider_batch_scheduler, name)
     if name in {
         "TaskIdentity",
         "canonical_bundle_identity",

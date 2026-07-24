@@ -14,12 +14,15 @@ zero is always treated as exhausted.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import threading
 import time
 import uuid
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -27,6 +30,58 @@ from typing import Any
 
 
 UNKNOWN_LIMIT = -1
+ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID = (
+    "122080003600146794820964010047426915846"
+)
+ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.adaptive-throughput-benchmark@1"
+)
+ADAPTIVE_STAGES = (
+    "analysis",
+    "inference",
+    "proof",
+    "validation",
+    "merge",
+    "persistence",
+    "execution",
+)
+
+
+def normalize_adaptive_stage(value: Any) -> str:
+    """Return a stable resource-admission stage name.
+
+    Extensions are intentionally accepted because supervisor deployments can
+    add independent stages. Empty legacy stage values map to ``execution``.
+    """
+
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    raw = raw.replace(" ", "_").replace("-", "_")
+    aliases = {
+        "analyze": "analysis",
+        "analysis_pipeline": "analysis",
+        "model": "inference",
+        "llm": "inference",
+        "provider": "inference",
+        "solve": "proof",
+        "solver": "proof",
+        "validate": "validation",
+        "acceptance": "validation",
+        "merging": "merge",
+        "persist": "persistence",
+        "artifact": "persistence",
+        "scheduler": "execution",
+    }
+    return aliases.get(raw, raw) if raw else "execution"
+
+
+def _canonical_digest(value: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
 class ProofResourceClass(str, Enum):
@@ -616,6 +671,7 @@ class LaneResourceRequirements:
     """Resources and provider features needed by one candidate lane."""
 
     lane_id: str = ""
+    stage: str = "execution"
     resource_class: str = "cpu-small"
     required_capabilities: tuple[str, ...] = ()
     provider_id: str = ""
@@ -646,6 +702,7 @@ class LaneResourceRequirements:
             "resource_class",
             normalize_resource_class(self.resource_class),
         )
+        object.__setattr__(self, "stage", normalize_adaptive_stage(self.stage))
         object.__setattr__(
             self,
             "provider_id",
@@ -704,6 +761,9 @@ class LaneResourceRequirements:
         )
         return cls(
             lane_id=str(first("lane_id", "bundle_key", "parallel_lane", "task_cid", default="") or ""),
+            stage=normalize_adaptive_stage(
+                first("stage", "scheduler_stage", "pipeline_stage", default="execution")
+            ),
             resource_class=str(first("resource_class", default="cpu-small") or "cpu-small").strip().lower(),
             required_capabilities=_strings(first("required_capabilities", "capabilities", default=())),
             provider_id=provider,
@@ -970,6 +1030,10 @@ class ResourcePolicy:
     max_model_concurrency: int = 0
     max_artifact_concurrency: int = 0
     resource_class_limits: Mapping[str, int] = field(default_factory=dict)
+    adaptive_enabled: bool = False
+    adaptive_target_utilization_percent: int = 75
+    stage_concurrency_limits: Mapping[str, int] = field(default_factory=dict)
+    stage_min_concurrency: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.max_lanes < 0:
@@ -988,6 +1052,8 @@ class ResourcePolicy:
         ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
+        if not 1 <= int(self.adaptive_target_utilization_percent) <= 100:
+            raise ValueError("adaptive_target_utilization_percent must be in [1, 100]")
         normalized_limits: dict[str, int] = {}
         for raw_name, raw_limit in (self.resource_class_limits or {}).items():
             name = normalize_resource_class(raw_name)
@@ -997,6 +1063,23 @@ class ResourcePolicy:
                 raise ValueError("resource class limits must be positive integers")
             normalized_limits[name] = raw_limit
         object.__setattr__(self, "resource_class_limits", normalized_limits)
+        stage_limits: dict[str, int] = {}
+        for raw_name, raw_limit in (self.stage_concurrency_limits or {}).items():
+            name = normalize_adaptive_stage(raw_name)
+            if isinstance(raw_limit, bool) or not isinstance(raw_limit, int) or raw_limit <= 0:
+                raise ValueError("stage concurrency limits must be positive integers")
+            stage_limits[name] = min(raw_limit, self.max_lanes) if self.max_lanes else raw_limit
+        stage_minimums: dict[str, int] = {}
+        for raw_name, raw_limit in (self.stage_min_concurrency or {}).items():
+            name = normalize_adaptive_stage(raw_name)
+            if isinstance(raw_limit, bool) or not isinstance(raw_limit, int) or raw_limit < 0:
+                raise ValueError("stage minimum concurrency must be non-negative integers")
+            ceiling = stage_limits.get(name, self.max_lanes)
+            if ceiling and raw_limit > ceiling:
+                raise ValueError("stage minimum concurrency cannot exceed its stage limit")
+            stage_minimums[name] = raw_limit
+        object.__setattr__(self, "stage_concurrency_limits", stage_limits)
+        object.__setattr__(self, "stage_min_concurrency", stage_minimums)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -1037,7 +1120,109 @@ class ResourcePolicy:
             resource_class_limits=_mapping(
                 _first(value, ("resource_class_limits", "resource_limits"), {})
             ),
+            adaptive_enabled=_boolean(
+                _first(value, ("adaptive_enabled", "adaptive_admission"), False),
+                False,
+            ),
+            adaptive_target_utilization_percent=_integer(
+                _first(
+                    value,
+                    (
+                        "adaptive_target_utilization_percent",
+                        "target_utilization_percent",
+                    ),
+                    defaults.adaptive_target_utilization_percent,
+                ),
+                defaults.adaptive_target_utilization_percent,
+                minimum=1,
+            ),
+            stage_concurrency_limits=_mapping(
+                _first(value, ("stage_concurrency_limits", "stage_limits"), {})
+            ),
+            stage_min_concurrency=_mapping(
+                _first(value, ("stage_min_concurrency", "stage_minimums"), {})
+            ),
         )
+
+
+@dataclass(frozen=True)
+class AdaptiveStageCapacity:
+    """Explainable live concurrency bound for one independently measured stage."""
+
+    stage: str
+    configured_limit: int
+    effective_limit: int
+    active: int
+    queued: int
+    available: int
+    pressure_percent: int
+    reason: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AdaptiveStageMetrics:
+    """Integer-only counters suitable for durable scheduler artifacts."""
+
+    stage: str
+    scheduled: int = 0
+    admitted: int = 0
+    backpressured: int = 0
+    completed: int = 0
+    accepted: int = 0
+    cancelled: int = 0
+    total_duration_ms: int = 0
+
+    @property
+    def admission_ratio_millionths(self) -> int:
+        return self.admitted * 1_000_000 // self.scheduled if self.scheduled else 0
+
+    @property
+    def acceptance_throughput_per_million_ms(self) -> int:
+        return (
+            self.accepted * 1_000_000 // self.total_duration_ms
+            if self.total_duration_ms
+            else 0
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["admission_ratio_millionths"] = self.admission_ratio_millionths
+        payload["acceptance_throughput_per_million_ms"] = (
+            self.acceptance_throughput_per_million_ms
+        )
+        return payload
+
+
+@dataclass(frozen=True)
+class AdaptiveResourceMetrics:
+    """Point-in-time, separately benchmarkable adaptive-admission telemetry."""
+
+    observed_at_ms: int
+    stages: tuple[AdaptiveStageMetrics, ...]
+
+    @property
+    def by_stage(self) -> dict[str, AdaptiveStageMetrics]:
+        return {item.stage: item for item in self.stages}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "observed_at_ms": self.observed_at_ms,
+            "stages": [item.to_dict() for item in self.stages],
+        }
+
+
+@dataclass
+class _MutableStageMetrics:
+    scheduled: int = 0
+    admitted: int = 0
+    backpressured: int = 0
+    completed: int = 0
+    accepted: int = 0
+    cancelled: int = 0
+    total_duration_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -1058,6 +1243,7 @@ class AdmissionDecision:
     reserved_process_slots: int = 0
     reserved_memory_bytes: int = 0
     reserved_disk_bytes: int = 0
+    stage: str = "execution"
 
     @property
     def allowed(self) -> bool:
@@ -1087,6 +1273,8 @@ class ResourceScheduleSnapshot:
     available_slots: int
     admitted_count: int
     backpressure_reasons: tuple[str, ...] = ()
+    stage_capacities: tuple[AdaptiveStageCapacity, ...] = ()
+    adaptive_metrics: AdaptiveResourceMetrics | None = None
 
     @property
     def admitted_lane_ids(self) -> tuple[str, ...]:
@@ -1105,6 +1293,12 @@ class ResourceScheduleSnapshot:
             "admitted_count": self.admitted_count,
             "admitted_lane_ids": list(self.admitted_lane_ids),
             "backpressure_reasons": list(self.backpressure_reasons),
+            "stage_capacities": [item.to_dict() for item in self.stage_capacities],
+            "adaptive_metrics": (
+                self.adaptive_metrics.to_dict()
+                if self.adaptive_metrics is not None
+                else None
+            ),
         }
 
 
@@ -1180,6 +1374,153 @@ class ResourceScheduler:
         self.host_sampler = host_sampler
         self._lease_lock = threading.RLock()
         self._leases: dict[str, ResourceAdmissionLease] = {}
+        self._metrics_lock = threading.RLock()
+        self._stage_metrics: dict[str, _MutableStageMetrics] = {}
+        self._fairness_cursor = 0
+
+    def adaptive_stage_capacity(
+        self,
+        stage: Any,
+        *,
+        host: HostResourceSnapshot | Mapping[str, Any],
+        active: int = 0,
+        queued: int = 0,
+    ) -> AdaptiveStageCapacity:
+        """Calculate a stage bound from configured limits and live pressure.
+
+        The high-watermark gates in :meth:`evaluate` remain hard stops.
+        Below them, adaptive mode contracts concurrency gradually rather than
+        admitting a full wave immediately before exhaustion.
+        """
+
+        name = normalize_adaptive_stage(stage)
+        snapshot = (
+            host
+            if isinstance(host, HostResourceSnapshot)
+            else HostResourceSnapshot.from_mapping(host)
+        )
+        configured = min(
+            self.policy.max_lanes,
+            self.policy.stage_concurrency_limits.get(name, self.policy.max_lanes),
+        )
+        pressure = max(
+            snapshot.cpu_percent,
+            snapshot.memory_percent,
+            snapshot.disk_percent,
+        )
+        effective = configured
+        reason = "configured_limit"
+        if self.policy.adaptive_enabled and configured:
+            minimum = min(
+                configured,
+                self.policy.stage_min_concurrency.get(name, 1),
+            )
+            target = self.policy.adaptive_target_utilization_percent
+            if pressure > target:
+                remaining = max(0, 100 - pressure)
+                span = max(1, 100 - target)
+                effective = minimum + (
+                    max(0, configured - minimum) * remaining // span
+                )
+                effective = max(minimum, min(configured, effective))
+                reason = "live_pressure_backoff"
+            else:
+                reason = "live_headroom"
+        active_count = max(0, int(active))
+        queued_count = max(0, int(queued))
+        return AdaptiveStageCapacity(
+            stage=name,
+            configured_limit=configured,
+            effective_limit=effective,
+            active=active_count,
+            queued=queued_count,
+            available=max(0, effective - active_count),
+            pressure_percent=pressure,
+            reason=reason,
+        )
+
+    def record_stage_completion(
+        self,
+        stage: Any,
+        *,
+        duration_ms: int,
+        accepted: bool,
+        cancelled: bool = False,
+    ) -> AdaptiveStageMetrics:
+        """Record one terminal result and return that stage's new metrics."""
+
+        name = normalize_adaptive_stage(stage)
+        duration = max(0, int(duration_ms))
+        with self._metrics_lock:
+            mutable = self._stage_metrics.setdefault(name, _MutableStageMetrics())
+            mutable.completed += 1
+            mutable.total_duration_ms += duration
+            if accepted:
+                mutable.accepted += 1
+            if cancelled:
+                mutable.cancelled += 1
+            return self._stage_metric(name, mutable)
+
+    def _stage_metric(
+        self,
+        stage: str,
+        value: _MutableStageMetrics,
+    ) -> AdaptiveStageMetrics:
+        return AdaptiveStageMetrics(stage=stage, **asdict(value))
+
+    def metrics_snapshot(self, *, observed_at_ms: int | None = None) -> AdaptiveResourceMetrics:
+        """Return immutable per-stage admission and acceptance telemetry."""
+
+        with self._metrics_lock:
+            stages = tuple(
+                self._stage_metric(name, self._stage_metrics[name])
+                for name in sorted(self._stage_metrics)
+            )
+        return AdaptiveResourceMetrics(
+            observed_at_ms=(
+                max(0, int(observed_at_ms))
+                if observed_at_ms is not None
+                else int(time.time() * 1000)
+            ),
+            stages=stages,
+        )
+
+    def reset_metrics(self) -> AdaptiveResourceMetrics:
+        """Atomically clear benchmark counters and return the prior snapshot."""
+
+        with self._metrics_lock:
+            previous = AdaptiveResourceMetrics(
+                observed_at_ms=int(time.time() * 1000),
+                stages=tuple(
+                    self._stage_metric(name, self._stage_metrics[name])
+                    for name in sorted(self._stage_metrics)
+                ),
+            )
+            self._stage_metrics.clear()
+        return previous
+
+    def _fair_requirements(
+        self,
+        requirements: tuple[LaneResourceRequirements, ...],
+    ) -> tuple[LaneResourceRequirements, ...]:
+        if not self.policy.adaptive_enabled or len(requirements) < 2:
+            return requirements
+        grouped: dict[str, deque[LaneResourceRequirements]] = {}
+        for item in requirements:
+            grouped.setdefault(item.stage, deque()).append(item)
+        stages = sorted(grouped)
+        if len(stages) < 2:
+            return requirements
+        with self._metrics_lock:
+            start = self._fairness_cursor % len(stages)
+            self._fairness_cursor = (self._fairness_cursor + 1) % len(stages)
+        stages = stages[start:] + stages[:start]
+        ordered: list[LaneResourceRequirements] = []
+        while any(grouped.values()):
+            for stage in stages:
+                if grouped[stage]:
+                    ordered.append(grouped[stage].popleft())
+        return tuple(ordered)
 
     def _pool_limit(self, pool: str) -> int:
         if pool == "model":
@@ -1344,10 +1685,23 @@ class ResourceScheduler:
         )
         if class_limit is not None and class_occupied + req.process_slots > class_limit:
             host_reasons.append("resource_class_concurrency")
+        stage_occupied = sum(
+            item.process_slots for item in active_items if item.stage == req.stage
+        )
+        if self.policy.adaptive_enabled or req.stage in self.policy.stage_concurrency_limits:
+            capacity = self.adaptive_stage_capacity(
+                req.stage,
+                host=host_snapshot,
+                active=stage_occupied,
+                queued=1,
+            )
+            if stage_occupied + req.process_slots > capacity.effective_limit:
+                host_reasons.append("stage_concurrency")
         if host_reasons:
             return AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=False,
+                stage=req.stage,
                 reasons=tuple(dict.fromkeys(host_reasons)),
                 configured_max_lanes=configured,
                 host_available_slots=host_slots,
@@ -1362,6 +1716,7 @@ class ResourceScheduler:
             return AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=True,
+                stage=req.stage,
                 configured_max_lanes=configured,
                 host_available_slots=host_slots,
                 provider_available_slots=host_slots,
@@ -1380,6 +1735,7 @@ class ResourceScheduler:
             return AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=not self.policy.require_provider_telemetry,
+                stage=req.stage,
                 provider_id=req.provider_id,
                 reasons=(reason,),
                 configured_max_lanes=configured,
@@ -1406,6 +1762,7 @@ class ResourceScheduler:
             return AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=True,
+                stage=req.stage,
                 provider_id=provider.provider_id,
                 configured_max_lanes=configured,
                 host_available_slots=host_slots,
@@ -1428,6 +1785,7 @@ class ResourceScheduler:
         return AdmissionDecision(
             lane_id=req.lane_id,
             admitted=False,
+            stage=req.stage,
             provider_id=selected.provider_id,
             reasons=reasons or ("provider_unavailable",),
             configured_max_lanes=configured,
@@ -1623,6 +1981,7 @@ class ResourceScheduler:
             item if isinstance(item, LaneResourceRequirements) else LaneResourceRequirements.from_mapping(item)
             for item in lanes
         )
+        requirements = self._fair_requirements(requirements)
         if host is None:
             host_snapshot = self.host_sampler(
                 path,
@@ -1659,6 +2018,16 @@ class ResourceScheduler:
                 reservation.requests += 1
                 reservation.quota += requirement.quota_units
                 reservation.tokens += requirement.token_budget
+        with self._metrics_lock:
+            for decision in decisions:
+                metric = self._stage_metrics.setdefault(
+                    decision.stage, _MutableStageMetrics()
+                )
+                metric.scheduled += 1
+                if decision.admitted:
+                    metric.admitted += 1
+                else:
+                    metric.backpressured += 1
 
         configured = self.policy.max_lanes
         total_host_capacity = min(
@@ -1688,6 +2057,35 @@ class ResourceScheduler:
         backpressure = tuple(
             dict.fromkeys(reason for decision in decisions if not decision.admitted for reason in decision.reasons)
         )
+        queued_by_stage: dict[str, int] = {}
+        active_by_stage: dict[str, int] = {}
+        for requirement, decision in zip(requirements, decisions):
+            queued_by_stage[requirement.stage] = (
+                queued_by_stage.get(requirement.stage, 0) + 1
+            )
+            if decision.admitted:
+                active_by_stage[requirement.stage] = (
+                    active_by_stage.get(requirement.stage, 0)
+                    + requirement.process_slots
+                )
+        stage_capacities = tuple(
+            self.adaptive_stage_capacity(
+                stage,
+                host=host_snapshot,
+                active=active_by_stage.get(stage, 0),
+                queued=queued_by_stage[stage],
+            )
+            for stage in sorted(queued_by_stage)
+        )
+        # For a single-stage batch the adaptive stage bound is also the
+        # batch-wide effective capacity. Mixed batches retain the host-wide
+        # bound while exposing each independent stage bound above.
+        if len(stage_capacities) == 1:
+            effective = min(effective, stage_capacities[0].effective_limit)
+            available = max(0, effective - admitted)
+        metrics = self.metrics_snapshot(
+            observed_at_ms=host_snapshot.observed_at_ms or int(time.time() * 1000)
+        )
         return ResourceScheduleSnapshot(
             observed_at_ms=host_snapshot.observed_at_ms or int(time.time() * 1000),
             host=host_snapshot,
@@ -1699,11 +2097,336 @@ class ResourceScheduler:
             available_slots=available,
             admitted_count=admitted,
             backpressure_reasons=backpressure,
+            stage_capacities=stage_capacities,
+            adaptive_metrics=metrics,
         )
 
     # Descriptive aliases used by scheduler integrations and callers.
     evaluate_lane = evaluate
     schedule_lanes = schedule
+
+
+@dataclass(frozen=True)
+class AdaptiveThroughputRun:
+    """Measured execution of the same independent fixture set."""
+
+    fixture_ids: tuple[str, ...]
+    executed_fixture_ids: tuple[str, ...]
+    accepted_fixture_ids: tuple[str, ...]
+    duration_ms: int
+    peak_concurrency: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "fixture_ids", tuple(str(item) for item in self.fixture_ids)
+        )
+        object.__setattr__(
+            self,
+            "executed_fixture_ids",
+            tuple(str(item) for item in self.executed_fixture_ids),
+        )
+        object.__setattr__(
+            self,
+            "accepted_fixture_ids",
+            tuple(str(item) for item in self.accepted_fixture_ids),
+        )
+        if self.duration_ms <= 0:
+            raise ValueError("duration_ms must be positive")
+        if self.peak_concurrency <= 0:
+            raise ValueError("peak_concurrency must be positive")
+
+    @property
+    def accepted_count(self) -> int:
+        return len(self.accepted_fixture_ids)
+
+    @property
+    def throughput_per_million_ms(self) -> int:
+        return self.accepted_count * 1_000_000 // self.duration_ms
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fixture_ids": list(self.fixture_ids),
+            "executed_fixture_ids": list(self.executed_fixture_ids),
+            "accepted_fixture_ids": list(self.accepted_fixture_ids),
+            "duration_ms": self.duration_ms,
+            "peak_concurrency": self.peak_concurrency,
+            "accepted_count": self.accepted_count,
+            "throughput_per_million_ms": self.throughput_per_million_ms,
+        }
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "AdaptiveThroughputRun":
+        return cls(
+            fixture_ids=tuple(str(item) for item in value.get("fixture_ids", ())),
+            executed_fixture_ids=tuple(
+                str(item) for item in value.get("executed_fixture_ids", ())
+            ),
+            accepted_fixture_ids=tuple(
+                str(item) for item in value.get("accepted_fixture_ids", ())
+            ),
+            duration_ms=_integer(value.get("duration_ms"), 0, minimum=0),
+            peak_concurrency=_integer(
+                value.get("peak_concurrency"), 0, minimum=0
+            ),
+        )
+
+
+def _adaptive_benchmark_failure_codes(
+    baseline: AdaptiveThroughputRun,
+    adaptive: AdaptiveThroughputRun,
+    *,
+    policy: ResourcePolicy,
+    repository_tree_id: str,
+) -> tuple[str, ...]:
+    failures: list[str] = []
+    expected = baseline.fixture_ids
+    expected_set = set(expected)
+    if not repository_tree_id.strip():
+        failures.append("repository_tree_unbound")
+    if not policy.adaptive_enabled:
+        failures.append("adaptive_policy_disabled")
+    if policy.max_lanes < 2:
+        failures.append("insufficient_parallel_capacity")
+    if len(expected) < 2 or len(expected_set) != len(expected):
+        failures.append("invalid_fixture_identity")
+    if adaptive.fixture_ids != expected:
+        failures.append("fixture_set_mismatch")
+    for name, run in (("baseline", baseline), ("adaptive", adaptive)):
+        executed = run.executed_fixture_ids
+        if len(executed) != len(set(executed)):
+            failures.append(f"{name}_duplicate_execution")
+        if set(executed) != expected_set or len(executed) != len(expected):
+            failures.append(f"{name}_execution_incomplete")
+        if (
+            set(run.accepted_fixture_ids) != expected_set
+            or len(run.accepted_fixture_ids) != len(expected)
+        ):
+            failures.append(f"{name}_acceptance_incomplete")
+    if baseline.peak_concurrency != 1:
+        failures.append("baseline_not_single_lane")
+    if adaptive.peak_concurrency < 2:
+        failures.append("adaptive_parallelism_unobserved")
+    if adaptive.peak_concurrency > policy.max_lanes:
+        failures.append("adaptive_resource_overcommit")
+    # Cross multiplication avoids float precision and serialization.
+    if (
+        adaptive.accepted_count * baseline.duration_ms
+        < 2 * baseline.accepted_count * adaptive.duration_ms
+    ):
+        failures.append("throughput_below_two_x")
+    return tuple(dict.fromkeys(failures))
+
+
+@dataclass(frozen=True)
+class AdaptiveThroughputBenchmarkReceipt:
+    """Fail-closed objective evidence for adaptive acceptance throughput."""
+
+    repository_tree_id: str
+    policy_digest: str
+    baseline: AdaptiveThroughputRun
+    adaptive: AdaptiveThroughputRun
+    passed: bool
+    failure_codes: tuple[str, ...]
+    content_id: str
+    schema: str = ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA
+    requirement_id: str = ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "repository_tree_id", str(self.repository_tree_id).strip()
+        )
+        object.__setattr__(
+            self, "failure_codes", tuple(str(item) for item in self.failure_codes)
+        )
+
+    def _content_payload(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "requirement_id": self.requirement_id,
+            "repository_tree_id": self.repository_tree_id,
+            "policy_digest": self.policy_digest,
+            "baseline": self.baseline.to_dict(),
+            "adaptive": self.adaptive.to_dict(),
+            "passed": self.passed,
+            "failure_codes": list(self.failure_codes),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._content_payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any]
+    ) -> "AdaptiveThroughputBenchmarkReceipt":
+        return cls(
+            schema=str(value.get("schema", "")),
+            requirement_id=str(value.get("requirement_id", "")),
+            repository_tree_id=str(value.get("repository_tree_id", "")),
+            policy_digest=str(value.get("policy_digest", "")),
+            baseline=AdaptiveThroughputRun.from_mapping(
+                _mapping(value.get("baseline"))
+            ),
+            adaptive=AdaptiveThroughputRun.from_mapping(
+                _mapping(value.get("adaptive"))
+            ),
+            passed=_boolean(value.get("passed"), False),
+            failure_codes=tuple(
+                str(item) for item in value.get("failure_codes", ())
+            ),
+            content_id=str(value.get("content_id", "")),
+        )
+
+    def proved_requirement_ids_for(
+        self,
+        *,
+        policy: ResourcePolicy | Mapping[str, Any],
+        repository_tree_id: str,
+    ) -> tuple[str, ...]:
+        """Rebind and revalidate this receipt before exposing evidence."""
+
+        current_policy = (
+            policy
+            if isinstance(policy, ResourcePolicy)
+            else ResourcePolicy.from_mapping(policy)
+        )
+        current_failures = _adaptive_benchmark_failure_codes(
+            self.baseline,
+            self.adaptive,
+            policy=current_policy,
+            repository_tree_id=repository_tree_id,
+        )
+        valid = (
+            self.schema == ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA
+            and self.requirement_id
+            == ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID
+            and self.repository_tree_id == str(repository_tree_id).strip()
+            and self.policy_digest == _canonical_digest(current_policy.to_dict())
+            and self.passed
+            and not self.failure_codes
+            and not current_failures
+            and self.content_id == _canonical_digest(self._content_payload())
+        )
+        return (self.requirement_id,) if valid else ()
+
+
+def evaluate_adaptive_throughput_benchmark(
+    baseline: AdaptiveThroughputRun,
+    adaptive: AdaptiveThroughputRun,
+    *,
+    policy: ResourcePolicy | Mapping[str, Any],
+    repository_tree_id: str,
+) -> AdaptiveThroughputBenchmarkReceipt:
+    """Create a content-addressed receipt from paired benchmark measurements."""
+
+    normalized_policy = (
+        policy
+        if isinstance(policy, ResourcePolicy)
+        else ResourcePolicy.from_mapping(policy)
+    )
+    failures = _adaptive_benchmark_failure_codes(
+        baseline,
+        adaptive,
+        policy=normalized_policy,
+        repository_tree_id=repository_tree_id,
+    )
+    values = {
+        "repository_tree_id": str(repository_tree_id).strip(),
+        "policy_digest": _canonical_digest(normalized_policy.to_dict()),
+        "baseline": baseline,
+        "adaptive": adaptive,
+        "passed": not failures,
+        "failure_codes": failures,
+    }
+    provisional = AdaptiveThroughputBenchmarkReceipt(content_id="", **values)
+    return replace(
+        provisional,
+        content_id=_canonical_digest(provisional._content_payload()),
+    )
+
+
+def benchmark_adaptive_execution(
+    fixtures: (
+        Mapping[str, Callable[[], bool]]
+        | Iterable[tuple[str, Callable[[], bool]]]
+    ),
+    *,
+    policy: ResourcePolicy | Mapping[str, Any],
+    repository_tree_id: str,
+) -> AdaptiveThroughputBenchmarkReceipt:
+    """Run paired single-lane/adaptive fixtures and issue objective evidence.
+
+    Fixture functions must be independent and safe to invoke once in each
+    paired run. Exceptions are measured as rejected fixtures; they do not
+    cancel siblings.
+    """
+
+    normalized_policy = (
+        policy
+        if isinstance(policy, ResourcePolicy)
+        else ResourcePolicy.from_mapping(policy)
+    )
+    items = (
+        tuple((str(name), callback) for name, callback in fixtures.items())
+        if isinstance(fixtures, Mapping)
+        else tuple((str(name), callback) for name, callback in fixtures)
+    )
+    fixture_ids = tuple(name for name, _callback in items)
+    if not items:
+        raise ValueError("at least one benchmark fixture is required")
+
+    def run(max_workers: int) -> AdaptiveThroughputRun:
+        active = 0
+        peak = 0
+        lock = threading.Lock()
+
+        def invoke(
+            fixture_id: str, callback: Callable[[], bool]
+        ) -> tuple[str, bool]:
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            try:
+                return fixture_id, bool(callback())
+            except Exception:
+                return fixture_id, False
+            finally:
+                with lock:
+                    active -= 1
+
+        started_ns = time.monotonic_ns()
+        executed: list[str] = []
+        accepted: list[str] = []
+        with ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="adaptive-resource-benchmark",
+        ) as executor:
+            futures = [
+                executor.submit(invoke, fixture_id, callback)
+                for fixture_id, callback in items
+            ]
+            for future in as_completed(futures):
+                fixture_id, was_accepted = future.result()
+                executed.append(fixture_id)
+                if was_accepted:
+                    accepted.append(fixture_id)
+        elapsed_ns = max(1, time.monotonic_ns() - started_ns)
+        return AdaptiveThroughputRun(
+            fixture_ids=fixture_ids,
+            executed_fixture_ids=tuple(executed),
+            accepted_fixture_ids=tuple(accepted),
+            duration_ms=max(1, (elapsed_ns + 999_999) // 1_000_000),
+            peak_concurrency=max(1, peak),
+        )
+
+    baseline = run(1)
+    adaptive = run(max(1, normalized_policy.max_lanes))
+    return evaluate_adaptive_throughput_benchmark(
+        baseline,
+        adaptive,
+        policy=normalized_policy,
+        repository_tree_id=repository_tree_id,
+    )
 
 
 class ProofWorkStatus(str, Enum):
@@ -1835,6 +2558,12 @@ class ProofWorkRequest:
             )
         return LaneResourceRequirements(
             lane_id=self.work_id,
+            stage={
+                ProofWorkKind.MODEL_DRAFT: "inference",
+                ProofWorkKind.TYPE_CHECK: "validation",
+                ProofWorkKind.SOLVER_PORTFOLIO: "proof",
+                ProofWorkKind.KERNEL_RECONSTRUCTION: "proof",
+            }[self.work_kind],
             resource_class=self.resource_class,
             required_capabilities=capabilities,
             provider_id=self.provider_id,

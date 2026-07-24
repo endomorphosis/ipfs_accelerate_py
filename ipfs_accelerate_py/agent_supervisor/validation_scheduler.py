@@ -106,6 +106,10 @@ TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA = (
         "tamper-evident current-tree witness"
     ),
 )
+VALIDATION_THROUGHPUT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/acceptance-throughput@1"
+)
+VALIDATION_THROUGHPUT_LANE = "validation"
 IMPACT_SELECTED_VALIDATION_DAG_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/impact-selected-validation-dag@1"
 )
@@ -169,6 +173,47 @@ DEPENDENCY_FILENAMES = frozenset(
         "yarn.lock",
     }
 )
+
+
+@dataclass(frozen=True)
+class ValidationStageBatch:
+    """Results and monotonic benchmark counters for one parallel stage.
+
+    Keeping these counters on the returned batch, instead of mutable scheduler
+    state, makes one ``ValidationScheduler`` safe to use from multiple
+    supervisor lanes.  ``serial_work_seconds`` is the measured sum of command
+    execution time; comparing it with wall time exposes useful parallelism
+    without relying on timestamp strings supplied by command adapters.
+    """
+
+    results: tuple[dict[str, object], ...]
+    elapsed_seconds: float
+    serial_work_seconds: float
+    peak_parallelism: int
+
+    @property
+    def throughput_per_second(self) -> float:
+        if self.elapsed_seconds <= 0:
+            return 0.0
+        return len(self.results) / self.elapsed_seconds
+
+    @property
+    def parallel_speedup(self) -> float:
+        if self.elapsed_seconds <= 0:
+            return 0.0
+        return self.serial_work_seconds / self.elapsed_seconds
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": VALIDATION_THROUGHPUT_SCHEMA,
+            "lane": VALIDATION_THROUGHPUT_LANE,
+            "elapsed_seconds": self.elapsed_seconds,
+            "serial_work_seconds": self.serial_work_seconds,
+            "peak_parallelism": self.peak_parallelism,
+            "completed_count": len(self.results),
+            "throughput_per_second": self.throughput_per_second,
+            "parallel_speedup": self.parallel_speedup,
+        }
 
 
 def utc_now() -> str:
@@ -3837,18 +3882,29 @@ class ValidationScheduler:
         self,
         specs: Sequence[ValidationCommand],
         execute: Callable[[ValidationCommand], dict[str, object]],
-    ) -> list[dict[str, object]]:
+    ) -> ValidationStageBatch:
         """Run a stage with worker and weighted-budget bounds.
 
         Submission is incremental.  Once a failure is observed no queued work
         is admitted, while already-running commands are drained safely.
         """
 
+        stage_started = time.monotonic()
         pending = list(specs)
         active: dict[Future[dict[str, object]], tuple[ValidationCommand, int]] = {}
         completed: list[dict[str, object]] = []
         occupied = 0
+        peak_parallelism = 0
         failed = False
+
+        def measured_execute(spec: ValidationCommand) -> dict[str, object]:
+            command_started = time.monotonic()
+            result = execute(spec)
+            result.setdefault(
+                "execution_elapsed_seconds",
+                max(0.0, time.monotonic() - command_started),
+            )
+            return result
 
         with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="validation") as pool:
             while pending or active:
@@ -3859,9 +3915,10 @@ class ValidationScheduler:
                     if active and occupied + cost > self.resource_budget:
                         break
                     pending.pop(0)
-                    future = pool.submit(execute, spec)
+                    future = pool.submit(measured_execute, spec)
                     active[future] = (spec, cost)
                     occupied += cost
+                    peak_parallelism = max(peak_parallelism, len(active))
                     admitted = True
                 if not active:
                     break
@@ -3875,7 +3932,17 @@ class ValidationScheduler:
                         failed = True
                 if not admitted and not done and active:
                     continue
-        return completed
+        elapsed = max(0.0, time.monotonic() - stage_started)
+        serial_work = sum(
+            max(0.0, float(result.get("execution_elapsed_seconds", 0.0) or 0.0))
+            for result in completed
+        )
+        return ValidationStageBatch(
+            results=tuple(completed),
+            elapsed_seconds=elapsed,
+            serial_work_seconds=serial_work,
+            peak_parallelism=peak_parallelism,
+        )
 
     @staticmethod
     def _validation_node_id(spec: ValidationCommand) -> str:
@@ -4622,6 +4689,7 @@ class ValidationScheduler:
         command_runner = runner or self.runner
         results: list[dict[str, object]] = []
         stages: list[dict[str, object]] = []
+        stage_benchmarks: list[ValidationStageBatch] = []
         failed: Mapping[str, object] | None = None
         validation_started_monotonic = time.monotonic()
         first_failure_elapsed: float | None = (
@@ -4646,7 +4714,9 @@ class ValidationScheduler:
                 if not stage_specs:
                     continue
                 stage_started = utc_now()
-                stage_results = self._run_parallel_stage(stage_specs, execute)
+                stage_batch = self._run_parallel_stage(stage_specs, execute)
+                stage_benchmarks.append(stage_batch)
+                stage_results = list(stage_batch.results)
                 results.extend(stage_results)
                 failed = self._first_failure(stage_results)
                 if failed is not None and first_failure_elapsed is None:
@@ -4661,11 +4731,18 @@ class ValidationScheduler:
                         "planned_count": len(stage_specs),
                         "executed_count": len(stage_results),
                         "passed": failed is None,
+                        "throughput": stage_batch.to_dict(),
                     }
                 )
                 if failed is not None:
                     break
         results.sort(key=lambda result: int(result.get("ordinal", len(specs))))
+        validation_elapsed = max(
+            0.0, time.monotonic() - validation_started_monotonic
+        )
+        validation_serial_work = sum(
+            batch.serial_work_seconds for batch in stage_benchmarks
+        )
         report: dict[str, Any] = {
             "attempted": bool(results),
             "passed": coverage_complete and failed is None,
@@ -4690,6 +4767,31 @@ class ValidationScheduler:
             ),
             "max_workers": self.max_workers,
             "resource_budget": self.resource_budget,
+            "throughput": {
+                "schema": VALIDATION_THROUGHPUT_SCHEMA,
+                "lane": VALIDATION_THROUGHPUT_LANE,
+                "elapsed_seconds": validation_elapsed,
+                "serial_work_seconds": validation_serial_work,
+                "peak_parallelism": max(
+                    (batch.peak_parallelism for batch in stage_benchmarks),
+                    default=0,
+                ),
+                "planned_count": len(selected_specs),
+                "completed_count": len(results),
+                "accepted_count": sum(
+                    int(result.get("returncode", 1)) == 0 for result in results
+                ),
+                "throughput_per_second": (
+                    len(results) / validation_elapsed
+                    if validation_elapsed > 0
+                    else 0.0
+                ),
+                "parallel_speedup": (
+                    validation_serial_work / validation_elapsed
+                    if validation_elapsed > 0
+                    else 0.0
+                ),
+            },
             "time_to_first_useful_failure_seconds": first_failure_elapsed,
             "time_to_first_useful_failure_ms": (
                 first_failure_elapsed * 1000.0
@@ -5001,6 +5103,7 @@ class ValidationScheduler:
         command_runner = runner or self.runner
         results: list[dict[str, object]] = []
         stages: list[dict[str, object]] = []
+        stage_benchmarks: list[ValidationStageBatch] = []
         failed: Mapping[str, object] | None = None
         validation_started_monotonic = time.monotonic()
         first_failure_elapsed: float | None = None
@@ -5020,7 +5123,9 @@ class ValidationScheduler:
             if not stage_specs:
                 continue
             stage_started = utc_now()
-            stage_results = self._run_parallel_stage(stage_specs, execute)
+            stage_batch = self._run_parallel_stage(stage_specs, execute)
+            stage_benchmarks.append(stage_batch)
+            stage_results = list(stage_batch.results)
             results.extend(stage_results)
             failed = self._first_failure(stage_results)
             if failed is not None and first_failure_elapsed is None:
@@ -5035,6 +5140,7 @@ class ValidationScheduler:
                     "planned_count": len(stage_specs),
                     "executed_count": len(stage_results),
                     "passed": failed is None,
+                    "throughput": stage_batch.to_dict(),
                 }
             )
             if failed is not None:
@@ -5044,6 +5150,12 @@ class ValidationScheduler:
         results.sort(key=lambda result: int(result.get("ordinal", len(specs))))
 
         cache_hits = sum(1 for result in results if result.get("cache_hit") is True)
+        validation_elapsed = max(
+            0.0, time.monotonic() - validation_started_monotonic
+        )
+        validation_serial_work = sum(
+            batch.serial_work_seconds for batch in stage_benchmarks
+        )
         report: dict[str, Any] = {
             "attempted": bool(results),
             "passed": failed is None,
@@ -5057,6 +5169,31 @@ class ValidationScheduler:
             "cache_misses": len(results) - cache_hits,
             "max_workers": self.max_workers,
             "resource_budget": self.resource_budget,
+            "throughput": {
+                "schema": VALIDATION_THROUGHPUT_SCHEMA,
+                "lane": VALIDATION_THROUGHPUT_LANE,
+                "elapsed_seconds": validation_elapsed,
+                "serial_work_seconds": validation_serial_work,
+                "peak_parallelism": max(
+                    (batch.peak_parallelism for batch in stage_benchmarks),
+                    default=0,
+                ),
+                "planned_count": len(selected),
+                "completed_count": len(results),
+                "accepted_count": sum(
+                    int(result.get("returncode", 1)) == 0 for result in results
+                ),
+                "throughput_per_second": (
+                    len(results) / validation_elapsed
+                    if validation_elapsed > 0
+                    else 0.0
+                ),
+                "parallel_speedup": (
+                    validation_serial_work / validation_elapsed
+                    if validation_elapsed > 0
+                    else 0.0
+                ),
+            },
             "time_to_first_useful_failure_seconds": first_failure_elapsed,
             "time_to_first_useful_failure_ms": (
                 first_failure_elapsed * 1000.0

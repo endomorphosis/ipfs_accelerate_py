@@ -26,7 +26,9 @@ import subprocess
 import tempfile
 import time
 import uuid
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
@@ -42,6 +44,77 @@ from .merge_queue import MergeQueue, MergeRequest
 
 
 MergeCallback = Callable[[MergeRequest], Mapping[str, Any]]
+PreflightCallback = Callable[..., Mapping[str, Any] | bool]
+PostMergeValidationCallback = Callable[..., Mapping[str, Any] | bool]
+
+PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/parallel-acceptance-receipt@1"
+)
+PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/acceptance-throughput@1"
+)
+PARALLEL_ACCEPTANCE_EVIDENCE_ID = (
+    "185033715568272291470322170325431455647"
+)
+
+
+@dataclass(frozen=True)
+class ParallelAcceptanceReceipt:
+    """Content-addressed proof of the fenced acceptance sequence.
+
+    A successful receipt is constructed and persisted only after the
+    synthesized merged tree has passed its post-merge validator and that exact
+    commit has won the serialized target compare-and-swap.  The queue stores
+    the receipt id when it transitions to ``completed``; therefore parallel
+    preflight completion alone can never confer acceptance authority.
+    """
+
+    request_id: str
+    canonical_task_id: str
+    candidate_commit: str
+    target_commit: str
+    preflight: Mapping[str, Any]
+    integration: Mapping[str, Any]
+    post_merge_validation: Mapping[str, Any]
+    mutation_fence_owner: str
+    accepted: bool
+    requirement_id: str = PARALLEL_ACCEPTANCE_EVIDENCE_ID
+    schema: str = PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA
+
+    def _content(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "requirement_id": self.requirement_id,
+            "request_id": self.request_id,
+            "canonical_task_id": self.canonical_task_id,
+            "candidate_commit": self.candidate_commit,
+            "target_commit": self.target_commit,
+            "preflight": dict(self.preflight),
+            "integration": dict(self.integration),
+            "post_merge_validation": dict(self.post_merge_validation),
+            "mutation_fence_owner": self.mutation_fence_owner,
+            "accepted": self.accepted,
+            "sequence": (
+                "parallel_preflight",
+                "synthesized_merged_tree",
+                "post_merge_validation",
+                "serialized_target_mutation",
+                "queue_completion_authorized",
+            ),
+        }
+
+    @property
+    def receipt_id(self) -> str:
+        content = json.dumps(
+            self._content(),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"receipt_id": self.receipt_id, **self._content()}
 
 
 def _request_value(request: MergeRequest, name: str, *metadata_names: str) -> str:
@@ -118,6 +191,12 @@ class MergeTrain:
         proof_gate: Callable[..., Any] | None = None,
         proof_gate_callback: Callable[..., Any] | None = None,
         proof_cache_dir: Path | str | None = None,
+        preflight_callback: PreflightCallback | None = None,
+        post_merge_validation: PostMergeValidationCallback | None = None,
+        post_merge_validator: PostMergeValidationCallback | None = None,
+        preflight_workers: int = 1,
+        parallel_workers: int | None = None,
+        preflight_target_sensitive: bool = False,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.queue = queue
@@ -135,6 +214,38 @@ class MergeTrain:
         self.consumer_lock_path = self.state_dir / "consumer.lock"
         self.git_timeout_seconds = max(1.0, float(git_timeout_seconds))
         self.owner_id = owner_id or f"merge-train:{os.getpid()}:{uuid.uuid4().hex}"
+        if (
+            post_merge_validation is not None
+            and post_merge_validator is not None
+            and post_merge_validation is not post_merge_validator
+        ):
+            raise ValueError(
+                "post_merge_validation and post_merge_validator must refer to "
+                "the same callback"
+            )
+        workers = (
+            parallel_workers
+            if parallel_workers is not None
+            else preflight_workers
+        )
+        if int(workers) <= 0:
+            raise ValueError("preflight_workers must be positive")
+        self.preflight_callback = preflight_callback
+        self.post_merge_validation = (
+            post_merge_validation or post_merge_validator
+        )
+        self.post_merge_validator = self.post_merge_validation
+        self.preflight_workers = int(workers)
+        self.preflight_target_sensitive = bool(preflight_target_sensitive)
+        self._last_throughput: dict[str, Any] = {
+            "schema": PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA,
+            "lane": "validation-merge-acceptance",
+            "attempted_count": 0,
+            "accepted_count": 0,
+            "elapsed_seconds": 0.0,
+            "accepted_per_second": 0.0,
+            "peak_preflight_parallelism": 0,
+        }
         if (
             proof_gate is not None
             and proof_gate_callback is not None
@@ -211,6 +322,13 @@ class MergeTrain:
             request = self._dequeue()
             if request is None:
                 return None
+            if (
+                self.preflight_callback is not None
+                or self.post_merge_validation is not None
+            ):
+                target = self._target_commit()
+                preflight = self._run_preflight(request, target_commit=target)
+                return self._process_after_preflight(request, preflight)
             return self._process_claimed(request)
 
     # Widely useful aliases for supervisors that phrase one iteration as a tick.
@@ -226,6 +344,8 @@ class MergeTrain:
 
         if max_items is not None and int(max_items) <= 0:
             return []
+        if self.preflight_workers > 1:
+            return self.drain_parallel(max_items=max_items)
         results: list[dict[str, Any]] = []
         with self._consumer_lease() as acquired:
             if not acquired:
@@ -235,10 +355,400 @@ class MergeTrain:
                 request = self._dequeue()
                 if request is None:
                     break
-                results.append(self._process_claimed(request))
+                if (
+                    self.preflight_callback is not None
+                    or self.post_merge_validation is not None
+                ):
+                    preflight = self._run_preflight(
+                        request, target_commit=self._target_commit()
+                    )
+                    results.append(
+                        self._process_after_preflight(request, preflight)
+                    )
+                else:
+                    results.append(self._process_claimed(request))
         return results
 
     run = drain
+
+    def drain_parallel(
+        self, max_items: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Parallelize non-mutating preflight, then accept under one fence.
+
+        Target mutation and post-merge validation intentionally remain in the
+        deterministic queue order.  Parallel mode fails closed before claiming
+        work unless a post-merge validator is configured.
+        """
+
+        if max_items is not None and int(max_items) <= 0:
+            return []
+        if self.post_merge_validation is None:
+            raise RuntimeError(
+                "parallel acceptance requires post_merge_validation"
+            )
+
+        batch_started = time.monotonic()
+        results: list[dict[str, Any]] = []
+        preflight_work_seconds = 0.0
+        stale_preflight_count = 0
+        peak_parallelism = 0
+        limit = int(max_items) if max_items is not None else None
+
+        with self._consumer_lease() as acquired:
+            if not acquired:
+                return results
+            self._recover_abandoned_claims()
+            while limit is None or len(results) < limit:
+                remaining = (
+                    self.preflight_workers
+                    if limit is None
+                    else min(self.preflight_workers, limit - len(results))
+                )
+                requests = self._dequeue_batch(remaining)
+                if not requests:
+                    break
+                snapshot_target = self._target_commit()
+                with ThreadPoolExecutor(
+                    max_workers=self.preflight_workers,
+                    thread_name_prefix="merge-preflight",
+                ) as pool:
+                    futures: list[
+                        tuple[
+                            MergeRequest,
+                            Future[dict[str, Any]],
+                        ]
+                    ] = [
+                        (
+                            request,
+                            pool.submit(
+                                self._run_preflight,
+                                request,
+                                target_commit=snapshot_target,
+                            ),
+                        )
+                        for request in requests
+                    ]
+                    peak_parallelism = max(
+                        peak_parallelism, len(futures)
+                    )
+                    # Resolve in claim order so branch mutation remains
+                    # deterministic even when a later preflight finishes first.
+                    for request, future in futures:
+                        preflight = future.result()
+                        preflight_work_seconds += float(
+                            preflight.get("elapsed_seconds", 0.0) or 0.0
+                        )
+                        current_target = self._target_commit()
+                        if (
+                            bool(preflight.get("target_sensitive"))
+                            and str(preflight.get("target_commit") or "")
+                            != current_target
+                        ):
+                            stale_preflight_count += 1
+                            preflight = self._run_preflight(
+                                request, target_commit=current_target
+                            )
+                            preflight_work_seconds += float(
+                                preflight.get("elapsed_seconds", 0.0)
+                                or 0.0
+                            )
+                            preflight["stale_preflight_replaced"] = True
+                        results.append(
+                            self._process_after_preflight(
+                                request, preflight
+                            )
+                        )
+
+        elapsed = max(0.0, time.monotonic() - batch_started)
+        accepted = sum(
+            bool(result.get("accepted")) for result in results
+        )
+        self._last_throughput = {
+            "schema": PARALLEL_ACCEPTANCE_THROUGHPUT_SCHEMA,
+            "lane": "validation-merge-acceptance",
+            "attempted_count": len(results),
+            "accepted_count": accepted,
+            "rejected_count": len(results) - accepted,
+            "elapsed_seconds": elapsed,
+            "accepted_per_second": (
+                accepted / elapsed if elapsed > 0 else 0.0
+            ),
+            "preflight_work_seconds": preflight_work_seconds,
+            "preflight_speedup": (
+                preflight_work_seconds / elapsed if elapsed > 0 else 0.0
+            ),
+            "peak_preflight_parallelism": peak_parallelism,
+            "stale_preflight_count": stale_preflight_count,
+            "mutation_parallelism": 1,
+            "post_merge_gate_required": True,
+            "requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
+        }
+        return results
+
+    run_parallel = drain_parallel
+
+    def _dequeue_batch(self, limit: int) -> tuple[MergeRequest, ...]:
+        dequeue_many = getattr(self.queue, "dequeue_many", None)
+        if callable(dequeue_many):
+            return tuple(
+                dequeue_many(limit, consumer_id=self.owner_id) or ()
+            )
+        claimed: list[MergeRequest] = []
+        for _ in range(max(0, int(limit))):
+            request = self._dequeue()
+            if request is None:
+                break
+            claimed.append(request)
+        return tuple(claimed)
+
+    def _run_preflight(
+        self,
+        request: MergeRequest,
+        *,
+        target_commit: str,
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        candidate = _request_value(
+            request,
+            "commit_sha",
+            "commit_sha",
+            "implementation_commit",
+            "commit",
+        )
+        if self.preflight_callback is None:
+            command = self._git(
+                "merge-tree", "--write-tree", target_commit, candidate
+            )
+            payload: dict[str, Any] = {
+                "passed": command.returncode == 0,
+                "returncode": command.returncode,
+                "merge_tree": command.stdout.strip().splitlines()[0]
+                if command.returncode == 0 and command.stdout.strip()
+                else "",
+                "stderr": command.stderr[-4000:],
+                "kind": "git_merge_tree",
+                "target_sensitive": True,
+            }
+        else:
+            try:
+                raw = self._call_compatible(
+                    self.preflight_callback,
+                    request,
+                    target_commit=target_commit,
+                    candidate_commit=candidate,
+                    repo_root=self.repo_root,
+                )
+                payload = self._normalize_gate_result(
+                    raw, default_reason="preflight_failed"
+                )
+            except Exception as exc:
+                payload = {
+                    "passed": False,
+                    "reason": "preflight_exception",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            payload.setdefault(
+                "target_sensitive", self.preflight_target_sensitive
+            )
+            payload.setdefault("kind", "callback")
+        payload.update(
+            {
+                "target_commit": target_commit,
+                "candidate_commit": candidate,
+                "elapsed_seconds": max(
+                    0.0, time.monotonic() - started
+                ),
+            }
+        )
+        return payload
+
+    @staticmethod
+    def _normalize_gate_result(
+        value: Mapping[str, Any] | bool | Any,
+        *,
+        default_reason: str,
+    ) -> dict[str, Any]:
+        if isinstance(value, bool):
+            return {
+                "passed": value,
+                "reason": "" if value else default_reason,
+            }
+        if not isinstance(value, Mapping):
+            return {
+                "passed": False,
+                "reason": default_reason,
+                "error": "gate callback returned no structured verdict",
+            }
+        result = dict(value)
+        if "passed" in result:
+            passed = result.get("passed") is True
+        elif "allowed" in result:
+            passed = result.get("allowed") is True
+        elif "succeeded" in result:
+            passed = result.get("succeeded") is True
+        elif "returncode" in result:
+            try:
+                passed = int(result.get("returncode", 1)) == 0
+            except (TypeError, ValueError):
+                passed = False
+        else:
+            passed = False
+        result["passed"] = passed
+        if not passed:
+            result.setdefault("reason", default_reason)
+        return result
+
+    def _process_after_preflight(
+        self,
+        request: MergeRequest,
+        preflight: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        started_at = time.time()
+        if not bool(preflight.get("passed")):
+            return self._finish_failure(
+                request,
+                reason=str(
+                    preflight.get("reason") or "preflight_failed"
+                ),
+                details={"preflight": dict(preflight)},
+                started_at=started_at,
+                retryable=bool(preflight.get("retryable", True)),
+            )
+
+        integration = self._process_claimed(
+            request,
+            defer_completion=True,
+            preflight_receipt=preflight,
+        )
+        if not bool(integration.get("integrated")):
+            return integration
+        return self._post_merge_accept(
+            request,
+            preflight=dict(preflight),
+            integration=integration,
+            started_at=started_at,
+        )
+
+    def _post_merge_accept(
+        self,
+        request: MergeRequest,
+        *,
+        preflight: Mapping[str, Any],
+        integration: dict[str, Any],
+        started_at: float,
+    ) -> dict[str, Any]:
+        canonical = str(integration.get("canonical_task_id") or "")
+        candidate = str(integration.get("commit_sha") or "")
+        target = str(integration.get("target_commit") or "")
+        validation_value = integration.get("post_merge_validation")
+        if not isinstance(validation_value, Mapping):
+            merge_result = integration.get("merge_result")
+            if isinstance(merge_result, Mapping):
+                validation_value = merge_result.get(
+                    "post_merge_validation"
+                )
+        if isinstance(validation_value, Mapping):
+            validation = self._normalize_gate_result(
+                validation_value,
+                default_reason="post_merge_validation_failed",
+            )
+        elif str(integration.get("status") or "") in {
+            "already_merged",
+            "deduplicated",
+        }:
+            validation = self._validate_existing_integrated_commit(
+                request,
+                commit=target,
+                candidate_commit=candidate,
+            )
+        else:
+            validation = {
+                "passed": False,
+                "reason": "post_merge_validation_receipt_missing",
+            }
+        validated_commit = str(
+            validation.get("validated_commit")
+            or validation.get("target_commit")
+            or ""
+        )
+        if validated_commit != target:
+            validation.update(
+                {
+                    "passed": False,
+                    "reason": "post_merge_validation_target_mismatch",
+                    "validated_commit": validated_commit,
+                    "synthesized_commit": target,
+                }
+            )
+        receipt = ParallelAcceptanceReceipt(
+            request_id=request.request_id,
+            canonical_task_id=canonical,
+            candidate_commit=candidate,
+            target_commit=target,
+            preflight=preflight,
+            integration={
+                key: value
+                for key, value in integration.items()
+                if key not in {"preflight", "acceptance_receipt"}
+            },
+            post_merge_validation=validation,
+            mutation_fence_owner=self.owner_id,
+            accepted=bool(validation.get("passed")),
+        )
+        receipt_payload = receipt.to_dict()
+        self._write_acceptance_receipt(receipt_payload)
+
+        if not bool(validation.get("passed")):
+            return self._finish_failure(
+                request,
+                reason=str(
+                    validation.get("reason")
+                    or "post_merge_validation_failed"
+                ),
+                details={
+                    "preflight": dict(preflight),
+                    "integration": dict(integration),
+                    "post_merge_validation": validation,
+                    "acceptance_receipt": receipt_payload,
+                },
+                started_at=started_at,
+                retryable=bool(validation.get("retryable", False)),
+            )
+
+        # The evidence receipt is durable before queue completion.  A crash in
+        # between leaves a recoverable processing claim, never a falsely
+        # completed request.
+        self.queue.complete(
+            request,
+            metadata={
+                "acceptance_receipt_id": receipt.receipt_id,
+                "requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
+                "target_commit": target,
+            },
+        )
+        integration.update(
+            {
+                "accepted": True,
+                "acceptance_pending": False,
+                "post_merge_validation": validation,
+                "acceptance_receipt": receipt_payload,
+                "finished_at": time.time(),
+            }
+        )
+        self._write_receipt(
+            self._dedupe_key(canonical, candidate), integration
+        )
+        return integration
+
+    def _write_acceptance_receipt(
+        self, payload: Mapping[str, Any]
+    ) -> Path:
+        receipt_id = str(payload.get("receipt_id") or "")
+        digest = receipt_id.split(":", 1)[-1]
+        path = self.receipt_dir / f"acceptance-{digest}.json"
+        self._atomic_json(path, payload)
+        return path
 
     def _recover_abandoned_claims(self) -> int:
         recover = getattr(self.queue, "recover_abandoned_train_claims", None)
@@ -260,10 +770,22 @@ class MergeTrain:
                 else ""
             ),
             "proof_cache_dir": str(self.proof_cache_dir),
+            "preflight_workers": self.preflight_workers,
+            "post_merge_validation_required": (
+                self.post_merge_validation is not None
+            ),
+            "acceptance_requirement_id": PARALLEL_ACCEPTANCE_EVIDENCE_ID,
+            "throughput": dict(self._last_throughput),
             "queue": queue_status,
         }
 
-    def _process_claimed(self, request: MergeRequest) -> dict[str, Any]:
+    def _process_claimed(
+        self,
+        request: MergeRequest,
+        *,
+        defer_completion: bool = False,
+        preflight_receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         started_at = time.time()
         canonical = str(getattr(request, "canonical_identity", "") or "") or _request_value(
             request,
@@ -390,6 +912,8 @@ class MergeTrain:
                             else {}
                         ),
                     },
+                    defer_completion=defer_completion,
+                    preflight_receipt=preflight_receipt,
                 )
 
             if self._is_ancestor(candidate, target):
@@ -408,6 +932,8 @@ class MergeTrain:
                         if proof_gate_receipt
                         else None
                     ),
+                    defer_completion=defer_completion,
+                    preflight_receipt=preflight_receipt,
                 )
 
         if self.merge_callback is not None:
@@ -421,6 +947,51 @@ class MergeTrain:
                     started_at=started_at,
                 )
             if callback_result.get("merged") or callback_result.get("already_merged"):
+                if self.post_merge_validation is not None:
+                    callback_validation = self._normalize_gate_result(
+                        callback_result.get("post_merge_validation"),
+                        default_reason=(
+                            "callback_post_merge_validation_missing"
+                        ),
+                    )
+                    callback_target = str(
+                        callback_result.get("target_commit")
+                        or self._target_commit()
+                        or target
+                    )
+                    validated_commit = str(
+                        callback_validation.get("validated_commit")
+                        or callback_validation.get("target_commit")
+                        or ""
+                    )
+                    if validated_commit != callback_target:
+                        callback_validation.update(
+                            {
+                                "passed": False,
+                                "reason": (
+                                    "callback_post_merge_validation_unbound"
+                                ),
+                                "validated_commit": validated_commit,
+                                "synthesized_commit": callback_target,
+                            }
+                        )
+                    if not bool(callback_validation.get("passed")):
+                        return self._finish_failure(
+                            request,
+                            reason=str(
+                                callback_validation.get("reason")
+                                or "callback_post_merge_validation_missing"
+                            ),
+                            details={
+                                "merge_result": callback_result,
+                                "post_merge_validation": callback_validation,
+                            },
+                            started_at=started_at,
+                            retryable=False,
+                        )
+                    callback_result["post_merge_validation"] = (
+                        callback_validation
+                    )
                 return self._finish_success(
                     request,
                     status="merged" if callback_result.get("merged") else "already_merged",
@@ -439,6 +1010,8 @@ class MergeTrain:
                             else {}
                         ),
                     },
+                    defer_completion=defer_completion,
+                    preflight_receipt=preflight_receipt,
                 )
             callback_reason = str(callback_result.get("reason") or "merge_callback_failed")
             retryable = callback_reason not in {
@@ -491,6 +1064,8 @@ class MergeTrain:
                         else {}
                     ),
                 },
+                defer_completion=defer_completion,
+                preflight_receipt=preflight_receipt,
             )
         return self._finish_failure(
             request,
@@ -1055,6 +1630,103 @@ class MergeTrain:
             "cache_hit": False,
         }
 
+    def _validate_synthesized_tree(
+        self,
+        *,
+        request: MergeRequest,
+        workspace: Path,
+        candidate_commit: str,
+        synthesized_commit: str,
+        target_commit_before: str,
+    ) -> dict[str, Any]:
+        """Validate the exact commit that would win the target CAS."""
+
+        validator = self.post_merge_validation
+        if validator is None:
+            return {
+                "passed": False,
+                "reason": "post_merge_validation_not_configured",
+            }
+        started = time.monotonic()
+        try:
+            raw = self._call_compatible(
+                validator,
+                request,
+                workspace=workspace,
+                target_commit=synthesized_commit,
+                synthesized_commit=synthesized_commit,
+                candidate_commit=candidate_commit,
+                target_commit_before=target_commit_before,
+                repo_root=self.repo_root,
+            )
+            validation = self._normalize_gate_result(
+                raw, default_reason="post_merge_validation_failed"
+            )
+        except Exception as exc:
+            validation = {
+                "passed": False,
+                "reason": "post_merge_validation_exception",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        validation["elapsed_seconds"] = max(
+            0.0, time.monotonic() - started
+        )
+        claimed_commit = str(
+            validation.get("validated_commit")
+            or validation.get("target_commit")
+            or synthesized_commit
+        )
+        validation["validated_commit"] = claimed_commit
+        validation["synthesized_commit"] = synthesized_commit
+        validation["target_commit_before"] = target_commit_before
+        if claimed_commit != synthesized_commit:
+            validation.update(
+                {
+                    "passed": False,
+                    "reason": "post_merge_validation_target_mismatch",
+                }
+            )
+        return validation
+
+    def _validate_existing_integrated_commit(
+        self,
+        request: MergeRequest,
+        *,
+        commit: str,
+        candidate_commit: str,
+    ) -> dict[str, Any]:
+        """Validate an already-integrated/deduplicated commit in isolation."""
+
+        workspace = Path(
+            tempfile.mkdtemp(prefix="validation-", dir=self.worktree_dir)
+        )
+        added = False
+        try:
+            add = self._git(
+                "worktree", "add", "--detach", str(workspace), commit
+            )
+            if add.returncode != 0:
+                return {
+                    "passed": False,
+                    "reason": "validation_worktree_add_failed",
+                    "stderr": add.stderr[-4000:],
+                    "validated_commit": commit,
+                }
+            added = True
+            return self._validate_synthesized_tree(
+                request=request,
+                workspace=workspace,
+                candidate_commit=candidate_commit,
+                synthesized_commit=commit,
+                target_commit_before=commit,
+            )
+        finally:
+            if added:
+                self._git(
+                    "worktree", "remove", "--force", str(workspace)
+                )
+            shutil.rmtree(workspace, ignore_errors=True)
+
     def _rebase_and_integrate(
         self,
         *,
@@ -1135,6 +1807,30 @@ class MergeTrain:
                         "rebased_commit": rebased_commit,
                         "stderr": rebased_tree.stderr[-2000:],
                     }
+            post_merge_validation: dict[str, Any] = {}
+            if self.post_merge_validation is not None:
+                post_merge_validation = self._validate_synthesized_tree(
+                    request=request,
+                    workspace=workspace,
+                    candidate_commit=candidate,
+                    synthesized_commit=rebased_commit,
+                    target_commit_before=target,
+                )
+                if not bool(post_merge_validation.get("passed")):
+                    return {
+                        "merged": False,
+                        "retryable": bool(
+                            post_merge_validation.get("retryable", False)
+                        ),
+                        "reason": str(
+                            post_merge_validation.get("reason")
+                            or "post_merge_validation_failed"
+                        ),
+                        "candidate_commit": candidate,
+                        "rebased_commit": rebased_commit,
+                        "target_commit_before": target,
+                        "post_merge_validation": post_merge_validation,
+                    }
             # Compare-and-swap is important even under our lease: a human or a
             # different merge mechanism may legitimately advance the branch.
             update = self._advance_target(rebased_commit, expected_target=target)
@@ -1158,6 +1854,11 @@ class MergeTrain:
                 "target_commit": rebased_commit,
                 "merge_commit": rebased_commit,
                 "resolver": resolver_result,
+                **(
+                    {"post_merge_validation": post_merge_validation}
+                    if post_merge_validation
+                    else {}
+                ),
             }
         finally:
             if added:
@@ -1300,6 +2001,8 @@ class MergeTrain:
         target: str,
         started_at: float,
         extra: Mapping[str, Any] | None = None,
+        defer_completion: bool = False,
+        preflight_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         result: dict[str, Any] = {
             "status": status,
@@ -1319,6 +2022,16 @@ class MergeTrain:
             result.update(extra)
             # Stable public semantics take precedence over callback internals.
             result.update({"status": status, "integrated": True})
+        if preflight_receipt is not None:
+            result["preflight"] = dict(preflight_receipt)
+        if defer_completion:
+            result.update(
+                {
+                    "accepted": False,
+                    "acceptance_pending": True,
+                }
+            )
+            return result
         self._write_receipt(self._dedupe_key(canonical, candidate), result)
         self.queue.complete(request)
         return result
