@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     DELTA_RETRY_CONTEXT_EVIDENCE_ID,
     DELTA_RETRY_PROMOTION_REPORT_SCHEMA,
     EFFICIENCY_CONTRACT_VERSION,
+    EFFICIENCY_EVIDENCE_PRODUCERS,
     EFFICIENCY_RECEIPT_SCHEMA,
     EFFICIENCY_REPORT_SCHEMA,
     PAIRED_EFFICIENCY_CASE_SCHEMA,
@@ -64,6 +65,7 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     build_paired_efficiency_report,
     build_terminal_accepted_work_evidence,
     build_required_context_promotion_report,
+    verify_terminal_accepted_work_evidence,
 )
 
 
@@ -652,6 +654,130 @@ def test_terminal_accepted_work_evidence_replays_complete_source_populations() -
     ) == evidence
     identified = evidence.to_dict(include_evidence_id=True)
     assert TerminalAcceptedWorkEvidence.from_dict(identified) == evidence
+
+
+def test_terminal_evidence_verifier_requires_the_independent_complete_cohort() -> None:
+    fixtures = _fixtures()
+    terminal = fixtures["cold"]
+    failed_attempt = replace(
+        fixtures["failed"],
+        task_reference=terminal.task_reference,
+        goal_reference=terminal.goal_reference,
+        repository_tree_digest=terminal.repository_tree_digest,
+        policy_digest=terminal.policy_digest,
+    )
+    candidate = replace(
+        terminal,
+        tokens=TokenUsage(input_tokens=2_000, output_tokens=300),
+        inference_cost_microunits=2_600,
+    )
+    baseline_population = (failed_attempt, terminal)
+    evidence = build_terminal_accepted_work_evidence(
+        baseline_population,
+        (candidate,),
+    )
+    expected_binding = {
+        "expected_goal_reference": terminal.goal_reference,
+        "expected_repository_tree_digest": terminal.repository_tree_digest,
+        "expected_policy_digest": terminal.policy_digest,
+    }
+
+    # Independent population enumeration may use a different order or a
+    # serialized evidence value without changing the verified identity.
+    assert verify_terminal_accepted_work_evidence(
+        evidence.to_dict(include_evidence_id=True),
+        tuple(reversed(baseline_population)),
+        (candidate,),
+        **expected_binding,
+    ) == evidence
+
+    # The embedded report remains internally replayable after an upstream
+    # enumerator accidentally drops an attempt.  The external-population
+    # verifier is the boundary that detects that omission.
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="independently supplied source populations",
+    ):
+        verify_terminal_accepted_work_evidence(
+            evidence,
+            (terminal,),
+            (candidate,),
+            **expected_binding,
+        )
+
+    changed_attempt = replace(
+        failed_attempt,
+        tokens=TokenUsage(
+            input_tokens=failed_attempt.input_tokens + 1,
+            output_tokens=failed_attempt.output_tokens,
+        ),
+    )
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="independently supplied source populations",
+    ):
+        verify_terminal_accepted_work_evidence(
+            evidence,
+            (changed_attempt, terminal),
+            (candidate,),
+            **expected_binding,
+        )
+
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="completion gate's expected goal",
+    ):
+        verify_terminal_accepted_work_evidence(
+            evidence,
+            baseline_population,
+            (candidate,),
+            **{
+                **expected_binding,
+                "expected_policy_digest": "f" * 64,
+            },
+        )
+
+
+def test_terminal_accounting_proof_is_independent_of_promotion_gates() -> None:
+    baseline = _fixtures()["cold"]
+    # More candidate input fails the token-reduction gate, while retaining
+    # identical accepted-task and evidence populations.
+    candidate = replace(
+        baseline,
+        tokens=TokenUsage(input_tokens=5_000, output_tokens=300),
+        inference_cost_microunits=6_500,
+    )
+
+    evidence = build_terminal_accepted_work_evidence(
+        (baseline,),
+        (candidate,),
+    )
+
+    assert evidence.evidence_claim_references == (
+        TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+    )
+    assert evidence.paired_report.terminal_accepted_work_accounting_proven
+    assert not evidence.paired_report.token_gate_passed
+    assert not evidence.promotion_eligible
+    assert EFFICIENCY_EVIDENCE_PRODUCERS == {
+        TERMINAL_ACCEPTED_WORK_EVIDENCE_ID: (
+            "supervisor_efficiency_metrics."
+            "build_terminal_accepted_work_evidence"
+        )
+    }
+
+
+def test_terminal_accounting_rejects_nonempty_arms_without_accepted_work() -> None:
+    failed = _fixtures()["failed"]
+
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="non-empty, population-complete",
+    ):
+        build_terminal_accepted_work_evidence(
+            (failed,),
+            (failed,),
+        )
 
 
 def test_detached_or_tampered_terminal_accounting_cannot_claim_evidence() -> None:

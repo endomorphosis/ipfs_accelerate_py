@@ -108,6 +108,14 @@ DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS = 3_500
 TERMINAL_ACCEPTED_WORK_EVIDENCE_ID = (
     "248026856102230635452423769994290240744"
 )
+# Deterministic routing metadata for objective scanners and completion gates.
+# The mapping is not evidence by itself; only the typed, replayable artifact
+# returned by the bound producer may claim the requirement.
+EFFICIENCY_EVIDENCE_PRODUCERS = {
+    TERMINAL_ACCEPTED_WORK_EVIDENCE_ID: (
+        "supervisor_efficiency_metrics.build_terminal_accepted_work_evidence"
+    ),
+}
 # Verification-side binding to
 # context_compiler.REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID.  Token measurements
 # alone cannot emit this term; the promotion report must consume a typed,
@@ -5080,6 +5088,91 @@ def build_terminal_accepted_work_evidence(
     )
 
 
+def verify_terminal_accepted_work_evidence(
+    evidence: TerminalAcceptedWorkEvidence | Mapping[str, Any],
+    baseline_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
+    candidate_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
+    *,
+    expected_goal_reference: str,
+    expected_repository_tree_digest: str,
+    expected_policy_digest: str,
+) -> TerminalAcceptedWorkEvidence:
+    """Verify an evidence artifact against an independently supplied cohort.
+
+    Construction proves that the embedded typed receipts replay to the paired
+    result.  A completion gate also needs to establish that those embedded
+    receipts are the *complete* benchmark population selected by its own
+    cohort enumerator.  This verifier rebuilds the artifact from that external
+    population using the artifact's authoritative evidence requirements and
+    gate configuration, then compares the complete content-addressed result.
+
+    The expected goal, repository tree, and policy come from the calling
+    completion gate rather than from the evidence under review.  Each receipt
+    iterable is consumed at most once.  Reordering is harmless; omission,
+    substitution, duplication, a stale binding, or a changed terminal outcome
+    produces a different artifact or fails normal contract validation.
+    """
+
+    if isinstance(evidence, Mapping):
+        verified = TerminalAcceptedWorkEvidence.from_dict(evidence)
+    elif isinstance(evidence, TerminalAcceptedWorkEvidence):
+        # Reconstruct through the decoder so callers cannot bypass any
+        # persisted derived-field or content-identity checks.
+        verified = TerminalAcceptedWorkEvidence.from_dict(
+            evidence.to_dict(include_evidence_id=True)
+        )
+    else:
+        raise ContractValidationError(
+            "terminal accepted-work verification requires typed evidence"
+        )
+
+    expected_binding = (
+        _text(
+            expected_goal_reference,
+            field_name="expected_goal_reference",
+            required=True,
+            max_bytes=MAX_REFERENCE_BYTES,
+        ),
+        _digest(
+            expected_repository_tree_digest,
+            field_name="expected_repository_tree_digest",
+        ),
+        _digest(
+            expected_policy_digest,
+            field_name="expected_policy_digest",
+        ),
+    )
+    actual_binding = (
+        verified.goal_reference,
+        verified.repository_tree_digest,
+        verified.policy_digest,
+    )
+    if actual_binding != expected_binding:
+        raise ContractValidationError(
+            "terminal accepted-work evidence does not match the completion "
+            "gate's expected goal, repository tree, and policy"
+        )
+
+    required_evidence_by_task = {
+        case.task_reference: case.required_evidence_references
+        for case in verified.paired_report.cases
+    }
+    rebuilt = build_terminal_accepted_work_evidence(
+        tuple(baseline_receipts),
+        tuple(candidate_receipts),
+        required_evidence_by_task=required_evidence_by_task,
+        minimum_input_token_reduction_bps=(
+            verified.paired_report.minimum_input_token_reduction_bps
+        ),
+    )
+    if rebuilt != verified:
+        raise ContractValidationError(
+            "terminal accepted-work evidence does not match the independently "
+            "supplied source populations"
+        )
+    return verified
+
+
 def aggregate_efficiency_receipts(
     receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
 ) -> EfficiencyReport:
@@ -5393,6 +5486,7 @@ __all__ = [
     "DELTA_RETRY_PROMOTION_REPORT_SCHEMA",
     "DELTA_RETRY_PROOF_BINDING_SCHEMA",
     "EFFICIENCY_CONTRACT_VERSION",
+    "EFFICIENCY_EVIDENCE_PRODUCERS",
     "EFFICIENCY_RECEIPT_SCHEMA",
     "EFFICIENCY_REPORT_SCHEMA",
     "EVIDENCE_DELTA_SCHEMA",
@@ -5452,6 +5546,7 @@ __all__ = [
     "aggregate_receipts",
     "build_paired_efficiency_report",
     "build_terminal_accepted_work_evidence",
+    "verify_terminal_accepted_work_evidence",
     "build_required_context_promotion_report",
     "build_delta_retry_promotion_report",
     "build_efficiency_baseline_fixtures",
