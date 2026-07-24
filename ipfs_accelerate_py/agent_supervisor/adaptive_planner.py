@@ -1,10 +1,11 @@
-"""Evidence-bound adaptive selection for plans targeting one frozen goal.
+"""Evidence-bound adaptive generation and selection for one frozen goal.
 
-Candidate generation is deliberately outside this module.  The adaptive
-planner accepts candidate declarations from deterministic or optional
-providers, binds them to the same immutable goal/tree/policy snapshot, applies
-typed non-compensable admission receipts, and only then delegates quality and
-cost ranking to :mod:`plan_evaluator`.
+Candidate routing remains isolated in :mod:`task_proposal_router`, while this
+module exposes the cohesive orchestration boundary.  The adaptive planner
+always creates a deterministic baseline, accepts bounded declarations from
+optional providers over the exact same immutable goal/context/tree/policy
+snapshot, applies typed non-compensable admission receipts, and only then
+delegates quality and cost ranking to :mod:`plan_evaluator`.
 
 The selection receipt is suitable for objective evidence.  In particular it
 only claims :data:`AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID` when a selected
@@ -18,7 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Final, Iterable, Mapping, Sequence
+import re
+from typing import Any, Callable, Final, Iterable, Mapping, Sequence
 
 from .formal_replanner import RepairTransition
 from .formal_verification_contracts import canonical_json, content_identity
@@ -34,6 +36,13 @@ from .plan_evaluator import (
     evaluate_evidence_aware_plans,
     validate_evidence_aware_plan_evaluation,
 )
+from .task_proposal_router import (
+    AdaptiveCandidateProviderKind,
+    AdaptiveCandidateRoutingResult,
+    CandidateGenerationBounds,
+    FrozenCandidateGenerationRequest,
+    route_adaptive_plan_candidates,
+)
 
 
 ADAPTIVE_PLANNER_VERSION: Final = 2
@@ -48,6 +57,9 @@ REQUIREMENT_EVIDENCE_SCHEMA: Final = (
 )
 ADAPTIVE_PLAN_CANDIDATE_SNAPSHOT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adaptive-plan-candidate-snapshot@1"
+)
+ADAPTIVE_PLANNING_RUN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/adaptive-planning-run@1"
 )
 
 # ASI-G097: a cheaper authority-violating plan is rejected.
@@ -618,6 +630,9 @@ def _decode_profile_candidate(payload: Mapping[str, Any]) -> EvidenceAwarePlanCa
     values["estimated_resource_cost"] = (
         values.pop("estimated_resource_cost_millionths") / 1_000_000
     )
+    values["estimated_runtime_seconds"] = (
+        values.pop("estimated_runtime_milliseconds", 0) / 1_000
+    )
     return EvidenceAwarePlanCandidate.from_dict({"branch": branch, **values})
 
 
@@ -645,6 +660,10 @@ def _decode_policy(payload: Mapping[str, Any]) -> EvidenceAwarePlanPolicy:
     values["min_novelty"] = values.pop("min_novelty_millionths") / 1_000_000
     values["max_estimated_resource_cost"] = (
         values.pop("max_estimated_resource_cost_millionths") / 1_000_000
+    )
+    values["max_estimated_runtime_seconds"] = (
+        values.pop("max_estimated_runtime_milliseconds", 1_000_000_000)
+        / 1_000
     )
     return EvidenceAwarePlanPolicy.from_dict(values)
 
@@ -1341,6 +1360,324 @@ def _cost_millionths(candidate: EvidenceAwarePlanCandidate) -> int:
     )
 
 
+HardGateEvaluator = Callable[
+    [EvidenceAwarePlanCandidate, FrozenPlanningGoal, FrozenCandidateGenerationRequest],
+    Iterable[HardConstraintReceipt] | Mapping[HardPlanConstraint | str, Any],
+]
+
+
+def deterministic_hard_gate_receipts(
+    plan: EvidenceAwarePlanCandidate,
+    frozen_goal: FrozenPlanningGoal,
+    request: FrozenCandidateGenerationRequest,
+) -> tuple[HardConstraintReceipt, ...]:
+    """Apply the local typed policy boundaries to one untrusted declaration.
+
+    Deployments can inject stronger authorization/formal/proof adapters through
+    :meth:`AdaptivePlanner.plan`.  This deterministic implementation is the
+    safe baseline: it derives failures from frozen policy and candidate
+    declarations, never from provider confidence or claimed assurance.
+    """
+
+    if (
+        request.goal_content_id != frozen_goal.goal_content_id
+        or request.repository_tree_id != frozen_goal.repository_tree_id
+        or request.policy_digest != frozen_goal.policy_digest
+    ):
+        raise AdaptivePlannerValidationError(
+            "candidate-generation request does not match the frozen goal"
+        )
+    policy = frozen_goal.policy
+    normalized = lambda values: {" ".join(item.casefold().split()) for item in values}
+    changed = normalized(plan.changed_scopes)
+    candidate_authority = normalized(plan.authorized_scopes)
+    policy_authority = normalized(policy.allowed_scopes)
+    decisions: Mapping[HardPlanConstraint, tuple[bool, GateProducerKind, tuple[str, ...]]] = {
+        HardPlanConstraint.AUTHORITY: (
+            not plan.authority_violations,
+            GateProducerKind.AUTHORIZATION_ENGINE,
+            tuple(plan.authority_violations) or ("authority_policy_satisfied",),
+        ),
+        HardPlanConstraint.SCOPE: (
+            changed <= candidate_authority and changed <= policy_authority,
+            GateProducerKind.AUTHORIZATION_ENGINE,
+            (
+                ("scope_policy_satisfied",)
+                if changed <= candidate_authority and changed <= policy_authority
+                else ("scope_not_authorized",)
+            ),
+        ),
+        HardPlanConstraint.SAFETY: (
+            not plan.unresolved_conflicts,
+            GateProducerKind.FORMAL_VALIDATOR,
+            tuple(plan.unresolved_conflicts) or ("safety_checks_satisfied",),
+        ),
+        HardPlanConstraint.PROOF: (
+            plan.proof_feasible or not policy.require_proof,
+            GateProducerKind.PROOF_VERIFIER,
+            (
+                ("proof_feasibility_satisfied",)
+                if plan.proof_feasible or not policy.require_proof
+                else ("required_proof_infeasible",)
+            ),
+        ),
+    }
+    snapshot_id = adaptive_plan_candidate_snapshot_id(
+        plan,
+        goal_content_id=frozen_goal.goal_content_id,
+        repository_tree_id=frozen_goal.repository_tree_id,
+        policy_digest=frozen_goal.policy_digest,
+    )
+    receipts: list[HardConstraintReceipt] = []
+    for constraint in HardPlanConstraint:
+        passed, producer, observations = decisions[constraint]
+        reasons = () if passed else tuple(
+            re.sub(r"[^a-z0-9_:-]+", "_", item.casefold()).strip("_")
+            or f"{constraint.value}_failed"
+            for item in observations
+        )
+        evidence_id = content_identity(
+            {
+                "kind": "deterministic_hard_gate",
+                "constraint": constraint.value,
+                "candidate_snapshot_id": snapshot_id,
+                "context_id": request.context_id,
+                "passed": passed,
+                "observations": list(observations),
+            }
+        )
+        receipts.append(
+            HardConstraintReceipt(
+                constraint=constraint,
+                candidate_id=plan.candidate_id,
+                candidate_snapshot_id=snapshot_id,
+                goal_content_id=frozen_goal.goal_content_id,
+                repository_tree_id=frozen_goal.repository_tree_id,
+                policy_digest=frozen_goal.policy_digest,
+                passed=passed,
+                producer_kind=producer,
+                producer_id=f"adaptive-planner:{producer.value}:v1",
+                evidence_ids=(evidence_id,),
+                reason_codes=reasons,
+            )
+        )
+    return tuple(receipts)
+
+
+def _normalize_gate_receipts(
+    value: Iterable[HardConstraintReceipt] | Mapping[HardPlanConstraint | str, Any],
+    *,
+    plan: EvidenceAwarePlanCandidate,
+    frozen_goal: FrozenPlanningGoal,
+    request: FrozenCandidateGenerationRequest,
+) -> tuple[HardConstraintReceipt, ...]:
+    if not isinstance(value, Mapping):
+        return tuple(
+            item
+            if isinstance(item, HardConstraintReceipt)
+            else HardConstraintReceipt.from_dict(item)
+            for item in value
+        )
+    default = {
+        item.constraint: item
+        for item in deterministic_hard_gate_receipts(plan, frozen_goal, request)
+    }
+    receipts: list[HardConstraintReceipt] = []
+    for constraint in HardPlanConstraint:
+        observation = value.get(constraint, value.get(constraint.value))
+        if isinstance(observation, HardConstraintReceipt):
+            receipts.append(observation)
+            continue
+        if isinstance(observation, Mapping):
+            passed = observation.get("passed")
+            reason_codes = tuple(observation.get("reason_codes") or ())
+            evidence_ids = tuple(observation.get("evidence_ids") or ())
+            producer_kind = observation.get(
+                "producer_kind", default[constraint].producer_kind
+            )
+            producer_id = observation.get(
+                "producer_id", default[constraint].producer_id
+            )
+        else:
+            passed = observation
+            reason_codes = () if passed is True else (f"{constraint.value}_failed",)
+            evidence_ids = default[constraint].evidence_ids
+            producer_kind = default[constraint].producer_kind
+            producer_id = default[constraint].producer_id
+        if not isinstance(passed, bool):
+            raise AdaptivePlannerValidationError(
+                f"hard gate {constraint.value} must return a boolean decision"
+            )
+        receipts.append(
+            replace(
+                default[constraint],
+                passed=passed,
+                reason_codes=tuple(reason_codes),
+                evidence_ids=tuple(evidence_ids),
+                producer_kind=GateProducerKind(producer_kind),
+                producer_id=str(producer_id),
+            )
+        )
+    return tuple(receipts)
+
+
+@dataclass(frozen=True)
+class AdaptivePlanningRunReceipt:
+    """Durable orchestration, degradation, evaluation, and cost record."""
+
+    routing: AdaptiveCandidateRoutingResult
+    selection: AdaptivePlanSelectionReceipt
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.routing, AdaptiveCandidateRoutingResult):
+            raise AdaptivePlannerValidationError(
+                "routing must be AdaptiveCandidateRoutingResult"
+            )
+        if not isinstance(self.selection, AdaptivePlanSelectionReceipt):
+            raise AdaptivePlannerValidationError(
+                "selection must be AdaptivePlanSelectionReceipt"
+            )
+        request = self.routing.request
+        goal = self.selection.frozen_goal
+        if (
+            request.goal_id != goal.goal_id
+            or request.goal_content_id != goal.goal_content_id
+            or request.repository_tree_id != goal.repository_tree_id
+            or request.policy_digest != goal.policy_digest
+        ):
+            raise AdaptivePlannerValidationError(
+                "routing and selection do not share frozen goal bindings"
+            )
+        routed_ids = {item.candidate_id for item in self.routing.candidates}
+        evaluated_ids = {item.candidate_id for item in self.selection.evaluation.ranked}
+        if routed_ids != evaluated_ids:
+            raise AdaptivePlannerValidationError(
+                "selection must evaluate the complete routed candidate population"
+            )
+        receipts_by_candidate: dict[str, list[HardConstraintReceipt]] = {}
+        for receipt in self.selection.hard_constraint_receipts:
+            receipts_by_candidate.setdefault(receipt.candidate_id, []).append(receipt)
+        for candidate in self.routing.candidates:
+            expected_snapshot = adaptive_plan_candidate_snapshot_id(
+                candidate,
+                goal_content_id=goal.goal_content_id,
+                repository_tree_id=goal.repository_tree_id,
+                policy_digest=goal.policy_digest,
+            )
+            if any(
+                receipt.candidate_snapshot_id != expected_snapshot
+                for receipt in receipts_by_candidate[candidate.candidate_id]
+            ):
+                raise AdaptivePlannerValidationError(
+                    "selection hard gates do not bind the routed candidate content"
+                )
+
+    @property
+    def selected_candidate_id(self) -> str | None:
+        return self.selection.selected_candidate_id
+
+    @property
+    def fallback_used(self) -> bool:
+        return self.routing.used_fallback
+
+    @property
+    def non_selection_reasons(self) -> Mapping[str, tuple[str, ...]]:
+        return self.selection.evaluation.non_selection_reasons
+
+    @property
+    def run_id(self) -> str:
+        # Both nested receipts are independently content-addressed.  Hashing
+        # their identities avoids relaxing Profile-G's prohibition on floats
+        # merely because a frozen provider context contains a JSON number.
+        return content_identity(
+            {
+                "schema": ADAPTIVE_PLANNING_RUN_SCHEMA,
+                "routing_id": self.routing.routing_id,
+                "selection_receipt_id": self.selection.receipt_id,
+            }
+        )
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": ADAPTIVE_PLANNING_RUN_SCHEMA,
+            "routing": self.routing.to_dict(),
+            "selection": self.selection.to_dict(),
+            "selected_candidate_id": self.selected_candidate_id,
+            "fallback_used": self.fallback_used,
+            "selected_reason": (
+                [
+                    "highest_admissible_deterministic_quality_cost_score",
+                    "stable_candidate_id_tie_break",
+                ]
+                if self.selected_candidate_id is not None
+                else ["no_admissible_candidate"]
+            ),
+            "non_selection_reasons": {
+                candidate_id: list(reasons)
+                for candidate_id, reasons in sorted(
+                    self.non_selection_reasons.items()
+                )
+            },
+            "paired_quality_cost_metrics": [
+                item.quality_cost_metrics.to_dict()
+                for item in self.selection.evaluation.ranked
+            ],
+        }
+        if include_identity:
+            payload["run_id"] = self.run_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptivePlanningRunReceipt":
+        allowed = {
+            "schema",
+            "run_id",
+            "routing",
+            "selection",
+            "selected_candidate_id",
+            "fallback_used",
+            "selected_reason",
+            "non_selection_reasons",
+            "paired_quality_cost_metrics",
+        }
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise AdaptivePlannerValidationError(
+                "unknown adaptive-planning run fields: " + ", ".join(unknown)
+            )
+        if payload.get("schema") != ADAPTIVE_PLANNING_RUN_SCHEMA:
+            raise AdaptivePlannerValidationError(
+                "unsupported adaptive-planning run schema"
+            )
+        try:
+            result = cls(
+                routing=AdaptiveCandidateRoutingResult.from_dict(payload["routing"]),
+                selection=AdaptivePlanSelectionReceipt.from_dict(payload["selection"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AdaptivePlannerValidationError(
+                f"invalid adaptive-planning run: {exc}"
+            ) from exc
+        expected = result.to_dict(include_identity=False)
+        for field in (
+            "selected_candidate_id",
+            "fallback_used",
+            "selected_reason",
+            "non_selection_reasons",
+            "paired_quality_cost_metrics",
+        ):
+            if payload.get(field) != expected[field]:
+                raise AdaptivePlannerValidationError(
+                    f"adaptive-planning {field} projection is inconsistent"
+                )
+        claimed = str(payload.get("run_id") or "")
+        if claimed and claimed != result.run_id:
+            raise AdaptivePlannerValidationError(
+                "adaptive-planning run identity does not match content"
+            )
+        return result
+
+
 class AdaptivePlanner:
     """Select an admissible branch for one frozen goal and emit its evidence."""
 
@@ -1473,6 +1810,63 @@ class AdaptivePlanner:
     evaluate = select
     select_plan = select
 
+    def plan(
+        self,
+        frozen_goal: FrozenPlanningGoal,
+        context: Mapping[str, Any],
+        *,
+        providers: Mapping[
+            AdaptiveCandidateProviderKind | str,
+            Callable[[FrozenCandidateGenerationRequest], Any] | None,
+        ] | None = None,
+        bounds: CandidateGenerationBounds | None = None,
+        baseline_factory: Callable[
+            [object, Mapping[str, Any]],
+            EvidenceAwarePlanCandidate | Mapping[str, Any],
+        ] | None = None,
+        hard_gate_evaluator: HardGateEvaluator = deterministic_hard_gate_receipts,
+    ) -> AdaptivePlanningRunReceipt:
+        """Generate, independently gate, evaluate, and select one bounded plan."""
+
+        if not isinstance(frozen_goal, FrozenPlanningGoal):
+            raise AdaptivePlannerValidationError(
+                "frozen_goal must be FrozenPlanningGoal"
+            )
+        routing_kwargs: dict[str, Any] = {
+            "providers": providers,
+            "bounds": bounds
+            or CandidateGenerationBounds(max_total_candidates=self.max_candidates),
+        }
+        if baseline_factory is not None:
+            routing_kwargs["baseline_factory"] = baseline_factory
+        routing = route_adaptive_plan_candidates(
+            frozen_goal,
+            context,
+            **routing_kwargs,
+        )
+        gated: list[AdaptivePlanCandidate] = []
+        for plan in routing.candidates:
+            raw_receipts = hard_gate_evaluator(
+                plan, frozen_goal, routing.request
+            )
+            receipts = _normalize_gate_receipts(
+                raw_receipts,
+                plan=plan,
+                frozen_goal=frozen_goal,
+                request=routing.request,
+            )
+            gated.append(
+                AdaptivePlanCandidate(
+                    plan=plan,
+                    goal_content_id=frozen_goal.goal_content_id,
+                    repository_tree_id=frozen_goal.repository_tree_id,
+                    policy_digest=frozen_goal.policy_digest,
+                    hard_constraint_receipts=receipts,
+                )
+            )
+        selection = self.select(frozen_goal, gated)
+        return AdaptivePlanningRunReceipt(routing=routing, selection=selection)
+
 
 class AdaptivePlanReceiptStore:
     """Append-only local persistence with content and path integrity checks."""
@@ -1523,6 +1917,68 @@ class AdaptivePlanReceiptStore:
         return receipt
 
 
+class AdaptivePlanningRunStore:
+    """Append-only persistence for complete generation and selection runs."""
+
+    def __init__(self, directory: str | Path) -> None:
+        self.directory = Path(directory)
+
+    def persist(self, receipt: AdaptivePlanningRunReceipt) -> Path:
+        if not isinstance(receipt, AdaptivePlanningRunReceipt):
+            raise AdaptivePlannerValidationError(
+                "receipt must be AdaptivePlanningRunReceipt"
+            )
+        self.directory.mkdir(parents=True, exist_ok=True)
+        destination = self.directory / f"{receipt.run_id}.json"
+        import json
+
+        encoded = (
+            json.dumps(
+                receipt.to_dict(),
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+        try:
+            with destination.open("xb") as handle:
+                handle.write(encoded)
+        except FileExistsError:
+            if self.load(receipt.run_id) != receipt:
+                raise AdaptivePlannerValidationError(
+                    "existing adaptive-planning run has different content"
+                )
+        return destination
+
+    def load(self, run_id: str) -> AdaptivePlanningRunReceipt:
+        identity = _text(run_id, "run_id")
+        if "/" in identity or "\\" in identity or identity in {".", ".."}:
+            raise AdaptivePlannerValidationError(
+                "unsafe adaptive-planning run identity"
+            )
+        path = self.directory / f"{identity}.json"
+        if path.is_symlink():
+            raise AdaptivePlannerValidationError(
+                "adaptive-planning run cannot be a symlink"
+            )
+        try:
+            import json
+
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise AdaptivePlannerValidationError(
+                "adaptive-planning run is unavailable or malformed"
+            ) from exc
+        receipt = AdaptivePlanningRunReceipt.from_dict(payload)
+        if receipt.run_id != identity:
+            raise AdaptivePlannerValidationError(
+                "adaptive-planning filename does not match content"
+            )
+        return receipt
+
+
 def select_adaptive_plan(
     frozen_goal: FrozenPlanningGoal,
     candidates: Iterable[AdaptivePlanCandidate],
@@ -1536,21 +1992,50 @@ def select_adaptive_plan(
     )
 
 
+def plan_adaptively(
+    frozen_goal: FrozenPlanningGoal,
+    context: Mapping[str, Any],
+    *,
+    providers: Mapping[
+        AdaptiveCandidateProviderKind | str,
+        Callable[[FrozenCandidateGenerationRequest], Any] | None,
+    ] | None = None,
+    bounds: CandidateGenerationBounds | None = None,
+    max_candidates: int = 32,
+    hard_gate_evaluator: HardGateEvaluator = deterministic_hard_gate_receipts,
+) -> AdaptivePlanningRunReceipt:
+    """Functional full-pipeline wrapper around :meth:`AdaptivePlanner.plan`."""
+
+    return AdaptivePlanner(max_candidates=max_candidates).plan(
+        frozen_goal,
+        context,
+        providers=providers,
+        bounds=bounds,
+        hard_gate_evaluator=hard_gate_evaluator,
+    )
+
+
 __all__ = [
     "ADAPTIVE_PLANNER_VERSION",
     "ADAPTIVE_PLAN_SELECTION_SCHEMA",
+    "ADAPTIVE_PLANNING_RUN_SCHEMA",
     "AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA",
     "AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID",
     "AdaptivePlanCandidate",
     "AdaptivePlanReceiptStore",
     "AdaptivePlanSelectionReceipt",
+    "AdaptivePlanningRunReceipt",
+    "AdaptivePlanningRunStore",
     "AdaptivePlanner",
     "AdaptivePlannerValidationError",
     "AuthorityNonCompensationEvidence",
     "FrozenPlanningGoal",
     "GateProducerKind",
     "HardConstraintReceipt",
+    "HardGateEvaluator",
     "HardPlanConstraint",
     "adaptive_plan_candidate_snapshot_id",
+    "deterministic_hard_gate_receipts",
+    "plan_adaptively",
     "select_adaptive_plan",
 ]

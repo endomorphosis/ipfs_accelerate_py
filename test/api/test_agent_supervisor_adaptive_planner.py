@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
@@ -14,12 +15,16 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
     AdaptivePlanReceiptStore,
     AdaptivePlanSelectionReceipt,
     AdaptivePlanner,
+    AdaptivePlanningRunReceipt,
+    AdaptivePlanningRunStore,
     AdaptivePlannerValidationError,
     FrozenPlanningGoal,
     GateProducerKind,
     HardConstraintReceipt,
     HardPlanConstraint,
     adaptive_plan_candidate_snapshot_id,
+    deterministic_hard_gate_receipts,
+    plan_adaptively,
     select_adaptive_plan,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
@@ -37,6 +42,11 @@ from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
     EvidenceAwarePlanPolicy,
     PlanBranch,
     PlanEvaluationDimension,
+)
+from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+    AdaptiveCandidateProviderKind,
+    CandidateGenerationBounds,
+    CandidateProviderStatus,
 )
 
 
@@ -1020,3 +1030,235 @@ def test_selection_receipt_recomputes_persisted_evaluation() -> None:
         AdaptivePlannerValidationError, match="evaluator version"
     ):
         AdaptivePlanSelectionReceipt.from_dict(payload)
+
+
+def _provider_plan(
+    candidate_id: str,
+    provider: AdaptiveCandidateProviderKind,
+    *,
+    cost: float = 0.25,
+) -> EvidenceAwarePlanCandidate:
+    plan = _plan(candidate_id, cost=cost)
+    return replace(
+        plan,
+        branch=replace(plan.branch, source=provider.value),
+        estimated_runtime_seconds=0.25,
+    )
+
+
+def _planning_context() -> dict[str, Any]:
+    return {
+        "title": "Implement adaptive planning",
+        "outputs": ["src/planner.py", "tests/test_planner.py"],
+        "predicted_symbols": ["AdaptivePlanner.plan"],
+        "dependencies": ["dependency:context"],
+        "validation_commands": [
+            "python -m pytest tests/test_planner.py -q"
+        ],
+        "estimated_tokens": 100,
+        "estimated_runtime_seconds": 1.0,
+        "estimated_resource_cost": 1.0,
+        "resource_classes": ["cpu"],
+    }
+
+
+def test_full_pipeline_routes_all_optional_providers_over_one_frozen_context() -> None:
+    observed_requests: list[Any] = []
+
+    def provider(kind: AdaptiveCandidateProviderKind) -> Any:
+        def generate(request: Any) -> dict[str, Any]:
+            observed_requests.append(request)
+            return {
+                "candidates": [_provider_plan(f"{kind.value}:candidate", kind)],
+                "input_tokens": 40,
+                "output_tokens": 20,
+                "runtime_milliseconds": 3,
+                "resource_cost_millionths": 10,
+            }
+
+        return generate
+
+    result = plan_adaptively(
+        _goal(),
+        _planning_context(),
+        providers={
+            kind: provider(kind)
+            for kind in (
+                AdaptiveCandidateProviderKind.LLM,
+                AdaptiveCandidateProviderKind.LEANSTRAL,
+                AdaptiveCandidateProviderKind.IPFS_DATASETS,
+            )
+        },
+    )
+
+    assert len(observed_requests) == 3
+    assert observed_requests[0] is observed_requests[1] is observed_requests[2]
+    with pytest.raises(TypeError):
+        observed_requests[0].context["title"] = "provider mutation"
+    assert {item.request_id for item in result.routing.outcomes} == {
+        observed_requests[0].request_id
+    }
+    assert [item.provider_kind for item in result.routing.outcomes] == list(
+        AdaptiveCandidateProviderKind
+    )
+    assert all(
+        item.status is CandidateProviderStatus.SUCCEEDED
+        for item in result.routing.outcomes
+    )
+    assert not result.fallback_used
+    assert result.selected_candidate_id == "ipfs_datasets_py:candidate"
+    payload = result.to_dict()
+    assert len(payload["paired_quality_cost_metrics"]) == 4
+    assert payload["non_selection_reasons"]["baseline:ASI-G097"] == [
+        "lower_deterministic_quality_cost_score"
+    ]
+    assert all(
+        isinstance(item["estimated_runtime_milliseconds"], int)
+        for item in payload["paired_quality_cost_metrics"]
+    )
+
+
+def test_optional_provider_unavailability_timeout_and_malformed_output_fall_back() -> None:
+    def unavailable(_request: Any) -> Any:
+        raise ImportError("optional SDK is not installed")
+
+    def slow(_request: Any) -> Any:
+        time.sleep(0.05)
+        return _provider_plan(
+            "late", AdaptiveCandidateProviderKind.LEANSTRAL
+        )
+
+    result = AdaptivePlanner().plan(
+        _goal(),
+        _planning_context(),
+        providers={
+            AdaptiveCandidateProviderKind.LLM: unavailable,
+            AdaptiveCandidateProviderKind.LEANSTRAL: slow,
+            AdaptiveCandidateProviderKind.IPFS_DATASETS: (
+                lambda _request: {"not": "a candidate"}
+            ),
+        },
+        bounds=CandidateGenerationBounds(timeout_seconds=0.005),
+    )
+
+    assert result.selected_candidate_id == "baseline:ASI-G097"
+    assert result.fallback_used
+    assert [item.status for item in result.routing.outcomes] == [
+        CandidateProviderStatus.SUCCEEDED,
+        CandidateProviderStatus.FAILED,
+        CandidateProviderStatus.TIMED_OUT,
+        CandidateProviderStatus.MALFORMED,
+    ]
+    assert [item.reason_code for item in result.routing.outcomes[1:]] == [
+        "provider_exception",
+        "provider_timeout",
+        "malformed_provider_result",
+    ]
+
+
+def test_adversarial_high_quality_candidate_cannot_compensate_for_authority() -> None:
+    adversarial = replace(
+        _provider_plan(
+            "adversarial", AdaptiveCandidateProviderKind.LLM, cost=0.0001
+        ),
+        novelty=1.0,
+        branch=replace(
+            _provider_plan(
+                "adversarial", AdaptiveCandidateProviderKind.LLM, cost=0.0001
+            ).branch,
+            expected_objective_delta=1.0,
+            risk=0.0,
+        ),
+        estimated_tokens=0,
+        estimated_runtime_seconds=0.0,
+        estimated_resource_cost=0.0,
+    )
+
+    def gates(plan: Any, goal: Any, request: Any) -> Any:
+        receipts = deterministic_hard_gate_receipts(plan, goal, request)
+        if plan.candidate_id != "adversarial":
+            return receipts
+        return tuple(
+            replace(
+                item,
+                passed=False,
+                reason_codes=("authorization_denied",),
+            )
+            if item.constraint is HardPlanConstraint.AUTHORITY
+            else item
+            for item in receipts
+        )
+
+    result = AdaptivePlanner().plan(
+        _goal(),
+        _planning_context(),
+        providers={
+            AdaptiveCandidateProviderKind.LLM: (
+                lambda _request: (adversarial,)
+            )
+        },
+        hard_gate_evaluator=gates,
+    )
+
+    assert result.selected_candidate_id == "baseline:ASI-G097"
+    rejected = result.selection.evaluation.rejected
+    assert [item.candidate_id for item in rejected] == ["adversarial"]
+    assert rejected[0].candidate.novelty == 1.0
+    assert rejected[0].candidate.estimated_resource_cost == 0.0
+    assert result.non_selection_reasons["adversarial"] == (
+        "hard_gate_failed:conflict_scope_and_authority",
+    )
+
+
+def test_complete_planning_run_round_trips_persists_and_binds_context(
+    tmp_path: Any,
+) -> None:
+    result = AdaptivePlanner().plan(_goal(), _planning_context())
+    restored = AdaptivePlanningRunReceipt.from_dict(result.to_dict())
+
+    assert restored == result
+    store = AdaptivePlanningRunStore(tmp_path)
+    path = store.persist(result)
+    assert path.name == f"{result.run_id}.json"
+    assert store.load(result.run_id) == result
+    assert store.persist(result) == path
+
+    tampered = copy.deepcopy(result.to_dict())
+    tampered.pop("run_id")
+    tampered["routing"].pop("routing_id")
+    tampered["routing"]["request"]["context"]["title"] = "different goal context"
+    with pytest.raises(
+        AdaptivePlannerValidationError,
+        match="context_id|identity",
+    ):
+        AdaptivePlanningRunReceipt.from_dict(tampered)
+
+    tampered = copy.deepcopy(result.to_dict())
+    tampered.pop("run_id")
+    tampered["routing"].pop("routing_id")
+    tampered["routing"]["candidates"][0]["estimated_tokens"] += 1
+    with pytest.raises(
+        AdaptivePlannerValidationError,
+        match="routed candidate content",
+    ):
+        AdaptivePlanningRunReceipt.from_dict(tampered)
+
+
+def test_provider_candidate_and_response_budgets_are_recorded_not_raised() -> None:
+    oversized = tuple(
+        _provider_plan(f"candidate-{index}", AdaptiveCandidateProviderKind.LLM)
+        for index in range(3)
+    )
+    result = AdaptivePlanner().plan(
+        _goal(),
+        _planning_context(),
+        providers={
+            AdaptiveCandidateProviderKind.LLM: lambda _request: oversized,
+        },
+        bounds=CandidateGenerationBounds(max_candidates_per_provider=2),
+    )
+
+    assert result.selected_candidate_id == "baseline:ASI-G097"
+    llm = result.routing.outcomes[1]
+    assert llm.status is CandidateProviderStatus.BUDGET_REJECTED
+    assert llm.reason_code == "provider_budget_exceeded"

@@ -5,14 +5,19 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
 import sys
 import time
+import queue
+import threading
 from contextlib import redirect_stdout
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .context_compiler import (
@@ -27,6 +32,8 @@ from .plan_evaluator import (
     PLAN_BRANCH_JSON_SCHEMA,
     AnalysisProposal,
     AnalysisProposalEvaluation,
+    EvidenceAwarePlanCandidate,
+    EvidenceAwarePlanPolicy,
     PlanBranch,
     PlanBranchValidationError,
     evaluate_analysis_proposals,
@@ -2468,4 +2475,929 @@ def generate_analysis_proposals(
         raw_responses=tuple(raw_responses),
         router_call_timestamps=tuple([*historical_timestamps, *([now_epoch] * calls)]),
         limit_reason=limit_reason,
+    )
+
+
+# Evidence-aware adaptive candidate routing ----------------------------------
+
+ADAPTIVE_CANDIDATE_ROUTER_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/adaptive-candidate-routing@1"
+)
+
+
+class AdaptiveCandidateProviderKind(str, Enum):
+    """Closed, stable ordering of candidate sources supported by ASI-008."""
+
+    DETERMINISTIC = "deterministic_baseline"
+    LLM = "llm"
+    LEANSTRAL = "leanstral"
+    IPFS_DATASETS = "ipfs_datasets_py"
+
+
+class CandidateProviderStatus(str, Enum):
+    SUCCEEDED = "succeeded"
+    UNAVAILABLE = "unavailable"
+    TIMED_OUT = "timed_out"
+    FAILED = "failed"
+    MALFORMED = "malformed"
+    BUDGET_REJECTED = "budget_rejected"
+
+
+@dataclass(frozen=True)
+class CandidateGenerationBounds:
+    """Finite per-provider limits; optional providers may never expand these."""
+
+    max_candidates_per_provider: int = 4
+    max_total_candidates: int = 16
+    max_input_tokens: int = DEFAULT_PLANNING_CONTEXT_INPUT_TOKENS
+    max_output_tokens: int = 4096
+    max_response_bytes: int = TASK_PROPOSAL_MAX_RESPONSE_BYTES
+    timeout_seconds: float = 30.0
+    max_estimated_tokens_per_candidate: int = 1_000_000
+    max_estimated_runtime_seconds_per_candidate: float = 86_400.0
+    max_estimated_resource_cost_per_candidate: float = 1_000_000.0
+
+    def __post_init__(self) -> None:
+        integer_fields = (
+            "max_candidates_per_provider",
+            "max_total_candidates",
+            "max_input_tokens",
+            "max_output_tokens",
+            "max_response_bytes",
+            "max_estimated_tokens_per_candidate",
+        )
+        for name in integer_fields:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        for name in (
+            "timeout_seconds",
+            "max_estimated_runtime_seconds_per_candidate",
+            "max_estimated_resource_cost_per_candidate",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name} must be a positive finite number")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= 0:
+                raise ValueError(f"{name} must be a positive finite number")
+            object.__setattr__(self, name, numeric)
+        if self.max_total_candidates < 1:
+            raise ValueError("max_total_candidates must reserve the baseline")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateGenerationBounds":
+        allowed = set(cls.__dataclass_fields__)
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "unknown candidate-generation bound fields: " + ", ".join(unknown)
+            )
+        return cls(**dict(payload))
+
+
+def _canonical_payload(value: Any) -> Any:
+    """Return a detached JSON value or fail before a provider sees context."""
+
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        value = value.to_dict()
+
+    def plain(item: Any) -> Any:
+        if isinstance(item, Mapping):
+            result: dict[str, Any] = {}
+            for key, nested in item.items():
+                if not isinstance(key, str):
+                    raise TypeError("JSON object keys must be strings")
+                result[key] = plain(nested)
+            return result
+        if isinstance(item, (list, tuple)):
+            return [plain(nested) for nested in item]
+        return item
+
+    try:
+        encoded = json.dumps(
+            plain(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        return json.loads(encoded)
+    except (TypeError, ValueError) as exc:
+        raise PlanBranchValidationError(
+            "adaptive planning context must be finite JSON data"
+        ) from exc
+
+
+def _deep_freeze_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _deep_freeze_json(item) for key, item in value.items()}
+        )
+    if isinstance(value, list):
+        return tuple(_deep_freeze_json(item) for item in value)
+    return value
+
+
+def _payload_identity(value: Any) -> str:
+    encoded = json.dumps(
+        _canonical_payload(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+@dataclass(frozen=True)
+class FrozenCandidateGenerationRequest:
+    """The exact immutable capsule passed unchanged to every provider."""
+
+    goal_id: str
+    goal_content_id: str
+    repository_tree_id: str
+    policy_digest: str
+    context_id: str
+    policy: Mapping[str, Any]
+    context: Mapping[str, Any]
+    bounds: CandidateGenerationBounds
+
+    def __post_init__(self) -> None:
+        for name in (
+            "goal_id",
+            "goal_content_id",
+            "repository_tree_id",
+            "policy_digest",
+            "context_id",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value or "\x00" in value:
+                raise ValueError(f"{name} must be a non-empty safe string")
+            object.__setattr__(self, name, value)
+        context = _canonical_payload(self.context)
+        if not isinstance(context, dict):
+            raise ValueError("context must be a JSON object")
+        policy = _canonical_payload(self.policy)
+        if not isinstance(policy, dict):
+            raise ValueError("policy must be a JSON object")
+        if self.context_id != _payload_identity(context):
+            raise ValueError("context_id does not match the frozen context")
+        object.__setattr__(self, "context", _deep_freeze_json(context))
+        object.__setattr__(self, "policy", _deep_freeze_json(policy))
+        if not isinstance(self.bounds, CandidateGenerationBounds):
+            object.__setattr__(
+                self, "bounds", CandidateGenerationBounds(**dict(self.bounds))
+            )
+
+    @classmethod
+    def freeze(
+        cls,
+        frozen_goal: object,
+        context: Mapping[str, Any],
+        *,
+        bounds: CandidateGenerationBounds | None = None,
+    ) -> "FrozenCandidateGenerationRequest":
+        def value(name: str) -> Any:
+            if isinstance(frozen_goal, Mapping):
+                return frozen_goal.get(name)
+            return getattr(frozen_goal, name, None)
+
+        policy = value("policy")
+        policy_digest = value("policy_digest")
+        if callable(policy_digest):
+            policy_digest = policy_digest()
+        if not policy_digest:
+            policy_digest = _payload_identity(policy)
+        detached = _canonical_payload(context)
+        resolved_bounds = bounds or CandidateGenerationBounds()
+        context_bytes = json.dumps(
+            detached,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        # This boundary has no provider tokenizer.  Four UTF-8 bytes per token
+        # is a conservative, deterministic capsule estimate; provider-specific
+        # adapters remain responsible for applying their stricter tokenizer.
+        if len(context_bytes) > resolved_bounds.max_input_tokens * 4:
+            raise TaskProposalRouterError(
+                "frozen adaptive planning context exceeds the input-token bound",
+                reason_code="context_token_budget_exceeded",
+            )
+        return cls(
+            goal_id=str(value("goal_id") or ""),
+            goal_content_id=str(
+                value("goal_content_id") or value("frozen_goal_id") or ""
+            ),
+            repository_tree_id=str(value("repository_tree_id") or ""),
+            policy_digest=str(policy_digest or ""),
+            context_id=_payload_identity(detached),
+            policy=_canonical_payload(policy),
+            context=detached,
+            bounds=resolved_bounds,
+        )
+
+    @property
+    def request_id(self) -> str:
+        return _payload_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "goal_id": self.goal_id,
+            "goal_content_id": self.goal_content_id,
+            "repository_tree_id": self.repository_tree_id,
+            "policy_digest": self.policy_digest,
+            "context_id": self.context_id,
+            "policy": _canonical_payload(self.policy),
+            "context": _canonical_payload(self.context),
+            "bounds": self.bounds.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "FrozenCandidateGenerationRequest":
+        allowed = {
+            "goal_id",
+            "goal_content_id",
+            "repository_tree_id",
+            "policy_digest",
+            "context_id",
+            "policy",
+            "context",
+            "bounds",
+        }
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "unknown frozen candidate-request fields: " + ", ".join(unknown)
+            )
+        missing = sorted(allowed - set(payload))
+        if missing:
+            raise ValueError(
+                "missing frozen candidate-request fields: " + ", ".join(missing)
+            )
+        return cls(
+            goal_id=payload["goal_id"],
+            goal_content_id=payload["goal_content_id"],
+            repository_tree_id=payload["repository_tree_id"],
+            policy_digest=payload["policy_digest"],
+            context_id=payload["context_id"],
+            policy=payload["policy"],
+            context=payload["context"],
+            bounds=CandidateGenerationBounds.from_dict(payload["bounds"]),
+        )
+
+
+@dataclass(frozen=True)
+class CandidateProviderOutcome:
+    """One bounded provider attempt, including explicit degradation."""
+
+    provider_kind: AdaptiveCandidateProviderKind
+    status: CandidateProviderStatus
+    request_id: str
+    candidate_ids: tuple[str, ...] = ()
+    reason_code: str = ""
+    detail: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    runtime_milliseconds: int = 0
+    resource_cost_millionths: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "provider_kind", AdaptiveCandidateProviderKind(self.provider_kind)
+        )
+        object.__setattr__(self, "status", CandidateProviderStatus(self.status))
+        request_id = str(self.request_id or "").strip()
+        if not request_id:
+            raise ValueError("provider outcome requires request_id")
+        object.__setattr__(self, "request_id", request_id)
+        ids = tuple(sorted({str(item).strip() for item in self.candidate_ids}))
+        if any(not item for item in ids):
+            raise ValueError("candidate_ids must not contain empty values")
+        object.__setattr__(self, "candidate_ids", ids)
+        for name in (
+            "input_tokens",
+            "output_tokens",
+            "runtime_milliseconds",
+            "resource_cost_millionths",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if self.status is CandidateProviderStatus.SUCCEEDED and not ids:
+            raise ValueError("a successful provider outcome requires candidates")
+        if self.status is not CandidateProviderStatus.SUCCEEDED and ids:
+            raise ValueError("a degraded provider outcome cannot claim candidates")
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        object.__setattr__(self, "detail", str(self.detail or "").strip()[:1000])
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "provider_kind": self.provider_kind.value,
+            "status": self.status.value,
+            "request_id": self.request_id,
+            "candidate_ids": list(self.candidate_ids),
+            "reason_code": self.reason_code,
+            "detail": self.detail,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "runtime_milliseconds": self.runtime_milliseconds,
+            "resource_cost_millionths": self.resource_cost_millionths,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateProviderOutcome":
+        allowed = set(cls.__dataclass_fields__)
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "unknown provider-outcome fields: " + ", ".join(unknown)
+            )
+        return cls(**dict(payload))
+
+
+def _decode_profile_evidence_candidate(
+    payload: Mapping[str, Any],
+) -> EvidenceAwarePlanCandidate:
+    values = dict(payload)
+    values.pop("candidate_id", None)
+    branch = dict(values.pop("branch"))
+    branch["estimated_cost"] = branch.pop("estimated_cost_millionths") / 1_000_000
+    branch["risk"] = branch.pop("risk_millionths") / 1_000_000
+    branch["expected_objective_delta"] = (
+        branch.pop("expected_objective_delta_millionths") / 1_000_000
+    )
+    values["novelty"] = values.pop("novelty_millionths") / 1_000_000
+    values["estimated_resource_cost"] = (
+        values.pop("estimated_resource_cost_millionths") / 1_000_000
+    )
+    values["estimated_runtime_seconds"] = (
+        values.pop("estimated_runtime_milliseconds", 0) / 1_000
+    )
+    return EvidenceAwarePlanCandidate.from_dict({"branch": branch, **values})
+
+
+@dataclass(frozen=True)
+class AdaptiveCandidateRoutingResult:
+    request: FrozenCandidateGenerationRequest
+    candidates: tuple[EvidenceAwarePlanCandidate, ...]
+    outcomes: tuple[CandidateProviderOutcome, ...]
+
+    def __post_init__(self) -> None:
+        candidates = tuple(
+            item
+            if isinstance(item, EvidenceAwarePlanCandidate)
+            else EvidenceAwarePlanCandidate.from_dict(item)
+            for item in self.candidates
+        )
+        if not candidates:
+            raise ValueError("adaptive routing must retain a deterministic baseline")
+        if candidates[0].branch.source != AdaptiveCandidateProviderKind.DETERMINISTIC.value:
+            raise ValueError("the first adaptive candidate must be the deterministic baseline")
+        ids = [item.candidate_id for item in candidates]
+        if len(ids) != len(set(ids)):
+            raise ValueError("adaptive routed candidate ids must be unique")
+        if len(candidates) > self.request.bounds.max_total_candidates:
+            raise ValueError("adaptive routed candidates exceed the total bound")
+        object.__setattr__(self, "candidates", candidates)
+        outcomes = tuple(self.outcomes)
+        expected = tuple(AdaptiveCandidateProviderKind)
+        if tuple(item.provider_kind for item in outcomes) != expected:
+            raise ValueError("provider outcomes must use the complete fixed provider order")
+        if any(item.request_id != self.request.request_id for item in outcomes):
+            raise ValueError("provider outcome is not bound to the frozen request")
+        object.__setattr__(self, "outcomes", outcomes)
+
+    @property
+    def used_fallback(self) -> bool:
+        return all(
+            item.status is not CandidateProviderStatus.SUCCEEDED
+            for item in self.outcomes[1:]
+        )
+
+    @property
+    def routing_id(self) -> str:
+        return _payload_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": ADAPTIVE_CANDIDATE_ROUTER_SCHEMA,
+            "request": self.request.to_dict(),
+            "candidates": [item.to_dict(profile_g=True) for item in self.candidates],
+            "outcomes": [item.to_dict() for item in self.outcomes],
+            "used_fallback": self.used_fallback,
+        }
+        if include_identity:
+            payload["routing_id"] = self.routing_id
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "AdaptiveCandidateRoutingResult":
+        allowed = {
+            "schema",
+            "routing_id",
+            "request",
+            "candidates",
+            "outcomes",
+            "used_fallback",
+        }
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ValueError(
+                "unknown adaptive-routing fields: " + ", ".join(unknown)
+            )
+        if payload.get("schema") != ADAPTIVE_CANDIDATE_ROUTER_SCHEMA:
+            raise ValueError("unsupported adaptive-candidate routing schema")
+        result = cls(
+            request=FrozenCandidateGenerationRequest.from_dict(payload["request"]),
+            candidates=tuple(
+                _decode_profile_evidence_candidate(item)
+                for item in payload.get("candidates") or ()
+            ),
+            outcomes=tuple(
+                CandidateProviderOutcome.from_dict(item)
+                for item in payload.get("outcomes") or ()
+            ),
+        )
+        if bool(payload.get("used_fallback")) != result.used_fallback:
+            raise ValueError("adaptive routing fallback projection is inconsistent")
+        claimed = str(payload.get("routing_id") or "")
+        if claimed and claimed != result.routing_id:
+            raise ValueError("adaptive routing identity does not match content")
+        return result
+
+
+def deterministic_evidence_aware_candidate(
+    frozen_goal: object,
+    context: Mapping[str, Any],
+) -> EvidenceAwarePlanCandidate:
+    """Construct the mandatory baseline solely from frozen trusted inputs."""
+
+    policy_value = (
+        frozen_goal.get("policy")
+        if isinstance(frozen_goal, Mapping)
+        else getattr(frozen_goal, "policy", None)
+    )
+    policy = (
+        policy_value
+        if isinstance(policy_value, EvidenceAwarePlanPolicy)
+        else EvidenceAwarePlanPolicy.from_dict(policy_value or {})
+    )
+    goal_id = str(
+        (
+            frozen_goal.get("goal_id")
+            if isinstance(frozen_goal, Mapping)
+            else getattr(frozen_goal, "goal_id", "")
+        )
+        or "goal"
+    )
+    detached = _canonical_payload(context)
+    subgoal = {
+        "goal_id": goal_id,
+        "title": detached.get("title") or detached.get("goal") or goal_id,
+        "outputs": detached.get("outputs")
+        or detached.get("predicted_files")
+        or ("objective-plan.unspecified",),
+        "predicted_symbols": detached.get("predicted_symbols")
+        or detached.get("symbols")
+        or ("adaptive_plan",),
+        "dependencies": detached.get("dependencies")
+        or detached.get("depends_on")
+        or policy.satisfied_dependencies,
+        "validation_commands": detached.get("validation_commands")
+        or detached.get("validation")
+        or ("git diff --check",),
+    }
+    fallback = deterministic_plan_branches(subgoal, 1)[0]
+    safe_goal = re.sub(r"[^A-Za-z0-9._:-]+", "-", goal_id).strip("-.") or "goal"
+    branch = replace(
+        fallback,
+        branch_id=f"baseline:{safe_goal}",
+        source=AdaptiveCandidateProviderKind.DETERMINISTIC.value,
+    )
+    runtime = float(detached.get("estimated_runtime_seconds", branch.estimated_cost))
+    tokens = int(detached.get("estimated_tokens", 0))
+    resource_cost = float(
+        detached.get("estimated_resource_cost", branch.estimated_cost)
+    )
+    return EvidenceAwarePlanCandidate(
+        branch=branch,
+        covered_acceptance_criteria=policy.acceptance_criteria,
+        covered_evidence_terms=policy.evidence_terms,
+        assumptions=policy.trusted_assumptions,
+        validated_assumptions=policy.trusted_assumptions,
+        semantic_requirements=policy.supported_semantics,
+        supported_semantics=policy.supported_semantics,
+        dependencies=tuple(branch.dependencies),
+        critical_path=tuple(branch.dependencies),
+        unresolved_conflicts=(),
+        changed_scopes=policy.allowed_scopes or ("scope:baseline",),
+        authorized_scopes=policy.allowed_scopes or ("scope:baseline",),
+        authority_violations=(),
+        validation_feasible=bool(branch.validation_commands),
+        proof_feasible=bool(branch.validation_proof),
+        novelty=max(policy.min_novelty, 0.5),
+        resource_classes=tuple(
+            detached.get("resource_classes") or policy.available_resource_classes
+        ),
+        estimated_resource_cost=resource_cost,
+        estimated_tokens=tokens,
+        estimated_runtime_seconds=runtime,
+    )
+
+
+def _provider_result_candidates(value: Any) -> tuple[Any, ...]:
+    if isinstance(value, EvidenceAwarePlanCandidate):
+        return (value,)
+    if isinstance(value, Mapping):
+        if "candidates" in value:
+            raw = value["candidates"]
+        elif "candidate" in value:
+            raw = (value["candidate"],)
+        else:
+            raw = (value,)
+    elif hasattr(value, "candidates"):
+        raw = getattr(value, "candidates")
+    elif hasattr(value, "candidate"):
+        raw = (getattr(value, "candidate"),)
+    else:
+        raw = value
+    if isinstance(raw, (str, bytes, bytearray)) or not isinstance(raw, Iterable):
+        raise PlanBranchValidationError("provider result must contain candidates")
+    return tuple(raw)
+
+
+def _provider_metric(value: Any, *names: str) -> int:
+    for name in names:
+        observed = (
+            value.get(name)
+            if isinstance(value, Mapping)
+            else getattr(value, name, None)
+        )
+        if observed is None:
+            continue
+        try:
+            result = int(observed)
+        except (TypeError, ValueError):
+            continue
+        return max(0, result)
+    return 0
+
+
+def _provider_declared_degradation(
+    value: Any,
+) -> tuple[CandidateProviderStatus, str] | None:
+    observed = (
+        value.get("status")
+        if isinstance(value, Mapping)
+        else getattr(value, "status", None)
+    )
+    if isinstance(observed, Enum):
+        observed = observed.value
+    status = str(observed or "").strip().casefold()
+    reason = (
+        value.get("reason_code")
+        if isinstance(value, Mapping)
+        else getattr(value, "reason_code", "")
+    )
+    reason_code = str(reason or status or "provider_degraded").strip()
+    unavailable = {
+        "unavailable",
+        "unsupported",
+        "overloaded",
+        "deterministic_fallback",
+        "not_available",
+    }
+    timed_out = {"timeout", "timed_out", "cancelled", "canceled"}
+    malformed = {"malformed", "malformed_output", "invalid"}
+    failed = {"failed", "error", "inconclusive"}
+    if status in unavailable:
+        return CandidateProviderStatus.UNAVAILABLE, reason_code
+    if status in timed_out:
+        return CandidateProviderStatus.TIMED_OUT, reason_code
+    if status in malformed:
+        return CandidateProviderStatus.MALFORMED, reason_code
+    if status in failed:
+        return CandidateProviderStatus.FAILED, reason_code
+    return None
+
+
+def _call_bounded_provider(
+    provider: Callable[[FrozenCandidateGenerationRequest], Any],
+    request: FrozenCandidateGenerationRequest,
+) -> tuple[bool, Any, int]:
+    started = time.monotonic()
+    output: "queue.Queue[tuple[bool, Any]]" = queue.Queue(maxsize=1)
+
+    def invoke() -> None:
+        try:
+            output.put_nowait((True, provider(request)))
+        except BaseException as exc:  # provider isolation boundary
+            output.put_nowait((False, exc))
+
+    worker = threading.Thread(
+        target=invoke,
+        name="adaptive-candidate-provider",
+        daemon=True,
+    )
+    worker.start()
+    worker.join(request.bounds.timeout_seconds)
+    elapsed = max(0, round((time.monotonic() - started) * 1000))
+    if worker.is_alive():
+        return False, TimeoutError("candidate provider exceeded timeout"), elapsed
+    try:
+        succeeded, value = output.get_nowait()
+    except queue.Empty:
+        return False, RuntimeError("candidate provider returned no result"), elapsed
+    return succeeded, value, elapsed
+
+
+def route_adaptive_plan_candidates(
+    frozen_goal: object,
+    context: Mapping[str, Any],
+    *,
+    providers: Mapping[
+        AdaptiveCandidateProviderKind | str,
+        Callable[[FrozenCandidateGenerationRequest], Any] | None,
+    ] | None = None,
+    bounds: CandidateGenerationBounds | None = None,
+    baseline_factory: Callable[
+        [object, Mapping[str, Any]], EvidenceAwarePlanCandidate | Mapping[str, Any]
+    ] = deterministic_evidence_aware_candidate,
+) -> AdaptiveCandidateRoutingResult:
+    """Route one frozen capsule through fixed, bounded, failure-isolated lanes."""
+
+    request = FrozenCandidateGenerationRequest.freeze(
+        frozen_goal, context, bounds=bounds
+    )
+    baseline_value = baseline_factory(frozen_goal, request.context)
+    baseline = (
+        baseline_value
+        if isinstance(baseline_value, EvidenceAwarePlanCandidate)
+        else EvidenceAwarePlanCandidate.from_dict(baseline_value)
+    )
+    if baseline.branch.source != AdaptiveCandidateProviderKind.DETERMINISTIC.value:
+        baseline = replace(
+            baseline,
+            branch=replace(
+                baseline.branch,
+                source=AdaptiveCandidateProviderKind.DETERMINISTIC.value,
+            ),
+        )
+    if (
+        baseline.estimated_tokens
+        > request.bounds.max_estimated_tokens_per_candidate
+        or baseline.estimated_runtime_seconds
+        > request.bounds.max_estimated_runtime_seconds_per_candidate
+        or baseline.estimated_resource_cost
+        > request.bounds.max_estimated_resource_cost_per_candidate
+    ):
+        raise TaskProposalRouterError(
+            "deterministic baseline exceeds candidate generation bounds",
+            reason_code="baseline_budget_exceeded",
+        )
+
+    configured: dict[AdaptiveCandidateProviderKind, Any] = {}
+    for key, provider in (providers or {}).items():
+        kind = AdaptiveCandidateProviderKind(key)
+        if kind is AdaptiveCandidateProviderKind.DETERMINISTIC:
+            raise ValueError("the deterministic provider is supplied by baseline_factory")
+        configured[kind] = provider
+
+    candidates: list[EvidenceAwarePlanCandidate] = [baseline]
+    outcomes: list[CandidateProviderOutcome] = [
+        CandidateProviderOutcome(
+            provider_kind=AdaptiveCandidateProviderKind.DETERMINISTIC,
+            status=CandidateProviderStatus.SUCCEEDED,
+            request_id=request.request_id,
+            candidate_ids=(baseline.candidate_id,),
+            reason_code="mandatory_baseline",
+        )
+    ]
+    identities = {
+        _payload_identity(
+            {
+                **baseline.to_dict(),
+                "candidate_id": None,
+                "branch": {
+                    **baseline.branch.to_dict(),
+                    "branch_id": None,
+                    "source": None,
+                },
+            }
+        )
+    }
+    observed_ids = {baseline.candidate_id}
+
+    for kind in tuple(AdaptiveCandidateProviderKind)[1:]:
+        provider = configured.get(kind)
+        if provider is None:
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.UNAVAILABLE,
+                    request_id=request.request_id,
+                    reason_code="provider_not_configured",
+                )
+            )
+            continue
+        succeeded, raw, elapsed_ms = _call_bounded_provider(provider, request)
+        if not succeeded:
+            status = (
+                CandidateProviderStatus.TIMED_OUT
+                if isinstance(raw, TimeoutError)
+                else CandidateProviderStatus.FAILED
+            )
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=status,
+                    request_id=request.request_id,
+                    reason_code=(
+                        "provider_timeout"
+                        if status is CandidateProviderStatus.TIMED_OUT
+                        else "provider_exception"
+                    ),
+                    detail=f"{type(raw).__name__}: {raw}",
+                    runtime_milliseconds=elapsed_ms,
+                )
+            )
+            continue
+        declared_degradation = _provider_declared_degradation(raw)
+        if (
+            _provider_metric(raw, "input_tokens", "prompt_tokens")
+            > request.bounds.max_input_tokens
+            or _provider_metric(raw, "output_tokens", "completion_tokens")
+            > request.bounds.max_output_tokens
+        ):
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.BUDGET_REJECTED,
+                    request_id=request.request_id,
+                    reason_code="provider_token_budget_exceeded",
+                    detail="provider reported token use beyond frozen bounds",
+                    runtime_milliseconds=elapsed_ms,
+                )
+            )
+            continue
+        if declared_degradation is not None:
+            status, reason_code = declared_degradation
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=status,
+                    request_id=request.request_id,
+                    reason_code=reason_code,
+                    detail="provider returned a typed degraded result",
+                    input_tokens=_provider_metric(raw, "input_tokens", "prompt_tokens"),
+                    output_tokens=_provider_metric(raw, "output_tokens", "completion_tokens"),
+                    runtime_milliseconds=max(
+                        elapsed_ms,
+                        _provider_metric(raw, "runtime_milliseconds", "elapsed_ms"),
+                    ),
+                    resource_cost_millionths=_provider_metric(
+                        raw, "resource_cost_millionths"
+                    ),
+                )
+            )
+            continue
+        try:
+            if _provider_metric(raw, "input_tokens", "prompt_tokens") > (
+                request.bounds.max_input_tokens
+            ):
+                raise OverflowError("provider input-token count exceeds bound")
+            raw_candidates = _provider_result_candidates(raw)
+            if not raw_candidates:
+                raise PlanBranchValidationError("provider returned no candidates")
+            if len(raw_candidates) > request.bounds.max_candidates_per_provider:
+                raise OverflowError("provider candidate count exceeds bound")
+            normalized = tuple(
+                item
+                if isinstance(item, EvidenceAwarePlanCandidate)
+                else EvidenceAwarePlanCandidate.from_dict(item)
+                for item in raw_candidates
+            )
+            # Source provenance belongs to the router lane, never to an
+            # untrusted provider declaration.
+            normalized = tuple(
+                (
+                    item
+                    if item.branch.source == kind.value
+                    else replace(
+                        item,
+                        branch=replace(item.branch, source=kind.value),
+                    )
+                )
+                for item in normalized
+            )
+            encoded_size = len(
+                json.dumps(
+                    [item.to_dict() for item in normalized],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("utf-8")
+            )
+            if encoded_size > request.bounds.max_response_bytes:
+                raise OverflowError("provider response exceeds byte bound")
+            if _provider_metric(raw, "output_tokens", "completion_tokens") > (
+                request.bounds.max_output_tokens
+            ):
+                raise OverflowError("provider output-token count exceeds bound")
+            accepted: list[EvidenceAwarePlanCandidate] = []
+            for item in sorted(normalized, key=lambda candidate: candidate.candidate_id):
+                if (
+                    item.estimated_tokens
+                    > request.bounds.max_estimated_tokens_per_candidate
+                    or item.estimated_runtime_seconds
+                    > request.bounds.max_estimated_runtime_seconds_per_candidate
+                    or item.estimated_resource_cost
+                    > request.bounds.max_estimated_resource_cost_per_candidate
+                ):
+                    raise OverflowError("provider candidate exceeds cost bound")
+                if item.candidate_id in observed_ids:
+                    raise PlanBranchValidationError(
+                        "provider candidate id collides with another lane"
+                    )
+                identity = _payload_identity(
+                    {
+                        **item.to_dict(),
+                        "candidate_id": None,
+                        "branch": {
+                            **item.branch.to_dict(),
+                            "branch_id": None,
+                            "source": None,
+                        },
+                    }
+                )
+                if identity in identities:
+                    continue
+                if len(candidates) + len(accepted) >= request.bounds.max_total_candidates:
+                    raise OverflowError("total adaptive candidate bound reached")
+                identities.add(identity)
+                observed_ids.add(item.candidate_id)
+                accepted.append(item)
+            if not accepted:
+                raise PlanBranchValidationError(
+                    "provider returned only duplicate candidates"
+                )
+            candidates.extend(accepted)
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.SUCCEEDED,
+                    request_id=request.request_id,
+                    candidate_ids=tuple(item.candidate_id for item in accepted),
+                    reason_code="bounded_provider_result",
+                    input_tokens=_provider_metric(raw, "input_tokens", "prompt_tokens"),
+                    output_tokens=_provider_metric(raw, "output_tokens", "completion_tokens"),
+                    runtime_milliseconds=max(
+                        elapsed_ms,
+                        _provider_metric(raw, "runtime_milliseconds", "elapsed_ms"),
+                    ),
+                    resource_cost_millionths=_provider_metric(
+                        raw, "resource_cost_millionths"
+                    ),
+                )
+            )
+        except OverflowError as exc:
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.BUDGET_REJECTED,
+                    request_id=request.request_id,
+                    reason_code="provider_budget_exceeded",
+                    detail=str(exc),
+                    runtime_milliseconds=elapsed_ms,
+                )
+            )
+        except Exception as exc:
+            outcomes.append(
+                CandidateProviderOutcome(
+                    provider_kind=kind,
+                    status=CandidateProviderStatus.MALFORMED,
+                    request_id=request.request_id,
+                    reason_code="malformed_provider_result",
+                    detail=f"{type(exc).__name__}: {exc}",
+                    runtime_milliseconds=elapsed_ms,
+                )
+            )
+
+    return AdaptiveCandidateRoutingResult(
+        request=request,
+        candidates=tuple(candidates),
+        outcomes=tuple(outcomes),
     )
