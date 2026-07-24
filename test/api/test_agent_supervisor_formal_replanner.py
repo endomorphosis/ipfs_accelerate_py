@@ -18,8 +18,10 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
     FormalPlanValidator,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
+    BOUNDED_REFINEMENT_EVIDENCE_ID,
     CODEX_REPAIR_PACKET_SCHEMA,
     REPAIR_TRANSITION_SCHEMA,
+    RESPONSIVE_REPLAN_DECISION_SCHEMA,
     CodexRepairPacket,
     FormalReplanner,
     RepairCandidateStatus,
@@ -28,6 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
     RepairTransition,
     ReplanLimits,
     ReplanStopReason,
+    ResponsiveReplanDecision,
 )
 
 
@@ -235,6 +238,21 @@ class _CountingValidator(FormalPlanValidator):
         return super().validate(*args, **kwargs)
 
 
+class _CountingReplanner(FormalReplanner):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.replan_calls = 0
+        self.generate_calls = 0
+
+    def replan(self, *args, **kwargs):
+        self.replan_calls += 1
+        return super().replan(*args, **kwargs)
+
+    def generate_repairs(self, *args, **kwargs):
+        self.generate_calls += 1
+        return super().generate_repairs(*args, **kwargs)
+
+
 def test_all_candidates_are_compiled_and_checked_before_one_taskboard_admission() -> None:
     source = _source()
     counterexample = _counterexample(source)
@@ -395,3 +413,92 @@ def test_prompt_budget_is_enforced_before_taskboard_callback() -> None:
     assert result.selected is not None
     assert result.selected.status is RepairCandidateStatus.ADMISSION_REJECTED
     assert "packet rejected" in result.selected.rejection_reasons[-1]
+
+
+def test_unchanged_counterexample_backs_off_before_compile_or_generation() -> None:
+    source = _source()
+    counterexample = _counterexample(source)
+    compiler = _CountingCompiler()
+    validator = _CountingValidator()
+    replanner = _CountingReplanner(compiler=compiler, validator=validator)
+
+    decision = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id=counterexample.semantic_id,
+        backoff_attempt=4,
+        base_backoff_seconds=2,
+        max_backoff_seconds=20,
+    )
+
+    assert isinstance(decision, ResponsiveReplanDecision)
+    assert decision.changed is False
+    assert decision.refined is False
+    assert decision.model_call_required is False
+    assert decision.result is None
+    assert (
+        decision.stop_reason
+        is ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
+    )
+    assert decision.backoff_attempt == 5
+    assert decision.backoff_seconds == 20
+    assert compiler.calls == validator.calls == 0
+    assert replanner.replan_calls == replanner.generate_calls == 0
+    payload = decision.to_dict()
+    assert payload["schema"] == RESPONSIVE_REPLAN_DECISION_SCHEMA
+    assert payload["evidence_ids"] == []
+    assert payload["requirement_ids"] == [
+        BOUNDED_REFINEMENT_EVIDENCE_ID
+    ]
+    assert BOUNDED_REFINEMENT_EVIDENCE_ID == (
+        "003778425160038348524906247302938706902"
+    )
+
+
+def test_changed_counterexample_delegates_once_and_preserves_frozen_root() -> None:
+    source = _source()
+    frozen_source = json.dumps(source, sort_keys=True)
+    counterexample = _counterexample(source)
+    compiler = _CountingCompiler()
+    replanner = _CountingReplanner(compiler=compiler)
+
+    decision = replanner.replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id="sha256:previous-counterexample",
+    )
+
+    assert decision.changed is True
+    assert decision.refined is True
+    assert decision.model_call_required is True
+    assert decision.evidence_ids == (BOUNDED_REFINEMENT_EVIDENCE_ID,)
+    assert decision.result is not None
+    assert decision.result.admitted
+    assert decision.stop_reason is ReplanStopReason.ADMITTED
+    assert decision.backoff_attempt == decision.backoff_seconds == 0
+    assert replanner.replan_calls == 1
+    assert replanner.generate_calls == 1
+    assert compiler.calls == 1 + len(decision.result.candidates)
+    assert json.dumps(source, sort_keys=True) == frozen_source
+    transition = decision.result.selected_transition
+    assert transition is not None
+    assert set(transition.goal_ids) == {"goal:cid:g12-s4"}
+
+
+def test_changed_but_unadmitted_replan_does_not_emit_objective_evidence() -> None:
+    source = _source()
+    counterexample = _counterexample(source)
+
+    decision = FormalReplanner().replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id="sha256:different",
+        candidate_repairs=(),
+    )
+
+    assert decision.changed is True
+    assert decision.refined is False
+    assert decision.result is not None
+    assert not decision.result.admitted
+    assert decision.evidence_ids == ()
+    assert decision.to_dict()["evidence_ids"] == []

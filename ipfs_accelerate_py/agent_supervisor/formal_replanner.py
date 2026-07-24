@@ -55,6 +55,13 @@ REPLAN_RESULT_SCHEMA: Final = (
 CODEX_REPAIR_PACKET_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/codex-repair-packet@1"
 )
+RESPONSIVE_REPLAN_DECISION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/responsive-replan-decision@1"
+)
+# Objective-heap evidence identity for one bounded changed-evidence refinement.
+BOUNDED_REFINEMENT_EVIDENCE_ID: Final = (
+    "003778425160038348524906247302938706902"
+)
 
 
 class ReplannerValidationError(ValueError):
@@ -98,6 +105,7 @@ class ReplanStopReason(str, Enum):
     CANDIDATE_BUDGET_EXHAUSTED = "candidate_budget_exhausted"
     COUNTEREXAMPLE_PLAN_MISMATCH = "counterexample_plan_mismatch"
     ORIGINAL_PLAN_INVALID = "original_plan_invalid"
+    UNCHANGED_COUNTEREXAMPLE_BACKOFF = "unchanged_counterexample_backoff"
 
 
 def _positive(value: Any, name: str, *, minimum: int = 1) -> int:
@@ -556,6 +564,108 @@ class ReplanResult:
         }
 
 
+@dataclass(frozen=True)
+class ResponsiveReplanDecision:
+    """Typed boundary decision for evidence-responsive refinement.
+
+    ``result`` is intentionally absent for an unchanged counterexample: no
+    source compilation, repair generation, validation, taskboard admission, or
+    model-facing packet construction occurred.  Changed evidence delegates to
+    exactly one normal :meth:`FormalReplanner.replan` pass and retains that
+    complete verified result.
+    """
+
+    counterexample_id: str
+    previous_counterexample_id: str
+    changed: bool
+    stop_reason: ReplanStopReason
+    result: ReplanResult | None
+    backoff_attempt: int
+    backoff_seconds: int
+
+    def __post_init__(self) -> None:
+        current = str(self.counterexample_id or "").strip()
+        previous = str(self.previous_counterexample_id or "").strip()
+        if not current:
+            raise ReplannerValidationError("counterexample_id is required")
+        object.__setattr__(self, "counterexample_id", current)
+        object.__setattr__(self, "previous_counterexample_id", previous)
+        if not isinstance(self.changed, bool):
+            raise ReplannerValidationError("changed must be boolean")
+        object.__setattr__(self, "stop_reason", ReplanStopReason(self.stop_reason))
+        if (
+            isinstance(self.backoff_attempt, bool)
+            or not isinstance(self.backoff_attempt, int)
+            or self.backoff_attempt < 0
+        ):
+            raise ReplannerValidationError("backoff_attempt must be non-negative")
+        if (
+            isinstance(self.backoff_seconds, bool)
+            or not isinstance(self.backoff_seconds, int)
+            or self.backoff_seconds < 0
+        ):
+            raise ReplannerValidationError("backoff_seconds must be non-negative")
+        if self.changed:
+            if self.result is None:
+                raise ReplannerValidationError(
+                    "changed evidence requires one replanning result"
+                )
+            if self.stop_reason is ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF:
+                raise ReplannerValidationError(
+                    "changed evidence cannot return unchanged backoff"
+                )
+            if self.backoff_seconds:
+                raise ReplannerValidationError(
+                    "changed evidence cannot request backoff"
+                )
+        elif (
+            self.result is not None
+            or self.stop_reason
+            is not ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
+            or self.backoff_seconds <= 0
+        ):
+            raise ReplannerValidationError(
+                "unchanged evidence requires a positive backoff and no replan result"
+            )
+
+    @property
+    def refined(self) -> bool:
+        return self.changed and self.result is not None and self.result.admitted
+
+    @property
+    def model_call_required(self) -> bool:
+        """Whether the admitted transition has a bounded Codex repair packet."""
+
+        return bool(
+            self.result is not None
+            and self.result.admitted
+            and self.result.codex_packet is not None
+        )
+
+    @property
+    def evidence_ids(self) -> tuple[str, ...]:
+        """Return objective evidence only after verified admission."""
+
+        return (BOUNDED_REFINEMENT_EVIDENCE_ID,) if self.refined else ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": RESPONSIVE_REPLAN_DECISION_SCHEMA,
+            "replanner_version": FORMAL_REPLANNER_VERSION,
+            "requirement_ids": [BOUNDED_REFINEMENT_EVIDENCE_ID],
+            "evidence_ids": list(self.evidence_ids),
+            "counterexample_id": self.counterexample_id,
+            "previous_counterexample_id": self.previous_counterexample_id,
+            "changed": self.changed,
+            "refined": self.refined,
+            "model_call_required": self.model_call_required,
+            "stop_reason": self.stop_reason.value,
+            "backoff_attempt": self.backoff_attempt,
+            "backoff_seconds": self.backoff_seconds,
+            "result": self.result.to_dict() if self.result is not None else None,
+        }
+
+
 _SECTION_ALIASES: Final[Mapping[str, str]] = {
     "objective": "objectives",
     "objective_record": "objectives",
@@ -761,6 +871,78 @@ class FormalReplanner:
             self._attempts.clear()
             return
         self._attempts.pop(str(counterexample_id), None)
+
+    def replan_if_changed(
+        self,
+        source: Mapping[str, Any],
+        counterexample: FormalCounterexample | Mapping[str, Any],
+        *,
+        previous_counterexample_id: str | None,
+        candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]]
+        | None = None,
+        prior_semantic_ids: Iterable[str] = (),
+        retry_attempt: int | None = None,
+        refinement_depth: int = 0,
+        backoff_attempt: int = 0,
+        base_backoff_seconds: int = 1,
+        max_backoff_seconds: int = 300,
+    ) -> ResponsiveReplanDecision:
+        """Replan changed evidence once; back off unchanged evidence pre-compile.
+
+        The caller persists the previous semantic counterexample identity.  A
+        matching identity is a content-level unchanged observation regardless
+        of incidental payload ordering and therefore needs neither a compiler
+        pass nor another model-facing request.
+        """
+
+        value = _counterexample(counterexample)
+        previous = str(previous_counterexample_id or "").strip()
+        for name, item, minimum in (
+            ("backoff_attempt", backoff_attempt, 0),
+            ("base_backoff_seconds", base_backoff_seconds, 1),
+            ("max_backoff_seconds", max_backoff_seconds, 1),
+        ):
+            if isinstance(item, bool) or not isinstance(item, int) or item < minimum:
+                raise ReplannerValidationError(
+                    f"{name} must be an integer of at least {minimum}"
+                )
+        if base_backoff_seconds > max_backoff_seconds:
+            raise ReplannerValidationError(
+                "base_backoff_seconds cannot exceed max_backoff_seconds"
+            )
+        if previous and previous == value.semantic_id:
+            exponent = min(backoff_attempt, 30)
+            seconds = min(
+                max_backoff_seconds,
+                base_backoff_seconds * (2 ** exponent),
+            )
+            return ResponsiveReplanDecision(
+                counterexample_id=value.semantic_id,
+                previous_counterexample_id=previous,
+                changed=False,
+                stop_reason=ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF,
+                result=None,
+                backoff_attempt=backoff_attempt + 1,
+                backoff_seconds=seconds,
+            )
+
+        result = self.replan(
+            source,
+            value,
+            candidate_repairs=candidate_repairs,
+            prior_semantic_ids=prior_semantic_ids,
+            retry_attempt=retry_attempt,
+            refinement_depth=refinement_depth,
+        )
+        return ResponsiveReplanDecision(
+            counterexample_id=value.semantic_id,
+            previous_counterexample_id=previous,
+            changed=True,
+            stop_reason=result.stop_reason,
+            result=result,
+            backoff_attempt=0,
+            backoff_seconds=0,
+        )
 
     def generate_repairs(
         self,
@@ -1556,12 +1738,48 @@ def generate_plan_repairs(
 replan_from_counterexample = generate_plan_repairs
 
 
+def replan_if_changed(
+    source: Mapping[str, Any],
+    counterexample: FormalCounterexample | Mapping[str, Any],
+    *,
+    previous_counterexample_id: str | None,
+    limits: ReplanLimits | Mapping[str, Any] | None = None,
+    admission_callback: Callable[[RepairTransition], bool | None] | None = None,
+    candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]] | None = None,
+    prior_semantic_ids: Iterable[str] = (),
+    retry_attempt: int | None = None,
+    refinement_depth: int = 0,
+    backoff_attempt: int = 0,
+    base_backoff_seconds: int = 1,
+    max_backoff_seconds: int = 300,
+) -> ResponsiveReplanDecision:
+    """Stateless convenience entry point for responsive bounded replanning."""
+
+    return FormalReplanner(
+        limits=limits,
+        admission_callback=admission_callback,
+    ).replan_if_changed(
+        source,
+        counterexample,
+        previous_counterexample_id=previous_counterexample_id,
+        candidate_repairs=candidate_repairs,
+        prior_semantic_ids=prior_semantic_ids,
+        retry_attempt=retry_attempt,
+        refinement_depth=refinement_depth,
+        backoff_attempt=backoff_attempt,
+        base_backoff_seconds=base_backoff_seconds,
+        max_backoff_seconds=max_backoff_seconds,
+    )
+
+
 __all__ = [
+    "BOUNDED_REFINEMENT_EVIDENCE_ID",
     "CODEX_REPAIR_PACKET_SCHEMA",
     "FORMAL_REPLANNER_VERSION",
     "REPAIR_CANDIDATE_SCHEMA",
     "REPAIR_TRANSITION_SCHEMA",
     "REPLAN_RESULT_SCHEMA",
+    "RESPONSIVE_REPLAN_DECISION_SCHEMA",
     "CodexRepairPacket",
     "FormalPlanReplanner",
     "FormalReplanner",
@@ -1578,6 +1796,8 @@ __all__ = [
     "ReplanResult",
     "ReplanStopReason",
     "ReplannerValidationError",
+    "ResponsiveReplanDecision",
     "generate_plan_repairs",
+    "replan_if_changed",
     "replan_from_counterexample",
 ]

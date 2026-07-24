@@ -78,6 +78,8 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Goal: Select feasible low-cost plans against frozen goals and refine goals promptly from typed counterexamples, stale evidence, repeated failures, and capability changes.
 - Evidence: 173075880069453142914839090434430341799, 003778425160038348524906247302938706902, 312819945606360295782005228058369235550
 - Evidence criteria: 173075880069453142914839090434430341799=a cheaper authority-violating plan is rejected; 003778425160038348524906247302938706902=a new counterexample triggers one bounded refinement; 312819945606360295782005228058369235550=an unchanged failure backs off without another model call
+- Evidence producer bindings: 173075880069453142914839090434430341799=adaptive_planner.AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID and its content-addressed AdaptivePlanSelectionReceipt record the requirement when an authority-safe branch defeats a cheaper authority-violating branch, as asserted by test/api/test_agent_supervisor_adaptive_planner.py; 003778425160038348524906247302938706902=adaptive_goal_refiner.NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID and its admission receipt record the requirement when one changed counterexample produces exactly one root-preserving bounded refinement, as asserted by test/api/test_agent_supervisor_adaptive_goal_refiner.py; 312819945606360295782005228058369235550=adaptive_goal_refiner.UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID and its backoff receipt record the requirement when unchanged failure evidence produces no second model call, as asserted by test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Evidence source policy: Producer bindings are routing metadata, not completion evidence. A requirement is covered only by a fresh passing typed receipt from the bound code/test producer with exact requirement ID, repository tree, policy, inputs, result, and artifact digest; this heap, todo/task prose, and generated discovery reports remain non-qualifying sources.
 - Outputs: ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_planner.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py
 - Validation: python -m pytest test/api/test_agent_supervisor_adaptive_planner.py test/api/test_agent_supervisor_adaptive_goal_refiner.py -q
 - Acceptance: Every plan is evaluated for acceptance coverage, assumptions, semantics, dependencies, conflicts, validation/proof feasibility, novelty, and resource/token cost; hard safety failures cannot be traded away; unchanged failures back off; changed evidence can trigger a bounded verified refinement in the next cycle without mutating the frozen root.
@@ -204,3 +206,49 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep end-to-end measurement separate from public export and documentation changes until promotion passes.
 - Embedding query: agent supervisor paired benchmark rollout shadow assist production smoke exports documentation safety efficiency
 - AST query: evaluate_goal_rollout_promotion agent_supervisor __getattr__ register_native_agent_supervisor_tools
+
+## ASI-G097 Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
+
+- Status: active
+- Parent: ASI-G030
+- Fib priority: 5000
+- Track: planning
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement/planning
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `173075880069453142914839090434430341799`.
+- Evidence: 173075880069453142914839090434430341799
+- Evidence criterion: A cheaper authority-violating plan is rejected in favor of an authority-safe feasible plan, and the selection emits a typed receipt carrying the exact requirement ID.
+- Evidence producer: ipfs_accelerate_py/agent_supervisor/adaptive_planner.py AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID and content-addressed AdaptivePlanSelectionReceipt with producer kind `adaptive_plan_selection`, exercised by test/api/test_agent_supervisor_adaptive_planner.py
+- Evidence source policy: This child goal and its discovery report do not satisfy their own evidence requirement; only a fresh passing receipt from the bound producer/test on the current tree qualifies.
+- Outputs: ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_planner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_planner.py -q
+- Acceptance: Deterministic evaluation covers acceptance evidence, assumptions, semantics, dependencies, conflicts, validation and proof feasibility, novelty, and bounded resource/token cost; authority is a non-compensable gate; an authority-safe branch defeats every cheaper authority-violating branch; and the selected-plan receipt binds the exact requirement ID, frozen goal/tree/policy identities, candidate evaluations, result, and digest.
+- Refinement depth: 2
+- Embedding query: 173075880069453142914839090434430341799
+- AST query: 173075880069453142914839090434430341799
+- Parallel lane: agent-supervisor/self-improvement/planning
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `173075880069453142914839090434430341799` with a narrow, verifiable change.
+
+## ASI-G098 Prove 003778425160038348524906247302938706902 for Evidence-aware planning and responsive goal refinement
+
+- Status: active
+- Parent: ASI-G030
+- Fib priority: 5001
+- Track: planning
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement/planning
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `003778425160038348524906247302938706902`.
+- Evidence: 003778425160038348524906247302938706902
+- Evidence criterion: One new typed counterexample triggers exactly one bounded verified root-preserving refinement; replaying unchanged failure evidence is suppressed by deterministic backoff without another model call.
+- Evidence producer: ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID and UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID admission/backoff receipts, exercised by test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Evidence source policy: This child goal and its discovery report do not satisfy their own evidence requirement; only a fresh passing receipt from the bound producer/test on the current tree qualifies.
+- Outputs: ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_goal_refiner.py -q
+- Acceptance: A changed typed counterexample can generate and admit at most one bounded refinement in the next cycle; the frozen root is never mutated; admission is policy and verification gated; unchanged evidence is idempotently backed off without a second provider call; and receipts bind the exact requirement IDs, frozen root/tree/policy identities, evidence fingerprint, result, plan, and digest.
+- Refinement depth: 2
+- Embedding query: 003778425160038348524906247302938706902
+- AST query: 003778425160038348524906247302938706902
+- Parallel lane: agent-supervisor/self-improvement/planning
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `003778425160038348524906247302938706902` with a narrow, verifiable change.
