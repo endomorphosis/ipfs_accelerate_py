@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.control_cli import (
 from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
     CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
+    AuthorizationBindingError,
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlBounds,
@@ -27,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     EffectKind,
     ExpectedEffect,
     IdempotencyKey,
+    MissingIdempotencyError,
     Operation,
     OperationAuthority,
     OperationRequest,
@@ -168,8 +170,19 @@ def _matrix_requests(
     )
 
 
-def _service(repo_root: Path, state_root: Path) -> SupervisorControlService:
+def _service(
+    repo_root: Path,
+    state_root: Path,
+    *,
+    mutation_calls: list[str] | None = None,
+) -> SupervisorControlService:
     def operation_handler(request: OperationRequest) -> BackendResponse:
+        if (
+            mutation_calls is not None
+            and request.operation.mutating
+            and not request.dry_run
+        ):
+            mutation_calls.append(request.request_id)
         return BackendResponse(
             data={
                 "state": "healthy",
@@ -444,6 +457,48 @@ async def test_named_tool_rejects_a_different_request_operation(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("removed_fields", "error_type"),
+    (
+        (("authorization",), AuthorizationBindingError),
+        (("idempotency",), MissingIdempotencyError),
+        (("lease_id", "fencing_epoch"), AuthorizationBindingError),
+    ),
+)
+async def test_mcp_rejects_malformed_real_mutation_before_service_resolution(
+    tmp_path: Path,
+    removed_fields: tuple[str, ...],
+    error_type: type[Exception],
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    request = _matrix_requests(repo_root, state_root)[-1][1]
+    payload = request.to_record()
+    payload.pop("content_id")
+    for field in removed_fields:
+        payload.pop(field)
+    factory_calls = 0
+
+    def forbidden_factory(_request: OperationRequest) -> SupervisorControlService:
+        nonlocal factory_calls
+        factory_calls += 1
+        raise AssertionError("malformed mutation resolved a control service")
+
+    configure_agent_supervisor_control(service_factory=forbidden_factory)
+    resolutions_before = agent_supervisor_service_resolution_count()
+
+    with pytest.raises(error_type):
+        await AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.PAUSE](
+            request=payload
+        )
+
+    assert agent_supervisor_service_resolution_count() == resolutions_before
+    assert factory_calls == 0
+
+
+@pytest.mark.asyncio
 async def test_python_cli_mcp_matrix_emits_typed_parity_evidence(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -452,7 +507,12 @@ async def test_python_cli_mcp_matrix_emits_typed_parity_evidence(
     state_root = tmp_path / "state"
     repo_root.mkdir()
     state_root.mkdir()
-    service = _service(repo_root, state_root)
+    mutation_calls: list[str] = []
+    service = _service(
+        repo_root,
+        state_root,
+        mutation_calls=mutation_calls,
+    )
     configure_agent_supervisor_control(service=service)
     cases = []
     exit_codes = []
@@ -502,6 +562,12 @@ async def test_python_cli_mcp_matrix_emits_typed_parity_evidence(
     )
 
     assert exit_codes == [0, 0, 4, 0]
+    mutation_request = next(
+        case.request
+        for case in cases
+        if case.scenario == "independent_mutation_success"
+    )
+    assert mutation_calls == [mutation_request.request_id]
     assert evidence.proved_requirement_ids == (
         CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
     )

@@ -461,8 +461,11 @@ def test_mutation_is_authorized_fenced_audited_and_idempotent(
     )
     request = _mutation_request(repo_root, state_root)
 
+    before = service.mutation_runtime_state()
     first = service.pause(request)
+    after_first = service.mutation_runtime_state()
     replay = service.execute(request)
+    after_replay = service.mutation_runtime_state()
 
     assert first is replay
     assert first.status is OperationStatus.SUCCEEDED
@@ -472,6 +475,13 @@ def test_mutation_is_authorized_fenced_audited_and_idempotent(
     assert first.idempotency_key == "request:one"
     assert calls == [request.request_id]
     assert leases == [("lease:7", 7)]
+    assert before.dispatch_count == 0
+    assert before.audit_receipt_count == 0
+    assert after_first.dispatch_count == 1
+    assert after_first.last_dispatch_request_id == request.request_id
+    assert after_first.audit_receipt_count == 1
+    assert after_first.last_audit_receipt_id == first.audit_receipt_id
+    assert after_replay == after_first
 
 
 def test_same_idempotency_key_with_different_payload_conflicts(

@@ -13,12 +13,16 @@ from ipfs_accelerate_py.agent_supervisor.control_cli import (
     agent_cli_discovery_manifest,
 )
 from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+    AuthorizationDecision,
+    AuthorizationVerdict,
     ControlBounds,
     ControlDiscoveryObservation,
     ControlSurface,
     EffectKind,
     ExpectedEffect,
+    IdempotencyKey,
     Operation,
+    OperationAuthority,
     OperationRequest,
     OperationResult,
 )
@@ -85,6 +89,51 @@ def _service(repo_root: Path, state_root: Path) -> SupervisorControlService:
         },
         state_store=InMemoryControlStateStore(),
         clock_ms=lambda: 1_000,
+    )
+
+
+def _authorized_mutation_request(
+    repo_root: Path,
+    state_root: Path,
+) -> OperationRequest:
+    binding = _binding(repo_root, state_root)
+    effect = ExpectedEffect(
+        effect_id="pause:fixture",
+        kind=EffectKind.LIFECYCLE_TRANSITION,
+        resource="supervisor:fixture",
+        paths=("supervisor.json",),
+        description="Pause the fixture supervisor",
+    )
+    return OperationRequest(
+        operation=Operation.PAUSE,
+        **binding,
+        parameters={
+            "target_id": "supervisor:fixture",
+            "reason": "guard validation",
+            "requested_state": "paused",
+        },
+        expected_effects=(effect,),
+        idempotency=IdempotencyKey(
+            key="cli:pause:guard:1",
+            operation=Operation.PAUSE,
+            caller=binding["caller"],
+            repository_id=binding["repository_id"],
+            objective_id=binding["objective_id"],
+        ),
+        authorization=AuthorizationDecision(
+            verdict=AuthorizationVerdict.PERMIT,
+            operation=Operation.PAUSE,
+            granted_authority=OperationAuthority.MUTATION,
+            **binding,
+            lease_id="lease:cli-guard",
+            fencing_epoch=7,
+            authorized_effect_ids=(effect.effect_id,),
+            grant_ids=("grant:cli-guard",),
+            evaluated_at_ms=500,
+            expires_at_ms=1_500,
+        ),
+        lease_id="lease:cli-guard",
+        fencing_epoch=7,
     )
 
 
@@ -237,6 +286,56 @@ def test_cli_rejects_ambiguous_roots_and_non_dry_run_mutation(
 
     assert code == AGENT_CLI_EXIT_INVALID
     assert "real mutations require a complete" in unsafe.err
+
+
+@pytest.mark.parametrize(
+    ("removed_fields", "message_fragment"),
+    (
+        (("authorization",), "authorization"),
+        (("idempotency",), "idempotency"),
+        (("lease_id", "fencing_epoch"), "lease_id and fencing_epoch"),
+    ),
+)
+def test_cli_rejects_malformed_real_mutation_before_service_resolution(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    removed_fields: tuple[str, ...],
+    message_fragment: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    request = _authorized_mutation_request(repo_root, state_root)
+    payload = request.to_record()
+    payload.pop("content_id")
+    for field in removed_fields:
+        payload.pop(field)
+    factory_calls = 0
+
+    def forbidden_factory(_request: OperationRequest) -> SupervisorControlService:
+        nonlocal factory_calls
+        factory_calls += 1
+        raise AssertionError("malformed mutation resolved a control service")
+
+    code = cli.main(
+        [
+            "agent",
+            "pause",
+            "--request-json",
+            json.dumps(payload),
+            "--output-json",
+        ],
+        agent_service_factory=forbidden_factory,
+    )
+    captured = capsys.readouterr()
+
+    assert code == AGENT_CLI_EXIT_INVALID
+    assert captured.out == ""
+    error = json.loads(captured.err)
+    assert error["status"] == "invalid_request"
+    assert message_fragment in error["message"]
+    assert factory_calls == 0
 
 
 def test_cli_watch_is_bounded_and_emits_one_canonical_record_per_line(
