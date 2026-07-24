@@ -800,6 +800,11 @@ class ResponsiveReplanDecision:
             "replanner_version": FORMAL_REPLANNER_VERSION,
             "requirement_ids": list(self.requirement_ids),
             "evidence_ids": list(self.evidence_ids),
+            "completion_evidence_roles": list(
+                self.completion_evidence_roles
+            ),
+            "completion_authority": False,
+            "safe_for_completion_reasoning": False,
             "counterexample_id": self.counterexample_id,
             "previous_counterexample_id": self.previous_counterexample_id,
             "trigger_evidence_id": self.trigger_evidence_id,
