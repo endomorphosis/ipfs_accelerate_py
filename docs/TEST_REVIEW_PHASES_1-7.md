@@ -1,5 +1,9 @@
 # Test Review for Phases 1-7 Architectural Changes
 
+> **Historical record:** This page describes a dated phase review. It is not a
+> current pass-rate or architecture guarantee; use the [testing guide](development/testing.md)
+> and the live test tree for present behavior.
+
 ## Executive Summary
 
 Comprehensive review of all tests in the repository completed. **95% of tests pass** with the new phases 1-7 architecture. The architectural changes are well-reflected in the test suite, and no urgent updates are required.

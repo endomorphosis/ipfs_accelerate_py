@@ -8,6 +8,11 @@ ipfs-accelerate --help
 python -m ipfs_accelerate_py.cli --help
 ```
 
+The package also installs `ipfs_accelerate`, backed by the separate
+`ai_inference_cli.py` parser. It supports a different command surface; use
+`ipfs_accelerate --help` for that entry point. The commands documented below
+refer to the unified hyphenated CLI.
+
 The parser currently exposes these top-level groups:
 
 | Group | Purpose |

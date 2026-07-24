@@ -1,5 +1,9 @@
 # Final Comprehensive Test Review - Phases 1-7
 
+> **Historical record:** The test totals and phase results below are retained
+> for provenance and are not a current health report. Run the commands in the
+> [testing guide](development/testing.md) against the current checkout.
+
 ## Executive Summary
 
 **Date**: 2026-02-03

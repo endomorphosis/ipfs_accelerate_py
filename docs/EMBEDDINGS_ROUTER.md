@@ -1,11 +1,19 @@
 # Embeddings Router for IPFS Accelerate
 
+> **Current-state note:** Provider availability is capability- and
+> configuration-dependent. The live provider registry is defined in
+> `ipfs_accelerate_py/embeddings_router.py`; this page documents the public
+> helper shape, not a guarantee that every remote provider or local model is
+> installed.
+
 The Embeddings Router provides a unified interface for generating text embeddings across multiple providers, with built-in caching, automatic fallback, and integration with the existing IPFS Accelerate endpoint multiplexing infrastructure.
 
 ## Features
 
 - **Unified API**: Single `embed_texts()` function works with all providers
-- **Multiple Providers**: OpenRouter, Gemini CLI, HuggingFace (sentence-transformers/transformers), Backend Manager
+- **Multiple Providers**: OpenRouter, xAI, Meta AI, Gemini CLI, HuggingFace
+  (sentence-transformers/transformers), Backend Manager, and registered custom
+  providers when configured
 - **Automatic Fallback**: Tries multiple providers in order of availability
 - **Response Caching**: CID-based or SHA256-based caching for deterministic results
 - **Batch Processing**: Efficient batched embedding generation with per-item caching

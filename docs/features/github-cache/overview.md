@@ -1,5 +1,10 @@
 # GitHub CLI P2P Caching Guide
 
+> **Current-state note:** GitHub API caching is optional. Local caching is
+> disabled or enabled through the cache object/configuration, while P2P sharing
+> is opt-in and defaults to disabled. GitHub credentials, encryption support,
+> libp2p/IPFS services, and peer policy are separate capabilities.
+
 ## Overview
 
 This repository uses an advanced GitHub CLI caching system with P2P (peer-to-peer) sharing capabilities powered by libp2p and IPFS. This system dramatically reduces GitHub API calls, prevents rate limiting, and speeds up development workflows by sharing cached responses across developers and CI runners.
@@ -50,7 +55,7 @@ This repository uses an advanced GitHub CLI caching system with P2P (peer-to-pee
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CACHE_ENABLE_P2P` | `true` | Enable P2P cache sharing |
+| `CACHE_ENABLE_P2P` | `false` | Enable P2P cache sharing |
 | `CACHE_LISTEN_PORT` | `9100` | P2P listen port |
 | `CACHE_DEFAULT_TTL` | `300` | Cache TTL in seconds (5 minutes) |
 | `CACHE_DIR` | `~/.cache/github_cli` | Cache directory path |
@@ -383,22 +388,23 @@ python scripts/utils/gh_api_cached.py user
 
 ## References
 
-- [GitHub CLI Cache Implementation](ipfs_accelerate_py/github_cli/cache.py)
-- [Cache Wrapper Script](scripts/utils/gh_api_cached.py)
-- [VSCode Cache Wrapper](scripts/gh_cached_vscode.py)
-- [P2P Verification Script](scripts/validation/verify_p2p_cache.py)
-- [Cache Monitoring Script](scripts/validation/monitor_p2p_cache.py)
+- [GitHub CLI Cache Implementation](../../../ipfs_accelerate_py/github_cli/cache.py)
+- [Cache Wrapper Script](../../../scripts/utils/gh_api_cached.py)
+- [VSCode Cache Wrapper](../../../scripts/gh_cached_vscode.py)
+- [P2P Verification Script](../../../scripts/validation/verify_p2p_cache.py)
+- [Cache Monitoring Script](../../../scripts/validation/monitor_p2p_cache.py)
 
 ## Support
 
 For issues or questions:
 1. Check this documentation
-2. Review [cache.py source code](ipfs_accelerate_py/github_cli/cache.py)
+2. Review [cache.py source code](../../../ipfs_accelerate_py/github_cli/cache.py)
 3. Run verification: `python scripts/validation/verify_p2p_cache.py`
 4. Create an issue with the `github-cli-cache` label
 
 ---
 
-**Last Updated**: January 30, 2026  
-**Version**: 1.0  
-**Status**: Production Ready ✅
+The source module and its tests are authoritative for cache behavior and
+defaults. Validate a local installation with
+`python scripts/validation/verify_p2p_cache.py`; this does not prove that a
+multi-peer deployment is correctly secured or reachable.

@@ -1,5 +1,9 @@
 # Unified HuggingFace Model Server - Implementation Summary
 
+> **Historical implementation record:** This page records an earlier phase
+> delivery. The current server boundary and supported endpoints are maintained
+> in [README.md](README.md) and `ipfs_accelerate_py/hf_model_server/`.
+
 ## Executive Summary
 
 Successfully implemented the **Unified HuggingFace Model Server** - a production-ready server with OpenAI-compatible API for serving HuggingFace models across multiple hardware platforms.

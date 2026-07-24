@@ -1,5 +1,9 @@
 # HuggingFace Model Server - Executive Summary
 
+> **Historical review record:** This summary captures an earlier review and
+> proposed roadmap. The current operational reference is
+> [README.md](README.md), which is checked against the live server package.
+
 > **Quick Reference Guide** for the comprehensive review in [`review.md`](./review.md)
 
 ---

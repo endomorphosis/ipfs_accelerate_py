@@ -1,5 +1,10 @@
 # Phase 5 Completion - Final Summary
 
+> **Historical record:** This page preserves a phase-completion snapshot.
+> Some commands and counts below describe the implementation at that time;
+> consult [Documentation Current State](development/DOCUMENTATION_CURRENT_STATE.md)
+> and the live package before using them.
+
 ## Mission Accomplished ✅
 
 Successfully completed the remaining work from Phase 5 as outlined in PHASES_5-7_COMPLETION_SUMMARY.md. All requirements have been met and the unified architecture is now complete.

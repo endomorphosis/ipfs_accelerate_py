@@ -1,5 +1,7 @@
 # Auto-Healing Configuration for IPFS Accelerate
 
+> **Current-state note:** Auto-healing is opt-in error reporting and proposal generation. It does not bypass deterministic validation, repository policy, or the agent-supervisor merge gates.
+
 This document describes the auto-healing error handling features in IPFS Accelerate.
 
 ## Overview
@@ -70,7 +72,7 @@ Body:
 # Auto-Generated Error Report
 
 **Error Type:** `ValueError`
-**Command:** `ipfs-accelerate inference generate --model bert-base`
+**Command:** `ipfs-accelerate mcp status --host 127.0.0.1 --port 9000`
 **Timestamp:** 2024-01-31T12:34:56.789Z
 
 ## Error Message
@@ -152,8 +154,8 @@ Error aggregation settings:
 # Monitor production deployments
 IPFS_AUTO_ISSUE=true ipfs-accelerate mcp start --dashboard
 
-# Track inference errors
-IPFS_AUTO_ISSUE=true ipfs-accelerate inference generate --model gpt-4
+# Track an MCP service error
+IPFS_AUTO_ISSUE=true ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
 ```
 
 ### Full Auto-Healing Pipeline
@@ -303,7 +305,7 @@ For issues or questions:
 
 ## See Also
 
-- [ErrorAggregator Documentation](../ipfs_accelerate_py/github_cli/error_aggregator.py)
-- [CLI Documentation](../ipfs_accelerate_py/cli.py)
-- [GitHub CLI Integration](../ipfs_accelerate_py/github_cli/)
-- [Copilot SDK Integration](../ipfs_accelerate_py/copilot_sdk/)
+- [ErrorAggregator Documentation](../../../ipfs_accelerate_py/github_cli/error_aggregator.py)
+- [CLI Documentation](../../../ipfs_accelerate_py/cli.py)
+- [GitHub CLI Integration](../../../ipfs_accelerate_py/github_cli/)
+- [Copilot SDK Integration](../../../ipfs_accelerate_py/copilot_sdk/)

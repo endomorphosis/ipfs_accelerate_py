@@ -1,5 +1,10 @@
 # Final Project Summary: Unified HuggingFace Model Server
 
+> **Historical implementation record:** The completion claims, file counts,
+> deployment artifacts, and performance figures below describe an earlier
+> project snapshot. Use the maintained [HF model server guide](README.md) and
+> the live package/tests for current routes, configuration, and readiness.
+
 ## 🎉 Project Complete: 100% Implementation Achieved
 
 ### Executive Summary

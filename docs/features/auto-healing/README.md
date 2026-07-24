@@ -1,5 +1,7 @@
 # Auto-Healing Error Handler Implementation
 
+> **Current-state note:** Auto-healing is opt-in error reporting and proposal generation. It does not bypass deterministic validation, repository policy, or the agent-supervisor merge gates.
+
 ## Summary
 
 This implementation adds a comprehensive auto-healing error handling system to the `ipfs-accelerate` CLI tool. When errors occur, the system can automatically:
@@ -111,7 +113,7 @@ Created unit tests covering:
 - Configuration parsing
 - Integration scenarios
 
-### 7. Test Runner (`test_auto_healing.py`)
+### 7. Test Runner (`test/test_auto_healing.py`)
 
 Created a comprehensive test runner that validates:
 - Module imports
@@ -120,7 +122,11 @@ Created a comprehensive test runner that validates:
 - File structure
 - Optional integrations (GitHub CLI, Copilot SDK)
 
-**Test Results:** 11/12 tests pass (1 requires optional dependency)
+Run the current contract test with:
+
+```bash
+python -m pytest test/test_error_handler.py -q
+```
 
 ## How It Works
 
@@ -158,7 +164,7 @@ Title: [Auto-Generated Error] ValueError: Invalid model configuration
 # Auto-Generated Error Report
 
 **Error Type:** `ValueError`
-**Command:** `ipfs-accelerate inference generate --model bert-base`
+**Command:** `ipfs-accelerate mcp status --host 127.0.0.1 --port 9000`
 **Timestamp:** 2024-01-31T12:34:56.789Z
 
 ## Error Message
@@ -204,7 +210,7 @@ Labels: auto-generated, bug, priority (if high/critical)
 5. **`test/test_error_handler.py`** (260 lines)
    - Unit tests
    
-6. **`test_auto_healing.py`** (240 lines)
+6. **`test/test_auto_healing.py`** (240 lines)
    - Test runner
 
 ### Modified Files
@@ -222,18 +228,7 @@ Labels: auto-generated, bug, priority (if high/critical)
 ### Run the Test Suite
 
 ```bash
-cd /home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py
-python3 test_auto_healing.py
-```
-
-**Expected Output:**
-```
-============================================================
-Auto-Healing System Test Runner
-============================================================
-...
-Tests Passed: 11
-Tests Failed: 1 (optional dependency)
+python -m pytest test/test_error_handler.py -q
 ```
 
 ### Run the Demo
@@ -444,21 +439,21 @@ When `IPFS_AUTO_PR=true` (in addition to auto-issue):
 
 - [Configuration Guide](AUTO_HEALING_CONFIGURATION.md) - Detailed configuration
 - [Implementation Summary](../../development_history/COMPLETE_AUTO_HEALING_SUMMARY.md) - Technical details
-- [Demo Example](examples/auto_healing_demo.py) - Working example
-- [Test Suite](test/test_error_handler.py) - Unit tests
+- [Demo Example](../../../examples/auto_healing_demo.py) - Working example
+- [Test Suite](../../../test/test_error_handler.py) - Unit tests
 
 ## Support
 
 For questions or issues:
 
 1. Check the [Configuration Guide](AUTO_HEALING_CONFIGURATION.md)
-2. Run the [Demo](examples/auto_healing_demo.py)
-3. Run the [Test Suite](test_auto_healing.py)
+2. Run the [Demo](../../../examples/auto_healing_demo.py)
+3. Run the [Test Suite](../../../test/test_error_handler.py)
 4. Create a GitHub issue (which might auto-create itself! 😄)
 
 ---
 
-**Implementation Status:** ✅ Complete and Tested
-**Test Coverage:** 11/12 tests passing
-**Documentation:** Complete
-**Ready for:** Testing with real errors in production
+**Implementation Status:** Opt-in and subject to repository policy
+**Test Coverage:** Run `python -m pytest test/test_error_handler.py -q` in the current checkout
+**Documentation:** Configuration and implementation references are maintained separately
+**Production use:** Requires explicit GitHub credentials, permissions, and human review

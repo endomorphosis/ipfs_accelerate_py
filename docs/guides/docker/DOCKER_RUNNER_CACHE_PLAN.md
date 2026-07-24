@@ -1,5 +1,10 @@
 # Docker Runner Cache Connectivity - Implementation Plan
 
+> **Historical/experimental plan:** This page records an earlier Docker runner
+> cache investigation. The referenced helper scripts and workflow examples are
+> not all present in the current checkout. Use the [current Docker/cache index](../infrastructure/README_DOCKER_CACHE_INDEX.md)
+> and live source/tests before running any command here.
+
 ## Problem Statement
 
 GitHub Actions runners running in Docker containers cannot connect to the P2P cache managed by the ipfs_accelerate_py package. This prevents cache sharing between runners and the MCP server, leading to redundant API calls and potential rate limiting.
@@ -458,8 +463,8 @@ class MultiBackendCache:
 - [Previous Work: GITHUB_API_CACHE.md](./GITHUB_API_CACHE.md)
 - [Previous Work: GITHUB_CACHE_COMPREHENSIVE.md](./GITHUB_CACHE_COMPREHENSIVE.md)
 - [Previous Work: GITHUB_ACTIONS_P2P_SETUP.md](./GITHUB_ACTIONS_P2P_SETUP.md)
-- [Test Suite: test_github_cache.py](./test_github_cache.py)
-- [Test Suite: test_github_actions_p2p_cache.py](./test_github_actions_p2p_cache.py)
+- [Test Suite: test_github_cache.py](../../../test/test_github_cache.py)
+- [Test Suite: test_github_actions_p2p_cache.py](../../../test/test_github_actions_p2p_cache.py)
 - [libp2p Documentation](https://docs.libp2p.io/)
 - [IPFS Documentation](https://docs.ipfs.io/)
 - [Docker Networking](https://docs.docker.com/network/)

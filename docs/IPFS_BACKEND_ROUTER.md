@@ -1,5 +1,9 @@
 # IPFS Backend Router Documentation
 
+> **Current-state note:** IPFS storage is optional and capability-driven. The
+> fallback names below describe the router's selection strategy, not a promise
+> that `ipfs_kit_py`, HuggingFace caches, or Kubo are installed or reachable.
+
 ## Overview
 
 The IPFS Backend Router provides a flexible, pluggable backend system for IPFS operations within `ipfs_accelerate_py`. It implements a preference-based fallback strategy:
@@ -34,10 +38,12 @@ The router is included in `ipfs_accelerate_py`. For full functionality:
 
 ```bash
 # Basic installation (includes HF Cache and Kubo backends)
-pip install ipfs_accelerate_py
+python -m pip install ipfs-accelerate-py
 
-# With ipfs_kit_py for distributed storage (recommended)
-pip install ipfs_accelerate_py[ipfs_kit]
+# Install the package's relevant base/feature extras as needed. `ipfs_kit_py`
+# is an external dependency; it is not a declared package extra in this
+# checkout. Install it separately according to the version you intend to use.
+python -m pip install -e ".[minimal]"
 
 # Ensure Kubo (go-ipfs) is installed for CLI backend
 # https://docs.ipfs.tech/install/command-line/

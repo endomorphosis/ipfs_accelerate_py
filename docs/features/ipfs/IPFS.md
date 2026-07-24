@@ -1,5 +1,10 @@
 # IPFS Accelerate Python - IPFS Integration Guide
 
+> **Scope:** IPFS support is an optional integration. The core package does not
+> require a local IPFS daemon, and examples in this guide may require optional
+> dependencies or external services. Verify available capabilities and current
+> entry points before deploying them.
+
 This guide covers the IPFS (InterPlanetary File System) integration features of the IPFS Accelerate Python framework.
 
 ## Table of Contents
@@ -1165,7 +1170,7 @@ async def robust_ipfs_example():
 3. **Fault Tolerance**: Implement robust error recovery and fallback strategies
 4. **Monitoring**: Monitor network performance and adjust configurations
 
-For more IPFS integration examples, see the [examples directory](../examples/) and related documentation.
+For more IPFS integration examples, see the [examples directory](../../../examples/) and related documentation.
 
 ## Related Documentation
 

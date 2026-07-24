@@ -1,5 +1,10 @@
 # Docker Execution in IPFS Accelerate MCP
 
+> **Current-state note:** Docker execution is an optional MCP integration and
+> an execution boundary, not a default package capability. Validate the Docker
+> daemon, image provenance, network policy, mounts, credentials, and resource
+> limits before enabling it.
+
 ## Overview
 
 The Docker execution feature allows the IPFS Accelerate MCP server to execute arbitrary code in Docker containers. This enables running code from Docker Hub, building and executing GitHub repositories, and running custom payloads in isolated environments.
@@ -434,9 +439,9 @@ python -m unittest ipfs_accelerate_py.mcp.tests.test_docker_tools.TestDockerMCPT
 
 ### Test Coverage
 
-- **Core Module**: 17 tests covering all Docker executor functionality
-- **MCP Tools**: 15 tests covering all MCP tool wrappers
-- **Total**: 32 tests, 100% passing ✅
+Test totals change as the adapter evolves. Treat the repository's Docker
+executor and MCP Docker-tool tests as the contract, and run the focused pytest
+commands from the quick-start guide in the checked-out revision.
 
 ## Troubleshooting
 

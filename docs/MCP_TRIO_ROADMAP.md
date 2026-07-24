@@ -1,5 +1,10 @@
 # Trio MCP Server Roadmap
 
+> **Roadmap note:** The maintained default remains the FastAPI/Uvicorn MCP
+> runtime with an explicit Trio bridge for Trio-only P2P operations. This page
+> records migration options and is not a deployment instruction to switch the
+> default runner.
+
 This repository currently runs the MCP HTTP server via FastAPI/Uvicorn (ASGI), which is **asyncio-first**. Meanwhile, the libp2p TaskQueue implementation used by the P2P task system is **Trio-based**.
 
 That split (asyncio HTTP + Trio libp2p) is workable, but it requires a clear boundary and a consistent bridging strategy.

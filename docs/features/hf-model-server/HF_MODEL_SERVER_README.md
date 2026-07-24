@@ -1,5 +1,9 @@
 # HuggingFace Model Server Review Documentation
 
+> **Historical review record:** This folder contains review and implementation
+> artifacts from earlier server phases. The maintained current-state guide is
+> [README.md](README.md); review documents do not define the live API.
+
 **Date:** 2026-02-02  
 **Status:** Complete - Awaiting Review  
 **Objective:** Review and propose unified HuggingFace model server architecture

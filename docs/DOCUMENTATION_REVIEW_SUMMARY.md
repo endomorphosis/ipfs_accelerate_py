@@ -1,5 +1,10 @@
 # Documentation Review and Migration Summary
 
+> **Historical record:** The review date and counts below describe an earlier
+> documentation snapshot. Current navigation, command examples, and source
+> boundaries are maintained in the [documentation index](INDEX.md) and the
+> [current-state audit](development/DOCUMENTATION_CURRENT_STATE.md).
+
 ## Overview
 
 Comprehensive review of all documentation in the `docs/` folder to ensure:
@@ -299,4 +304,3 @@ The documentation successfully reflects the migration from standalone tools to t
 **Critical Fixes**: 2
 **Breaking Changes**: 0
 **Documentation Quality**: Excellent
-

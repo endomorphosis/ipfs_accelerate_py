@@ -1,5 +1,10 @@
 # GitHub & Copilot CLI - Retry Logic and Caching
 
+> **Historical/feature reference:** Retry defaults and performance figures in
+> this page are not a current compatibility contract. Use the live CLI help,
+> [GitHub guide](../github/README.md), and [Documentation Current State](../../development/DOCUMENTATION_CURRENT_STATE.md)
+> for maintained entry points and defaults.
+
 ## Overview
 
 Both GitHub CLI and Copilot CLI now include:

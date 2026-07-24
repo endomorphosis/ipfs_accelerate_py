@@ -1,6 +1,13 @@
 # Unified Inference Backend System
 
-A comprehensive, production-ready system for managing machine learning inference across multiple backend types and protocols.
+> **Current-state note:** This document describes the optional
+> `unified_inference_service` and backend-manager modules. The canonical local
+> entry point remains `ipfs_accelerate_py` plus the `ipfs-accelerate` CLI; use
+> this service only when its HTTP/WebSocket/P2P dependencies and operational
+> controls are installed.
+
+A service for managing machine-learning inference across multiple backend types
+and protocols.
 
 ## Quick Start
 
@@ -19,7 +26,7 @@ p2p_node = service.get_p2p_node()
 ## Features
 
 ### 🎯 **Unified Backend Management**
-- Support for 7 backend types (GPU, API, CLI, P2P, WebSocket, MCP, Hybrid)
+- Support for multiple backend types (GPU, API, CLI, P2P, WebSocket, MCP, and hybrid adapters)
 - Intelligent load balancing (round-robin, least-loaded, best-performance)
 - Automatic health monitoring
 - Comprehensive metrics tracking
@@ -239,12 +246,14 @@ See `examples/multi_protocol_inference.py` for a complete working example demons
 
 ## Testing
 
-Run integration tests:
+Run the current integration tests:
 ```bash
-python -m pytest test/test_unified_inference.py -v
+python -m pytest test/test_hf_model_server_endpoint_contract.py -q
+python -m pytest test/api/test_serving_readiness_contracts.py -q
 ```
 
-**Results:** 13/15 tests passing (87% success rate)
+Results depend on the checked-out revision and optional services. Do not copy a
+historical pass count into deployment documentation.
 
 ## Performance
 

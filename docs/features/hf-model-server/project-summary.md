@@ -1,5 +1,9 @@
 # Unified HuggingFace Model Server - Complete Project Summary
 
+> **Historical project record:** The percentage, phase, and date below are a
+> point-in-time planning snapshot. Use the maintained [HF model server guide](README.md)
+> for current behavior and the live package/tests for deployment readiness.
+
 ## Project Status: 60% Complete (3/5 Phases)
 
 **Last Updated:** 2026-02-02  

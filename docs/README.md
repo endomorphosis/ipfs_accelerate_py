@@ -15,6 +15,7 @@ the shorter orientation page for new readers.
 | Use Python APIs | [API overview](api/overview.md) |
 | Configure hardware | [Hardware guide](guides/hardware/overview.md) |
 | Run tests | [Testing guide](development/testing.md) |
+| Understand which docs are current | [Documentation current state](development/DOCUMENTATION_CURRENT_STATE.md) |
 | Find a feature guide | [Documentation index](INDEX.md) |
 
 ## Current system boundaries

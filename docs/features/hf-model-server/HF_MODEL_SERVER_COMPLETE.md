@@ -1,5 +1,10 @@
 # HF Model Server - All Phases Complete! 🎉
 
+> **Historical implementation record:** “All phases complete” refers to the
+> dated project plan represented here. Do not infer current deployment support
+> from the old file counts or Kubernetes/Helm claims; use the maintained
+> [HF model server guide](README.md) and current checkout.
+
 ## Executive Summary
 
 Successfully completed ALL 5 phases of the HF Model Server implementation, transforming it from a basic server into a production-ready, enterprise-grade model serving platform.

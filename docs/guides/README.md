@@ -22,6 +22,7 @@ IPFS Accelerate Python. Historical implementation reports are linked from the
 ## Develop and validate
 
 - [Testing](../development/testing.md)
+- [Documentation current state](../development/DOCUMENTATION_CURRENT_STATE.md)
 - [Hardware tuning](hardware/overview.md)
 - [Infrastructure](infrastructure/README.md)
 - [CLI guides](cli/README_CLI.md)

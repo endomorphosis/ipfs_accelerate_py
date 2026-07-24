@@ -1,5 +1,10 @@
 # P2P Autoscaler Quick Reference
 
+> **Experimental/compatibility guide:** This page combines GitHub autoscaler
+> and optional P2P workflow notes. The current product command is
+> `ipfs-accelerate github autoscaler`; inspect its `--help` output and do not
+> assume that every P2P workflow command below is registered.
+
 ## Quick Start
 
 ```bash

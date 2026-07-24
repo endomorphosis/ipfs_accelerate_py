@@ -1,5 +1,10 @@
 # API Integrations - Complete Implementation Guide
 
+> **Historical/feature reference:** This page preserves an implementation
+> snapshot. Verify provider names, optional dependencies, and cache behavior
+> against [LLM Router](../LLM_ROUTER.md), [API overview](../api/overview.md),
+> and the live package before relying on the examples.
+
 This document describes the comprehensive API integrations that add CID-based caching to all API backends identified in `API_CACHING_OPPORTUNITIES.md`.
 
 ## Overview

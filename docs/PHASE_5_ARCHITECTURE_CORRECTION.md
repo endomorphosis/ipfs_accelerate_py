@@ -1,5 +1,10 @@
 # Phase 5 Architecture Correction
 
+> **Historical record:** This page explains a past architecture correction.
+> For the maintained boundaries and extension points, use [Documentation
+> Current State](development/DOCUMENTATION_CURRENT_STATE.md) and the current
+> architecture/API guides.
+
 ## Overview
 
 This document clarifies the correct architecture for Phase 5 implementation based on the requirement that **all MCP tools should wrap ipfs_accelerate_py kit modules** (not the other way around), and that **ipfs_files_kit and network_kit should wrap the external ipfs_kit_py package**.

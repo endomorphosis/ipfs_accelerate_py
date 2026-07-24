@@ -1,54 +1,59 @@
 # GitHub Integration Guides
 
-Comprehensive guides for GitHub Actions, autoscaling, authentication, and P2P cache integration.
+These guides cover the optional GitHub CLI, workflow inspection, self-hosted
+runners, autoscaling, and GitHub-backed cache integrations. They are
+operational runbooks; GitHub support is not required for the core Python
+package.
 
-## Quick Links
+## Current CLI
 
-- [GitHub Autoscaler](GITHUB_AUTOSCALER_README.md) - Auto-scaling runner service
-- [GitHub Token Setup](GITHUB_TOKEN_SETUP.md) - Authentication and token management
-- [GitHub Runner Installation](GITHUB_RUNNER_INSTALLATION.md) - Self-hosted runner setup
-- [GitHub Actions P2P Setup](GITHUB_ACTIONS_P2P_SETUP.md) - P2P cache for Actions
-- [GitHub P2P Cache Two-Laptop Runbook](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md) - Multi-machine setup
+The unified CLI is exposed as `ipfs-accelerate`. Check authentication before
+using GitHub-backed operations:
+
+```bash
+ipfs-accelerate github auth
+ipfs-accelerate github repos --limit 10
+ipfs-accelerate github workflows owner/repo --limit 20
+ipfs-accelerate github queues --owner owner --since-days 1
+ipfs-accelerate github runners list --org owner
+ipfs-accelerate github autoscaler --owner owner --interval 60
+```
+
+The commands require the optional GitHub integration dependencies and suitable
+credentials. Prefer environment variables or the `gh` credential store over
+putting tokens in command history. Provisioning runners or starting the
+autoscaler can create external resources, so review limits and permissions
+before enabling them.
 
 ## Authentication
 
-- **[GitHub Auth Setup](GITHUB_AUTH_SETUP.md)** - Complete authentication guide
-- **[GitHub Token Setup](GITHUB_TOKEN_SETUP.md)** - Token generation and management
-- **[GH CLI Auth Fix](GH_CLI_AUTH_FIX.md)** - Troubleshooting authentication issues
+- [GitHub Auth Setup](GITHUB_AUTH_SETUP.md)
+- [GitHub Token Setup](GITHUB_TOKEN_SETUP.md)
+- [GH CLI Auth Fix](GH_CLI_AUTH_FIX.md)
 
-## Caching
+## Workflows, Runners, And Autoscaling
 
-- **[GitHub API Cache](GITHUB_API_CACHE.md)** - API response caching
-- **[GitHub Cache Comprehensive](GITHUB_CACHE_COMPREHENSIVE.md)** - Complete caching guide
-- **[GitHub Cache Quick Reference](GITHUB_CACHE_QUICK_REF.md)** - Quick caching tips
+- [GitHub Actions Infrastructure](GITHUB_ACTIONS_INFRASTRUCTURE.md)
+- [GitHub Runner Installation](GITHUB_RUNNER_INSTALLATION.md)
+- [GitHub Autoscaler](GITHUB_AUTOSCALER_README.md)
+- [Self-Hosted Runner Setup](SELF_HOSTED_RUNNER_SETUP.md)
+- [Containerized CI Security](CONTAINERIZED_CI_SECURITY.md)
 
-## P2P Integration
+## Caching And P2P
 
-- **[GitHub Actions P2P Setup](GITHUB_ACTIONS_P2P_SETUP.md)** - Setup P2P cache for GitHub Actions
-- **[GitHub P2P Cache Two-Laptop Runbook](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)** - Distributed cache setup
-- **[GitHub CLI MCP Integration](GITHUB_CLI_MCP_INTEGRATION.md)** - MCP server integration
+- [GitHub API Cache](GITHUB_API_CACHE.md)
+- [GitHub Cache Comprehensive](GITHUB_CACHE_COMPREHENSIVE.md)
+- [GitHub Cache Quick Reference](GITHUB_CACHE_QUICK_REF.md)
+- [GitHub Actions P2P Setup](GITHUB_ACTIONS_P2P_SETUP.md)
+- [GitHub P2P Cache Two-Laptop Runbook](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
+- [GitHub CLI MCP Integration](GITHUB_CLI_MCP_INTEGRATION.md)
 
-## Autoscaling
+## Related Runtime Guides
 
-- **[GitHub Autoscaler](GITHUB_AUTOSCALER_README.md)** - Auto-scaling runner service
-  - Monitors workflows automatically
-  - Provisions runners on demand
-  - Respects CPU core limits
-  - See also: [AUTOSCALER.md](../../architecture/AUTOSCALER.md)
-
-## Runner Setup
-
-- **[GitHub Runner Installation](GITHUB_RUNNER_INSTALLATION.md)** - Install self-hosted runners
-- **Runner Configuration** - Configure runners for optimal performance
-- **Runner Management** - Monitor and manage runner fleet
-
-## See Also
-
+- [MCP Dashboard](../../MCP_DASHBOARD_GUIDE.md)
+- [Infrastructure Guides](../infrastructure/README.md)
 - [Main Documentation](../../README.md)
-- [P2P Guides](../p2p/)
-- [Docker Guides](../docker/)
-- [MCP Documentation](../../features/mcp-integration/p2p-integration.md)
 
----
-
-**Last Updated**: January 2026
+Workflow-specific pages may describe a historical incident or a deployment
+variant. Confirm their commands against `ipfs-accelerate github --help` and the
+current repository permissions before reusing them.

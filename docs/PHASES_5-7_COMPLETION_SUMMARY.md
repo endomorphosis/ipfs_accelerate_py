@@ -1,5 +1,11 @@
 # Phases 5-7 Implementation Summary
 
+> **Historical record:** This page records a point-in-time implementation
+> plan and completion snapshot. It is not the current package contract. Use
+> [Documentation Current State](development/DOCUMENTATION_CURRENT_STATE.md),
+> the current architecture pages, and the live CLI/package for present-day
+> names, commands, and feature status.
+
 ## Overview
 
 This document summarizes the completion of Phases 5-7 from the UNIFIED_ARCHITECTURE.md plan, delivering comprehensive testing and documentation for the ipfs-accelerate unified architecture.

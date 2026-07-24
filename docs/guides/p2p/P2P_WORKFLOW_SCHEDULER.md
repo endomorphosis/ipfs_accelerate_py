@@ -1,5 +1,10 @@
 # P2P Workflow Scheduler
 
+> **Experimental/compatibility guide:** This document describes an optional
+> scheduler module and historical workflow commands. The current product CLI
+> does not register a generic `p2p-workflow` group; validate the Python API,
+> P2P extras, and task contracts before deployment.
+
 ## Overview
 
 The P2P Workflow Scheduler enables GitHub Actions workflows to bypass the GitHub API by executing tasks across a peer-to-peer IPFS network. This is particularly useful for:

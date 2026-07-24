@@ -1,5 +1,10 @@
 # WebNN/WebGPU Integration with IPFS Acceleration
 
+> **Scope:** WebNN/WebGPU support is optional and environment-dependent. Browser
+> automation, WebGPU/WebNN support, IPFS, and database integrations are not
+> required by the core package; install the relevant extra and validate the
+> target browser/runtime before relying on this path.
+
 This module provides a comprehensive integration between WebNN/WebGPU browser-based acceleration
 and IPFS content delivery for efficient model inference.
 

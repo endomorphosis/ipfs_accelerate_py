@@ -1,5 +1,10 @@
 # P2P Workflow Discovery
 
+> **Experimental/compatibility guide:** This page describes optional workflow
+> discovery behavior and historical deployment assumptions. It is not a
+> promise that a live peer network or a `p2p-workflow` CLI group is available in
+> the current checkout.
+
 ## Overview
 
 The P2P Workflow Discovery service enables automatic detection and execution of GitHub Actions workflows across multiple repositories using the peer-to-peer network. This allows workflows tagged for P2P execution to be discovered and executed without consuming GitHub Actions minutes.

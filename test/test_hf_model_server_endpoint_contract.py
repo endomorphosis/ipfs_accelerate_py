@@ -175,6 +175,10 @@ def _build_test_server(monkeypatch, *, backend_manager=None):
         enable_metrics=False,
         auto_discover=False,
         enable_hardware_detection=False,
+        # These tests exercise the direct backend-manager contract. Batching
+        # has its own adapter contract and would require the fake manager to
+        # implement backend selection and capability reporting.
+        enable_batching=False,
     )
     return server_module.HFModelServer(config), fake_manager, fake_model_manager, fake_datasets
 

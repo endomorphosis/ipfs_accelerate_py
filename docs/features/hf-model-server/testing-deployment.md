@@ -1,5 +1,9 @@
 # Complete Implementation Guide: Priorities 2-4
 
+> **Historical deployment record:** The priority/file-count claims below are
+> retained for provenance. Verify the current server routes, image files,
+> orchestration support, and tests against the live checkout before deployment.
+
 ## Executive Summary
 
 This guide provides comprehensive documentation for the implementation of Priorities 2-4 for the unified HuggingFace model server:

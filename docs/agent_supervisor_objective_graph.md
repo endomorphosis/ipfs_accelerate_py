@@ -372,20 +372,20 @@ supervisor:
 - **Objective layer**: parse and maintain an objective heap, scan repository
   evidence gaps, generate todos, write bundle shards, write an objective graph
   artifact, and optionally submit queue payloads.
-  (`/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/objective_graph.py:1-8,1672-1813`,
-  `/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/objective_daemon.py:1-6,225-398`)
+  (`ipfs_accelerate_py/agent_supervisor/objective_graph.py:1-8,1672-1813`,
+  `ipfs_accelerate_py/agent_supervisor/objective_daemon.py:1-6,225-398`)
 - **Execution layer**: implementation daemon selects and executes tasks; the
   implementation supervisor repairs state, enforces retry/dependency/reconcile
   guardrails, and refills the backlog.
-  (`/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:874-1131`,
-  `/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:362-560`)
+  (`ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:874-1131`,
+  `ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:362-560`)
 - **Parallelization layer**: bundle supervisor plans and starts isolated
   per-bundle lanes.
-  (`/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/bundle_supervisor.py:104-170,238-297`)
+  (`ipfs_accelerate_py/agent_supervisor/bundle_supervisor.py:104-170,238-297`)
 - **Queue layer**: DuckDB queue plus P2P service for distributed claiming and
   completion.
-  (`/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/p2p_tasks/task_queue.py:44-50,112-201`,
-  `/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/ipfs_accelerate_py/p2p_tasks/service.py:1-5,1415-1634`)
+  (`ipfs_accelerate_py/p2p_tasks/task_queue.py:44-50,112-201`,
+  `ipfs_accelerate_py/p2p_tasks/service.py:1-5,1415-1634`)
 
 ## Main Components
 

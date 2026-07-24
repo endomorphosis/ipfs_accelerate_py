@@ -1,5 +1,10 @@
 # ML Inference Pipeline Comprehensive Review - Implementation Summary
 
+> **Historical record:** This is a review/implementation snapshot, not a
+> versioned promise about the current runtime. Check [Documentation Current
+> State](development/DOCUMENTATION_CURRENT_STATE.md), the live package, and
+> current tests for supported modules and behavior.
+
 ## Overview
 
 This document summarizes the comprehensive review and implementation of improvements to the machine learning inference pipeline in the `ipfs_accelerate_py` repository.

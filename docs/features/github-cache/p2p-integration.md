@@ -464,7 +464,7 @@ Planned improvements:
 - [base_cache.py](../common/base_cache.py) - Base caching infrastructure
 - [cache.py](../github_cli/cache.py) - GitHub-specific cache implementation
 - [wrapper.py](../github_cli/wrapper.py) - GitHub CLI wrapper with caching
-- [P2P Cache Verification Script](../../scripts/validation/verify_p2p_cache.py)
+- [P2P Cache Verification Script](../../../scripts/validation/verify_p2p_cache.py)
 
 ## Summary
 

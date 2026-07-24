@@ -1,130 +1,84 @@
-# 🎯 IPFS Accelerate Python Examples
+# Examples
 
-This directory contains comprehensive examples and demonstrations of the IPFS Accelerate Python framework capabilities.
+The examples directory contains runnable demonstrations of the optional model,
+MCP, router, Docker, and model-management integrations. Each example may have
+different dependencies; inspect its imports before installing a large profile.
 
-## 📂 Examples Overview
+## Examples available in this checkout
 
-### **AI Implementation Examples**
-- [AI Implementation Showcase](./ai_implementation_showcase.py) - Complete system demonstration
-- [AI MCP Demo](./ai_mcp_demo.py) - MCP server demonstration with AI inference
-- [AI Model Discovery Example](./ai_model_discovery_example.py) - Model discovery and search
+| Example | Focus |
+| --- | --- |
+| `ai_implementation_showcase.py` | Broad AI/provider integration. |
+| `ai_mcp_demo.py` | MCP service and AI integration. |
+| `ai_model_discovery_example.py` | Model discovery and search. |
+| `comprehensive_ai_demo.py` | Combined model operations. |
+| `demonstration_example.py` | Basic package demonstration. |
+| `model_manager_example.py` | Model manager operations. |
+| `sdk_demo.py` | SDK-oriented integration example. |
+| `docker_execution_examples.py` | Docker executor and MCP wrappers. |
+| `auto_healing_demo.py` | Opt-in error-handler behavior. |
+| `llm_router_example.py` | LLM provider selection and caching. |
+| `kitchen_sink_demo.py` | Web-based testing/demo surface. |
 
-### **Complete System Demonstrations**
-- [Comprehensive AI Demo](./comprehensive_ai_demo.py) - Full-featured AI capabilities demo
-- [Demonstration Example](./demonstration_example.py) - Basic usage demonstration
-- [Model Manager Example](./model_manager_example.py) - Model management system demo
+The file names above are the source of truth for this checkout. A name that
+appears in an older report but is absent here should not be copied into a new
+runbook.
 
-### **Kitchen Sink Applications**
-- [Kitchen Sink Demo](./kitchen_sink_demo.py) - Web-based testing interface
-- [Kitchen Sink App](./kitchen_sink_app.py) - Complete application example
-- [SDK Demo](./sdk_demo.py) - JavaScript SDK demonstration
+## Install and run
 
-## 🚀 Running Examples
-
-### **Basic Usage**
-```bash
-# AI implementation showcase
-cd examples
-python ai_implementation_showcase.py
-
-# Complete AI demonstration  
-python comprehensive_ai_demo.py
-
-# Model manager example
-python model_manager_example.py
-```
-
-### **Web-based Examples**
-```bash
-# Kitchen sink testing interface
-python kitchen_sink_demo.py
-# Open http://localhost:8080 in your browser
-
-# SDK demonstration
-python sdk_demo.py
-# Demonstrates JavaScript SDK usage
-```
-
-### **MCP Server Examples**
-```bash
-# AI MCP server demonstration
-python ai_mcp_demo.py
-# Shows MCP server capabilities with AI inference
-
-# Model discovery example
-python ai_model_discovery_example.py
-# Demonstrates model search and discovery
-```
-
-## 🎯 Example Categories
-
-### **🤖 AI Inference Examples**
-These examples demonstrate various AI inference capabilities:
-- Text generation and classification
-- Audio transcription and synthesis
-- Image classification and generation
-- Multimodal processing (image captioning, VQA)
-- Specialized processing (code generation, time series)
-
-### **🏗️ System Architecture Examples**
-Examples showing system architecture and integration:
-- MCP server setup and usage
-- Model manager configuration
-- Hardware acceleration examples
-- IPFS integration demonstrations
-
-### **🌐 Web Interface Examples**
-Browser-based examples and interfaces:
-- Kitchen Sink testing dashboard
-- JavaScript SDK usage
-- Real-time inference examples
-- Interactive model exploration
-
-## 📋 Prerequisites
-
-Before running examples, ensure you have:
-
-1. **Installed the framework:**
-   ```bash
-   pip install ipfs_accelerate_py
-   ```
-
-2. **Required dependencies:**
-   ```bash
-   pip install ipfs_accelerate_py[full]  # For complete functionality
-   ```
-
-3. **Optional dependencies for specific examples:**
-   ```bash
-   pip install ipfs_accelerate_py[webnn]  # For web-based examples
-   pip install ipfs_accelerate_py[mcp]    # For MCP server examples
-   ```
-
-## 🔧 CLI Integration
-
-All examples can be replicated using the CLI tool:
+From the repository root:
 
 ```bash
-# Instead of running Python examples, use the CLI:
-ipfs_accelerate text generate --prompt "Hello world"
-ipfs_accelerate system list-models
-ipfs_accelerate vision classify --image-file cat.jpg
+python -m pip install -e ".[dev]"
+python examples/demonstration_example.py
+python examples/llm_router_example.py
 ```
 
-See the [main README](../README.md) for complete CLI documentation.
+For examples that need model providers or MCP:
 
-## 📚 Additional Resources
+```bash
+python -m pip install -e ".[full]"
+python -m pip install -e ".[mcp]"
+python examples/ai_mcp_demo.py
+```
 
-- [Documentation](../docs/) - Complete documentation
-- [Tests](../tests/) - Test suite examples
-- [Scripts](../scripts/) - Utility tools and scripts
-- [Main README](../README.md) - Project overview
+Do not install every extra by default. CUDA, browser, IPFS, P2P, Docker,
+external LLMs, and model downloads are separate runtime capabilities.
 
-## 🐛 Troubleshooting
+## CLI relationship
 
-If you encounter issues running examples:
+There are two installed CLI scripts:
 
-1. Check the [Installation Troubleshooting Guide](../docs/INSTALLATION_TROUBLESHOOTING_GUIDE.md)
-2. Ensure all dependencies are installed
-3. Review example-specific comments for requirements
-4. Check the [Testing README](../docs/TESTING_README.md) for debugging tips
+```bash
+ipfs-accelerate --help
+ipfs_accelerate --help
+```
+
+`ipfs-accelerate` is the unified MCP/GitHub/model-management CLI. The
+underscore `ipfs_accelerate` script is the separate AI inference parser and
+contains provider-dependent `text`, `audio`, `vision`, `system`, and related
+groups. Use the parser's own help output rather than mixing examples between
+them.
+
+## Testing examples
+
+Examples are not a substitute for contract tests. Run the focused deterministic
+suite first:
+
+```bash
+python -m pytest test/test_unified_cli_integration.py -q
+python -m pytest test/test_llm_router_integration.py -q
+```
+
+Feature-specific examples may need credentials, a local service, a Docker
+daemon, or model files. Keep those resources isolated and avoid putting
+secrets in example source or shell history.
+
+## Related documentation
+
+- [Documentation index](../docs/INDEX.md)
+- [Getting started](../docs/guides/getting-started/README.md)
+- [CLI guide](../docs/guides/cli/README_CLI.md)
+- [MCP setup](../docs/guides/MCP_SETUP_GUIDE.md)
+- [Testing](../docs/development/testing.md)
+- [Docker execution](../docs/DOCKER_EXECUTION.md)

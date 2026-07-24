@@ -846,10 +846,10 @@ ipfs-accelerate mcp start
 - [../../api/overview.md](../../api/overview.md) - Complete API reference
 - [../../guides/p2p/P2P_SETUP_GUIDE.md](../../guides/p2p/P2P_SETUP_GUIDE.md) - P2P network setup
 - [../../guides/MCP_SETUP_GUIDE.md](../../guides/MCP_SETUP_GUIDE.md) - MCP server configuration
-- [../../guides/testing/TESTING_README.md](../../guides/testing/TESTING_README.md) - Testing framework and best practices
+- [../../development/testing.md](../../development/testing.md) - Testing framework and best practices
 
 ---
 
-**Last Updated**: January 2026  
-**Version**: 0.0.45+  
-**Status**: Production Ready ✅
+> **Historical reference:** The implementation details and status claims in this
+> document are retained for context. Use the maintained MCP and P2P guides,
+> the current capability manifest, and the live package before deploying.

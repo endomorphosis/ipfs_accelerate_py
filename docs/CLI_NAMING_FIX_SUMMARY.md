@@ -1,5 +1,9 @@
 # CLI Naming Fix Summary
 
+> **Historical record:** This page records an earlier naming correction. It is
+> not the current CLI reference. Use the [CLI guide](guides/cli/README_CLI.md)
+> and run `ipfs-accelerate --help` for the supported parser today.
+
 ## Issue
 
 The CLI and documentation were accidentally implemented with "ipfs-kit" naming when they should use "ipfs-accelerate" to match the package name `ipfs_accelerate_py`.

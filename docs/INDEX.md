@@ -31,6 +31,7 @@ context of earlier implementations and are not normative API references.
 ## Developer and operator references
 
 - [Testing](development/testing.md)
+- [Documentation current state](development/DOCUMENTATION_CURRENT_STATE.md)
 - [Contributing](../CONTRIBUTING.md)
 - [LLM router](LLM_ROUTER.md)
 - [IPFS backend router](IPFS_BACKEND_ROUTER.md)
@@ -76,6 +77,7 @@ planned work. Use the current guides and source code for present behavior.
 | Operate objective-driven agent lanes | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
 | Understand assurance and provers | [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md) |
 | Run tests | [Testing](development/testing.md) |
+| Audit documentation drift | [Documentation current state](development/DOCUMENTATION_CURRENT_STATE.md) |
 | Troubleshoot | [FAQ](guides/troubleshooting/faq.md) |
 
 **Documentation baseline:** 2026-07-24. Update this page when a maintained

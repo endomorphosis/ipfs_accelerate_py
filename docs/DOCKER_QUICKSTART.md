@@ -1,5 +1,10 @@
 # Docker Execution Feature - Quick Start
 
+> **Current-state note:** Docker execution is an optional, high-risk MCP
+> integration. The examples require a reachable Docker daemon and should be
+> run only with images, mounts, network policy, credentials, and resource
+> limits that have been reviewed for the target environment.
+
 ## Overview
 
 The Docker execution feature allows the IPFS Accelerate MCP server to execute arbitrary code in Docker containers, including running containers from Docker Hub, building and executing from GitHub repositories, and running custom payloads.
@@ -84,7 +89,7 @@ JavaScript SDK
 
 ## Available Tools
 
-### 6 MCP Tools
+### MCP Tools Registered By The Docker Adapter
 
 1. **execute_docker_container** - Run containers from Docker Hub
 2. **build_and_execute_github_repo** - Build and run from GitHub
@@ -130,10 +135,13 @@ python -m unittest ipfs_accelerate_py.mcp.tests.test_docker_tools
 python -m unittest test.test_docker_executor ipfs_accelerate_py.mcp.tests.test_docker_tools
 ```
 
-### Test Results
-- Total Tests: 32
-- Pass Rate: 100%
-- Coverage: 30% increase
+Test totals change as the adapter evolves. Run the current contract tests from
+the repository root:
+
+```bash
+python -m pytest test/test_docker_executor.py -q
+python -m pytest ipfs_accelerate_py/mcp/tests/test_docker_tools.py -q
+```
 
 ## Examples
 
@@ -213,10 +221,10 @@ execute_docker_container(image="ruby:3.0", command="ruby --version")
 
 ## Performance
 
-- Container startup: < 1s (for cached images)
-- Execution overhead: Minimal
-- Resource limits: Enforced
-- Cleanup: Automatic
+Startup time, execution overhead, resource enforcement, and cleanup depend on
+the Docker daemon, image, command, mounts, and configured limits. Measure the
+specific image and host rather than relying on a fixed repository-wide
+benchmark.
 
 ## Limitations
 
@@ -245,7 +253,7 @@ GNU Affero General Public License v3 or later (AGPLv3+)
 
 ---
 
-**Status**: Production Ready ✅  
-**Tests**: 32/32 Passing ✅  
-**Documentation**: Complete ✅  
-**Integration**: Verified ✅
+Docker execution is an optional execution boundary. Treat image provenance,
+network access, mounts, credentials, resource limits, and the Docker daemon as
+deployment-specific inputs; current test results must be obtained from the
+contract commands above.

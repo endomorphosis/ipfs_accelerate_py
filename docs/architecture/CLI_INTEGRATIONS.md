@@ -1,5 +1,10 @@
 # CLI Integrations with Common Cache Infrastructure
 
+> **Historical/feature reference:** The cache and phase metrics below are
+> point-in-time documentation. Current CLI names and support boundaries are
+> maintained in [CLI Guide](../guides/cli/README_CLI.md), [LLM Router](../LLM_ROUTER.md),
+> and [Documentation Current State](../development/DOCUMENTATION_CURRENT_STATE.md).
+
 This document describes the unified CLI integrations that use the common cache infrastructure with CID-based lookups.
 
 **Last Updated:** 2026-01-27  

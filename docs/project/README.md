@@ -1,6 +1,9 @@
 # Project Documentation
 
-This section contains production project documentation that was moved out of the repository root.
+This section contains project records that were moved out of the repository
+root. Status, dashboard, phase, and summary pages are point-in-time records;
+they are not substitutes for the current package, tests, or documentation
+index.
 
 ## Sections
 
