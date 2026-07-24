@@ -619,6 +619,14 @@ async def test_python_cli_mcp_matrix_emits_typed_parity_evidence(
     assert evidence.proved_requirement_ids == (
         CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
     )
+    mcp_manifest = agent_supervisor_discovery_manifest()
+    assert dict(evidence.request_schema_ids) == dict(
+        mcp_manifest.request_schema_ids
+    )
+    assert dict(evidence.result_schema_ids) == dict(
+        mcp_manifest.result_schema_ids
+    )
+    assert evidence.schema_population_id == mcp_manifest.schema_population_id
     # The independently invoked matrix is the operational witness for G103,
     # not authority to complete its own objective.  Even with producer tasks
     # complete, the goal remains provisional until independent criterion

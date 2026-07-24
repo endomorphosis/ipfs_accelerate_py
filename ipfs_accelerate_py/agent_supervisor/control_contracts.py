@@ -82,7 +82,7 @@ CONTROL_SURFACE_PARITY_CASE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-surface-parity-case@1"
 )
 CONTROL_SURFACE_PARITY_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/control-surface-parity-evidence@1"
+    "ipfs_accelerate_py/agent-supervisor/control-surface-parity-evidence@2"
 )
 CONTROL_SURFACE_PARITY_COMPLETION_QUORUM_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -120,7 +120,7 @@ CONTROL_SURFACE_PARITY_REQUIREMENT_ID: Final[str] = (
     "031486194157679117987393491870400400279"
 )
 CONTROL_SURFACE_PARITY_OBJECTIVE_ID: Final[str] = "ASI-G103"
-CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION: Final[str] = "ASI-G103@asi-067"
+CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION: Final[str] = "ASI-G103@asi-078"
 CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION: Final[str] = (
     "asi-g103-objective-validation@1"
 )
@@ -3827,6 +3827,46 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
         return content_identity(operation_result_json_schema())
 
     @property
+    def request_schema_ids(self) -> Mapping[str, str]:
+        """Bind every operation-specific request schema in the closed contract."""
+
+        return MappingProxyType(
+            {
+                operation.value: content_identity(
+                    operation_request_json_schema(operation)
+                )
+                for operation in self.operations
+            }
+        )
+
+    @property
+    def result_schema_ids(self) -> Mapping[str, str]:
+        """Bind every operation-specific result schema in the closed contract."""
+
+        return MappingProxyType(
+            {
+                operation.value: content_identity(
+                    operation_result_json_schema(operation)
+                )
+                for operation in self.operations
+            }
+        )
+
+    @property
+    def schema_population_id(self) -> str:
+        """Identify the complete transport-independent operation schema set."""
+
+        return content_identity(
+            {
+                "operations": tuple(
+                    operation.value for operation in self.operations
+                ),
+                "request_schema_ids": dict(self.request_schema_ids),
+                "result_schema_ids": dict(self.result_schema_ids),
+            }
+        )
+
+    @property
     def proved_requirement_ids(self) -> tuple[str, ...]:
         return (CONTROL_SURFACE_PARITY_REQUIREMENT_ID,)
 
@@ -3890,6 +3930,10 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
                 and self.surfaces == expected_surfaces
                 and self.capability_report.supported_operations
                 == expected_operations
+                and set(self.request_schema_ids)
+                == {item.value for item in expected_operations}
+                and set(self.result_schema_ids)
+                == {item.value for item in expected_operations}
                 and {item.behavior_class for item in self.cases}
                 == set(ControlBehaviorClass)
             ),
@@ -3920,6 +3964,9 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
             "operations": self.operations,
             "request_schema_id": self.request_schema_id,
             "result_schema_id": self.result_schema_id,
+            "request_schema_ids": dict(self.request_schema_ids),
+            "result_schema_ids": dict(self.result_schema_ids),
+            "schema_population_id": self.schema_population_id,
             "capability_report": self.capability_report.to_record(),
             "cases": tuple(item.to_record() for item in self.cases),
         }
@@ -3944,6 +3991,9 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
                 "operations",
                 "request_schema_id",
                 "result_schema_id",
+                "request_schema_ids",
+                "result_schema_ids",
+                "schema_population_id",
                 "capability_report",
                 "cases",
                 "content_id",
@@ -3964,9 +4014,18 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
         for name, actual in (
             ("request_schema_id", result.request_schema_id),
             ("result_schema_id", result.result_schema_id),
+            ("request_schema_ids", result.request_schema_ids),
+            ("result_schema_ids", result.result_schema_ids),
+            ("schema_population_id", result.schema_population_id),
         ):
             claimed = payload.get(name)
-            if claimed not in (None, "") and claimed != actual:
+            if isinstance(actual, Mapping):
+                matches = isinstance(claimed, Mapping) and dict(claimed) == dict(
+                    actual
+                )
+            else:
+                matches = claimed == actual
+            if not matches:
                 raise ControlContractError(
                     f"parity evidence {name} does not match the shared schema"
                 )
