@@ -6950,28 +6950,26 @@ def _objective_todo_metadata_blocks(todo_text: str) -> list[dict[str, str]]:
     return blocks
 
 
-def _legacy_task_obligation(
+def _legacy_task_obligations(
     fields: Mapping[str, str],
     *,
     goals_by_id: Mapping[str, ObjectiveGoal],
-) -> tuple[ObjectiveGoal, list[str]] | None:
-    missing_text = normalize_objective_evidence_requirement(
-        fields.get("missing evidence", "")
-    )
-    if not missing_text:
-        return None
-    raw_goal_ids = " ".join(
-        fields.get(name, "")
-        for name in (
-            "goal id",
-            "graph parents",
-            "goal packet goals",
-        )
-    )
-    candidate_goal_ids = re.findall(
-        r"\b[A-Z][A-Z0-9]*-G\d+\b",
-        raw_goal_ids,
-    )
+) -> list[tuple[ObjectiveGoal, list[str]]]:
+    missing_requirements = {
+        normalized
+        for term in split_terms(fields.get("missing evidence", ""))
+        for normalized in [normalize_objective_evidence_requirement(term)]
+        if normalized
+    }
+    if not missing_requirements:
+        return []
+    candidate_goal_ids = [
+        goal_id
+        for name in ("goal id", "goal packet goals", "graph parents")
+        for goal_id in split_terms(fields.get(name, ""))
+        if goal_id in goals_by_id
+    ]
+    obligations: list[tuple[ObjectiveGoal, list[str]]] = []
     for goal_id in dict.fromkeys(candidate_goal_ids):
         goal = goals_by_id.get(goal_id)
         if goal is None:
@@ -6980,11 +6978,11 @@ def _legacy_task_obligation(
             term
             for term in goal.required_evidence
             if normalize_objective_evidence_requirement(term)
-            in missing_text
+            in missing_requirements
         ]
         if matching_terms:
-            return goal, matching_terms
-    return None
+            obligations.append((goal, matching_terms))
+    return obligations
 
 
 def objective_evidence_obligation_keys_from_todo(
@@ -7007,21 +7005,19 @@ def objective_evidence_obligation_keys_from_todo(
         explicit = fields.get("evidence obligation key", "").strip()
         if explicit:
             keys.add(explicit)
-        obligation = _legacy_task_obligation(
+        obligations = _legacy_task_obligations(
             fields,
             goals_by_id=goals_by_id,
         )
-        if obligation is None:
-            continue
-        goal, matching_terms = obligation
-        keys.add(
-            objective_evidence_obligation_key(
-                goal,
-                matching_terms,
-                graph=graph,
-                candidate_kind=fields.get("candidate kind", "aggregate"),
+        for goal, matching_terms in obligations:
+            keys.add(
+                objective_evidence_obligation_key(
+                    goal,
+                    matching_terms,
+                    graph=graph,
+                    candidate_kind=fields.get("candidate kind", "aggregate"),
+                )
             )
-        )
     return keys
 
 
@@ -7039,27 +7035,25 @@ def objective_evidence_obligation_coverage_from_todo(
         status = fields.get("status", "todo").strip().casefold().replace("-", "_")
         if status in {"complete", "completed", "done", "superseded"}:
             continue
-        obligation = _legacy_task_obligation(
+        obligations = _legacy_task_obligations(
             fields,
             goals_by_id=goals_by_id,
         )
-        if obligation is None:
-            continue
-        goal, matching_terms = obligation
         kind = (
             "validation_gate"
             if fields.get("candidate kind", "") == "validation_gate"
             else "evidence_gap"
         )
-        lineage_ids = objective_evidence_lineage_ids(
-            goal.goal_id,
-            matching_terms,
-            graph,
-        )
-        coverage.setdefault((kind, lineage_ids), set()).update(
-            normalize_objective_evidence_requirement(term)
-            for term in matching_terms
-        )
+        for goal, matching_terms in obligations:
+            lineage_ids = objective_evidence_lineage_ids(
+                goal.goal_id,
+                matching_terms,
+                graph,
+            )
+            coverage.setdefault((kind, lineage_ids), set()).update(
+                normalize_objective_evidence_requirement(term)
+                for term in matching_terms
+            )
     return coverage
 
 
@@ -7516,6 +7510,64 @@ def generate_objective_todos(
         objective_goals_by_id = {
             goal.goal_id: goal for goal in objective_goals
         }
+
+        def finding_obligation_segments(
+            finding: ObjectiveFinding,
+        ) -> dict[tuple[str, tuple[str, ...]], set[str]]:
+            kind = (
+                "validation_gate"
+                if finding.candidate_kind == "validation_gate"
+                else "evidence_gap"
+            )
+            requirements = {
+                normalized
+                for term in finding.missing_evidence
+                for normalized in [
+                    normalize_objective_evidence_requirement(term)
+                ]
+                if normalized
+            }
+            segments: dict[tuple[str, tuple[str, ...]], set[str]] = {}
+            candidate_goal_ids = dict.fromkeys(
+                [finding.goal_id, *finding.goal_packet_goal_ids]
+            )
+            for goal_id in candidate_goal_ids:
+                goal = objective_goals_by_id.get(goal_id)
+                if goal is None:
+                    continue
+                goal_requirements = {
+                    normalized
+                    for term in goal.required_evidence
+                    for normalized in [
+                        normalize_objective_evidence_requirement(term)
+                    ]
+                    if normalized
+                }
+                matching = requirements & goal_requirements
+                if not matching:
+                    continue
+                lineage_ids = objective_evidence_lineage_ids(
+                    goal.goal_id,
+                    sorted(matching),
+                    objective_goal_graph,
+                )
+                segments.setdefault((kind, lineage_ids), set()).update(
+                    matching
+                )
+            if not segments and requirements:
+                goal = objective_goals_by_id.get(finding.goal_id)
+                lineage_ids = (
+                    objective_evidence_lineage_ids(
+                        goal.goal_id,
+                        finding.missing_evidence,
+                        objective_goal_graph,
+                    )
+                    if goal is not None
+                    else ()
+                )
+                segments[(kind, lineage_ids)] = requirements
+            return segments
+
         reserved_task_ids = task_ids_from_artifact_names(
             discovery_dir,
             task_prefix=task_prefix,
@@ -7527,29 +7579,12 @@ def generate_objective_todos(
                 reserved_task_ids=reserved_task_ids,
             )
             identity = objective_finding_task_identity(task_id, finding)
-            finding_goal = objective_goals_by_id.get(finding.goal_id)
-            finding_kind = (
-                "validation_gate"
-                if finding.candidate_kind == "validation_gate"
-                else "evidence_gap"
-            )
-            finding_requirements = {
-                normalize_objective_evidence_requirement(term)
-                for term in finding.missing_evidence
-                if normalize_objective_evidence_requirement(term)
-            }
-            finding_lineage_ids = (
-                objective_evidence_lineage_ids(
-                    finding_goal.goal_id,
-                    finding.missing_evidence,
-                    objective_goal_graph,
+            obligation_segments = finding_obligation_segments(finding)
+            segments_covered = bool(obligation_segments) and all(
+                requirements.issubset(
+                    existing_obligation_coverage.get(segment_key, set())
                 )
-                if finding_goal is not None
-                else ()
-            )
-            covered_requirements = existing_obligation_coverage.get(
-                (finding_kind, finding_lineage_ids),
-                set(),
+                for segment_key, requirements in obligation_segments.items()
             )
             if (
                 identity.canonical_task_cid in existing_canonical_task_cids
@@ -7557,21 +7592,13 @@ def generate_objective_todos(
                     finding.dedupe_key
                     and finding.dedupe_key in existing_obligation_keys
                 )
-                or (
-                    bool(finding_requirements)
-                    and finding_requirements.issubset(covered_requirements)
-                )
+                or segments_covered
             ):
                 continue
             reserved_task_ids.add(task_id)
             existing_canonical_task_cids.add(identity.canonical_task_cid)
             if finding.dedupe_key:
                 existing_obligation_keys.add(finding.dedupe_key)
-            if finding_requirements:
-                existing_obligation_coverage.setdefault(
-                    (finding_kind, finding_lineage_ids),
-                    set(),
-                ).update(finding_requirements)
             shard_relative = repo_relative_path(
                 repo_root, bundle_path(bundle_dir, finding.bundle_key)
             )

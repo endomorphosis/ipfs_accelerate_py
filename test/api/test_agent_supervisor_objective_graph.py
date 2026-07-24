@@ -1447,6 +1447,76 @@ def test_legacy_atomic_tasks_cover_reordered_aggregate_obligation(tmp_path):
     assert todo_path.read_text(encoding="utf-8") == original_todo
 
 
+def test_existing_packet_task_covers_each_sibling_goal_obligation(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G100 Runtime parent
+- Status: completed
+
+## VAIOS-G101 Scheduler child
+- Status: active
+- Parent: VAIOS-G100
+- Evidence: scheduler_policy, scheduler_metrics
+
+## VAIOS-G102 Fallback child
+- Status: active
+- Parent: VAIOS-G100
+- Evidence: fallback_route, fallback_metrics
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text(
+        """# Objective Todos
+
+## ACCEL-001 Existing packet task
+
+- Status: todo
+- Goal id: VAIOS-G101
+- Goal packet goals: VAIOS-G101, VAIOS-G102
+- Graph parents: VAIOS-G100
+- Missing evidence: scheduler_policy, scheduler_metrics, fallback_route, fallback_metrics
+- Candidate kind: goal_packet_aggregate
+- Acceptance: Close both sibling obligations in one packet.
+""",
+        encoding="utf-8",
+    )
+    original_todo = todo_path.read_text(encoding="utf-8")
+    fallback_finding = ObjectiveFinding(
+        fingerprint="fallback-gap",
+        goal_id="VAIOS-G102",
+        title="Fallback child",
+        summary="Close fallback evidence",
+        priority="P1",
+        track="runtime",
+        missing_evidence=["fallback_route", "fallback_metrics"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src"],
+        validation="true",
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[fallback_finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert records == []
+    assert todo_path.read_text(encoding="utf-8") == original_todo
+    assert not discovery_dir.exists()
+
+
 def test_bundle_regeneration_preserves_projected_task_status(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
