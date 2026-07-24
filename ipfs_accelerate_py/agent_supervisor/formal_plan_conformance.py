@@ -1721,12 +1721,26 @@ def evaluate_completion_admission(
 
     Proposal admission and a passing validation DAG only authorize derivation
     of implementation obligations.  A required gate that reaches that point
-    automatically requires code proof; ``require_code_proof`` also enables
-    this fail-closed behavior before proposal/DAG inputs are complete.  Only
-    canonical receipts revalidated against the fresh obligation population
-    create positive proof authority; provider candidates and detached result
-    summaries remain explicit rejected inputs.
+    automatically requires code proof.  Entering the proof boundary through
+    ``require_code_proof`` or any proof/obligation input also requires replay
+    of the accepted proposal and complete validation DAG.  Only canonical
+    receipts revalidated against the fresh, exactly bound obligation
+    population create positive proof authority; provider candidates and
+    detached result summaries remain explicit rejected inputs.
     """
+
+    # Materialize caller iterables exactly once.  Apart from making generator
+    # inputs deterministic, this lets the gate recognize that a caller has
+    # entered the code-proof boundary before deciding which earlier authority
+    # records are mandatory.
+    proof_result_inputs = tuple(code_proof_results or ())
+    proof_receipts = tuple(code_proof_receipts or ())
+    proof_boundary_requested = bool(
+        proof_result_inputs
+        or proof_receipts
+        or implementation_obligations is not None
+        or require_code_proof
+    )
 
     reasons: list[str] = []
     proposal_receipt_id = ""
@@ -1741,7 +1755,7 @@ def evaluate_completion_admission(
     )
     proposal_result = None
     if proposal_validation is None:
-        if required:
+        if required or proof_boundary_requested:
             reasons.append("proposal_validation_missing")
     else:
         from .proposal_validation import ProposalValidationResult
@@ -1789,7 +1803,7 @@ def evaluate_completion_admission(
             reasons.append("validation_dag_incomplete")
         if not dag.passed:
             reasons.append("validation_dag_failed")
-    elif required or expected_validation_policy_id:
+    elif required or expected_validation_policy_id or proof_boundary_requested:
         reasons.append("validation_dag_missing")
 
     from .code_proof_obligations import (
@@ -1804,7 +1818,7 @@ def evaluate_completion_admission(
     )
 
     normalized_proof_results: list[CodeProofReceiptBindingResult] = []
-    for item in tuple(code_proof_results or ()):
+    for item in proof_result_inputs:
         try:
             result = (
                 item
@@ -1817,7 +1831,6 @@ def evaluate_completion_admission(
             ) from exc
         normalized_proof_results.append(result)
 
-    proof_receipts = tuple(code_proof_receipts or ())
     revalidated_result_ids: set[str] = set()
     obligation_set = None
     if implementation_obligations is not None:
@@ -1838,12 +1851,21 @@ def evaluate_completion_admission(
     if proof_receipts and obligation_set is None:
         reasons.append("code_proof_obligations_missing")
     if obligation_set is not None:
+        if not obligation_set.complete:
+            reasons.append("code_proof_obligations_incomplete")
         if proposal_result is None:
             reasons.append("code_proof_without_proposal")
         else:
             binding = obligation_set.binding
             if (
                 binding.proposal_validation_receipt_id != proposal_receipt_id
+                or binding.proposal_accepted is not True
+                or binding.accepted_plan_id
+                != proposal_result.proposal.accepted_plan_id
+                or binding.repository_id
+                != proposal_result.proposal.repository_id
+                or binding.repository_tree_id
+                != proposal_result.proposal.repository_tree_id
                 or (
                     dag_receipt_id
                     and binding.validation_dag_receipt_id != dag_receipt_id
@@ -1851,6 +1873,10 @@ def evaluate_completion_admission(
                 or (
                     validation_policy_id
                     and binding.validation_policy_id != validation_policy_id
+                )
+                or (
+                    validation_dag is not None
+                    and binding.repository_tree_id != dag.repository_tree_id
                 )
             ):
                 reasons.append("code_proof_authority_chain_mismatch")
@@ -1903,7 +1929,7 @@ def evaluate_completion_admission(
             # input, but only revalidating the canonical receipt against the
             # obligation set may create positive proof authority.
             reasons.append("code_proof_unverified_summary")
-    proof_required = require_code_proof or bool(
+    proof_required = proof_boundary_requested or bool(
         required
         and proposal_result is not None
         and proposal_result.accepted

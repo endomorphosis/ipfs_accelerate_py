@@ -275,8 +275,95 @@ def test_transitive_impact_selects_failing_test_and_proves_exact_g101_requiremen
     }
     assert report["proof_authoritative"] is False
     assert receipt.proof_authoritative is False
+    assert report["code_proof_authoritative"] is False
+    assert receipt.code_proof_authoritative is False
     assert report["completion_authoritative"] is False
     assert report["freshness_authoritative"] is False
+    assert report["merge_eligible"] is False
+    assert G102_PROOF_CANDIDATE_REQUIREMENT not in receipt.proved_requirement_ids
+
+
+def test_passing_all_stage_dag_cannot_claim_code_proof_or_completion_authority(
+    tmp_path: Path,
+) -> None:
+    validation = validate_implementation_proposal(
+        _proposal((_source_change(),)),
+        policy=_policy(),
+    )
+    graph = ImpactDependencyGraph(
+        repository_tree_id=TREE_ID,
+        dependencies={
+            "pkg/consumer.py": ("pkg/source.py",),
+            "test/api/test_transitive_consumer.py": ("pkg/consumer.py",),
+        },
+        validation_targets={
+            VALIDATION_ID: ("test/api/test_transitive_consumer.py",),
+        },
+    )
+    commands = (
+        *_commands(),
+        ValidationCommand(
+            command="semantic-translation",
+            stage=ValidationStage.TRANSLATION,
+            cacheable=False,
+            ordinal=2,
+        ),
+        ValidationCommand(
+            command="proof-solver",
+            stage=ValidationStage.SOLVER,
+            cacheable=False,
+            ordinal=3,
+        ),
+        ValidationCommand(
+            command="proof-kernel",
+            stage=ValidationStage.KERNEL,
+            cacheable=False,
+            ordinal=4,
+        ),
+        ValidationCommand(
+            command="proof-attestation",
+            stage=ValidationStage.ATTESTATION,
+            cacheable=False,
+            ordinal=5,
+        ),
+    )
+    calls: list[str] = []
+
+    def runner(*, spec: ValidationCommand, **_kwargs: object) -> dict[str, object]:
+        calls.append(spec.command)
+        return {"returncode": 0, "output": f"{spec.stage.label}: passed"}
+
+    report = ValidationScheduler(max_workers=2).run_validated(
+        validation,
+        commands,
+        workspace_path=tmp_path,
+        impact_graph=graph,
+        dependency_state="fixture",
+        runner=runner,
+    )
+    receipt = ValidationDAGReceipt.from_dict(report["validation_dag_receipt"])
+
+    assert calls == [spec.command for spec in commands]
+    assert report["passed"] is True
+    assert receipt.passed is True
+    assert receipt.coverage_complete is True
+    assert {node.stage for node in receipt.nodes} == {
+        "cheap",
+        "targeted",
+        "translation",
+        "solver",
+        "kernel",
+        "attestation",
+    }
+    assert {
+        gate.disposition.value for gate in receipt.authority_gates
+    } == {"pending"}
+    assert receipt.proof_authoritative is False
+    assert receipt.code_proof_authoritative is False
+    assert receipt.completion_authoritative is False
+    assert report["proof_authoritative"] is False
+    assert report["code_proof_authoritative"] is False
+    assert report["completion_authoritative"] is False
     assert report["merge_eligible"] is False
     assert G102_PROOF_CANDIDATE_REQUIREMENT not in receipt.proved_requirement_ids
 
@@ -695,6 +782,7 @@ def _tamper_evidence_path(payload: dict[str, object]) -> None:
             VALIDATION_ID, ["test/api/test_forged.py"]
         ),
         lambda payload: payload.__setitem__("proof_authoritative", True),
+        lambda payload: payload.__setitem__("code_proof_authoritative", True),
     ],
     ids=(
         "graph-binding",
@@ -706,6 +794,7 @@ def _tamper_evidence_path(payload: dict[str, object]) -> None:
         "authority-closure",
         "required-validation-binding",
         "proof-authority",
+        "code-proof-authority",
     ),
 )
 def test_validation_dag_receipt_rejects_tampering(

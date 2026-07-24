@@ -121,6 +121,28 @@ def _strings(values: Iterable[Any]) -> tuple[str, ...]:
     return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
 
 
+def _requirement_claims(
+    payload: Mapping[str, Any],
+) -> tuple[str, ...] | None:
+    """Read a canonical optional requirement projection from a record."""
+
+    if "proved_requirement_ids" not in payload:
+        return None
+    raw = payload["proved_requirement_ids"]
+    if not isinstance(raw, (list, tuple)) or any(
+        not isinstance(item, str) or not item.strip() for item in raw
+    ):
+        raise ProposalValidationError(
+            "proved_requirement_ids must be a canonical string sequence"
+        )
+    claimed = tuple(raw)
+    if claimed != _strings(claimed):
+        raise ProposalValidationError(
+            "proved_requirement_ids must be sorted and unique"
+        )
+    return claimed
+
+
 def _path_matches(path: str, pattern: str) -> bool:
     pattern = str(pattern).strip().replace("\\", "/").lstrip("./")
     if not pattern:
@@ -714,8 +736,11 @@ class ProposalValidationReceipt:
                 rejection_evidence=evidence,
                 receipt_id=receipt.receipt_id,
             )
-        claimed_requirements = tuple(payload.get("proved_requirement_ids") or ())
-        if claimed_requirements and claimed_requirements != receipt.proved_requirement_ids:
+        claimed_requirements = _requirement_claims(payload)
+        if (
+            claimed_requirements is not None
+            and claimed_requirements != receipt.proved_requirement_ids
+        ):
             raise ProposalValidationError("proposal requirement claims mismatch")
         return receipt
 
@@ -825,6 +850,18 @@ class ProposalValidationResult:
         return self.receipt.findings
 
     @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        """Project only requirement evidence produced by the bound receipt.
+
+        Proposal admission cannot manufacture proof claims.  The only
+        requirement currently produced at this layer is scheduler-bound
+        fail-fast rejection evidence; accepted proposals therefore always
+        project an empty population.
+        """
+
+        return self.receipt.proved_requirement_ids
+
+    @property
     def proof_authoritative(self) -> bool:
         return False
 
@@ -839,9 +876,17 @@ class ProposalValidationResult:
     def require_admitted_binding(
         self,
         *,
+        task_id: str = "",
+        accepted_plan_id: str = "",
+        repository_id: str = "",
         repository_tree_id: str = "",
         objective_id: str = "",
+        baseline_id: str = "",
+        context_id: str = "",
+        proposal_id: str = "",
+        policy_id: str = "",
         receipt_id: str = "",
+        diff_digest: str = "",
     ) -> "ProposalValidationResult":
         """Return this result only when it is the exact accepted authority.
 
@@ -855,14 +900,30 @@ class ProposalValidationResult:
                 "rejected proposal cannot create downstream validation authority"
             )
         expected = {
+            "task_id": str(task_id or "").strip(),
+            "accepted_plan_id": str(accepted_plan_id or "").strip(),
+            "repository_id": str(repository_id or "").strip(),
             "repository_tree_id": str(repository_tree_id or "").strip(),
             "objective_id": str(objective_id or "").strip(),
+            "baseline_id": str(baseline_id or "").strip(),
+            "context_id": str(context_id or "").strip(),
+            "proposal_id": str(proposal_id or "").strip(),
+            "policy_id": str(policy_id or "").strip(),
             "receipt_id": str(receipt_id or "").strip(),
+            "diff_digest": str(diff_digest or "").strip(),
         }
         actual = {
+            "task_id": self.proposal.task_id,
+            "accepted_plan_id": self.proposal.accepted_plan_id,
+            "repository_id": self.proposal.repository_id,
             "repository_tree_id": self.proposal.repository_tree_id,
             "objective_id": self.proposal.objective_id,
+            "baseline_id": self.proposal.baseline_id,
+            "context_id": self.proposal.context_id,
+            "proposal_id": self.proposal.proposal_id,
+            "policy_id": self.policy.policy_id,
             "receipt_id": self.receipt.receipt_id,
+            "diff_digest": self.proposal.diff_digest,
         }
         mismatched = tuple(
             name
@@ -881,6 +942,7 @@ class ProposalValidationResult:
             "policy": self.policy.to_dict(),
             "receipt": self.receipt.to_dict(),
             "accepted": self.accepted,
+            "proved_requirement_ids": self.proved_requirement_ids,
             "proof_authoritative": False,
             "code_proof_authoritative": False,
             "completion_authoritative": False,
@@ -904,6 +966,14 @@ class ProposalValidationResult:
         )
         if "accepted" in payload and bool(payload["accepted"]) != result.accepted:
             raise ProposalValidationError("proposal result verdict mismatch")
+        claimed_requirements = _requirement_claims(payload)
+        if (
+            claimed_requirements is not None
+            and claimed_requirements != result.proved_requirement_ids
+        ):
+            raise ProposalValidationError(
+                "proposal result requirement claims mismatch"
+            )
         return result
 
     def with_dispatch_outcome(
