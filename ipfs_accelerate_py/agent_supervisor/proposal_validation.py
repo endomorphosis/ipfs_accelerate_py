@@ -873,6 +873,35 @@ class ProposalValidationResult:
     def completion_authoritative(self) -> bool:
         return False
 
+    @property
+    def admission_binding(self) -> Mapping[str, object]:
+        """Project the complete accepted authority consumed downstream.
+
+        The projection is diagnostic binding data, never proof authority. It
+        gives validation, semantic, and completion receipts one canonical
+        vocabulary for the accepted proposal, policy, tree, and change
+        identities instead of letting each consumer select a weaker subset.
+        """
+
+        self.require_admitted_binding()
+        return {
+            "task_id": self.proposal.task_id,
+            "accepted_plan_id": self.proposal.accepted_plan_id,
+            "repository_id": self.proposal.repository_id,
+            "repository_tree_id": self.proposal.repository_tree_id,
+            "objective_id": self.proposal.objective_id,
+            "baseline_id": self.proposal.baseline_id,
+            "context_id": self.proposal.context_id,
+            "proposal_id": self.proposal.proposal_id,
+            "policy_id": self.policy.policy_id,
+            "receipt_id": self.receipt.receipt_id,
+            "diff_digest": self.proposal.diff_digest,
+            "changed_paths": self.proposal.changed_paths,
+            "accepted": True,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+
     def require_admitted_binding(
         self,
         *,

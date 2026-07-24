@@ -141,6 +141,23 @@ def test_admitted_binding_can_require_the_complete_proposal_authority() -> None:
         receipt_id=result.receipt.receipt_id,
         diff_digest=proposal.diff_digest,
     ) is result
+    assert result.admission_binding == {
+        "task_id": TASK_ID,
+        "accepted_plan_id": PLAN_ID,
+        "repository_id": REPOSITORY_ID,
+        "repository_tree_id": TREE_ID,
+        "objective_id": OBJECTIVE_ID,
+        "baseline_id": proposal.baseline_id,
+        "context_id": proposal.context_id,
+        "proposal_id": proposal.proposal_id,
+        "policy_id": policy.policy_id,
+        "receipt_id": result.receipt.receipt_id,
+        "diff_digest": proposal.diff_digest,
+        "changed_paths": proposal.changed_paths,
+        "accepted": True,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
     with pytest.raises(ProposalValidationError, match="objective_id"):
         result.require_admitted_binding(objective_id="ASI-G999")
     with pytest.raises(ProposalValidationError, match="policy_id"):
@@ -154,6 +171,8 @@ def test_admitted_binding_can_require_the_complete_proposal_authority() -> None:
     )
     with pytest.raises(ProposalValidationError, match="rejected proposal"):
         rejected.require_admitted_binding()
+    with pytest.raises(ProposalValidationError, match="rejected proposal"):
+        _ = rejected.admission_binding
 
 
 @pytest.mark.parametrize(

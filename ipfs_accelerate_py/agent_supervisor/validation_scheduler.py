@@ -59,7 +59,7 @@ TRANSITIVE_IMPACT_EVIDENCE_SCHEMA = (
 )
 TRANSITIVE_IMPACT_REQUIREMENT_ID = "266404049326363900535699811645710804440"
 TRANSITIVE_IMPACT_OBJECTIVE_ID = "ASI-G101"
-TRANSITIVE_IMPACT_OBJECTIVE_REVISION = "ASI-G101@asi-064"
+TRANSITIVE_IMPACT_OBJECTIVE_REVISION = "ASI-G101@asi-075"
 TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION = (
     "asi-g101-objective-validation@1"
 )
@@ -1856,35 +1856,51 @@ def _evaluate_transitive_impact_objective_completion(
         " ".join(item.lower().split())
         for item in TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA
     }
-    coverage_value = payload(coverage)
+    coverage_projection = getattr(coverage, "completion_gate_evidence", None)
+    canonical_coverage = callable(coverage_projection)
+    if canonical_coverage:
+        try:
+            projected_coverage = coverage_projection(
+                TRANSITIVE_IMPACT_OBJECTIVE_ID
+            )
+        except (TypeError, ValueError):
+            projected_coverage = {}
+        coverage_value = (
+            dict(projected_coverage)
+            if isinstance(projected_coverage, Mapping)
+            else {}
+        )
+    else:
+        coverage_value = payload(coverage)
     rows_value = coverage_value.get("criteria")
     rows = rows_value if isinstance(rows_value, list) else []
-    normalized_rows = [
-        " ".join(
-            str(
-                row.get("criterion", row.get("acceptance_criterion", ""))
-                if isinstance(row, Mapping)
-                else ""
-            )
-            .lower()
-            .split()
-        )
-        for row in rows
-    ]
-    coverage_complete = bool(
-        operational_complete
-        and len(normalized_rows) == len(expected_criteria)
-        and len(normalized_rows) == len(set(normalized_rows))
-        and set(normalized_rows) == expected_criteria
-        and all(
-            isinstance(row, Mapping)
-            and bool(str(row.get("implementation") or "").strip())
-            and bool(str(row.get("validation") or "").strip())
-            for row in rows
-        )
-    )
 
-    evidence_bound = len(evidence) == len(expected_criteria)
+    def criterion_key(value: Any) -> str:
+        if isinstance(value, Mapping):
+            value = value.get(
+                "criterion",
+                value.get(
+                    "acceptance_criterion",
+                    value.get("acceptance", ""),
+                ),
+            )
+        return " ".join(str(value or "").strip().lower().split())
+
+    def populated(row: Mapping[str, Any], *names: str) -> bool:
+        for name in names:
+            value = row.get(name)
+            if isinstance(value, str) and value.strip():
+                return True
+            if (
+                isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes, bytearray))
+                and any(str(item or "").strip() for item in value)
+            ):
+                return True
+        return False
+
+    submitted_validation_ids: dict[str, set[str]] = {}
+    evidence_records: list[dict[str, Any]] = []
     for item in evidence:
         record = (
             item.to_dict()
@@ -1893,8 +1909,93 @@ def _evaluate_transitive_impact_objective_completion(
             if isinstance(item, Mapping)
             else {}
         )
+        if isinstance(record.get("evidence"), Mapping):
+            record = dict(record["evidence"])
+        evidence_records.append(record)
+        criterion = criterion_key(record)
+        identity = str(
+            record.get(
+                "provenance_cid",
+                record.get("receipt_cid", ""),
+            )
+            or ""
+        ).strip()
+        if criterion and identity:
+            submitted_validation_ids.setdefault(criterion, set()).add(identity)
+
+    def validation_bound(row: Mapping[str, Any]) -> bool:
+        if "validation_receipt_ids" in row:
+            raw_ids = row.get("validation_receipt_ids")
+            if not (
+                isinstance(raw_ids, Sequence)
+                and not isinstance(raw_ids, (str, bytes, bytearray))
+            ):
+                return False
+            receipt_ids = {
+                str(item or "").strip()
+                for item in raw_ids
+                if str(item or "").strip()
+            }
+            return bool(
+                receipt_ids
+                and receipt_ids.intersection(
+                    submitted_validation_ids.get(criterion_key(row), set())
+                )
+            )
+        # Compatibility for the mapping-backed completion records introduced
+        # before GoalCoverageMap became the canonical coverage producer.
+        return populated(row, "validation")
+
+    normalized_rows = [
+        criterion_key(row) if isinstance(row, Mapping) else ""
+        for row in rows
+    ]
+    canonical_coverage_complete = True
+    if canonical_coverage:
+        freshness = coverage_value.get("freshness")
+        freshness = freshness if isinstance(freshness, Mapping) else {}
+        coverage_binding = coverage_value.get("binding")
+        coverage_binding = (
+            coverage_binding
+            if isinstance(coverage_binding, Mapping)
+            else {}
+        )
+        canonical_coverage_complete = bool(
+            coverage_value.get("verified") is True
+            and coverage_value.get("repository_tree")
+            == receipt.repository_tree_id
+            and freshness.get("all_receipts_fresh") is True
+            and coverage_binding.get("all_receipts_bound") is True
+            and coverage_binding.get("repository_tree")
+            == receipt.repository_tree_id
+        )
+    coverage_complete = bool(
+        operational_complete
+        and canonical_coverage_complete
+        and len(normalized_rows) == len(expected_criteria)
+        and len(normalized_rows) == len(set(normalized_rows))
+        and set(normalized_rows) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and populated(
+                row,
+                "implementation",
+                "changed_files",
+                "predicted_files",
+                "ast_symbols",
+                "interfaces",
+            )
+            and validation_bound(row)
+            for row in rows
+        )
+    )
+
+    bound_criteria: list[str] = []
+    evidence_bound = len(evidence_records) == len(expected_criteria)
+    for record in evidence_records:
         validation = record.get("validation_receipt")
         validation = validation if isinstance(validation, Mapping) else {}
+        bound_criteria.append(criterion_key(record))
         evidence_bound = bool(
             evidence_bound
             and validation.get("requirement_id")
@@ -1903,7 +2004,13 @@ def _evaluate_transitive_impact_objective_completion(
             == TRANSITIVE_IMPACT_OBJECTIVE_ID
             and validation.get("operational_receipt_id") == receipt.receipt_id
             and validation.get("validation_policy_id") == receipt.policy_id
+            and validation.get("tree_id") == receipt.repository_tree_id
         )
+    evidence_bound = bool(
+        evidence_bound
+        and len(bound_criteria) == len(set(bound_criteria))
+        and set(bound_criteria) == expected_criteria
+    )
     if not coverage_complete or not evidence_bound:
         reasons = coverage_value.get("reason_codes")
         reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
@@ -1921,12 +2028,26 @@ def _evaluate_transitive_impact_objective_completion(
             "reason_codes": list(dict.fromkeys(reasons)),
         }
 
+    from .analyzer_health import AnalyzerHealthReport
+    from .scan_receipts import ExhaustionQuorumResult
+
+    typed_health = isinstance(analyzer_health, AnalyzerHealthReport)
+    evaluated_quorum = isinstance(exhaustion_quorum, ExhaustionQuorumResult)
+    quorum_value = payload(exhaustion_quorum)
+    binding = quorum_value.get("binding")
+    binding = binding if isinstance(binding, Mapping) else {}
+
     health_value = payload(analyzer_health)
+    analyzer_version = str(
+        health_value.get("analyzer_version") or ""
+    ).strip()
+    if typed_health and not analyzer_version:
+        analyzer_version = str(binding.get("analyzer_version") or "").strip()
     if not (
         str(health_value.get("status") or "").lower() == "healthy"
         and health_value.get("healthy") is True
         and health_value.get("safe_for_completion_reasoning") is True
-        and health_value.get("analyzer_version")
+        and analyzer_version
         == TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION
     ):
         health_value = {
@@ -1935,22 +2056,30 @@ def _evaluate_transitive_impact_objective_completion(
             "safe_for_completion_reasoning": False,
         }
 
-    expected_binding = {
+    canonical_binding = {
         "tree_id": receipt.repository_tree_id,
-        "objective_id": TRANSITIVE_IMPACT_OBJECTIVE_ID,
         "objective_revision": TRANSITIVE_IMPACT_OBJECTIVE_REVISION,
-        "validation_policy_id": receipt.policy_id,
-        "operational_receipt_id": receipt.receipt_id,
         "analyzer_version": TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
         "configuration_revision": (
             TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION
         ),
     }
-    quorum_value = payload(exhaustion_quorum)
-    binding = quorum_value.get("binding")
-    binding = binding if isinstance(binding, Mapping) else {}
+    artifact_binding = {
+        **canonical_binding,
+        "objective_id": TRANSITIVE_IMPACT_OBJECTIVE_ID,
+        "validation_policy_id": receipt.policy_id,
+        "operational_receipt_id": receipt.receipt_id,
+    }
+    required_binding = (
+        canonical_binding if evaluated_quorum else artifact_binding
+    )
     members_value = quorum_value.get("members")
     members = members_value if isinstance(members_value, list) else []
+    member_ids = [
+        str(member.get("member_id") or "")
+        for member in members
+        if isinstance(member, Mapping)
+    ]
     member_receipts = [
         str(member.get("receipt_cid") or "")
         for member in members
@@ -1961,25 +2090,55 @@ def _evaluate_transitive_impact_objective_completion(
         for member in members
         if isinstance(member, Mapping)
     ]
+    evaluated_members_complete = bool(
+        evaluated_quorum
+        and quorum_value.get("satisfied") is True
+        and all(
+            isinstance(member, Mapping)
+            and (
+                "exhaustive"
+                in str(member.get("scan_mode") or "").strip().lower()
+                or str(member.get("scan_mode") or "").strip().lower()
+                == "audit"
+            )
+            for member in members
+        )
+    )
     quorum_complete = bool(
         quorum_value.get("required_members") == required_exhaustive_receipts
+        and quorum_value.get("member_count") == len(members)
         and len(members) >= required_exhaustive_receipts
-        and all(binding.get(key) == value for key, value in expected_binding.items())
+        and quorum_value.get("satisfied") is True
+        and quorum_value.get("quorum_met") is True
+        and all(
+            binding.get(key) == value
+            for key, value in required_binding.items()
+        )
+        and len(member_ids) == len(members) == len(set(member_ids))
         and len(member_receipts) == len(members) == len(set(member_receipts))
         and len(channels) == len(set(channels))
+        and all(member_ids)
         and all(member_receipts)
         and all(channels)
         and all(
             isinstance(member, Mapping)
-            and member.get("healthy") is True
-            and member.get("safe_for_completion_reasoning") is True
-            and str(member.get("scan_mode") or "").lower() == "exhaustive"
             and isinstance(member.get("binding"), Mapping)
             and all(
                 member["binding"].get(key) == value
-                for key, value in expected_binding.items()
+                for key, value in required_binding.items()
             )
             for member in members
+        )
+        and (
+            evaluated_members_complete
+            or all(
+                isinstance(member, Mapping)
+                and member.get("healthy") is True
+                and member.get("safe_for_completion_reasoning") is True
+                and str(member.get("scan_mode") or "").lower()
+                == "exhaustive"
+                for member in members
+            )
         )
     )
     if not quorum_complete:
@@ -2741,6 +2900,18 @@ class ValidationScheduler:
                 )
             )
         )
+
+        def dependency_ancestors(node_id: str) -> set[str]:
+            ancestors: set[str] = set()
+            pending = list(dependency_ids.get(node_id, ()))
+            while pending:
+                dependency_id = pending.pop()
+                if dependency_id in ancestors:
+                    continue
+                ancestors.add(dependency_id)
+                pending.extend(dependency_ids.get(dependency_id, ()))
+            return ancestors
+
         records: list[ValidationDAGNodeRecord] = []
         for spec in effective_specs:
             decision = decision_by_ordinal[spec.ordinal]
@@ -2764,11 +2935,20 @@ class ValidationScheduler:
                 returncode = None
                 result_digest = ""
                 disposition = ValidationNodeDisposition.BLOCKED
-                reason = (
-                    "impact_coverage_incomplete"
-                    if not coverage_complete
-                    else "blocked_by_failed_dependency"
-                )
+                if not coverage_complete:
+                    reason = "impact_coverage_incomplete"
+                else:
+                    node_id = self._validation_node_id(spec)
+                    failed_ancestors = tuple(
+                        failed_id
+                        for failed_id in failed_node_ids
+                        if failed_id in dependency_ancestors(node_id)
+                    )
+                    reason = (
+                        "blocked_by_failed_dependency"
+                        if failed_ancestors
+                        else "fail_fast_after_stage_failure"
+                    )
             else:
                 returncode = None
                 result_digest = ""
@@ -2797,7 +2977,12 @@ class ValidationScheduler:
                     selection_reason=decision.reason,
                     depends_on=dependency_ids.get(node_id, ()),
                     blocked_by_failed_node_ids=(
-                        failed_node_ids
+                        tuple(
+                            failed_id
+                            for failed_id in failed_node_ids
+                            if failed_id
+                            in dependency_ancestors(node_id)
+                        )
                         if (
                             disposition is ValidationNodeDisposition.BLOCKED
                             and reason == "blocked_by_failed_dependency"
