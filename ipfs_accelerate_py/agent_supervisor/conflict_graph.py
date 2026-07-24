@@ -34,9 +34,10 @@ DEFAULT_SURFACE_WEIGHTS: dict[str, float] = {
     "generated_artifacts": 9.0,
 }
 CONFLICT_RECEIPT_STATUSES = frozenset(
-    {"conflict", "conflicted", "failed", "merge_conflict", "quarantined", "rejected", "resolved"}
+    {"conflict", "conflicted", "merge_conflict", "resolved"}
 )
 AST_BLOB_RECORD_SCHEMA_VERSION = 1
+MAX_CONFLICT_HISTORY_EVIDENCE_IDS = 4096
 _DERIVED_CONFLICT_METADATA_FIELDS = frozenset(
     {
         "conflict_decisions",
@@ -922,25 +923,93 @@ class ConflictWeightHistory:
     artifact_weights: dict[str, float] = field(default_factory=dict)
     pair_weights: dict[str, float] = field(default_factory=dict)
     observation_count: int = 0
+    observed_evidence_ids: list[str] = field(default_factory=list)
 
     def observe_diff(self, task_cid: str, paths: Iterable[str], *, repo_root: Path | None = None) -> None:
         observed = _normalized_paths(paths, repo_root)
+        evidence_id = "diff:" + hashlib.sha256(
+            json.dumps(
+                {"task_cid": str(task_cid), "paths": observed},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if not observed or evidence_id in self.observed_evidence_ids:
+            return
+        self.observed_evidence_ids.append(evidence_id)
+        del self.observed_evidence_ids[:-MAX_CONFLICT_HISTORY_EVIDENCE_IDS]
         for path in observed:
             self.path_weights[path] = self.path_weights.get(path, 0.0) + 1.0
-        if observed:
-            self.observation_count += 1
+        self.observation_count += 1
 
     def observe_receipt(self, receipt: Mapping[str, Any], *, repo_root: Path | None = None) -> None:
+        explicit_id = str(
+            receipt.get("receipt_cid")
+            or receipt.get("evidence_id")
+            or receipt.get("receipt_id")
+            or ""
+        ).strip()
+        evidence_id = "receipt:" + (
+            explicit_id
+            or hashlib.sha256(
+                json.dumps(
+                    dict(receipt),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+        if evidence_id in self.observed_evidence_ids:
+            return
         left, right = _receipt_pair(receipt)
         severity = _receipt_severity(receipt)
+        paths = _receipt_paths(receipt, repo_root=repo_root)
+        symbols = _field_items(
+            [receipt], ("ast_symbols", "symbols", "conflicting_symbols")
+        )
+        interfaces = _field_items(
+            [receipt], ("interfaces", "conflicting_interfaces")
+        )
+        submodules = _normalized_paths(
+            _field_items(
+                [receipt], ("submodules", "submodule_paths", "conflicting_submodules")
+            ),
+            repo_root,
+        )
+        artifacts = _normalized_paths(
+            _field_items(
+                [receipt],
+                (
+                    "generated_artifacts",
+                    "artifacts",
+                    "conflicting_artifacts",
+                ),
+            ),
+            repo_root,
+        )
         if left and right and severity:
             key = _pair_key(left, right)
             self.pair_weights[key] = self.pair_weights.get(key, 0.0) + severity
-        for path in _receipt_paths(receipt, repo_root=repo_root):
+        for path in paths:
             self.path_weights[path] = self.path_weights.get(path, 0.0) + max(1.0, severity)
-        for symbol in _field_items([receipt], ("ast_symbols", "symbols", "conflicting_symbols")):
+        for symbol in symbols:
             self.symbol_weights[symbol] = self.symbol_weights.get(symbol, 0.0) + max(1.0, severity)
-        if left or right or _receipt_paths(receipt, repo_root=repo_root):
+        for interface in interfaces:
+            self.interface_weights[interface] = (
+                self.interface_weights.get(interface, 0.0) + max(1.0, severity)
+            )
+        for submodule in submodules:
+            self.submodule_weights[submodule] = (
+                self.submodule_weights.get(submodule, 0.0) + max(1.0, severity)
+            )
+        for artifact in artifacts:
+            self.artifact_weights[artifact] = (
+                self.artifact_weights.get(artifact, 0.0) + max(1.0, severity)
+            )
+        if left or right or paths or symbols or interfaces or submodules or artifacts:
+            self.observed_evidence_ids.append(evidence_id)
+            del self.observed_evidence_ids[:-MAX_CONFLICT_HISTORY_EVIDENCE_IDS]
             self.observation_count += 1
 
     def to_dict(self) -> dict[str, Any]:
@@ -954,6 +1023,13 @@ class ConflictWeightHistory:
             value = source.get(name)
             kwargs[name] = {str(key): float(weight) for key, weight in value.items()} if isinstance(value, Mapping) else {}
         kwargs["observation_count"] = int(source.get("observation_count") or 0)
+        kwargs["observed_evidence_ids"] = sorted(
+            {
+                str(item)
+                for item in (source.get("observed_evidence_ids") or [])
+                if str(item)
+            }
+        )[-MAX_CONFLICT_HISTORY_EVIDENCE_IDS:]
         return cls(**kwargs)
 
     @classmethod
@@ -1673,11 +1749,30 @@ def _receipt_severity(receipt: Mapping[str, Any]) -> float:
                 return base
         except (TypeError, ValueError):
             pass
-    status = " ".join(
+    status_values = {
+        re.sub(r"[\s-]+", "_", str(receipt.get(key) or "").strip().lower())
+        for key in ("status", "result", "outcome")
+    }
+    diagnostic = " ".join(
         str(receipt.get(key) or "").lower()
-        for key in ("status", "reason", "result", "outcome", "stderr")
+        for key in ("reason", "stderr")
     )
-    if any(marker in status for marker in CONFLICT_RECEIPT_STATUSES):
+    conflict_diagnostic = any(
+        marker in diagnostic
+        for marker in (
+            "merge conflict",
+            "content conflict",
+            "conflicting path",
+            "conflicting file",
+            "conflict in ",
+            "automatic merge failed",
+        )
+    )
+    if (
+        bool(receipt.get("merge_conflict") or receipt.get("conflicted"))
+        or bool(status_values & CONFLICT_RECEIPT_STATUSES)
+        or conflict_diagnostic
+    ):
         try:
             return 5.0 * max(1, int(receipt.get("count") or 1))
         except (TypeError, ValueError):
@@ -1775,7 +1870,18 @@ def _make_edge(
     cross_paths = sorted(set(all_path_overlap) - counted_paths)
     if cross_paths:
         overlaps["cross_surface_paths"] = cross_paths
-        predicted += float(weights["files"]) * len(cross_paths)
+        observed_cross_paths = {
+            path
+            for path in cross_paths
+            if any(
+                _under(path, changed) or _under(changed, path)
+                for changed in (*left.changed_paths, *right.changed_paths)
+            )
+        }
+        observed += float(weights["changed_paths"]) * len(observed_cross_paths)
+        predicted += float(weights["files"]) * (
+            len(cross_paths) - len(observed_cross_paths)
+        )
 
     # Auto-discovered AST terms are local to the Python files from which they
     # were parsed.  A shared non-code path (for example a plan document or a
@@ -1806,8 +1912,23 @@ def _make_edge(
     path_history = _history_path_weight(history_paths, history)
     symbol_history = sum(history.symbol_weights.get(symbol, 0.0) for symbol in overlaps.get("ast_symbols", []))
     interface_history = sum(history.interface_weights.get(name, 0.0) for name in overlaps.get("interfaces", []))
+    submodule_history = sum(
+        history.submodule_weights.get(path, 0.0)
+        for path in overlaps.get("submodules", [])
+    )
+    artifact_history = sum(
+        history.artifact_weights.get(path, 0.0)
+        for path in overlaps.get("generated_artifacts", [])
+    )
     pair_history = history.pair_weights.get(_pair_key(left.task_cid, right.task_cid), 0.0)
-    observed += path_history + symbol_history + interface_history + pair_history
+    observed += (
+        path_history
+        + symbol_history
+        + interface_history
+        + submodule_history
+        + artifact_history
+        + pair_history
+    )
     if pair_history:
         overlaps["historical_task_pair"] = [f"{left.task_cid}<->{right.task_cid}"]
 

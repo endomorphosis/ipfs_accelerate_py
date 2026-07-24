@@ -22,6 +22,7 @@ from .artifact_store import (
     write_scheduler_manifest_artifact,
 )
 from .conflict_graph import materialize_task_conflict_graph
+from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
 from .lease_coordination import LeaseCoordinator, LeaseError
 from .objective_graph import (
     DEFAULT_TASK_PREFIX,
@@ -348,6 +349,12 @@ class BundleLaneSpec:
     required_context_tokens: int = 0
     token_budget: int = 0
     max_provider_latency_ms: int = 0
+    optimizer_bundle_cid: str = ""
+    optimizer_policy_id: str = ""
+    optimizer_execution_wave: int = 0
+    optimization_metrics: dict[str, int] = field(default_factory=dict)
+    planner_comparison: dict[str, Any] = field(default_factory=dict)
+    packet_aggregates: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {}
@@ -1168,6 +1175,200 @@ def implementation_supervisor_command(
     return command
 
 
+def optimize_bundle_payloads(
+    payloads: Sequence[dict[str, Any]],
+    *,
+    policy: BundleOptimizationPolicy | None = None,
+) -> list[dict[str, Any]]:
+    """Split current-planner payloads into optimized canonical execution units.
+
+    The current planner remains the baseline and source of authority metadata.
+    Optimization only runs when every live member has the canonical identity
+    produced by task admission; legacy or partially migrated payloads pass
+    through unchanged.  Full member rows remain attached for completion and
+    dependency reasoning, while execution-slice fields identify the exact work
+    assigned to each optimized lane.
+    """
+
+    selected_policy = policy or BundleOptimizationPolicy()
+    optimized_payloads: list[dict[str, Any]] = []
+    for original in payloads:
+        payload = dict(original)
+        tasks = _mapping_list(payload.get("tasks"))
+        live_tasks = [
+            task
+            for task in tasks
+            if str(task.get("status") or "").strip().casefold()
+            not in _TERMINAL_CONFLICT_TASK_STATUSES
+        ]
+        if not live_tasks:
+            optimized_payloads.append(payload)
+            continue
+        if any(
+            not str(
+                task.get("canonical_task_cid") or task.get("task_cid") or ""
+            ).strip()
+            or not str(task.get("canonical_task_key") or "").strip()
+            for task in live_tasks
+        ):
+            payload["bundle_optimization"] = {
+                "applied": False,
+                "reason": "canonical_task_identity_required",
+            }
+            optimized_payloads.append(payload)
+            continue
+
+        normalized: list[dict[str, Any]] = []
+        for task in live_tasks:
+            member = dict(task)
+            for key in (
+                "goal_id",
+                "merge_family",
+                "merge_fate",
+                "resource_class",
+                "provider_batch_key",
+                "provider_id",
+                "provider_route",
+                "model_id",
+                "provider_operation",
+                "provider_context_limit",
+                "provider_policy_digest",
+                "provider_generation_digest",
+                "estimated_context_tokens",
+                "context_paths",
+                "validation_commands",
+            ):
+                if member.get(key) in (None, "", [], {}):
+                    fallback = payload.get(key)
+                    if fallback not in (None, "", [], {}):
+                        member[key] = fallback
+            if not member.get("validation_commands") and member.get("validation"):
+                member["validation_commands"] = member["validation"]
+            if not member.get("predicted_paths"):
+                member["predicted_paths"] = (
+                    member.get("predicted_files")
+                    or member.get("outputs")
+                    or member.get("files")
+                    or []
+                )
+            if not member.get("dependencies"):
+                member["dependencies"] = (
+                    member.get("dependency_task_cids")
+                    or member.get("depends_on")
+                    or member.get("graph_parents")
+                    or []
+                )
+            normalized.append(member)
+
+        try:
+            result = optimize_task_bundles(
+                normalized,
+                policy=selected_policy,
+                current_planner_bundles=[
+                    {
+                        "task_cids": [
+                            str(
+                                task.get("canonical_task_cid")
+                                or task.get("task_cid")
+                            )
+                            for task in live_tasks
+                        ],
+                        "execution_wave": max(
+                            _schedule_int(payload, "optimizer_execution_wave"),
+                            _schedule_int(payload, "dependency_depth"),
+                            _schedule_int(payload, "graph_depth"),
+                        ),
+                    }
+                ],
+            )
+        except (TypeError, ValueError) as exc:
+            payload["bundle_optimization"] = {
+                "applied": False,
+                "reason": "invalid_optimizer_input",
+                "error": str(exc),
+            }
+            optimized_payloads.append(payload)
+            continue
+
+        task_by_cid = {
+            str(task.get("canonical_task_cid") or task.get("task_cid")): task
+            for task in live_tasks
+        }
+        base_key = str(payload.get("bundle_key") or "objective/general")
+        result_projection = result.to_dict()
+        for bundle in result.bundles:
+            projected = dict(payload)
+            if len(result.bundles) > 1:
+                source_profile = (
+                    dict(projected.get("profile_g") or {})
+                    if isinstance(projected.get("profile_g"), Mapping)
+                    else {}
+                )
+                if source_profile:
+                    projected["source_profile_g_ref"] = {
+                        key: str(source_profile.get(key) or "")
+                        for key in (
+                            "goal_cid",
+                            "subgoal_cid",
+                            "plan_branch_cid",
+                            "selection_cid",
+                            "task_cid",
+                            "task_spec_cid",
+                        )
+                        if source_profile.get(key)
+                    }
+                # One immutable Profile-G TaskSpec cannot identify multiple
+                # execution slices.  Let the lease adapter derive a distinct
+                # content-addressed chain for each optimized slice.
+                projected.pop("profile_g", None)
+                projected["bundle_key"] = (
+                    f"{base_key}/optimized/{bundle.bundle_cid[-12:]}"
+                )
+                projected["parallel_lane"] = (
+                    f"{str(payload.get('parallel_lane') or base_key)}/"
+                    f"{bundle.bundle_cid[-12:]}"
+                )
+            ids = [
+                str(task_by_cid[cid].get("task_id") or "")
+                for cid in bundle.task_cids
+                if cid in task_by_cid
+            ]
+            projected["execution_slice_task_cids"] = list(bundle.task_cids)
+            projected["execution_slice_task_ids"] = [
+                task_id for task_id in ids if task_id
+            ]
+            projected["dependency_task_cids"] = sorted(
+                set(_string_list(payload.get("dependency_task_cids")))
+                | set(bundle.dependency_task_cids)
+            )
+            projected["optimizer_bundle_cid"] = bundle.bundle_cid
+            projected["optimizer_policy_id"] = result.policy_id
+            projected["optimizer_execution_wave"] = bundle.execution_wave
+            projected["bundle_optimization"] = {
+                "applied": True,
+                "bundle": bundle.to_dict(),
+                "metrics": dict(result.metrics),
+                "comparison": result.comparison.to_dict(),
+                "packet_aggregates": [
+                    aggregate.to_dict()
+                    for aggregate in result.packet_aggregates
+                    if aggregate.aggregate_task_cid in bundle.task_cids
+                ],
+                "result_schema": result_projection["schema"],
+            }
+            projected["critical_path_length"] = max(
+                _schedule_int(payload, "critical_path_length"),
+                int(result.metrics.get("critical_path_wave_count", 0))
+                - bundle.execution_wave,
+            )
+            projected["schedule_rank"] = (
+                bundle.execution_wave * 1_000_000
+                + _schedule_int(payload, "schedule_rank")
+            )
+            optimized_payloads.append(projected)
+    return optimized_payloads
+
+
 def plan_bundle_lanes(
     *,
     bundle_index_path: Path,
@@ -1198,6 +1399,8 @@ def plan_bundle_lanes(
     log_level: str = "INFO",
     max_lanes: int | None = None,
     completion_receipts: Mapping[str, Any] | None = None,
+    optimize_bundles: bool = True,
+    bundle_optimization_policy: BundleOptimizationPolicy | None = None,
 ) -> list[BundleLaneSpec]:
     """Return one isolated supervisor command for each objective bundle."""
 
@@ -1232,6 +1435,11 @@ def plan_bundle_lanes(
         for payload in bundle_payloads
         if str(payload.get("bundle_key") or "objective/general") not in excluded_bundle_keys
     ]
+    if optimize_bundles:
+        bundle_payloads = optimize_bundle_payloads(
+            bundle_payloads,
+            policy=bundle_optimization_policy,
+        )
     conflict_annotations = _bundle_conflict_annotations(
         bundle_payloads,
         bundle_index_path=bundle_index_path,
@@ -1341,6 +1549,39 @@ def plan_bundle_lanes(
                 conflicting_task_ids=_string_list(conflict_annotation.get("conflicting_task_ids")),
                 conflict_decisions=_mapping_list(conflict_annotation.get("conflict_decisions")),
                 conflict_surface=dict(conflict_annotation.get("conflict_surface") or {}),
+                optimizer_bundle_cid=str(payload.get("optimizer_bundle_cid") or ""),
+                optimizer_policy_id=str(payload.get("optimizer_policy_id") or ""),
+                optimizer_execution_wave=_schedule_int(
+                    payload, "optimizer_execution_wave"
+                ),
+                optimization_metrics=dict(
+                    (
+                        payload.get("bundle_optimization") or {}
+                    ).get("metrics")
+                    or {}
+                )
+                if isinstance(payload.get("bundle_optimization"), Mapping)
+                else {},
+                planner_comparison=dict(
+                    (
+                        payload.get("bundle_optimization") or {}
+                    ).get("comparison")
+                    or {}
+                )
+                if isinstance(payload.get("bundle_optimization"), Mapping)
+                else {},
+                packet_aggregates=[
+                    dict(item)
+                    for item in (
+                        (
+                            payload.get("bundle_optimization") or {}
+                        ).get("packet_aggregates")
+                        or []
+                    )
+                    if isinstance(item, Mapping)
+                ]
+                if isinstance(payload.get("bundle_optimization"), Mapping)
+                else [],
                 **resource_fields,
             )
         )
@@ -1903,6 +2144,7 @@ class DynamicBundleScheduler:
                 "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
                 "generated_dirty_repair_paths",
                 "worktree_submodule_paths", "log_level",
+                "optimize_bundles", "bundle_optimization_policy",
             }
             options = {key: value for key, value in self.lane_options.items() if key in allowed}
             # Bind the planned slice and its receipt evidence to the same

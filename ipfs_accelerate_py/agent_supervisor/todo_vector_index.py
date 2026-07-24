@@ -58,6 +58,7 @@ class TodoIndexRecord:
     goal_id: str = ""
     graph_parents: list[str] = field(default_factory=list)
     graph_depth: int = 0
+    dependency_task_cids: list[str] = field(default_factory=list)
     missing_evidence: list[str] = field(default_factory=list)
     outputs: list[str] = field(default_factory=list)
     validation: list[str] = field(default_factory=list)
@@ -69,6 +70,17 @@ class TodoIndexRecord:
     embedding_query: str = ""
     ast_query: str = ""
     conflict_policy: str = ""
+    context_paths: list[str] = field(default_factory=list)
+    resource_class: str = ""
+    provider_batch_key: str = ""
+    provider_id: str = ""
+    provider_route: str = ""
+    model_id: str = ""
+    provider_operation: str = ""
+    provider_context_limit: int = 0
+    provider_policy_digest: str = ""
+    provider_generation_digest: str = ""
+    estimated_context_tokens: int = 0
     surplus_group: str = ""
     merge_key: str = ""
     merge_family: str = ""
@@ -402,7 +414,15 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             record.embedding_query,
             record.ast_query,
             " ".join(record.graph_parents),
+            " ".join(record.dependency_task_cids),
             " ".join(record.missing_evidence),
+            " ".join(record.context_paths),
+            record.resource_class,
+            record.provider_batch_key,
+            record.provider_id,
+            record.provider_route,
+            record.model_id,
+            record.provider_operation,
             " ".join(record.outputs),
             " ".join(record.predicted_files),
             " ".join(record.changed_paths),
@@ -715,6 +735,13 @@ def parse_todo_vector_records(
             goal_id=goal_id,
             graph_parents=split_csv(fields.get("graph_parents", "")),
             graph_depth=parse_int(fields.get("graph_depth"), 0),
+            dependency_task_cids=_all_csv(
+                fields,
+                "dependency_task_cids",
+                "dependencies",
+                "depends_on",
+                "graph_parents",
+            ),
             missing_evidence=missing_evidence,
             outputs=outputs,
             validation=split_validation_commands(str(fields.get("validation") or "")),
@@ -725,6 +752,45 @@ def parse_todo_vector_records(
             embedding_query=str(fields.get("embedding_query") or "").strip(),
             ast_query=ast_query,
             conflict_policy=str(fields.get("conflict_policy") or "").strip(),
+            context_paths=_all_csv(
+                fields,
+                "context_paths",
+                "context_files",
+                "context_keys",
+            ),
+            resource_class=str(fields.get("resource_class") or "").strip(),
+            provider_batch_key=str(
+                fields.get("provider_batch_key")
+                or fields.get("provider_compatibility_key")
+                or ""
+            ).strip(),
+            provider_id=str(
+                fields.get("provider_id") or fields.get("llm_provider") or ""
+            ).strip(),
+            provider_route=str(
+                fields.get("provider_route") or fields.get("route") or ""
+            ).strip(),
+            model_id=str(fields.get("model_id") or fields.get("model") or "").strip(),
+            provider_operation=str(
+                fields.get("provider_operation")
+                or fields.get("operation_id")
+                or fields.get("operation")
+                or ""
+            ).strip(),
+            provider_context_limit=parse_int(
+                fields.get("provider_context_limit")
+                or fields.get("context_limit"),
+                0,
+            ),
+            provider_policy_digest=str(fields.get("policy_digest") or "").strip(),
+            provider_generation_digest=str(
+                fields.get("generation_digest") or ""
+            ).strip(),
+            estimated_context_tokens=parse_int(
+                fields.get("estimated_context_tokens")
+                or fields.get("context_tokens"),
+                0,
+            ),
             surplus_group=surplus_group,
             merge_key=merge_key,
             merge_family=merge_family,
@@ -968,7 +1034,7 @@ def build_merge_candidate(
     if not active_task_ids:
         return None
     all_outputs = sorted_unique([output for record in records for output in record.outputs])
-    output_sets = [set(record.outputs) for record in records if record.outputs]
+    output_sets = [set(record.outputs) for record in records]
     shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
     ast_symbols = sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80]
     missing_evidence = sorted_unique([item for record in records for item in record.missing_evidence])
@@ -1155,7 +1221,7 @@ def build_bundle_context(
     if not active_task_ids:
         return None
     all_outputs = sorted_unique([output for record in records for output in record.outputs])
-    output_sets = [set(record.outputs) for record in records if record.outputs]
+    output_sets = [set(record.outputs) for record in records]
     shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
     graph_depths = [record.graph_depth for record in records if record.graph_depth >= 0]
     work_counts = [record.work_item_count for record in records if record.work_item_count > 0]
@@ -1370,29 +1436,46 @@ def build_execution_packet(
     selected_records = sorted(active_records, key=execution_packet_record_rank)[: max(2, max_tasks)]
     task_ids = sorted_unique([record.task_id for record in selected_records])
     active_task_ids = ordered_unique([record.task_id for record in selected_records if active_record(record)])
+    # Completion authority is resolved against the complete context population,
+    # not the bounded active execution slice.  Otherwise a packet with more
+    # than ``max_tasks`` members, or a completed covered sibling, would lose
+    # its exact canonical binding merely because it was omitted from the prompt.
+    population_records = list(records)
     records_by_cid = {
-        record.task_cid: record for record in selected_records if record.task_cid
+        record.task_cid: record for record in population_records if record.task_cid
     }
-    records_with_cid = [record for record in selected_records if record.task_cid]
+    records_with_cid = [record for record in population_records if record.task_cid]
     canonical_keys = [
         record.canonical_task_key
-        for record in selected_records
+        for record in population_records
         if record.canonical_task_key
     ]
     identity_projection_valid = (
-        len(records_by_cid) == len(records_with_cid)
+        all(
+            record.task_cid and record.canonical_task_key
+            for record in population_records
+        )
+        and len(records_by_cid) == len(records_with_cid)
         and len(canonical_keys) == len(set(canonical_keys))
     )
-    identity_aliases = {
-        alias: record.task_cid
-        for record in selected_records
-        if record.task_cid
+    alias_owners: dict[str, set[str]] = {}
+    for record in population_records:
+        if not record.task_cid:
+            continue
         for alias in (
             record.task_cid,
             record.canonical_task_key,
             record.semantic_identity,
-        )
-        if alias
+        ):
+            if alias:
+                alias_owners.setdefault(alias, set()).add(record.task_cid)
+    identity_projection_valid = identity_projection_valid and all(
+        len(owners) == 1 for owners in alias_owners.values()
+    )
+    identity_aliases = {
+        alias: next(iter(owners))
+        for alias, owners in alias_owners.items()
+        if len(owners) == 1
     }
     task_cids = sorted_unique(
         [record.task_cid for record in selected_records if record.task_cid]
@@ -1407,7 +1490,7 @@ def build_execution_packet(
     if len(active_task_ids) < 2:
         return None
     all_outputs = sorted_unique([output for record in selected_records for output in record.outputs])
-    output_sets = [set(record.outputs) for record in selected_records if record.outputs]
+    output_sets = [set(record.outputs) for record in selected_records]
     shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
     work_counts = [record.work_item_count for record in selected_records if record.work_item_count > 0]
     packet_work_counts = [
@@ -1420,6 +1503,36 @@ def build_execution_packet(
             "merge_families": sorted_unique([record.merge_family for record in selected_records]),
         },
         sort_keys=True,
+    )
+    primary = selected_records[0]
+    aggregate_primary = (
+        primary.candidate_kind.strip().lower() == "goal_packet_aggregate"
+        or primary.goal_packet_role.strip().lower() == "packet_aggregate"
+        or primary.merge_role.strip().lower() == "packet_aggregate"
+    )
+    resolved_primary_bindings = (
+        {
+            identity_aliases[binding]
+            for binding in primary.completion_task_bindings
+            if binding in identity_aliases
+        }
+        if aggregate_primary
+        else set()
+    )
+    independent_records = [
+        record
+        for record in selected_records
+        if record is primary or record.task_cid not in resolved_primary_bindings
+    ]
+    independent_work_item_count = sum(
+        record.work_item_count
+        for record in independent_records
+        if record.work_item_count > 0
+    )
+    covered_work_item_count = sum(
+        records_by_cid[cid].work_item_count
+        for cid in resolved_primary_bindings
+        if cid in records_by_cid and records_by_cid[cid].work_item_count > 0
     )
     packet: dict[str, Any] = {
         "packet_key": f"execution_packet/{sha1(packet_seed.encode('utf-8')).hexdigest()[:12]}",
@@ -1444,6 +1557,31 @@ def build_execution_packet(
         "primary_canonical_task_key": selected_records[0].canonical_task_key,
         "goal_ids": sorted_unique([record.goal_id for record in selected_records]),
         "graph_parent_ids": sorted_unique([parent for record in selected_records for parent in record.graph_parents]),
+        "dependency_task_cids": sorted_unique(
+            [
+                dependency
+                for record in selected_records
+                for dependency in record.dependency_task_cids
+            ]
+        ),
+        "dependency_depth_min": min(
+            (record.graph_depth for record in selected_records), default=0
+        ),
+        "dependency_depth_max": max(
+            (record.graph_depth for record in selected_records), default=0
+        ),
+        "context_paths": sorted_unique(
+            [path for record in selected_records for path in record.context_paths]
+        ),
+        "resource_classes": sorted_unique(
+            [record.resource_class for record in selected_records]
+        ),
+        "provider_batch_keys": sorted_unique(
+            [record.provider_batch_key for record in selected_records]
+        ),
+        "provider_ids": sorted_unique(
+            [record.provider_id for record in selected_records]
+        ),
         "bundle_keys": sorted_unique([record.bundle_key for record in selected_records]),
         "merge_keys": sorted_unique([record.merge_key for record in selected_records]),
         "merge_families": sorted_unique([record.merge_family for record in selected_records]),
@@ -1460,7 +1598,9 @@ def build_execution_packet(
         "work_scopes": sorted_unique([record.work_scope for record in selected_records]),
         "work_item_count_min": min(work_counts) if work_counts else 0,
         "work_item_count_max": max(work_counts) if work_counts else 0,
-        "work_item_count_total": sum(work_counts),
+        "work_item_count_total": independent_work_item_count,
+        "independent_work_item_count_total": independent_work_item_count,
+        "covered_sibling_work_item_count": covered_work_item_count,
         "shared_outputs": shared_outputs,
         "all_outputs": all_outputs,
         "validation": sorted_unique([command for record in selected_records for command in record.validation])[:8],
@@ -1489,12 +1629,29 @@ def build_execution_packet(
         "task_summaries": [_compact_record_summary(record) for record in selected_records],
         "raw_prompt_tokens": sum(record.token_count for record in selected_records),
     }
-    primary = selected_records[0]
-    aggregate_primary = (
-        primary.candidate_kind.strip().lower() == "goal_packet_aggregate"
-        or primary.goal_packet_role.strip().lower() == "packet_aggregate"
-        or primary.merge_role.strip().lower() == "packet_aggregate"
+    packet_conflict_graph = materialize_task_conflict_graph(
+        [record.to_dict() for record in selected_records],
+        max_lanes=None,
     )
+    blocking_edges = [
+        edge for edge in packet_conflict_graph.edges if edge.blocks_concurrency
+    ]
+    packet["blocking_conflict_count"] = len(blocking_edges)
+    packet["serial_execution_required"] = bool(blocking_edges)
+    packet["conflict_edges"] = [
+        {
+            "left_task_cid": edge.left_task_cid,
+            "right_task_cid": edge.right_task_cid,
+            "reasons": list(edge.reasons[:8]),
+        }
+        for edge in blocking_edges[:32]
+    ]
+    packet["conflict_lane_by_task_cid"] = {
+        assignment.task_cid: assignment.lane_color
+        for assignment in packet_conflict_graph.assignments
+    }
+    if blocking_edges:
+        packet["merge_ready"] = False
     if (
         aggregate_primary
         and primary.task_cid
@@ -1580,7 +1737,11 @@ def build_execution_packets(
     packets: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
     for context in bundle_contexts:
-        task_ids = context.get("active_task_ids") or context.get("task_ids")
+        # Keep completed members in the identity population so an active packet
+        # aggregate can retain exact completion bindings to already-finished
+        # siblings.  ``build_execution_packet`` independently restricts the
+        # prompt/execution slice to active records.
+        task_ids = context.get("task_ids") or context.get("active_task_ids")
         if not isinstance(task_ids, list):
             continue
         selected = [records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task]
@@ -2075,6 +2236,39 @@ def update_bundle_index_with_todo_vectors(
             task["todo_bundle_context_keys"] = context_keys_by_task.get(record.task_id, [])[:5]
             task["todo_execution_packet_keys"] = packet_keys_by_task.get(record.task_id, [])[:5]
             task["related_task_ids"] = record.related_task_ids
+            task["dependency_task_cids"] = record.dependency_task_cids
+            task["dependency_depth"] = record.graph_depth
+            task["context_paths"] = record.context_paths
+            task["resource_class"] = (
+                record.resource_class or task.get("resource_class", "")
+            )
+            task["provider_batch_key"] = (
+                record.provider_batch_key or task.get("provider_batch_key", "")
+            )
+            task["provider_id"] = record.provider_id or task.get("provider_id", "")
+            task["provider_route"] = (
+                record.provider_route or task.get("provider_route", "")
+            )
+            task["model_id"] = record.model_id or task.get("model_id", "")
+            task["provider_operation"] = (
+                record.provider_operation or task.get("provider_operation", "")
+            )
+            task["provider_context_limit"] = max(
+                record.provider_context_limit,
+                parse_int(task.get("provider_context_limit"), 0),
+            )
+            task["provider_policy_digest"] = (
+                record.provider_policy_digest
+                or task.get("provider_policy_digest", "")
+            )
+            task["provider_generation_digest"] = (
+                record.provider_generation_digest
+                or task.get("provider_generation_digest", "")
+            )
+            task["estimated_context_tokens"] = max(
+                record.estimated_context_tokens,
+                parse_int(task.get("estimated_context_tokens"), 0),
+            )
             task["predicted_files"] = record.predicted_files
             task["changed_paths"] = record.changed_paths
             task["acceptance_criteria"] = record.acceptance_criteria
