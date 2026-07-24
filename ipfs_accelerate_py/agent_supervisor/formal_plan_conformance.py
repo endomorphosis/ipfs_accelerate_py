@@ -1926,6 +1926,42 @@ def evaluate_completion_admission(
     )
 
 
+def evaluate_transitive_impact_admission_closure(
+    *,
+    proposal_validation: Any,
+    validation_dag: Any,
+) -> CompletionAdmissionGate:
+    """Replay the G101 witness across proof and completion boundaries.
+
+    The operational validation is successful evidence precisely when its
+    seeded transitive defect makes the DAG fail closed.  This helper requires
+    that exact proof-boundary classification and returns the canonical
+    completion gate showing that admission remained closed.
+    """
+
+    from .code_proof_obligations import (
+        transitive_impact_blocks_proof_derivation,
+    )
+
+    if not transitive_impact_blocks_proof_derivation(
+        proposal_validation,
+        validation_dag,
+    ):
+        raise ConformanceValidationError(
+            "validation DAG is not a closed transitive-impact witness"
+        )
+    gate = evaluate_completion_admission(
+        proposal_validation=proposal_validation,
+        validation_dag=validation_dag,
+        required=True,
+    )
+    if gate.admitted or "validation_dag_failed" not in gate.reason_codes:
+        raise ConformanceValidationError(
+            "transitive-impact witness did not close completion admission"
+        )
+    return gate
+
+
 @dataclass(frozen=True)
 class FormalGoalCompletionDecision:
     goal_id: str
@@ -2678,6 +2714,7 @@ __all__ = [
     "compare_plan_conformance",
     "evaluate_completion_evidence",
     "evaluate_completion_admission",
+    "evaluate_transitive_impact_admission_closure",
     "evaluate_formal_goal_completion",
     "evaluate_goal_completion",
     "evaluate_goal_completion_with_conformance",

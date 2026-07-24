@@ -52,12 +52,46 @@ STAGED_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/staged-validation-report@1"
 )
 VALIDATION_DAG_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/validation-dag-receipt@2"
+    "ipfs_accelerate_py/agent-supervisor/validation-dag-receipt@3"
 )
 TRANSITIVE_IMPACT_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/transitive-impact-validation-evidence@2"
 )
 TRANSITIVE_IMPACT_REQUIREMENT_ID = "266404049326363900535699811645710804440"
+TRANSITIVE_IMPACT_OBJECTIVE_ID = "ASI-G101"
+TRANSITIVE_IMPACT_OBJECTIVE_REVISION = "ASI-G101@asi-064"
+TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION = (
+    "asi-g101-objective-validation@1"
+)
+TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION = (
+    "strict-transitive-impact-completion@1"
+)
+TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA = (
+    (
+        "The validation DAG is derived from the canonical changed-file and "
+        "dependency/interface impact graph and validated declarations"
+    ),
+    (
+        "the receipt contains the complete selected population and every "
+        "mandatory direct and transitive validation exactly once"
+    ),
+    (
+        "missing, stale, cyclic, inconsistent, or population-incomplete "
+        "impact evidence fails closed before granting authority"
+    ),
+    (
+        "a seeded upstream defect selects and executes its transitively "
+        "affected consumer validation and records the real failure"
+    ),
+    (
+        "semantic, proof, merge, freshness, and completion authority remain "
+        "closed by explicit records bound to the failed validation"
+    ),
+    (
+        "the exact transitive-impact requirement is emitted only by a "
+        "tamper-evident current-tree witness"
+    ),
+)
 REQUIRED_AUTHORITY_GATES = (
     "semantic",
     "proof",
@@ -705,7 +739,7 @@ class ImpactDependencyGraph:
     dependencies: Mapping[str, Sequence[str]]
     repository_tree_id: str
     validation_targets: Mapping[str, Sequence[str]] = field(default_factory=dict)
-    graph_version: str = "impact-dependency-v2"
+    graph_version: str = "impact-dependency-v3"
     graph_id: str = ""
 
     def __post_init__(self) -> None:
@@ -735,6 +769,24 @@ class ImpactDependencyGraph:
                 raise ValidationDAGError("impact graph contains a self dependency")
             normalized[dependent] = direct
         object.__setattr__(self, "dependencies", dict(sorted(normalized.items())))
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(path: str) -> None:
+            if path in visited:
+                return
+            if path in visiting:
+                raise ValidationDAGError(
+                    "impact dependency graph contains a cycle"
+                )
+            visiting.add(path)
+            for dependency in normalized.get(path, ()):
+                visit(dependency)
+            visiting.remove(path)
+            visited.add(path)
+
+        for path in sorted(self.reverse_dependencies):
+            visit(path)
         validation_targets: dict[str, tuple[str, ...]] = {}
         known_paths = set(self.reverse_dependencies)
         for raw_validation_id, raw_paths in dict(
@@ -868,7 +920,7 @@ class ImpactDependencyGraph:
             dependencies=payload.get("dependencies") or {},
             repository_tree_id=str(payload.get("repository_tree_id") or ""),
             validation_targets=payload.get("validation_targets") or {},
-            graph_version=str(payload.get("graph_version") or "impact-dependency-v2"),
+            graph_version=str(payload.get("graph_version") or "impact-dependency-v3"),
             graph_id=str(payload.get("graph_id") or ""),
         )
 
@@ -888,6 +940,7 @@ class ValidationDAGNodeRecord:
     mandatory: bool = False
     selection_reason: str = ""
     depends_on: tuple[str, ...] = ()
+    blocked_by_failed_node_ids: tuple[str, ...] = ()
     observed_seeded_defect_id: str = ""
 
     def __post_init__(self) -> None:
@@ -947,8 +1000,25 @@ class ValidationDAGNodeRecord:
                 )
             ),
         )
+        object.__setattr__(
+            self,
+            "blocked_by_failed_node_ids",
+            tuple(
+                sorted(
+                    {
+                        str(value or "").strip()
+                        for value in self.blocked_by_failed_node_ids
+                        if str(value or "").strip()
+                    }
+                )
+            ),
+        )
         if self.node_id in self.depends_on:
             raise ValidationDAGError("validation node cannot depend on itself")
+        if self.node_id in self.blocked_by_failed_node_ids:
+            raise ValidationDAGError(
+                "validation node cannot be blocked by itself"
+            )
         if self.mandatory and (not self.selected or not self.validation_id):
             raise ValidationDAGError(
                 "mandatory validation node must be selected and identified"
@@ -974,6 +1044,13 @@ class ValidationDAGNodeRecord:
             raise ValidationDAGError(
                 "unexecuted validation cannot observe a seeded defect"
             )
+        if (
+            self.disposition is not ValidationNodeDisposition.BLOCKED
+            and self.blocked_by_failed_node_ids
+        ):
+            raise ValidationDAGError(
+                "only a blocked validation may name failed prerequisites"
+            )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -990,6 +1067,7 @@ class ValidationDAGNodeRecord:
             "mandatory": self.mandatory,
             "selection_reason": self.selection_reason,
             "depends_on": self.depends_on,
+            "blocked_by_failed_node_ids": self.blocked_by_failed_node_ids,
             "observed_seeded_defect_id": self.observed_seeded_defect_id,
         }
 
@@ -1009,6 +1087,9 @@ class ValidationDAGNodeRecord:
             mandatory=payload.get("mandatory", False),
             selection_reason=str(payload.get("selection_reason") or ""),
             depends_on=tuple(payload.get("depends_on") or ()),
+            blocked_by_failed_node_ids=tuple(
+                payload.get("blocked_by_failed_node_ids") or ()
+            ),
             observed_seeded_defect_id=str(
                 payload.get("observed_seeded_defect_id") or ""
             ),
@@ -1235,6 +1316,13 @@ class ValidationDAGReceipt:
             "affected_paths",
             tuple(sorted({_normalize_impact_path(item) for item in self.affected_paths if _normalize_impact_path(item)})),
         )
+        if (
+            graph is not None
+            and self.affected_paths != graph.affected_paths(self.changed_paths)
+        ):
+            raise ValidationDAGError(
+                "validation DAG affected paths do not match the graph closure"
+            )
         nodes = tuple(
             item
             if isinstance(item, ValidationDAGNodeRecord)
@@ -1273,6 +1361,48 @@ class ValidationDAGReceipt:
 
         for node_id in by_id:
             visit(node_id)
+
+        def ancestors(node_id: str) -> set[str]:
+            result: set[str] = set()
+            pending = list(by_id[node_id].depends_on)
+            while pending:
+                dependency = pending.pop()
+                if dependency in result:
+                    continue
+                result.add(dependency)
+                pending.extend(by_id[dependency].depends_on)
+            return result
+
+        for node in nodes:
+            failed_prerequisites = node.blocked_by_failed_node_ids
+            if any(
+                failed_id not in by_id
+                or by_id[failed_id].disposition
+                is not ValidationNodeDisposition.FAILED
+                for failed_id in failed_prerequisites
+            ):
+                raise ValidationDAGError(
+                    "blocked validation names a non-failed prerequisite"
+                )
+            if not set(failed_prerequisites).issubset(ancestors(node.node_id)):
+                raise ValidationDAGError(
+                    "blocked validation failure is not a dependency ancestor"
+                )
+            expected_failed = tuple(
+                sorted(
+                    dependency
+                    for dependency in ancestors(node.node_id)
+                    if by_id[dependency].disposition
+                    is ValidationNodeDisposition.FAILED
+                )
+            )
+            if (
+                node.reason == "blocked_by_failed_dependency"
+                and failed_prerequisites != expected_failed
+            ):
+                raise ValidationDAGError(
+                    "blocked validation does not identify every failed prerequisite"
+                )
         required_validation_ids = tuple(
             sorted(
                 {
@@ -1367,7 +1497,11 @@ class ValidationDAGReceipt:
                 "validation DAG coverage verdict does not match graph declarations"
             )
         object.__setattr__(self, "coverage_complete", derived_coverage)
-        object.__setattr__(self, "uncovered_impact", bool(self.uncovered_impact))
+        if bool(self.uncovered_impact) != (not derived_coverage):
+            raise ValidationDAGError(
+                "validation DAG uncovered-impact verdict does not match coverage"
+            )
+        object.__setattr__(self, "uncovered_impact", not derived_coverage)
         actual_passed = bool(
             derived_coverage
             and not self.uncovered_impact
@@ -1514,6 +1648,44 @@ class ValidationDAGReceipt:
 
         return False
 
+    def evaluate_objective_completion(
+        self,
+        *,
+        proposal_validation: Any,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = 2,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G101 through its closed current-tree proof gate."""
+
+        return _evaluate_transitive_impact_objective_completion(
+            self,
+            proposal_validation=proposal_validation,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            required_exhaustive_receipts=required_exhaustive_receipts,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
     def to_dict(self) -> dict[str, object]:
         return {
             **self._identity_payload(),
@@ -1598,6 +1770,228 @@ class ValidationDAGReceipt:
         if claimed and claimed != base.proved_requirement_ids:
             raise ValidationDAGError("validation DAG requirement claims mismatch")
         return base
+
+
+def _evaluate_transitive_impact_objective_completion(
+    receipt: ValidationDAGReceipt,
+    *,
+    proposal_validation: Any,
+    current_state: Any,
+    evidence: Sequence[Any],
+    tasks_complete: bool,
+    coverage: Any,
+    analyzer_health: Any,
+    exhaustion_quorum: Any,
+    required_exhaustive_receipts: int,
+    child_goals: Sequence[Any],
+    now: Any,
+    freshness_seconds: float | None,
+    clock_skew_seconds: float | None,
+    analysis_inconclusive: bool,
+    blocked_reason: str,
+) -> Any:
+    """Closed ASI-G101 bridge kept outside the receipt serializer."""
+
+    from .formal_plan_conformance import (
+        evaluate_transitive_impact_admission_closure,
+    )
+    from .goal_completion import evaluate_goal_completion
+    from .proposal_validation import ProposalValidationResult
+
+    proposal = (
+        proposal_validation
+        if isinstance(proposal_validation, ProposalValidationResult)
+        else ProposalValidationResult.from_dict(proposal_validation)
+    )
+    proposal.require_admitted_binding(
+        repository_tree_id=receipt.repository_tree_id,
+        objective_id=receipt.objective_id,
+        receipt_id=receipt.proposal_receipt_id,
+    )
+    closure = evaluate_transitive_impact_admission_closure(
+        proposal_validation=proposal,
+        validation_dag=receipt,
+    )
+    operational_complete = bool(
+        receipt.objective_id == TRANSITIVE_IMPACT_OBJECTIVE_ID
+        and receipt.transitive_evidence is not None
+        and receipt.coverage_complete
+        and not receipt.passed
+        and not receipt.uncovered_impact
+        and receipt.proved_requirement_ids
+        == (TRANSITIVE_IMPACT_REQUIREMENT_ID,)
+        and not closure.admitted
+        and "validation_dag_failed" in closure.reason_codes
+    )
+
+    def payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, Mapping):
+            return dict(value)
+        converter = getattr(value, "to_dict", None)
+        if callable(converter):
+            converted = converter()
+            if isinstance(converted, Mapping):
+                return dict(converted)
+        return {}
+
+    expected_criteria = {
+        " ".join(item.lower().split())
+        for item in TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA
+    }
+    coverage_value = payload(coverage)
+    rows_value = coverage_value.get("criteria")
+    rows = rows_value if isinstance(rows_value, list) else []
+    normalized_rows = [
+        " ".join(
+            str(
+                row.get("criterion", row.get("acceptance_criterion", ""))
+                if isinstance(row, Mapping)
+                else ""
+            )
+            .lower()
+            .split()
+        )
+        for row in rows
+    ]
+    coverage_complete = bool(
+        operational_complete
+        and len(normalized_rows) == len(expected_criteria)
+        and len(normalized_rows) == len(set(normalized_rows))
+        and set(normalized_rows) == expected_criteria
+        and all(
+            isinstance(row, Mapping)
+            and bool(str(row.get("implementation") or "").strip())
+            and bool(str(row.get("validation") or "").strip())
+            for row in rows
+        )
+    )
+
+    evidence_bound = len(evidence) == len(expected_criteria)
+    for item in evidence:
+        record = (
+            item.to_dict()
+            if hasattr(item, "to_dict") and callable(item.to_dict)
+            else dict(item)
+            if isinstance(item, Mapping)
+            else {}
+        )
+        validation = record.get("validation_receipt")
+        validation = validation if isinstance(validation, Mapping) else {}
+        evidence_bound = bool(
+            evidence_bound
+            and validation.get("requirement_id")
+            == TRANSITIVE_IMPACT_REQUIREMENT_ID
+            and validation.get("objective_id")
+            == TRANSITIVE_IMPACT_OBJECTIVE_ID
+            and validation.get("operational_receipt_id") == receipt.receipt_id
+            and validation.get("validation_policy_id") == receipt.policy_id
+        )
+    if not coverage_complete or not evidence_bound:
+        reasons = coverage_value.get("reason_codes")
+        reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+        if not operational_complete:
+            reasons.append("active_operational_evidence_missing")
+        if not coverage_complete:
+            reasons.append(
+                "coverage_missing_implementation_validation_binding"
+            )
+        if not evidence_bound:
+            reasons.append("validation_not_bound_to_operational_witness")
+        coverage_value = {
+            **coverage_value,
+            "verified": False,
+            "reason_codes": list(dict.fromkeys(reasons)),
+        }
+
+    health_value = payload(analyzer_health)
+    if not (
+        str(health_value.get("status") or "").lower() == "healthy"
+        and health_value.get("healthy") is True
+        and health_value.get("safe_for_completion_reasoning") is True
+        and health_value.get("analyzer_version")
+        == TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION
+    ):
+        health_value = {
+            **health_value,
+            "healthy": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    expected_binding = {
+        "tree_id": receipt.repository_tree_id,
+        "objective_id": TRANSITIVE_IMPACT_OBJECTIVE_ID,
+        "objective_revision": TRANSITIVE_IMPACT_OBJECTIVE_REVISION,
+        "validation_policy_id": receipt.policy_id,
+        "operational_receipt_id": receipt.receipt_id,
+        "analyzer_version": TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
+        "configuration_revision": (
+            TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    quorum_value = payload(exhaustion_quorum)
+    binding = quorum_value.get("binding")
+    binding = binding if isinstance(binding, Mapping) else {}
+    members_value = quorum_value.get("members")
+    members = members_value if isinstance(members_value, list) else []
+    member_receipts = [
+        str(member.get("receipt_cid") or "")
+        for member in members
+        if isinstance(member, Mapping)
+    ]
+    channels = [
+        str(member.get("evidence_channel") or "")
+        for member in members
+        if isinstance(member, Mapping)
+    ]
+    quorum_complete = bool(
+        quorum_value.get("required_members") == required_exhaustive_receipts
+        and len(members) >= required_exhaustive_receipts
+        and all(binding.get(key) == value for key, value in expected_binding.items())
+        and len(member_receipts) == len(members) == len(set(member_receipts))
+        and len(channels) == len(set(channels))
+        and all(member_receipts)
+        and all(channels)
+        and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").lower() == "exhaustive"
+            and isinstance(member.get("binding"), Mapping)
+            and all(
+                member["binding"].get(key) == value
+                for key, value in expected_binding.items()
+            )
+            for member in members
+        )
+    )
+    if not quorum_complete:
+        quorum_value = {
+            **quorum_value,
+            "satisfied": False,
+            "quorum_met": False,
+        }
+
+    values: dict[str, Any] = {
+        "current_state": current_state,
+        "acceptance_criteria": TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA,
+        "evidence": evidence,
+        "tasks_complete": tasks_complete,
+        "repository_tree": receipt.repository_tree_id,
+        "now": now,
+        "analysis_inconclusive": analysis_inconclusive,
+        "blocked_reason": blocked_reason,
+        "coverage": coverage_value,
+        "analyzer_health": health_value,
+        "exhaustion_quorum": quorum_value,
+        "child_goals": child_goals,
+        "analysis_result": None,
+        "require_completion_gate": True,
+    }
+    if freshness_seconds is not None:
+        values["freshness_seconds"] = freshness_seconds
+    if clock_skew_seconds is not None:
+        values["clock_skew_seconds"] = clock_skew_seconds
+    return evaluate_goal_completion(**values)
 
 
 def _authority_gate_records(
@@ -2072,7 +2466,7 @@ class ValidationScheduler:
             policy_id = str(validation_policy_id or "").strip() or _sha256_bytes(
                 _canonical_json(
                     {
-                        "kind": "strict-validation-dag-policy@2",
+                        "kind": "strict-validation-dag-policy@3",
                         "proposal_policy_id": bound.policy.policy_id,
                         "commands": [spec.command for spec in specs],
                         "impact_graph_id": "missing-impact-graph",
@@ -2153,7 +2547,7 @@ class ValidationScheduler:
         policy_id = str(validation_policy_id or "").strip() or _sha256_bytes(
             _canonical_json(
                 {
-                    "kind": "strict-validation-dag-policy@2",
+                    "kind": "strict-validation-dag-policy@3",
                     "proposal_policy_id": bound.policy.policy_id,
                     "commands": [
                         {
@@ -2317,6 +2711,16 @@ class ValidationScheduler:
         results_by_ordinal = {
             int(result.get("ordinal", -1)): result for result in results
         }
+        failed_node_ids = tuple(
+            sorted(
+                self._validation_node_id(spec)
+                for spec in effective_specs
+                if (
+                    (result := results_by_ordinal.get(spec.ordinal)) is not None
+                    and int(result.get("returncode", 1)) != 0
+                )
+            )
+        )
         records: list[ValidationDAGNodeRecord] = []
         for spec in effective_specs:
             decision = decision_by_ordinal[spec.ordinal]
@@ -2372,6 +2776,14 @@ class ValidationScheduler:
                     ),
                     selection_reason=decision.reason,
                     depends_on=dependency_ids.get(node_id, ()),
+                    blocked_by_failed_node_ids=(
+                        failed_node_ids
+                        if (
+                            disposition is ValidationNodeDisposition.BLOCKED
+                            and reason == "blocked_by_failed_dependency"
+                        )
+                        else ()
+                    ),
                     observed_seeded_defect_id=(
                         str(result.get("seeded_defect_id") or "")
                         if result is not None

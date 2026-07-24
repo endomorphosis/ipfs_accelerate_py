@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
 from ipfs_accelerate_py.agent_supervisor.formal_plan_conformance import (
     CompletionAdmissionGate,
     evaluate_completion_admission,
+    evaluate_transitive_impact_admission_closure,
 )
 from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     AssuranceLevel,
@@ -38,8 +40,18 @@ from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
 )
 from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ImpactDependencyGraph,
+    TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA,
+    TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
+    TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION,
+    TRANSITIVE_IMPACT_OBJECTIVE_ID,
+    TRANSITIVE_IMPACT_OBJECTIVE_REVISION,
+    TRANSITIVE_IMPACT_REQUIREMENT_ID,
     ValidationDAGReceipt,
     ValidationScheduler,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+    CompletionEvidence,
+    GoalState,
 )
 from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     ValidationCommand,
@@ -229,6 +241,211 @@ def test_seeded_transitive_failure_blocks_completion_despite_valid_proposal(
     )
     assert admission.admitted is False
     assert admission.reason_codes == ("validation_dag_failed",)
+    closure = evaluate_transitive_impact_admission_closure(
+        proposal_validation=accepted,
+        validation_dag=dag,
+    )
+    assert closure == admission
+
+
+def test_g101_objective_repair_requires_closed_two_phase_proof(
+    tmp_path: Path,
+) -> None:
+    proposal, policy, _entry = _proposal()
+    accepted = validate_proposal(proposal, policy=policy)
+    graph = ImpactDependencyGraph(
+        repository_tree_id=proposal.repository_tree_id,
+        dependencies={
+            "pkg/service.py": ("pkg/core.py",),
+            "test/api/test_service.py": ("pkg/service.py",),
+        },
+        validation_targets={VALIDATION_ID: ("test/api/test_service.py",)},
+    )
+    report = ValidationScheduler(runner=_runner).run_validated(
+        accepted,
+        (_service_validation(),),
+        workspace_path=tmp_path,
+        impact_graph=graph,
+        seeded_defect_id="seed:transitive",
+        seeded_defect_path="pkg/core.py",
+        dependency_state="fixture",
+    )
+    dag = ValidationDAGReceipt.from_dict(report["validation_dag_receipt"])
+    now = datetime(2026, 7, 24, 15, 0, tzinfo=timezone.utc)
+    validation_binding = {
+        "status": "passed",
+        "tree_id": dag.repository_tree_id,
+        "requirement_id": TRANSITIVE_IMPACT_REQUIREMENT_ID,
+        "objective_id": TRANSITIVE_IMPACT_OBJECTIVE_ID,
+        "operational_receipt_id": dag.receipt_id,
+        "validation_policy_id": dag.policy_id,
+        "command": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_proposal_validation.py "
+            "test/api/test_agent_supervisor_validation_dag.py "
+            "test/api/test_agent_supervisor_semantic_validation_pipeline.py -q"
+        ),
+    }
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-064",
+            validation_receipt=validation_binding,
+            validation_passed=True,
+            repository_tree=dag.repository_tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-064:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": dag.repository_tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "validation_scheduler.py"
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_validation_dag.py"
+                ),
+            }
+            for criterion in TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA
+        ],
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
+    }
+    binding = {
+        "tree_id": dag.repository_tree_id,
+        "objective_id": TRANSITIVE_IMPACT_OBJECTIVE_ID,
+        "objective_revision": TRANSITIVE_IMPACT_OBJECTIVE_REVISION,
+        "validation_policy_id": dag.policy_id,
+        "operational_receipt_id": dag.receipt_id,
+        "analyzer_version": TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
+        "configuration_revision": (
+            TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION
+        ),
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-064-implementation",
+                "evidence_channel": "implementation-validation",
+                "receipt_cid": "scan:asi-064:implementation",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-064-replay",
+                "evidence_channel": "receipt-replay",
+                "receipt_cid": "scan:asi-064:replay",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    values = {
+        "proposal_validation": accepted,
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    provisional = dag.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert provisional.gate is not None and provisional.gate.passed
+    assert not provisional.verified
+
+    verified = dag.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    unbound = tuple(
+        CompletionEvidence.from_dict(
+            {
+                **item.to_dict(),
+                "validation_receipt": {
+                    **validation_binding,
+                    "operational_receipt_id": "receipt:foreign",
+                },
+            }
+        )
+        for item in evidence
+    )
+    rejected = dag.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": unbound},
+    )
+    assert rejected.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not rejected.verified
+    assert rejected.gate is not None and not rejected.gate.passed
+
+    unsafe = dag.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "analyzer_health": {
+                **health,
+                "safe_for_completion_reasoning": False,
+            },
+        },
+    )
+    assert unsafe.state is GoalState.PROVISIONALLY_COMPLETE
+    assert "analyzer_unhealthy" in unsafe.reason_codes
+
+    duplicate_quorum = deepcopy(quorum)
+    duplicate_quorum["members"][1]["receipt_cid"] = (
+        duplicate_quorum["members"][0]["receipt_cid"]
+    )
+    no_quorum = dag.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "exhaustion_quorum": duplicate_quorum},
+    )
+    assert no_quorum.state is GoalState.PROVISIONALLY_COMPLETE
+    assert any(
+        code.startswith("exhaustion_quorum")
+        for code in no_quorum.reason_codes
+    )
 
 
 def test_passing_validation_dag_authority_is_bound_into_obligations(

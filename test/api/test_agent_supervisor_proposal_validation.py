@@ -123,6 +123,25 @@ def test_accepts_an_exactly_bound_effectful_proposal() -> None:
     assert ProposalValidationResult.from_dict(result.to_dict()) == result
 
 
+def test_admitted_binding_requires_exact_tree_objective_and_receipt() -> None:
+    result = validate_implementation_proposal(_proposal(), policy=_policy())
+
+    assert result.require_admitted_binding(
+        repository_tree_id=TREE_ID,
+        objective_id=OBJECTIVE_ID,
+        receipt_id=result.receipt.receipt_id,
+    ) is result
+    with pytest.raises(ProposalValidationError, match="objective_id"):
+        result.require_admitted_binding(objective_id="ASI-G999")
+
+    rejected = validate_implementation_proposal(
+        _proposal(declared_paths=(), candidate_diff=()),
+        policy=_policy(),
+    )
+    with pytest.raises(ProposalValidationError, match="rejected proposal"):
+        rejected.require_admitted_binding()
+
+
 @pytest.mark.parametrize(
     ("proposal", "expected_code", "expected_gate"),
     [
