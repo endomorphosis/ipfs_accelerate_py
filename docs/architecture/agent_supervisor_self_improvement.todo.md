@@ -2206,7 +2206,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-065 Produce completion evidence for Prove 189057730455837902155591890661235220962 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: analysis
