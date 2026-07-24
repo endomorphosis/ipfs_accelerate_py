@@ -91,7 +91,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-007 Bind implementation results to fresh code-conformance obligations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: leanstral-goal-development
