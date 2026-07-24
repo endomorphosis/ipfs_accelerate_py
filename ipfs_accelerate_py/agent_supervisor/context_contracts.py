@@ -36,6 +36,9 @@ CONTEXT_REFERENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/context-reference@1"
 )
 CONTEXT_CAPSULE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/context-capsule@1"
+CONTEXT_DELTA_CAPSULE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/context-delta-capsule@1"
+)
 
 ABSOLUTE_MAX_CONTEXT_BYTES = 1_048_576
 ABSOLUTE_MAX_ITEM_BYTES = 65_536
@@ -932,6 +935,149 @@ class ContextCapsule(_ContextCanonicalContract):
         return result
 
 
+@dataclass(frozen=True)
+class ContextDeltaCapsule(_ContextCanonicalContract):
+    """Compact parent-bound retry payload.
+
+    A delta intentionally does not repeat repository, tree, policy, or the
+    invariant goal/authority/scope/acceptance core.  Those values are
+    authenticated by ``parent_capsule_id`` and inherited only after
+    :func:`context_compiler.reconstruct_context` verifies the exact parent.
+    Consequently the canonical bytes of this record are the bytes actually
+    sent for a retry, rather than a full capsule whose token count merely
+    pretends the repeated core was absent.
+    """
+
+    SCHEMA: ClassVar[str] = CONTEXT_DELTA_CAPSULE_SCHEMA
+
+    parent_capsule_id: str
+    stage: str
+    evidence: tuple[ContextReference, ...]
+    reconstructed_input_tokens: int
+    requested_reference_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "parent_capsule_id",
+            _text(self.parent_capsule_id, "parent_capsule_id"),
+        )
+        object.__setattr__(self, "stage", _text(self.stage, "stage"))
+        evidence = _coerce_references(self.evidence, "evidence")
+        if not evidence:
+            raise ContextContractError(
+                "context delta must contain changed or requested evidence"
+            )
+        if any(item.tier is ContextTier.EXPANSION for item in evidence):
+            raise ContextContractError(
+                "context delta evidence must not use the expansion tier"
+            )
+        if len(evidence) > ABSOLUTE_MAX_ITEMS:
+            raise ContextBoundsError(
+                "context delta exceeds its reference-count limit"
+            )
+        for item in evidence:
+            if len(item.canonical_bytes()) > ABSOLUTE_MAX_ITEM_BYTES:
+                raise ContextBoundsError(
+                    "context delta reference exceeds its byte limit"
+                )
+        object.__setattr__(self, "evidence", evidence)
+        object.__setattr__(
+            self,
+            "reconstructed_input_tokens",
+            _positive(
+                self.reconstructed_input_tokens,
+                "reconstructed_input_tokens",
+            ),
+        )
+        source: Any = self.requested_reference_ids
+        if isinstance(source, str) or not isinstance(source, Sequence):
+            raise ContextContractError(
+                "requested_reference_ids must be a sequence"
+            )
+        requested = tuple(
+            sorted({_text(item, "requested_reference_id") for item in source})
+        )
+        evidence_ids = {item.reference_id for item in evidence}
+        if not set(requested).issubset(evidence_ids):
+            raise ContextContractError(
+                "requested references must be transmitted by the delta"
+            )
+        object.__setattr__(self, "requested_reference_ids", requested)
+        if len(self.canonical_bytes()) > ABSOLUTE_MAX_CONTEXT_BYTES:
+            raise ContextBoundsError(
+                "context delta exceeds its serialized-byte limit"
+            )
+
+    @property
+    def capsule_id(self) -> str:
+        return self.content_id
+
+    @property
+    def delta_capsule_id(self) -> str:
+        return self.content_id
+
+    @property
+    def selected_evidence(self) -> tuple[ContextReference, ...]:
+        return self.evidence
+
+    @property
+    def is_delta(self) -> bool:
+        return True
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTEXT_CONTRACT_VERSION,
+            "parent_capsule_id": self.parent_capsule_id,
+            "stage": self.stage,
+            "evidence": tuple(item.to_record() for item in self.evidence),
+            "reconstructed_input_tokens": self.reconstructed_input_tokens,
+            "requested_reference_ids": self.requested_reference_ids,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ContextDeltaCapsule":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "parent_capsule_id",
+                "stage",
+                "evidence",
+                "selected_evidence",
+                "reconstructed_input_tokens",
+                "requested_reference_ids",
+                "content_id",
+                "capsule_id",
+                "delta_capsule_id",
+            },
+            "context delta capsule",
+        )
+        result = cls(
+            parent_capsule_id=payload.get("parent_capsule_id", ""),
+            stage=payload.get("stage", ""),
+            evidence=payload.get(
+                "evidence", payload.get("selected_evidence", ())
+            ),
+            reconstructed_input_tokens=payload.get(
+                "reconstructed_input_tokens", 0
+            ),
+            requested_reference_ids=payload.get(
+                "requested_reference_ids", ()
+            ),
+        )
+        _identity(payload, result.content_id, "context delta capsule")
+        claimed = payload.get("delta_capsule_id")
+        if claimed not in (None, "", result.content_id):
+            raise ContextIdentityError(
+                "context delta capsule identity does not match payload"
+            )
+        return result
+
+
 def canonical_context_json_bytes(value: Any) -> bytes:
     """Return the canonical wire bytes for a context contract or value."""
 
@@ -943,6 +1089,7 @@ ContextContractLimits = ContextBudget
 ContextEvidenceReference = ContextReference
 SharedContextBudget = ContextBudget
 SharedContextCapsule = ContextCapsule
+SharedContextDeltaCapsule = ContextDeltaCapsule
 ContextContractValidationError = ContextContractError
 
 
@@ -951,6 +1098,7 @@ __all__ = [
     "CONTEXT_BUDGET_SCHEMA",
     "CONTEXT_CAPSULE_SCHEMA",
     "CONTEXT_CONTRACT_VERSION",
+    "CONTEXT_DELTA_CAPSULE_SCHEMA",
     "CONTEXT_REFERENCE_SCHEMA",
     "CONTRACT_VERSION",
     "SCHEMA_VERSION",
@@ -960,6 +1108,7 @@ __all__ = [
     "ContextContractError",
     "ContextContractLimits",
     "ContextContractValidationError",
+    "ContextDeltaCapsule",
     "ContextEvidenceReference",
     "ContextIdentityError",
     "ContextLimits",
@@ -967,5 +1116,6 @@ __all__ = [
     "ContextTier",
     "SharedContextBudget",
     "SharedContextCapsule",
+    "SharedContextDeltaCapsule",
     "canonical_context_json_bytes",
 ]

@@ -82,6 +82,12 @@ PAIRED_EFFICIENCY_CASE_SCHEMA = (
 PAIRED_EFFICIENCY_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/paired-efficiency-report@1"
 )
+DELTA_RETRY_PROOF_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/delta-retry-proof-binding@1"
+)
+DELTA_RETRY_PROMOTION_REPORT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/delta-retry-promotion-report@1"
+)
 
 BASIS_POINTS = 10_000
 DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS = 3_500
@@ -90,6 +96,13 @@ DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS = 3_500
 # this module must not claim them from token receipts alone.
 TERMINAL_ACCEPTED_WORK_EVIDENCE_ID = (
     "248026856102230635452423769994290240744"
+)
+# Verification-side binding to context_compiler.DELTA_RETRY_EVIDENCE_ID.
+# This module never emits the term from token measurements alone: a promotion
+# report can cover it only after consuming a typed ContextDeltaReceipt whose
+# content-addressed witness carries the same identifier.
+DELTA_RETRY_CONTEXT_EVIDENCE_ID = (
+    "306437607356117177048620815571362227127"
 )
 
 # Absolute construction bounds.  They are intentionally generous enough for a
@@ -2881,6 +2894,731 @@ class PairedEfficiencyReport(CanonicalContract):
         )
 
 
+@dataclass(frozen=True)
+class DeltaRetryProofBinding(CanonicalContract):
+    """Bound projection of one qualifying typed context-delta receipt.
+
+    The projection is deliberately small but retains every identity needed to
+    join the context proof to a paired task.  Instances used for promotion are
+    created with :meth:`from_context_delta_receipt`; the original receipt and
+    witness identities remain available for independent artifact lookup.
+    """
+
+    SCHEMA: ClassVar[str] = DELTA_RETRY_PROOF_BINDING_SCHEMA
+
+    task_reference: str
+    context_delta_receipt: Any
+    receipt_id: str
+    evidence_id: str
+    repository_id: str
+    tree_id: str
+    objective_id: str
+    policy_id: str
+    policy_revision: str
+    parent_capsule_id: str
+    delta_capsule_id: str
+    reconstructed_capsule_id: str
+    full_replay_tokens: int
+    delta_tokens: int
+    required_coverage_ids: tuple[str, ...]
+    reconstructed_coverage_ids: tuple[str, ...]
+    changed_reference_ids: tuple[str, ...]
+    requested_reference_ids: tuple[str, ...]
+    retained_reference_ids: tuple[str, ...]
+    required_fields: tuple[str, ...]
+    artifact_digest: str
+    requirement_id: str = DELTA_RETRY_CONTEXT_EVIDENCE_ID
+
+    def __post_init__(self) -> None:
+        from .context_compiler import (
+            DELTA_RETRY_EVIDENCE_ID,
+            ContextDeltaReceipt,
+        )
+
+        source = self.context_delta_receipt
+        if isinstance(source, Mapping):
+            source = ContextDeltaReceipt.from_dict(source)
+        if not isinstance(source, ContextDeltaReceipt):
+            raise ContractValidationError(
+                "context_delta_receipt must be a typed ContextDeltaReceipt"
+            )
+        evidence = source.evidence
+        if (
+            evidence is None
+            or DELTA_RETRY_EVIDENCE_ID
+            != DELTA_RETRY_CONTEXT_EVIDENCE_ID
+            or source.evidence_claim_references
+            != (DELTA_RETRY_CONTEXT_EVIDENCE_ID,)
+        ):
+            raise ContractValidationError(
+                "context delta receipt does not carry qualifying typed evidence"
+            )
+        object.__setattr__(self, "context_delta_receipt", source)
+        for name in (
+            "task_reference",
+            "receipt_id",
+            "evidence_id",
+            "repository_id",
+            "tree_id",
+            "objective_id",
+            "policy_id",
+            "policy_revision",
+            "parent_capsule_id",
+            "delta_capsule_id",
+            "reconstructed_capsule_id",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _text(
+                    getattr(self, name),
+                    field_name=name,
+                    required=True,
+                    max_bytes=MAX_REFERENCE_BYTES,
+                ),
+            )
+        if self.requirement_id != DELTA_RETRY_CONTEXT_EVIDENCE_ID:
+            raise ContractValidationError(
+                "delta retry proof carries an unexpected requirement ID"
+            )
+        for name in ("full_replay_tokens", "delta_tokens"):
+            object.__setattr__(
+                self,
+                name,
+                _integer(
+                    getattr(self, name),
+                    field_name=name,
+                    minimum=1,
+                    maximum=MAX_TOKENS,
+                ),
+            )
+        if self.delta_tokens >= self.full_replay_tokens:
+            raise ContractValidationError(
+                "delta retry proof must transmit fewer tokens than full replay"
+            )
+        for name in (
+            "required_coverage_ids",
+            "reconstructed_coverage_ids",
+            "changed_reference_ids",
+            "requested_reference_ids",
+            "retained_reference_ids",
+            "required_fields",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _strings(
+                    getattr(self, name),
+                    field_name=name,
+                    maximum=MAX_EVIDENCE_REFERENCES,
+                ),
+            )
+        if not self.required_coverage_ids:
+            raise ContractValidationError(
+                "delta retry proof requires authoritative coverage"
+            )
+        if not self.coverage_preserved:
+            raise ContractValidationError(
+                "delta retry proof loses required coverage"
+            )
+        if not (
+            self.changed_reference_ids or self.requested_reference_ids
+        ):
+            raise ContractValidationError(
+                "delta retry proof must identify changed or requested evidence"
+            )
+        if set(self.changed_reference_ids).intersection(
+            self.requested_reference_ids
+        ):
+            raise ContractValidationError(
+                "changed and requested-only proof references must be disjoint"
+            )
+        if set(self.changed_reference_ids).union(
+            self.requested_reference_ids
+        ).intersection(self.retained_reference_ids):
+            raise ContractValidationError(
+                "transmitted and retained proof references must be disjoint"
+            )
+        if self.required_fields != (
+            "acceptance",
+            "authority",
+            "goal",
+            "scope",
+        ):
+            raise ContractValidationError(
+                "delta retry proof must preserve every invariant context field"
+            )
+        source_claims = {
+            "receipt_id": source.receipt_id,
+            "evidence_id": evidence.content_id,
+            "repository_id": source.repository_id,
+            "tree_id": source.tree_id,
+            "objective_id": source.objective_id,
+            "policy_id": source.policy_id,
+            "policy_revision": source.policy_revision,
+            "parent_capsule_id": source.parent_capsule_id,
+            "delta_capsule_id": source.delta_capsule_id,
+            "reconstructed_capsule_id": source.reconstructed_capsule_id,
+            "full_replay_tokens": source.full_replay_tokens,
+            "delta_tokens": source.delta_tokens,
+            "required_coverage_ids": evidence.required_coverage_ids,
+            "reconstructed_coverage_ids": (
+                evidence.reconstructed_coverage_ids
+            ),
+            "changed_reference_ids": evidence.changed_reference_ids,
+            "requested_reference_ids": evidence.requested_reference_ids,
+            "retained_reference_ids": evidence.retained_reference_ids,
+            "required_fields": evidence.required_fields,
+            "artifact_digest": evidence.artifact_digest,
+            "requirement_id": evidence.requirement_id,
+        }
+        if any(
+            getattr(self, name) != value
+            for name, value in source_claims.items()
+        ):
+            raise ContractValidationError(
+                "delta retry proof projection is not bound to its typed receipt"
+            )
+        object.__setattr__(
+            self,
+            "artifact_digest",
+            _digest(self.artifact_digest, field_name="artifact_digest"),
+        )
+        _record_size(
+            self,
+            maximum=MAX_SERIALIZED_RECEIPT_BYTES,
+            name="delta retry proof binding",
+        )
+
+    @property
+    def binding_id(self) -> str:
+        return self.content_id
+
+    @property
+    def coverage_preserved(self) -> bool:
+        return set(self.required_coverage_ids).issubset(
+            self.reconstructed_coverage_ids
+        )
+
+    @property
+    def input_token_reduction_bps(self) -> int:
+        return (
+            (self.full_replay_tokens - self.delta_tokens)
+            * BASIS_POINTS
+            // self.full_replay_tokens
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "task_reference": self.task_reference,
+            "context_delta_receipt": self.context_delta_receipt,
+            "receipt_id": self.receipt_id,
+            "evidence_id": self.evidence_id,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_id": self.objective_id,
+            "policy_id": self.policy_id,
+            "policy_revision": self.policy_revision,
+            "parent_capsule_id": self.parent_capsule_id,
+            "delta_capsule_id": self.delta_capsule_id,
+            "reconstructed_capsule_id": self.reconstructed_capsule_id,
+            "full_replay_tokens": self.full_replay_tokens,
+            "delta_tokens": self.delta_tokens,
+            "required_coverage_ids": self.required_coverage_ids,
+            "reconstructed_coverage_ids": self.reconstructed_coverage_ids,
+            "changed_reference_ids": self.changed_reference_ids,
+            "requested_reference_ids": self.requested_reference_ids,
+            "retained_reference_ids": self.retained_reference_ids,
+            "required_fields": self.required_fields,
+            "artifact_digest": self.artifact_digest,
+            "requirement_id": self.requirement_id,
+            "coverage_preserved": self.coverage_preserved,
+            "input_token_reduction_bps": self.input_token_reduction_bps,
+        }
+
+    @classmethod
+    def from_context_delta_receipt(
+        cls,
+        task_reference: str,
+        receipt: Any,
+    ) -> "DeltaRetryProofBinding":
+        """Verify and project a strict ``ContextDeltaReceipt`` instance."""
+
+        # Local import keeps the foundational efficiency receipt contract
+        # usable without importing the context compiler during module import.
+        from .context_compiler import (
+            DELTA_RETRY_EVIDENCE_ID,
+            ContextDeltaReceipt,
+        )
+
+        if DELTA_RETRY_EVIDENCE_ID != DELTA_RETRY_CONTEXT_EVIDENCE_ID:
+            raise ContractValidationError(
+                "context compiler and efficiency verifier disagree on the "
+                "delta retry requirement ID"
+            )
+        if isinstance(receipt, Mapping):
+            receipt = ContextDeltaReceipt.from_dict(receipt)
+        if not isinstance(receipt, ContextDeltaReceipt):
+            raise ContractValidationError(
+                "delta retry proofs must be typed ContextDeltaReceipt values"
+            )
+        evidence = receipt.evidence
+        if evidence is None or receipt.evidence_claim_references != (
+            DELTA_RETRY_CONTEXT_EVIDENCE_ID,
+        ):
+            raise ContractValidationError(
+                "context delta receipt does not carry qualifying typed evidence"
+            )
+        return cls(
+            task_reference=task_reference,
+            context_delta_receipt=receipt,
+            receipt_id=receipt.receipt_id,
+            evidence_id=evidence.content_id,
+            repository_id=receipt.repository_id,
+            tree_id=receipt.tree_id,
+            objective_id=receipt.objective_id,
+            policy_id=receipt.policy_id,
+            policy_revision=receipt.policy_revision,
+            parent_capsule_id=receipt.parent_capsule_id,
+            delta_capsule_id=receipt.delta_capsule_id,
+            reconstructed_capsule_id=receipt.reconstructed_capsule_id,
+            full_replay_tokens=receipt.full_replay_tokens,
+            delta_tokens=receipt.delta_tokens,
+            required_coverage_ids=evidence.required_coverage_ids,
+            reconstructed_coverage_ids=evidence.reconstructed_coverage_ids,
+            changed_reference_ids=evidence.changed_reference_ids,
+            requested_reference_ids=evidence.requested_reference_ids,
+            retained_reference_ids=evidence.retained_reference_ids,
+            required_fields=evidence.required_fields,
+            artifact_digest=evidence.artifact_digest,
+            requirement_id=evidence.requirement_id,
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DeltaRetryProofBinding":
+        _schema(payload, cls.SCHEMA, "delta retry proof binding")
+        derived = {"coverage_preserved", "input_token_reduction_bps"}
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "task_reference",
+                "context_delta_receipt",
+                "receipt_id",
+                "evidence_id",
+                "repository_id",
+                "tree_id",
+                "objective_id",
+                "policy_id",
+                "policy_revision",
+                "parent_capsule_id",
+                "delta_capsule_id",
+                "reconstructed_capsule_id",
+                "full_replay_tokens",
+                "delta_tokens",
+                "required_coverage_ids",
+                "reconstructed_coverage_ids",
+                "changed_reference_ids",
+                "requested_reference_ids",
+                "retained_reference_ids",
+                "required_fields",
+                "artifact_digest",
+                "requirement_id",
+                "binding_id",
+                "content_id",
+                *derived,
+            },
+            artifact_name="delta retry proof binding",
+        )
+        result = cls(
+            task_reference=payload.get("task_reference", ""),
+            context_delta_receipt=payload.get("context_delta_receipt"),
+            receipt_id=payload.get("receipt_id", ""),
+            evidence_id=payload.get("evidence_id", ""),
+            repository_id=payload.get("repository_id", ""),
+            tree_id=payload.get("tree_id", ""),
+            objective_id=payload.get("objective_id", ""),
+            policy_id=payload.get("policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            parent_capsule_id=payload.get("parent_capsule_id", ""),
+            delta_capsule_id=payload.get("delta_capsule_id", ""),
+            reconstructed_capsule_id=payload.get(
+                "reconstructed_capsule_id", ""
+            ),
+            full_replay_tokens=payload.get("full_replay_tokens", 0),
+            delta_tokens=payload.get("delta_tokens", 0),
+            required_coverage_ids=tuple(
+                payload.get("required_coverage_ids") or ()
+            ),
+            reconstructed_coverage_ids=tuple(
+                payload.get("reconstructed_coverage_ids") or ()
+            ),
+            changed_reference_ids=tuple(
+                payload.get("changed_reference_ids") or ()
+            ),
+            requested_reference_ids=tuple(
+                payload.get("requested_reference_ids") or ()
+            ),
+            retained_reference_ids=tuple(
+                payload.get("retained_reference_ids") or ()
+            ),
+            required_fields=tuple(payload.get("required_fields") or ()),
+            artifact_digest=payload.get("artifact_digest", ""),
+            requirement_id=payload.get("requirement_id", ""),
+        )
+        for name in derived:
+            if payload.get(name, getattr(result, name)) != getattr(result, name):
+                raise ContractValidationError(
+                    f"{name} claim does not match delta retry proof binding"
+                )
+        _claim(payload, result.binding_id, "binding_id", "content_id")
+        return result
+
+
+@dataclass(frozen=True)
+class DeltaRetryPromotionReport(CanonicalContract):
+    """Fail-closed join of paired efficiency and typed retry-delta proofs."""
+
+    SCHEMA: ClassVar[str] = DELTA_RETRY_PROMOTION_REPORT_SCHEMA
+
+    paired_report: PairedEfficiencyReport
+    proof_bindings: tuple[DeltaRetryProofBinding, ...] = ()
+
+    def __post_init__(self) -> None:
+        paired = self.paired_report
+        if isinstance(paired, Mapping):
+            paired = PairedEfficiencyReport.from_dict(paired)
+        if not isinstance(paired, PairedEfficiencyReport):
+            raise ContractValidationError(
+                "paired_report must be a PairedEfficiencyReport"
+            )
+        object.__setattr__(self, "paired_report", paired)
+        bindings = _coerce_records(
+            self.proof_bindings,
+            DeltaRetryProofBinding,
+            DeltaRetryProofBinding.from_dict,
+            field_name="proof_bindings",
+            maximum=MAX_RECEIPTS_PER_REPORT,
+        )
+        bindings = tuple(
+            sorted(
+                bindings,
+                key=lambda item: (item.task_reference, item.receipt_id),
+            )
+        )
+        if len({item.receipt_id for item in bindings}) != len(bindings):
+            raise ContractValidationError(
+                "delta retry promotion report contains duplicate receipt IDs"
+            )
+        object.__setattr__(self, "proof_bindings", bindings)
+        _record_size(
+            self,
+            maximum=MAX_SERIALIZED_REPORT_BYTES,
+            name="delta retry promotion report",
+        )
+
+    @property
+    def report_id(self) -> str:
+        return self.content_id
+
+    @property
+    def proof_task_references(self) -> tuple[str, ...]:
+        return tuple(
+            sorted({item.task_reference for item in self.proof_bindings})
+        )
+
+    @property
+    def missing_proof_task_references(self) -> tuple[str, ...]:
+        paired = {item.task_reference for item in self.paired_report.cases}
+        return tuple(sorted(paired.difference(self.proof_task_references)))
+
+    @property
+    def unexpected_proof_task_references(self) -> tuple[str, ...]:
+        paired = {item.task_reference for item in self.paired_report.cases}
+        return tuple(sorted(set(self.proof_task_references).difference(paired)))
+
+    @property
+    def proof_population_complete(self) -> bool:
+        return bool(self.paired_report.cases) and not (
+            self.missing_proof_task_references
+            or self.unexpected_proof_task_references
+        )
+
+    @property
+    def delta_receipt_count(self) -> int:
+        return len(self.proof_bindings)
+
+    def _per_task_tokens(self, name: str) -> tuple[int, ...]:
+        totals: dict[str, int] = {}
+        for binding in self.proof_bindings:
+            totals[binding.task_reference] = (
+                totals.get(binding.task_reference, 0)
+                + getattr(binding, name)
+            )
+        return tuple(totals[task] for task in sorted(totals))
+
+    @property
+    def median_full_replay_input_tokens(self) -> int:
+        return _median_integer(self._per_task_tokens("full_replay_tokens"))
+
+    @property
+    def median_delta_input_tokens(self) -> int:
+        return _median_integer(self._per_task_tokens("delta_tokens"))
+
+    @property
+    def median_delta_input_token_reduction_bps(self) -> int:
+        baseline = self.median_full_replay_input_tokens
+        if not baseline:
+            return 0
+        return (
+            (baseline - self.median_delta_input_tokens)
+            * BASIS_POINTS
+            // baseline
+        )
+
+    @property
+    def token_accounting_consistent(self) -> bool:
+        """Whether context-token portions fit their charged lifecycle totals."""
+
+        case_by_task = {
+            item.task_reference: item for item in self.paired_report.cases
+        }
+        full_by_task: dict[str, int] = {}
+        delta_by_task: dict[str, int] = {}
+        for binding in self.proof_bindings:
+            full_by_task[binding.task_reference] = (
+                full_by_task.get(binding.task_reference, 0)
+                + binding.full_replay_tokens
+            )
+            delta_by_task[binding.task_reference] = (
+                delta_by_task.get(binding.task_reference, 0)
+                + binding.delta_tokens
+            )
+        return all(
+            task in case_by_task
+            and full_by_task[task]
+            <= case_by_task[task].baseline_input_tokens
+            and delta_by_task[task]
+            <= case_by_task[task].candidate_input_tokens
+            for task in set(full_by_task) | set(delta_by_task)
+        )
+
+    @property
+    def typed_delta_gate_passed(self) -> bool:
+        return (
+            self.proof_population_complete
+            and bool(self.proof_bindings)
+            and all(item.coverage_preserved for item in self.proof_bindings)
+            and all(
+                item.delta_tokens < item.full_replay_tokens
+                for item in self.proof_bindings
+            )
+            and self.median_delta_input_token_reduction_bps
+            >= self.paired_report.minimum_input_token_reduction_bps
+            and self.token_accounting_consistent
+        )
+
+    @property
+    def paired_efficiency_gate_passed(self) -> bool:
+        return self.paired_report.passed
+
+    @property
+    def evidence_claim_references(self) -> tuple[str, ...]:
+        if not self.passed:
+            return ()
+        return (DELTA_RETRY_CONTEXT_EVIDENCE_ID,)
+
+    @property
+    def passed(self) -> bool:
+        return (
+            self.paired_efficiency_gate_passed
+            and self.typed_delta_gate_passed
+        )
+
+    @property
+    def promotion_eligible(self) -> bool:
+        return self.passed
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "paired_report": self.paired_report,
+            "proof_bindings": self.proof_bindings,
+            "proof_task_references": self.proof_task_references,
+            "missing_proof_task_references": (
+                self.missing_proof_task_references
+            ),
+            "unexpected_proof_task_references": (
+                self.unexpected_proof_task_references
+            ),
+            "proof_population_complete": self.proof_population_complete,
+            "delta_receipt_count": self.delta_receipt_count,
+            "median_full_replay_input_tokens": (
+                self.median_full_replay_input_tokens
+            ),
+            "median_delta_input_tokens": self.median_delta_input_tokens,
+            "median_delta_input_token_reduction_bps": (
+                self.median_delta_input_token_reduction_bps
+            ),
+            "token_accounting_consistent": self.token_accounting_consistent,
+            "typed_delta_gate_passed": self.typed_delta_gate_passed,
+            "paired_efficiency_gate_passed": (
+                self.paired_efficiency_gate_passed
+            ),
+            "evidence_claim_references": self.evidence_claim_references,
+            "passed": self.passed,
+            "promotion_eligible": self.promotion_eligible,
+        }
+
+    def to_dict(self, *, include_report_id: bool = False) -> dict[str, Any]:
+        payload = super().to_dict()
+        if include_report_id:
+            payload["report_id"] = self.report_id
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "DeltaRetryPromotionReport":
+        _schema(payload, cls.SCHEMA, "delta retry promotion report")
+        derived = {
+            "proof_task_references",
+            "missing_proof_task_references",
+            "unexpected_proof_task_references",
+            "proof_population_complete",
+            "delta_receipt_count",
+            "median_full_replay_input_tokens",
+            "median_delta_input_tokens",
+            "median_delta_input_token_reduction_bps",
+            "token_accounting_consistent",
+            "typed_delta_gate_passed",
+            "paired_efficiency_gate_passed",
+            "evidence_claim_references",
+            "passed",
+            "promotion_eligible",
+        }
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "paired_report",
+                "proof_bindings",
+                "report_id",
+                "content_id",
+                *derived,
+            },
+            artifact_name="delta retry promotion report",
+        )
+        paired_payload = payload.get("paired_report")
+        if not isinstance(paired_payload, Mapping):
+            raise ContractValidationError(
+                "delta retry promotion report requires a paired report"
+            )
+        result = cls(
+            paired_report=PairedEfficiencyReport.from_dict(paired_payload),
+            proof_bindings=tuple(
+                DeltaRetryProofBinding.from_dict(item)
+                for item in payload.get("proof_bindings") or ()
+            ),
+        )
+        for name in derived:
+            claimed = payload.get(name, getattr(result, name))
+            if isinstance(getattr(result, name), tuple):
+                claimed = tuple(claimed)
+            if claimed != getattr(result, name):
+                raise ContractValidationError(
+                    f"{name} claim does not match delta retry promotion report"
+                )
+        _claim(payload, result.report_id, "report_id", "content_id")
+        return result
+
+    @classmethod
+    def from_json(
+        cls, value: str | bytes | bytearray
+    ) -> "DeltaRetryPromotionReport":
+        return cls.from_dict(
+            _load_json(value, artifact_name="delta retry promotion report")
+        )
+
+
+def build_delta_retry_promotion_report(
+    paired_report: PairedEfficiencyReport | Mapping[str, Any],
+    delta_receipts_by_task: Mapping[str, Sequence[Any]],
+) -> DeltaRetryPromotionReport:
+    """Join a paired report to qualifying typed delta receipts by task.
+
+    Missing task proofs produce a deterministic, promotion-ineligible report
+    so operators can diagnose incomplete benchmark collection.  Unknown task
+    keys and identity mismatches are rejected because they indicate a stale or
+    ambiguously joined evidence population.
+    """
+
+    if isinstance(paired_report, Mapping):
+        paired_report = PairedEfficiencyReport.from_dict(paired_report)
+    if not isinstance(paired_report, PairedEfficiencyReport):
+        raise ContractValidationError(
+            "paired_report must be a PairedEfficiencyReport"
+        )
+    if not isinstance(delta_receipts_by_task, Mapping):
+        raise ContractValidationError(
+            "delta_receipts_by_task must be an object"
+        )
+    cases = {item.task_reference: item for item in paired_report.cases}
+    unknown = set(delta_receipts_by_task).difference(cases)
+    if unknown:
+        raise ContractValidationError(
+            "delta retry proofs contain tasks outside the paired population"
+        )
+    bindings: list[DeltaRetryProofBinding] = []
+    for task_reference in sorted(delta_receipts_by_task):
+        values = delta_receipts_by_task[task_reference]
+        if not isinstance(values, Sequence) or isinstance(
+            values, (str, bytes, bytearray, memoryview)
+        ):
+            raise ContractValidationError(
+                "each delta retry proof population must be a sequence"
+            )
+        if len(values) > MAX_RETRIES:
+            raise ContractValidationError(
+                f"a task cannot carry more than {MAX_RETRIES} delta receipts"
+            )
+        case = cases[task_reference]
+        for receipt in values:
+            binding = DeltaRetryProofBinding.from_context_delta_receipt(
+                task_reference,
+                receipt,
+            )
+            if binding.objective_id != case.goal_reference:
+                raise ContractValidationError(
+                    "context delta objective does not match its paired task"
+                )
+            if binding.tree_id != case.repository_tree_digest:
+                raise ContractValidationError(
+                    "context delta tree does not match its paired task"
+                )
+            if binding.policy_revision != case.policy_digest:
+                raise ContractValidationError(
+                    "context delta policy does not match its paired task"
+                )
+            if set(binding.required_coverage_ids) != set(
+                case.required_evidence_references
+            ):
+                raise ContractValidationError(
+                    "context delta requirements do not match the paired "
+                    "task's authoritative evidence population"
+                )
+            bindings.append(binding)
+    return DeltaRetryPromotionReport(
+        paired_report=paired_report,
+        proof_bindings=tuple(bindings),
+    )
+
+
 def _normalize_efficiency_arm(
     receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
     *,
@@ -3377,6 +4115,9 @@ __all__ = [
     "CACHE_OBSERVATION_SCHEMA",
     "CHANGED_SCOPE_SCHEMA",
     "DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS",
+    "DELTA_RETRY_CONTEXT_EVIDENCE_ID",
+    "DELTA_RETRY_PROMOTION_REPORT_SCHEMA",
+    "DELTA_RETRY_PROOF_BINDING_SCHEMA",
     "EFFICIENCY_CONTRACT_VERSION",
     "EFFICIENCY_RECEIPT_SCHEMA",
     "EFFICIENCY_REPORT_SCHEMA",
@@ -3406,6 +4147,8 @@ __all__ = [
     "CacheDisposition",
     "CacheObservation",
     "ChangedScope",
+    "DeltaRetryProofBinding",
+    "DeltaRetryPromotionReport",
     "EfficiencyAggregate",
     "EfficiencyReceipt",
     "EfficiencyReport",
@@ -3427,6 +4170,7 @@ __all__ = [
     "aggregate_efficiency_receipts",
     "aggregate_receipts",
     "build_paired_efficiency_report",
+    "build_delta_retry_promotion_report",
     "build_efficiency_baseline_fixtures",
     "compare_paired_efficiency_receipts",
     "make_baseline_fixtures",
