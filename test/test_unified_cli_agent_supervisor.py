@@ -213,6 +213,7 @@ def test_cli_discovery_is_repeatable_and_initializes_no_runtime(
     )
 
     assert observation.side_effect_free is True
+    assert first.canonical_bytes() == second.canonical_bytes()
     assert service_resolutions == process_starts == provider_loads == 0
 
 

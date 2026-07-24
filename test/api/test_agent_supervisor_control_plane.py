@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     AuthorizationVerdict,
     ControlBounds,
     ControlContractError,
+    ControlDiscoveryCompletionMemberHealth,
     ControlDiscoveryCompletionQuorumEvidence,
     ControlDiscoveryManifest,
     ControlDiscoveryObservation,
@@ -320,6 +321,7 @@ def test_python_discovery_is_cached_deterministic_and_never_dispatches(
     after = capture_control_discovery_runtime_state()
 
     assert first == second
+    assert first.canonical_bytes() == second.canonical_bytes()
     assert report_one is report_two
     assert first.surface is ControlSurface.PYTHON
     assert before == after
@@ -408,7 +410,7 @@ def test_discovery_safety_evidence_is_complete_content_addressed_and_strict(
 def test_g105_completion_requires_bound_current_tree_validation_health_and_quorum(
     tmp_path: Path,
 ) -> None:
-    """ASI-072: operational discovery proof cannot self-certify completion."""
+    """ASI-076: operational discovery proof cannot self-certify completion."""
 
     repo_root = tmp_path / "repo"
     state_root = tmp_path / "state"
@@ -428,10 +430,10 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
     )
     runtime_state = ControlDiscoveryRuntimeState()
     operational = ControlDiscoverySafetyEvidence(
-        repository_tree="tree:asi-072",
+        repository_tree="tree:asi-076",
         objective_id=CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
         policy_id="policy:control",
-        policy_revision="policy:asi-072",
+        policy_revision="policy:asi-076",
         capability_report=service.capability_report(),
         observations=tuple(
             ControlDiscoveryObservation(
@@ -464,14 +466,14 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
     completion_evidence = tuple(
         CompletionEvidence(
             acceptance_criterion=criterion,
-            producing_task_or_scan="ASI-072",
+            producing_task_or_scan="ASI-076",
             producer_kind="task",
             validation_receipt=validation_binding,
             validation_passed=True,
             repository_tree=operational.repository_tree,
             freshness={"fresh": True},
             observed_at=now,
-            provenance_cid=f"validation:asi-072:{index}",
+            provenance_cid=f"validation:asi-076:{index}",
             metadata={
                 "evidence_source_policy": {
                     "satisfies": True,
@@ -488,7 +490,7 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
     coverage_receipts = [
         ValidationReceiptCoverage(
             receipt_id=item.provenance_cid,
-            task_id="ASI-072",
+            task_id="ASI-076",
             criterion=item.acceptance_criterion,
             command=command,
             status=CoverageStatus.VERIFIED,
@@ -496,7 +498,7 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
             repository_tree=operational.repository_tree,
             observed_at=now.isoformat(),
             provenance_cid=item.provenance_cid,
-            explanation="fresh passing ASI-072 criterion validation",
+            explanation="fresh passing ASI-076 criterion validation",
             outcome="passed",
             reason_code="validation_verified",
             fresh=True,
@@ -559,28 +561,38 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
         required_members=2,
         members=(
             ExhaustionQuorumMember(
-                member_id="asi-072-implementation",
+                member_id="asi-076-implementation",
                 evidence_channel="implementation-validation",
-                receipt_cid="scan:asi-072:implementation",
+                receipt_cid="scan:asi-076:implementation",
                 binding=binding,
                 scan_mode="exhaustive",
                 finished_at=now.isoformat(),
             ),
             ExhaustionQuorumMember(
-                member_id="asi-072-replay",
+                member_id="asi-076-replay",
                 evidence_channel="receipt-replay-audit",
-                receipt_cid="scan:asi-072:replay",
+                receipt_cid="scan:asi-076:replay",
                 binding=binding,
                 scan_mode="exhaustive",
                 finished_at=now.isoformat(),
             ),
         ),
     )
+    member_health = tuple(
+        ControlDiscoveryCompletionMemberHealth(
+            member_id=member.member_id,
+            receipt_cid=member.receipt_cid,
+            healthy=True,
+            safe_for_completion_reasoning=True,
+        )
+        for member in generic_quorum.members
+    )
     quorum = ControlDiscoveryCompletionQuorumEvidence(
         validation_policy_id=operational.policy_id,
         policy_revision=operational.policy_revision,
         operational_receipt_id=operational.content_id,
         quorum=generic_quorum,
+        member_health=member_health,
     )
     assert (
         ControlDiscoveryCompletionQuorumEvidence.from_json(
@@ -677,9 +689,9 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
         "binding": artifact_binding,
         "members": [
             {
-                "member_id": f"asi-072-mapping-{index}",
+                "member_id": f"asi-076-mapping-{index}",
                 "evidence_channel": channel,
-                "receipt_cid": f"scan:asi-072:mapping:{index}",
+                "receipt_cid": f"scan:asi-076:mapping:{index}",
                 "binding": artifact_binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -722,6 +734,24 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
             }
         )
         detached_evidence_populations.append(tuple(detached_evidence))
+    failed_evidence = list(completion_evidence)
+    failed_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **failed_evidence[0].to_dict(),
+            "validation_passed": False,
+            "validation_receipt": {
+                **validation_binding,
+                "status": "failed",
+            },
+        }
+    )
+    stale_evidence = list(completion_evidence)
+    stale_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **stale_evidence[0].to_dict(),
+            "observed_at": (now - timedelta(seconds=301)).isoformat(),
+        }
+    )
     incomplete_coverage = copy.deepcopy(mapping_coverage)
     incomplete_coverage["criteria"] = incomplete_coverage["criteria"][:-1]
     unbound_coverage = copy.deepcopy(mapping_coverage)
@@ -755,11 +785,37 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
     foreign_quorum["binding"]["tree_id"] = "tree:foreign"
     for member in foreign_quorum["members"]:
         member["binding"]["tree_id"] = "tree:foreign"
+    with pytest.raises(ControlContractError, match="cover every quorum"):
+        ControlDiscoveryCompletionQuorumEvidence(
+            validation_policy_id=operational.policy_id,
+            policy_revision=operational.policy_revision,
+            operational_receipt_id=operational.content_id,
+            quorum=generic_quorum,
+            member_health=member_health[:-1],
+        )
+    with pytest.raises(ControlContractError, match="explicitly healthy"):
+        ControlDiscoveryCompletionQuorumEvidence(
+            validation_policy_id=operational.policy_id,
+            policy_revision=operational.policy_revision,
+            operational_receipt_id=operational.content_id,
+            quorum=generic_quorum,
+            member_health=(
+                ControlDiscoveryCompletionMemberHealth(
+                    member_id=member_health[0].member_id,
+                    receipt_cid=member_health[0].receipt_cid,
+                    healthy=False,
+                    safe_for_completion_reasoning=True,
+                ),
+                member_health[1],
+            ),
+        )
     rejected_inputs = (
         *(
             {"evidence": population}
             for population in detached_evidence_populations
         ),
+        {"evidence": tuple(failed_evidence)},
+        {"evidence": tuple(stale_evidence)},
         {"evidence": completion_evidence[:-1]},
         {"coverage": incomplete_coverage},
         {"coverage": unbound_coverage},
@@ -774,6 +830,7 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
                 policy_revision=operational.policy_revision,
                 operational_receipt_id=operational.content_id,
                 quorum=generic_quorum,
+                member_health=member_health,
             )
         },
         {
@@ -782,6 +839,7 @@ def test_g105_completion_requires_bound_current_tree_validation_health_and_quoru
                 policy_revision=operational.policy_revision,
                 operational_receipt_id="sha256:detached",
                 quorum=generic_quorum,
+                member_health=member_health,
             )
         },
         {"exhaustion_quorum": duplicate_quorum},

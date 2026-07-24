@@ -368,6 +368,19 @@ def test_discovery_safety_evidence_uses_observed_python_cli_and_mcp_runs(
     assert evidence.proved_requirement_ids == (
         CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
     )
+    population_ids = {
+        observation.manifest.schema_population_id
+        for observation in evidence.observations
+    }
+    assert len(population_ids) == 1
+    for observation in evidence.observations:
+        assert (
+            observation.first_manifest.canonical_bytes()
+            == observation.second_manifest.canonical_bytes()
+        )
+        assert observation.manifest.operations == tuple(
+            sorted(Operation, key=lambda item: item.value)
+        )
     assert ControlDiscoverySafetyEvidence.from_dict(
         evidence.to_record()
     ) == evidence
