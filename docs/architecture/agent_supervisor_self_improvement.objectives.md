@@ -108,7 +108,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G030 Evidence-aware planning and responsive goal refinement
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G000
 - Depends on: ASI-G020
 - Fib priority: 3
@@ -134,6 +134,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T21:02:21.427259+00:00
+- State transition reason: Produce completion evidence for: Every plan is evaluated for acceptance coverage, assumptions, semantics, dependencies, conflicts, validation/proof feasibility, novelty, and resource/token cost; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T21:02:21.427259+00:00
 
 ## ASI-G040 Strict output, code, test, semantic, and proof validation
 

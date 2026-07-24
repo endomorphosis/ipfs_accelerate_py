@@ -2783,3 +2783,48 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: generated_task
 - Todo vector key: b22b3881227ebd6d
 - Acceptance: Objective scan filed this gap for ASI-G020. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-079-objective-gap-922f6a6ca41b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Complete the goal's producing tasks before requesting completion., Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Existing analysis cache, AST index, and retrieval contracts are used in the live objective/planning path, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
+
+## ASI-080 Produce completion evidence for Evidence-aware planning and responsive goal refinement
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: planning
+- Depends on: 
+- Outputs: data/agent_supervisor/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py, test/api/test_agent_supervisor_adaptive_planner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_planner.py test/api/test_agent_supervisor_adaptive_goal_refiner.py -q
+- Bundle: agent-supervisor/self-improvement/planning
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-planning.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: ASI-G000
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/planning
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py, test/api/test_agent_supervisor_adaptive_planner.py
+- Changed paths: 
+- AST symbols: 003778425160038348524906247302938706902, 173075880069453142914839090434430341799, 312819945606360295782005228058369235550
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G030
+- Canonical task key: task/v1/e39f135135f14e5baed958cd1e3fbcaf1c14d0bb725ba9bdf5b36a0ce43ec81a
+- Canonical task CID: baguqeera4oprgujv6fhfxlwzldgr4p54v4objuf3ojn2tppvwnvazzb6zana
+- Evidence obligation key: objective-work/v1/941b45b4a475a78a114da4e82944d2023025eaab
+- Missing evidence: Complete the goal's producing tasks before requesting completion., Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied., Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Every plan is evaluated for acceptance coverage, assumptions, semantics, dependencies, conflicts, validation/proof feasibility, novelty, and resource/token cost, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.
+- Embedding query: 003778425160038348524906247302938706902 173075880069453142914839090434430341799 312819945606360295782005228058369235550
+- AST query: 003778425160038348524906247302938706902, 173075880069453142914839090434430341799, 312819945606360295782005228058369235550
+- Surplus group: ASI-G030
+- Merge key: objective-work/v1/941b45b4a475a78a114da4e82944d2023025eaab
+- Merge family: ASI-G030
+- Merge role: completion_gate
+- Work item count: 7
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: 941b45b4a475a78a
+- Acceptance: Objective scan filed this gap for ASI-G030. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-080-objective-gap-95ff2e6c9e3e.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Complete the goal's producing tasks before requesting completion., Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied., Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Every plan is evaluated for acceptance coverage, assumptions, semantics, dependencies, conflicts, validation/proof feasibility, novelty, and resource/token cost, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
