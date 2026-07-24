@@ -711,6 +711,9 @@ class ResponsiveReplanDecision:
         the durable request/policy/tree/verifier witness emitted by
         :class:`AdaptiveRefinementReceipt`.  ``requirement_ids`` identifies
         the downstream objective without allowing this wrapper to satisfy it.
+        In particular, it must never be supplied as criterion validation,
+        analyzer-health, or exhaustion-quorum evidence to
+        ``AdaptiveRefinementResult.evaluate_objective_completion``.
         """
 
         return ()

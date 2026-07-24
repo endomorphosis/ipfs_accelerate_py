@@ -44,7 +44,7 @@ from .goal_refinement_verification import (
 )
 
 
-ADAPTIVE_GOAL_REFINER_VERSION: Final = 1
+ADAPTIVE_GOAL_REFINER_VERSION: Final = 2
 NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID: Final = (
     "003778425160038348524906247302938706902"
 )
@@ -61,6 +61,35 @@ CANDIDATE_SCHEMA: Final = (
 RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-receipt@1"
 REQUIREMENT_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/new-counterexample-refinement-evidence@1"
+)
+
+# This is the closed mandatory population for the objective completion bridge
+# below.  Keeping it beside the evidence producer prevents a caller from
+# accidentally narrowing the objective's prose acceptance contract while
+# asking the generic goal-completion gate for a verdict.
+NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA: Final = (
+    (
+        "A changed typed counterexample can generate and admit at most one "
+        "bounded refinement in the next cycle"
+    ),
+    "The frozen root is never mutated",
+    "The request and candidate remain on the frozen repository tree",
+    (
+        "Admission is policy gated, the candidate declares the exact bounded "
+        "changed-goal set, and verification binds the exact candidate plan "
+        "with a boolean proof result"
+    ),
+    (
+        "The witness binds the exact requirement ID, trigger signal, request "
+        "and evidence fingerprint, frozen root/tree/policy identities, "
+        "previous and candidate plans, producer, verification receipt, "
+        "refinement index, and content digest"
+    ),
+    (
+        "Non-counterexample admissions remain non-authoritative for this "
+        "requirement, and restored objective receipts reject unsupported "
+        "versions, missing identities, and unknown fields"
+    ),
 )
 
 
@@ -821,6 +850,7 @@ class AdaptiveRefinementReceipt:
 
     decision: RefinementDecision
     request_id: str
+    cycle_id: str
     evidence_fingerprint: str
     root_goal_id: str
     root_goal_content_id: str
@@ -849,6 +879,7 @@ class AdaptiveRefinementReceipt:
         )
         for name in (
             "request_id",
+            "cycle_id",
             "evidence_fingerprint",
             "root_goal_id",
             "root_goal_content_id",
@@ -1024,6 +1055,7 @@ class AdaptiveRefinementReceipt:
             "version": ADAPTIVE_GOAL_REFINER_VERSION,
             "decision": self.decision.value,
             "request_id": self.request_id,
+            "cycle_id": self.cycle_id,
             "evidence_fingerprint": self.evidence_fingerprint,
             "root_goal_id": self.root_goal_id,
             "root_goal_content_id": self.root_goal_content_id,
@@ -1067,6 +1099,7 @@ class AdaptiveRefinementReceipt:
                     "version",
                     "decision",
                     "request_id",
+                    "cycle_id",
                     "evidence_fingerprint",
                     "root_goal_id",
                     "root_goal_content_id",
@@ -1096,6 +1129,7 @@ class AdaptiveRefinementReceipt:
         result = cls(
             decision=payload.get("decision", ""),
             request_id=payload.get("request_id", ""),
+            cycle_id=payload.get("cycle_id", ""),
             evidence_fingerprint=payload.get("evidence_fingerprint", ""),
             root_goal_id=payload.get("root_goal_id", ""),
             root_goal_content_id=payload.get("root_goal_content_id", ""),
@@ -1168,6 +1202,138 @@ class AdaptiveRefinementResult:
     @property
     def decision(self) -> RefinementDecision:
         return self.receipt.decision
+
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate ASI-G098 without promoting runtime output into proof.
+
+        The adaptive receipt fixes the repository-tree boundary, but it is not
+        itself a validation run, criterion-coverage map, analyzer-health
+        declaration, or independent exhaustive quorum.  Those records must be
+        submitted explicitly and are checked by the canonical completion gate.
+
+        The mandatory criterion population is intentionally not caller
+        configurable.  A caller therefore cannot obtain a positive decision
+        by omitting a difficult clause from the objective.  Likewise, this
+        bridge never forwards an optional analysis result: a bounded
+        refinement and the formal replanner's routing metadata cannot stand in
+        for an explicitly healthy completion analyzer or exhaustion receipts.
+        """
+
+        from .goal_completion import evaluate_goal_completion
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            to_dict = getattr(value, "to_dict", None)
+            if callable(to_dict):
+                result = to_dict()
+                if isinstance(result, Mapping):
+                    return dict(result)
+            return {}
+
+        # The generic completion gate retains compatibility with early health
+        # records where "healthy" implied safety.  This objective's contract
+        # is stricter: both facts must be explicit.
+        health_value = payload(analyzer_health)
+        if not (
+            str(health_value.get("status") or "").strip().lower() == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+        ):
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        # A coverage summary must identify both sides of every criterion
+        # mapping, not merely claim a verified status.
+        coverage_value = payload(coverage)
+        coverage_rows = coverage_value.get("criteria")
+        coverage_rows = coverage_rows if isinstance(coverage_rows, list) else []
+        coverage_bindings_complete = bool(coverage_rows) and all(
+            isinstance(row, Mapping)
+            and bool(str(row.get("implementation") or "").strip())
+            and bool(str(row.get("validation") or "").strip())
+            for row in coverage_rows
+        )
+        if not coverage_bindings_complete:
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": [
+                    *(
+                        coverage_value.get("reason_codes")
+                        if isinstance(
+                            coverage_value.get("reason_codes"), list
+                        )
+                        else []
+                    ),
+                    "coverage_missing_implementation_validation_binding",
+                ],
+            }
+
+        # Every configured quorum member must explicitly be a healthy,
+        # completion-safe exhaustive receipt.  Independence, binding, count,
+        # and timestamp freshness remain canonical gate responsibilities.
+        quorum_value = payload(exhaustion_quorum)
+        quorum_members = quorum_value.get("members")
+        quorum_members = (
+            quorum_members if isinstance(quorum_members, list) else []
+        )
+        quorum_members_healthy = bool(quorum_members) and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            for member in quorum_members
+        )
+        if not quorum_members_healthy:
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": (
+                NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA
+            ),
+            "evidence": evidence,
+            "tasks_complete": tasks_complete,
+            "repository_tree": self.receipt.repository_tree_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage_value,
+            "analyzer_health": health_value,
+            "exhaustion_quorum": quorum_value,
+            "child_goals": child_goals,
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
 
 
 GoalRefinementResult = AdaptiveRefinementResult
@@ -1353,7 +1519,17 @@ class AdaptiveGoalRefiner:
                 "signal budget exhausted",
                 model_called=False,
             )
-        lock = _evidence_lock(self.store, request.evidence_fingerprint)
+        # The lock covers the whole root/cycle budget, not only one evidence
+        # fingerprint.  Distinct changed counterexamples arriving concurrently
+        # in the same cycle must not each consume the single generation slot.
+        cycle_lock_id = content_identity(
+            {
+                "root_goal_content_id": request.root_goal_content_id,
+                "cycle_id": request.cycle_id,
+                "policy_id": self.policy.content_id,
+            }
+        )
+        lock = _evidence_lock(self.store, cycle_lock_id)
         transaction = getattr(self.store, "transaction", None)
         transaction_context = (
             transaction() if callable(transaction) else nullcontext()
@@ -1417,6 +1593,27 @@ class AdaptiveGoalRefiner:
                 )
                 self._persist_nonadmission(receipt)
                 return AdaptiveRefinementResult(receipt)
+
+            cycle_model_calls = tuple(
+                item
+                for item in history
+                if item.root_goal_content_id == request.root_goal_content_id
+                and item.cycle_id == request.cycle_id
+                and item.policy_id == self.policy.content_id
+                and item.model_called
+            )
+            if len(cycle_model_calls) >= self.policy.max_model_calls_per_cycle:
+                return self._terminal(
+                    request,
+                    RefinementDecision.BUDGET_EXHAUSTED,
+                    "cycle refinement generation budget exhausted",
+                    model_called=False,
+                    attempt_index=len(matching) + 1,
+                    refinement_index=max(
+                        (item.refinement_index for item in cycle_model_calls),
+                        default=0,
+                    ),
+                )
 
             root_admissions = tuple(
                 item
@@ -1804,6 +2001,7 @@ class AdaptiveGoalRefiner:
         return AdaptiveRefinementReceipt(
             decision=decision,
             request_id=request.content_id,
+            cycle_id=request.cycle_id,
             evidence_fingerprint=request.evidence_fingerprint,
             root_goal_id=request.root_goal_id,
             root_goal_content_id=request.root_goal_content_id,
@@ -1852,6 +2050,7 @@ __all__ = [
     "ADAPTIVE_GOAL_REFINER_VERSION",
     "NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID",
     "UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID",
+    "NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA",
     "AdaptiveGoalRefinementError",
     "RefinementPersistenceError",
     "RefinementSignalKind",
