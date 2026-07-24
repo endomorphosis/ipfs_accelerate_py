@@ -81,6 +81,24 @@ ANALYSIS_PIPELINE_SCHEMA: Final = (
 EXACT_TREE_REUSE_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/exact-tree-reuse-evidence@1"
 )
+EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "The live pipeline composes the existing cache, incremental AST "
+        "index, bounded multi-signal retrieval, and optional datasets adapter"
+    ),
+    (
+        "persists packet bodies in a digest-addressed artifact store and "
+        "only compact bindings in AnalysisCache"
+    ),
+    "never treats an attached invalidated entry as authority",
+    "revalidates all seven key dimensions and derived completion state",
+    (
+        "collapses identical in-process lane misses without globally "
+        "serializing different keys"
+    ),
+    "achieves at least 70 percent reuse on repeated fixtures",
+    "and reports zero stale authoritative hits.",
+)
 ANALYSIS_PIPELINE_VERSION: Final = "analysis-pipeline@1"
 DEFAULT_ANALYZER_VERSION: Final = "supervisor-integrated-analysis@1"
 DEFAULT_POLICY_DIGEST: Final = digest_analysis_input(
@@ -1258,6 +1276,147 @@ class AnalysisPipelineResult:
             values["clock_skew_seconds"] = clock_skew_seconds
         return evaluate_goal_completion(**values)
 
+    def evaluate_exact_tree_reuse_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate ASI-G094 against its closed mandatory proof population.
+
+        The exact-tree reuse result fixes the repository/tree boundary but
+        does not validate its own objective.  Callers must independently
+        submit one fresh passing validation per literal criterion, a fresh
+        implementation/validation coverage map, explicit analyzer health,
+        and a configured quorum of independent healthy exhaustive receipts.
+
+        This objective-specific bridge deliberately has no acceptance-criteria
+        argument.  It also tightens legacy-compatible completion records
+        before delegating to the canonical two-phase gate, so omitted safety,
+        coverage bindings, or member health cannot be interpreted as success.
+        Pipeline, cache, and optional-provider outputs remain bounded analysis
+        context and are never promoted into completion evidence.
+        """
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        health_value = payload(analyzer_health)
+        if not (
+            str(health_value.get("status") or "").strip().lower() == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+            and health_value.get("analyzer_version")
+            == self.request.analyzer_version
+        ):
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        coverage_value = payload(coverage)
+        coverage_rows = coverage_value.get("criteria")
+        coverage_rows = (
+            coverage_rows if isinstance(coverage_rows, list) else []
+        )
+        bindings_complete = bool(coverage_rows) and all(
+            isinstance(row, Mapping)
+            and bool(str(row.get("implementation") or "").strip())
+            and bool(str(row.get("validation") or "").strip())
+            for row in coverage_rows
+        )
+        if not bindings_complete:
+            reasons = coverage_value.get("reason_codes")
+            reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": [
+                    *reasons,
+                    "coverage_missing_implementation_validation_binding",
+                ],
+            }
+
+        quorum_value = payload(exhaustion_quorum)
+        members_value = quorum_value.get("members")
+        members = members_value if isinstance(members_value, list) else []
+        members_complete = bool(members) and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            for member in members
+        )
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        receipts_independent = bool(receipt_ids) and (
+            len(receipt_ids) == len(set(receipt_ids))
+            and all(receipt_ids)
+        )
+        binding_value = quorum_value.get("binding")
+        binding_value = (
+            binding_value if isinstance(binding_value, Mapping) else {}
+        )
+        expected_binding = {
+            "repository_id": self.request.repository_id,
+            "tree_id": self.request.tree_id,
+            "analyzer_version": self.request.analyzer_version,
+            "configuration_revision": self.request.configuration_digest,
+            "objective_revision": self.request.objective_revision,
+        }
+        binding_complete = all(
+            binding_value.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        if (
+            not members_complete
+            or not receipts_independent
+            or not binding_complete
+        ):
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        return self.evaluate_objective_completion(
+            current_state=current_state,
+            acceptance_criteria=EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage_value,
+            analyzer_health=health_value,
+            exhaustion_quorum=quorum_value,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
 
 def _validate_packet_binding(
     packet: AnalysisEvidencePacket, request: AnalysisPipelineRequest
@@ -2130,6 +2289,7 @@ __all__ = [
     "ANALYSIS_PIPELINE_SCHEMA",
     "ANALYSIS_PIPELINE_VERSION",
     "EXACT_TREE_ANALYSIS_REUSE_REQUIREMENT_ID",
+    "EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA",
     "EXACT_TREE_REUSE_EVIDENCE_SCHEMA",
     "EXACT_TREE_REUSE_REQUIREMENT_ID",
     "SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID",
