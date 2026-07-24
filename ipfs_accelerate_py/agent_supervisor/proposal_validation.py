@@ -13,8 +13,11 @@ import ast
 import fnmatch
 import hashlib
 import json
+import re
+import shlex
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from .code_proof_obligations import CandidateDiffEntry, DiffChangeKind
@@ -43,9 +46,12 @@ class ProposalValidationError(ValueError):
 
 class ProposalGate(str, Enum):
     SCHEMA = "schema"
+    STRUCTURE = "structure"
     AUTHORITY = "authority"
     PATCH = "patch"
     PATH = "path"
+    CONTENT = "content"
+    VALIDATION = "validation"
     AST_INTERFACE = "ast_interface"
 
 
@@ -54,17 +60,32 @@ ORDERED_PROPOSAL_GATES = tuple(ProposalGate)
 
 class ProposalFindingCode(str, Enum):
     INVALID_SCHEMA = "invalid_schema"
+    MISSING_REQUIRED_FIELD = "missing_required_field"
+    OUTPUT_TOO_LARGE = "output_too_large"
+    OUTPUT_TOO_DEEP = "output_too_deep"
     AUTHORITY_MISMATCH = "authority_mismatch"
+    CONTEXT_MISMATCH = "context_mismatch"
     STALE_BASELINE = "stale_baseline"
+    STALE_PROPOSAL_REPLAY = "stale_proposal_replay"
+    FORGED_AUTHORITY_CLAIM = "forged_authority_claim"
     EMPTY_PATCH = "empty_patch"
     NO_SEMANTIC_CHANGE = "no_semantic_change"
     PATCH_TOO_LARGE = "patch_too_large"
+    PATCH_PARSE_ERROR = "patch_parse_error"
+    PATCH_MISMATCH = "patch_mismatch"
     UNSAFE_PATH = "unsafe_path"
     PATH_OUTSIDE_SCOPE = "path_outside_scope"
     DECLARED_PATH_MISMATCH = "declared_path_mismatch"
+    OPERATION_MISMATCH = "operation_mismatch"
+    SYMLINK_BOUNDARY_FORBIDDEN = "symlink_boundary_forbidden"
+    SUBMODULE_BOUNDARY_FORBIDDEN = "submodule_boundary_forbidden"
+    SECRET_CHANGE_FORBIDDEN = "secret_change_forbidden"
     BINARY_CHANGE_FORBIDDEN = "binary_change_forbidden"
+    LARGE_FILE_FORBIDDEN = "large_file_forbidden"
     GENERATED_CHANGE_FORBIDDEN = "generated_change_forbidden"
     TEST_DELETION_FORBIDDEN = "test_deletion_forbidden"
+    TEST_WEAKENING_FORBIDDEN = "test_weakening_forbidden"
+    COMMAND_FORBIDDEN = "command_forbidden"
     PYTHON_SYNTAX_ERROR = "python_syntax_error"
 
 
@@ -144,7 +165,9 @@ def _requirement_claims(
 
 
 def _path_matches(path: str, pattern: str) -> bool:
-    pattern = str(pattern).strip().replace("\\", "/").lstrip("./")
+    pattern = str(pattern).strip().replace("\\", "/")
+    while pattern.startswith("./"):
+        pattern = pattern[2:]
     if not pattern:
         return False
     if any(character in pattern for character in "*?["):
@@ -162,7 +185,28 @@ def _entry_has_effect(entry: CandidateDiffEntry) -> bool:
     if entry.old_path != entry.new_path:
         return True
     if entry.before_source is not None and entry.after_source is not None:
-        return entry.before_source != entry.after_source
+        if entry.before_source == entry.after_source:
+            return False
+        if entry.is_python:
+            try:
+                before_tree = ast.parse(entry.before_source)
+                after_tree = ast.parse(entry.after_source)
+            except (SyntaxError, ValueError, TypeError):
+                # Syntax findings are emitted by the dedicated Python gate;
+                # do not mislabel an unparsable edit as a semantic no-op.
+                return True
+            return ast.dump(
+                before_tree,
+                annotate_fields=True,
+                include_attributes=False,
+            ) != ast.dump(
+                after_tree,
+                annotate_fields=True,
+                include_attributes=False,
+            )
+        # For opaque text, an all-whitespace rewrite is the only semantic
+        # equivalence that can be established cheaply and deterministically.
+        return entry.before_source.strip() != entry.after_source.strip()
     if entry.before_blob_id and entry.after_blob_id:
         return entry.before_blob_id != entry.after_blob_id
     # A modification with only one materialized side is observable, although
@@ -175,6 +219,317 @@ def _entry_has_effect(entry: CandidateDiffEntry) -> bool:
     )
 
 
+def _output_depth(value: Any, depth: int = 0) -> int:
+    """Return the maximum container depth without recursively following objects."""
+
+    if isinstance(value, Mapping):
+        return max(
+            (depth + 1, *(_output_depth(item, depth + 1) for item in value.values()))
+        )
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return max((depth + 1, *(_output_depth(item, depth + 1) for item in value)))
+    return depth
+
+
+def _safe_patch_path(value: str) -> str:
+    value = str(value).strip()
+    if value == "/dev/null":
+        return ""
+    try:
+        parts = shlex.split(value)
+    except ValueError as exc:
+        raise ProposalValidationError("malformed quoted patch path") from exc
+    if not parts:
+        raise ProposalValidationError("empty patch path")
+    raw = parts[0].replace("\\", "/")
+    if raw.startswith(("a/", "b/")):
+        raw = raw[2:]
+    path = PurePosixPath(raw)
+    if (
+        not raw
+        or raw.startswith("/")
+        or "\x00" in raw
+        or any(ord(character) < 32 for character in raw)
+        or path.is_absolute()
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
+        raise ProposalValidationError(f"unsafe patch path: {raw!r}")
+    return path.as_posix()
+
+
+@dataclass(frozen=True)
+class ParsedPatchFile:
+    """A bounded projection of one file section in a unified Git patch."""
+
+    old_path: str
+    new_path: str
+    operation: str
+    additions: int = 0
+    deletions: int = 0
+    binary: bool = False
+
+
+def parse_unified_patch(
+    patch_text: str,
+    *,
+    max_files: int = 256,
+    max_bytes: int = 2_000_000,
+    allow_binary: bool = False,
+) -> tuple[ParsedPatchFile, ...]:
+    """Parse and validate a Git-style unified diff without invoking a shell.
+
+    Besides extracting paths and operations, the parser checks hunk line
+    counts.  It rejects symlink/gitlink modes and opaque binary payloads before
+    any patch tool or test process can be started.
+    """
+
+    if not isinstance(patch_text, str) or not patch_text.strip():
+        raise ProposalValidationError("patch_text must be a non-empty string")
+    if len(patch_text.encode("utf-8", errors="surrogatepass")) > max_bytes:
+        raise ProposalValidationError("patch exceeds the byte bound")
+    lines = patch_text.splitlines()
+    files: list[ParsedPatchFile] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.startswith("diff --git "):
+            if not line.strip():
+                index += 1
+                continue
+            raise ProposalValidationError("patch content precedes a diff --git header")
+        try:
+            header = shlex.split(line)
+        except ValueError as exc:
+            raise ProposalValidationError("malformed diff --git header") from exc
+        if len(header) != 4 or header[:2] != ["diff", "--git"]:
+            raise ProposalValidationError("malformed diff --git header")
+        old_path = _safe_patch_path(header[2])
+        new_path = _safe_patch_path(header[3])
+        operation = "modify"
+        additions = deletions = 0
+        binary = False
+        saw_content = False
+        saw_old_header = saw_new_header = False
+        index += 1
+        while index < len(lines) and not lines[index].startswith("diff --git "):
+            current = lines[index]
+            mode = re.match(r"^(?:(?:new |deleted )?file mode|(?:new|old) mode) (\d+)$", current)
+            if mode and mode.group(1) in {"120000", "160000"}:
+                boundary = "symlink" if mode.group(1) == "120000" else "gitlink"
+                raise ProposalValidationError(f"{boundary} patch modes are forbidden")
+            if current.startswith(("GIT binary patch", "Binary files ")):
+                binary = True
+                if not allow_binary:
+                    raise ProposalValidationError("binary patch payloads are forbidden")
+            if current.startswith("new file mode "):
+                operation = "add"
+            elif current.startswith("deleted file mode "):
+                operation = "delete"
+            elif current.startswith(("old mode ", "new mode ")):
+                operation = "type_change"
+            elif current.startswith("rename from "):
+                old_path = _safe_patch_path(current[len("rename from ") :])
+                operation = "rename"
+            elif current.startswith("rename to "):
+                new_path = _safe_patch_path(current[len("rename to ") :])
+                operation = "rename"
+            elif current.startswith("copy from "):
+                old_path = _safe_patch_path(current[len("copy from ") :])
+                operation = "copy"
+            elif current.startswith("copy to "):
+                new_path = _safe_patch_path(current[len("copy to ") :])
+                operation = "copy"
+            elif current.startswith("--- "):
+                old_path = _safe_patch_path(current[4:])
+                saw_old_header = True
+                if not old_path:
+                    operation = "add"
+            elif current.startswith("+++ "):
+                new_path = _safe_patch_path(current[4:])
+                saw_new_header = True
+                if not new_path:
+                    operation = "delete"
+            elif current.startswith("@@ "):
+                match = re.match(
+                    r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$",
+                    current,
+                )
+                if match is None:
+                    raise ProposalValidationError("malformed unified-diff hunk header")
+                remaining_old = (
+                    int(match.group(1)) if match.group(1) is not None else 1
+                )
+                remaining_new = (
+                    int(match.group(2)) if match.group(2) is not None else 1
+                )
+                index += 1
+                while index < len(lines):
+                    body = lines[index]
+                    if body.startswith(("diff --git ", "@@ ")):
+                        break
+                    if body == r"\ No newline at end of file":
+                        index += 1
+                        continue
+                    if not body or body[0] not in {" ", "+", "-"}:
+                        raise ProposalValidationError("malformed unified-diff hunk body")
+                    if body[0] in {" ", "-"}:
+                        remaining_old -= 1
+                    if body[0] in {" ", "+"}:
+                        remaining_new -= 1
+                    additions += body[0] == "+"
+                    deletions += body[0] == "-"
+                    if remaining_old < 0 or remaining_new < 0:
+                        raise ProposalValidationError("unified-diff hunk exceeds declared size")
+                    index += 1
+                    if remaining_old == remaining_new == 0:
+                        break
+                if remaining_old or remaining_new:
+                    raise ProposalValidationError("truncated unified-diff hunk")
+                saw_content = saw_content or additions > 0 or deletions > 0
+                continue
+            elif current and not binary and not current.startswith(
+                (
+                    "index ",
+                    "similarity index ",
+                    "dissimilarity index ",
+                    r"\ No newline at end of file",
+                )
+            ):
+                # Only declarative Git patch metadata is accepted.  This keeps
+                # prose, shell fragments, and concatenated provider output out
+                # of the patch envelope.
+                raise ProposalValidationError("unrecognized Git patch content")
+            index += 1
+        if operation in {"add", "delete", "modify"} and not binary and not (
+            saw_old_header and saw_new_header and saw_content
+        ):
+            raise ProposalValidationError("text patch section requires headers and an effectful hunk")
+        files.append(
+            ParsedPatchFile(
+                old_path=old_path,
+                new_path=new_path,
+                operation=operation,
+                additions=additions,
+                deletions=deletions,
+                binary=binary,
+            )
+        )
+        if len(files) > max_files:
+            raise ProposalValidationError("patch touches more files than policy allows")
+    if not files:
+        raise ProposalValidationError("proposal must contain a Git-style unified diff")
+    return tuple(files)
+
+
+@dataclass(frozen=True)
+class ProposalOperation:
+    """One exact, rationale-bound operation declared by a structured proposal."""
+
+    operation: str
+    path: str
+    old_path: str = ""
+    rationale_refs: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        operation = str(self.operation or "").strip().lower().replace("-", "_")
+        if operation not in {item.value for item in DiffChangeKind} - {"unknown"}:
+            raise ProposalValidationError(f"unsupported proposal operation: {operation}")
+        object.__setattr__(self, "operation", operation)
+        object.__setattr__(self, "path", _safe_patch_path(self.path))
+        object.__setattr__(
+            self, "old_path", _safe_patch_path(self.old_path) if self.old_path else ""
+        )
+        object.__setattr__(self, "rationale_refs", _strings(self.rationale_refs))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "operation": self.operation,
+            "path": self.path,
+            "old_path": self.old_path,
+            "rationale_refs": self.rationale_refs,
+        }
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "ProposalOperation":
+        return cls(
+            operation=str(
+                value.get("operation")
+                or value.get("op")
+                or value.get("change_kind")
+                or ""
+            ),
+            path=str(value.get("path") or value.get("new_path") or ""),
+            old_path=str(value.get("old_path") or ""),
+            rationale_refs=tuple(
+                value.get("rationale_refs") or value.get("rationale_references") or ()
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ProposalValidationStep:
+    """A non-shell validation argv and the requirements it exercises."""
+
+    command: tuple[str, ...]
+    rationale_refs: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        command = self.command
+        if isinstance(command, str):
+            try:
+                command = tuple(shlex.split(command))
+            except ValueError as exc:
+                raise ProposalValidationError("malformed validation command") from exc
+        else:
+            command = tuple(str(part) for part in command)
+        if not command or any(not part or "\x00" in part for part in command):
+            raise ProposalValidationError("validation command argv must not be empty")
+        object.__setattr__(self, "command", command)
+        object.__setattr__(self, "rationale_refs", _strings(self.rationale_refs))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"command": self.command, "rationale_refs": self.rationale_refs}
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any] | str | Sequence[str]) -> "ProposalValidationStep":
+        if isinstance(value, Mapping):
+            return cls(
+                command=value.get("command") or value.get("argv") or (),
+                rationale_refs=tuple(
+                    value.get("rationale_refs")
+                    or value.get("rationale_references")
+                    or ()
+                ),
+            )
+        return cls(command=value)  # type: ignore[arg-type]
+
+
+@dataclass(frozen=True)
+class ProposalRisk:
+    risk: str
+    mitigation: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "risk", " ".join(str(self.risk or "").split()))
+        object.__setattr__(
+            self, "mitigation", " ".join(str(self.mitigation or "").split())
+        )
+        if not self.risk or not self.mitigation:
+            raise ProposalValidationError("proposal risks require risk and mitigation")
+
+    def to_dict(self) -> dict[str, str]:
+        return {"risk": self.risk, "mitigation": self.mitigation}
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any] | str) -> "ProposalRisk":
+        if isinstance(value, Mapping):
+            return cls(
+                risk=str(value.get("risk") or value.get("description") or ""),
+                mitigation=str(value.get("mitigation") or value.get("control") or ""),
+            )
+        return cls(risk=str(value), mitigation="review and targeted validation")
+
+
 @dataclass(frozen=True)
 class ProposalValidationFinding:
     code: ProposalFindingCode
@@ -185,7 +540,8 @@ class ProposalValidationFinding:
     def __post_init__(self) -> None:
         object.__setattr__(self, "code", ProposalFindingCode(self.code))
         object.__setattr__(self, "gate", ProposalGate(self.gate))
-        object.__setattr__(self, "message", " ".join(str(self.message).split()))
+        message = " ".join(str(self.message).split())
+        object.__setattr__(self, "message", message[:240])
         object.__setattr__(self, "path", str(self.path or "").strip())
         if not self.message:
             raise ProposalValidationError("proposal finding message is required")
@@ -223,13 +579,46 @@ class ProposalValidationPolicy:
     expected_repository_id: str = ""
     expected_repository_tree_id: str = ""
     expected_objective_id: str = ""
+    expected_context_id: str = ""
+    expected_baseline_id: str = ""
+    expected_replay_nonce: str = ""
+    consumed_proposal_ids: tuple[str, ...] = ()
+    symlink_paths: tuple[str, ...] = ()
+    submodule_paths: tuple[str, ...] = ()
+    sensitive_path_patterns: tuple[str, ...] = (
+        ".env*",
+        "*.pem",
+        "*.key",
+        "*.p12",
+        "*.pfx",
+        "*credentials*",
+        "*secrets*",
+        ".aws/",
+        ".ssh/",
+    )
+    allowed_validation_commands: tuple[tuple[str, ...], ...] = (
+        ("python", "-m", "pytest"),
+        ("python", "-m", "unittest"),
+        ("pytest",),
+        ("ruff",),
+        ("mypy",),
+    )
     allow_binary: bool = False
+    allow_secrets: bool = False
+    allow_large_files: bool = False
     allow_generated: bool = False
     allow_test_deletion: bool = False
+    allow_test_weakening: bool = False
     require_declared_paths: bool = True
     require_python_syntax: bool = True
+    require_structured_details: bool = False
+    require_patch_text: bool = False
     max_diff_entries: int = 256
     max_patch_bytes: int = 2_000_000
+    max_output_bytes: int = 2_500_000
+    max_output_depth: int = 16
+    max_file_bytes: int = 1_000_000
+    max_operations: int = 256
     max_findings: int = 32
     policy_version: str = "strict-proposal-v1"
     policy_id: str = ""
@@ -242,15 +631,61 @@ class ProposalValidationPolicy:
         object.__setattr__(self, "allowed_paths", allowed)
         object.__setattr__(self, "forbidden_paths", forbidden)
         for name in (
+            "consumed_proposal_ids",
+            "symlink_paths",
+            "submodule_paths",
+            "sensitive_path_patterns",
+        ):
+            object.__setattr__(self, name, _strings(getattr(self, name)))
+        commands: list[tuple[str, ...]] = []
+        for command in self.allowed_validation_commands:
+            normalized = (
+                tuple(shlex.split(command))
+                if isinstance(command, str)
+                else tuple(str(part) for part in command)
+            )
+            if normalized and normalized not in commands:
+                commands.append(normalized)
+        if not commands:
+            raise ProposalValidationError(
+                "allowed_validation_commands must not be empty"
+            )
+        object.__setattr__(self, "allowed_validation_commands", tuple(commands))
+        for name in (
+            "allow_binary",
+            "allow_secrets",
+            "allow_large_files",
+            "allow_generated",
+            "allow_test_deletion",
+            "allow_test_weakening",
+            "require_declared_paths",
+            "require_python_syntax",
+            "require_structured_details",
+            "require_patch_text",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise ProposalValidationError(f"{name} must be a boolean")
+        for name in (
             "expected_task_id",
             "expected_plan_id",
             "expected_repository_id",
             "expected_repository_tree_id",
             "expected_objective_id",
+            "expected_context_id",
+            "expected_baseline_id",
+            "expected_replay_nonce",
             "policy_version",
         ):
             object.__setattr__(self, name, str(getattr(self, name) or "").strip())
-        for name in ("max_diff_entries", "max_patch_bytes", "max_findings"):
+        for name in (
+            "max_diff_entries",
+            "max_patch_bytes",
+            "max_output_bytes",
+            "max_output_depth",
+            "max_file_bytes",
+            "max_operations",
+            "max_findings",
+        ):
             value = getattr(self, name)
             if isinstance(value, bool) or int(value) <= 0:
                 raise ProposalValidationError(f"{name} must be a positive integer")
@@ -272,13 +707,30 @@ class ProposalValidationPolicy:
             "expected_repository_id": self.expected_repository_id,
             "expected_repository_tree_id": self.expected_repository_tree_id,
             "expected_objective_id": self.expected_objective_id,
+            "expected_context_id": self.expected_context_id,
+            "expected_baseline_id": self.expected_baseline_id,
+            "expected_replay_nonce": self.expected_replay_nonce,
+            "consumed_proposal_ids": self.consumed_proposal_ids,
+            "symlink_paths": self.symlink_paths,
+            "submodule_paths": self.submodule_paths,
+            "sensitive_path_patterns": self.sensitive_path_patterns,
+            "allowed_validation_commands": self.allowed_validation_commands,
             "allow_binary": self.allow_binary,
+            "allow_secrets": self.allow_secrets,
+            "allow_large_files": self.allow_large_files,
             "allow_generated": self.allow_generated,
             "allow_test_deletion": self.allow_test_deletion,
+            "allow_test_weakening": self.allow_test_weakening,
             "require_declared_paths": self.require_declared_paths,
             "require_python_syntax": self.require_python_syntax,
+            "require_structured_details": self.require_structured_details,
+            "require_patch_text": self.require_patch_text,
             "max_diff_entries": self.max_diff_entries,
             "max_patch_bytes": self.max_patch_bytes,
+            "max_output_bytes": self.max_output_bytes,
+            "max_output_depth": self.max_output_depth,
+            "max_file_bytes": self.max_file_bytes,
+            "max_operations": self.max_operations,
             "max_findings": self.max_findings,
             "policy_version": self.policy_version,
         }
@@ -301,13 +753,41 @@ class ProposalValidationPolicy:
                 payload.get("expected_repository_tree_id") or ""
             ),
             expected_objective_id=str(payload.get("expected_objective_id") or ""),
+            expected_context_id=str(payload.get("expected_context_id") or ""),
+            expected_baseline_id=str(payload.get("expected_baseline_id") or ""),
+            expected_replay_nonce=str(payload.get("expected_replay_nonce") or ""),
+            consumed_proposal_ids=tuple(payload.get("consumed_proposal_ids") or ()),
+            symlink_paths=tuple(payload.get("symlink_paths") or ()),
+            submodule_paths=tuple(payload.get("submodule_paths") or ()),
+            sensitive_path_patterns=tuple(
+                payload.get("sensitive_path_patterns")
+                or cls.__dataclass_fields__["sensitive_path_patterns"].default
+            ),
+            allowed_validation_commands=tuple(
+                tuple(command) if not isinstance(command, str) else command
+                for command in (
+                    payload.get("allowed_validation_commands")
+                    or cls.__dataclass_fields__["allowed_validation_commands"].default
+                )
+            ),
             allow_binary=payload.get("allow_binary", False),
+            allow_secrets=payload.get("allow_secrets", False),
+            allow_large_files=payload.get("allow_large_files", False),
             allow_generated=payload.get("allow_generated", False),
             allow_test_deletion=payload.get("allow_test_deletion", False),
+            allow_test_weakening=payload.get("allow_test_weakening", False),
             require_declared_paths=payload.get("require_declared_paths", True),
             require_python_syntax=payload.get("require_python_syntax", True),
+            require_structured_details=payload.get(
+                "require_structured_details", False
+            ),
+            require_patch_text=payload.get("require_patch_text", False),
             max_diff_entries=int(payload.get("max_diff_entries", 256)),
             max_patch_bytes=int(payload.get("max_patch_bytes", 2_000_000)),
+            max_output_bytes=int(payload.get("max_output_bytes", 2_500_000)),
+            max_output_depth=int(payload.get("max_output_depth", 16)),
+            max_file_bytes=int(payload.get("max_file_bytes", 1_000_000)),
+            max_operations=int(payload.get("max_operations", 256)),
             max_findings=int(payload.get("max_findings", 32)),
             policy_version=str(payload.get("policy_version") or "strict-proposal-v1"),
             policy_id=str(payload.get("policy_id") or ""),
@@ -324,6 +804,13 @@ class ImplementationProposal:
     baseline_id: str
     candidate_diff: tuple[CandidateDiffEntry, ...]
     declared_paths: tuple[str, ...]
+    operations: tuple[ProposalOperation, ...] = ()
+    rationale_references: tuple[str, ...] = ()
+    validation_plan: tuple[ProposalValidationStep, ...] = ()
+    risks: tuple[ProposalRisk, ...] = ()
+    authority_claims: Mapping[str, Any] = field(default_factory=dict)
+    patch_text: str = ""
+    replay_nonce: str = ""
     context_id: str = ""
     proposal_version: str = "1"
     proposal_id: str = ""
@@ -337,6 +824,7 @@ class ImplementationProposal:
             "objective_id",
             "baseline_id",
             "context_id",
+            "replay_nonce",
             "proposal_version",
         ):
             object.__setattr__(self, name, str(getattr(self, name) or "").strip())
@@ -357,6 +845,37 @@ class ImplementationProposal:
         )
         object.__setattr__(self, "candidate_diff", entries)
         object.__setattr__(self, "declared_paths", _strings(self.declared_paths))
+        operations = tuple(
+            item
+            if isinstance(item, ProposalOperation)
+            else ProposalOperation.from_mapping(item)
+            for item in self.operations
+        )
+        validations = tuple(
+            item
+            if isinstance(item, ProposalValidationStep)
+            else ProposalValidationStep.from_mapping(item)
+            for item in self.validation_plan
+        )
+        risks = tuple(
+            item
+            if isinstance(item, ProposalRisk)
+            else ProposalRisk.from_mapping(item)
+            for item in self.risks
+        )
+        object.__setattr__(self, "operations", operations)
+        object.__setattr__(
+            self, "rationale_references", _strings(self.rationale_references)
+        )
+        object.__setattr__(self, "validation_plan", validations)
+        object.__setattr__(self, "risks", risks)
+        claims = {
+            str(key).strip(): _canonical(value)
+            for key, value in sorted(dict(self.authority_claims).items())
+            if str(key).strip()
+        }
+        object.__setattr__(self, "authority_claims", claims)
+        object.__setattr__(self, "patch_text", str(self.patch_text or ""))
         claimed = str(self.proposal_id or "").strip()
         object.__setattr__(self, "proposal_id", "")
         actual = _identity(self._identity_payload())
@@ -392,7 +911,14 @@ class ImplementationProposal:
             "objective_id": self.objective_id,
             "baseline_id": self.baseline_id,
             "context_id": self.context_id,
+            "replay_nonce": self.replay_nonce,
             "declared_paths": self.declared_paths,
+            "operations": [operation.to_dict() for operation in self.operations],
+            "rationale_references": self.rationale_references,
+            "validation_plan": [step.to_dict() for step in self.validation_plan],
+            "risks": [risk.to_dict() for risk in self.risks],
+            "authority_claims": dict(self.authority_claims),
+            "patch_text": self.patch_text,
             "candidate_diff": [
                 entry.to_dict(include_sources=True) for entry in self.candidate_diff
             ],
@@ -425,7 +951,26 @@ class ImplementationProposal:
             ),
             baseline_id=str(payload.get("baseline_id") or ""),
             context_id=str(payload.get("context_id") or ""),
+            replay_nonce=str(payload.get("replay_nonce") or ""),
             declared_paths=tuple(payload.get("declared_paths") or ()),
+            operations=tuple(
+                ProposalOperation.from_mapping(item)
+                for item in payload.get("operations") or ()
+            ),
+            rationale_references=tuple(
+                payload.get("rationale_references")
+                or payload.get("rationale_refs")
+                or ()
+            ),
+            validation_plan=tuple(
+                ProposalValidationStep.from_mapping(item)
+                for item in payload.get("validation_plan") or ()
+            ),
+            risks=tuple(
+                ProposalRisk.from_mapping(item) for item in payload.get("risks") or ()
+            ),
+            authority_claims=dict(payload.get("authority_claims") or {}),
+            patch_text=str(payload.get("patch_text") or payload.get("patch") or ""),
             candidate_diff=tuple(
                 CandidateDiffEntry.from_mapping(item)
                 for item in payload.get("candidate_diff") or ()
@@ -1021,6 +1566,200 @@ class ProposalValidationResult:
         )
 
 
+_SHELL_META_RE = re.compile(r"(?:[;&|<>`]|[$]\(|\r|\n)")
+_SECRET_CONTENT_RE = re.compile(
+    r"(?im)(?:"
+    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
+    r"|(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)"
+    r"\s*[:=]\s*[\"']?[A-Za-z0-9_+/.-]{12,}"
+    r")"
+)
+_TEST_SKIP_RE = re.compile(
+    r"(?im)(?:pytest[.]mark[.](?:skip|xfail)|unittest[.]skip|"
+    r"\bskipTest\s*\(|\bassert\s+True\b)"
+)
+_ASSERTION_RE = re.compile(
+    r"(?m)(?:\bassert\b|self[.]assert[A-Z]\w*\s*\(|pytest[.]raises\s*\()"
+)
+
+
+def _path_at_boundary(path: str, boundaries: Sequence[str]) -> bool:
+    return any(
+        path == boundary.rstrip("/") or path.startswith(boundary.rstrip("/") + "/")
+        for boundary in boundaries
+    )
+
+
+def _is_test_path(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    return path.startswith(("test/", "tests/")) or name.startswith("test_")
+
+
+def _python_test_names(source: str) -> frozenset[str]:
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError, TypeError):
+        return frozenset()
+    return frozenset(
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test")
+    )
+
+
+def _metadata_size(metadata: Mapping[str, Any]) -> int:
+    sizes = [0]
+    for name in ("size_bytes", "before_size_bytes", "after_size_bytes"):
+        try:
+            value = int(metadata.get(name) or 0)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            sizes.append(value)
+    return max(sizes)
+
+
+def _command_is_allowed(
+    command: Sequence[str], prefixes: Sequence[Sequence[str]]
+) -> bool:
+    if any(_SHELL_META_RE.search(part) for part in command):
+        return False
+    executable = (
+        command[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
+        if command
+        else ""
+    )
+    executable = executable.removesuffix(".exe")
+    if executable in {
+        "bash",
+        "cmd",
+        "dash",
+        "fish",
+        "ksh",
+        "powershell",
+        "pwsh",
+        "sh",
+        "zsh",
+    }:
+        return False
+    if (
+        len(command) >= 2
+        and executable in {"node", "perl", "python", "python3", "ruby"}
+        and command[1] in {"-c", "-e", "--eval"}
+    ):
+        return False
+    return any(
+        len(command) >= len(prefix) and tuple(command[: len(prefix)]) == tuple(prefix)
+        for prefix in prefixes
+    )
+
+
+def _entry_operation(entry: CandidateDiffEntry) -> tuple[str, str, str]:
+    return (entry.change_kind.value, entry.path, entry.old_path)
+
+
+def _operation_matches_entry(
+    operation: ProposalOperation, entry: CandidateDiffEntry
+) -> bool:
+    if operation.operation != entry.change_kind.value or operation.path != entry.path:
+        return False
+    if operation.operation in {"rename", "copy"}:
+        return operation.old_path == entry.old_path
+    return not operation.old_path or operation.old_path == entry.old_path
+
+
+def _patch_content_matches(
+    patch_text: str,
+    parsed_files: Sequence[ParsedPatchFile],
+    entries: Sequence[CandidateDiffEntry],
+) -> bool:
+    """Apply hunks in memory and compare them with materialized candidate text."""
+
+    sections = re.split(r"(?=^diff --git )", patch_text, flags=re.MULTILINE)
+    sections = [section for section in sections if section.startswith("diff --git ")]
+    if len(sections) != len(parsed_files):
+        return False
+    remaining = list(entries)
+    for section, parsed in zip(sections, parsed_files):
+        match_index = next(
+            (
+                index
+                for index, entry in enumerate(remaining)
+                if entry.path == (parsed.new_path or parsed.old_path)
+                or (
+                    entry.old_path == parsed.old_path
+                    and entry.new_path == parsed.new_path
+                )
+            ),
+            None,
+        )
+        if match_index is None:
+            return False
+        entry = remaining.pop(match_index)
+        if entry.binary or (
+            entry.before_source is None and entry.after_source is None
+        ):
+            continue
+        before_source = entry.before_source or ""
+        after_source = entry.after_source or ""
+        before_lines = before_source.splitlines()
+        result: list[str] = []
+        cursor = 0
+        section_lines = section.splitlines()
+        line_index = 0
+        saw_hunk = False
+        while line_index < len(section_lines):
+            header = re.match(
+                r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$",
+                section_lines[line_index],
+            )
+            if header is None:
+                line_index += 1
+                continue
+            saw_hunk = True
+            old_start = int(header.group(1))
+            old_count = int(header.group(2)) if header.group(2) is not None else 1
+            new_count = int(header.group(4)) if header.group(4) is not None else 1
+            old_index = max(0, old_start - 1)
+            if old_index < cursor or old_index > len(before_lines):
+                return False
+            result.extend(before_lines[cursor:old_index])
+            cursor = old_index
+            consumed_old = produced_new = 0
+            line_index += 1
+            while line_index < len(section_lines):
+                line = section_lines[line_index]
+                if line.startswith(("@@ ", "diff --git ")):
+                    break
+                if line == r"\ No newline at end of file":
+                    line_index += 1
+                    continue
+                if not line or line[0] not in {" ", "+", "-"}:
+                    break
+                text = line[1:]
+                if line[0] in {" ", "-"}:
+                    if cursor >= len(before_lines) or before_lines[cursor] != text:
+                        return False
+                    cursor += 1
+                    consumed_old += 1
+                if line[0] in {" ", "+"}:
+                    result.append(text)
+                    produced_new += 1
+                line_index += 1
+                if consumed_old == old_count and produced_new == new_count:
+                    break
+            if consumed_old != old_count or produced_new != new_count:
+                return False
+        if saw_hunk:
+            result.extend(before_lines[cursor:])
+            if result != after_source.splitlines():
+                return False
+        elif before_source != after_source:
+            return False
+    return not remaining
+
+
 class ProposalValidator:
     """Deterministic evaluator for the strict proposal envelope."""
 
@@ -1030,7 +1769,9 @@ class ProposalValidator:
     def validate(
         self, proposal: ImplementationProposal | Mapping[str, Any]
     ) -> ProposalValidationResult:
+        input_fields: frozenset[str] = frozenset()
         if not isinstance(proposal, ImplementationProposal):
+            input_fields = frozenset(str(key) for key in proposal)
             proposal = ImplementationProposal.from_dict(proposal)
         policy = self.policy
         findings: list[ProposalValidationFinding] = []
@@ -1043,6 +1784,94 @@ class ProposalValidator:
         ) -> None:
             if len(findings) < policy.max_findings:
                 findings.append(ProposalValidationFinding(code, gate, message, path))
+
+        strict = (
+            proposal.proposal_version == "2"
+            or policy.require_structured_details
+            or policy.require_patch_text
+        )
+        if strict and input_fields:
+            allowed_fields = frozenset(proposal.to_dict())
+            unexpected_fields = input_fields - allowed_fields
+            if unexpected_fields:
+                add(
+                    ProposalFindingCode.INVALID_SCHEMA,
+                    ProposalGate.SCHEMA,
+                    "structured proposal contains undeclared top-level fields",
+                )
+            missing_fields = frozenset(proposal._identity_payload()) - input_fields
+            if missing_fields:
+                add(
+                    ProposalFindingCode.MISSING_REQUIRED_FIELD,
+                    ProposalGate.SCHEMA,
+                    "structured proposal omits versioned top-level fields",
+                )
+        if proposal.proposal_version not in {"1", "2"}:
+            add(
+                ProposalFindingCode.INVALID_SCHEMA,
+                ProposalGate.SCHEMA,
+                "unsupported implementation proposal version",
+            )
+        proposal_payload = proposal._identity_payload()
+        if (
+            len(_canonical_json(proposal_payload).encode("utf-8"))
+            > policy.max_output_bytes
+        ):
+            add(
+                ProposalFindingCode.OUTPUT_TOO_LARGE,
+                ProposalGate.SCHEMA,
+                "structured proposal exceeds the output byte bound",
+            )
+        if _output_depth(proposal_payload) > policy.max_output_depth:
+            add(
+                ProposalFindingCode.OUTPUT_TOO_DEEP,
+                ProposalGate.SCHEMA,
+                "structured proposal exceeds the nesting depth bound",
+            )
+
+        if strict:
+            required_components = (
+                ("operations", proposal.operations),
+                ("rationale_references", proposal.rationale_references),
+                ("validation_plan", proposal.validation_plan),
+                ("risks", proposal.risks),
+                ("authority_claims", proposal.authority_claims),
+                ("patch_text", proposal.patch_text),
+                ("replay_nonce", proposal.replay_nonce),
+            )
+            for name, value in required_components:
+                if not value:
+                    add(
+                        ProposalFindingCode.MISSING_REQUIRED_FIELD,
+                        ProposalGate.STRUCTURE,
+                        f"structured proposal requires {name}",
+                    )
+            if len(proposal.operations) > policy.max_operations:
+                add(
+                    ProposalFindingCode.OUTPUT_TOO_LARGE,
+                    ProposalGate.STRUCTURE,
+                    "structured proposal exceeds the operation count bound",
+                )
+            rationale_refs = set(proposal.rationale_references)
+            for operation in proposal.operations:
+                if not operation.rationale_refs or not set(
+                    operation.rationale_refs
+                ).issubset(rationale_refs):
+                    add(
+                        ProposalFindingCode.MISSING_REQUIRED_FIELD,
+                        ProposalGate.STRUCTURE,
+                        "operation requires declared rationale references",
+                        operation.path,
+                    )
+            for step in proposal.validation_plan:
+                if not step.rationale_refs or not set(step.rationale_refs).issubset(
+                    rationale_refs
+                ):
+                    add(
+                        ProposalFindingCode.MISSING_REQUIRED_FIELD,
+                        ProposalGate.STRUCTURE,
+                        "validation step requires declared rationale references",
+                    )
 
         # Authority is exact and non-compensable.
         expected = (
@@ -1060,6 +1889,73 @@ class ProposalValidator:
                     else ProposalFindingCode.AUTHORITY_MISMATCH,
                     ProposalGate.AUTHORITY,
                     f"{name} does not match the frozen proposal authority",
+                )
+
+        for name, required, code in (
+            (
+                "context_id",
+                policy.expected_context_id,
+                ProposalFindingCode.CONTEXT_MISMATCH,
+            ),
+            (
+                "baseline_id",
+                policy.expected_baseline_id,
+                ProposalFindingCode.STALE_BASELINE,
+            ),
+            (
+                "replay_nonce",
+                policy.expected_replay_nonce,
+                ProposalFindingCode.STALE_PROPOSAL_REPLAY,
+            ),
+        ):
+            if required and getattr(proposal, name) != required:
+                add(
+                    code,
+                    ProposalGate.AUTHORITY,
+                    f"{name} does not match the frozen proposal authority",
+                )
+        if proposal.proposal_id in policy.consumed_proposal_ids:
+            add(
+                ProposalFindingCode.STALE_PROPOSAL_REPLAY,
+                ProposalGate.AUTHORITY,
+                "proposal identity has already been consumed",
+            )
+
+        authority_values = {
+            "task_id": proposal.task_id,
+            "accepted_plan_id": proposal.accepted_plan_id,
+            "repository_id": proposal.repository_id,
+            "repository_tree_id": proposal.repository_tree_id,
+            "objective_id": proposal.objective_id,
+            "baseline_id": proposal.baseline_id,
+            "context_id": proposal.context_id,
+        }
+        if strict:
+            for name, actual in authority_values.items():
+                if not actual:
+                    add(
+                        ProposalFindingCode.MISSING_REQUIRED_FIELD,
+                        ProposalGate.AUTHORITY,
+                        f"structured proposal requires canonical {name}",
+                    )
+                if proposal.authority_claims.get(name) != actual:
+                    add(
+                        ProposalFindingCode.FORGED_AUTHORITY_CLAIM,
+                        ProposalGate.AUTHORITY,
+                        f"authority_claims.{name} is missing or detached",
+                    )
+        for name in (
+            "proof_authoritative",
+            "code_proof_authoritative",
+            "completion_authoritative",
+            "completed",
+            "proof_complete",
+        ):
+            if proposal.authority_claims.get(name) not in (None, False):
+                add(
+                    ProposalFindingCode.FORGED_AUTHORITY_CLAIM,
+                    ProposalGate.AUTHORITY,
+                    f"implementation proposal cannot claim {name}",
                 )
 
         entries = proposal.candidate_diff
@@ -1093,6 +1989,89 @@ class ProposalValidator:
                 "candidate diff has no observable content or path change",
             )
 
+        if proposal.operations:
+            unmatched = list(entries)
+            for operation in proposal.operations:
+                matched_index = next(
+                    (
+                        index
+                        for index, entry in enumerate(unmatched)
+                        if _operation_matches_entry(operation, entry)
+                    ),
+                    None,
+                )
+                if matched_index is None:
+                    add(
+                        ProposalFindingCode.OPERATION_MISMATCH,
+                        ProposalGate.PATCH,
+                        "declared operation does not match candidate diff",
+                        operation.path,
+                    )
+                else:
+                    unmatched.pop(matched_index)
+            if unmatched:
+                add(
+                    ProposalFindingCode.OPERATION_MISMATCH,
+                    ProposalGate.PATCH,
+                    "candidate diff contains undeclared operations",
+                    unmatched[0].path,
+                )
+
+        parsed_patch: tuple[ParsedPatchFile, ...] = ()
+        if proposal.patch_text:
+            try:
+                parsed_patch = parse_unified_patch(
+                    proposal.patch_text,
+                    max_files=policy.max_diff_entries,
+                    max_bytes=policy.max_patch_bytes,
+                    allow_binary=policy.allow_binary,
+                )
+            except ProposalValidationError as exc:
+                add(
+                    ProposalFindingCode.PATCH_PARSE_ERROR,
+                    ProposalGate.PATCH,
+                    str(exc),
+                )
+            else:
+                parsed_projection = tuple(
+                    (item.operation, item.new_path or item.old_path, item.old_path)
+                    for item in parsed_patch
+                )
+                candidate_projection = tuple(_entry_operation(entry) for entry in entries)
+                if len(parsed_projection) != len(candidate_projection) or any(
+                    not any(
+                        parsed_kind == kind
+                        and parsed_path == path
+                        and (
+                            kind not in {"rename", "copy"}
+                            or parsed_old == old_path
+                        )
+                        for kind, path, old_path in candidate_projection
+                    )
+                    for parsed_kind, parsed_path, parsed_old in parsed_projection
+                ):
+                    add(
+                        ProposalFindingCode.PATCH_MISMATCH,
+                        ProposalGate.PATCH,
+                        "patch paths or operations do not match candidate diff",
+                    )
+                elif not _patch_content_matches(
+                    proposal.patch_text, parsed_patch, entries
+                ):
+                    add(
+                        ProposalFindingCode.PATCH_MISMATCH,
+                        ProposalGate.PATCH,
+                        "patch content does not match materialized candidate diff",
+                    )
+        elif policy.require_patch_text and not strict:
+            # Kept separate for policies that opt a v1 caller into raw patch
+            # verification without all v2 structured fields.
+            add(
+                ProposalFindingCode.MISSING_REQUIRED_FIELD,
+                ProposalGate.PATCH,
+                "proposal requires patch_text",
+            )
+
         actual_paths = proposal.changed_paths
         if policy.require_declared_paths and proposal.declared_paths != actual_paths:
             add(
@@ -1119,6 +2098,20 @@ class ProposalValidator:
                         "candidate path is forbidden by repository policy",
                         path,
                     )
+                if _path_at_boundary(path, policy.symlink_paths):
+                    add(
+                        ProposalFindingCode.SYMLINK_BOUNDARY_FORBIDDEN,
+                        ProposalGate.PATH,
+                        "candidate path crosses a symlink boundary",
+                        path,
+                    )
+                if _path_at_boundary(path, policy.submodule_paths):
+                    add(
+                        ProposalFindingCode.SUBMODULE_BOUNDARY_FORBIDDEN,
+                        ProposalGate.PATH,
+                        "candidate path crosses a submodule boundary",
+                        path,
+                    )
                 if not any(_path_matches(path, allowed) for allowed in policy.allowed_paths):
                     add(
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
@@ -1133,6 +2126,37 @@ class ProposalValidator:
                     "binary changes require explicit policy authority",
                     entry.path,
                 )
+            if (
+                not policy.allow_large_files
+                and max(
+                    len((entry.before_source or "").encode("utf-8", errors="surrogatepass")),
+                    len((entry.after_source or "").encode("utf-8", errors="surrogatepass")),
+                    _metadata_size(entry.metadata),
+                )
+                > policy.max_file_bytes
+            ):
+                add(
+                    ProposalFindingCode.LARGE_FILE_FORBIDDEN,
+                    ProposalGate.CONTENT,
+                    "large-file changes require explicit policy authority",
+                    entry.path,
+                )
+            sensitive_path = any(
+                _path_matches(entry.path, pattern)
+                or fnmatch.fnmatchcase(entry.path, pattern)
+                or fnmatch.fnmatchcase(entry.path.rsplit("/", 1)[-1], pattern)
+                for pattern in policy.sensitive_path_patterns
+            )
+            sensitive_content = bool(
+                _SECRET_CONTENT_RE.search(entry.after_source or "")
+            )
+            if not policy.allow_secrets and (sensitive_path or sensitive_content):
+                add(
+                    ProposalFindingCode.SECRET_CHANGE_FORBIDDEN,
+                    ProposalGate.CONTENT,
+                    "secret-bearing paths or content require explicit authority",
+                    entry.path,
+                )
             if entry.generated is True and not policy.allow_generated:
                 add(
                     ProposalFindingCode.GENERATED_CHANGE_FORBIDDEN,
@@ -1141,11 +2165,36 @@ class ProposalValidator:
                     entry.path,
                 )
             if (
-                entry.change_kind is DiffChangeKind.DELETE
-                and not policy.allow_test_deletion
+                _is_test_path(entry.path)
+                and entry.change_kind is not DiffChangeKind.DELETE
+                and not policy.allow_test_weakening
+                and entry.before_source is not None
+                and entry.after_source is not None
                 and (
-                    entry.path.startswith(("test/", "tests/"))
-                    or entry.path.rsplit("/", 1)[-1].startswith("test_")
+                    _TEST_SKIP_RE.search(entry.after_source)
+                    and not _TEST_SKIP_RE.search(entry.before_source)
+                    or len(_ASSERTION_RE.findall(entry.after_source))
+                    < len(_ASSERTION_RE.findall(entry.before_source))
+                    or not _python_test_names(entry.before_source).issubset(
+                        _python_test_names(entry.after_source)
+                    )
+                )
+            ):
+                add(
+                    ProposalFindingCode.TEST_WEAKENING_FORBIDDEN,
+                    ProposalGate.CONTENT,
+                    "test assertions or execution were weakened",
+                    entry.path,
+                )
+            if not policy.allow_test_deletion and (
+                (
+                    entry.change_kind is DiffChangeKind.DELETE
+                    and _is_test_path(entry.path)
+                )
+                or (
+                    entry.change_kind is DiffChangeKind.RENAME
+                    and _is_test_path(entry.old_path)
+                    and not _is_test_path(entry.new_path)
                 )
             ):
                 add(
@@ -1169,6 +2218,16 @@ class ProposalValidator:
                         f"candidate Python does not parse: {exc.msg if isinstance(exc, SyntaxError) else exc}",
                         entry.path,
                     )
+
+        for step in proposal.validation_plan:
+            if not _command_is_allowed(
+                step.command, policy.allowed_validation_commands
+            ):
+                add(
+                    ProposalFindingCode.COMMAND_FORBIDDEN,
+                    ProposalGate.VALIDATION,
+                    "validation command is not an allowed argv prefix",
+                )
 
         # Gate trace is complete even after a failure because all proposal
         # checks are bounded and cheap.  This yields better repair diagnostics
@@ -1216,21 +2275,26 @@ __all__ = [
     "ImplementationProposal",
     "NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID",
     "ORDERED_PROPOSAL_GATES",
+    "ParsedPatchFile",
     "PROPOSAL_REJECTION_EVIDENCE_SCHEMA",
     "PROPOSAL_VALIDATION_POLICY_SCHEMA",
     "PROPOSAL_VALIDATION_RECEIPT_SCHEMA",
     "PROPOSAL_VALIDATION_REQUEST_SCHEMA",
     "ProposalFindingCode",
     "ProposalGate",
+    "ProposalOperation",
     "ProposalRejectionEvidence",
+    "ProposalRisk",
     "ProposalValidationError",
     "ProposalValidationFinding",
     "ProposalValidationPolicy",
     "ProposalValidationReceipt",
     "ProposalValidationRequest",
     "ProposalValidationResult",
+    "ProposalValidationStep",
     "ProposalValidator",
     "StrictProposalValidator",
+    "parse_unified_patch",
     "validate_implementation_proposal",
     "validate_proposal",
 ]

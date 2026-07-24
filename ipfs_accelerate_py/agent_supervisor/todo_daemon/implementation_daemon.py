@@ -135,6 +135,8 @@ SHARED_WORKTREE_PATHS = (
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "600")
 )
+PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
+MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
 
 
 def default_llm_merge_resolver_command() -> str:
@@ -2056,6 +2058,7 @@ class PortalImplementationDaemon:
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         prompt = self._build_implementation_prompt(task, attempt)
         workspace_path = self.repo_root
+        baseline_ref = ""
         command: list[str] = []
         result: dict[str, Any]
         validation_result: dict[str, Any] = {
@@ -2099,6 +2102,18 @@ class PortalImplementationDaemon:
                     log_path=log_path,
                     prompt=prompt,
                 )
+            # Some administrative and provider-capacity paths intentionally
+            # operate against a not-yet-initialized checkout.  Baseline
+            # discovery must not pre-empt the implementation command in those
+            # paths; a successful command will still fail closed at the
+            # proposal gate when no immutable Git baseline can be collected.
+            try:
+                baseline_ref = self._run_git(
+                    ["rev-parse", "--verify", "HEAD^{commit}"],
+                    cwd=workspace_path,
+                ).stdout.strip()
+            except (OSError, RuntimeError):
+                baseline_ref = ""
             command = self._build_implementation_command(workspace_path)
             self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
             self._mark_implementation_started(
@@ -2148,11 +2163,17 @@ class PortalImplementationDaemon:
                     phase="validating",
                     phase_detail="; ".join(task.validation) if task.validation else "",
                 )
+                proposal_validation = self._validate_implementation_patch(
+                    workspace_path,
+                    task,
+                    baseline_ref=baseline_ref,
+                )
                 validation_result = self._run_validation_commands(
                     workspace_path,
                     task,
                     log_path,
                     state=state,
+                    proposal_validation=proposal_validation,
                 )
                 if not validation_result.get("passed", False):
                     effective_returncode = int(validation_result.get("returncode") or 1)
@@ -3678,11 +3699,17 @@ class PortalImplementationDaemon:
                     cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
                     self._prepare_worktree_for_validation(worktree_path, task=task, branch_name=branch_name)
+                    proposal_validation = self._validate_implementation_patch(
+                        worktree_path,
+                        task,
+                        baseline_ref=baseline_ref,
+                    )
                     validation_result = self._run_validation_commands(
                         worktree_path,
                         task,
                         log_path,
                         state=state,
+                        proposal_validation=proposal_validation,
                     )
                 if validation_result.get("passed", False):
                     commit_result = self._commit_worktree_changes(worktree_path, task, attempt)
@@ -3751,11 +3778,17 @@ class PortalImplementationDaemon:
                         task=task,
                         branch_name=branch_name,
                     )
+                    proposal_validation = self._validate_implementation_patch(
+                        worktree_path,
+                        task,
+                        baseline_ref=baseline_ref,
+                    )
                     validation_result = self._run_validation_commands(
                         worktree_path,
                         task,
                         log_path,
                         state=state,
+                        proposal_validation=proposal_validation,
                     )
                     can_promote = bool(
                         validation_result.get("attempted")
@@ -5437,6 +5470,450 @@ class PortalImplementationDaemon:
             ),
         }
 
+    @staticmethod
+    def _proposal_scope_paths(task: PortalTask) -> tuple[str, ...]:
+        """Return exact repository paths owned by a task's output declaration."""
+
+        raw_paths: list[str] = list(task.outputs)
+        for metadata_name in ("predicted files", "allowed paths"):
+            raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
+        normalized: set[str] = set()
+        for raw_path in raw_paths:
+            path = str(raw_path).strip().replace("\\", "/")
+            while path.startswith("./"):
+                path = path[2:]
+            if (
+                not path
+                or path.startswith("/")
+                or "\0" in path
+                or ".." in Path(path).parts
+            ):
+                continue
+            normalized.add(path)
+        return tuple(sorted(normalized))
+
+    def _proposal_repository_id(self, workspace_path: Path) -> str:
+        """Build a stable non-secret repository identity."""
+
+        try:
+            result = self._run_git(
+                ["rev-parse", "--git-common-dir"],
+                cwd=workspace_path,
+            )
+            common_dir = str(result.stdout or "").strip()
+        except (OSError, RuntimeError):
+            # The proposal will be rejected separately when its baseline or
+            # patch cannot be bound.  Keep repository identity deterministic
+            # so callers receive a typed validation result instead of an
+            # exception, including timeout-salvage and repair workflows.
+            common_dir = ""
+        if common_dir:
+            common_path = Path(common_dir)
+            if not common_path.is_absolute():
+                common_path = workspace_path / common_path
+            try:
+                identity_source = str(common_path.resolve())
+            except (OSError, RuntimeError):
+                identity_source = common_dir
+        else:
+            identity_source = str(self.repo_root)
+        digest = hashlib.sha256(identity_source.encode("utf-8")).hexdigest()
+        return f"repository:sha256:{digest}"
+
+    def _proposal_authority_values(
+        self,
+        task: PortalTask,
+        *,
+        workspace_path: Path,
+        baseline_ref: str,
+    ) -> dict[str, str]:
+        identity = self._identity_for_task(task)
+        canonical_cid = str(
+            task.canonical_task_cid or identity.canonical_task_cid
+        ).strip()
+        canonical_key = str(
+            task.canonical_task_key or identity.canonical_task_key
+        ).strip()
+        tree_id = str(baseline_ref or "").strip()
+        return {
+            "task_id": task.task_id,
+            "accepted_plan_id": str(
+                task.metadata.get("accepted plan id")
+                or task.metadata.get("plan id")
+                or canonical_key
+                or f"task:{task.task_id}"
+            ).strip(),
+            "repository_id": self._proposal_repository_id(workspace_path),
+            "repository_tree_id": tree_id,
+            "objective_id": str(
+                task.metadata.get("goal id")
+                or task.metadata.get("objective id")
+                or canonical_cid
+                or task.task_id
+            ).strip(),
+            "baseline_id": tree_id,
+            "context_id": canonical_cid or canonical_key,
+        }
+
+    def _proposal_boundary_paths(
+        self,
+        workspace_path: Path,
+        *,
+        candidate_paths: Sequence[str] = (),
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Discover tracked gitlink/symlink boundaries plus live symlinks."""
+
+        symlinks: set[str] = set()
+        submodules: set[str] = set()
+        result = self._run_git(["ls-files", "-s", "-z"], cwd=workspace_path)
+        for record in str(result.stdout or "").split("\0"):
+            if not record or "\t" not in record:
+                continue
+            metadata, path = record.split("\t", 1)
+            mode = metadata.split(" ", 1)[0]
+            normalized = path.strip().replace("\\", "/")
+            if mode == "120000":
+                symlinks.add(normalized)
+            elif mode == "160000":
+                submodules.add(normalized)
+        for candidate_path in candidate_paths:
+            relative = Path(candidate_path)
+            current = workspace_path
+            for part in relative.parts:
+                current = current / part
+                if current.is_symlink():
+                    symlinks.add(
+                        current.relative_to(workspace_path).as_posix()
+                    )
+                    break
+        return tuple(sorted(symlinks)), tuple(sorted(submodules))
+
+    @staticmethod
+    def _proposal_patch_text(
+        workspace_path: Path,
+        baseline_ref: str,
+        entries: Sequence[Any],
+    ) -> str:
+        """Render one Git patch, explicitly including untracked additions."""
+
+        tracked = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--no-ext-diff",
+                "--no-color",
+                "--find-renames",
+                "--find-copies",
+                baseline_ref or "HEAD",
+                "--",
+            ],
+            cwd=workspace_path,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if tracked.returncode != 0:
+            raise RuntimeError("unable to render tracked candidate patch")
+        sections = [tracked.stdout]
+        raw_untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+            cwd=workspace_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if raw_untracked.returncode != 0:
+            raise RuntimeError("unable to enumerate untracked candidate paths")
+        untracked_paths = {
+            item.decode("utf-8", errors="surrogateescape")
+            for item in raw_untracked.stdout.split(b"\0")
+            if item
+        }
+        for entry in entries:
+            if (
+                str(getattr(getattr(entry, "change_kind", ""), "value", ""))
+                != "add"
+                or getattr(entry, "old_path", "")
+            ):
+                continue
+            relative = str(getattr(entry, "new_path", "") or "")
+            if not relative or relative not in untracked_paths:
+                continue
+            untracked = subprocess.run(
+                [
+                    "git",
+                    "diff",
+                    "--no-index",
+                    "--no-color",
+                    "--",
+                    "/dev/null",
+                    relative,
+                ],
+                cwd=workspace_path,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            # --no-index uses 1 for an ordinary difference.
+            if untracked.returncode not in (0, 1):
+                raise RuntimeError("unable to render untracked candidate patch")
+            if untracked.stdout:
+                sections.append(untracked.stdout)
+        return "".join(sections)
+
+    def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
+        consumed: list[str] = []
+        for event in reversed(list(self._iter_events())):
+            if event.get("type") != "implementation_proposal_validated":
+                continue
+            proposal_id = str(event.get("proposal_id") or "").strip()
+            if proposal_id and proposal_id not in consumed:
+                consumed.append(proposal_id)
+                if len(consumed) >= limit:
+                    break
+        return tuple(sorted(consumed))
+
+    @staticmethod
+    def _compact_proposal_validation(
+        proposal_validation: Any,
+        *,
+        error_code: str = "",
+    ) -> dict[str, Any]:
+        """Project a proposal result without source, patch, prompt, or secrets."""
+
+        receipt = getattr(proposal_validation, "receipt", None)
+        proposal = getattr(proposal_validation, "proposal", None)
+        policy = getattr(proposal_validation, "policy", None)
+        findings = tuple(getattr(proposal_validation, "findings", ()) or ())
+        reason_codes = {
+            str(getattr(getattr(finding, "code", ""), "value", "") or "").strip()
+            for finding in findings
+        }
+        if error_code:
+            reason_codes.add(str(error_code).strip())
+        reason_codes.discard("")
+        changed_paths = tuple(getattr(proposal, "changed_paths", ()) or ())
+        return {
+            "attempted": True,
+            "accepted": bool(getattr(proposal_validation, "accepted", False)),
+            "reason_codes": sorted(reason_codes)[
+                :MAX_PERSISTED_PROPOSAL_REASON_CODES
+            ],
+            "proposal_id": str(getattr(proposal, "proposal_id", "") or ""),
+            "policy_id": str(getattr(policy, "policy_id", "") or ""),
+            "receipt_id": str(getattr(receipt, "receipt_id", "") or ""),
+            "repository_tree_id": str(
+                getattr(proposal, "repository_tree_id", "") or ""
+            ),
+            "changed_paths": list(changed_paths[:256]),
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+
+    def _validate_implementation_patch(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+    ) -> Any:
+        """Validate a candidate patch before task validation is dispatched."""
+
+        # Keep proof/compiler imports off administrative daemon paths.
+        from ..code_proof_obligations import collect_git_candidate_diff
+        from ..proposal_validation import (
+            ImplementationProposal,
+            ProposalOperation,
+            ProposalRisk,
+            ProposalValidationStep,
+            ProposalValidationPolicy,
+            validate_implementation_proposal,
+        )
+
+        authority = self._proposal_authority_values(
+            task,
+            workspace_path=workspace_path,
+            baseline_ref=baseline_ref,
+        )
+        scope_paths = self._proposal_scope_paths(task)
+        # A missing output declaration grants no mutation authority.
+        allowed_paths = scope_paths or (".proposal-scope-not-declared",)
+        collection_error = ""
+        try:
+            entries = tuple(
+                collect_git_candidate_diff(
+                    workspace_path,
+                    base_revision=baseline_ref or "HEAD",
+                    include_untracked=True,
+                )
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            # Preserve a typed, rejected proposal so callers and the scheduler
+            # fail closed instead of turning collection failure into a daemon
+            # crash or an unvalidated legacy run.
+            entries = ()
+            collection_error = type(exc).__name__
+        changed_paths = tuple(
+            sorted(
+                {
+                    path
+                    for entry in entries
+                    for path in (entry.old_path, entry.new_path)
+                    if path
+                }
+            )
+        )
+        rationale_refs = tuple(
+            sorted(
+                {
+                    f"task:{task.task_id}",
+                    *(
+                        (f"acceptance:{task.task_id}",)
+                        if task.acceptance
+                        else ()
+                    ),
+                    *(f"output:{path}" for path in scope_paths),
+                }
+            )
+        )
+        operations = tuple(
+            ProposalOperation(
+                operation=entry.change_kind.value,
+                path=entry.path,
+                old_path=entry.old_path if entry.change_kind.value in {"rename", "copy"} else "",
+                rationale_refs=(
+                    f"output:{entry.path}"
+                    if f"output:{entry.path}" in rationale_refs
+                    else f"task:{task.task_id}",
+                ),
+            )
+            for entry in entries
+        )
+        validation_steps_list: list[ProposalValidationStep] = []
+        malformed_validation_command = False
+        for command in task.validation:
+            try:
+                command_argv = tuple(shlex.split(command))
+            except ValueError:
+                # Preserve the malformed source as inert argv.  Shell
+                # interpreters are categorically denied by the proposal
+                # validator, yielding a compact command_forbidden finding
+                # without ever dispatching the command.
+                command_argv = ("sh", "-c", str(command))
+                malformed_validation_command = True
+            validation_steps_list.append(
+                ProposalValidationStep(
+                    command=command_argv,
+                    rationale_refs=(f"task:{task.task_id}",),
+                )
+            )
+        validation_steps = tuple(validation_steps_list)
+        replay_nonce = hashlib.sha256(
+            json.dumps(
+                {
+                    "task_id": task.task_id,
+                    "tree": authority["repository_tree_id"],
+                    "context": authority["context_id"],
+                    "changed_paths": changed_paths,
+                    "operations": [
+                        (entry.change_kind.value, entry.old_path, entry.new_path)
+                        for entry in entries
+                    ],
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        authority_claims = {
+            **authority,
+            "proof_authoritative": False,
+            "code_proof_authoritative": False,
+            "completion_authoritative": False,
+            "completed": False,
+        }
+        try:
+            patch_text = self._proposal_patch_text(
+                workspace_path,
+                baseline_ref,
+                entries,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            patch_text = ""
+            collection_error = collection_error or type(exc).__name__
+        proposal = ImplementationProposal(
+            **authority,
+            candidate_diff=entries,
+            declared_paths=changed_paths,
+            operations=operations,
+            rationale_references=rationale_refs,
+            validation_plan=validation_steps,
+            risks=(
+                ProposalRisk(
+                    risk="candidate behavior may regress task-owned interfaces",
+                    mitigation="run the task-declared validation plan before merge",
+                ),
+            ),
+            authority_claims=authority_claims,
+            patch_text=patch_text,
+            replay_nonce=replay_nonce,
+            proposal_version="2",
+        )
+        try:
+            symlink_paths, submodule_paths = self._proposal_boundary_paths(
+                workspace_path,
+                candidate_paths=changed_paths,
+            )
+        except (OSError, RuntimeError, ValueError):
+            symlink_paths, submodule_paths = (), ()
+        allowed_validation_commands = tuple(
+            step.command for step in validation_steps
+        ) or (("python", "-m", "pytest"),)
+        policy = ProposalValidationPolicy(
+            allowed_paths=allowed_paths,
+            expected_task_id=authority["task_id"],
+            expected_plan_id=authority["accepted_plan_id"],
+            expected_repository_id=authority["repository_id"],
+            expected_repository_tree_id=authority["repository_tree_id"],
+            expected_objective_id=authority["objective_id"],
+            expected_context_id=authority["context_id"],
+            expected_baseline_id=authority["baseline_id"],
+            expected_replay_nonce=replay_nonce,
+            consumed_proposal_ids=self._consumed_proposal_ids(),
+            symlink_paths=symlink_paths,
+            submodule_paths=submodule_paths,
+            allowed_validation_commands=allowed_validation_commands,
+            require_structured_details=True,
+            require_patch_text=True,
+            policy_version="strict-proposal-v2",
+        )
+        result = validate_implementation_proposal(proposal, policy=policy)
+        compact = self._compact_proposal_validation(
+            result,
+            error_code=(
+                "command_forbidden"
+                if malformed_validation_command
+                else "patch_collection_failed"
+                if collection_error
+                else ""
+            ),
+        )
+        self._record_event(
+            "implementation_proposal_validated"
+            if result.accepted
+            else "implementation_proposal_rejected",
+            {
+                "task_id": task.task_id,
+                **compact,
+            },
+        )
+        return result
+
     def _run_validation_commands(
         self,
         workspace_path: Path,
@@ -5444,12 +5921,17 @@ class PortalImplementationDaemon:
         log_path: Path,
         *,
         state: PortalTaskState | None = None,
+        proposal_validation: Any = None,
     ) -> dict[str, Any]:
         if not workspace_path.exists():
             return self._missing_validation_workspace_result(workspace_path, task=task, log_path=log_path)
 
         proof_options = self._proof_workflow_options(workspace_path, task)
-        if not task.validation and not proof_options:
+        if (
+            not task.validation
+            and not proof_options
+            and proposal_validation is None
+        ):
             return {
                 "attempted": False,
                 "passed": True,
@@ -5469,14 +5951,73 @@ class PortalImplementationDaemon:
         # (or before an in-place task is marked complete).  Impact selection is
         # still recorded and used for staging, but every unrelated targeted
         # check is escalated into the broad pre-merge stage here.
-        result = self.validation_scheduler.run(
-            commands,
-            workspace_path=workspace_path,
-            require_full_validation=True,
-            scope="pre_merge",
-            runner=self._validation_command_runner,
-            **proof_options,
-        )
+        if proposal_validation is None:
+            result = self.validation_scheduler.run(
+                commands,
+                workspace_path=workspace_path,
+                require_full_validation=True,
+                scope="pre_merge",
+                runner=self._validation_command_runner,
+                **proof_options,
+            )
+        else:
+            strict_runner = getattr(self.validation_scheduler, "run_validated", None)
+            if not callable(strict_runner):
+                result = {
+                    "attempted": False,
+                    "passed": False,
+                    "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                    "results": [],
+                    "reason": "proposal_scheduler_unavailable",
+                    "error": "proposal_validation_failed",
+                }
+            else:
+                result = strict_runner(
+                    proposal_validation,
+                    commands,
+                    workspace_path=workspace_path,
+                    require_impact_graph=False,
+                    require_full_validation=True,
+                    scope="pre_merge",
+                    runner=self._validation_command_runner,
+                    **proof_options,
+                )
+
+            # The scheduler needs full source-bound records in process, while
+            # daemon state and JSONL events retain only compact repair data.
+            compact_proposal = self._compact_proposal_validation(
+                proposal_validation,
+                error_code=(
+                    "proposal_scheduler_unavailable"
+                    if result.get("reason") == "proposal_scheduler_unavailable"
+                    else ""
+                ),
+            )
+            scheduler_bound = result.pop("proposal_validation", None)
+            scheduler_receipt = result.pop("proposal_receipt", None)
+            bound_receipt: Mapping[str, Any] | None = None
+            if isinstance(scheduler_bound, Mapping):
+                candidate = scheduler_bound.get("receipt")
+                if isinstance(candidate, Mapping):
+                    bound_receipt = candidate
+            if bound_receipt is None and isinstance(scheduler_receipt, Mapping):
+                bound_receipt = scheduler_receipt
+            if bound_receipt is not None:
+                compact_proposal["receipt_id"] = str(
+                    bound_receipt.get("receipt_id")
+                    or compact_proposal["receipt_id"]
+                )
+                rejection_codes = bound_receipt.get("rejection_codes")
+                if isinstance(rejection_codes, Sequence) and not isinstance(
+                    rejection_codes, (str, bytes, bytearray)
+                ):
+                    compact_proposal["reason_codes"] = sorted(
+                        {
+                            *compact_proposal["reason_codes"],
+                            *(str(code) for code in rejection_codes if str(code)),
+                        }
+                    )[:MAX_PERSISTED_PROPOSAL_REASON_CODES]
+            result["proposal_gate"] = compact_proposal
 
         scheduler_options = proof_options.get("proof_scheduler_options")
         proof_state_path = ""
