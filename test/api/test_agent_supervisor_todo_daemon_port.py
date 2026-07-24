@@ -8081,6 +8081,7 @@ def test_implementation_supervisor_repairs_stale_active_state_after_rewrite(tmp_
         strategy_path=state_dir / "strategy.json",
         events_path=state_dir / "supervisor_events.jsonl",
         state_dir=state_dir,
+        repo_root=repo,
         stale_seconds=60,
     )
 
