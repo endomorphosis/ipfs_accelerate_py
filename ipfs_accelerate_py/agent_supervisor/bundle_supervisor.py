@@ -14,7 +14,7 @@ import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from .artifact_store import (
     BUNDLE_INDEX_KIND,
@@ -685,21 +685,66 @@ def _bundle_conflict_task(
                 values.extend(item for item in candidates if item)
         return list(dict.fromkeys(values))
 
+    def source_values(source: Mapping[str, Any], *keys: str) -> list[str]:
+        values: list[str] = []
+        for key in keys:
+            raw = source.get(key)
+            if isinstance(raw, str):
+                candidates = [part.strip() for part in raw.split(",")]
+            elif isinstance(raw, (list, tuple, set, frozenset)):
+                candidates = [str(part).strip() for part in raw]
+            else:
+                candidates = []
+            values.extend(item for item in candidates if item)
+        return list(dict.fromkeys(values))
+
+    # Objective bundles retain broad evidence/control-plane outputs alongside
+    # the narrower code and test files that an implementation may mutate.
+    # Unioning every alias made a shared discovery directory or objective
+    # document serialize otherwise independent lanes.  Select the most precise
+    # mutation declaration per live member, retaining Outputs as a compatibility
+    # fallback for legacy task payloads.
+    mutation_sources: Sequence[Mapping[str, Any]] = members or [payload]
+    mutation_files: list[str] = []
+    declared_path_candidates: list[str] = []
+    for source in mutation_sources:
+        files = source_values(source, "files")
+        predicted = source_values(
+            source,
+            "predicted_files",
+            "predicted_paths",
+            "affected_files",
+        )
+        legacy_outputs = source_values(source, "outputs", "requested_outputs")
+        selected = files or predicted or legacy_outputs
+        mutation_files.extend(selected)
+        declared_path_candidates.extend([*files, *predicted, *legacy_outputs])
+    mutation_files = list(dict.fromkeys(mutation_files))
+    mutation_file_set = set(mutation_files)
+    advisory_paths = [
+        path
+        for path in dict.fromkeys(declared_path_candidates)
+        if path not in mutation_file_set
+    ]
+
     bundle_key = str(payload.get("bundle_key") or "objective/general")
     profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
     conflict_policy = str(payload.get("conflict_policy") or "")
     ast_symbols = member_values("ast_symbols", "symbols")
     ast_symbol_scopes = {item.lower() for item in member_values("ast_symbol_scope")}
-    file_scoped_ast = bool(ast_symbol_scopes & {"file", "path", "local"}) or (
-        "allow independent file bundles" in conflict_policy.lower()
-    )
+    global_ast_symbols = member_values("global_ast_symbols")
+    if ast_symbol_scopes & {"global", "project", "repository"}:
+        global_ast_symbols = list(dict.fromkeys([*global_ast_symbols, *ast_symbols]))
     return {
         "task_id": bundle_key,
         "task_cid": str(profile_g.get("task_cid") or payload.get("task_cid") or ""),
-        "outputs": member_values("outputs", "files", "predicted_files"),
+        "files": mutation_files,
         "changed_paths": member_values("changed_paths", "actual_changed_paths"),
         "ast_symbols": ast_symbols,
-        "global_ast_symbols": [] if file_scoped_ast else ast_symbols,
+        # Bundle AST findings describe definitions in their predicted files by
+        # default.  Cross-file semantic conflicts must be declared explicitly
+        # through global_ast_symbols, a global scope, or an interface surface.
+        "global_ast_symbols": global_ast_symbols,
         "ast_query": ", ".join(member_values("ast_query")),
         "interfaces": member_values(
             "interfaces", "interface_contracts", "provides_interfaces", "requires_interfaces",
@@ -716,6 +761,7 @@ def _bundle_conflict_task(
                 str(task.get("task_id")) for task in members if task.get("task_id")
             ],
             "conflict_policy": conflict_policy,
+            "advisory_paths": advisory_paths,
         },
     }
 
