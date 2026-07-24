@@ -12,10 +12,15 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     plan_objective_records,
 )
 from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+    AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID,
     AnalysisProposal,
+    EvidenceAwarePlanCandidate,
+    EvidenceAwarePlanPolicy,
     ObjectiveWorkEvaluationPolicy,
     PlanBranch,
+    PlanEvaluationDimension,
     evaluate_analysis_proposals,
+    evaluate_evidence_aware_plans,
     evaluate_objective_work_proposals,
     evaluate_plan_branches,
 )
@@ -54,6 +59,54 @@ def _branch_payload(
 
 def _branch(branch_id: str, **overrides: Any) -> PlanBranch:
     return PlanBranch.from_dict(_branch_payload(branch_id, **overrides))
+
+
+def _evidence_candidate(
+    branch_id: str,
+    *,
+    authority_violations: tuple[str, ...] = (),
+    estimated_resource_cost: float = 2.0,
+    estimated_tokens: int = 200,
+    **overrides: Any,
+) -> EvidenceAwarePlanCandidate:
+    values: dict[str, Any] = {
+        "branch": _branch(branch_id, estimated_cost=estimated_resource_cost),
+        "covered_acceptance_criteria": ("criterion:verified transition",),
+        "covered_evidence_terms": ("evidence:authority gate",),
+        "assumptions": ("assumption:repository state is frozen",),
+        "validated_assumptions": ("assumption:repository state is frozen",),
+        "semantic_requirements": ("semantics:typed counterexample",),
+        "supported_semantics": ("semantics:typed counterexample",),
+        "dependencies": ("REF-039",),
+        "critical_path": ("REF-039",),
+        "unresolved_conflicts": (),
+        "changed_scopes": ("scope:adaptive planner",),
+        "authorized_scopes": ("scope:adaptive planner",),
+        "authority_violations": authority_violations,
+        "validation_feasible": True,
+        "proof_feasible": True,
+        "novelty": 0.8,
+        "resource_classes": ("cpu",),
+        "estimated_resource_cost": estimated_resource_cost,
+        "estimated_tokens": estimated_tokens,
+    }
+    values.update(overrides)
+    return EvidenceAwarePlanCandidate(**values)
+
+
+def _evidence_policy() -> EvidenceAwarePlanPolicy:
+    return EvidenceAwarePlanPolicy(
+        acceptance_criteria=("criterion:verified transition",),
+        evidence_terms=("evidence:authority gate",),
+        trusted_assumptions=("assumption:repository state is frozen",),
+        supported_semantics=("semantics:typed counterexample",),
+        satisfied_dependencies=("REF-039",),
+        allowed_scopes=("scope:adaptive planner",),
+        available_resource_classes=("cpu",),
+        max_estimated_resource_cost=20.0,
+        max_estimated_tokens=2_000,
+        min_novelty=0.1,
+    )
 
 
 def test_plan_branch_schema_round_trips_all_scheduler_evidence() -> None:
@@ -198,6 +251,148 @@ def test_evaluation_profile_g_payload_uses_content_safe_integer_scores() -> None
     assert isinstance(selected["risk_millionths"], int)
     assert isinstance(selected["expected_objective_delta_millionths"], int)
     assert all(isinstance(score, int) for score in evaluation.scores.values())
+
+
+def test_evidence_aware_evaluation_rejects_cheaper_authority_violating_plan() -> None:
+    safe = _evidence_candidate(
+        "safe-expensive",
+        estimated_resource_cost=20.0,
+        estimated_tokens=2_000,
+        novelty=0.1,
+    )
+    unsafe = _evidence_candidate(
+        "unsafe-cheap",
+        authority_violations=("actor lacks write lease",),
+        estimated_resource_cost=0.01,
+        estimated_tokens=1,
+        novelty=1.0,
+    )
+
+    forward = evaluate_evidence_aware_plans(
+        [unsafe, safe], policy=_evidence_policy()
+    )
+    reverse = evaluate_evidence_aware_plans(
+        [safe, unsafe], policy=_evidence_policy()
+    )
+
+    assert forward.selected is not None
+    assert forward.selected.candidate_id == "safe-expensive"
+    assert forward.to_dict() == reverse.to_dict()
+    assert [item.candidate_id for item in forward.rejected] == ["unsafe-cheap"]
+    rejected = forward.rejected[0]
+    assert rejected.score_millionths > forward.selected.score_millionths
+    assert rejected.hard_gate_failures == (
+        PlanEvaluationDimension.CONFLICT_SCOPE_AND_AUTHORITY.value,
+    )
+    assert any("authority violation" in item for item in rejected.rationale)
+    assert forward.evidence_ids == (
+        AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID,
+    )
+    assert forward.to_dict()["evidence_ids"] == [
+        "173075880069453142914839090434430341799"
+    ]
+
+
+def test_evidence_aware_evaluation_covers_every_required_dimension_and_fails_closed() -> None:
+    candidate = _evidence_candidate(
+        "infeasible",
+        covered_acceptance_criteria=("criterion:not the frozen goal",),
+        covered_evidence_terms=("evidence:not required",),
+        assumptions=("assumption:untrusted",),
+        validated_assumptions=(),
+        semantic_requirements=("semantics:unsupported",),
+        supported_semantics=(),
+        dependencies=("REF-MISSING",),
+        critical_path=("REF-MISSING",),
+        unresolved_conflicts=("scope overlaps active task",),
+        changed_scopes=("scope:outside authority",),
+        authorized_scopes=(),
+        validation_feasible=False,
+        proof_feasible=False,
+        novelty=0.0,
+        resource_classes=("gpu",),
+        estimated_resource_cost=100.0,
+        estimated_tokens=20_000,
+    )
+
+    result = evaluate_evidence_aware_plans(
+        [candidate], policy=_evidence_policy()
+    )
+
+    assert result.selected is None
+    assert not result.admissible
+    assert len(result.rejected) == 1
+    evaluation = result.rejected[0]
+    assert {item.dimension for item in evaluation.dimensions} == set(
+        PlanEvaluationDimension
+    )
+    assert set(evaluation.hard_gate_failures) == {
+        item.dimension.value
+        for item in evaluation.dimensions
+        if item.hard_gate
+    }
+    rationale = " ".join(evaluation.rationale)
+    for expected in (
+        "acceptance criterion",
+        "objective evidence",
+        "assumption",
+        "semantics",
+        "dependency",
+        "critical-path",
+        "conflict",
+        "scope",
+        "validation",
+        "proof",
+        "novelty",
+        "resource",
+        "token",
+    ):
+        assert expected in rationale.lower()
+
+
+def test_authority_evidence_is_not_emitted_without_a_cheaper_rejected_plan() -> None:
+    selected = _evidence_candidate("selected")
+    expensive_violation = _evidence_candidate(
+        "expensive-violation",
+        authority_violations=("lease is missing",),
+        estimated_resource_cost=20.0,
+        estimated_tokens=2_000,
+    )
+
+    result = evaluate_evidence_aware_plans(
+        [expensive_violation, selected], policy=_evidence_policy()
+    )
+
+    assert result.selected is not None
+    assert result.selected.candidate_id == "selected"
+    assert result.rejected[0].candidate.authority_violations
+    assert result.evidence_ids == ()
+    assert result.to_dict()["evidence_ids"] == []
+    assert result.to_dict()["requirement_ids"] == [
+        AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID
+    ]
+
+
+def test_evidence_aware_contract_is_strict_and_round_trips() -> None:
+    candidate = _evidence_candidate("round-trip")
+    policy = _evidence_policy()
+
+    assert EvidenceAwarePlanCandidate.from_dict(candidate.to_dict()) == candidate
+    assert EvidenceAwarePlanPolicy.from_dict(policy.to_dict()) == policy
+    profile = evaluate_evidence_aware_plans(
+        [candidate], policy=policy
+    ).to_profile_g_dict()
+    assert isinstance(
+        profile["selected"]["candidate"]["estimated_resource_cost_millionths"],
+        int,
+    )
+    assert isinstance(profile["selected"]["candidate"]["novelty_millionths"], int)
+    assert profile["evidence_ids"] == []
+
+    payload = candidate.to_dict()
+    payload["validation_feasible"] = "yes"
+    with pytest.raises(ValueError, match="validation_feasible"):
+        EvidenceAwarePlanCandidate.from_dict(payload)
 
 
 def test_analysis_evaluator_rejects_duplicate_low_confidence_and_low_novelty_candidates() -> None:
