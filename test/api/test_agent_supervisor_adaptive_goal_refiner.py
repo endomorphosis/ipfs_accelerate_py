@@ -28,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     AdaptiveRefinementReceipt,
     AdaptiveRefinementRequest,
     GoalDebtKind,
+    GoalDebtRecord,
     GoalQualityRecord,
     InMemoryRefinementStore,
     JsonlRefinementStore,
@@ -55,6 +56,12 @@ from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
     GoalState,
+)
+from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+    ObjectiveGoalQualityReport,
+    build_objective_goal_quality_report,
+    load_objective_goal_quality_report,
+    write_objective_goal_quality_report,
 )
 from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
     AcceptanceCoverage,
@@ -1469,3 +1476,212 @@ def test_policy_and_signal_validation_fail_closed() -> None:
         )
     with pytest.raises(AdaptiveGoalRefinementError, match="independent"):
         AdaptiveGoalRefiner(_candidate, None)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("spelling", "expected"),
+    [
+        ("stale_receipt", RefinementSignalKind.STALE_EVIDENCE),
+        (
+            "repeated_validation_signature",
+            RefinementSignalKind.REPEATED_FAILURE,
+        ),
+        ("unavailable_capability", RefinementSignalKind.CAPABILITY_CHANGE),
+        ("unavailable_provider", RefinementSignalKind.CAPABILITY_CHANGE),
+        ("changed_interface", RefinementSignalKind.INTERFACE_CHANGE),
+        ("conflict", RefinementSignalKind.SCOPE_CONFLICT),
+        ("infeasible_resources", RefinementSignalKind.RESOURCE_INFEASIBLE),
+    ],
+)
+def test_task_language_signal_spellings_normalize_to_closed_kinds(
+    spelling: str,
+    expected: RefinementSignalKind,
+) -> None:
+    signal = RefinementSignal(
+        kind=spelling,  # type: ignore[arg-type]
+        subject_id="goal:root",
+        evidence_revision=f"{spelling}:v1",
+        observed_at=100,
+        failure_signature=(
+            "pytest::test_contract/assertion"
+            if expected is RefinementSignalKind.REPEATED_FAILURE
+            else ""
+        ),
+    )
+    assert signal.kind is expected
+    assert RefinementSignal.from_dict(signal.to_dict()) == signal
+
+
+def _complete_quality() -> GoalQualityRecord:
+    return GoalQualityRecord(
+        goal_id="goal:root",
+        outcome="Ship a verified child refinement.",
+        scope_ids=("src/refiner.py",),
+        assumption_ids=("assumption:frozen",),
+        non_goals=("operator-authorized root revision",),
+        acceptance_criteria=("The child implies the frozen parent.",),
+        evidence_producer_ids=("pytest:refinement",),
+        validation_ids=("pytest test_refinement.py -q",),
+        freshness_horizon_seconds=300,
+        resource_envelope={"tokens": 1024, "runtime_seconds": 30},
+        refinement_budget={"max_depth": 2, "max_children": 3},
+        breadth=1,
+        max_breadth=3,
+    )
+
+
+def test_goal_quality_and_debt_records_round_trip_fail_closed() -> None:
+    complete = _complete_quality()
+    assert complete.debt == ()
+    assert complete.debt_records == ()
+    assert GoalQualityRecord.from_dict(complete.to_dict()) == complete
+
+    incomplete = replace(
+        complete,
+        ambiguities=("Which interface version is authoritative?",),
+        stale_evidence_ids=("receipt:old",),
+        uncovered_acceptance_criteria=("The child is independently proved.",),
+        unsupported_semantics=("natural-language implication",),
+        breadth=4,
+    )
+    restored = GoalQualityRecord.from_dict(incomplete.to_dict())
+
+    assert restored == incomplete
+    assert all(
+        GoalDebtRecord.from_dict(item.to_dict()) == item
+        for item in restored.debt_records
+    )
+    assert {item.kind for item in restored.debt_records} == {
+        GoalDebtKind.AMBIGUOUS,
+        GoalDebtKind.STALE_EVIDENCE,
+        GoalDebtKind.UNCOVERED_ACCEPTANCE,
+        GoalDebtKind.UNSUPPORTED_SEMANTICS,
+        GoalDebtKind.EXCESSIVE_BREADTH,
+    }
+
+    tampered = copy.deepcopy(incomplete.to_dict())
+    tampered["debt_records"][0]["quality_id"] = complete.content_id
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="identity|do not match"
+    ):
+        GoalQualityRecord.from_dict(tampered)
+
+
+def test_refinement_request_binds_exact_quality_and_debt_snapshot() -> None:
+    quality = replace(
+        _complete_quality(),
+        stale_evidence_ids=("receipt:stale",),
+    )
+    request = replace(_request(), quality=quality)
+    payload = request.to_dict()
+
+    assert payload["quality_id"] == quality.content_id
+    assert payload["goal_debt_ids"] == tuple(
+        item.content_id for item in quality.debt_records
+    )
+
+    with pytest.raises(
+        AdaptiveGoalRefinementError, match="quality assumptions"
+    ):
+        replace(
+            request,
+            quality=replace(
+                quality, assumption_ids=("assumption:invented",)
+            ),
+        )
+
+
+def test_changed_quality_debt_bypasses_unchanged_failure_backoff() -> None:
+    now = [100]
+    calls = 0
+    signal = _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
+    first_quality = replace(
+        _complete_quality(), stale_evidence_ids=("receipt:stale-v1",)
+    )
+
+    def generate(request):
+        nonlocal calls
+        calls += 1
+        return _candidate(request)
+
+    controller = AdaptiveGoalRefiner(
+        generate,
+        lambda candidate, request: _verification(request, verified=False),
+        clock=lambda: now[0],
+    )
+    first_request = replace(_request(signal), quality=first_quality)
+    failed = controller.refine(first_request)
+    now[0] = 101
+    changed_request = replace(
+        first_request,
+        cycle_id="cycle:quality-v2",
+        quality=replace(
+            first_quality, stale_evidence_ids=("receipt:stale-v2",)
+        ),
+    )
+    changed = controller.refine(changed_request)
+
+    assert failed.decision is RefinementDecision.VERIFICATION_FAILED
+    assert changed.decision is RefinementDecision.VERIFICATION_FAILED
+    assert failed.receipt.evidence_fingerprint != (
+        changed.receipt.evidence_fingerprint
+    )
+    assert calls == 2
+
+
+def test_objective_tracker_persists_idempotent_quality_and_debt_report(
+    tmp_path,
+) -> None:
+    objective_text = """# Objective Heap
+
+## goal:root Responsive refinement
+- Outcome: Ship a bounded verified child refinement
+- Scope IDs JSON: ["src/refiner.py", "test/test_refiner.py"]
+- Assumptions JSON: ["assumption:frozen"]
+- Non Goals JSON: ["root revision"]
+- Acceptance Criteria JSON: ["child implies parent"]
+- Evidence Producer IDs JSON: ["pytest:refinement"]
+- Validation Policy JSON: ["pytest test_refinement.py -q"]
+- Freshness Horizon Seconds: 300
+- Resource Envelope JSON: {"tokens": 1024, "runtime_seconds": 30}
+- Refinement Budget JSON: {"max_depth": 2, "max_children": 3}
+- Max Breadth: 3
+
+## goal:child Missing runtime proof
+- Parent: goal:root
+- Outcome: Produce runtime proof
+- Scope: src/runtime.py
+- Assumptions: assumption:frozen
+- Acceptance: proof is current
+- Validation: pytest test_runtime.py -q
+"""
+    report = build_objective_goal_quality_report(objective_text)
+    root = next(
+        item for item in report.quality_records if item.goal_id == "goal:root"
+    )
+
+    assert root.debt == ()
+    assert root.breadth == 1
+    assert report.debt_records
+    assert ObjectiveGoalQualityReport.from_dict(report.to_dict()) == report
+
+    objective_path = tmp_path / "objectives.md"
+    report_path = tmp_path / "goal-quality.json"
+    objective_path.write_text(objective_text, encoding="utf-8")
+    first = write_objective_goal_quality_report(objective_path, report_path)
+    first_bytes = report_path.read_bytes()
+    second = write_objective_goal_quality_report(objective_path, report_path)
+
+    assert second == first
+    assert report_path.read_bytes() == first_bytes
+    assert load_objective_goal_quality_report(
+        report_path, objective_path=objective_path
+    ) == first
+
+    objective_path.write_text(
+        objective_text + "\n<!-- changed heap -->\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="stale"):
+        load_objective_goal_quality_report(
+            report_path, objective_path=objective_path
+        )

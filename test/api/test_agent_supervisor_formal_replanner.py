@@ -4,6 +4,10 @@ import json
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
+    RefinementSignal,
+    RefinementSignalKind,
+)
 from ipfs_accelerate_py.agent_supervisor.formal_counterexamples import (
     CounterexampleKind,
     RepairClass,
@@ -152,6 +156,53 @@ def _operation(kind: RepairRuleKind, counterexample_id: str) -> RepairOperation:
         parameters=parameters,
         counterexample_id=counterexample_id,
     )
+
+
+def test_typed_runtime_signal_change_forces_one_bounded_formal_replan() -> None:
+    source = _source()
+    counterexample = _counterexample(source)
+    signal = RefinementSignal(
+        kind=RefinementSignalKind.INTERFACE_CHANGE,
+        subject_id="interface:runtime",
+        evidence_revision="interface:v2",
+        observed_at=100,
+        details={"previous": "v1", "current": "v2"},
+    )
+    operation = _operation(
+        RepairRuleKind.ADD_EVIDENCE, counterexample.semantic_id
+    )
+    replanner = FormalReplanner()
+
+    changed = replanner.replan_for_signal(
+        source,
+        counterexample,
+        signal,
+        previous_signal_id="sha256:interface-v1",
+        previous_counterexample_id=counterexample.semantic_id,
+        candidate_repairs=(operation,),
+    )
+    unchanged = replanner.replan_for_signal(
+        source,
+        counterexample,
+        signal,
+        previous_signal_id=signal.evidence_id,
+        previous_counterexample_id=counterexample.semantic_id,
+        candidate_repairs=(operation,),
+        base_backoff_seconds=2,
+    )
+
+    assert changed.changed
+    assert changed.result is not None
+    assert changed.trigger_evidence_id == signal.evidence_id
+    assert changed.trigger_signal_kind == RefinementSignalKind.INTERFACE_CHANGE.value
+    assert changed.requirement_ids == ()
+    assert unchanged.stop_reason is (
+        ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
+    )
+    assert not unchanged.changed
+    assert unchanged.result is None
+    assert unchanged.backoff_seconds == 2
+    assert unchanged.requirement_ids == ()
 
 
 @pytest.mark.parametrize("kind", tuple(RepairRuleKind))

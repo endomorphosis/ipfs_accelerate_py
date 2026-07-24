@@ -74,6 +74,19 @@ OBJECTIVE_COMPLETION_EVIDENCE_ROLES: Final[tuple[str, ...]] = (
     "completion_criterion_coverage",
     "completion_exhaustion_quorum",
 )
+RESPONSIVE_REPLAN_SIGNAL_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "counterexample",
+        "stale_evidence",
+        "repeated_failure",
+        "capability_change",
+        "interface_change",
+        "scope_change",
+        "scope_conflict",
+        "resource_change",
+        "resource_infeasible",
+    }
+)
 
 
 class ReplannerValidationError(ValueError):
@@ -650,11 +663,11 @@ class ReplanResult:
 class ResponsiveReplanDecision:
     """Typed boundary decision for evidence-responsive refinement.
 
-    ``result`` is intentionally absent for an unchanged counterexample: no
-    source compilation, repair generation, validation, taskboard admission, or
-    model-facing packet construction occurred.  Changed evidence delegates to
-    exactly one normal :meth:`FormalReplanner.replan` pass and retains that
-    complete verified result.
+    ``result`` is intentionally absent for an unchanged trigger/counterexample
+    pair: no source compilation, repair generation, validation, taskboard
+    admission, or model-facing packet construction occurred.  Changed evidence
+    delegates to exactly one normal :meth:`FormalReplanner.replan` pass and
+    retains that complete verified result.
     """
 
     counterexample_id: str
@@ -664,6 +677,9 @@ class ResponsiveReplanDecision:
     result: ReplanResult | None
     backoff_attempt: int
     backoff_seconds: int
+    trigger_evidence_id: str = ""
+    previous_trigger_evidence_id: str = ""
+    trigger_signal_kind: str = "counterexample"
 
     def __post_init__(self) -> None:
         current = str(self.counterexample_id or "").strip()
@@ -672,6 +688,20 @@ class ResponsiveReplanDecision:
             raise ReplannerValidationError("counterexample_id is required")
         object.__setattr__(self, "counterexample_id", current)
         object.__setattr__(self, "previous_counterexample_id", previous)
+        trigger = str(self.trigger_evidence_id or current).strip()
+        previous_trigger = str(
+            self.previous_trigger_evidence_id or previous
+        ).strip()
+        if not trigger:
+            raise ReplannerValidationError("trigger_evidence_id is required")
+        object.__setattr__(self, "trigger_evidence_id", trigger)
+        object.__setattr__(
+            self, "previous_trigger_evidence_id", previous_trigger
+        )
+        trigger_kind = str(self.trigger_signal_kind or "").strip()
+        if trigger_kind not in RESPONSIVE_REPLAN_SIGNAL_KINDS:
+            raise ReplannerValidationError("trigger_signal_kind is unsupported")
+        object.__setattr__(self, "trigger_signal_kind", trigger_kind)
         if not isinstance(self.changed, bool):
             raise ReplannerValidationError("changed must be boolean")
         object.__setattr__(self, "stop_reason", ReplanStopReason(self.stop_reason))
@@ -743,9 +773,14 @@ class ResponsiveReplanDecision:
     def requirement_ids(self) -> tuple[str, ...]:
         """Route to the bound producer without claiming evidence authority."""
 
-        if self.changed:
+        if self.changed and self.trigger_signal_kind == "counterexample":
             return (BOUNDED_REFINEMENT_EVIDENCE_ID,)
-        return (UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,)
+        if not self.changed and self.trigger_signal_kind in {
+            "counterexample",
+            "repeated_failure",
+        }:
+            return (UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,)
+        return ()
 
     @property
     def completion_evidence_roles(self) -> tuple[str, ...]:
@@ -767,6 +802,9 @@ class ResponsiveReplanDecision:
             "evidence_ids": list(self.evidence_ids),
             "counterexample_id": self.counterexample_id,
             "previous_counterexample_id": self.previous_counterexample_id,
+            "trigger_evidence_id": self.trigger_evidence_id,
+            "previous_trigger_evidence_id": self.previous_trigger_evidence_id,
+            "trigger_signal_kind": self.trigger_signal_kind,
             "changed": self.changed,
             "refined": self.refined,
             "model_call_required": self.model_call_required,
@@ -997,17 +1035,31 @@ class FormalReplanner:
         backoff_attempt: int = 0,
         base_backoff_seconds: int = 1,
         max_backoff_seconds: int = 300,
+        trigger_evidence_id: str | None = None,
+        previous_trigger_evidence_id: str | None = None,
+        trigger_signal_kind: str = "counterexample",
     ) -> ResponsiveReplanDecision:
         """Replan changed evidence once; back off unchanged evidence pre-compile.
 
-        The caller persists the previous semantic counterexample identity.  A
-        matching identity is a content-level unchanged observation regardless
-        of incidental payload ordering and therefore needs neither a compiler
+        The caller persists the previous semantic trigger and counterexample
+        identities.  A matching pair is content-level unchanged regardless of
+        incidental payload ordering and therefore needs neither a compiler
         pass nor another model-facing request.
         """
 
         value = _counterexample(counterexample)
         previous = str(previous_counterexample_id or "").strip()
+        trigger = str(trigger_evidence_id or value.semantic_id).strip()
+        previous_trigger = str(
+            previous_trigger_evidence_id
+            if previous_trigger_evidence_id is not None
+            else previous
+        ).strip()
+        trigger_kind = str(trigger_signal_kind or "").strip()
+        if not trigger:
+            raise ReplannerValidationError("trigger_evidence_id is required")
+        if trigger_kind not in RESPONSIVE_REPLAN_SIGNAL_KINDS:
+            raise ReplannerValidationError("trigger_signal_kind is unsupported")
         for name, item, minimum in (
             ("backoff_attempt", backoff_attempt, 0),
             ("base_backoff_seconds", base_backoff_seconds, 1),
@@ -1021,7 +1073,12 @@ class FormalReplanner:
             raise ReplannerValidationError(
                 "base_backoff_seconds cannot exceed max_backoff_seconds"
             )
-        if previous and previous == value.semantic_id:
+        if (
+            previous
+            and previous == value.semantic_id
+            and previous_trigger
+            and previous_trigger == trigger
+        ):
             exponent = min(backoff_attempt, 30)
             seconds = min(
                 max_backoff_seconds,
@@ -1035,6 +1092,9 @@ class FormalReplanner:
                 result=None,
                 backoff_attempt=backoff_attempt + 1,
                 backoff_seconds=seconds,
+                trigger_evidence_id=trigger,
+                previous_trigger_evidence_id=previous_trigger,
+                trigger_signal_kind=trigger_kind,
             )
 
         result = self.replan(
@@ -1053,6 +1113,57 @@ class FormalReplanner:
             result=result,
             backoff_attempt=0,
             backoff_seconds=0,
+            trigger_evidence_id=trigger,
+            previous_trigger_evidence_id=previous_trigger,
+            trigger_signal_kind=trigger_kind,
+        )
+
+    def replan_for_signal(
+        self,
+        source: Mapping[str, Any],
+        counterexample: FormalCounterexample | Mapping[str, Any],
+        signal: Any,
+        *,
+        previous_signal_id: str | None,
+        previous_counterexample_id: str | None = None,
+        candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]]
+        | None = None,
+        prior_semantic_ids: Iterable[str] = (),
+        retry_attempt: int | None = None,
+        refinement_depth: int = 0,
+        backoff_attempt: int = 0,
+        base_backoff_seconds: int = 1,
+        max_backoff_seconds: int = 300,
+    ) -> ResponsiveReplanDecision:
+        """Route one reviewed runtime signal into bounded formal replanning.
+
+        Importing the adaptive type locally keeps the deterministic replanner
+        usable on its own while ensuring arbitrary mappings cannot masquerade
+        as reviewed runtime evidence.  A changed signal identity forces one
+        bounded pass even if its minimized formal counterexample is unchanged;
+        an unchanged signal/counterexample pair backs off before compilation.
+        """
+
+        from .adaptive_goal_refiner import RefinementSignal
+
+        if not isinstance(signal, RefinementSignal):
+            raise ReplannerValidationError(
+                "signal must be a typed RefinementSignal"
+            )
+        return self.replan_if_changed(
+            source,
+            counterexample,
+            previous_counterexample_id=previous_counterexample_id,
+            candidate_repairs=candidate_repairs,
+            prior_semantic_ids=prior_semantic_ids,
+            retry_attempt=retry_attempt,
+            refinement_depth=refinement_depth,
+            backoff_attempt=backoff_attempt,
+            base_backoff_seconds=base_backoff_seconds,
+            max_backoff_seconds=max_backoff_seconds,
+            trigger_evidence_id=signal.evidence_id,
+            previous_trigger_evidence_id=previous_signal_id,
+            trigger_signal_kind=signal.kind.value,
         )
 
     def generate_repairs(
@@ -1863,6 +1974,9 @@ def replan_if_changed(
     backoff_attempt: int = 0,
     base_backoff_seconds: int = 1,
     max_backoff_seconds: int = 300,
+    trigger_evidence_id: str | None = None,
+    previous_trigger_evidence_id: str | None = None,
+    trigger_signal_kind: str = "counterexample",
 ) -> ResponsiveReplanDecision:
     """Stateless convenience entry point for responsive bounded replanning."""
 
@@ -1872,6 +1986,48 @@ def replan_if_changed(
     ).replan_if_changed(
         source,
         counterexample,
+        previous_counterexample_id=previous_counterexample_id,
+        candidate_repairs=candidate_repairs,
+        prior_semantic_ids=prior_semantic_ids,
+        retry_attempt=retry_attempt,
+        refinement_depth=refinement_depth,
+        backoff_attempt=backoff_attempt,
+        base_backoff_seconds=base_backoff_seconds,
+        max_backoff_seconds=max_backoff_seconds,
+        trigger_evidence_id=trigger_evidence_id,
+        previous_trigger_evidence_id=previous_trigger_evidence_id,
+        trigger_signal_kind=trigger_signal_kind,
+    )
+
+
+def replan_for_signal(
+    source: Mapping[str, Any],
+    counterexample: FormalCounterexample | Mapping[str, Any],
+    signal: Any,
+    *,
+    previous_signal_id: str | None,
+    previous_counterexample_id: str | None = None,
+    limits: ReplanLimits | Mapping[str, Any] | None = None,
+    admission_callback: Callable[[RepairTransition], bool | None] | None = None,
+    candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]]
+    | None = None,
+    prior_semantic_ids: Iterable[str] = (),
+    retry_attempt: int | None = None,
+    refinement_depth: int = 0,
+    backoff_attempt: int = 0,
+    base_backoff_seconds: int = 1,
+    max_backoff_seconds: int = 300,
+) -> ResponsiveReplanDecision:
+    """Stateless typed-signal entry point for bounded formal replanning."""
+
+    return FormalReplanner(
+        limits=limits,
+        admission_callback=admission_callback,
+    ).replan_for_signal(
+        source,
+        counterexample,
+        signal,
+        previous_signal_id=previous_signal_id,
         previous_counterexample_id=previous_counterexample_id,
         candidate_repairs=candidate_repairs,
         prior_semantic_ids=prior_semantic_ids,
@@ -1893,6 +2049,7 @@ __all__ = [
     "REPAIR_TRANSITION_SCHEMA",
     "REPLAN_RESULT_SCHEMA",
     "RESPONSIVE_REPLAN_DECISION_SCHEMA",
+    "RESPONSIVE_REPLAN_SIGNAL_KINDS",
     "CodexRepairPacket",
     "FormalPlanReplanner",
     "FormalReplanner",
@@ -1912,5 +2069,6 @@ __all__ = [
     "ResponsiveReplanDecision",
     "generate_plan_repairs",
     "replan_if_changed",
+    "replan_for_signal",
     "replan_from_counterexample",
 ]

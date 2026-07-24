@@ -57,6 +57,7 @@ UNCHANGED_FAILURE_BACKOFF_GOAL_ID: Final = "ASI-G115"
 
 SIGNAL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/refinement-signal@1"
 QUALITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/goal-quality@1"
+GOAL_DEBT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/goal-debt@1"
 REQUEST_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-request@1"
 CANDIDATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-candidate@1"
@@ -252,8 +253,33 @@ class RefinementSignalKind(str, Enum):
     RESOURCE_INFEASIBLE = "resource_infeasible"
 
     # Compatibility spellings for callers that use the task language.
+    STALE_RECEIPT = "stale_evidence"
+    REPEATED_VALIDATION_SIGNATURE = "repeated_failure"
     UNAVAILABLE_CAPABILITY = "capability_change"
+    UNAVAILABLE_PROVIDER = "capability_change"
+    CHANGED_INTERFACE = "interface_change"
+    CONFLICT = "scope_conflict"
     INFEASIBLE_RESOURCES = "resource_infeasible"
+
+
+_SIGNAL_KIND_ALIASES: Final[Mapping[str, RefinementSignalKind]] = {
+    "stale_receipt": RefinementSignalKind.STALE_EVIDENCE,
+    "repeated_validation_signature": RefinementSignalKind.REPEATED_FAILURE,
+    "unavailable_capability": RefinementSignalKind.CAPABILITY_CHANGE,
+    "unavailable_provider": RefinementSignalKind.CAPABILITY_CHANGE,
+    "changed_interface": RefinementSignalKind.INTERFACE_CHANGE,
+    "conflict": RefinementSignalKind.SCOPE_CONFLICT,
+    "infeasible_resources": RefinementSignalKind.RESOURCE_INFEASIBLE,
+}
+
+
+def _signal_kind(value: Any) -> RefinementSignalKind:
+    if isinstance(value, RefinementSignalKind):
+        return value
+    normalized = str(getattr(value, "value", value)).strip().lower()
+    if normalized in _SIGNAL_KIND_ALIASES:
+        return _SIGNAL_KIND_ALIASES[normalized]
+    return _enum(value, RefinementSignalKind, "kind")
 
 
 class GoalDebtKind(str, Enum):
@@ -266,8 +292,59 @@ class GoalDebtKind(str, Enum):
     MISSING_VALIDATION = "missing_validation"
     MISSING_FRESHNESS = "missing_freshness"
     MISSING_RESOURCE_ENVELOPE = "missing_resource_envelope"
+    MISSING_REFINEMENT_BUDGET = "missing_refinement_budget"
+    AMBIGUOUS = "ambiguous"
+    STALE_EVIDENCE = "stale_evidence"
+    UNCOVERED_ACCEPTANCE = "uncovered_acceptance"
     UNSUPPORTED_SEMANTICS = "unsupported_semantics"
     EXCESSIVE_BREADTH = "excessive_breadth"
+
+
+_GOAL_DEBT_DIMENSIONS: Final[Mapping[GoalDebtKind, str]] = {
+    GoalDebtKind.MISSING_OUTCOME: "outcome",
+    GoalDebtKind.MISSING_SCOPE: "scope",
+    GoalDebtKind.MISSING_ASSUMPTIONS: "assumptions",
+    GoalDebtKind.MISSING_NON_GOALS: "non_goals",
+    GoalDebtKind.MISSING_ACCEPTANCE: "acceptance",
+    GoalDebtKind.MISSING_EVIDENCE_PRODUCER: "evidence_producers",
+    GoalDebtKind.MISSING_VALIDATION: "validation",
+    GoalDebtKind.MISSING_FRESHNESS: "freshness",
+    GoalDebtKind.MISSING_RESOURCE_ENVELOPE: "resource_envelope",
+    GoalDebtKind.MISSING_REFINEMENT_BUDGET: "refinement_budget",
+    GoalDebtKind.AMBIGUOUS: "ambiguity",
+    GoalDebtKind.STALE_EVIDENCE: "freshness",
+    GoalDebtKind.UNCOVERED_ACCEPTANCE: "acceptance",
+    GoalDebtKind.UNSUPPORTED_SEMANTICS: "unsupported_semantics",
+    GoalDebtKind.EXCESSIVE_BREADTH: "breadth",
+}
+
+_GOAL_DEBT_MESSAGES: Final[Mapping[GoalDebtKind, str]] = {
+    GoalDebtKind.MISSING_OUTCOME: "Goal has no explicit outcome.",
+    GoalDebtKind.MISSING_SCOPE: "Goal has no bounded scope.",
+    GoalDebtKind.MISSING_ASSUMPTIONS: "Goal has no explicit assumption set.",
+    GoalDebtKind.MISSING_NON_GOALS: "Goal has no explicit non-goals.",
+    GoalDebtKind.MISSING_ACCEPTANCE: "Goal has no acceptance criteria.",
+    GoalDebtKind.MISSING_EVIDENCE_PRODUCER: (
+        "Goal has no bound evidence producer."
+    ),
+    GoalDebtKind.MISSING_VALIDATION: "Goal has no validation policy.",
+    GoalDebtKind.MISSING_FRESHNESS: "Goal has no evidence freshness horizon.",
+    GoalDebtKind.MISSING_RESOURCE_ENVELOPE: (
+        "Goal has no finite resource envelope."
+    ),
+    GoalDebtKind.MISSING_REFINEMENT_BUDGET: (
+        "Goal has no finite refinement budget."
+    ),
+    GoalDebtKind.AMBIGUOUS: "Goal contains unresolved ambiguity.",
+    GoalDebtKind.STALE_EVIDENCE: "Goal depends on stale evidence.",
+    GoalDebtKind.UNCOVERED_ACCEPTANCE: (
+        "Goal has acceptance criteria without evidence coverage."
+    ),
+    GoalDebtKind.UNSUPPORTED_SEMANTICS: (
+        "Goal relies on unsupported semantics."
+    ),
+    GoalDebtKind.EXCESSIVE_BREADTH: "Goal exceeds its reviewed breadth bound.",
+}
 
 
 class RefinementDecision(str, Enum):
@@ -319,7 +396,7 @@ class RefinementSignal:
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "kind", _enum(self.kind, RefinementSignalKind, "kind"))
+        object.__setattr__(self, "kind", _signal_kind(self.kind))
         object.__setattr__(self, "subject_id", _text(self.subject_id, "subject_id"))
         object.__setattr__(
             self,
@@ -403,6 +480,99 @@ GoalRefinementSignal = RefinementSignal
 
 
 @dataclass(frozen=True)
+class GoalDebtRecord:
+    """One content-addressed, reviewed goal-quality finding.
+
+    Debt is diagnostic rather than completion authority.  Each record is
+    nevertheless bound to the exact quality snapshot that produced it so a
+    later objective revision cannot silently reuse an old finding.
+    """
+
+    goal_id: str
+    quality_id: str
+    kind: GoalDebtKind
+    related_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id"))
+        object.__setattr__(
+            self, "quality_id", _text(self.quality_id, "quality_id")
+        )
+        object.__setattr__(self, "kind", _enum(self.kind, GoalDebtKind, "kind"))
+        object.__setattr__(
+            self,
+            "related_ids",
+            _strings(self.related_ids, "related_ids"),
+        )
+
+    @property
+    def dimension(self) -> str:
+        return _GOAL_DEBT_DIMENSIONS[self.kind]
+
+    @property
+    def message(self) -> str:
+        return _GOAL_DEBT_MESSAGES[self.kind]
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": GOAL_DEBT_SCHEMA,
+            "version": ADAPTIVE_GOAL_REFINER_VERSION,
+            "goal_id": self.goal_id,
+            "quality_id": self.quality_id,
+            "kind": self.kind.value,
+            "dimension": self.dimension,
+            "message": self.message,
+            "related_ids": self.related_ids,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalDebtRecord":
+        _restored_record(
+            payload,
+            noun="goal-debt record",
+            schema=GOAL_DEBT_SCHEMA,
+            version=ADAPTIVE_GOAL_REFINER_VERSION,
+            allowed_fields=frozenset(
+                {
+                    "schema",
+                    "version",
+                    "content_id",
+                    "goal_id",
+                    "quality_id",
+                    "kind",
+                    "dimension",
+                    "message",
+                    "related_ids",
+                }
+            ),
+            identity_field="content_id",
+        )
+        result = cls(
+            goal_id=payload.get("goal_id", ""),
+            quality_id=payload.get("quality_id", ""),
+            kind=payload.get("kind", ""),
+            related_ids=payload.get("related_ids") or (),
+        )
+        if payload.get("dimension") != result.dimension:
+            raise AdaptiveGoalRefinementError(
+                "goal-debt dimension does not match its reviewed kind"
+            )
+        if payload.get("message") != result.message:
+            raise AdaptiveGoalRefinementError(
+                "goal-debt message does not match its reviewed kind"
+            )
+        _claimed(payload, result.content_id, "goal-debt record")
+        return result
+
+
+@dataclass(frozen=True)
 class GoalQualityRecord:
     """Explicit quality envelope and deterministic goal-debt assessment."""
 
@@ -419,6 +589,10 @@ class GoalQualityRecord:
     unsupported_semantics: tuple[str, ...] = ()
     breadth: int = 1
     max_breadth: int = 8
+    refinement_budget: Mapping[str, Any] = field(default_factory=dict)
+    ambiguities: tuple[str, ...] = ()
+    stale_evidence_ids: tuple[str, ...] = ()
+    uncovered_acceptance_criteria: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id"))
@@ -433,6 +607,9 @@ class GoalQualityRecord:
             "evidence_producer_ids",
             "validation_ids",
             "unsupported_semantics",
+            "ambiguities",
+            "stale_evidence_ids",
+            "uncovered_acceptance_criteria",
         ):
             object.__setattr__(self, name, _strings(getattr(self, name), name))
         object.__setattr__(
@@ -444,6 +621,11 @@ class GoalQualityRecord:
             self,
             "resource_envelope",
             _mapping(self.resource_envelope, "resource_envelope"),
+        )
+        object.__setattr__(
+            self,
+            "refinement_budget",
+            _mapping(self.refinement_budget, "refinement_budget"),
         )
         object.__setattr__(self, "breadth", _positive(self.breadth, "breadth"))
         object.__setattr__(
@@ -472,6 +654,24 @@ class GoalQualityRecord:
                 not self.resource_envelope,
                 GoalDebtKind.MISSING_RESOURCE_ENVELOPE,
             ),
+            (
+                not self.refinement_budget,
+                GoalDebtKind.MISSING_REFINEMENT_BUDGET,
+            ),
+            (
+                bool(self.ambiguities) or not self.outcome,
+                GoalDebtKind.AMBIGUOUS,
+            ),
+            (
+                bool(self.stale_evidence_ids)
+                or self.freshness_horizon_seconds == 0,
+                GoalDebtKind.STALE_EVIDENCE,
+            ),
+            (
+                bool(self.uncovered_acceptance_criteria)
+                or not self.acceptance_criteria,
+                GoalDebtKind.UNCOVERED_ACCEPTANCE,
+            ),
             (bool(self.unsupported_semantics), GoalDebtKind.UNSUPPORTED_SEMANTICS),
             (self.breadth > self.max_breadth, GoalDebtKind.EXCESSIVE_BREADTH),
         )
@@ -479,6 +679,28 @@ class GoalQualityRecord:
             if present:
                 findings.append(kind)
         return tuple(findings)
+
+    @property
+    def debt_records(self) -> tuple[GoalDebtRecord, ...]:
+        """Return stable typed findings bound to this exact quality snapshot."""
+
+        related: Mapping[GoalDebtKind, tuple[str, ...]] = {
+            GoalDebtKind.AMBIGUOUS: self.ambiguities,
+            GoalDebtKind.STALE_EVIDENCE: self.stale_evidence_ids,
+            GoalDebtKind.UNCOVERED_ACCEPTANCE: (
+                self.uncovered_acceptance_criteria
+            ),
+            GoalDebtKind.UNSUPPORTED_SEMANTICS: self.unsupported_semantics,
+        }
+        return tuple(
+            GoalDebtRecord(
+                goal_id=self.goal_id,
+                quality_id=self.content_id,
+                kind=kind,
+                related_ids=related.get(kind, ()),
+            )
+            for kind in self.debt
+        )
 
     @property
     def content_id(self) -> str:
@@ -498,6 +720,12 @@ class GoalQualityRecord:
             "validation_ids": self.validation_ids,
             "freshness_horizon_seconds": self.freshness_horizon_seconds,
             "resource_envelope": self.resource_envelope,
+            "refinement_budget": self.refinement_budget,
+            "ambiguities": self.ambiguities,
+            "stale_evidence_ids": self.stale_evidence_ids,
+            "uncovered_acceptance_criteria": (
+                self.uncovered_acceptance_criteria
+            ),
             "unsupported_semantics": self.unsupported_semantics,
             "breadth": self.breadth,
             "max_breadth": self.max_breadth,
@@ -505,7 +733,97 @@ class GoalQualityRecord:
         }
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self._payload(), "content_id": self.content_id}
+        return {
+            **self._payload(),
+            "content_id": self.content_id,
+            "debt_records": tuple(item.to_dict() for item in self.debt_records),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalQualityRecord":
+        _restored_record(
+            payload,
+            noun="goal-quality record",
+            schema=QUALITY_SCHEMA,
+            version=ADAPTIVE_GOAL_REFINER_VERSION,
+            allowed_fields=frozenset(
+                {
+                    "schema",
+                    "version",
+                    "content_id",
+                    "goal_id",
+                    "outcome",
+                    "scope_ids",
+                    "assumption_ids",
+                    "non_goals",
+                    "acceptance_criteria",
+                    "evidence_producer_ids",
+                    "validation_ids",
+                    "freshness_horizon_seconds",
+                    "resource_envelope",
+                    "refinement_budget",
+                    "ambiguities",
+                    "stale_evidence_ids",
+                    "uncovered_acceptance_criteria",
+                    "unsupported_semantics",
+                    "breadth",
+                    "max_breadth",
+                    "debt",
+                    "debt_records",
+                }
+            ),
+            identity_field="content_id",
+        )
+        result = cls(
+            goal_id=payload.get("goal_id", ""),
+            outcome=payload.get("outcome", ""),
+            scope_ids=payload.get("scope_ids") or (),
+            assumption_ids=payload.get("assumption_ids") or (),
+            non_goals=payload.get("non_goals") or (),
+            acceptance_criteria=payload.get("acceptance_criteria") or (),
+            evidence_producer_ids=payload.get("evidence_producer_ids") or (),
+            validation_ids=payload.get("validation_ids") or (),
+            freshness_horizon_seconds=payload.get(
+                "freshness_horizon_seconds", 0
+            ),
+            resource_envelope=payload.get("resource_envelope") or {},
+            refinement_budget=payload.get("refinement_budget") or {},
+            ambiguities=payload.get("ambiguities") or (),
+            stale_evidence_ids=payload.get("stale_evidence_ids") or (),
+            uncovered_acceptance_criteria=payload.get(
+                "uncovered_acceptance_criteria"
+            )
+            or (),
+            unsupported_semantics=payload.get("unsupported_semantics") or (),
+            breadth=payload.get("breadth", 1),
+            max_breadth=payload.get("max_breadth", 8),
+        )
+        expected_debt = tuple(item.value for item in result.debt)
+        if tuple(payload.get("debt") or ()) != expected_debt:
+            raise AdaptiveGoalRefinementError(
+                "goal-quality debt projection does not match its fields"
+            )
+        records = payload.get("debt_records")
+        if not isinstance(records, Sequence) or isinstance(
+            records, (str, bytes, bytearray, memoryview)
+        ):
+            raise AdaptiveGoalRefinementError(
+                "goal-quality debt_records must be a sequence"
+            )
+        restored_record_values: list[GoalDebtRecord] = []
+        for item in records:
+            if not isinstance(item, Mapping):
+                raise AdaptiveGoalRefinementError(
+                    "goal-quality debt_records must contain objects"
+                )
+            restored_record_values.append(GoalDebtRecord.from_dict(item))
+        restored_records = tuple(restored_record_values)
+        if restored_records != result.debt_records:
+            raise AdaptiveGoalRefinementError(
+                "goal-quality debt records do not match its fields"
+            )
+        _claimed(payload, result.content_id, "goal-quality record")
+        return result
 
 
 GoalQuality = GoalQualityRecord
@@ -622,6 +940,18 @@ class AdaptiveRefinementRequest:
             self.quality, GoalQualityRecord
         ):
             raise AdaptiveGoalRefinementError("quality must be GoalQualityRecord")
+        if self.quality is not None:
+            if self.quality.goal_id != self.root_goal_id:
+                raise AdaptiveGoalRefinementError(
+                    "quality record must describe the frozen root goal"
+                )
+            if (
+                self.quality.assumption_ids
+                and self.quality.assumption_ids != self.assumption_ids
+            ):
+                raise AdaptiveGoalRefinementError(
+                    "quality assumptions do not match the frozen assumptions"
+                )
         roots = [item for item in self.plan.goals if item.goal_id == self.root_goal_id]
         if len(roots) != 1 or roots[0].content_id != self.root_goal_content_id:
             raise AdaptiveGoalRefinementError(
@@ -647,6 +977,12 @@ class AdaptiveRefinementRequest:
                     item.evidence_id for item in self.signals
                 ),
                 "repository_tree_id": self.repository_tree_id,
+                "quality_id": self.quality.content_id if self.quality else "",
+                "goal_debt_ids": tuple(
+                    item.content_id for item in self.quality.debt_records
+                )
+                if self.quality
+                else (),
             }
         )
 
@@ -667,6 +1003,11 @@ class AdaptiveRefinementRequest:
             "refinement_depth": self.refinement_depth,
             "repository_tree_id": self.repository_tree_id,
             "quality_id": self.quality.content_id if self.quality else "",
+            "goal_debt_ids": tuple(
+                item.content_id for item in self.quality.debt_records
+            )
+            if self.quality
+            else (),
             "evidence_fingerprint": self.evidence_fingerprint,
         }
 
@@ -704,7 +1045,7 @@ class AdaptiveRefinementCandidate:
         object.__setattr__(
             self,
             "signal_kind",
-            _enum(self.signal_kind, RefinementSignalKind, "signal_kind"),
+            _signal_kind(self.signal_kind),
         )
         object.__setattr__(
             self,
@@ -2674,12 +3015,15 @@ __all__ = [
     "UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID",
     "UNCHANGED_FAILURE_BACKOFF_GOAL_ID",
     "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_SCHEMA",
+    "QUALITY_SCHEMA",
+    "GOAL_DEBT_SCHEMA",
     "NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA",
     "UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA",
     "AdaptiveGoalRefinementError",
     "RefinementPersistenceError",
     "RefinementSignalKind",
     "GoalDebtKind",
+    "GoalDebtRecord",
     "RefinementDecision",
     "RefinementProducerKind",
     "RefinementSignal",
