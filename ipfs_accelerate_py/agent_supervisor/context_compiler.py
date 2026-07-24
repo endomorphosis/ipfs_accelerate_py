@@ -24,6 +24,7 @@ from .context_contracts import (
     ContextBudget,
     ContextCapsule,
     ContextContractError,
+    ContextDeltaCapsule,
     ContextReference,
     ContextTier,
     canonical_context_json_bytes,
@@ -719,6 +720,9 @@ class DeltaRetryContextEvidence(CanonicalContract):
     required_coverage_ids: tuple[str, ...]
     reconstructed_coverage_ids: tuple[str, ...]
     changed_reference_ids: tuple[str, ...]
+    requested_reference_ids: tuple[str, ...]
+    retained_reference_ids: tuple[str, ...]
+    required_fields: tuple[str, ...]
     artifact_digest: str
     requirement_id: str = DELTA_RETRY_EVIDENCE_ID
     result: str = "passed"
@@ -757,9 +761,33 @@ class DeltaRetryContextEvidence(CanonicalContract):
         changed = _strings(
             self.changed_reference_ids, "changed_reference_ids"
         )
-        if not changed:
-            raise ContextDeltaError("qualifying delta must carry changed evidence")
         object.__setattr__(self, "changed_reference_ids", changed)
+        requested = _strings(
+            self.requested_reference_ids, "requested_reference_ids"
+        )
+        if set(changed).intersection(requested):
+            raise ContextDeltaError(
+                "changed and requested-only references must be disjoint"
+            )
+        if not changed and not requested:
+            raise ContextDeltaError(
+                "qualifying delta must carry changed or requested evidence"
+            )
+        object.__setattr__(self, "requested_reference_ids", requested)
+        retained = _strings(
+            self.retained_reference_ids, "retained_reference_ids"
+        )
+        if set(changed).union(requested).intersection(retained):
+            raise ContextDeltaError(
+                "transmitted and retained delta references must be disjoint"
+            )
+        object.__setattr__(self, "retained_reference_ids", retained)
+        fields = _strings(self.required_fields, "required_fields")
+        if fields != ("acceptance", "authority", "goal", "scope"):
+            raise ContextDeltaError(
+                "delta evidence must preserve every invariant context field"
+            )
+        object.__setattr__(self, "required_fields", fields)
         object.__setattr__(
             self, "artifact_digest", _digest(self.artifact_digest, "artifact_digest")
         )
@@ -780,6 +808,9 @@ class DeltaRetryContextEvidence(CanonicalContract):
             "required_coverage_ids": self.required_coverage_ids,
             "reconstructed_coverage_ids": self.reconstructed_coverage_ids,
             "changed_reference_ids": self.changed_reference_ids,
+            "requested_reference_ids": self.requested_reference_ids,
+            "retained_reference_ids": self.retained_reference_ids,
+            "required_fields": self.required_fields,
             "artifact_digest": self.artifact_digest,
             "result": self.result,
         }
@@ -808,6 +839,9 @@ class DeltaRetryContextEvidence(CanonicalContract):
                 "required_coverage_ids",
                 "reconstructed_coverage_ids",
                 "changed_reference_ids",
+                "requested_reference_ids",
+                "retained_reference_ids",
+                "required_fields",
                 "artifact_digest",
                 "result",
             },
@@ -835,6 +869,13 @@ class DeltaRetryContextEvidence(CanonicalContract):
             changed_reference_ids=tuple(
                 payload.get("changed_reference_ids", ())
             ),
+            requested_reference_ids=tuple(
+                payload.get("requested_reference_ids", ())
+            ),
+            retained_reference_ids=tuple(
+                payload.get("retained_reference_ids", ())
+            ),
+            required_fields=tuple(payload.get("required_fields", ())),
             artifact_digest=payload.get("artifact_digest", ""),
             result=payload.get("result", ""),
         )
@@ -914,6 +955,18 @@ class ContextDeltaReceipt(CanonicalContract):
                 )
             ):
                 raise ContextDeltaError("delta evidence is not bound to its receipt")
+            included = {
+                item.reference_id
+                for item in decisions
+                if item.included
+            }
+            witnessed = set(evidence.changed_reference_ids).union(
+                evidence.requested_reference_ids
+            )
+            if included != witnessed:
+                raise ContextDeltaError(
+                    "delta decisions do not match witnessed transmitted references"
+                )
             object.__setattr__(self, "evidence", evidence)
 
     @property
@@ -1016,13 +1069,13 @@ class ContextCompileResult:
 
 @dataclass(frozen=True)
 class ContextDeltaResult:
-    delta_capsule: ContextCapsule
+    delta_capsule: ContextDeltaCapsule
     reconstructed_capsule: ContextCapsule
     receipt: ContextDeltaReceipt
     decisions: tuple[EvidenceSelectionDecision, ...]
 
     @property
-    def capsule(self) -> ContextCapsule:
+    def capsule(self) -> ContextDeltaCapsule:
         return self.delta_capsule
 
     def __post_init__(self) -> None:
@@ -1033,6 +1086,65 @@ class ContextDeltaResult:
             or self.decisions != self.receipt.decisions
         ):
             raise ContextDeltaError("delta result is not receipt-bound")
+        evidence = self.receipt.evidence
+        if evidence is None:
+            raise ContextDeltaError(
+                "delta result requires qualifying delta-retry evidence"
+            )
+        transmitted_ids = {
+            item.reference_id for item in self.delta_capsule.evidence
+        }
+        witnessed_ids = set(evidence.changed_reference_ids).union(
+            evidence.requested_reference_ids
+        )
+        if transmitted_ids != witnessed_ids:
+            raise ContextDeltaError(
+                "delta witness does not describe the transmitted references"
+            )
+        if (
+            self.delta_capsule.requested_reference_ids
+            != evidence.requested_reference_ids
+        ):
+            raise ContextDeltaError(
+                "delta witness does not bind explicitly requested references"
+            )
+        retained_ids = {
+            item.reference_id for item in self.reconstructed_capsule.evidence
+        }.difference(transmitted_ids)
+        if set(evidence.retained_reference_ids) != retained_ids:
+            raise ContextDeltaError(
+                "delta witness does not bind retained references"
+            )
+        required_coverage = {
+            coverage
+            for item in self.reconstructed_capsule.evidence
+            if item.required
+            for coverage in item.coverage_ids
+        }
+        if set(evidence.required_coverage_ids) != required_coverage:
+            raise ContextDeltaError(
+                "delta witness does not bind reconstructed required coverage"
+            )
+        if (
+            evidence.reconstructed_coverage_ids
+            != self.reconstructed_capsule.evidence_coverage_ids
+            or evidence.required_fields
+            != tuple(sorted(self.reconstructed_capsule.required_field_names))
+        ):
+            raise ContextDeltaError(
+                "delta witness does not bind reconstructed context coverage"
+            )
+        expected_digest = _canonical_digest(
+            {
+                "parent_capsule_id": self.delta_capsule.parent_capsule_id,
+                "delta": self.delta_capsule.to_record(),
+                "reconstructed": self.reconstructed_capsule.to_record(),
+            }
+        )
+        if evidence.artifact_digest != expected_digest:
+            raise ContextDeltaError(
+                "delta witness artifact digest does not match its capsules"
+            )
 
 
 class ContextCompiler:
@@ -1273,7 +1385,18 @@ class ContextCompiler:
             raise ContextDeltaError(
                 "retry candidate drops required evidence references"
             )
-        changed: list[ContextReference] = []
+        downgraded_required = {
+            reference_id
+            for reference_id in required_ids
+            if not candidate_by_id[reference_id].required
+        }
+        if downgraded_required:
+            raise ContextDeltaError(
+                "retry candidate downgrades parent-required evidence"
+            )
+        transmitted: list[ContextReference] = []
+        genuinely_changed: list[str] = []
+        requested_only: list[str] = []
         decisions: list[EvidenceSelectionDecision] = []
         for item in candidates:
             previous = parent_by_id.get(item.reference_id)
@@ -1284,7 +1407,11 @@ class ContextCompiler:
             )
             tokens = _reference_tokens(self.estimator, item)
             if is_changed or item.reference_id in requested:
-                changed.append(item)
+                transmitted.append(item)
+                if is_changed:
+                    genuinely_changed.append(item.reference_id)
+                else:
+                    requested_only.append(item.reference_id)
                 decisions.append(
                     EvidenceSelectionDecision(
                         item.reference_id,
@@ -1308,58 +1435,70 @@ class ContextCompiler:
                         item.priority,
                     )
                 )
-        if not changed:
+        if not transmitted:
             raise ContextDeltaError(
                 "retry delta must contain changed or explicitly requested evidence"
             )
-        delta_tokens = self.estimator.estimate(
-            {
-                "parent_capsule_id": parent.capsule_id,
-                "stage": stage or parent.stage,
-            }
-        ) + sum(_reference_tokens(self.estimator, item) for item in changed)
         combined_by_id = dict(parent_by_id)
         combined_by_id.update(candidate_by_id)
         combined = tuple(combined_by_id[key] for key in sorted(combined_by_id))
-        full_replay_tokens = self._base_tokens(
+        reconstructed_input_tokens = self._base_tokens(
             goal=parent.goal,
             authority=parent.authority,
             scope=parent.scope,
             acceptance=parent.acceptance,
         ) + sum(_reference_tokens(self.estimator, item) for item in combined)
+        reconstructed_limit = min(
+            parent.budget.max_input_tokens, self.effective_input_limit
+        )
+        if reconstructed_input_tokens > reconstructed_limit:
+            raise ContextDeltaError(
+                "reconstructed full context exceeds the effective input budget"
+            )
+        delta_capsule = ContextDeltaCapsule(
+            parent_capsule_id=parent.capsule_id,
+            stage=stage or parent.stage,
+            evidence=tuple(transmitted),
+            reconstructed_input_tokens=reconstructed_input_tokens,
+            requested_reference_ids=tuple(requested_only),
+        )
+        if len(delta_capsule.canonical_bytes()) > (
+            self.effective_budget.max_serialized_bytes
+        ):
+            raise ContextDeltaError(
+                "retry delta exceeds the serialized-byte budget"
+            )
+        reconstructed = reconstruct_context(parent, delta_capsule)
+        # These are provider-tokenized canonical wire records.  Unlike the
+        # former full ContextCapsule "delta", the compact record does not
+        # serialize the inherited core and then omit it from accounting.
+        delta_tokens = self.estimator.estimate(delta_capsule.to_record())
+        full_replay_tokens = self.estimator.estimate(
+            reconstructed.to_record()
+        )
         if delta_tokens >= full_replay_tokens:
             raise ContextDeltaError(
                 "retry delta does not use fewer tokens than full replay"
             )
         if delta_tokens > self.effective_input_limit:
             raise ContextDeltaError("retry delta exceeds effective input budget")
-        delta_capsule = ContextCapsule(
-            repository_id=parent.repository_id,
-            tree_id=parent.tree_id,
-            objective_id=parent.objective_id,
-            objective_revision=parent.objective_revision,
-            policy_id=parent.policy_id,
-            policy_revision=parent.policy_revision,
-            caller=parent.caller,
-            stage=stage or parent.stage,
-            budget=self.effective_budget,
-            goal=parent.goal,
-            authority=parent.authority,
-            scope=parent.scope,
-            acceptance=parent.acceptance,
-            evidence=tuple(changed),
-            input_tokens=delta_tokens,
-            parent_capsule_id=parent.capsule_id,
-        )
-        reconstructed = reconstruct_context(parent, delta_capsule)
-        required_coverage = {
+        parent_required_coverage = {
             coverage
             for item in parent.evidence
             if item.required
             for coverage in item.coverage_ids
         }
+        required_coverage = {
+            coverage
+            for item in reconstructed.evidence
+            if item.required
+            for coverage in item.coverage_ids
+        }
         reconstructed_coverage = set(reconstructed.evidence_coverage_ids)
-        if not required_coverage.issubset(reconstructed_coverage):
+        if (
+            not parent_required_coverage.issubset(required_coverage)
+            or not required_coverage.issubset(reconstructed_coverage)
+        ):
             raise ContextDeltaError("retry reconstruction loses required coverage")
         ordered_decisions = tuple(
             sorted(decisions, key=lambda item: item.reference_id)
@@ -1376,14 +1515,20 @@ class ContextCompiler:
             delta_tokens=delta_tokens,
             required_coverage_ids=tuple(required_coverage),
             reconstructed_coverage_ids=reconstructed.evidence_coverage_ids,
-            changed_reference_ids=tuple(
-                item.reference_id for item in changed
+            changed_reference_ids=tuple(genuinely_changed),
+            requested_reference_ids=tuple(requested_only),
+            retained_reference_ids=tuple(
+                item.reference_id
+                for item in reconstructed.evidence
+                if item.reference_id
+                not in {member.reference_id for member in transmitted}
             ),
+            required_fields=reconstructed.required_field_names,
             artifact_digest=_canonical_digest(
                 {
-                    "parent": parent.capsule_id,
-                    "delta": delta_capsule.capsule_id,
-                    "reconstructed": reconstructed.capsule_id,
+                    "parent_capsule_id": parent.capsule_id,
+                    "delta": delta_capsule.to_record(),
+                    "reconstructed": reconstructed.to_record(),
                 }
             ),
         )
@@ -1412,48 +1557,63 @@ class ContextCompiler:
 
 
 def reconstruct_context(
-    parent: ContextCapsule, delta: ContextCapsule
+    parent: ContextCapsule, delta: ContextDeltaCapsule
 ) -> ContextCapsule:
     """Apply a parent-bound delta and return the deterministic full context."""
 
     if not isinstance(parent, ContextCapsule) or not isinstance(
-        delta, ContextCapsule
+        delta, ContextDeltaCapsule
     ):
-        raise ContextDeltaError("parent and delta must be ContextCapsules")
+        raise ContextDeltaError(
+            "parent must be a ContextCapsule and delta a ContextDeltaCapsule"
+        )
     if delta.parent_capsule_id != parent.capsule_id:
         raise ContextDeltaError("delta is not bound to the supplied parent")
-    for name in (
-        "repository_id",
-        "tree_id",
-        "objective_id",
-        "objective_revision",
-        "policy_id",
-        "policy_revision",
-        "caller",
-    ):
-        if getattr(parent, name) != getattr(delta, name):
-            raise ContextDeltaError(f"delta changes immutable {name}")
-    for name in ("goal", "authority", "scope", "acceptance"):
-        if canonical_context_json_bytes(getattr(parent, name)) != (
-            canonical_context_json_bytes(getattr(delta, name))
-        ):
-            raise ContextDeltaError(f"delta changes immutable {name}")
+    for item in delta.evidence:
+        if item.repository_id and item.repository_id != parent.repository_id:
+            raise ContextDeltaError(
+                "delta evidence changes immutable repository identity"
+            )
+        if item.tree_id and item.tree_id != parent.tree_id:
+            raise ContextDeltaError(
+                "delta evidence changes immutable tree identity"
+            )
     combined = {item.reference_id: item for item in parent.evidence}
     combined.update({item.reference_id: item for item in delta.evidence})
     required_ids = {
         item.reference_id for item in parent.evidence if item.required
     }
-    if not required_ids.issubset(combined):
-        raise ContextDeltaError("reconstructed context loses required evidence")
+    if not required_ids.issubset(combined) or any(
+        not combined[reference_id].required for reference_id in required_ids
+    ):
+        raise ContextDeltaError(
+            "reconstructed context loses or downgrades required evidence"
+        )
     evidence = tuple(combined[key] for key in sorted(combined))
-    reconstructed_tokens = max(
-        parent.input_tokens,
-        sum(item.token_count for item in evidence),
-    )
+    reconstructed_tokens = delta.reconstructed_input_tokens
     if reconstructed_tokens > parent.budget.max_input_tokens:
         raise ContextDeltaError(
             "reconstructed context exceeds the parent input budget"
         )
+    parent_declared_reference_tokens = sum(
+        item.token_count for item in parent.evidence
+    )
+    inherited_core_floor = max(
+        0, parent.input_tokens - parent_declared_reference_tokens
+    )
+    reconstructed_floor = inherited_core_floor + sum(
+        item.token_count for item in evidence
+    )
+    if reconstructed_floor > reconstructed_tokens:
+        raise ContextDeltaError(
+            "reconstructed token count omits inherited core or evidence tokens"
+        )
+    selected_ids = set(combined)
+    expansions = {
+        item.reference_id: item
+        for item in parent.expansion_references
+        if item.reference_id not in selected_ids
+    }
     return ContextCapsule(
         repository_id=parent.repository_id,
         tree_id=parent.tree_id,
@@ -1469,7 +1629,9 @@ def reconstruct_context(
         scope=parent.scope,
         acceptance=parent.acceptance,
         evidence=evidence,
-        expansion_references=delta.expansion_references,
+        expansion_references=tuple(
+            expansions[key] for key in sorted(expansions)
+        ),
         input_tokens=reconstructed_tokens,
     )
 

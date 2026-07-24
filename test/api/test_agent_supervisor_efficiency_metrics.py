@@ -5,7 +5,18 @@ from dataclasses import replace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+    DELTA_RETRY_EVIDENCE_ID,
+    ContextCompiler,
+)
+from ipfs_accelerate_py.agent_supervisor.context_contracts import (
+    ContextBudget,
+    ContextReference,
+    ContextTier,
+)
 from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
+    DELTA_RETRY_CONTEXT_EVIDENCE_ID,
+    DELTA_RETRY_PROMOTION_REPORT_SCHEMA,
     EFFICIENCY_CONTRACT_VERSION,
     EFFICIENCY_RECEIPT_SCHEMA,
     EFFICIENCY_REPORT_SCHEMA,
@@ -23,6 +34,8 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     CacheDisposition,
     CacheObservation,
     ChangedScope,
+    DeltaRetryProofBinding,
+    DeltaRetryPromotionReport,
     EfficiencyReceipt,
     EfficiencyReport,
     EfficiencyScenario,
@@ -40,12 +53,134 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     WorkStatus,
     aggregate_efficiency_receipts,
     build_efficiency_baseline_fixtures,
+    build_delta_retry_promotion_report,
     build_paired_efficiency_report,
 )
 
 
 def _fixtures() -> dict[str, EfficiencyReceipt]:
     return build_efficiency_baseline_fixtures()
+
+
+def _delta_retry_fixture(*, requested_only: bool = False):
+    """Compile a fresh ASI-G092 receipt on paired-report-compatible IDs."""
+
+    tree_digest = "sha256:" + "1" * 64
+    policy_digest = "sha256:" + "2" * 64
+    compiler = ContextCompiler(
+        ContextBudget(
+            max_input_tokens=4_000,
+            reserved_output_tokens=200,
+            reserved_tool_tokens=100,
+            max_items=64,
+            max_serialized_bytes=262_144,
+        ),
+        tokenizer=lambda text: max(1, len(text.encode("utf-8")) // 24),
+        provider_context_window=4_500,
+    )
+
+    def reference(
+        reference_id: str,
+        content_id: str,
+        *,
+        required: bool = False,
+    ) -> ContextReference:
+        return ContextReference(
+            reference_id=reference_id,
+            kind="benchmark-evidence",
+            tier=(
+                ContextTier.INVARIANT if required else ContextTier.EVIDENCE
+            ),
+            referenced_content_id=content_id,
+            repository_id="repo:efficiency-delta",
+            tree_id=tree_digest,
+            token_count=60,
+            metadata={
+                "required": required,
+                "coverage_ids": (
+                    "coverage:required",
+                )
+                if required
+                else (f"coverage:{reference_id}",),
+            },
+        )
+
+    required = reference(
+        "required",
+        "sha256:" + "3" * 64,
+        required=True,
+    )
+    optional = tuple(
+        reference(
+            f"optional-{index}",
+            "sha256:" + f"{index + 4:x}" * 64,
+        )
+        for index in range(8)
+    )
+    parent = compiler.compile(
+        repository_id="repo:efficiency-delta",
+        tree_id=tree_digest,
+        objective_id="ASI-G092",
+        objective_revision="sha256:" + "a" * 64,
+        policy_id="policy:supervisor",
+        policy_revision=policy_digest,
+        caller="supervisor:efficiency-test",
+        stage="implementation",
+        goal={"id": "ASI-G092", "summary": "Use retry deltas"},
+        authority={"mode": "proposal", "allowed_paths": ["src"]},
+        scope={"paths": ["src/context.py"]},
+        acceptance={"criteria": ["retain required coverage"]},
+        evidence=(required, *optional),
+    ).capsule
+    if requested_only:
+        result = compiler.compile_delta(
+            parent,
+            evidence=(required, *optional),
+            requested_reference_ids=("optional-0",),
+        )
+    else:
+        changed = reference(
+            "optional-0",
+            "sha256:" + "f" * 64,
+        )
+        result = compiler.compile_delta(
+            parent,
+            evidence=(required, changed, *optional[1:]),
+        )
+    return result.receipt
+
+
+def _paired_delta_report(delta_receipt):
+    baseline = replace(
+        _fixtures()["cold"],
+        task_reference="task:delta-retry",
+        goal_reference=delta_receipt.objective_id,
+        repository_tree_digest=delta_receipt.tree_id,
+        policy_digest=delta_receipt.policy_revision,
+        tokens=TokenUsage(
+            input_tokens=delta_receipt.full_replay_tokens,
+            output_tokens=200,
+        ),
+        evidence=EvidenceDelta(
+            baseline_references=("coverage:required",),
+            terminal_references=("coverage:required",),
+        ),
+    )
+    candidate = replace(
+        baseline,
+        tokens=TokenUsage(
+            input_tokens=delta_receipt.delta_tokens,
+            output_tokens=100,
+        ),
+        output_digest="f" * 64,
+    )
+    return build_paired_efficiency_report(
+        (baseline,),
+        (candidate,),
+        required_evidence_by_task={
+            baseline.task_reference: ("coverage:required",)
+        },
+    )
 
 
 def test_fixture_baselines_cover_required_end_to_end_scenarios() -> None:
@@ -458,6 +593,160 @@ def test_paired_report_rejects_unfrozen_or_ambiguous_populations() -> None:
             (baseline,),
             (candidate, replace(candidate, output_digest="e" * 64)),
         )
+
+
+def test_delta_retry_promotion_binds_typed_receipt_to_same_task_gate() -> None:
+    receipt = _delta_retry_fixture()
+    paired = _paired_delta_report(receipt)
+
+    report = build_delta_retry_promotion_report(
+        paired,
+        {"task:delta-retry": (receipt,)},
+    )
+
+    assert report.schema == DELTA_RETRY_PROMOTION_REPORT_SCHEMA
+    assert DELTA_RETRY_CONTEXT_EVIDENCE_ID == DELTA_RETRY_EVIDENCE_ID
+    assert paired.median_input_token_reduction_bps >= 3_500
+    assert paired.coverage_gate_passed
+    assert report.proof_population_complete
+    assert report.token_accounting_consistent
+    assert report.median_delta_input_token_reduction_bps >= 3_500
+    assert report.typed_delta_gate_passed
+    assert report.paired_efficiency_gate_passed
+    assert report.evidence_claim_references == (
+        DELTA_RETRY_EVIDENCE_ID,
+    )
+    assert report.promotion_eligible
+
+    binding = report.proof_bindings[0]
+    assert binding.receipt_id == receipt.receipt_id
+    assert binding.evidence_id == receipt.evidence.content_id
+    assert binding.parent_capsule_id == receipt.parent_capsule_id
+    assert binding.delta_capsule_id == receipt.delta_capsule_id
+    assert binding.reconstructed_capsule_id == (
+        receipt.reconstructed_capsule_id
+    )
+    assert binding.required_fields == (
+        "acceptance",
+        "authority",
+        "goal",
+        "scope",
+    )
+    assert binding.coverage_preserved
+    assert DeltaRetryProofBinding.from_context_delta_receipt(
+        "task:delta-retry",
+        receipt.to_dict(),
+    ) == binding
+
+    assert DeltaRetryPromotionReport.from_json(
+        report.to_json()
+    ) == report
+    identified = report.to_dict(include_report_id=True)
+    assert DeltaRetryPromotionReport.from_dict(identified) == report
+
+
+def test_delta_retry_promotion_fails_closed_for_missing_or_stale_proof() -> None:
+    receipt = _delta_retry_fixture()
+    paired = _paired_delta_report(receipt)
+
+    incomplete = build_delta_retry_promotion_report(paired, {})
+    assert incomplete.missing_proof_task_references == (
+        "task:delta-retry",
+    )
+    assert not incomplete.typed_delta_gate_passed
+    assert not incomplete.evidence_claim_references
+    assert not incomplete.promotion_eligible
+
+    incomplete_population = build_delta_retry_promotion_report(
+        replace(
+            paired,
+            candidate_unpaired_accepted_task_references=("task:unpaired",),
+        ),
+        {"task:delta-retry": (receipt,)},
+    )
+    assert incomplete_population.typed_delta_gate_passed
+    assert not incomplete_population.paired_efficiency_gate_passed
+    assert not incomplete_population.evidence_claim_references
+    assert not incomplete_population.promotion_eligible
+
+    with pytest.raises(EfficiencyValidationError, match="outside"):
+        build_delta_retry_promotion_report(
+            paired,
+            {"task:stale": (receipt,)},
+        )
+    with pytest.raises(EfficiencyValidationError, match="objective"):
+        build_delta_retry_promotion_report(
+            paired,
+            {
+                "task:delta-retry": (
+                    replace(receipt, objective_id="ASI-G091"),
+                )
+            },
+        )
+    with pytest.raises(EfficiencyValidationError, match="qualifying typed"):
+        build_delta_retry_promotion_report(
+            paired,
+            {
+                "task:delta-retry": (
+                    replace(receipt, evidence=None),
+                )
+            },
+        )
+
+    forged = build_delta_retry_promotion_report(
+        paired,
+        {"task:delta-retry": (receipt,)},
+    ).to_dict()
+    forged["typed_delta_gate_passed"] = False
+    with pytest.raises(EfficiencyValidationError, match="typed_delta"):
+        DeltaRetryPromotionReport.from_dict(forged)
+
+    forged_receipt = build_delta_retry_promotion_report(
+        paired,
+        {"task:delta-retry": (receipt,)},
+    ).to_dict()
+    forged_receipt["proof_bindings"][0]["context_delta_receipt"][
+        "delta_tokens"
+    ] += 1
+    with pytest.raises(EfficiencyValidationError, match="bound|identity"):
+        DeltaRetryPromotionReport.from_dict(forged_receipt)
+
+
+def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> None:
+    requested_receipt = _delta_retry_fixture(requested_only=True)
+    paired = _paired_delta_report(requested_receipt)
+    report = build_delta_retry_promotion_report(
+        paired,
+        {"task:delta-retry": (requested_receipt,)},
+    )
+
+    binding = report.proof_bindings[0]
+    assert not binding.changed_reference_ids
+    assert binding.requested_reference_ids == ("optional-0",)
+    assert binding.retained_reference_ids
+    assert report.promotion_eligible
+
+    evidence = replace(
+        requested_receipt.evidence,
+        full_replay_tokens=100,
+        delta_tokens=99,
+    )
+    inefficient_receipt = replace(
+        requested_receipt,
+        full_replay_tokens=100,
+        delta_tokens=99,
+        evidence=evidence,
+    )
+    inefficient_paired = _paired_delta_report(inefficient_receipt)
+    inefficient = build_delta_retry_promotion_report(
+        inefficient_paired,
+        {"task:delta-retry": (inefficient_receipt,)},
+    )
+
+    assert inefficient.median_delta_input_token_reduction_bps == 100
+    assert not inefficient.typed_delta_gate_passed
+    assert not inefficient.evidence_claim_references
+    assert not inefficient.promotion_eligible
 
 
 @pytest.mark.parametrize(

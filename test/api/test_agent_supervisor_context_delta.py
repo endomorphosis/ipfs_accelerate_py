@@ -19,6 +19,8 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
 from ipfs_accelerate_py.agent_supervisor.context_contracts import (
     ContextBudget,
     ContextCapsule,
+    ContextContractError,
+    ContextDeltaCapsule,
     ContextReference,
     ContextTier,
 )
@@ -113,6 +115,9 @@ def test_delta_transmits_changes_and_preserves_required_coverage() -> None:
     )
 
     assert result.delta_capsule.is_delta
+    assert ContextDeltaCapsule.from_json(
+        result.delta_capsule.to_json()
+    ) == result.delta_capsule
     assert result.delta_capsule.parent_capsule_id == parent.capsule_id
     assert tuple(
         item.reference_id for item in result.delta_capsule.evidence
@@ -121,6 +126,12 @@ def test_delta_transmits_changes_and_preserves_required_coverage() -> None:
         item.reference_id for item in result.reconstructed_capsule.evidence
     } == {"required", "diagnostic"}
     assert result.receipt.delta_tokens < result.receipt.full_replay_tokens
+    assert result.receipt.delta_tokens == compiler.estimator.estimate(
+        result.delta_capsule.to_record()
+    )
+    assert result.receipt.full_replay_tokens == compiler.estimator.estimate(
+        result.reconstructed_capsule.to_record()
+    )
     assert result.receipt.evidence is not None
     assert result.receipt.evidence.requirement_id == DELTA_RETRY_EVIDENCE_ID
     assert result.receipt.evidence_claim_references == (
@@ -160,6 +171,15 @@ def test_delta_receipt_and_witness_round_trip_and_reject_forged_claims() -> None
     forged["evidence_claim_references"] = ()
     with pytest.raises(ContextDeltaError, match="claim"):
         ContextDeltaReceipt.from_dict(forged)
+
+    assert result.receipt.evidence is not None
+    forged_evidence = replace(
+        result.receipt.evidence,
+        artifact_digest="sha256:" + "0" * 64,
+    )
+    forged_receipt = replace(result.receipt, evidence=forged_evidence)
+    with pytest.raises(ContextDeltaError, match="artifact digest"):
+        replace(result, receipt=forged_receipt)
 
 
 def test_unchanged_retry_and_required_evidence_loss_fail_closed() -> None:
@@ -208,7 +228,7 @@ def test_requested_expansion_is_parent_bound_and_deterministic() -> None:
     } == {"required", "large"}
 
 
-def test_reconstruction_rejects_stale_parent_and_mutated_invariant_core() -> None:
+def test_reconstruction_rejects_stale_parent_and_delta_omits_invariant_core() -> None:
     compiler, parent, required, _ = _parent()
     result = compiler.compile_delta(
         parent,
@@ -219,12 +239,135 @@ def test_reconstruction_rejects_stale_parent_and_mutated_invariant_core() -> Non
     with pytest.raises(ContextDeltaError, match="not bound"):
         reconstruct_context(stale_parent, result.delta_capsule)
 
-    mutated_delta = replace(
-        result.delta_capsule,
-        goal={"id": "ASI-G092", "summary": "mutated"},
+    wire = result.delta_capsule.to_dict()
+    assert {"goal", "authority", "scope", "acceptance"}.isdisjoint(wire)
+    wire["goal"] = {"id": "ASI-G092", "summary": "smuggled replay"}
+    with pytest.raises(ContextContractError, match="unsupported fields"):
+        ContextDeltaCapsule.from_dict(wire)
+
+
+def test_requested_unchanged_reference_is_not_masqueraded_as_changed() -> None:
+    compiler, parent, required, optional = _parent()
+
+    result = compiler.compile_delta(
+        parent,
+        evidence=(required, optional),
+        requested_reference_ids=("diagnostic",),
     )
-    with pytest.raises(ContextDeltaError, match="immutable goal"):
-        reconstruct_context(parent, mutated_delta)
+
+    assert result.receipt.evidence is not None
+    assert result.receipt.evidence.changed_reference_ids == ()
+    assert result.receipt.evidence.requested_reference_ids == ("diagnostic",)
+    assert result.delta_capsule.requested_reference_ids == ("diagnostic",)
+    decision = {item.reference_id: item for item in result.decisions}
+    assert decision["diagnostic"].reason is InclusionReason.REQUESTED
+
+
+def test_delta_rejects_requiredness_downgrade_and_full_context_overflow() -> None:
+    compiler, parent, required, optional = _parent()
+    downgraded = ContextReference(
+        reference_id=required.reference_id,
+        kind=required.kind,
+        tier=ContextTier.EVIDENCE,
+        referenced_content_id=required.referenced_content_id,
+        repository_id=required.repository_id,
+        tree_id=required.tree_id,
+        token_count=required.token_count,
+        metadata={
+            "required": False,
+            "coverage_ids": required.coverage_ids,
+        },
+    )
+    with pytest.raises(ContextDeltaError, match="downgrades"):
+        compiler.compile_delta(
+            parent,
+            evidence=(downgraded, optional),
+            requested_reference_ids=("diagnostic",),
+        )
+    coverage_losing = ContextReference(
+        reference_id=required.reference_id,
+        kind=required.kind,
+        tier=ContextTier.INVARIANT,
+        referenced_content_id="sha256:coverage-losing",
+        repository_id=required.repository_id,
+        tree_id=required.tree_id,
+        token_count=required.token_count,
+        metadata={"required": True},
+    )
+    with pytest.raises(ContextDeltaError, match="loses required coverage"):
+        compiler.compile_delta(
+            parent,
+            evidence=(coverage_losing, optional),
+        )
+
+    tight_budget = ContextBudget(
+        max_input_tokens=100,
+        reserved_output_tokens=0,
+        reserved_tool_tokens=0,
+    )
+    tight = ContextCompiler(tight_budget, tokenizer=_tokenizer)
+    base_only = tight.compile(**BINDING, **CORE).capsule.input_tokens
+    base_required = _reference("required", "required", 1, required=True)
+    tight_parent = tight.compile(
+        **BINDING, **CORE, evidence=(base_required,)
+    ).capsule
+    overflowing = _reference(
+        "new-required",
+        "new-required",
+        100 - base_only + 1,
+        required=True,
+    )
+    with pytest.raises(ContextDeltaError, match="full context exceeds"):
+        tight.compile_delta(
+            tight_parent,
+            evidence=(base_required, overflowing),
+        )
+
+
+def test_reconstruction_preserves_expansion_handles_and_rejects_token_forgery() -> None:
+    compiler = _compiler()
+    required = _reference("required", "required", 50, required=True)
+    selected_later = _reference("selected-later", "large-a", 700)
+    still_deferred = _reference("still-deferred", "large-b", 700)
+    parent = compiler.compile(
+        **BINDING,
+        **CORE,
+        evidence=(required, selected_later, still_deferred),
+    ).capsule
+    result = expand_context(
+        compiler,
+        parent,
+        (_reference("selected-later", "summary-a", 20),),
+    )
+
+    assert tuple(
+        item.reference_id
+        for item in result.reconstructed_capsule.expansion_references
+    ) == ("still-deferred",)
+    forged = replace(
+        result.delta_capsule,
+        reconstructed_input_tokens=sum(
+            item.token_count for item in result.reconstructed_capsule.evidence
+        ),
+    )
+    with pytest.raises(ContextDeltaError, match="omits inherited core"):
+        reconstruct_context(parent, forged)
+
+
+def test_new_required_candidate_is_included_in_witness_coverage() -> None:
+    compiler, parent, required, _ = _parent()
+    newly_required = _reference("new-required", "new", 20, required=True)
+
+    result = compiler.compile_delta(
+        parent,
+        evidence=(required, newly_required),
+    )
+
+    assert result.receipt.evidence is not None
+    assert set(result.receipt.evidence.required_coverage_ids) == {
+        "coverage:required",
+        "coverage:new-required",
+    }
 
 
 def test_delta_must_be_smaller_than_full_replay() -> None:
