@@ -404,6 +404,280 @@ finding.
    may trigger bounded objective/codebase refill, but refill must not create
    unbounded duplicate work.
 
+## The theory behind the design
+
+### The supervisor is a feedback controller
+
+The useful mental model is a feedback-control loop, not an autonomous chatbot:
+
+```text
+desired state: acceptance criteria + policy + resource budget
+        |
+        v
+  planner / scheduler ----> worker action ----> repository + runtime
+        ^                                          |
+        |                                          v
+        +--------- observations: tests, receipts, events, health
+```
+
+The objective and its acceptance criteria describe the desired state. The
+planner selects an action that should reduce the gap. The worker performs the
+action in a controlled lane. Scanners, validators, proof providers, and
+watchdogs observe the result. The next reconciliation cycle uses those
+observations to decide whether to continue, repair, block, or reopen the goal.
+
+This explains several otherwise surprising choices in the code:
+
+- **Scans are repeatable.** A controller needs comparable observations across
+  cycles, so scanners use deterministic identities, bounded outputs, and
+  explicit analyzer health.
+- **The objective is separate from the queue.** The desired state should not be
+  rewritten merely because the current actuator queue is empty or a worker
+  failed.
+- **Completion is a decision, not a counter.** A zero open-task count is only
+  one observation. Completion also requires coverage, fresh evidence, healthy
+  analyzers, and the configured exhaustion quorum.
+- **Repair is feedback.** A failure is useful when it becomes a typed signal
+  that changes the next plan; blind retries simply repeat the same control
+  input and can create an infinite loop.
+
+### Three graphs, three questions
+
+The package contains several graphs because one graph cannot answer every
+question:
+
+| Graph | Question | Main representation |
+| --- | --- | --- |
+| Objective graph | What outcomes and evidence are still needed? | goals, subgoals, evidence terms, dependencies |
+| Task/conflict graph | Which executable items can run together? | task identities, prerequisites, file/symbol conflicts, bundle clusters |
+| Evidence/proof graph | Why should a result be trusted? | source/tree identities, receipts, scopes, provider bindings, freshness |
+
+Collapsing these graphs would create two common errors. First, a task that is
+easy to schedule could be mistaken for a goal that is complete. Second, a proof
+receipt for one source scope could be reused for a different candidate merely
+because the task title is similar. The separate projections let each graph use
+the invariants appropriate to its job while sharing canonical identities.
+
+### State machines prevent ambiguous progress
+
+The supervisor represents progress as transitions with guards and effects. In
+the formal planning vocabulary, a transition is described by:
+
+```text
+event + actor + preconditions + effects + evidence requirements
+```
+
+For example, “accept implementation” is not equivalent to “the model returned
+text.” It requires a current task lease, the expected worktree/fence, a valid
+proposal, successful configured validation, and accepted artifacts. The
+transition then records progress and releases or advances the relevant lease.
+
+`formal_planning_contracts.py` makes this vocabulary explicit with actors,
+goals, subgoals, plan tasks, events, fluents, preconditions, effects, norms,
+temporal constraints, evidence requirements, and plan assurance. The
+`FormalWorkPlan` validator checks referential integrity and acyclicity before a
+plan reaches a provider. `supervisor_state_model.py` translates a reviewed
+finite transition schema into TLA+ and records bounded checking results.
+
+The default state model checks safety properties such as:
+
+- `UniqueAcceptance`: one logical task cannot be accepted twice;
+- `FencingSafety`: an old worker cannot commit after its lease/fence is stale;
+- `DependencyOrder`: prerequisites are accepted before dependents;
+- `IdempotentMerge`: replaying a merge decision does not duplicate its effect;
+- `CapacitySafety`: admitted work stays within declared capacity; and
+- `EvidenceGates`: terminal transitions cannot skip required evidence.
+
+It also checks liveness properties such as bounded progress and terminal
+outcomes. These are bounded experiments over a generated finite model, not a
+claim that arbitrary Python execution has been proved correct.
+
+### Leases, fencing, and worktrees are a distributed-systems protocol
+
+Multiple daemons may observe the same queue, and processes can pause, crash, or
+be restarted. A simple `locked = true` flag is not enough: a delayed worker may
+resume after another worker has taken over. The supervisor therefore combines:
+
+1. a task lease with an owner and expiry;
+2. a monotonically changing fencing token/generation;
+3. heartbeats that prove the owner is still live; and
+4. validation of the token at terminal operations and merge boundaries.
+
+The invariant is: **only the current owner with the current fence may perform
+state-changing work**. Expiry makes capacity reclaimable; fencing makes stale
+work harmless. `lease_coordination.py` persists grants, heartbeats, terminal
+receipts, and conflicts; `leased_lane.py` adapts the same idea to a lane;
+`checkout_lock.py` protects Git operations; and the daemon state records the
+active phase so a watchdog can distinguish slow work from a dead process.
+
+Worktrees provide filesystem isolation, but they are not the authority by
+themselves. A worktree can be deleted, reused, or left dirty. The lease/fence
+protocol and event/receipt history are what make a promotion decision
+auditable.
+
+### Scheduling is admission control, not just priority sorting
+
+Priority answers “which eligible task is preferred?” Admission answers “may
+this task run at all right now?” The resource scheduler performs both concepts
+separately. It normalizes host capacity, provider concurrency, process slots,
+resource classes, and proof-specific pools before issuing a reclaimable
+`ResourceAdmissionLease`.
+
+This separation matters when a high-priority proof task needs a scarce kernel
+slot, while several ordinary implementation tasks need only CPU. Running the
+highest-priority item without admission control can starve the proof lane or
+overcommit the model provider. Conversely, refusing to schedule because a
+provider is temporarily full should not turn into a permanent task failure;
+the scheduler records a wait/admission reason and retries when capacity is
+released.
+
+The same principle applies to LLM routing. `resource_scheduler.py` normalizes
+provider capacity and `formal_verification_capabilities.py` probes operation-
+specific readiness. “The executable exists” is not the same as “this provider
+can perform this translation under the requested isolation and timeout.”
+
+### Evidence is a content-addressed claim
+
+An evidence record should answer four questions:
+
+1. **What** was observed or checked?
+2. **Where** did it come from (repository/tree/path/provider)?
+3. **When** was it valid, and is it still fresh?
+4. **How** can another process reproduce or verify it?
+
+That is why receipts contain schema versions, canonical payloads, source
+identity, artifact paths or CIDs, and bounded projections. `scan_receipts.py`
+computes a deterministic receipt identity from canonical content and rejects a
+persisted artifact whose bytes no longer match its identity. `artifact_store.py`
+keeps large payloads outside status files; `event_log.py` records compact
+operational facts; and proof stores bind a receipt to its scope and provider.
+
+The distinction between a full artifact and a compact projection is deliberate.
+Status and heartbeat payloads must remain bounded and low-cardinality, while an
+auditor must still be able to follow the content identity to the full scan,
+validation output, or proof receipt.
+
+### Why LLM output remains below the acceptance boundary
+
+An LLM is valuable at proposing decomposition, implementation edits, repair
+strategies, or proof candidates. It is not a stable authority for repository
+state. Prompts can omit context, models can hallucinate files, and a plausible
+answer can violate a lease, policy, or hidden dependency.
+
+The supervisor therefore uses a two-stage architecture:
+
+```text
+model proposal -> schema/identity checks -> policy/plan checks
+               -> isolated materialization -> deterministic validation
+               -> evidence and merge gates
+```
+
+`todo_daemon.llm` and provider adapters are intentionally replaceable. The
+proposal is bounded, normalized, and associated with the current task and
+worktree. A deterministic fallback can keep the queue moving, but fallback
+usage is recorded as inconclusive or lower-assurance evidence; it is not
+silently presented as a model success.
+
+### Retry budgets are a termination argument
+
+Retries are useful for transient network, provider, or test failures. They are
+dangerous when the underlying failure is deterministic. The implementation
+supervisor tracks failure classes and budgets for implementation, validation,
+and merge stages. Once a class crosses its budget, the source task is blocked
+and a follow-up repair task carries the diagnostic evidence.
+
+This gives the system a practical termination property: one failing input
+cannot consume all worker time forever. It also preserves information that a
+blind retry would destroy—the original command, output excerpt, phase, attempt
+number, and suggested repair. `backlog_refinery.py` applies the same idea to
+drained queues and recurring codebase findings.
+
+### Completion is a quorum over independent observations
+
+The completion gate treats “done” as a conjunction of independent dimensions,
+not a single boolean:
+
+```text
+complete iff
+  acceptance criteria covered
+  AND required tasks terminal
+  AND evidence is fresh and bound to the current tree
+  AND analyzers are healthy
+  AND exhaustion quorum is satisfied when required
+  AND no contradiction/reopen condition is present
+```
+
+The quorum is especially important for negative claims such as “no matching
+implementation remains.” One scanner run can miss files because of a parser
+failure, ignored submodule, stale checkout, or unavailable analyzer. The
+receipt model records distinct channels and rejects duplicate or mismatched
+members, so repeated identical scans do not manufacture confidence.
+
+## Reading the implementation as a set of contracts
+
+The most efficient way to understand a new module is to identify which
+contract it owns:
+
+| Contract type | What to inspect | Failure if violated |
+| --- | --- | --- |
+| Identity | `task_identity.py`, canonical JSON helpers | duplicate or cross-scope work |
+| Lifecycle | `goal_completion.py`, daemon state, state model | impossible or ambiguous transitions |
+| Authority | `authorization_logic.py`, actor/role records | unauthorized work or merge |
+| Exclusivity | `lease_coordination.py`, fences, worktrees | stale worker mutation |
+| Capacity | `resource_scheduler.py` | overcommitment or starvation |
+| Semantics | formal plan contracts and translation validation | proving the wrong statement |
+| Evidence | artifacts, receipts, proof stores | unverifiable completion claim |
+| Recovery | failure policy, refinery, merge repair | infinite retry or lost diagnostics |
+| Observation | event log, watchdog, temporal monitor, metrics | undetected stuck or stale state |
+
+When extending the package, start with the contract and its invariant, then
+locate the projection that persists it, the event that records it, and the test
+that exercises it. Avoid adding a shortcut directly to a daemon loop: it will
+usually bypass identity, fencing, evidence, or migration behavior.
+
+## Worked example: closing one objective gap
+
+Suppose the objective says “serve model discovery through the MCP endpoint.”
+The intended lifecycle is:
+
+1. The objective scanner finds that the acceptance evidence is absent and emits
+   a task with a goal ID, missing-evidence terms, validation commands, and a
+   canonical task identity.
+2. The plan compiler adds actors, affected paths, dependencies, resource
+   requirements, and an evidence requirement for an endpoint-level test.
+3. The plan validator rejects the plan if its dependency graph cycles, its
+   actor lacks authority, or its required provider is unavailable.
+4. The bundle supervisor admits the task to an isolated lane and the daemon
+   obtains a lease/fence before asking the model for an edit.
+5. The daemon materializes the proposal, runs the configured tests in a clean
+   validation workspace, and persists the output and command receipt.
+6. The merge train checks the current fence and target tree, applies the
+   accepted change, and records a merge checkpoint.
+7. The objective tracker reconciles the new endpoint test and source evidence.
+   If all required dimensions are fresh, the goal can become provisionally or
+   verified complete; otherwise it remains active, blocked, or inconclusive.
+
+Notice that the model is only one participant in step 4. The evidence that
+closes the objective comes from the validated repository and the recorded
+receipt, not from the model's assertion that the feature exists.
+
+## What the architecture does not promise
+
+The supervisor is a reliability and assurance control plane, not a universal
+program verifier or a guarantee of eventual success. In particular:
+
+- arbitrary Python behavior is not formally verified merely because a plan
+  passed a logic check;
+- a provider capability report is not proof evidence;
+- a bounded model check says nothing beyond its recorded bounds and assumptions;
+- a clean Git merge does not imply tests or acceptance criteria passed;
+- a healthy heartbeat does not prove useful progress; and
+- a drained queue does not prove the objective is complete.
+
+These limits are features of the design. Keeping claims narrower than the
+available evidence is what allows the supervisor to combine probabilistic model
+proposals with deterministic engineering controls without confusing the two.
+
 ## Extension points
 
 New integrations should prefer these boundaries:
@@ -441,3 +715,69 @@ For a compact implementation inventory, start with:
 - `merge_train.py`, `merge_queue.py`, `merge_resolver.py`; and
 - `prover_matrix_registry.py`, `multi_prover_router.py`,
   `prover_evidence_store.py`.
+
+## Appendix: complete module map
+
+The following map is intended to make the package discoverable when reading the
+source tree. The names are grouped by the contract they primarily implement;
+many modules intentionally participate in more than one group.
+
+**Objective, backlog, and identity:** `objective_tracker.py`,
+`objective_graph.py`, `objective_daemon.py`, `objective_task_janitor.py`,
+`backlog_refinery.py`, `goal_completion.py`, `goal_coverage.py`,
+`task_identity.py`, `taskboard_store.py`, `persistent_task_queue.py`,
+`todo_vector_index.py`, `dataset_store.py`, `code_evidence_graph.py`,
+`conflict_graph.py`, `task_proposal_router.py`, `plan_evaluator.py`.
+
+**Planning, logic, and policy:** `formal_planning_contracts.py`,
+`formal_plan_context.py`, `formal_plan_compiler.py`,
+`formal_plan_validator.py`, `formal_logic_vocabulary.py`,
+`logic_translation_validation.py`, `authorization_logic.py`,
+`interface_contract_codegen.py`, `validation_commands.py`,
+`validation_scheduler.py`, `supervisor_state_model.py`.
+
+**Proof scope, providers, and assurance:** `code_proof_obligations.py`,
+`proof_obligation_templates.py`, `proof_context.py`, `proof_scope_index.py`,
+`proof_scheduler.py`, `proof_fallbacks.py`, `proof_metrics.py`,
+`formal_verification_contracts.py`, `formal_verification_policy.py`,
+`formal_verification_provider.py`, `formal_verification_cache.py`,
+`formal_verification_capabilities.py`, `prover_matrix_registry.py`,
+`prover_conformance.py`, `multi_prover_router.py`,
+`prover_evidence_store.py`, `proof_attestation.py`,
+`kernel_verification.py`, `leanstral_proof_provider.py`,
+`ipfs_datasets_logic_provider.py`, `hyperproperty_verification.py`.
+
+**Execution, scheduling, and coordination:** `bundle_supervisor.py`,
+`multi_supervisor_runner.py`, `implementation_daemon_runner.py`,
+`implementation_supervisor_runner.py`, `resource_scheduler.py`,
+`lease_coordination.py`, `leased_lane.py`, `checkout_lock.py`,
+`wrapper_utils.py`, `analyzer_health.py`, `supervisor_watchdog.py`,
+`runtime_temporal_monitor.py`, `scheduler_metrics.py`.
+
+**Artifacts, events, and lifecycle state:** `artifact_store.py`,
+`scan_receipts.py`, `event_log.py`, `duckdb_state.py`,
+`proof_metrics.py`, `submodule_degradation.py`, `git_gc.py`.
+
+**Merge and recovery:** `merge_train.py`, `merge_queue.py`,
+`merge_checkpoint.py`, `merge_resolver.py`, `merge_conflict_repair.py`,
+`llm_merge_resolver_fallback.py`, `codex_failure_policy.py`.
+
+**The reusable todo-daemon runtime:** `todo_daemon/__init__.py` exposes the
+public lifecycle/runtime helpers and `todo_daemon/__main__.py` provides module
+execution. `todo_daemon/core.py` provides process
+and state primitives; `engine.py` provides task/proposal/validation mechanics;
+`implementation_daemon.py` and `implementation_supervisor.py` provide the
+worker and watchdog loops; `supervisor.py`, `supervisor_loop.py`,
+`supervisor_runtime.py`, `runner.py`, `app.py`, `cli.py`, and `wrapper.py`
+provide lifecycle and command-line composition; `worktrees.py`, `git_utils.py`,
+`file_replacement.py`, and `auto_commit.py` provide repository operations;
+`artifacts.py`, `history.py`, `diagnostics.py`, `status.py`, and
+`deterministic_fallback.py` provide observability and recovery; and
+`context.py`, `llm.py`, `llm_defaults.py`, `plans.py`, `logic_port.py`,
+`registry.py`, `specs.py`, `task_board.py`, `legal_parser.py`,
+`legal_parser_daemon.py`, and `typescript.py` provide context, language-specific
+adapters, registries, and task formats.
+
+`__init__.py` is a public re-export surface, not the execution coordinator.
+Importing a symbol from it should be understood as API convenience; the
+invariants remain owned by the implementation module named above.
