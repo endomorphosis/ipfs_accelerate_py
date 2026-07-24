@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 CODE_EVIDENCE_GRAPH_SCHEMA = (
@@ -24,6 +24,12 @@ CODE_EVIDENCE_NODE_SCHEMA = (
 )
 CODE_EVIDENCE_EDGE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.code-evidence-edge@1"
+)
+CODE_IMPACT_INDEX_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.code-impact-index@1"
+)
+CODE_IMPACT_RESULT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.code-impact-result@1"
 )
 
 
@@ -1228,16 +1234,649 @@ def canonical_graph_records(value: CodeEvidenceGraph | Mapping[str, Any]) -> dic
     return graph.canonical_records()
 
 
+def _impact_path(value: Any) -> str:
+    """Return a safe canonical repository-relative path.
+
+    Impact evidence is persisted and later used to select commands.  It must
+    therefore reject absolute and escaping paths instead of silently resolving
+    them against the scheduler's current directory.
+    """
+
+    raw = str(value or "").strip().replace("\\", "/")
+    while raw.startswith("./"):
+        raw = raw[2:]
+    path = PurePosixPath(raw)
+    if not raw or path.is_absolute() or ".." in path.parts or "\0" in raw:
+        raise EvidenceGraphValidationError(
+            f"unsafe repository impact path: {value!r}"
+        )
+    return path.as_posix()
+
+
+def _impact_strings(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    values = (value,) if isinstance(value, str) else value
+    try:
+        return tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in values
+                    if str(item).strip()
+                }
+            )
+        )
+    except TypeError as exc:
+        raise EvidenceGraphValidationError(
+            "impact graph collections must be iterable"
+        ) from exc
+
+
+@dataclass(frozen=True)
+class ChangedASTSymbol:
+    """One exact symbol changed by a candidate patch.
+
+    ``interface_changed`` is explicit evidence from the before/after AST
+    comparison.  A public-looking name is not enough to infer that a signature
+    changed.
+    """
+
+    symbol: str
+    path: str
+    change_kind: str = "modified"
+    interface_changed: bool = False
+
+    def __post_init__(self) -> None:
+        symbol = str(self.symbol or "").strip()
+        if not symbol:
+            raise EvidenceGraphValidationError("changed AST symbol is required")
+        kind = str(self.change_kind or "modified").strip().lower()
+        if kind not in {"added", "modified", "deleted", "renamed"}:
+            raise EvidenceGraphValidationError(
+                f"unsupported AST symbol change kind: {kind!r}"
+            )
+        object.__setattr__(self, "symbol", symbol)
+        object.__setattr__(self, "path", _impact_path(self.path))
+        object.__setattr__(self, "change_kind", kind)
+        object.__setattr__(self, "interface_changed", bool(self.interface_changed))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "path": self.path,
+            "change_kind": self.change_kind,
+            "interface_changed": self.interface_changed,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ChangedASTSymbol":
+        return cls(
+            symbol=str(
+                value.get("symbol")
+                or value.get("qualified_symbol")
+                or value.get("qualified_name")
+                or ""
+            ),
+            path=str(
+                value.get("path")
+                or value.get("new_path")
+                or value.get("old_path")
+                or ""
+            ),
+            change_kind=str(value.get("change_kind") or "modified"),
+            interface_changed=bool(value.get("interface_changed", False)),
+        )
+
+
+@dataclass(frozen=True)
+class CodeImpactResult:
+    """Complete direct and transitive closure for one candidate change."""
+
+    repository_tree_id: str
+    index_id: str
+    changed_symbols: tuple[str, ...]
+    affected_symbols: tuple[str, ...]
+    changed_paths: tuple[str, ...]
+    affected_paths: tuple[str, ...]
+    dependency_chains: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    required_validation_ids: tuple[str, ...] = ()
+    validation_reasons: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    uncovered_symbols: tuple[str, ...] = ()
+    uncovered_paths: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        for name in ("repository_tree_id", "index_id"):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise EvidenceGraphValidationError(
+                    f"code impact result requires {name}"
+                )
+            object.__setattr__(self, name, value)
+        for name in (
+            "changed_symbols",
+            "affected_symbols",
+            "required_validation_ids",
+            "uncovered_symbols",
+        ):
+            object.__setattr__(
+                self, name, _impact_strings(getattr(self, name))
+            )
+        for name in ("changed_paths", "affected_paths", "uncovered_paths"):
+            object.__setattr__(
+                self,
+                name,
+                tuple(
+                    sorted(
+                        {
+                            _impact_path(value)
+                            for value in getattr(self, name)
+                        }
+                    )
+                ),
+            )
+        object.__setattr__(
+            self,
+            "dependency_chains",
+            {
+                str(key): tuple(
+                    str(item).strip()
+                    for item in value
+                    if str(item).strip()
+                )
+                for key, value in sorted(
+                    dict(self.dependency_chains or {}).items()
+                )
+            },
+        )
+        object.__setattr__(
+            self,
+            "validation_reasons",
+            {
+                str(key): _impact_strings(value)
+                for key, value in sorted(
+                    dict(self.validation_reasons or {}).items()
+                )
+            },
+        )
+
+    @property
+    def uncovered_impact(self) -> bool:
+        return bool(self.uncovered_symbols or self.uncovered_paths)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CODE_IMPACT_RESULT_SCHEMA,
+            "repository_tree_id": self.repository_tree_id,
+            "index_id": self.index_id,
+            "changed_symbols": list(self.changed_symbols),
+            "affected_symbols": list(self.affected_symbols),
+            "changed_paths": list(self.changed_paths),
+            "affected_paths": list(self.affected_paths),
+            "dependency_chains": {
+                key: list(value)
+                for key, value in sorted(self.dependency_chains.items())
+            },
+            "required_validation_ids": list(self.required_validation_ids),
+            "validation_reasons": {
+                key: list(value)
+                for key, value in sorted(self.validation_reasons.items())
+            },
+            "uncovered_symbols": list(self.uncovered_symbols),
+            "uncovered_paths": list(self.uncovered_paths),
+            "uncovered_impact": self.uncovered_impact,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "CodeImpactResult":
+        schema = str(value.get("schema") or CODE_IMPACT_RESULT_SCHEMA)
+        if schema != CODE_IMPACT_RESULT_SCHEMA:
+            raise EvidenceGraphValidationError(
+                f"unsupported code impact result schema: {schema}"
+            )
+        return cls(
+            repository_tree_id=str(value.get("repository_tree_id") or ""),
+            index_id=str(value.get("index_id") or ""),
+            changed_symbols=tuple(value.get("changed_symbols") or ()),
+            affected_symbols=tuple(value.get("affected_symbols") or ()),
+            changed_paths=tuple(value.get("changed_paths") or ()),
+            affected_paths=tuple(value.get("affected_paths") or ()),
+            dependency_chains={
+                str(key): (
+                    (items,) if isinstance(items, str) else tuple(items)
+                )
+                for key, items in dict(
+                    value.get("dependency_chains") or {}
+                ).items()
+            },
+            required_validation_ids=tuple(
+                value.get("required_validation_ids") or ()
+            ),
+            validation_reasons={
+                str(key): (
+                    (items,) if isinstance(items, str) else tuple(items)
+                )
+                for key, items in dict(
+                    value.get("validation_reasons") or {}
+                ).items()
+            },
+            uncovered_symbols=tuple(
+                value.get("uncovered_symbols") or ()
+            ),
+            uncovered_paths=tuple(value.get("uncovered_paths") or ()),
+        )
+
+
+@dataclass(frozen=True)
+class CodeImpactIndex:
+    """Tree-bound symbol and path dependency evidence used for selection.
+
+    Dependency mappings use ``dependent -> providers`` orientation.  Impact
+    selection walks the reverse edges, so changing a provider selects consumers
+    and validations even when their files are outside the direct patch.
+    """
+
+    repository_tree_id: str
+    symbol_paths: Mapping[str, str]
+    symbol_dependencies: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    path_dependencies: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    validation_targets: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    index_version: str = "code-impact-index-v1"
+    index_id: str = ""
+
+    def __post_init__(self) -> None:
+        tree_id = str(self.repository_tree_id or "").strip()
+        if not tree_id:
+            raise EvidenceGraphValidationError(
+                "code impact index requires repository_tree_id"
+            )
+        object.__setattr__(self, "repository_tree_id", tree_id)
+
+        symbol_paths: dict[str, str] = {}
+        for raw_symbol, raw_path in dict(self.symbol_paths or {}).items():
+            symbol = str(raw_symbol or "").strip()
+            if not symbol:
+                raise EvidenceGraphValidationError(
+                    "code impact index contains an empty symbol"
+                )
+            symbol_paths[symbol] = _impact_path(raw_path)
+        object.__setattr__(
+            self, "symbol_paths", dict(sorted(symbol_paths.items()))
+        )
+
+        symbol_dependencies: dict[str, tuple[str, ...]] = {}
+        known_symbols = set(symbol_paths)
+        for raw_dependent, raw_dependencies in dict(
+            self.symbol_dependencies or {}
+        ).items():
+            dependent = str(raw_dependent or "").strip()
+            dependencies = _impact_strings(raw_dependencies)
+            unknown = ({dependent, *dependencies} - known_symbols)
+            if unknown:
+                raise EvidenceGraphValidationError(
+                    "symbol dependency references unknown symbols: "
+                    + ", ".join(sorted(unknown))
+                )
+            if dependent in dependencies:
+                raise EvidenceGraphValidationError(
+                    "symbol dependency cannot reference itself"
+                )
+            symbol_dependencies[dependent] = dependencies
+        object.__setattr__(
+            self,
+            "symbol_dependencies",
+            dict(sorted(symbol_dependencies.items())),
+        )
+
+        path_dependencies: dict[str, tuple[str, ...]] = {}
+        for raw_dependent, raw_dependencies in dict(
+            self.path_dependencies or {}
+        ).items():
+            dependent = _impact_path(raw_dependent)
+            dependencies = tuple(
+                sorted(
+                    {
+                        _impact_path(value)
+                        for value in (
+                            (raw_dependencies,)
+                            if isinstance(raw_dependencies, str)
+                            else raw_dependencies
+                        )
+                    }
+                )
+            )
+            if dependent in dependencies:
+                raise EvidenceGraphValidationError(
+                    "path dependency cannot reference itself"
+                )
+            path_dependencies[dependent] = dependencies
+        object.__setattr__(
+            self, "path_dependencies", dict(sorted(path_dependencies.items()))
+        )
+
+        targets: dict[str, tuple[str, ...]] = {}
+        known_paths = set(symbol_paths.values())
+        known_paths.update(path_dependencies)
+        for dependencies in path_dependencies.values():
+            known_paths.update(dependencies)
+        known_targets = known_symbols | known_paths
+        for raw_validation_id, raw_targets in dict(
+            self.validation_targets or {}
+        ).items():
+            validation_id = str(raw_validation_id or "").strip()
+            if not validation_id:
+                raise EvidenceGraphValidationError(
+                    "validation target requires an identity"
+                )
+            values = _impact_strings(raw_targets)
+            if not values:
+                raise EvidenceGraphValidationError(
+                    f"validation {validation_id!r} has no impact targets"
+                )
+            unknown = set(values) - known_targets
+            if unknown:
+                raise EvidenceGraphValidationError(
+                    "validation references unknown impact targets: "
+                    + ", ".join(sorted(unknown))
+                )
+            targets[validation_id] = values
+        object.__setattr__(
+            self, "validation_targets", dict(sorted(targets.items()))
+        )
+
+        version = str(self.index_version or "").strip()
+        if not version:
+            raise EvidenceGraphValidationError(
+                "code impact index version is required"
+            )
+        object.__setattr__(self, "index_version", version)
+        claimed = str(self.index_id or "").strip()
+        object.__setattr__(self, "index_id", "")
+        actual = _identity(self._identity_payload())
+        if claimed and claimed != actual:
+            raise EvidenceGraphValidationError(
+                "code impact index identity does not match payload"
+            )
+        object.__setattr__(self, "index_id", actual)
+
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
+            "schema": CODE_IMPACT_INDEX_SCHEMA,
+            "repository_tree_id": self.repository_tree_id,
+            "index_version": self.index_version,
+            "symbol_paths": self.symbol_paths,
+            "symbol_dependencies": self.symbol_dependencies,
+            "path_dependencies": self.path_dependencies,
+            "validation_targets": self.validation_targets,
+        }
+
+    @staticmethod
+    def _reverse(
+        dependencies: Mapping[str, Sequence[str]],
+    ) -> dict[str, tuple[str, ...]]:
+        reverse: dict[str, set[str]] = {}
+        for dependent, providers in dependencies.items():
+            reverse.setdefault(dependent, set())
+            for provider in providers:
+                reverse.setdefault(provider, set()).add(dependent)
+        return {
+            key: tuple(sorted(value))
+            for key, value in sorted(reverse.items())
+        }
+
+    @staticmethod
+    def _closure_with_chains(
+        roots: Iterable[str],
+        reverse: Mapping[str, Sequence[str]],
+    ) -> tuple[tuple[str, ...], dict[str, tuple[str, ...]]]:
+        from collections import deque
+
+        normalized_roots = tuple(sorted(set(roots)))
+        chains = {root: (root,) for root in normalized_roots}
+        queue = deque(normalized_roots)
+        while queue:
+            current = queue.popleft()
+            for dependent in reverse.get(current, ()):
+                candidate = (*chains[current], dependent)
+                existing = chains.get(dependent)
+                if existing is None or (len(candidate), candidate) < (
+                    len(existing),
+                    existing,
+                ):
+                    chains[dependent] = candidate
+                    queue.append(dependent)
+        return tuple(sorted(chains)), chains
+
+    def impact(
+        self,
+        *,
+        changed_symbols: Iterable[str | ChangedASTSymbol | Mapping[str, Any]] = (),
+        changed_paths: Iterable[str] = (),
+    ) -> CodeImpactResult:
+        """Compute a deterministic, explainable reverse dependency closure."""
+
+        explicit_symbols: set[str] = set()
+        explicit_paths: set[str] = set()
+        for value in changed_symbols:
+            if isinstance(value, ChangedASTSymbol):
+                change = value
+                explicit_symbols.add(change.symbol)
+                explicit_paths.add(change.path)
+            elif isinstance(value, Mapping):
+                change = ChangedASTSymbol.from_dict(value)
+                explicit_symbols.add(change.symbol)
+                explicit_paths.add(change.path)
+            else:
+                symbol = str(value or "").strip()
+                if symbol:
+                    explicit_symbols.add(symbol)
+        explicit_paths.update(_impact_path(value) for value in changed_paths)
+
+        inferred_symbols = {
+            symbol
+            for symbol, path in self.symbol_paths.items()
+            if path in explicit_paths
+        }
+        known_changed_symbols = (explicit_symbols | inferred_symbols) & set(
+            self.symbol_paths
+        )
+        uncovered_symbols = tuple(
+            sorted(explicit_symbols - set(self.symbol_paths))
+        )
+        known_paths = set(self.symbol_paths.values())
+        known_paths.update(self.path_dependencies)
+        for dependencies in self.path_dependencies.values():
+            known_paths.update(dependencies)
+        uncovered_paths = tuple(sorted(explicit_paths - known_paths))
+
+        affected_symbols, symbol_chains = self._closure_with_chains(
+            known_changed_symbols,
+            self._reverse(self.symbol_dependencies),
+        )
+        symbol_affected_paths = {
+            self.symbol_paths[symbol] for symbol in affected_symbols
+        }
+        path_roots = explicit_paths | symbol_affected_paths
+        affected_paths, path_chains = self._closure_with_chains(
+            path_roots,
+            self._reverse(self.path_dependencies),
+        )
+
+        impacted_targets = set(affected_symbols) | set(affected_paths)
+        validation_reasons = {
+            validation_id: tuple(
+                sorted(impacted_targets.intersection(targets))
+            )
+            for validation_id, targets in self.validation_targets.items()
+            if impacted_targets.intersection(targets)
+        }
+        chains = dict(symbol_chains)
+        for target, chain in path_chains.items():
+            chains.setdefault(target, chain)
+        return CodeImpactResult(
+            repository_tree_id=self.repository_tree_id,
+            index_id=self.index_id,
+            changed_symbols=tuple(sorted(explicit_symbols | inferred_symbols)),
+            affected_symbols=affected_symbols,
+            changed_paths=tuple(sorted(explicit_paths)),
+            affected_paths=affected_paths,
+            dependency_chains=chains,
+            required_validation_ids=tuple(sorted(validation_reasons)),
+            validation_reasons=validation_reasons,
+            uncovered_symbols=uncovered_symbols,
+            uncovered_paths=uncovered_paths,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._identity_payload(), "index_id": self.index_id}
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "CodeImpactIndex":
+        schema = str(value.get("schema") or CODE_IMPACT_INDEX_SCHEMA)
+        if schema != CODE_IMPACT_INDEX_SCHEMA:
+            raise EvidenceGraphValidationError(
+                f"unsupported code impact index schema: {schema}"
+            )
+        return cls(
+            repository_tree_id=str(value.get("repository_tree_id") or ""),
+            symbol_paths=value.get("symbol_paths") or {},
+            symbol_dependencies=value.get("symbol_dependencies") or {},
+            path_dependencies=value.get("path_dependencies") or {},
+            validation_targets=value.get("validation_targets") or {},
+            index_version=str(
+                value.get("index_version") or "code-impact-index-v1"
+            ),
+            index_id=str(value.get("index_id") or ""),
+        )
+
+    @classmethod
+    def from_ast_records(
+        cls,
+        *,
+        repository_tree_id: str,
+        ast_records: Iterable[Any],
+        symbol_dependencies: Mapping[str, Sequence[str]] | None = None,
+        path_dependencies: Mapping[str, Sequence[str]] | None = None,
+        validation_targets: Mapping[str, Sequence[str]] | None = None,
+    ) -> "CodeImpactIndex":
+        """Build an index from canonical AST records plus reviewed edges.
+
+        Records may expose either one ``qualified_symbol`` or the canonical
+        ``qualified_symbols`` collection.  Explicit dependency facts on a
+        record are merged with the reviewed arguments; no probabilistic
+        relationship is admitted into the authority-bearing index.
+        """
+
+        symbols: dict[str, str] = {}
+        dependencies: dict[str, set[str]] = {
+            str(key): set(_impact_strings(value))
+            for key, value in dict(symbol_dependencies or {}).items()
+        }
+        paths: dict[str, set[str]] = {
+            _impact_path(key): {
+                _impact_path(item)
+                for item in ((value,) if isinstance(value, str) else value)
+            }
+            for key, value in dict(path_dependencies or {}).items()
+        }
+        for raw_record in ast_records:
+            record = _record(raw_record)
+            nested_ast = record.get("ast_record")
+            if isinstance(nested_ast, Mapping):
+                # ``IndexedASTPath`` deliberately keeps the reusable AST blob
+                # path-independent.  Merge its facts with the authoritative
+                # path wrapper for impact indexing.
+                record = {**dict(nested_ast), **record}
+            path_value = (
+                record.get("path")
+                or record.get("root_relative_path")
+                or record.get("new_path")
+                or record.get("file")
+            )
+            if not path_value:
+                raise EvidenceGraphValidationError(
+                    "AST impact records require a repository path"
+                )
+            path = _impact_path(path_value)
+            record_symbols = set(_strings(record.get("qualified_symbols")))
+            singular = _text(
+                record,
+                "qualified_symbol",
+                "symbol",
+                "qualified_name",
+            )
+            if singular:
+                record_symbols.add(singular)
+            for symbol in record_symbols:
+                previous = symbols.get(symbol)
+                if previous is not None and previous != path:
+                    raise EvidenceGraphValidationError(
+                        f"symbol {symbol!r} is defined by multiple paths"
+                    )
+                symbols[symbol] = path
+            raw_symbol_dependencies = record.get("symbol_dependencies") or {}
+            if isinstance(raw_symbol_dependencies, Mapping):
+                for dependent, providers in raw_symbol_dependencies.items():
+                    dependencies.setdefault(str(dependent), set()).update(
+                        _impact_strings(providers)
+                    )
+            raw_path_dependencies = record.get("path_dependencies") or ()
+            paths.setdefault(path, set()).update(
+                _impact_path(item)
+                for item in (
+                    (raw_path_dependencies,)
+                    if isinstance(raw_path_dependencies, str)
+                    else raw_path_dependencies
+                )
+            )
+        return cls(
+            repository_tree_id=repository_tree_id,
+            symbol_paths=symbols,
+            symbol_dependencies={
+                key: tuple(sorted(value))
+                for key, value in dependencies.items()
+            },
+            path_dependencies={
+                key: tuple(sorted(value)) for key, value in paths.items()
+            },
+            validation_targets=validation_targets or {},
+        )
+
+
+def build_code_impact_index(
+    *,
+    repository_tree_id: str,
+    ast_records: Iterable[Any],
+    symbol_dependencies: Mapping[str, Sequence[str]] | None = None,
+    path_dependencies: Mapping[str, Sequence[str]] | None = None,
+    validation_targets: Mapping[str, Sequence[str]] | None = None,
+) -> CodeImpactIndex:
+    """Compatibility-friendly functional constructor for impact evidence."""
+
+    return CodeImpactIndex.from_ast_records(
+        repository_tree_id=repository_tree_id,
+        ast_records=ast_records,
+        symbol_dependencies=symbol_dependencies,
+        path_dependencies=path_dependencies,
+        validation_targets=validation_targets,
+    )
+
+
 __all__ = [
     "AUTHORITATIVE_EDGE_PROVENANCE",
     "CODE_EVIDENCE_EDGE_SCHEMA",
     "CODE_EVIDENCE_GRAPH_SCHEMA",
     "CODE_EVIDENCE_NODE_SCHEMA",
+    "CODE_IMPACT_INDEX_SCHEMA",
+    "CODE_IMPACT_RESULT_SCHEMA",
     "ENRICHMENT_EDGE_KINDS",
     "UNTRUSTED_PROVENANCE",
     "CodeEvidenceEdge",
     "CodeEvidenceGraph",
     "CodeEvidenceNode",
+    "ChangedASTSymbol",
+    "CodeImpactIndex",
+    "CodeImpactResult",
     "EvidenceEdgeKind",
     "EvidenceGraph",
     "EvidenceGraphValidationError",
@@ -1246,6 +1885,7 @@ __all__ = [
     "EvidenceProvenance",
     "ProvenanceEdge",
     "build_code_evidence_graph",
+    "build_code_impact_index",
     "canonical_graph_records",
     "canonical_json",
     "materialize_code_evidence_graph",

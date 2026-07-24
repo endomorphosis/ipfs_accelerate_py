@@ -25,6 +25,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .code_evidence_graph import (
+    ChangedASTSymbol,
+    CodeImpactIndex,
+    CodeImpactResult,
+)
 from .cache_coordinator import (
     CacheAuthority,
     CacheNamespace,
@@ -100,6 +105,12 @@ TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA = (
         "the exact transitive-impact requirement is emitted only by a "
         "tamper-evident current-tree witness"
     ),
+)
+IMPACT_SELECTED_VALIDATION_DAG_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/impact-selected-validation-dag@1"
+)
+IMPACT_SELECTED_VALIDATION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/impact-selected-validation-receipt@1"
 )
 REQUIRED_AUTHORITY_GATES = (
     "semantic",
@@ -801,6 +812,1264 @@ def _normalize_impact_path(value: object) -> str:
         else:
             parts.append(part)
     return "/".join(parts)
+
+
+class ImpactValidationKind(str, Enum):
+    """Mandatory implementation-output validation dimensions."""
+
+    SYNTAX = "syntax"
+    TYPE = "type"
+    INTERFACE = "interface"
+    UNIT = "unit"
+    INTEGRATION = "integration"
+    CONTRACT = "contract"
+    RUNTIME = "runtime"
+
+
+MANDATORY_VALIDATION_KINDS = tuple(ImpactValidationKind)
+DEFAULT_VALIDATION_KIND_DEPENDENCIES: Mapping[
+    ImpactValidationKind, tuple[ImpactValidationKind, ...]
+] = {
+    ImpactValidationKind.SYNTAX: (),
+    ImpactValidationKind.TYPE: (ImpactValidationKind.SYNTAX,),
+    ImpactValidationKind.INTERFACE: (ImpactValidationKind.TYPE,),
+    ImpactValidationKind.UNIT: (ImpactValidationKind.TYPE,),
+    ImpactValidationKind.INTEGRATION: (
+        ImpactValidationKind.INTERFACE,
+        ImpactValidationKind.UNIT,
+    ),
+    ImpactValidationKind.CONTRACT: (
+        ImpactValidationKind.INTERFACE,
+        ImpactValidationKind.UNIT,
+    ),
+    ImpactValidationKind.RUNTIME: (
+        ImpactValidationKind.INTEGRATION,
+        ImpactValidationKind.CONTRACT,
+    ),
+}
+_IMPACT_KIND_STAGE: Mapping[ImpactValidationKind, ValidationStage] = {
+    ImpactValidationKind.SYNTAX: ValidationStage.CHEAP,
+    ImpactValidationKind.TYPE: ValidationStage.CHEAP,
+    ImpactValidationKind.INTERFACE: ValidationStage.TARGETED,
+    ImpactValidationKind.UNIT: ValidationStage.TARGETED,
+    ImpactValidationKind.INTEGRATION: ValidationStage.BROAD,
+    ImpactValidationKind.CONTRACT: ValidationStage.BROAD,
+    ImpactValidationKind.RUNTIME: ValidationStage.ATTESTATION,
+}
+
+
+def _normalized_text(value: object) -> str:
+    return " ".join(str(value or "").split())
+
+
+@dataclass(frozen=True)
+class ImpactValidationCheck:
+    """One reviewed check available to the impact DAG planner.
+
+    Empty ``targets`` means a repository-wide check.  Non-empty targets must
+    name paths or symbols present in the exact :class:`CodeImpactIndex`.
+    """
+
+    check_id: str
+    kind: ImpactValidationKind
+    command: str
+    targets: tuple[str, ...] = ()
+    acceptance_criteria: tuple[str, ...] = ()
+    depends_on: tuple[str, ...] = ()
+    source: str = "repository_policy"
+    resource_cost: int = 1
+    cacheable: bool = True
+    timeout_seconds: float | None = None
+    environment_keys: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        check_id = str(self.check_id or "").strip()
+        command = normalize_validation_command_text(str(self.command or ""))
+        if not check_id or not command:
+            raise ValidationDAGError(
+                "impact validation checks require check_id and command"
+            )
+        object.__setattr__(self, "check_id", check_id)
+        object.__setattr__(self, "command", command)
+        object.__setattr__(self, "kind", ImpactValidationKind(self.kind))
+        for name in ("targets", "acceptance_criteria", "depends_on"):
+            raw_values = getattr(self, name)
+            values = (
+                (raw_values,) if isinstance(raw_values, str) else raw_values
+            )
+            object.__setattr__(
+                self,
+                name,
+                tuple(
+                    sorted(
+                        {
+                            _normalized_text(value)
+                            for value in values
+                            if _normalized_text(value)
+                        }
+                    )
+                ),
+            )
+        object.__setattr__(
+            self,
+            "environment_keys",
+            tuple(
+                sorted(
+                    {
+                        str(value).strip()
+                        for value in (
+                            (self.environment_keys,)
+                            if isinstance(self.environment_keys, str)
+                            else self.environment_keys
+                        )
+                        if str(value).strip()
+                    }
+                )
+            ),
+        )
+        source = str(self.source or "repository_policy").strip()
+        object.__setattr__(self, "source", source)
+        if isinstance(self.resource_cost, bool) or int(self.resource_cost) < 1:
+            raise ValidationDAGError(
+                "impact validation resource_cost must be positive"
+            )
+        object.__setattr__(self, "resource_cost", int(self.resource_cost))
+        if self.timeout_seconds is not None:
+            timeout = float(self.timeout_seconds)
+            if timeout <= 0:
+                raise ValidationDAGError(
+                    "impact validation timeout must be positive"
+                )
+            object.__setattr__(self, "timeout_seconds", timeout)
+
+    def command_spec(self, *, ordinal: int) -> ValidationCommand:
+        return ValidationCommand(
+            command=self.command,
+            raw_command=self.command,
+            stage=_IMPACT_KIND_STAGE[self.kind],
+            resource_cost=self.resource_cost,
+            impact_paths=tuple(
+                target for target in self.targets if "/" in target
+            ),
+            environment_keys=self.environment_keys,
+            cacheable=self.cacheable,
+            timeout_seconds=self.timeout_seconds,
+            ordinal=ordinal,
+            validation_id=self.check_id,
+            source=self.source,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "check_id": self.check_id,
+            "kind": self.kind.value,
+            "command": self.command,
+            "targets": list(self.targets),
+            "acceptance_criteria": list(self.acceptance_criteria),
+            "depends_on": list(self.depends_on),
+            "source": self.source,
+            "resource_cost": self.resource_cost,
+            "cacheable": self.cacheable,
+            "timeout_seconds": self.timeout_seconds,
+            "environment_keys": list(self.environment_keys),
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ImpactValidationCheck":
+        def values(name: str, *aliases: str) -> tuple[Any, ...]:
+            raw: Any = value.get(name)
+            for alias in aliases:
+                if raw is None:
+                    raw = value.get(alias)
+            if raw is None:
+                return ()
+            return (raw,) if isinstance(raw, str) else tuple(raw)
+
+        return cls(
+            check_id=str(
+                value.get("check_id")
+                or value.get("validation_id")
+                or value.get("id")
+                or ""
+            ),
+            kind=ImpactValidationKind(
+                str(value.get("kind") or value.get("check_kind") or "")
+            ),
+            command=str(value.get("command") or ""),
+            targets=values("targets", "impact_targets", "impact_paths"),
+            acceptance_criteria=values("acceptance_criteria"),
+            depends_on=values("depends_on"),
+            source=str(value.get("source") or "repository_policy"),
+            resource_cost=int(value.get("resource_cost", 1)),
+            cacheable=bool(value.get("cacheable", True)),
+            timeout_seconds=(
+                float(value["timeout_seconds"])
+                if value.get("timeout_seconds") is not None
+                else None
+            ),
+            environment_keys=values("environment_keys"),
+        )
+
+
+@dataclass(frozen=True)
+class RepositoryValidationPolicy:
+    """Exact repository rules used to derive mandatory DAG nodes."""
+
+    required_kinds: tuple[ImpactValidationKind, ...] = MANDATORY_VALIDATION_KINDS
+    required_check_ids: tuple[str, ...] = ()
+    acceptance_bindings: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    kind_dependencies: Mapping[
+        ImpactValidationKind | str,
+        Sequence[ImpactValidationKind | str],
+    ] = field(
+        default_factory=lambda: dict(DEFAULT_VALIDATION_KIND_DEPENDENCIES)
+    )
+    require_acceptance_coverage: bool = True
+    require_transitive_validation: bool = True
+    policy_version: str = "repository-validation-policy-v1"
+    policy_id: str = ""
+
+    def __post_init__(self) -> None:
+        raw_required_kinds = self.required_kinds
+        required_kinds = tuple(
+            sorted(
+                {
+                    ImpactValidationKind(value)
+                    for value in (
+                        (raw_required_kinds,)
+                        if isinstance(raw_required_kinds, str)
+                        else raw_required_kinds
+                    )
+                },
+                key=lambda value: list(ImpactValidationKind).index(value),
+            )
+        )
+        object.__setattr__(self, "required_kinds", required_kinds)
+        object.__setattr__(
+            self,
+            "required_check_ids",
+            tuple(
+                sorted(
+                    {
+                        str(value).strip()
+                        for value in (
+                            (self.required_check_ids,)
+                            if isinstance(self.required_check_ids, str)
+                            else self.required_check_ids
+                        )
+                        if str(value).strip()
+                    }
+                )
+            ),
+        )
+        bindings: dict[str, tuple[str, ...]] = {}
+        for criterion, check_ids in dict(self.acceptance_bindings or {}).items():
+            normalized = _normalized_text(criterion)
+            if not normalized:
+                raise ValidationDAGError(
+                    "repository policy has an empty acceptance binding"
+                )
+            values = (
+                (check_ids,) if isinstance(check_ids, str) else check_ids
+            )
+            bindings[normalized.casefold()] = tuple(
+                sorted(
+                    {
+                        str(value).strip()
+                        for value in values
+                        if str(value).strip()
+                    }
+                )
+            )
+        object.__setattr__(
+            self, "acceptance_bindings", dict(sorted(bindings.items()))
+        )
+        dependencies: dict[
+            ImpactValidationKind, tuple[ImpactValidationKind, ...]
+        ] = {}
+        for raw_kind, raw_dependencies in dict(
+            self.kind_dependencies or {}
+        ).items():
+            kind = ImpactValidationKind(raw_kind)
+            dependencies[kind] = tuple(
+                sorted(
+                    {ImpactValidationKind(value) for value in raw_dependencies},
+                    key=lambda value: list(ImpactValidationKind).index(value),
+                )
+            )
+            if kind in dependencies[kind]:
+                raise ValidationDAGError(
+                    "validation kind cannot depend on itself"
+                )
+        for kind in ImpactValidationKind:
+            dependencies.setdefault(kind, ())
+        object.__setattr__(
+            self,
+            "kind_dependencies",
+            dict(
+                sorted(
+                    dependencies.items(),
+                    key=lambda item: list(ImpactValidationKind).index(item[0]),
+                )
+            ),
+        )
+        version = str(self.policy_version or "").strip()
+        if not version:
+            raise ValidationDAGError(
+                "repository validation policy version is required"
+            )
+        object.__setattr__(self, "policy_version", version)
+        object.__setattr__(
+            self,
+            "require_acceptance_coverage",
+            bool(self.require_acceptance_coverage),
+        )
+        object.__setattr__(
+            self,
+            "require_transitive_validation",
+            bool(self.require_transitive_validation),
+        )
+        claimed = str(self.policy_id or "").strip()
+        object.__setattr__(self, "policy_id", "")
+        actual = _sha256_bytes(
+            _canonical_json(self._identity_payload()).encode("utf-8")
+        )
+        if claimed and claimed != actual:
+            raise ValidationDAGError(
+                "repository validation policy identity mismatch"
+            )
+        object.__setattr__(self, "policy_id", actual)
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "policy_version": self.policy_version,
+            "required_kinds": [value.value for value in self.required_kinds],
+            "required_check_ids": list(self.required_check_ids),
+            "acceptance_bindings": self.acceptance_bindings,
+            "kind_dependencies": {
+                kind.value: [value.value for value in dependencies]
+                for kind, dependencies in self.kind_dependencies.items()
+            },
+            "require_acceptance_coverage": self.require_acceptance_coverage,
+            "require_transitive_validation": self.require_transitive_validation,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity_payload(), "policy_id": self.policy_id}
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RepositoryValidationPolicy":
+        raw_kinds = value.get(
+            "required_kinds",
+            [kind.value for kind in MANDATORY_VALIDATION_KINDS],
+        )
+        raw_check_ids = value.get("required_check_ids") or ()
+        return cls(
+            required_kinds=tuple(
+                ImpactValidationKind(item)
+                for item in (
+                    (raw_kinds,)
+                    if isinstance(raw_kinds, str)
+                    else raw_kinds
+                )
+            ),
+            required_check_ids=(
+                (raw_check_ids,)
+                if isinstance(raw_check_ids, str)
+                else tuple(raw_check_ids)
+            ),
+            acceptance_bindings=value.get("acceptance_bindings") or {},
+            kind_dependencies=value.get("kind_dependencies")
+            or dict(DEFAULT_VALIDATION_KIND_DEPENDENCIES),
+            require_acceptance_coverage=bool(
+                value.get("require_acceptance_coverage", True)
+            ),
+            require_transitive_validation=bool(
+                value.get("require_transitive_validation", True)
+            ),
+            policy_version=str(
+                value.get("policy_version")
+                or "repository-validation-policy-v1"
+            ),
+            policy_id=str(value.get("policy_id") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class ImpactValidationPlanNode:
+    check: ImpactValidationCheck
+    selected: bool
+    mandatory: bool
+    selection_reasons: tuple[str, ...] = ()
+    skipped_reason: str = ""
+    depends_on: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.check, ImpactValidationCheck):
+            object.__setattr__(
+                self, "check", ImpactValidationCheck.from_dict(self.check)
+            )
+        object.__setattr__(self, "selected", bool(self.selected))
+        object.__setattr__(self, "mandatory", bool(self.mandatory))
+        object.__setattr__(
+            self,
+            "selection_reasons",
+            tuple(
+                sorted(
+                    {
+                        str(value).strip()
+                        for value in self.selection_reasons
+                        if str(value).strip()
+                    }
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "depends_on",
+            tuple(
+                sorted(
+                    {
+                        str(value).strip()
+                        for value in self.depends_on
+                        if str(value).strip()
+                    }
+                )
+            ),
+        )
+        object.__setattr__(
+            self, "skipped_reason", str(self.skipped_reason or "").strip()
+        )
+        if self.selected and not self.selection_reasons:
+            raise ValidationDAGError(
+                "selected impact check requires selection reasons"
+            )
+        if self.selected and self.skipped_reason:
+            raise ValidationDAGError(
+                "selected impact check cannot have a skipped reason"
+            )
+        if not self.selected and not self.skipped_reason:
+            raise ValidationDAGError(
+                "skipped impact check requires a reason"
+            )
+        if self.mandatory and not self.selected:
+            raise ValidationDAGError(
+                "mandatory impact check must be selected"
+            )
+
+    @property
+    def check_id(self) -> str:
+        return self.check.check_id
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            **self.check.to_dict(),
+            "selected": self.selected,
+            "mandatory": self.mandatory,
+            "selection_reasons": list(self.selection_reasons),
+            "selection_reason": ";".join(self.selection_reasons),
+            "skipped_reason": self.skipped_reason,
+            "depends_on": list(self.depends_on),
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ImpactValidationPlanNode":
+        return cls(
+            check=ImpactValidationCheck.from_dict(value),
+            selected=bool(value.get("selected", False)),
+            mandatory=bool(value.get("mandatory", False)),
+            selection_reasons=tuple(
+                value.get("selection_reasons")
+                or (
+                    (value.get("selection_reason"),)
+                    if value.get("selection_reason")
+                    else ()
+                )
+            ),
+            skipped_reason=str(value.get("skipped_reason") or ""),
+            depends_on=tuple(value.get("depends_on") or ()),
+        )
+
+
+@dataclass(frozen=True)
+class ImpactSelectedValidationDAG:
+    """Immutable selection plan bound to tree, impact evidence, and policy."""
+
+    repository_tree_id: str
+    impact_index: CodeImpactIndex
+    impact: CodeImpactResult
+    policy: RepositoryValidationPolicy
+    acceptance_criteria: tuple[str, ...]
+    nodes: tuple[ImpactValidationPlanNode, ...]
+    uncovered_impact: tuple[str, ...] = ()
+    dag_id: str = ""
+
+    def __post_init__(self) -> None:
+        tree_id = str(self.repository_tree_id or "").strip()
+        if (
+            not tree_id
+            or tree_id != self.impact.repository_tree_id
+            or tree_id != self.impact_index.repository_tree_id
+        ):
+            raise ValidationDAGError(
+                "impact validation DAG tree does not match impact evidence"
+            )
+        if self.impact.index_id != self.impact_index.index_id:
+            raise ValidationDAGError(
+                "impact validation DAG result is stale for its index"
+            )
+        recomputed = self.impact_index.impact(
+            changed_symbols=self.impact.changed_symbols,
+            changed_paths=self.impact.changed_paths,
+        )
+        if recomputed.to_dict() != self.impact.to_dict():
+            raise ValidationDAGError(
+                "impact validation DAG does not contain the complete graph closure"
+            )
+        object.__setattr__(self, "repository_tree_id", tree_id)
+        object.__setattr__(
+            self,
+            "acceptance_criteria",
+            tuple(
+                sorted(
+                    {
+                        _normalized_text(value)
+                        for value in self.acceptance_criteria
+                        if _normalized_text(value)
+                    }
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "nodes",
+            tuple(sorted(self.nodes, key=lambda value: value.check_id)),
+        )
+        object.__setattr__(
+            self,
+            "uncovered_impact",
+            tuple(
+                sorted(
+                    {
+                        str(value).strip()
+                        for value in self.uncovered_impact
+                        if str(value).strip()
+                    }
+                )
+            ),
+        )
+        ids = [node.check_id for node in self.nodes]
+        if len(ids) != len(set(ids)):
+            raise ValidationDAGError(
+                "impact validation DAG contains duplicate check IDs"
+            )
+        selected = {node.check_id for node in self.nodes if node.selected}
+        for node in self.nodes:
+            unknown = set(node.depends_on) - selected
+            if unknown:
+                raise ValidationDAGError(
+                    f"check {node.check_id!r} has unselected dependencies: "
+                    + ", ".join(sorted(unknown))
+                )
+        visiting: set[str] = set()
+        visited: set[str] = set()
+        by_id = {node.check_id: node for node in self.nodes}
+
+        def visit(check_id: str) -> None:
+            if check_id in visited:
+                return
+            if check_id in visiting:
+                raise ValidationDAGError(
+                    "impact validation DAG contains a dependency cycle"
+                )
+            visiting.add(check_id)
+            for dependency in by_id[check_id].depends_on:
+                visit(dependency)
+            visiting.remove(check_id)
+            visited.add(check_id)
+
+        for check_id in sorted(selected):
+            visit(check_id)
+        claimed = str(self.dag_id or "").strip()
+        object.__setattr__(self, "dag_id", "")
+        actual = _sha256_bytes(
+            _canonical_json(self._identity_payload()).encode("utf-8")
+        )
+        if claimed and claimed != actual:
+            raise ValidationDAGError(
+                "impact validation DAG identity mismatch"
+            )
+        object.__setattr__(self, "dag_id", actual)
+
+    @property
+    def selected_nodes(self) -> tuple[ImpactValidationPlanNode, ...]:
+        return tuple(node for node in self.nodes if node.selected)
+
+    @property
+    def coverage_complete(self) -> bool:
+        return not self.uncovered_impact
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema": IMPACT_SELECTED_VALIDATION_DAG_SCHEMA,
+            "repository_tree_id": self.repository_tree_id,
+            "impact_index": self.impact_index.to_dict(),
+            "impact": self.impact.to_dict(),
+            "policy": self.policy.to_dict(),
+            "acceptance_criteria": list(self.acceptance_criteria),
+            "nodes": [node.to_dict() for node in self.nodes],
+            "uncovered_impact": list(self.uncovered_impact),
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity_payload(), "dag_id": self.dag_id}
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "ImpactSelectedValidationDAG":
+        schema = str(
+            value.get("schema") or IMPACT_SELECTED_VALIDATION_DAG_SCHEMA
+        )
+        if schema != IMPACT_SELECTED_VALIDATION_DAG_SCHEMA:
+            raise ValidationDAGError(
+                f"unsupported impact validation DAG schema: {schema}"
+            )
+        impact_value = value.get("impact")
+        index_value = value.get("impact_index")
+        policy_value = value.get("policy")
+        if (
+            not isinstance(impact_value, Mapping)
+            or not isinstance(index_value, Mapping)
+            or not isinstance(policy_value, Mapping)
+        ):
+            raise ValidationDAGError(
+                "impact validation DAG is missing index, impact, or policy"
+            )
+        return cls(
+            repository_tree_id=str(value.get("repository_tree_id") or ""),
+            impact_index=CodeImpactIndex.from_dict(index_value),
+            impact=CodeImpactResult.from_dict(impact_value),
+            policy=RepositoryValidationPolicy.from_dict(policy_value),
+            acceptance_criteria=tuple(
+                value.get("acceptance_criteria") or ()
+            ),
+            nodes=tuple(
+                ImpactValidationPlanNode.from_dict(item)
+                for item in value.get("nodes") or ()
+            ),
+            uncovered_impact=tuple(value.get("uncovered_impact") or ()),
+            dag_id=str(value.get("dag_id") or ""),
+        )
+
+
+def build_impact_selected_validation_dag(
+    *,
+    impact_index: CodeImpactIndex | Mapping[str, Any],
+    checks: Iterable[ImpactValidationCheck | Mapping[str, Any]],
+    changed_symbols: Iterable[
+        str | ChangedASTSymbol | Mapping[str, Any]
+    ] = (),
+    changed_paths: Iterable[str] = (),
+    acceptance_criteria: Iterable[str] = (),
+    repository_policy: (
+        RepositoryValidationPolicy | Mapping[str, Any] | None
+    ) = None,
+) -> ImpactSelectedValidationDAG:
+    """Derive all mandatory and impacted nodes without executing commands."""
+
+    index = (
+        impact_index
+        if isinstance(impact_index, CodeImpactIndex)
+        else CodeImpactIndex.from_dict(impact_index)
+    )
+    policy = (
+        repository_policy
+        if isinstance(repository_policy, RepositoryValidationPolicy)
+        else RepositoryValidationPolicy.from_dict(repository_policy)
+        if repository_policy is not None
+        else RepositoryValidationPolicy()
+    )
+    check_values = tuple(
+        value
+        if isinstance(value, ImpactValidationCheck)
+        else ImpactValidationCheck.from_dict(value)
+        for value in checks
+    )
+    check_by_id = {check.check_id: check for check in check_values}
+    if len(check_by_id) != len(check_values):
+        raise ValidationDAGError(
+            "impact validation catalog contains duplicate check IDs"
+        )
+    unknown_dependencies = {
+        dependency
+        for check in check_values
+        for dependency in check.depends_on
+        if dependency not in check_by_id
+    }
+    if unknown_dependencies:
+        raise ValidationDAGError(
+            "impact validation catalog references unknown dependencies: "
+            + ", ".join(sorted(unknown_dependencies))
+        )
+
+    symbol_changes = tuple(changed_symbols)
+    path_changes = tuple(changed_paths)
+    interface_changed = any(
+        (
+            value.interface_changed
+            if isinstance(value, ChangedASTSymbol)
+            else bool(value.get("interface_changed", False))
+            if isinstance(value, Mapping)
+            else False
+        )
+        for value in symbol_changes
+    )
+    impact = index.impact(
+        changed_symbols=symbol_changes,
+        changed_paths=path_changes,
+    )
+    criteria = tuple(
+        sorted(
+            {
+                _normalized_text(value)
+                for value in acceptance_criteria
+                if _normalized_text(value)
+            }
+        )
+    )
+    direct_targets = set(impact.changed_symbols) | set(impact.changed_paths)
+    affected_targets = set(impact.affected_symbols) | set(impact.affected_paths)
+    selection_reasons: dict[str, set[str]] = {
+        check.check_id: set() for check in check_values
+    }
+    mandatory: set[str] = set()
+    uncovered: set[str] = {
+        *(f"unknown_changed_symbol:{value}" for value in impact.uncovered_symbols),
+        *(f"unknown_changed_path:{value}" for value in impact.uncovered_paths),
+    }
+
+    applicable: dict[str, bool] = {}
+    for check in check_values:
+        matched_direct = direct_targets.intersection(check.targets)
+        matched_transitive = affected_targets.intersection(check.targets)
+        applicable[check.check_id] = not check.targets or bool(
+            matched_transitive
+        )
+        if not check.targets:
+            selection_reasons[check.check_id].add(
+                "repository_wide_policy_check"
+            )
+        if matched_direct:
+            selection_reasons[check.check_id].add(
+                "changed_ast_or_path:" + ",".join(sorted(matched_direct))
+            )
+        transitive_only = matched_transitive - direct_targets
+        if transitive_only:
+            selection_reasons[check.check_id].add(
+                "transitive_dependency_impact:"
+                + ",".join(sorted(transitive_only))
+            )
+        if (
+            policy.require_transitive_validation
+            and check.check_id in impact.required_validation_ids
+        ):
+            selection_reasons[check.check_id].add(
+                "dependency_graph_validation_target"
+            )
+            mandatory.add(check.check_id)
+        if interface_changed and check.kind in {
+            ImpactValidationKind.INTERFACE,
+            ImpactValidationKind.CONTRACT,
+        }:
+            selection_reasons[check.check_id].add(
+                "changed_ast_interface"
+            )
+
+    for kind in policy.required_kinds:
+        candidates = tuple(
+            check
+            for check in check_values
+            if check.kind is kind and applicable[check.check_id]
+        )
+        if not candidates:
+            uncovered.add(f"missing_mandatory_{kind.value}_check")
+            continue
+        for check in candidates:
+            mandatory.add(check.check_id)
+            selection_reasons[check.check_id].add(
+                f"repository_policy_requires:{kind.value}"
+            )
+
+    for check_id in policy.required_check_ids:
+        check = check_by_id.get(check_id)
+        if check is None:
+            uncovered.add(f"missing_policy_check:{check_id}")
+        elif not applicable[check_id]:
+            uncovered.add(f"policy_check_does_not_cover_impact:{check_id}")
+        else:
+            mandatory.add(check_id)
+            selection_reasons[check_id].add(
+                "repository_policy_requires_check"
+            )
+
+    criterion_bindings = dict(policy.acceptance_bindings)
+    for check in check_values:
+        for criterion in check.acceptance_criteria:
+            criterion_bindings.setdefault(
+                _normalized_text(criterion).casefold(), ()
+            )
+            criterion_bindings[_normalized_text(criterion).casefold()] = tuple(
+                sorted(
+                    {
+                        *criterion_bindings[
+                            _normalized_text(criterion).casefold()
+                        ],
+                        check.check_id,
+                    }
+                )
+            )
+    for criterion in criteria:
+        bound_ids = tuple(
+            criterion_bindings.get(criterion.casefold(), ())
+        )
+        covered = False
+        for check_id in bound_ids:
+            check = check_by_id.get(check_id)
+            if check is None:
+                uncovered.add(
+                    f"acceptance_references_missing_check:{check_id}"
+                )
+            elif applicable[check_id]:
+                covered = True
+                mandatory.add(check_id)
+                selection_reasons[check_id].add(
+                    f"task_acceptance:{criterion}"
+                )
+        if policy.require_acceptance_coverage and not covered:
+            uncovered.add(f"uncovered_acceptance:{criterion}")
+
+    if policy.require_transitive_validation:
+        for validation_id in impact.required_validation_ids:
+            check = check_by_id.get(validation_id)
+            if check is None:
+                uncovered.add(
+                    f"missing_dependency_validation:{validation_id}"
+                )
+            elif not applicable[validation_id]:
+                uncovered.add(
+                    f"dependency_validation_target_mismatch:{validation_id}"
+                )
+
+    selected = {
+        check_id
+        for check_id, reasons in selection_reasons.items()
+        if reasons and applicable[check_id]
+    }
+    selected.update(mandatory)
+    # Explicit check dependencies are authoritative reviewed edges.
+    pending = list(selected)
+    while pending:
+        check_id = pending.pop()
+        for dependency in check_by_id[check_id].depends_on:
+            if dependency not in selected:
+                selected.add(dependency)
+                selection_reasons[dependency].add(
+                    f"prerequisite_for:{check_id}"
+                )
+                pending.append(dependency)
+
+    # Repository kind dependencies bind each selected check to every selected
+    # prerequisite check of the required kind.  Branches such as interface and
+    # unit, or integration and contract, remain independent and can run in
+    # parallel after their common prerequisites.
+    dependencies_by_id: dict[str, set[str]] = {
+        check_id: set(check_by_id[check_id].depends_on)
+        for check_id in selected
+    }
+    for check_id in sorted(selected):
+        check = check_by_id[check_id]
+        for dependency_kind in policy.kind_dependencies[check.kind]:
+            candidates = {
+                candidate_id
+                for candidate_id in selected
+                if check_by_id[candidate_id].kind is dependency_kind
+            }
+            if not candidates:
+                uncovered.add(
+                    f"missing_{dependency_kind.value}_prerequisite_for:{check_id}"
+                )
+            dependencies_by_id[check_id].update(candidates)
+
+    nodes = tuple(
+        ImpactValidationPlanNode(
+            check=check,
+            selected=check.check_id in selected,
+            mandatory=check.check_id in mandatory,
+            selection_reasons=tuple(selection_reasons[check.check_id]),
+            skipped_reason=(
+                ""
+                if check.check_id in selected
+                else "no_changed_symbol_dependency_acceptance_or_policy_match"
+            ),
+            depends_on=tuple(
+                sorted(dependencies_by_id.get(check.check_id, ()))
+            ),
+        )
+        for check in check_values
+    )
+    return ImpactSelectedValidationDAG(
+        repository_tree_id=index.repository_tree_id,
+        impact_index=index,
+        impact=impact,
+        policy=policy,
+        acceptance_criteria=criteria,
+        nodes=nodes,
+        uncovered_impact=tuple(uncovered),
+    )
+
+
+@dataclass(frozen=True)
+class ImpactValidationNodeReceipt:
+    """Complete outcome for one selected or skipped catalog entry."""
+
+    check_id: str
+    kind: ImpactValidationKind
+    command: str
+    disposition: ValidationNodeDisposition
+    reason: str
+    mandatory: bool
+    selection_reasons: tuple[str, ...] = ()
+    skipped_reason: str = ""
+    depends_on: tuple[str, ...] = ()
+    blocked_by: tuple[str, ...] = ()
+    returncode: int | None = None
+    result_digest: str = ""
+    cache_hit: bool = False
+    duration_seconds: float = 0.0
+    observed_seeded_defect_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "check_id",
+            "command",
+            "reason",
+            "skipped_reason",
+            "result_digest",
+            "observed_seeded_defect_id",
+        ):
+            object.__setattr__(
+                self, name, str(getattr(self, name) or "").strip()
+            )
+        if not self.check_id or not self.command or not self.reason:
+            raise ValidationDAGError(
+                "impact validation node receipt is incomplete"
+            )
+        object.__setattr__(self, "kind", ImpactValidationKind(self.kind))
+        object.__setattr__(
+            self, "disposition", ValidationNodeDisposition(self.disposition)
+        )
+        object.__setattr__(self, "mandatory", bool(self.mandatory))
+        for name in ("selection_reasons", "depends_on", "blocked_by"):
+            object.__setattr__(
+                self,
+                name,
+                tuple(
+                    sorted(
+                        {
+                            str(value).strip()
+                            for value in getattr(self, name)
+                            if str(value).strip()
+                        }
+                    )
+                ),
+            )
+        if self.returncode is not None:
+            object.__setattr__(self, "returncode", int(self.returncode))
+        duration = float(self.duration_seconds)
+        if duration < 0:
+            raise ValidationDAGError(
+                "impact validation duration cannot be negative"
+            )
+        object.__setattr__(self, "duration_seconds", duration)
+        executed = self.disposition in {
+            ValidationNodeDisposition.SUCCEEDED,
+            ValidationNodeDisposition.FAILED,
+        }
+        if executed and (
+            self.returncode is None or not self.result_digest
+        ):
+            raise ValidationDAGError(
+                "executed impact validation requires a bound result"
+            )
+        if (
+            self.disposition is ValidationNodeDisposition.SUCCEEDED
+            and self.returncode != 0
+        ):
+            raise ValidationDAGError(
+                "successful impact validation has a failing return code"
+            )
+        if (
+            self.disposition is ValidationNodeDisposition.FAILED
+            and self.returncode == 0
+        ):
+            raise ValidationDAGError(
+                "failed impact validation has a successful return code"
+            )
+        if not executed and (
+            self.returncode is not None
+            or self.result_digest
+            or self.observed_seeded_defect_id
+        ):
+            raise ValidationDAGError(
+                "unexecuted impact validation cannot contain a result"
+            )
+        if (
+            self.disposition is ValidationNodeDisposition.OMITTED
+            and not self.skipped_reason
+        ):
+            raise ValidationDAGError(
+                "omitted impact validation requires its skipped reason"
+            )
+        if (
+            self.disposition is not ValidationNodeDisposition.OMITTED
+            and self.skipped_reason
+        ):
+            raise ValidationDAGError(
+                "selected impact validation cannot have a skipped reason"
+            )
+        if (
+            self.disposition is not ValidationNodeDisposition.BLOCKED
+            and self.blocked_by
+        ):
+            raise ValidationDAGError(
+                "only blocked impact validation can name blockers"
+            )
+        allowed_reasons = {
+            ValidationNodeDisposition.SUCCEEDED: {"validation_passed"},
+            ValidationNodeDisposition.FAILED: {"validation_failed"},
+            ValidationNodeDisposition.OMITTED: {"not_selected"},
+            ValidationNodeDisposition.BLOCKED: {
+                "uncovered_validation_impact",
+                "blocked_by_failed_dependency",
+                "fail_fast_after_failure",
+                "scheduler_state_inconsistent",
+            },
+        }
+        if self.reason not in allowed_reasons.get(self.disposition, set()):
+            raise ValidationDAGError(
+                "impact validation reason does not match its disposition"
+            )
+        if (
+            self.reason == "blocked_by_failed_dependency"
+        ) != bool(self.blocked_by):
+            raise ValidationDAGError(
+                "impact validation blockers do not match the blocked reason"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "check_id": self.check_id,
+            "kind": self.kind.value,
+            "command": self.command,
+            "disposition": self.disposition.value,
+            "reason": self.reason,
+            "mandatory": self.mandatory,
+            "selection_reasons": list(self.selection_reasons),
+            "selection_reason": ";".join(self.selection_reasons),
+            "skipped_reason": self.skipped_reason,
+            "depends_on": list(self.depends_on),
+            "blocked_by": list(self.blocked_by),
+            "returncode": self.returncode,
+            "result_digest": self.result_digest,
+            "cache_hit": self.cache_hit,
+            "duration_seconds": self.duration_seconds,
+            "observed_seeded_defect_id": self.observed_seeded_defect_id,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "ImpactValidationNodeReceipt":
+        return cls(
+            check_id=str(value.get("check_id") or ""),
+            kind=ImpactValidationKind(str(value.get("kind") or "")),
+            command=str(value.get("command") or ""),
+            disposition=ValidationNodeDisposition(
+                str(value.get("disposition") or "")
+            ),
+            reason=str(value.get("reason") or ""),
+            mandatory=bool(value.get("mandatory", False)),
+            selection_reasons=tuple(
+                value.get("selection_reasons") or ()
+            ),
+            skipped_reason=str(value.get("skipped_reason") or ""),
+            depends_on=tuple(value.get("depends_on") or ()),
+            blocked_by=tuple(value.get("blocked_by") or ()),
+            returncode=(
+                int(value["returncode"])
+                if value.get("returncode") is not None
+                else None
+            ),
+            result_digest=str(value.get("result_digest") or ""),
+            cache_hit=bool(value.get("cache_hit", False)),
+            duration_seconds=float(value.get("duration_seconds") or 0.0),
+            observed_seeded_defect_id=str(
+                value.get("observed_seeded_defect_id") or ""
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ImpactValidationDAGReceipt:
+    """Tree-bound execution receipt retaining the entire check population."""
+
+    dag: ImpactSelectedValidationDAG
+    nodes: tuple[ImpactValidationNodeReceipt, ...]
+    passed: bool
+    started_at: str
+    finished_at: str
+    time_to_first_useful_failure_seconds: float | None = None
+    receipt_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "nodes", tuple(self.nodes))
+        if not str(self.started_at or "").strip() or not str(
+            self.finished_at or ""
+        ).strip():
+            raise ValidationDAGError(
+                "impact validation receipt requires timestamps"
+            )
+        plan_ids = {node.check_id for node in self.dag.nodes}
+        receipt_ids = {node.check_id for node in self.nodes}
+        if plan_ids != receipt_ids or len(receipt_ids) != len(self.nodes):
+            raise ValidationDAGError(
+                "impact validation receipt population is incomplete"
+            )
+        plan_by_id = {node.check_id: node for node in self.dag.nodes}
+        for node in self.nodes:
+            planned = plan_by_id[node.check_id]
+            if (
+                node.kind is not planned.check.kind
+                or node.command != planned.check.command
+                or node.mandatory != planned.mandatory
+                or node.depends_on != planned.depends_on
+                or node.selection_reasons != planned.selection_reasons
+            ):
+                raise ValidationDAGError(
+                    f"impact validation result is not bound to plan node "
+                    f"{node.check_id!r}"
+                )
+            if planned.selected == (
+                node.disposition is ValidationNodeDisposition.OMITTED
+            ):
+                raise ValidationDAGError(
+                    "impact validation selection disposition mismatch"
+                )
+            if not planned.selected and (
+                node.skipped_reason != planned.skipped_reason
+            ):
+                raise ValidationDAGError(
+                    "impact validation skipped reason mismatch"
+                )
+        actual_passed = (
+            self.dag.coverage_complete
+            and all(
+                node.disposition is ValidationNodeDisposition.SUCCEEDED
+                for node in self.nodes
+                if node.check_id
+                in {value.check_id for value in self.dag.selected_nodes}
+            )
+        )
+        failure_present = bool(self.dag.uncovered_impact) or any(
+            node.disposition is ValidationNodeDisposition.FAILED
+            for node in self.nodes
+        )
+        if self.time_to_first_useful_failure_seconds is not None:
+            elapsed = float(self.time_to_first_useful_failure_seconds)
+            if elapsed < 0:
+                raise ValidationDAGError(
+                    "time to first useful failure cannot be negative"
+                )
+            object.__setattr__(
+                self, "time_to_first_useful_failure_seconds", elapsed
+            )
+        if failure_present != (
+            self.time_to_first_useful_failure_seconds is not None
+        ):
+            raise ValidationDAGError(
+                "time to first useful failure does not match receipt outcome"
+            )
+        if bool(self.passed) != actual_passed:
+            raise ValidationDAGError(
+                "impact validation receipt pass state is inconsistent"
+            )
+        object.__setattr__(self, "passed", actual_passed)
+        claimed = str(self.receipt_id or "").strip()
+        object.__setattr__(self, "receipt_id", "")
+        actual = _sha256_bytes(
+            _canonical_json(self._identity_payload()).encode("utf-8")
+        )
+        if claimed and claimed != actual:
+            raise ValidationDAGError(
+                "impact validation receipt identity mismatch"
+            )
+        object.__setattr__(self, "receipt_id", actual)
+
+    @property
+    def uncovered_impact(self) -> tuple[str, ...]:
+        return self.dag.uncovered_impact
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema": IMPACT_SELECTED_VALIDATION_RECEIPT_SCHEMA,
+            "dag": self.dag.to_dict(),
+            "nodes": [node.to_dict() for node in self.nodes],
+            "passed": self.passed,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "time_to_first_useful_failure_seconds": (
+                self.time_to_first_useful_failure_seconds
+            ),
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity_payload(), "receipt_id": self.receipt_id}
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "ImpactValidationDAGReceipt":
+        schema = str(
+            value.get("schema")
+            or IMPACT_SELECTED_VALIDATION_RECEIPT_SCHEMA
+        )
+        if schema != IMPACT_SELECTED_VALIDATION_RECEIPT_SCHEMA:
+            raise ValidationDAGError(
+                f"unsupported impact validation receipt schema: {schema}"
+            )
+        dag_value = value.get("dag")
+        if not isinstance(dag_value, Mapping):
+            raise ValidationDAGError(
+                "impact validation receipt is missing its DAG"
+            )
+        return cls(
+            dag=ImpactSelectedValidationDAG.from_dict(dag_value),
+            nodes=tuple(
+                ImpactValidationNodeReceipt.from_dict(item)
+                for item in value.get("nodes") or ()
+            ),
+            passed=bool(value.get("passed", False)),
+            started_at=str(value.get("started_at") or ""),
+            finished_at=str(value.get("finished_at") or ""),
+            time_to_first_useful_failure_seconds=(
+                float(value["time_to_first_useful_failure_seconds"])
+                if value.get("time_to_first_useful_failure_seconds")
+                is not None
+                else None
+            ),
+            receipt_id=str(value.get("receipt_id") or ""),
+        )
 
 
 @dataclass(frozen=True)
@@ -2622,6 +3891,445 @@ class ValidationScheduler:
             ).encode("utf-8")
         )
 
+    def run_impact_selected(
+        self,
+        checks: Iterable[ImpactValidationCheck | Mapping[str, Any]],
+        *,
+        workspace_path: Path | str,
+        impact_index: CodeImpactIndex | Mapping[str, Any],
+        changed_symbols: Iterable[
+            str | ChangedASTSymbol | Mapping[str, Any]
+        ] = (),
+        changed_paths: Iterable[str] = (),
+        acceptance_criteria: Iterable[str] = (),
+        repository_policy: (
+            RepositoryValidationPolicy | Mapping[str, Any] | None
+        ) = None,
+        proposal_validation: Any | None = None,
+        target_tree_id: str = "",
+        environment: Mapping[str, object] | None = None,
+        dependency_state: (
+            Mapping[str, object] | Sequence[object] | str | None
+        ) = None,
+        runner: ValidationRunner | None = None,
+    ) -> dict[str, Any]:
+        """Plan and execute the AST- and policy-derived validation DAG.
+
+        This method shares command execution, exact-input caching, resource
+        admission, and the worker pool implementation with the legacy and
+        proposal-bound scheduler entry points.  It adds explicit check
+        dependencies rather than creating a competing subprocess scheduler.
+        """
+
+        index = (
+            impact_index
+            if isinstance(impact_index, CodeImpactIndex)
+            else CodeImpactIndex.from_dict(impact_index)
+        )
+        check_values = tuple(
+            value
+            if isinstance(value, ImpactValidationCheck)
+            else ImpactValidationCheck.from_dict(value)
+            for value in checks
+        )
+        symbol_changes = tuple(changed_symbols)
+        path_changes = tuple(changed_paths)
+        proposal_receipt: dict[str, Any] | None = None
+        if proposal_validation is not None:
+            from .proposal_validation import ProposalValidationResult
+
+            proposal_result = (
+                proposal_validation
+                if isinstance(proposal_validation, ProposalValidationResult)
+                else ProposalValidationResult.from_dict(proposal_validation)
+            )
+            if not proposal_result.accepted:
+                bound = proposal_result.with_dispatch_outcome(
+                    expensive_node_ids=tuple(
+                        check.check_id for check in check_values
+                    ),
+                    expensive_checks_started=0,
+                )
+                blocked_nodes = [
+                    {
+                        "check_id": check.check_id,
+                        "kind": check.kind.value,
+                        "command": check.command,
+                        "disposition": (
+                            ValidationNodeDisposition.BLOCKED.value
+                        ),
+                        "reason": "proposal_gate_failed",
+                    }
+                    for check in check_values
+                ]
+                return {
+                    "attempted": False,
+                    "passed": False,
+                    "returncode": 78,
+                    "error": "proposal_validation_failed",
+                    "reason": "proposal_gate_failed",
+                    "results": [],
+                    "nodes": blocked_nodes,
+                    "impact_validation_dag": None,
+                    "impact_validation_receipt": None,
+                    "proposal_validation": bound.to_dict(),
+                    "proposal_receipt": bound.receipt.to_dict(),
+                    "selection_reasons": {},
+                    "skipped_reasons": {},
+                    "uncovered_impact": ["proposal_validation_failed"],
+                    "time_to_first_useful_failure_seconds": 0.0,
+                    "time_to_first_useful_failure_ms": 0.0,
+                }
+            if (
+                proposal_result.proposal.repository_tree_id
+                != index.repository_tree_id
+            ):
+                raise ValidationDAGError(
+                    "code impact index is stale for the accepted proposal"
+                )
+            path_changes = tuple(
+                sorted(
+                    {
+                        *path_changes,
+                        *proposal_result.proposal.changed_paths,
+                    }
+                )
+            )
+            bound = proposal_result.with_dispatch_outcome(
+                expensive_node_ids=(),
+                expensive_checks_started=0,
+            )
+            proposal_receipt = bound.receipt.to_dict()
+
+        requested_tree = str(target_tree_id or index.repository_tree_id).strip()
+        if requested_tree != index.repository_tree_id:
+            raise ValidationDAGError(
+                "target tree does not match the code impact index"
+            )
+        plan = build_impact_selected_validation_dag(
+            impact_index=index,
+            checks=check_values,
+            changed_symbols=symbol_changes,
+            changed_paths=path_changes,
+            acceptance_criteria=acceptance_criteria,
+            repository_policy=repository_policy,
+        )
+        workspace = Path(workspace_path)
+        environment_source = os.environ if environment is None else environment
+        execution_environment = {
+            str(key): str(value) for key, value in environment_source.items()
+        }
+        dependencies = (
+            collect_dependency_state(
+                workspace, changed_files=plan.impact.affected_paths
+            )
+            if dependency_state is None
+            else dependency_state
+        )
+        command_runner = runner or self.runner
+        started_at = utc_now()
+        started_monotonic = time.monotonic()
+        selected_nodes = {node.check_id: node for node in plan.selected_nodes}
+        ordered_selected = tuple(
+            sorted(selected_nodes.values(), key=lambda node: node.check_id)
+        )
+        specs = {
+            node.check_id: node.check.command_spec(ordinal=ordinal)
+            for ordinal, node in enumerate(ordered_selected)
+        }
+        raw_results: dict[str, dict[str, object]] = {}
+        outcomes: dict[str, ImpactValidationNodeReceipt] = {}
+        first_failure_id = ""
+        first_failure_elapsed: float | None = None
+
+        for node in plan.nodes:
+            if not node.selected:
+                outcomes[node.check_id] = ImpactValidationNodeReceipt(
+                    check_id=node.check_id,
+                    kind=node.check.kind,
+                    command=node.check.command,
+                    disposition=ValidationNodeDisposition.OMITTED,
+                    reason="not_selected",
+                    mandatory=False,
+                    selection_reasons=(),
+                    skipped_reason=node.skipped_reason,
+                    depends_on=(),
+                )
+
+        if not plan.coverage_complete:
+            first_failure_elapsed = 0.0
+            for node in ordered_selected:
+                outcomes[node.check_id] = ImpactValidationNodeReceipt(
+                    check_id=node.check_id,
+                    kind=node.check.kind,
+                    command=node.check.command,
+                    disposition=ValidationNodeDisposition.BLOCKED,
+                    reason="uncovered_validation_impact",
+                    mandatory=node.mandatory,
+                    selection_reasons=node.selection_reasons,
+                    depends_on=node.depends_on,
+                    blocked_by=(),
+                )
+        else:
+            pending = set(selected_nodes)
+            active: dict[
+                Future[dict[str, object]], tuple[str, int, float]
+            ] = {}
+            successful: set[str] = set()
+            failed_ids: set[str] = set()
+            occupied = 0
+            fail_fast = False
+
+            def execute(check_id: str) -> dict[str, object]:
+                return self._execute(
+                    specs[check_id],
+                    workspace_path=workspace,
+                    target_commit=index.repository_tree_id,
+                    environment=execution_environment,
+                    dependency_state={
+                        "candidate": _json_safe(dependencies),
+                        "impact_index_id": index.index_id,
+                        "policy_id": plan.policy.policy_id,
+                    },
+                    runner=command_runner,
+                )
+
+            def failed_ancestors(check_id: str) -> tuple[str, ...]:
+                found: set[str] = set()
+                queue = list(selected_nodes[check_id].depends_on)
+                visited: set[str] = set()
+                while queue:
+                    dependency = queue.pop()
+                    if dependency in visited:
+                        continue
+                    visited.add(dependency)
+                    if dependency in failed_ids:
+                        found.add(dependency)
+                    queue.extend(selected_nodes[dependency].depends_on)
+                return tuple(sorted(found))
+
+            with ThreadPoolExecutor(
+                max_workers=self.max_workers,
+                thread_name_prefix="impact-validation",
+            ) as pool:
+                while pending or active:
+                    # A failed prerequisite blocks descendants.  Once a useful
+                    # failure is known, unrelated queued work is also retained
+                    # as a fail-fast receipt rather than silently disappearing.
+                    for check_id in sorted(tuple(pending)):
+                        blocked_by = failed_ancestors(check_id)
+                        if blocked_by or fail_fast:
+                            node = selected_nodes[check_id]
+                            outcomes[check_id] = ImpactValidationNodeReceipt(
+                                check_id=check_id,
+                                kind=node.check.kind,
+                                command=node.check.command,
+                                disposition=ValidationNodeDisposition.BLOCKED,
+                                reason=(
+                                    "blocked_by_failed_dependency"
+                                    if blocked_by
+                                    else "fail_fast_after_failure"
+                                ),
+                                mandatory=node.mandatory,
+                                selection_reasons=node.selection_reasons,
+                                depends_on=node.depends_on,
+                                blocked_by=blocked_by,
+                            )
+                            pending.remove(check_id)
+
+                    ready = [
+                        check_id
+                        for check_id in sorted(pending)
+                        if set(selected_nodes[check_id].depends_on).issubset(
+                            successful
+                        )
+                    ]
+                    for check_id in ready:
+                        if len(active) >= self.max_workers:
+                            break
+                        spec = specs[check_id]
+                        cost = min(
+                            self.resource_budget,
+                            max(1, int(spec.resource_cost)),
+                        )
+                        if active and occupied + cost > self.resource_budget:
+                            continue
+                        pending.remove(check_id)
+                        submitted = time.monotonic()
+                        future = pool.submit(execute, check_id)
+                        active[future] = (check_id, cost, submitted)
+                        occupied += cost
+
+                    if not active:
+                        if pending:
+                            # The plan constructor already rejects cycles.  A
+                            # residual node here means an inconsistent runtime
+                            # state and must fail closed with a complete row.
+                            for check_id in sorted(tuple(pending)):
+                                node = selected_nodes[check_id]
+                                outcomes[check_id] = (
+                                    ImpactValidationNodeReceipt(
+                                        check_id=check_id,
+                                        kind=node.check.kind,
+                                        command=node.check.command,
+                                        disposition=(
+                                            ValidationNodeDisposition.BLOCKED
+                                        ),
+                                        reason=(
+                                            "scheduler_state_inconsistent"
+                                        ),
+                                        mandatory=node.mandatory,
+                                        selection_reasons=(
+                                            node.selection_reasons
+                                        ),
+                                        depends_on=node.depends_on,
+                                    )
+                                )
+                                pending.remove(check_id)
+                            first_failure_elapsed = (
+                                first_failure_elapsed
+                                if first_failure_elapsed is not None
+                                else time.monotonic() - started_monotonic
+                            )
+                        break
+
+                    done, _ = wait(tuple(active), return_when=FIRST_COMPLETED)
+                    for future in done:
+                        check_id, cost, submitted = active.pop(future)
+                        occupied -= cost
+                        result = future.result()
+                        raw_results[check_id] = result
+                        returncode = int(result.get("returncode", 1))
+                        node = selected_nodes[check_id]
+                        if returncode == 0:
+                            successful.add(check_id)
+                            disposition = ValidationNodeDisposition.SUCCEEDED
+                        else:
+                            failed_ids.add(check_id)
+                            disposition = ValidationNodeDisposition.FAILED
+                            fail_fast = True
+                            if first_failure_elapsed is None:
+                                first_failure_elapsed = (
+                                    time.monotonic() - started_monotonic
+                                )
+                                first_failure_id = check_id
+                        outcomes[check_id] = ImpactValidationNodeReceipt(
+                            check_id=check_id,
+                            kind=node.check.kind,
+                            command=node.check.command,
+                            disposition=disposition,
+                            reason=(
+                                "validation_passed"
+                                if returncode == 0
+                                else "validation_failed"
+                            ),
+                            mandatory=node.mandatory,
+                            selection_reasons=node.selection_reasons,
+                            depends_on=node.depends_on,
+                            returncode=returncode,
+                            result_digest=_sha256_bytes(
+                                _canonical_json(
+                                    _json_safe(dict(result))
+                                ).encode("utf-8")
+                            ),
+                            cache_hit=bool(result.get("cache_hit", False)),
+                            duration_seconds=max(
+                                0.0, time.monotonic() - submitted
+                            ),
+                            observed_seeded_defect_id=str(
+                                result.get("seeded_defect_id") or ""
+                            ),
+                        )
+
+        finished_at = utc_now()
+        receipt_nodes = tuple(
+            outcomes[node.check_id] for node in plan.nodes
+        )
+        passed = plan.coverage_complete and all(
+            node.disposition is ValidationNodeDisposition.SUCCEEDED
+            for node in receipt_nodes
+            if node.check_id in selected_nodes
+        )
+        receipt = ImpactValidationDAGReceipt(
+            dag=plan,
+            nodes=receipt_nodes,
+            passed=passed,
+            started_at=started_at,
+            finished_at=finished_at,
+            time_to_first_useful_failure_seconds=first_failure_elapsed,
+        )
+        results = [
+            raw_results[node.check_id]
+            for node in ordered_selected
+            if node.check_id in raw_results
+        ]
+        failed_result = (
+            raw_results.get(first_failure_id) if first_failure_id else None
+        )
+        report: dict[str, Any] = {
+            "attempted": bool(results),
+            "passed": passed,
+            "returncode": (
+                0
+                if passed
+                else int(failed_result.get("returncode", 1))
+                if failed_result is not None
+                else 78
+            ),
+            "error": (
+                ""
+                if passed
+                else "uncovered_validation_impact"
+                if not plan.coverage_complete
+                else "validation_failed"
+            ),
+            "results": results,
+            "nodes": [node.to_dict() for node in receipt_nodes],
+            "impact_validation_dag": plan.to_dict(),
+            "impact_validation_receipt": receipt.to_dict(),
+            "selection_reasons": {
+                node.check_id: list(node.selection_reasons)
+                for node in plan.nodes
+                if node.selected
+            },
+            "skipped_reasons": {
+                node.check_id: node.skipped_reason
+                for node in plan.nodes
+                if not node.selected
+            },
+            "uncovered_impact": list(plan.uncovered_impact),
+            "affected_symbols": list(plan.impact.affected_symbols),
+            "affected_paths": list(plan.impact.affected_paths),
+            "required_validation_ids": list(
+                plan.impact.required_validation_ids
+            ),
+            "time_to_first_useful_failure_seconds": first_failure_elapsed,
+            "time_to_first_useful_failure_ms": (
+                first_failure_elapsed * 1000.0
+                if first_failure_elapsed is not None
+                else None
+            ),
+            "first_useful_failure_check_id": first_failure_id,
+            "target_tree_id": index.repository_tree_id,
+            "impact_index_id": index.index_id,
+            "policy_id": plan.policy.policy_id,
+            "cache_hits": sum(
+                1 for result in results if result.get("cache_hit") is True
+            ),
+            "cache_misses": sum(
+                1 for result in results if result.get("cache_hit") is not True
+            ),
+            "max_workers": self.max_workers,
+            "resource_budget": self.resource_budget,
+        }
+        if proposal_receipt is not None:
+            report["proposal_receipt"] = proposal_receipt
+        if failed_result is not None:
+            report["failed_command"] = str(
+                failed_result.get("command") or ""
+            )
+        return report
+
     def run_validated(
         self,
         proposal_validation: Any,
@@ -2915,6 +4623,10 @@ class ValidationScheduler:
         results: list[dict[str, object]] = []
         stages: list[dict[str, object]] = []
         failed: Mapping[str, object] | None = None
+        validation_started_monotonic = time.monotonic()
+        first_failure_elapsed: float | None = (
+            0.0 if not coverage_complete else None
+        )
 
         def execute(spec: ValidationCommand) -> dict[str, object]:
             return self._execute(
@@ -2937,6 +4649,10 @@ class ValidationScheduler:
                 stage_results = self._run_parallel_stage(stage_specs, execute)
                 results.extend(stage_results)
                 failed = self._first_failure(stage_results)
+                if failed is not None and first_failure_elapsed is None:
+                    first_failure_elapsed = (
+                        time.monotonic() - validation_started_monotonic
+                    )
                 stages.append(
                     {
                         "stage": stage.label,
@@ -2974,6 +4690,12 @@ class ValidationScheduler:
             ),
             "max_workers": self.max_workers,
             "resource_budget": self.resource_budget,
+            "time_to_first_useful_failure_seconds": first_failure_elapsed,
+            "time_to_first_useful_failure_ms": (
+                first_failure_elapsed * 1000.0
+                if first_failure_elapsed is not None
+                else None
+            ),
         }
         if failed is not None:
             report["failed_command"] = str(failed.get("command") or "")
@@ -3280,6 +5002,8 @@ class ValidationScheduler:
         results: list[dict[str, object]] = []
         stages: list[dict[str, object]] = []
         failed: Mapping[str, object] | None = None
+        validation_started_monotonic = time.monotonic()
+        first_failure_elapsed: float | None = None
 
         def execute(spec: ValidationCommand) -> dict[str, object]:
             return self._execute(
@@ -3299,6 +5023,10 @@ class ValidationScheduler:
             stage_results = self._run_parallel_stage(stage_specs, execute)
             results.extend(stage_results)
             failed = self._first_failure(stage_results)
+            if failed is not None and first_failure_elapsed is None:
+                first_failure_elapsed = (
+                    time.monotonic() - validation_started_monotonic
+                )
             stages.append(
                 {
                     "stage": stage.label,
@@ -3329,6 +5057,12 @@ class ValidationScheduler:
             "cache_misses": len(results) - cache_hits,
             "max_workers": self.max_workers,
             "resource_budget": self.resource_budget,
+            "time_to_first_useful_failure_seconds": first_failure_elapsed,
+            "time_to_first_useful_failure_ms": (
+                first_failure_elapsed * 1000.0
+                if first_failure_elapsed is not None
+                else None
+            ),
             "resource_lease_budget": self.resource_lease_budget.to_dict(),
             "resource_admission": [
                 result["resource_admission"]
@@ -4236,6 +5970,52 @@ def schedule_validated_proposal(
     )
 
 
+def schedule_impact_selected_validations(
+    checks: Iterable[ImpactValidationCheck | Mapping[str, Any]],
+    *,
+    workspace_path: Path | str,
+    impact_index: CodeImpactIndex | Mapping[str, Any],
+    **kwargs: object,
+) -> dict[str, Any]:
+    """Convenience wrapper for the AST- and policy-derived validation DAG."""
+
+    scheduler_keys = {
+        "cache",
+        "cache_dir",
+        "max_workers",
+        "resource_budget",
+        "resource_scheduler",
+        "resource_lease_budget",
+        "resource_policy",
+        "host_resource_source",
+        "provider_capacity_source",
+        "resource_admission_timeout_seconds",
+        "default_timeout_seconds",
+        "runner",
+    }
+    scheduler_kwargs = {
+        key: kwargs.pop(key) for key in tuple(kwargs) if key in scheduler_keys
+    }
+    return ValidationScheduler(**scheduler_kwargs).run_impact_selected(
+        checks,
+        workspace_path=workspace_path,
+        impact_index=impact_index,
+        **kwargs,
+    )
+
+
 # Compatibility spelling used by integrations that foreground proof work.
 schedule_proof_validations = schedule_staged_validations
 schedule_validation_dag = schedule_validated_proposal
+schedule_impact_validation_dag = schedule_impact_selected_validations
+
+# Descriptive compatibility names for policy and API clients.
+ValidationCheckCategory = ImpactValidationKind
+ValidationKind = ImpactValidationKind
+ValidationCheck = ImpactValidationCheck
+ValidationCheckSpec = ImpactValidationCheck
+ValidationPolicy = RepositoryValidationPolicy
+ValidationDAG = ImpactSelectedValidationDAG
+ValidationDAGPlan = ImpactSelectedValidationDAG
+ValidationDAGExecutionReceipt = ImpactValidationDAGReceipt
+build_validation_dag = build_impact_selected_validation_dag
