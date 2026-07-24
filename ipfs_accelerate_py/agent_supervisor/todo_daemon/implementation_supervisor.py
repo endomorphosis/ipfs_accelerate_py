@@ -5645,7 +5645,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Timeout for the merge resolver subprocess. Passed to the managed daemon as "
             "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS; defaults to that env var "
-            "or 600 seconds; <=0 disables."
+            "or 1800 seconds; <=0 disables."
         ),
     )
     parser.add_argument(

@@ -21,6 +21,8 @@ _MAX_INVOCATION_DEPTH = int(os.environ.get("AGENT_RESOLVER_MAX_DEPTH", "3"))
 # Lock acquisition timeout to prevent indefinite blocking
 _LOCK_TIMEOUT_ENV = "AGENT_RESOLVER_LOCK_TIMEOUT_SECONDS"
 _DEFAULT_LOCK_TIMEOUT_SECONDS = 120.0
+_DEFAULT_CODEX_TIMEOUT_SECONDS = 900.0
+_DEFAULT_COPILOT_TIMEOUT_SECONDS = 600.0
 _ACTIVE_TOOL_PROCESS: subprocess.Popen[str] | None = None
 
 
@@ -101,14 +103,14 @@ def _acquire_git_lock(workspace: Path):
             time.sleep(0.5)
 
 
-def _timeout_seconds(env_var: str, default: str = "60") -> float | None:
-    raw_value = os.environ.get(env_var, default)
+def _timeout_seconds(env_var: str, default: float) -> float | None:
+    raw_value = os.environ.get(env_var, str(default))
     if raw_value == "0":
         return None
     try:
         return float(raw_value)
     except ValueError:
-        return float(default)
+        return default
 
 
 def _run_tool(
@@ -171,14 +173,25 @@ def _run_codex(prompt: str, workspace: Path) -> int | None:
         completed = _run_tool(
             command,
             prompt=prompt,
-            timeout=_timeout_seconds("CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS"),
+            timeout=_timeout_seconds(
+                "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS",
+                _DEFAULT_CODEX_TIMEOUT_SECONDS,
+            ),
         )
-    except subprocess.TimeoutExpired:
-        print("codex merge resolver timed out; falling back to copilot", file=sys.stderr)
+    except subprocess.TimeoutExpired as exc:
+        detail = str(exc.stderr or exc.output or "").strip()
+        suffix = f": {detail[-2000:]}" if detail else ""
+        print(
+            f"codex merge resolver timed out; falling back to copilot{suffix}",
+            file=sys.stderr,
+        )
         return 124
     if completed.returncode != 0:
+        detail = str(completed.stderr or completed.stdout or "").strip()
+        suffix = f": {detail[-2000:]}" if detail else ""
         print(
-            f"codex merge resolver failed with exit {completed.returncode}; falling back to copilot",
+            f"codex merge resolver failed with exit {completed.returncode}; "
+            f"falling back to copilot{suffix}",
             file=sys.stderr,
         )
     return completed.returncode
@@ -220,11 +233,23 @@ def _run_copilot(prompt: str, workspace: Path) -> int:
         completed = _run_tool(
             command,
             prompt=prompt,
-            timeout=_timeout_seconds("COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS"),
+            timeout=_timeout_seconds(
+                "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS",
+                _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+            ),
         )
-    except subprocess.TimeoutExpired:
-        print("copilot merge resolver timed out", file=sys.stderr)
+    except subprocess.TimeoutExpired as exc:
+        detail = str(exc.stderr or exc.output or "").strip()
+        suffix = f": {detail[-2000:]}" if detail else ""
+        print(f"copilot merge resolver timed out{suffix}", file=sys.stderr)
         return 124
+    if completed.returncode != 0:
+        detail = str(completed.stderr or completed.stdout or "").strip()
+        suffix = f": {detail[-2000:]}" if detail else ""
+        print(
+            f"copilot merge resolver failed with exit {completed.returncode}{suffix}",
+            file=sys.stderr,
+        )
     return completed.returncode
 
 

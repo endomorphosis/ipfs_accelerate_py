@@ -50,6 +50,9 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     build_namespace_merge_resolver_runner_from_spec,
 )
 from ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback import (
+    _DEFAULT_CODEX_TIMEOUT_SECONDS,
+    _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+    _timeout_seconds,
     llm_merge_resolver_fallback_command,
 )
 from ipfs_accelerate_py.agent_supervisor import task_proposal_router
@@ -3484,8 +3487,8 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
 def test_implementation_multi_supervisor_env_defaults_are_reusable():
     assert implementation_multi_supervisor_env_defaults() == {
         "PYTHONUNBUFFERED": "1",
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "900",
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
     }
     assert implementation_multi_supervisor_env_defaults(
         python_unbuffered=False,
@@ -3494,7 +3497,7 @@ def test_implementation_multi_supervisor_env_defaults_are_reusable():
     ) == {
         "PYTHONUNBUFFERED": "0",
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
         "PREFER_COPILOT_MERGE_RESOLVER": "1",
     }
 
@@ -3775,6 +3778,73 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
 
     assert completed.returncode == 0, completed.stderr
     assert codex_log.read_text(encoding="utf-8") == "resolve this conflict"
+
+
+def test_llm_merge_resolver_provider_defaults_fit_outer_budget(monkeypatch):
+    monkeypatch.delenv("CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
+
+    codex_timeout = _timeout_seconds(
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS",
+        _DEFAULT_CODEX_TIMEOUT_SECONDS,
+    )
+    copilot_timeout = _timeout_seconds(
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS",
+        _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+    )
+
+    assert codex_timeout == 900
+    assert copilot_timeout == 600
+    assert (
+        codex_timeout + copilot_timeout
+        < merge_resolver.DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS
+    )
+
+
+def test_llm_merge_resolver_fallback_uses_copilot_after_codex_timeout(tmp_path):
+    codex_bin = tmp_path / "codex"
+    copilot_bin = tmp_path / "copilot"
+    copilot_log = tmp_path / "copilot.prompt"
+    codex_bin.write_text("#!/usr/bin/env bash\nsleep 5\n", encoding="utf-8")
+    copilot_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "while (($#)); do\n"
+        "  if [[ \"$1\" == \"--prompt\" ]]; then shift; printf '%s' \"$1\" > "
+        f"{shlex.quote(str(copilot_log))}; fi\n"
+        "  shift || true\n"
+        "done\n",
+        encoding="utf-8",
+    )
+    codex_bin.chmod(0o755)
+    copilot_bin.chmod(0o755)
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+        "CODEX_BIN": str(codex_bin),
+        "COPILOT_BIN": str(copilot_bin),
+        "COPILOT_GITHUB_TOKEN": "test-token",
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0.05",
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "2",
+        "AGENT_RESOLVER_LOCK_BYPASS": "1",
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            str(tmp_path),
+        ],
+        input="resolve this conflict",
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "codex merge resolver timed out" in completed.stderr
+    assert copilot_log.read_text(encoding="utf-8") == "resolve this conflict"
 
 
 def test_llm_merge_resolver_fallback_skips_unauthenticated_copilot(tmp_path):

@@ -11217,7 +11217,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Timeout for the merge resolver subprocess. "
-            f"Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 600 seconds; <=0 disables."
+            f"Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 1800 seconds; <=0 disables."
         ),
     )
     parser.add_argument(
