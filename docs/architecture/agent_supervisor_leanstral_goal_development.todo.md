@@ -105,7 +105,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-008 Add route-aware capability, scheduling, cache, and metrics support
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: leanstral-goal-development
