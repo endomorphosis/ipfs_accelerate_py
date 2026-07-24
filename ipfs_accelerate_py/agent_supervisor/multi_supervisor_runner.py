@@ -486,8 +486,8 @@ def _env_default_value(value: bool | int | str) -> str:
 def implementation_multi_supervisor_env_defaults(
     *,
     python_unbuffered: bool | int | str | None = True,
-    codex_merge_resolver_timeout_seconds: int | str | None = 60,
-    copilot_merge_resolver_timeout_seconds: int | str | None = 60,
+    codex_merge_resolver_timeout_seconds: int | str | None = 900,
+    copilot_merge_resolver_timeout_seconds: int | str | None = 600,
     prefer_copilot_merge_resolver: bool | int | str | None = None,
 ) -> dict[str, str]:
     """Return reusable environment defaults for long-running implementation supervisors."""

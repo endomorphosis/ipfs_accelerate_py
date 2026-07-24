@@ -3748,6 +3748,26 @@ def _record_symbols(row: Mapping[str, Any]) -> list[str]:
     return sorted({str(item).strip().lower() for item in value if str(item).strip()})
 
 
+def _ast_evidence_symbols(symbols: Iterable[Any]) -> set[str]:
+    """Return nonempty token-normalized symbols eligible for AST evidence.
+
+    Symbol extractors intentionally retain short source identifiers for
+    conflict planning, but :func:`objective_tokens` drops one-character and
+    punctuation-only identifiers.  Applying substring matching to those raw
+    values is unsafe: for example, the symbol ``e`` appears in many unrelated
+    objective markers, while ``$`` has no objective-token representation at
+    all.  Normalize both sides of the evidence comparison through the same
+    tokenizer and fail closed when a symbol has no normalized tokens.
+    """
+
+    normalized: set[str] = set()
+    for symbol in symbols:
+        value = " ".join(objective_tokens(str(symbol)))
+        if value:
+            normalized.add(value)
+    return normalized
+
+
 def _ast_evidence_fields(root_relative: str, text: str, symbols: Sequence[str]) -> dict[str, Any]:
     document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
     return {
@@ -4129,6 +4149,7 @@ def evidence_index(
 
     for root_relative, text, symbols, document_tokens, document_embedding in candidates:
         haystack = f"{root_relative}\n{text}".lower()
+        evidence_symbols = _ast_evidence_symbols(symbols)
 
         for term, lowered in lowered_terms.items():
             if len(evidence[term]) >= 3:
@@ -4142,12 +4163,11 @@ def evidence_index(
                 )
                 continue
             normalized_symbol = " ".join(objective_tokens(term))
-            normalized_symbols = {
-                " ".join(objective_tokens(symbol))
-                for symbol in symbols
-                if " ".join(objective_tokens(symbol))
-            }
-            if normalized_symbol and normalized_symbol in normalized_symbols:
+            # AST evidence proves a named interface only when its complete
+            # token-normalized identity matches. Substring matching lets short
+            # identifiers such as ``le`` or ``ssl`` satisfy unrelated unique
+            # markers and makes a missing-evidence scan fail open.
+            if normalized_symbol and normalized_symbol in evidence_symbols:
                 consider(
                     term,
                     match_kind=EvidenceMatchKind.EXACT_AST,
@@ -5280,7 +5300,12 @@ def critical_path_schedule(
     records: list[TaskScheduleRecord] = []
     for cid, node in graph.nodes.items():
         blockers = sorted(parent for parent in incoming[cid] if parent not in succeeded)
-        claimable = cid not in invalid and node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES and not blockers
+        claimable = (
+            cid not in invalid
+            and cid not in succeeded
+            and node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            and not blockers
+        )
         critical_length = longest_to_finish.get(cid, 0)
         slack = max(0, project_duration - earliest_start.get(cid, 0) - critical_length)
         unlock_value = len(descendants.get(cid, set()))
@@ -6032,15 +6057,16 @@ def objective_goal_packet_key(findings: Sequence[ObjectiveFinding]) -> str:
     return f"goal_packet/{track}/{root}/{digest}"
 
 
-def _goal_packet_group_key(finding: ObjectiveFinding) -> tuple[str, tuple[str, ...], str]:
+def _goal_packet_group_key(finding: ObjectiveFinding) -> tuple[str, tuple[str, ...], str, str]:
     family = tuple(sorted(finding.parent_goal_ids or [finding.goal_id]))
-    return (finding.track, family, finding_conflict_root(finding))
+    explicit_bundle = finding.bundle_key if finding.bundle_explicit else ""
+    return (finding.track, family, finding_conflict_root(finding), explicit_bundle)
 
 
 def assign_goal_subgoal_packets(findings: Sequence[ObjectiveFinding]) -> list[ObjectiveFinding]:
     """Annotate findings with packet metadata for sibling goal/subgoal work."""
 
-    groups: dict[tuple[str, tuple[str, ...], str], list[ObjectiveFinding]] = {}
+    groups: dict[tuple[str, tuple[str, ...], str, str], list[ObjectiveFinding]] = {}
     for finding in findings:
         groups.setdefault(_goal_packet_group_key(finding), []).append(finding)
 
@@ -6343,13 +6369,13 @@ def surplus_missing_term_groups(
     minimum_terms = min(max(1, minimum_terms), len(terms))
     extra_count = surplus_count - 1
     group_size = min(len(terms), max(minimum_terms, math.ceil(len(terms) / max(1, extra_count))))
-    seen_term_sets = {tuple(terms)}
+    seen_term_sets = {frozenset(terms)}
 
     def append_group(candidate_terms: Sequence[str]) -> None:
         normalized = [term for term in dict.fromkeys(str(item).strip() for item in candidate_terms) if term]
         if len(normalized) < minimum_terms:
             return
-        key = tuple(normalized)
+        key = frozenset(normalized)
         if key in seen_term_sets:
             return
         seen_term_sets.add(key)
@@ -6869,7 +6895,19 @@ def scan_objective_gaps(
         seen_fingerprints=seen_fingerprints,
         summary_prefix=summary_prefix,
     )
-    return prioritize_larger_work_surface_findings(expanded_findings, max_findings=max_findings)
+    prioritized = prioritize_larger_work_surface_findings(
+        expanded_findings,
+        max_findings=len(expanded_findings),
+    )
+    unique_findings: list[ObjectiveFinding] = []
+    seen_obligations: set[str] = set()
+    for finding in prioritized:
+        key = finding.dedupe_key or f"legacy:{finding.fingerprint}"
+        if key in seen_obligations:
+            continue
+        seen_obligations.add(key)
+        unique_findings.append(finding)
+    return unique_findings[:max_findings]
 
 
 def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX) -> list[str]:
@@ -6894,20 +6932,7 @@ def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
     }
 
 
-def objective_evidence_obligation_keys_from_todo(
-    todo_text: str,
-    *,
-    goals: Sequence[ObjectiveGoal],
-    graph: Mapping[str, Any],
-) -> set[str]:
-    """Recover stable evidence identities from current and legacy task blocks.
-
-    Boards created before evidence-obligation IDs existed retain useful work.
-    A refinement child may also have been removed while its generated task
-    still names an active graph parent. Reconstructing the key from the exact
-    parent criterion prevents a one-time duplicate refill during migration.
-    """
-
+def _objective_todo_metadata_blocks(todo_text: str) -> list[dict[str, str]]:
     blocks: list[dict[str, str]] = []
     current: dict[str, str] | None = None
     for line in todo_text.splitlines():
@@ -6922,53 +6947,120 @@ def objective_evidence_obligation_keys_from_todo(
         current[name.strip().casefold()] = value.strip()
     if current is not None:
         blocks.append(current)
+    return blocks
+
+
+def _legacy_task_obligation(
+    fields: Mapping[str, str],
+    *,
+    goals_by_id: Mapping[str, ObjectiveGoal],
+) -> tuple[ObjectiveGoal, list[str]] | None:
+    missing_text = normalize_objective_evidence_requirement(
+        fields.get("missing evidence", "")
+    )
+    if not missing_text:
+        return None
+    raw_goal_ids = " ".join(
+        fields.get(name, "")
+        for name in (
+            "goal id",
+            "graph parents",
+            "goal packet goals",
+        )
+    )
+    candidate_goal_ids = re.findall(
+        r"\b[A-Z][A-Z0-9]*-G\d+\b",
+        raw_goal_ids,
+    )
+    for goal_id in dict.fromkeys(candidate_goal_ids):
+        goal = goals_by_id.get(goal_id)
+        if goal is None:
+            continue
+        matching_terms = [
+            term
+            for term in goal.required_evidence
+            if normalize_objective_evidence_requirement(term)
+            in missing_text
+        ]
+        if matching_terms:
+            return goal, matching_terms
+    return None
+
+
+def objective_evidence_obligation_keys_from_todo(
+    todo_text: str,
+    *,
+    goals: Sequence[ObjectiveGoal],
+    graph: Mapping[str, Any],
+) -> set[str]:
+    """Recover stable evidence identities from current and legacy task blocks.
+
+    Boards created before evidence-obligation IDs existed retain useful work.
+    A refinement child may also have been removed while its generated task
+    still names an active graph parent. Reconstructing the key from the exact
+    parent criterion prevents a one-time duplicate refill during migration.
+    """
 
     goals_by_id = {goal.goal_id: goal for goal in goals}
     keys: set[str] = set()
-    for fields in blocks:
+    for fields in _objective_todo_metadata_blocks(todo_text):
         explicit = fields.get("evidence obligation key", "").strip()
         if explicit:
             keys.add(explicit)
-            continue
-        missing_text = normalize_objective_evidence_requirement(
-            fields.get("missing evidence", "")
+        obligation = _legacy_task_obligation(
+            fields,
+            goals_by_id=goals_by_id,
         )
-        if not missing_text:
+        if obligation is None:
             continue
-        raw_goal_ids = " ".join(
-            fields.get(name, "")
-            for name in (
-                "goal id",
-                "graph parents",
-                "goal packet goals",
+        goal, matching_terms = obligation
+        keys.add(
+            objective_evidence_obligation_key(
+                goal,
+                matching_terms,
+                graph=graph,
+                candidate_kind=fields.get("candidate kind", "aggregate"),
             )
         )
-        candidate_goal_ids = re.findall(
-            r"\b[A-Z][A-Z0-9]*-G\d+\b",
-            raw_goal_ids,
-        )
-        for goal_id in dict.fromkeys(candidate_goal_ids):
-            goal = goals_by_id.get(goal_id)
-            if goal is None:
-                continue
-            matching_terms = [
-                term
-                for term in goal.required_evidence
-                if normalize_objective_evidence_requirement(term)
-                in missing_text
-            ]
-            if not matching_terms:
-                continue
-            keys.add(
-                objective_evidence_obligation_key(
-                    goal,
-                    matching_terms,
-                    graph=graph,
-                    candidate_kind=fields.get("candidate kind", "aggregate"),
-                )
-            )
-            break
     return keys
+
+
+def objective_evidence_obligation_coverage_from_todo(
+    todo_text: str,
+    *,
+    goals: Sequence[ObjectiveGoal],
+    graph: Mapping[str, Any],
+) -> dict[tuple[str, tuple[str, ...]], set[str]]:
+    """Return nonterminal requirement coverage grouped by stable lineage."""
+
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+    coverage: dict[tuple[str, tuple[str, ...]], set[str]] = {}
+    for fields in _objective_todo_metadata_blocks(todo_text):
+        status = fields.get("status", "todo").strip().casefold().replace("-", "_")
+        if status in {"complete", "completed", "done", "superseded"}:
+            continue
+        obligation = _legacy_task_obligation(
+            fields,
+            goals_by_id=goals_by_id,
+        )
+        if obligation is None:
+            continue
+        goal, matching_terms = obligation
+        kind = (
+            "validation_gate"
+            if fields.get("candidate kind", "") == "validation_gate"
+            else "evidence_gap"
+        )
+        lineage_ids = objective_evidence_lineage_ids(
+            goal.goal_id,
+            matching_terms,
+            graph,
+        )
+        coverage.setdefault((kind, lineage_ids), set()).update(
+            normalize_objective_evidence_requirement(term)
+            for term in matching_terms
+        )
+    return coverage
 
 
 def next_task_id(
@@ -7414,6 +7506,16 @@ def generate_objective_todos(
             goals=objective_goals,
             graph=objective_goal_graph,
         )
+        existing_obligation_coverage = (
+            objective_evidence_obligation_coverage_from_todo(
+                todo_text,
+                goals=objective_goals,
+                graph=objective_goal_graph,
+            )
+        )
+        objective_goals_by_id = {
+            goal.goal_id: goal for goal in objective_goals
+        }
         reserved_task_ids = task_ids_from_artifact_names(
             discovery_dir,
             task_prefix=task_prefix,
@@ -7425,11 +7527,39 @@ def generate_objective_todos(
                 reserved_task_ids=reserved_task_ids,
             )
             identity = objective_finding_task_identity(task_id, finding)
+            finding_goal = objective_goals_by_id.get(finding.goal_id)
+            finding_kind = (
+                "validation_gate"
+                if finding.candidate_kind == "validation_gate"
+                else "evidence_gap"
+            )
+            finding_requirements = {
+                normalize_objective_evidence_requirement(term)
+                for term in finding.missing_evidence
+                if normalize_objective_evidence_requirement(term)
+            }
+            finding_lineage_ids = (
+                objective_evidence_lineage_ids(
+                    finding_goal.goal_id,
+                    finding.missing_evidence,
+                    objective_goal_graph,
+                )
+                if finding_goal is not None
+                else ()
+            )
+            covered_requirements = existing_obligation_coverage.get(
+                (finding_kind, finding_lineage_ids),
+                set(),
+            )
             if (
                 identity.canonical_task_cid in existing_canonical_task_cids
                 or (
                     finding.dedupe_key
                     and finding.dedupe_key in existing_obligation_keys
+                )
+                or (
+                    bool(finding_requirements)
+                    and finding_requirements.issubset(covered_requirements)
                 )
             ):
                 continue
@@ -7437,6 +7567,11 @@ def generate_objective_todos(
             existing_canonical_task_cids.add(identity.canonical_task_cid)
             if finding.dedupe_key:
                 existing_obligation_keys.add(finding.dedupe_key)
+            if finding_requirements:
+                existing_obligation_coverage.setdefault(
+                    (finding_kind, finding_lineage_ids),
+                    set(),
+                ).update(finding_requirements)
             shard_relative = repo_relative_path(
                 repo_root, bundle_path(bundle_dir, finding.bundle_key)
             )
@@ -7690,7 +7825,11 @@ def _project_task_conflict_graph(
     }
 
 
-def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
+def build_bundle_task_payloads(
+    bundle_index_path: Path,
+    *,
+    merge_receipts: Mapping[str, Any] | Iterable[Mapping[str, Any]] = (),
+) -> list[dict[str, Any]]:
     """Build dependency-aware task-queue payloads and Profile G adapters."""
 
     # Local import avoids making objective scanning depend on coordination
@@ -7734,17 +7873,51 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         for item in bundle_payload.get("tasks", [])
         if isinstance(item, Mapping)
     ]
-    terminal_receipts = {
-        str(task.get("canonical_task_cid") or task.get("task_cid") or task.get("task_id") or ""): {
-            "status": "succeeded"
+    terminal_receipts: list[dict[str, Any]] = [
+        {
+            "canonical_task_cid": str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or task.get("task_id")
+                or ""
+            ),
+            "status": "succeeded",
         }
         for task in flat_tasks
         if str(task.get("status") or "").strip().lower() in SUCCESSFUL_MERGE_RECEIPT_STATUSES
         and str(task.get("canonical_task_cid") or task.get("task_cid") or task.get("task_id") or "")
-    }
+    ]
+    if isinstance(merge_receipts, Mapping):
+        dynamic_receipt_items: Iterable[tuple[str, Any]] = merge_receipts.items()
+    else:
+        dynamic_receipt_items = (("", receipt) for receipt in merge_receipts)
+    for key, raw_receipt in dynamic_receipt_items:
+        receipt = (
+            dict(raw_receipt)
+            if isinstance(raw_receipt, Mapping)
+            else {"status": raw_receipt}
+        )
+        if not any(
+            str(receipt.get(field) or "").strip()
+            for field in ("canonical_task_cid", "task_cid", "task_id")
+        ):
+            receipt["canonical_task_cid"] = str(key)
+        terminal_receipts.append(receipt)
     graph = materialize_task_dependency_dag(
         flat_tasks,
         merge_receipts=terminal_receipts,
+    )
+    receipt_aliases = {cid: cid for cid in graph.nodes}
+    receipt_aliases.update(
+        {
+            node.task_id: cid
+            for cid, node in graph.nodes.items()
+            if node.task_id
+        }
+    )
+    successful_receipt_cids = _successful_merge_receipt_cids(
+        terminal_receipts,
+        receipt_aliases,
     )
     invalid_task_cids = set(graph.invalid_task_cids)
     schedule_by_cid = {item.task_cid: item for item in graph.schedule}
@@ -7758,17 +7931,18 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
     unresolved_incoming = {
         cid: (
             set()
-            if node.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            if (
+                cid in successful_receipt_cids
+                or node.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            )
             else set(schedule_by_cid.get(cid).blocking_task_cids if cid in schedule_by_cid else incoming.get(cid, set()))
         )
         for cid, node in graph.nodes.items()
     }
 
     member_bundle: dict[str, str] = {}
-    bundle_identity_cids: dict[str, str] = {}
     for bundle_payload in task_payloads:
         bundle_key = str(bundle_payload["bundle_key"])
-        bundle_identity_cids[bundle_key] = canonical_bundle_identity(bundle_payload).canonical_task_cid
         annotated_tasks: list[dict[str, Any]] = []
         for raw_task in bundle_payload.get("tasks", []):
             if not isinstance(raw_task, Mapping):
@@ -7815,7 +7989,10 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
             cid
             for cid in member_cids
             if cid in graph.nodes
-            and graph.nodes[cid].status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            and (
+                cid in successful_receipt_cids
+                or graph.nodes[cid].status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            )
         }
         active_member_cids = {
             cid
@@ -7859,13 +8036,23 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
                 if cid in graph.nodes and graph.nodes[cid].task_id
             ]
 
-        dependency_bundle_keys = {
-            member_bundle[source]
-            for target in execution_member_cids
-            for source in unresolved_incoming.get(target, set())
-            if source in member_bundle and member_bundle[source] != bundle_key
-        }
-        dependency_task_cids = sorted(bundle_identity_cids[key] for key in dependency_bundle_keys)
+        execution_slice_task_cids = ordered(execution_member_cids)
+        execution_slice_task_ids = task_ids(execution_member_cids)
+        execution_task_cid = canonical_bundle_identity(
+            {
+                **bundle_payload,
+                "execution_slice_task_cids": execution_slice_task_cids,
+                "execution_slice_task_ids": execution_slice_task_ids,
+            }
+        ).canonical_task_cid
+        dependency_task_cids = sorted(
+            {
+                source
+                for target in execution_member_cids
+                for source in unresolved_incoming.get(target, set())
+                if source in member_bundle and member_bundle[source] != bundle_key
+            }
+        )
         member_schedule = [
             schedule_by_cid[cid]
             for cid in ordered(execution_member_cids)
@@ -7917,7 +8104,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
             )
         external_blockers = sorted(
             {
-                bundle_identity_cids[member_bundle[source]]
+                source
                 for target in execution_member_cids
                 for source in unresolved_incoming.get(target, set())
                 if source in member_bundle and member_bundle[source] != bundle_key
@@ -7949,7 +8136,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         )
         bundle_payload.update(
             {
-                "canonical_task_cid": bundle_identity_cids[bundle_key],
+                "canonical_task_cid": execution_task_cid,
                 "dependency_task_cids": dependency_task_cids,
                 "blocking_task_cids": external_blockers,
                 "claimable": claimable,
@@ -7963,8 +8150,8 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
                 "active_member_task_ids": task_ids(active_member_cids),
                 "blocked_member_task_cids": ordered(blocked_member_cids),
                 "blocked_member_task_ids": task_ids(blocked_member_cids),
-                "execution_slice_task_cids": ordered(execution_member_cids),
-                "execution_slice_task_ids": task_ids(execution_member_cids),
+                "execution_slice_task_cids": execution_slice_task_cids,
+                "execution_slice_task_ids": execution_slice_task_ids,
                 "critical_path_length": max((item.critical_path_length for item in member_schedule), default=1),
                 "slack": min((item.slack for item in member_schedule), default=0),
                 "downstream_unlock_value": max(

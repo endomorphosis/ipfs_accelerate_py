@@ -351,6 +351,73 @@ def child_pids(pid: int) -> List[int]:
     return children
 
 
+def _process_relationship_snapshot() -> Dict[int, Tuple[int, int]]:
+    """Return one best-effort ``pid -> (parent, process group)`` snapshot."""
+
+    relationships: Dict[int, Tuple[int, int]] = {}
+    proc_root = Path("/proc")
+    try:
+        entries = tuple(proc_root.iterdir())
+    except OSError:
+        entries = ()
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat = (entry / "stat").read_text(encoding="utf-8")
+            closing_parenthesis = stat.rfind(")")
+            fields = stat[closing_parenthesis + 2 :].split()
+            relationships[int(entry.name)] = (int(fields[1]), int(fields[2]))
+        except (OSError, UnicodeError, ValueError, IndexError):
+            continue
+    return relationships
+
+
+def _snapshot_pid_tree(pid: int) -> List[Tuple[int, int, int]]:
+    """Return ``(pid, process_group, depth)`` before any ancestor is stopped."""
+
+    relationships = _process_relationship_snapshot()
+    if pid in relationships:
+        children_by_parent: Dict[int, List[int]] = {}
+        for process_id, (parent, _process_group) in relationships.items():
+            children_by_parent.setdefault(parent, []).append(process_id)
+        snapshot: List[Tuple[int, int, int]] = []
+        pending = [(pid, 0)]
+        visited: set[int] = set()
+        while pending:
+            process_id, depth = pending.pop()
+            if process_id in visited:
+                continue
+            visited.add(process_id)
+            relation = relationships.get(process_id)
+            if relation is None:
+                continue
+            snapshot.append((process_id, relation[1], depth))
+            pending.extend(
+                (child, depth + 1)
+                for child in children_by_parent.get(process_id, ())
+            )
+        return snapshot
+
+    # Non-/proc platforms retain the previous pgrep-based behavior, but still
+    # collect the complete tree before sending the first signal.
+    snapshot = []
+    pending = [(pid, 0)]
+    visited = set()
+    while pending:
+        process_id, depth = pending.pop()
+        if process_id in visited or not pid_alive(process_id):
+            continue
+        visited.add(process_id)
+        try:
+            process_group = os.getpgid(process_id)
+        except (AttributeError, OSError):
+            process_group = 0
+        snapshot.append((process_id, process_group, depth))
+        pending.extend((child, depth + 1) for child in child_pids(process_id))
+    return snapshot
+
+
 def _process_group_has_live_members(process_group_id: int) -> bool:
     """Return whether a Unix process group still has a non-zombie member."""
 
@@ -411,31 +478,59 @@ def _terminate_owned_process_group(pid: int, *, grace_seconds: float) -> bool:
 
 
 def terminate_pid_tree(pid: int, *, grace_seconds: float) -> bool:
-    # Supervisor-owned children start new sessions, so their PID is also their
-    # process-group id. Signal that group first to include descendants spawned
-    # after a recursive process snapshot was taken.
-    if _terminate_owned_process_group(pid, grace_seconds=grace_seconds):
-        return True
-    if not pid_alive(pid):
-        return False
-    for child in child_pids(pid):
-        terminate_pid_tree(child, grace_seconds=grace_seconds)
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
+    # Snapshot every descendant before signalling anything. Some implementation
+    # runners create their own session/process group. Killing an ancestor group
+    # first reparents those runners and makes a later parent/child walk lose
+    # them, allowing work to continue after the scheduler lease is released.
+    snapshot = _snapshot_pid_tree(pid)
+    if not snapshot:
         return False
 
-    deadline = time.monotonic() + max(0.0, grace_seconds)
-    while pid_alive(pid) and time.monotonic() < deadline:
-        time.sleep(0.2)
-    if pid_alive(pid):
+    terminated = False
+    group_depths = {
+        process_group: depth
+        for process_id, process_group, depth in snapshot
+        if process_group == process_id
+        and process_group > 1
+        and process_group != os.getpgrp()
+    }
+    for process_group, _depth in sorted(
+        group_depths.items(),
+        key=lambda item: (item[1], item[0]),
+        reverse=True,
+    ):
+        terminated = (
+            _terminate_owned_process_group(
+                process_group,
+                grace_seconds=grace_seconds,
+            )
+            or terminated
+        )
+
+    # Process groups cover the normal supervised paths. Terminate any remaining
+    # snapshotted processes deepest-first for platforms or descendants that did
+    # not own a group of their own.
+    for process_id, _process_group, _depth in sorted(
+        snapshot,
+        key=lambda item: (item[2], item[0]),
+        reverse=True,
+    ):
+        if process_id <= 1 or not pid_alive(process_id):
+            continue
         try:
-            os.kill(pid, signal.SIGKILL)
-        except Exception:
-            pass
-    return True
+            os.kill(process_id, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            continue
+        terminated = True
+        deadline = time.monotonic() + max(0.0, grace_seconds)
+        while pid_alive(process_id) and time.monotonic() < deadline:
+            time.sleep(0.2)
+        if pid_alive(process_id):
+            try:
+                os.kill(process_id, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+    return terminated
 
 
 def check_daemon_health(spec: ManagedDaemonSpec, *, stale_after_seconds: float = 180.0) -> DaemonHealth:

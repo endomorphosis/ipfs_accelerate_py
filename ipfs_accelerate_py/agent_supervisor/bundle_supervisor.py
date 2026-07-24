@@ -14,7 +14,7 @@ import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from .artifact_store import (
     BUNDLE_INDEX_KIND,
@@ -97,23 +97,111 @@ _MANIFEST_PROFILE_G_REFERENCE_FIELDS = frozenset(
 )
 
 
+def bundle_member_completion_event_sources(state_root: Path) -> tuple[Path, ...]:
+    """Return active and rotated member-completion logs in stable order."""
+
+    base_paths: set[Path] = set()
+    for pattern in ("*_events.jsonl*", "*/state/*_events.jsonl*"):
+        for candidate in state_root.glob(pattern):
+            name = candidate.name
+            if name.endswith("_events.jsonl"):
+                pass
+            elif ".jsonl.rotated-" in name:
+                name = name.split(".rotated-", 1)[0]
+                candidate = candidate.with_name(name)
+            else:
+                continue
+            base_paths.add(candidate)
+    return tuple(event_log_sources(sorted(base_paths), include_rotated=True))
+
+
+def bundle_member_completion_source_revision(
+    state_root: Path,
+) -> tuple[tuple[str, int, int], ...]:
+    """Return the dynamic source revision used to fence receipt-plan caching."""
+
+    revisions: list[tuple[str, int, int]] = []
+    for source in bundle_member_completion_event_sources(state_root):
+        try:
+            stat = source.stat()
+        except OSError:
+            continue
+        revisions.append((str(source), stat.st_mtime_ns, stat.st_size))
+    return tuple(revisions)
+
+
+def _legacy_completed_member_identities(
+    todo_path: Any,
+    task_ids: Sequence[str],
+) -> dict[str, dict[str, str]]:
+    """Recover explicit canonical identities from a legacy generated board."""
+
+    path = Path(str(todo_path or ""))
+    if not str(todo_path or "").strip() or path.suffix.lower() not in {".md", ".markdown"}:
+        return {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+
+    requested = {str(task_id) for task_id in task_ids if str(task_id)}
+    identities: dict[str, dict[str, str]] = {}
+    current_task_id = ""
+    current: dict[str, str] = {}
+
+    def flush() -> None:
+        if (
+            current_task_id in requested
+            and current.get("canonical_task_cid")
+            and current.get("canonical_task_key")
+        ):
+            identities[current_task_id] = {
+                "task_id": current_task_id,
+                "canonical_task_cid": current["canonical_task_cid"],
+                "canonical_task_key": current["canonical_task_key"],
+                "board_namespace": current.get("board_namespace", path.name),
+            }
+
+    for line in [*lines, "## "]:
+        if line.startswith("## "):
+            flush()
+            header = line[3:].strip()
+            current_task_id = header.split(" ", 1)[0] if header else ""
+            current = {}
+            continue
+        if current_task_id not in requested:
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("- ") or ":" not in stripped:
+            continue
+        key, value = stripped[2:].split(":", 1)
+        normalized_key = key.strip().lower().replace(" ", "_")
+        if normalized_key in {
+            "canonical_task_cid",
+            "canonical_task_key",
+            "board_namespace",
+        }:
+            current[normalized_key] = value.strip()
+    return identities
+
+
 def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, Any]]:
-    """Return successful member-task receipts keyed by canonical task CID.
+    """Return successful member-task receipts keyed by canonical task identity.
 
     Bundle boards are mutable projections, so their current status is not a
     durable completion authority.  The implementation daemon emits terminal
     events after a successful merge; retain those receipts so a source board
     can promote the matching canonical task even after a shard is regenerated.
+
+    New events carry one canonical ``completion_receipts`` entry per member.
+    Legacy packet-aggregate events only carried the primary canonical CID plus
+    ``updated_task_ids``/``already_completed_task_ids``.  For those events,
+    explicit canonical identities are recovered from the generated board named
+    by the terminal event.  A display ID alone never manufactures a receipt.
     """
 
-    event_paths = sorted(
-        {
-            *state_root.glob("*_events.jsonl"),
-            *state_root.glob("*/state/*_events.jsonl"),
-        }
-    )
     receipts: dict[str, dict[str, Any]] = {}
-    for source in event_log_sources(event_paths, include_rotated=True):
+    for source in bundle_member_completion_event_sources(state_root):
         for event in read_jsonl_events(source):
             event_type = str(event.get("type") or "")
             task_id = str(event.get("task_id") or "")
@@ -134,20 +222,89 @@ def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, A
                 )
             if not completed:
                 continue
-            canonical_task_cid = str(event.get("canonical_task_cid") or "")
-            if not canonical_task_cid:
-                continue
-            receipt = {
-                "canonical_task_cid": canonical_task_cid,
-                "canonical_task_key": str(event.get("canonical_task_key") or ""),
-                "task_id": task_id,
-                "timestamp": str(event.get("timestamp") or ""),
-                "event_type": event_type,
-                "event_path": str(source),
-            }
-            previous = receipts.get(canonical_task_cid)
-            if previous is None or receipt["timestamp"] >= previous["timestamp"]:
-                receipts[canonical_task_cid] = receipt
+
+            todo_update = (
+                event.get("todo_update_result")
+                if isinstance(event.get("todo_update_result"), Mapping)
+                else {}
+            )
+            completion_payload = event if event_type == "todo_status_updated" else todo_update
+            raw_member_receipts = completion_payload.get(
+                "completion_receipts"
+            ) or completion_payload.get("member_completion_receipts")
+            member_task_ids = list(
+                dict.fromkeys(
+                    [
+                        task_id,
+                        *(
+                            str(item)
+                            for key in (
+                                "updated_task_ids",
+                                "already_completed_task_ids",
+                            )
+                            for item in (completion_payload.get(key) or [])
+                            if str(item)
+                        ),
+                    ]
+                )
+            )
+            explicit_by_task_id = {
+                str(item.get("task_id") or ""): dict(item)
+                for item in raw_member_receipts
+                if isinstance(item, Mapping)
+                and str(item.get("task_id") or "") in member_task_ids
+            } if isinstance(raw_member_receipts, list) else {}
+            # Backward-compatible recovery for terminal aggregate events
+            # written before per-member canonical receipts were included. It
+            # also safely fills a partial new event after a transient board
+            # read failure at write time.
+            legacy_identities = _legacy_completed_member_identities(
+                completion_payload.get("path"),
+                member_task_ids,
+            )
+            member_receipts: list[dict[str, Any]] = []
+            for member_task_id in member_task_ids:
+                member = explicit_by_task_id.get(member_task_id, {})
+                if not str(member.get("canonical_task_cid") or ""):
+                    if (
+                        member_task_id == task_id
+                        and str(event.get("canonical_task_cid") or "")
+                    ):
+                        member = {
+                            "task_id": member_task_id,
+                            "canonical_task_cid": str(
+                                event.get("canonical_task_cid") or ""
+                            ),
+                            "canonical_task_key": str(
+                                event.get("canonical_task_key") or ""
+                            ),
+                            "board_namespace": str(
+                                event.get("board_namespace") or ""
+                            ),
+                        }
+                    else:
+                        member = legacy_identities.get(member_task_id, {})
+                if member:
+                    member_receipts.append(member)
+
+            for member in member_receipts:
+                member_task_id = str(member.get("task_id") or "")
+                canonical_task_cid = str(member.get("canonical_task_cid") or "")
+                if not canonical_task_cid:
+                    continue
+                receipt = {
+                    "canonical_task_cid": canonical_task_cid,
+                    "canonical_task_key": str(member.get("canonical_task_key") or ""),
+                    "task_id": member_task_id,
+                    "board_namespace": str(member.get("board_namespace") or ""),
+                    "status": "succeeded",
+                    "timestamp": str(event.get("timestamp") or ""),
+                    "event_type": event_type,
+                    "event_path": str(source),
+                }
+                previous = receipts.get(canonical_task_cid)
+                if previous is None or receipt["timestamp"] >= previous["timestamp"]:
+                    receipts[canonical_task_cid] = receipt
     return receipts
 
 
@@ -528,21 +685,66 @@ def _bundle_conflict_task(
                 values.extend(item for item in candidates if item)
         return list(dict.fromkeys(values))
 
+    def source_values(source: Mapping[str, Any], *keys: str) -> list[str]:
+        values: list[str] = []
+        for key in keys:
+            raw = source.get(key)
+            if isinstance(raw, str):
+                candidates = [part.strip() for part in raw.split(",")]
+            elif isinstance(raw, (list, tuple, set, frozenset)):
+                candidates = [str(part).strip() for part in raw]
+            else:
+                candidates = []
+            values.extend(item for item in candidates if item)
+        return list(dict.fromkeys(values))
+
+    # Objective bundles retain broad evidence/control-plane outputs alongside
+    # the narrower code and test files that an implementation may mutate.
+    # Unioning every alias made a shared discovery directory or objective
+    # document serialize otherwise independent lanes.  Select the most precise
+    # mutation declaration per live member, retaining Outputs as a compatibility
+    # fallback for legacy task payloads.
+    mutation_sources: Sequence[Mapping[str, Any]] = members or [payload]
+    mutation_files: list[str] = []
+    declared_path_candidates: list[str] = []
+    for source in mutation_sources:
+        files = source_values(source, "files")
+        predicted = source_values(
+            source,
+            "predicted_files",
+            "predicted_paths",
+            "affected_files",
+        )
+        legacy_outputs = source_values(source, "outputs", "requested_outputs")
+        selected = files or predicted or legacy_outputs
+        mutation_files.extend(selected)
+        declared_path_candidates.extend([*files, *predicted, *legacy_outputs])
+    mutation_files = list(dict.fromkeys(mutation_files))
+    mutation_file_set = set(mutation_files)
+    advisory_paths = [
+        path
+        for path in dict.fromkeys(declared_path_candidates)
+        if path not in mutation_file_set
+    ]
+
     bundle_key = str(payload.get("bundle_key") or "objective/general")
     profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
     conflict_policy = str(payload.get("conflict_policy") or "")
     ast_symbols = member_values("ast_symbols", "symbols")
     ast_symbol_scopes = {item.lower() for item in member_values("ast_symbol_scope")}
-    file_scoped_ast = bool(ast_symbol_scopes & {"file", "path", "local"}) or (
-        "allow independent file bundles" in conflict_policy.lower()
-    )
+    global_ast_symbols = member_values("global_ast_symbols")
+    if ast_symbol_scopes & {"global", "project", "repository"}:
+        global_ast_symbols = list(dict.fromkeys([*global_ast_symbols, *ast_symbols]))
     return {
         "task_id": bundle_key,
         "task_cid": str(profile_g.get("task_cid") or payload.get("task_cid") or ""),
-        "outputs": member_values("outputs", "files", "predicted_files"),
+        "files": mutation_files,
         "changed_paths": member_values("changed_paths", "actual_changed_paths"),
         "ast_symbols": ast_symbols,
-        "global_ast_symbols": [] if file_scoped_ast else ast_symbols,
+        # Bundle AST findings describe definitions in their predicted files by
+        # default.  Cross-file semantic conflicts must be declared explicitly
+        # through global_ast_symbols, a global scope, or an interface surface.
+        "global_ast_symbols": global_ast_symbols,
         "ast_query": ", ".join(member_values("ast_query")),
         "interfaces": member_values(
             "interfaces", "interface_contracts", "provides_interfaces", "requires_interfaces",
@@ -559,6 +761,7 @@ def _bundle_conflict_task(
                 str(task.get("task_id")) for task in members if task.get("task_id")
             ],
             "conflict_policy": conflict_policy,
+            "advisory_paths": advisory_paths,
         },
     }
 
@@ -873,6 +1076,7 @@ def implementation_supervisor_command(
     implementation_command: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
+    merge_target_branch: str = "",
     merge_reconciliation_max_merges: int | None = None,
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str = "",
@@ -882,6 +1086,8 @@ def implementation_supervisor_command(
     generated_dirty_repair_paths: Sequence[Path | str] = (),
     worktree_submodule_paths: Sequence[str] = (),
     assumed_completed_task_ids: Sequence[str] = (),
+    execution_slice_task_ids: Sequence[str] = (),
+    execution_slice_task_cids: Sequence[str] = (),
     log_level: str = "INFO",
 ) -> list[str]:
     command = [
@@ -934,6 +1140,8 @@ def implementation_supervisor_command(
         command.extend(["--llm-merge-resolver-command", llm_merge_resolver_command])
     if llm_merge_resolver_timeout_seconds is not None:
         command.extend(["--llm-merge-resolver-timeout-seconds", str(llm_merge_resolver_timeout_seconds)])
+    if merge_target_branch:
+        command.extend(["--merge-target-branch", merge_target_branch])
     if merge_reconciliation_max_merges is not None:
         command.extend(["--merge-reconciliation-max-merges", str(merge_reconciliation_max_merges)])
     if generated_dirty_repair_enabled:
@@ -951,6 +1159,12 @@ def implementation_supervisor_command(
     for task_id in dict.fromkeys(str(task_id).strip() for task_id in assumed_completed_task_ids):
         if task_id:
             command.extend(["--assume-completed-task-id", task_id])
+    for task_id in dict.fromkeys(str(task_id).strip() for task_id in execution_slice_task_ids):
+        if task_id:
+            command.extend(["--execution-slice-task-id", task_id])
+    for task_cid in dict.fromkeys(str(task_cid).strip() for task_cid in execution_slice_task_cids):
+        if task_cid:
+            command.extend(["--execution-slice-task-cid", task_cid])
     return command
 
 
@@ -972,6 +1186,7 @@ def plan_bundle_lanes(
     implementation_command: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
+    merge_target_branch: str = "",
     merge_reconciliation_max_merges: int | None = None,
     generated_dirty_repair_enabled: bool = False,
     generated_dirty_repair_commit_subject: str = "",
@@ -982,11 +1197,22 @@ def plan_bundle_lanes(
     worktree_submodule_paths: Sequence[str] = (),
     log_level: str = "INFO",
     max_lanes: int | None = None,
+    completion_receipts: Mapping[str, Any] | None = None,
 ) -> list[BundleLaneSpec]:
     """Return one isolated supervisor command for each objective bundle."""
 
     lanes: list[BundleLaneSpec] = []
-    bundle_payloads = build_bundle_task_payloads(bundle_index_path)
+    if completion_receipts is None:
+        completion_receipts = bundle_member_completion_receipts(state_root)
+    if completion_receipts:
+        bundle_payloads = build_bundle_task_payloads(
+            bundle_index_path,
+            merge_receipts=completion_receipts,
+        )
+    else:
+        # Keep the legacy single-argument call path for integrations which
+        # inject a planner and have no durable receipt overlay to apply.
+        bundle_payloads = build_bundle_task_payloads(bundle_index_path)
     globally_completed_task_ids = {
         str(task.get("task_id") or "")
         for payload in bundle_payloads
@@ -995,6 +1221,11 @@ def plan_bundle_lanes(
         in _TERMINAL_CONFLICT_TASK_STATUSES
         and str(task.get("task_id") or "")
     }
+    globally_completed_task_ids.update(
+        task_id
+        for payload in bundle_payloads
+        for task_id in _string_list(payload.get("completed_member_task_ids"))
+    )
     excluded_bundle_keys = _excluded_bundle_keys(bundle_index_path)
     bundle_payloads = [
         payload
@@ -1037,6 +1268,15 @@ def plan_bundle_lanes(
                 if isinstance(item, dict) and item.get("task_id")
             ]
         )
+        task_cids = (
+            _string_list(payload.get("execution_slice_task_cids"))
+            if "execution_slice_task_cids" in payload
+            else [
+                str(item.get("canonical_task_cid") or item.get("task_cid"))
+                for item in execution_tasks
+                if str(item.get("canonical_task_cid") or item.get("task_cid") or "")
+            ]
+        )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
         command = implementation_supervisor_command(
@@ -1055,6 +1295,7 @@ def plan_bundle_lanes(
             implementation_command=implementation_command,
             llm_merge_resolver_command=llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=llm_merge_resolver_timeout_seconds,
+            merge_target_branch=merge_target_branch,
             merge_reconciliation_max_merges=merge_reconciliation_max_merges,
             generated_dirty_repair_enabled=generated_dirty_repair_enabled,
             generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
@@ -1064,6 +1305,8 @@ def plan_bundle_lanes(
             generated_dirty_repair_paths=generated_dirty_repair_paths,
             worktree_submodule_paths=worktree_submodule_paths,
             assumed_completed_task_ids=assumed_completed_task_ids,
+            execution_slice_task_ids=task_ids,
+            execution_slice_task_cids=task_cids,
             log_level=log_level,
         )
         lanes.append(
@@ -1256,9 +1499,11 @@ def _spawn_accepted_lane(
         lane.llm_provider,
         "--phase-state-path",
         str(lane.state_dir / f"{lane.state_prefix}_task_state.json"),
-        "--",
-        *lane.command,
     ]
+    for task_id in dict.fromkeys(str(task_id).strip() for task_id in lane.task_ids):
+        if task_id:
+            guarded_command.extend(["--expected-task-id", task_id])
+    guarded_command.extend(["--", *lane.command])
     env = os.environ.copy()
     env["PYTHONPATH"] = _bundle_lane_pythonpath(
         repo_root,
@@ -1471,6 +1716,7 @@ class DynamicBundleScheduler:
         self._plan_cache: tuple[
             tuple[Path, ...],
             tuple[tuple[str, int, int], ...],
+            tuple[tuple[str, int, int], ...],
             tuple[BundleLaneSpec, ...],
         ] | None = None
 
@@ -1630,9 +1876,18 @@ class DynamicBundleScheduler:
 
     def _plan(self) -> list[BundleLaneSpec]:
         base_lanes: list[BundleLaneSpec]
+        receipt_revision = bundle_member_completion_source_revision(self.state_root)
         if self._plan_cache is not None:
-            cached_paths, cached_revision, cached_lanes = self._plan_cache
-            if self._plan_source_revision(cached_paths) == cached_revision:
+            (
+                cached_paths,
+                cached_revision,
+                cached_receipt_revision,
+                cached_lanes,
+            ) = self._plan_cache
+            if (
+                self._plan_source_revision(cached_paths) == cached_revision
+                and receipt_revision == cached_receipt_revision
+            ):
                 base_lanes = list(cached_lanes)
             else:
                 self._plan_cache = None
@@ -1641,7 +1896,8 @@ class DynamicBundleScheduler:
                 "task_prefix", "implement", "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "implementation_timeout",
                 "implementation_command", "llm_merge_resolver_command",
-                "llm_merge_resolver_timeout_seconds", "merge_reconciliation_max_merges",
+                "llm_merge_resolver_timeout_seconds", "merge_target_branch",
+                "merge_reconciliation_max_merges",
                 "generated_dirty_repair_enabled", "generated_dirty_repair_commit_subject",
                 "generated_dirty_repair_include_submodule_gitlinks",
                 "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
@@ -1649,15 +1905,37 @@ class DynamicBundleScheduler:
                 "worktree_submodule_paths", "log_level",
             }
             options = {key: value for key, value in self.lane_options.items() if key in allowed}
-            base_lanes = plan_bundle_lanes(
-                bundle_index_path=self.bundle_index_path,
-                repo_root=self.repo_root,
-                state_root=self.state_root,
-                worktree_root=self.worktree_root,
-                log_dir=self.log_dir,
-                max_lanes=None,
-                **options,
-            )
+            # Bind the planned slice and its receipt evidence to the same
+            # stable log revision.  If a completion arrives during the read,
+            # retry instead of caching stale work under the newer revision.
+            for _attempt in range(3):
+                receipt_revision = bundle_member_completion_source_revision(
+                    self.state_root
+                )
+                completion_receipts = bundle_member_completion_receipts(
+                    self.state_root
+                )
+                base_lanes = plan_bundle_lanes(
+                    bundle_index_path=self.bundle_index_path,
+                    repo_root=self.repo_root,
+                    state_root=self.state_root,
+                    worktree_root=self.worktree_root,
+                    log_dir=self.log_dir,
+                    max_lanes=None,
+                    completion_receipts=completion_receipts,
+                    **options,
+                )
+                observed_revision = bundle_member_completion_source_revision(
+                    self.state_root
+                )
+                if receipt_revision == observed_revision:
+                    receipt_revision = observed_revision
+                    break
+            else:
+                # Avoid pinning an unstable snapshot.  It will be re-read on
+                # the next scheduler cycle even if the log is continuously
+                # active.
+                receipt_revision = (("<unstable>", -1, -1),)
             source_paths = tuple(
                 sorted(
                     {
@@ -1671,6 +1949,7 @@ class DynamicBundleScheduler:
             self._plan_cache = (
                 source_paths,
                 self._plan_source_revision(source_paths),
+                receipt_revision,
                 tuple(base_lanes),
             )
 
@@ -1922,6 +2201,147 @@ class DynamicBundleScheduler:
                 failure_class="blocked",
             )
 
+    def _reconcile_untracked_terminal_leases(
+        self,
+        coordinator: LeaseCoordinator,
+        lanes: Sequence[BundleLaneSpec],
+    ) -> dict[str, dict[str, str]]:
+        """Settle durable terminal work whose accepted wrapper predates this scheduler.
+
+        ``_running`` is intentionally process-local and is empty after a
+        scheduler restart.  The accepted lease and lane phase state are durable,
+        however, so a predecessor's wrapper can remain alive and renew forever
+        after its board has drained.  Reuse the same current-board and
+        identity-aware disposition check used for locally owned workers, then
+        publish the terminal receipt through the accepted fencing token.
+
+        The receipt is written before any process is stopped.  A still-running
+        leased wrapper observes the terminal lease on its next heartbeat, fences
+        its child, and exits without manufacturing a competing receipt.
+        Non-terminal accepted workers are never adopted or preempted.
+        """
+
+        lanes_by_bundle_key = {lane.bundle_key: lane for lane in lanes}
+        accepted_tasks = [
+            accepted
+            for accepted in coordinator.list_tasks()
+            if self._projection_state(accepted) == "accepted"
+            and str(accepted.get("task_cid") or "") not in self._running
+        ]
+        if not accepted_tasks:
+            return {}
+        member_receipts = bundle_member_completion_receipts(self.state_root)
+        reconciled: dict[str, dict[str, str]] = {}
+        for accepted in accepted_tasks:
+            task_cid = str(accepted.get("task_cid") or "")
+            if not task_cid:
+                continue
+            payload = accepted.get("bundle")
+            if not isinstance(payload, dict):
+                continue
+            bundle_key = str(
+                payload.get("bundle_key")
+                or accepted.get("bundle_key")
+                or ""
+            )
+            current_lane = lanes_by_bundle_key.get(bundle_key)
+            if current_lane is None:
+                todo_path = resolve_repo_path(
+                    self.repo_root,
+                    str(payload.get("todo_path") or payload.get("shard_path") or ""),
+                )
+                safe_key = safe_bundle_key(bundle_key or task_cid)
+                current_lane = BundleLaneSpec(
+                    bundle_key=bundle_key or task_cid,
+                    parallel_lane=str(payload.get("parallel_lane") or bundle_key or task_cid),
+                    todo_path=todo_path,
+                    state_dir=self.state_root / safe_key / "state",
+                    worktree_root=self.worktree_root / safe_key,
+                    state_prefix=lane_state_prefix(bundle_key or task_cid),
+                    task_ids=[],
+                    conflict_policy=str(payload.get("conflict_policy") or ""),
+                    command=[],
+                    log_path=self.log_dir / f"{safe_key}.log",
+                )
+            tasks = _mapping_list(payload.get("tasks"))
+            execution_tasks = _execution_slice_members(payload, tasks)
+            if (
+                "execution_slice_task_cids" in payload
+                or "execution_slice_task_ids" in payload
+            ) and not execution_tasks:
+                # An accepted lease must describe concrete work.  An empty
+                # current planning slice is not evidence about its predecessor.
+                continue
+            task_ids = [
+                str(task.get("task_id") or "")
+                for task in execution_tasks
+                if str(task.get("task_id") or "")
+            ]
+            recovery_lane = replace(
+                current_lane,
+                task_cid=task_cid,
+                goal_cid=str(accepted.get("goal_cid") or current_lane.goal_cid),
+                subgoal_cid=str(accepted.get("subgoal_cid") or current_lane.subgoal_cid),
+                task_ids=task_ids,
+                queue_payload=dict(payload),
+            )
+            disposition = self._disposition(recovery_lane)
+            if not disposition:
+                continue
+            completed_member_cids = {
+                str(task.get("canonical_task_cid") or task.get("task_cid") or "")
+                for task in execution_tasks
+                if str(task.get("canonical_task_cid") or task.get("task_cid") or "")
+            }
+            if disposition == "completed" and (
+                not completed_member_cids
+                or not completed_member_cids.issubset(member_receipts)
+            ):
+                logger.warning(
+                    "Refusing to reconcile completed lease %s without durable "
+                    "successful receipts for every execution-slice member",
+                    task_cid,
+                )
+                continue
+            try:
+                grant = coordinator.active_lease(task_cid)
+                if grant is None:
+                    continue
+                if disposition == "completed":
+                    coordinator.receipt(
+                        grant,
+                        status="succeeded",
+                        output={
+                            "reason": "reconciled durable terminal execution slice",
+                            "recovery": "untracked_accepted_lease",
+                            "member_receipts": [
+                                member_receipts[cid]
+                                for cid in sorted(completed_member_cids)
+                            ],
+                        },
+                    )
+                else:
+                    self._settle_grant(
+                        coordinator,
+                        grant,
+                        disposition=disposition,
+                    )
+            except LeaseError:
+                # Renewal, takeover, and peer settlement races are resolved by
+                # the coordination store's fencing token.  The next cycle will
+                # observe whichever state won.
+                continue
+            reconciled[task_cid] = {
+                "bundle_key": recovery_lane.bundle_key,
+                "disposition": disposition,
+            }
+            logger.info(
+                "Reconciled terminal accepted lease %s after scheduler restart (%s)",
+                task_cid,
+                disposition,
+            )
+        return reconciled
+
     def _default_launcher(self, lane: BundleLaneSpec, grant: Any) -> subprocess.Popen[bytes]:
         process, _command, _pid_path = _spawn_accepted_lane(
             lane,
@@ -2108,6 +2528,7 @@ class DynamicBundleScheduler:
         task_projection: Sequence[dict[str, Any]],
         launched: Sequence[str],
         reaped: Sequence[str],
+        reconciled: Sequence[str] = (),
         scheduler_state: SchedulerSnapshot | None = None,
         decision_snapshot: SchedulerSnapshot | None = None,
         decisions: Sequence[dict[str, Any]] = (),
@@ -2249,6 +2670,7 @@ class DynamicBundleScheduler:
             "tasks": normalized,
             "launched_task_cids": list(launched),
             "reaped_task_cids": list(reaped),
+            "reconciled_task_cids": list(reconciled),
         }
         if self._last_discovery_error:
             payload["discovery_error"] = self._last_discovery_error
@@ -2281,17 +2703,38 @@ class DynamicBundleScheduler:
 
             launched: list[str] = []
             with LeaseCoordinator(self.coordination_path) as coordinator:
-                registered: list[BundleLaneSpec] = []
-                registration_lanes = [
-                    lane for lane in discovered if lane.queue_payload
-                ]
-                adapted_bundles = coordinator.register_bundles(
-                    lane.queue_payload for lane in registration_lanes
+                # Reap and recover before registration.  Registration refreshes
+                # mutable discovery metadata; doing it first could overwrite
+                # the accepted predecessor's execution-slice payload when the
+                # newly planned slice happens to have the same canonical CID.
+                reaped = self._reap(coordinator)
+                reconciled = self._reconcile_untracked_terminal_leases(
+                    coordinator,
+                    discovered,
                 )
-                for lane, adapted in zip(
-                    registration_lanes,
-                    adapted_bundles,
-                ):
+                accepted_by_task_cid = {
+                    str(item.get("task_cid") or ""): item
+                    for item in coordinator.list_tasks()
+                    if self._projection_state(item) == "accepted"
+                    and str(item.get("task_cid") or "")
+                }
+                registered: list[BundleLaneSpec] = []
+                for lane in (item for item in discovered if item.queue_payload):
+                    accepted = accepted_by_task_cid.get(lane.task_cid)
+                    if accepted is not None:
+                        # Preserve the immutable payload of work that is still
+                        # executing under its accepted fencing token.
+                        registered.append(
+                            replace(
+                                lane,
+                                goal_cid=str(accepted.get("goal_cid") or lane.goal_cid),
+                                subgoal_cid=str(
+                                    accepted.get("subgoal_cid") or lane.subgoal_cid
+                                ),
+                            )
+                        )
+                        continue
+                    adapted = coordinator.register_bundle(lane.queue_payload)
                     registered.append(
                         replace(
                             lane,
@@ -2301,7 +2744,6 @@ class DynamicBundleScheduler:
                         )
                     )
 
-                reaped = self._reap(coordinator)
                 for lane in registered:
                     if lane.task_cid in self._running or self._disposition(lane):
                         continue
@@ -2317,6 +2759,7 @@ class DynamicBundleScheduler:
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),
+                    *reconciled.keys(),
                 }
                 decision_projection = coordinator.list_tasks(
                     task_cids=current_task_cids,
@@ -2337,7 +2780,19 @@ class DynamicBundleScheduler:
                         ].queue_payload.get("external_active_member_fence")
                     )
                 }
-                decisions: list[dict[str, Any]] = []
+                decisions: list[dict[str, Any]] = [
+                    {
+                        "task_cid": task_cid,
+                        "bundle_key": result["bundle_key"],
+                        "decision": "settled",
+                        "reason": (
+                            f"reconciled_terminal_{result['disposition']}"
+                        ),
+                        "recovery": "untracked_accepted_lease",
+                        "snapshot_id": decision_snapshot.snapshot_id,
+                    }
+                    for task_cid, result in reconciled.items()
+                ]
                 running_by_bundle_key = {
                     running.spec.bundle_key: running
                     for running in self._running.values()
@@ -2389,6 +2844,8 @@ class DynamicBundleScheduler:
                             "reason": "already_active",
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
+                        continue
+                    if lane.task_cid in reconciled:
                         continue
                     scope_owner = running_by_bundle_key.get(lane.bundle_key)
                     if scope_owner is not None:
@@ -2557,6 +3014,7 @@ class DynamicBundleScheduler:
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),
+                    *reconciled.keys(),
                 }
                 projection = coordinator.list_tasks(
                     task_cids=current_task_cids,
@@ -2579,6 +3037,7 @@ class DynamicBundleScheduler:
                 task_projection=projection,
                 launched=launched,
                 reaped=reaped,
+                reconciled=tuple(reconciled),
                 scheduler_state=current_snapshot,
                 decision_snapshot=decision_snapshot,
                 decisions=decisions,
@@ -2684,6 +3143,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--implementation-command", default="")
     parser.add_argument("--llm-merge-resolver-command", default="")
     parser.add_argument("--llm-merge-resolver-timeout-seconds", type=float, default=None)
+    parser.add_argument(
+        "--merge-target-branch",
+        default="",
+        help=(
+            "Branch that receives isolated implementation merges. The branch "
+            "is forwarded to every bundle lane."
+        ),
+    )
     parser.add_argument("--merge-reconciliation-max-merges", type=int, default=None)
     parser.add_argument("--auto-commit-generated-dirty", dest="generated_dirty_repair_enabled", action="store_true")
     parser.set_defaults(generated_dirty_repair_enabled=False)
@@ -2752,6 +3219,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         implementation_command=args.implementation_command,
         llm_merge_resolver_command=args.llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
+        merge_target_branch=getattr(args, "merge_target_branch", ""),
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
         generated_dirty_repair_enabled=args.generated_dirty_repair_enabled,
         generated_dirty_repair_commit_subject=args.generated_dirty_commit_subject,

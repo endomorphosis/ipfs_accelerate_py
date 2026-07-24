@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     _bundle_lane_pythonpath,
     bundle_member_completion_receipts,
     build_arg_parser as build_bundle_arg_parser,
+    launch_bundle_lanes,
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
@@ -50,6 +51,9 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     build_namespace_merge_resolver_runner_from_spec,
 )
 from ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback import (
+    _DEFAULT_CODEX_TIMEOUT_SECONDS,
+    _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+    _timeout_seconds,
     llm_merge_resolver_fallback_command,
 )
 from ipfs_accelerate_py.agent_supervisor import task_proposal_router
@@ -1202,26 +1206,41 @@ def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
 def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
     todo_path = repo / "todo.md"
     todo_path.write_text("# Todos\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    linked = tmp_path / "linked"
+    _git(repo, "worktree", "add", "-b", "lane", str(linked))
+
     first = TodoImplementationDaemon(
         todo_path=todo_path,
-        state_path=repo / "lanes" / "first" / "task_state.json",
-        strategy_path=repo / "lanes" / "first" / "strategy.json",
-        events_path=repo / "lanes" / "first" / "events.jsonl",
+        state_path=tmp_path / "lanes" / "first" / "task_state.json",
+        strategy_path=tmp_path / "lanes" / "first" / "strategy.json",
+        events_path=tmp_path / "lanes" / "first" / "events.jsonl",
         repo_root=repo,
     )
+    first.git_gc.state.last_gc_time = 123.0
+    first.git_gc.state.save()
+
     second = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=repo / "lanes" / "second" / "task_state.json",
-        strategy_path=repo / "lanes" / "second" / "strategy.json",
-        events_path=repo / "lanes" / "second" / "events.jsonl",
-        repo_root=repo,
+        todo_path=linked / "todo.md",
+        state_path=tmp_path / "lanes" / "second" / "task_state.json",
+        strategy_path=tmp_path / "lanes" / "second" / "strategy.json",
+        events_path=tmp_path / "lanes" / "second" / "events.jsonl",
+        repo_root=linked,
     )
 
-    expected = repo / "data" / "agent_supervisor" / "gc_state.json"
+    expected = repo / ".git" / "agent-supervisor" / "gc_state.json"
     assert first.git_gc.state_path == expected
     assert second.git_gc.state_path == expected
+    assert second.git_gc.state.last_gc_time == 123.0
+    assert _git(repo, "status", "--porcelain") == ""
+    assert _git(linked, "status", "--porcelain") == ""
 
 
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
@@ -3469,8 +3488,8 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
 def test_implementation_multi_supervisor_env_defaults_are_reusable():
     assert implementation_multi_supervisor_env_defaults() == {
         "PYTHONUNBUFFERED": "1",
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "900",
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
     }
     assert implementation_multi_supervisor_env_defaults(
         python_unbuffered=False,
@@ -3479,7 +3498,7 @@ def test_implementation_multi_supervisor_env_defaults_are_reusable():
     ) == {
         "PYTHONUNBUFFERED": "0",
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
         "PREFER_COPILOT_MERGE_RESOLVER": "1",
     }
 
@@ -3762,6 +3781,73 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
     assert codex_log.read_text(encoding="utf-8") == "resolve this conflict"
 
 
+def test_llm_merge_resolver_provider_defaults_fit_outer_budget(monkeypatch):
+    monkeypatch.delenv("CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
+
+    codex_timeout = _timeout_seconds(
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS",
+        _DEFAULT_CODEX_TIMEOUT_SECONDS,
+    )
+    copilot_timeout = _timeout_seconds(
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS",
+        _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+    )
+
+    assert codex_timeout == 900
+    assert copilot_timeout == 600
+    assert (
+        codex_timeout + copilot_timeout
+        < merge_resolver.DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS
+    )
+
+
+def test_llm_merge_resolver_fallback_uses_copilot_after_codex_timeout(tmp_path):
+    codex_bin = tmp_path / "codex"
+    copilot_bin = tmp_path / "copilot"
+    copilot_log = tmp_path / "copilot.prompt"
+    codex_bin.write_text("#!/usr/bin/env bash\nsleep 5\n", encoding="utf-8")
+    copilot_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "while (($#)); do\n"
+        "  if [[ \"$1\" == \"--prompt\" ]]; then shift; printf '%s' \"$1\" > "
+        f"{shlex.quote(str(copilot_log))}; fi\n"
+        "  shift || true\n"
+        "done\n",
+        encoding="utf-8",
+    )
+    codex_bin.chmod(0o755)
+    copilot_bin.chmod(0o755)
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+        "CODEX_BIN": str(codex_bin),
+        "COPILOT_BIN": str(copilot_bin),
+        "COPILOT_GITHUB_TOKEN": "test-token",
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0.05",
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "2",
+        "AGENT_RESOLVER_LOCK_BYPASS": "1",
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            str(tmp_path),
+        ],
+        input="resolve this conflict",
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "codex merge resolver timed out" in completed.stderr
+    assert copilot_log.read_text(encoding="utf-8") == "resolve this conflict"
+
+
 def test_llm_merge_resolver_fallback_skips_unauthenticated_copilot(tmp_path):
     codex_bin = tmp_path / "codex"
     copilot_bin = tmp_path / "copilot"
@@ -3827,6 +3913,72 @@ def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     _git(submodule, "config", "user.name", "Test User")
     _git(submodule, "config", "user.email", "test@example.invalid")
     return repo, submodule
+
+
+def test_stale_submodule_rebase_skips_branch_already_merged_without_switching_checkout(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/already-merged"
+    branch_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "branch", branch_name)
+
+    (submodule / "later.txt").write_text("later\n", encoding="utf-8")
+    _git(submodule, "add", "later.txt")
+    _git(submodule, "commit", "-m", "advance child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child on main")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._rebase_stale_submodule_pointers(branch_name, "main")
+
+    assert result["attempted"] is False
+    assert result["reason"] == "branch_already_merged"
+    assert _git(repo, "branch", "--show-current") == "main"
+    assert _git(repo, "rev-parse", branch_name) == branch_commit
+
+
+def test_stale_submodule_rebase_restores_canonical_checkout(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/rebase-with-restore"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "implementation feature")
+    _git(repo, "checkout", "main")
+
+    (submodule / "later.txt").write_text("later\n", encoding="utf-8")
+    _git(submodule, "add", "later.txt")
+    _git(submodule, "commit", "-m", "advance child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child on main")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._rebase_stale_submodule_pointers(branch_name, "main")
+
+    assert result["rebased"] is True
+    assert result["checkout_restore"]["restored"] is True
+    assert result["checkout_restore"]["branch"] == "main"
+    assert _git(repo, "branch", "--show-current") == "main"
+    assert _git(repo, "merge-base", "--is-ancestor", "main", branch_name) == ""
 
 
 def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
@@ -10942,7 +11094,7 @@ def test_implementation_daemon_prefers_retry_repair_for_blocked_source(tmp_path)
     assert selected.task_id == "ACCEL-002"
 
 
-def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_path):
+def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -10954,6 +11106,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
 - Status: todo
 - Priority: P1
 - Track: runtime
+- Bundle: objective/runtime/shard-a
 - Outputs: src/bridge.py
 - Validation: test -f src/bridge.py
 - Work item count: 3
@@ -10968,6 +11121,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
 - Status: todo
 - Priority: P1
 - Track: runtime
+- Bundle: objective/runtime/shard-a
 - Outputs: src/bridge.py
 - Validation: test -f src/bridge.py
 - Work item count: 3
@@ -10982,6 +11136,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
 - Status: todo
 - Priority: P1
 - Track: runtime
+- Bundle: objective/runtime/shard-a
 - Outputs: src/bridge.py
 - Validation: test -f src/bridge.py
 - Work item count: 6
@@ -10993,6 +11148,19 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
 - Goal packet work item count: 6
 - Candidate kind: goal_packet_aggregate
 - Acceptance: Add the shared packet proof.
+
+## ACCEL-004 Close another bundle gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Bundle: objective/runtime/shard-b
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Goal packet: goal_packet/runtime/src/abc
+- Goal packet role: packet_member
+- Candidate kind: aggregate
+- Acceptance: Add proof in another explicit bundle.
 """,
         encoding="utf-8",
     )
@@ -11005,6 +11173,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
                     {
                         "task_id": "ACCEL-001",
                         "title": "Close scheduler gap",
+                        "bundle_key": "objective/runtime/shard-a",
                         "candidate_kind": "aggregate",
                         "goal_packet_key": "goal_packet/runtime/src/abc",
                         "goal_packet_role": "packet_anchor",
@@ -11015,6 +11184,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
                     {
                         "task_id": "ACCEL-002",
                         "title": "Close fallback gap",
+                        "bundle_key": "objective/runtime/shard-a",
                         "candidate_kind": "aggregate",
                         "goal_packet_key": "goal_packet/runtime/src/abc",
                         "goal_packet_role": "packet_member",
@@ -11025,6 +11195,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
                     {
                         "task_id": "ACCEL-003",
                         "title": "Close packet aggregate",
+                        "bundle_key": "objective/runtime/shard-a",
                         "candidate_kind": "goal_packet_aggregate",
                         "merge_role": "packet_aggregate",
                         "merge_family": "goal_packet/runtime/src/abc",
@@ -11034,13 +11205,39 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
                         "goal_packet_work_item_count": 6,
                         "work_item_count": 6,
                     },
+                    {
+                        "task_id": "ACCEL-004",
+                        "title": "Close another bundle gap",
+                        "bundle_key": "objective/runtime/shard-b",
+                        "candidate_kind": "aggregate",
+                        "goal_packet_key": "goal_packet/runtime/src/abc",
+                        "goal_packet_role": "packet_member",
+                        "goal_packet_work_item_count": 6,
+                        "work_item_count": 1,
+                    },
+                    {
+                        "task_id": "ACCEL-005",
+                        "title": "Missing from the current shard",
+                        "bundle_key": "objective/runtime/shard-a",
+                        "candidate_kind": "aggregate",
+                        "goal_packet_key": "goal_packet/runtime/src/abc",
+                        "goal_packet_role": "packet_member",
+                        "goal_packet_work_item_count": 6,
+                        "work_item_count": 1,
+                    },
                 ],
                 "execution_packets": [
                     {
                         "packet_key": "execution_packet/runtime/src/abc",
                         "primary_task_id": "ACCEL-003",
-                        "active_task_ids": ["ACCEL-001", "ACCEL-002", "ACCEL-003"],
-                        "work_item_count_total": 12,
+                        "active_task_ids": [
+                            "ACCEL-001",
+                            "ACCEL-002",
+                            "ACCEL-003",
+                            "ACCEL-004",
+                            "ACCEL-005",
+                        ],
+                        "work_item_count_total": 14,
                     }
                 ],
             }
@@ -11076,6 +11273,7 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
         "ACCEL-001": "completed",
         "ACCEL-002": "completed",
         "ACCEL-003": "completed",
+        "ACCEL-004": "todo",
     }
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "todo_status_updated"
@@ -12015,6 +12213,18 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
                         "canonical_task_cid": "cid-non-authoritative",
                     }
                 ),
+                json.dumps(
+                    {
+                        "type": "todo_status_updated",
+                        "timestamp": "2026-07-22T12:04:00+00:00",
+                        "task_id": "ACCEL-005",
+                        "updated": True,
+                        "updated_task_ids": ["ACCEL-005"],
+                        "completion_receipts": [
+                            {"task_id": "ACCEL-005", "status": "succeeded"}
+                        ],
+                    }
+                ),
             ]
         )
         + "\n",
@@ -12026,6 +12236,394 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
     assert set(receipts) == {"cid-completed-from-status", "cid-completed-from-merge"}
     assert receipts["cid-completed-from-status"]["event_path"] == str(rotated_path)
     assert receipts["cid-completed-from-merge"]["task_id"] == "ACCEL-002"
+
+
+def test_goal_packet_aggregate_releases_every_covered_member_dependency(
+    monkeypatch,
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "aggregate.todo.md"
+    todo_path.write_text(
+        """# Aggregate packet
+
+## T-COVERED-A Covered packet member A
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Bundle: objective/aggregate
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_member
+- Candidate kind: aggregate
+
+## T-COVERED-B Covered packet member B
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Bundle: objective/aggregate
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_member
+- Candidate kind: aggregate
+
+## T-AGGREGATE Complete the shared goal packet
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Bundle: objective/aggregate
+- Merge family: goal_packet/runtime/shared
+- Merge role: packet_aggregate
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_aggregate
+- Candidate kind: goal_packet_aggregate
+""",
+        encoding="utf-8",
+    )
+    vector_index = repo / "objective_bundles" / "todo_vector_index.json"
+    vector_index.parent.mkdir(parents=True)
+    vector_index.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "task_id": task_id,
+                        "title": task_id,
+                        "bundle_key": "objective/aggregate",
+                        "candidate_kind": candidate_kind,
+                        "merge_family": "goal_packet/runtime/shared",
+                        "merge_role": merge_role,
+                        "goal_packet_key": "goal_packet/runtime/shared",
+                        "goal_packet_role": packet_role,
+                    }
+                    for task_id, candidate_kind, merge_role, packet_role in (
+                        ("T-COVERED-A", "aggregate", "aggregate", "packet_member"),
+                        ("T-COVERED-B", "aggregate", "aggregate", "packet_member"),
+                        (
+                            "T-AGGREGATE",
+                            "goal_packet_aggregate",
+                            "packet_aggregate",
+                            "packet_aggregate",
+                        ),
+                    )
+                ],
+                "execution_packets": [
+                    {
+                        "packet_key": "execution_packet/runtime/shared",
+                        "primary_task_id": "T-AGGREGATE",
+                        "active_task_ids": [
+                            "T-AGGREGATE",
+                            "T-COVERED-A",
+                            "T-COVERED-B",
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    state_root = repo / "state"
+    lane_state = state_root / "objective-aggregate" / "state"
+    lane_state.mkdir(parents=True)
+    strategy_path = lane_state / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "last_objective_todo_vector_index_path": (
+                    "objective_bundles/todo_vector_index.json"
+                )
+            }
+        ),
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=lane_state / "agent_objective_aggregate_task_state.json",
+        strategy_path=strategy_path,
+        events_path=lane_state / "agent_objective_aggregate_events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## T-",
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## T-")
+    daemon._register_task_identities(tasks)
+    aggregate = next(task for task in tasks if task.task_id == "T-AGGREGATE")
+    expected_identities = {
+        task_id: daemon._task_identity_by_display_id[task_id]
+        for task_id in ("T-AGGREGATE", "T-COVERED-A", "T-COVERED-B")
+    }
+
+    completion = daemon._mark_task_or_bundle_completed_in_todo(aggregate)
+    receipts = bundle_member_completion_receipts(state_root)
+
+    assert completion["updated_task_ids"] == [
+        "T-AGGREGATE",
+        "T-COVERED-A",
+        "T-COVERED-B",
+    ]
+    completion_receipts = {
+        receipt["task_id"]: receipt
+        for receipt in completion["completion_receipts"]
+    }
+    assert set(completion_receipts) == set(expected_identities)
+    assert {
+        task_id: receipt["canonical_task_cid"]
+        for task_id, receipt in completion_receipts.items()
+    } == {
+        task_id: identity.canonical_task_cid
+        for task_id, identity in expected_identities.items()
+    }
+    assert all(
+        receipt["status"] == "succeeded"
+        and receipt["schema"].endswith("member_completion_receipt@1")
+        for receipt in completion_receipts.values()
+    )
+    persisted_event = json.loads(
+        (lane_state / "agent_objective_aggregate_events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[-1]
+    )
+    assert persisted_event["completion_receipts"] == completion["completion_receipts"]
+    assert set(receipts) == {
+        identity.canonical_task_cid for identity in expected_identities.values()
+    }
+    assert {
+        receipt["task_id"] for receipt in receipts.values()
+    } == set(expected_identities)
+    assert all(receipt["status"] == "succeeded" for receipt in receipts.values())
+
+    bundle_index = repo / "bundle-index.json"
+    bundle_index.write_text(
+        json.dumps(
+            {
+                "source_todo": str(todo_path),
+                "bundles": {
+                    "objective/aggregate": {
+                        "shard_path": str(todo_path),
+                        "tasks": [
+                            {
+                                "task_id": task_id,
+                                "canonical_task_cid": identity.canonical_task_cid,
+                            }
+                            for task_id, identity in expected_identities.items()
+                        ],
+                    },
+                    "objective/downstream": {
+                        "shard_path": "downstream.todo.md",
+                        "tasks": [
+                            {
+                                "task_id": "T-DOWNSTREAM",
+                                "canonical_task_cid": "cid-downstream",
+                                "depends_on": [
+                                    "T-COVERED-A",
+                                    "T-COVERED-B",
+                                ],
+                            }
+                        ],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lanes = plan_bundle_lanes(
+        bundle_index_path=bundle_index,
+        repo_root=repo,
+        state_root=state_root,
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="## T-",
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert by_key["objective/aggregate"].task_ids == []
+    downstream = by_key["objective/downstream"]
+    assert downstream.claimable is True
+    assert downstream.task_ids == ["T-DOWNSTREAM"]
+    assert downstream.dependency_task_cids == []
+
+    starts = []
+
+    class Process:
+        pid = 4321
+
+    def fake_popen(command, **_kwargs):
+        starts.append(list(command))
+        return Process()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        fake_popen,
+    )
+    launched = launch_bundle_lanes(
+        [downstream],
+        repo_root=repo,
+        coordination_path=repo / "coordination.sqlite3",
+    )
+
+    assert launched[0]["accepted"] is True
+    assert len(starts) == 1
+
+
+def test_legacy_aggregate_member_ids_release_downstream_lane(
+    monkeypatch,
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_root = repo / "state"
+    lane_state = state_root / "objective-legacy" / "state"
+    lane_state.mkdir(parents=True)
+    todo_path = repo / "legacy.todo.md"
+    todo_path.write_text(
+        """# Legacy aggregate board
+
+## T-LEGACY-AGGREGATE Aggregate
+
+- Status: completed
+- Canonical task key: task/v1/legacy-aggregate
+- Canonical task CID: cid-legacy-aggregate
+
+## T-LEGACY-COVERED-A Covered A
+
+- Status: completed
+- Canonical task key: task/v1/legacy-covered-a
+- Canonical task CID: cid-legacy-covered-a
+
+## T-LEGACY-COVERED-B Covered B
+
+- Status: completed
+- Canonical task key: task/v1/legacy-covered-b
+- Canonical task CID: cid-legacy-covered-b
+""",
+        encoding="utf-8",
+    )
+    event_path = lane_state / "agent_objective_legacy_events.jsonl"
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "todo_status_updated",
+                "timestamp": "2026-07-23T12:00:00+00:00",
+                "task_id": "T-LEGACY-AGGREGATE",
+                "canonical_task_key": "task/v1/legacy-aggregate",
+                "canonical_task_cid": "cid-legacy-aggregate",
+                "updated": True,
+                "updated_task_ids": [
+                    "T-LEGACY-AGGREGATE",
+                    "T-LEGACY-COVERED-A",
+                ],
+                "already_completed_task_ids": ["T-LEGACY-COVERED-B"],
+                "completion_reason": "bundle_work_order",
+                "path": str(todo_path),
+                "bundle_work_order": {
+                    "primary_task_id": "T-LEGACY-AGGREGATE",
+                    "covered_task_ids": [
+                        "T-LEGACY-COVERED-A",
+                        "T-LEGACY-COVERED-B",
+                    ],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    receipts = bundle_member_completion_receipts(state_root)
+
+    assert set(receipts) == {
+        "cid-legacy-aggregate",
+        "cid-legacy-covered-a",
+        "cid-legacy-covered-b",
+    }
+    assert receipts["cid-legacy-covered-a"]["task_id"] == "T-LEGACY-COVERED-A"
+    assert (
+        receipts["cid-legacy-covered-a"]["canonical_task_cid"]
+        == "cid-legacy-covered-a"
+    )
+    assert receipts["cid-legacy-covered-b"]["status"] == "succeeded"
+
+    bundle_index = repo / "legacy-bundle-index.json"
+    bundle_index.write_text(
+        json.dumps(
+            {
+                "source_todo": "legacy.todo.md",
+                "bundles": {
+                    "objective/legacy": {
+                        "shard_path": str(todo_path),
+                        "tasks": [
+                            {
+                                "task_id": "T-LEGACY-AGGREGATE",
+                                "canonical_task_cid": "cid-legacy-aggregate",
+                            },
+                            {
+                                "task_id": "T-LEGACY-COVERED-A",
+                                "canonical_task_cid": "cid-legacy-covered-a",
+                            },
+                            {
+                                "task_id": "T-LEGACY-COVERED-B",
+                                "canonical_task_cid": "cid-legacy-covered-b",
+                            },
+                        ],
+                    },
+                    "objective/legacy-downstream": {
+                        "shard_path": "legacy-downstream.todo.md",
+                        "tasks": [
+                            {
+                                "task_id": "T-LEGACY-DOWNSTREAM",
+                                "canonical_task_cid": "cid-legacy-downstream",
+                                "depends_on": [
+                                    "T-LEGACY-COVERED-A",
+                                    "T-LEGACY-COVERED-B",
+                                ],
+                            }
+                        ],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lanes = plan_bundle_lanes(
+        bundle_index_path=bundle_index,
+        repo_root=repo,
+        state_root=state_root,
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="## T-",
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert by_key["objective/legacy"].task_ids == []
+    downstream = by_key["objective/legacy-downstream"]
+    assert downstream.claimable is True
+    assert downstream.task_ids == ["T-LEGACY-DOWNSTREAM"]
+    assert downstream.dependency_task_cids == []
+
+    starts = []
+
+    class Process:
+        pid = 4321
+
+    def fake_popen(command, **_kwargs):
+        starts.append(list(command))
+        return Process()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        fake_popen,
+    )
+    launched = launch_bundle_lanes(
+        [downstream],
+        repo_root=repo,
+        coordination_path=repo / "legacy-coordination.sqlite3",
+    )
+
+    assert launched[0]["accepted"] is True
+    assert len(starts) == 1
 
 
 def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
@@ -12069,6 +12667,7 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         llm_merge_resolver_command="python resolver.py",
         generated_dirty_repair_enabled=True,
         generated_dirty_repair_paths=(repo / "docs" / "generated-taskboard.md",),
+        merge_target_branch="benchmark-plan",
         worktree_submodule_paths=("ipfs_datasets_py/ipfs_accelerate_py",),
         log_level="DEBUG",
         max_lanes=None,
@@ -12100,6 +12699,7 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     )
     assert lanes[0].command.count("--worktree-submodule-path") == 1
     assert "ipfs_datasets_py/ipfs_accelerate_py" in lanes[0].command
+    assert lanes[0].command[lanes[0].command.index("--merge-target-branch") + 1] == "benchmark-plan"
 
 
 def test_bundle_lane_pythonpath_prefers_running_supervisor_package(tmp_path):

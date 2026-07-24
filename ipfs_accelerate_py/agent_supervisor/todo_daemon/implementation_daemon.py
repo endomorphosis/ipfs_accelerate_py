@@ -1022,6 +1022,8 @@ class PortalImplementationDaemon:
         generated_status_paths: Sequence[Path | str] = (),
         external_reservation_manifest_paths: Sequence[Path | str] = (),
         assumed_completed_task_ids: Sequence[str] = (),
+        execution_slice_task_ids: Sequence[str] = (),
+        execution_slice_task_cids: Sequence[str] = (),
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
         merge_reconciliation_max_merges: int | None = None,
@@ -1098,6 +1100,16 @@ class PortalImplementationDaemon:
             str(task_id).strip()
             for task_id in assumed_completed_task_ids
             if str(task_id).strip()
+        )
+        self.execution_slice_task_ids = frozenset(
+            str(task_id).strip()
+            for task_id in execution_slice_task_ids
+            if str(task_id).strip()
+        )
+        self.execution_slice_task_cids = frozenset(
+            str(task_cid).strip()
+            for task_cid in execution_slice_task_cids
+            if str(task_cid).strip()
         )
         self.llm_merge_resolver_command = (
             default_llm_merge_resolver_command()
@@ -1192,10 +1204,6 @@ class PortalImplementationDaemon:
         self._active_canonical_task_cids: set[str] = set()
         self.git_gc = GitGarbageCollector(
             repo_root=self.repo_root,
-            # Git objects and worktree metadata are repository-wide. A
-            # lane-local state file makes every new bundle believe aggressive
-            # GC has never run, serializing startup behind a full repack.
-            state_path=self.repo_root / "data" / "agent_supervisor" / "gc_state.json",
             worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
         )
 
@@ -1656,14 +1664,27 @@ class PortalImplementationDaemon:
                 continue
             resolved_statuses[task.task_id] = "ready"
 
-        representative_task_ids = self._canonical_representative_task_ids(tasks, resolved_statuses)
+        execution_tasks = [
+            task
+            for task in tasks
+            if (
+                not self.execution_slice_task_ids
+                and not self.execution_slice_task_cids
+            )
+            or task.task_id in self.execution_slice_task_ids
+            or self._canonical_ref(task) in self.execution_slice_task_cids
+        ]
+        representative_task_ids = self._canonical_representative_task_ids(
+            execution_tasks,
+            resolved_statuses,
+        )
         active_task_claims = self._active_implementation_task_claims(tasks)
         external_task_reservations = self._external_task_reservations(tasks)
         for task_id, reservation in external_task_reservations.items():
             active_task_claims.setdefault(task_id, reservation)
         selectable_tasks = [
             task
-            for task in tasks
+            for task in execution_tasks
             if (
                 task.task_id in representative_task_ids
                 and self._task_belongs_to_shard(task.task_id)
@@ -1675,7 +1696,7 @@ class PortalImplementationDaemon:
         ):
             fallback_tasks = [
                 task
-                for task in tasks
+                for task in execution_tasks
                 if (
                     task.task_id in representative_task_ids
                     and task.task_id not in active_task_claims
@@ -1856,6 +1877,8 @@ class PortalImplementationDaemon:
             "active_task_claims": sorted(active_task_claims),
             "external_reserved_task_ids": sorted(external_task_reservations),
             "assumed_completed_task_ids": sorted(self.assumed_completed_task_ids),
+            "execution_slice_task_ids": sorted(self.execution_slice_task_ids),
+            "execution_slice_task_cids": sorted(self.execution_slice_task_cids),
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
             "shared_completed_task_ids": sorted(shared_completed_task_ids),
             "canonical_task_count": len(aliases_by_cid),
@@ -2315,6 +2338,51 @@ class PortalImplementationDaemon:
             completion_reason="single_task",
         )
 
+    def _completion_receipts_for_task_ids(
+        self,
+        task_ids: Sequence[str],
+    ) -> list[dict[str, Any]]:
+        """Return canonical durable-receipt identities for completed members.
+
+        A packet aggregate changes several board records in one terminal
+        operation.  Preserve each member's canonical identity in that event so
+        dependency planners do not have to treat the aggregate's primary task
+        as the only completed member.
+        """
+
+        parsed_by_id: dict[str, PortalTask] = {}
+        try:
+            parsed_by_id = {
+                task.task_id: task
+                for task in parse_task_file(self.todo_path, self.task_header_prefix)
+            }
+        except (OSError, ValueError):
+            # The already-registered identity table is still useful when a
+            # generated board is concurrently replaced or becomes unreadable.
+            pass
+
+        receipts: list[dict[str, Any]] = []
+        for task_id in dict.fromkeys(str(item).strip() for item in task_ids):
+            if not task_id:
+                continue
+            identity = self._task_identity_by_display_id.get(task_id)
+            task = parsed_by_id.get(task_id)
+            if identity is None and task is not None:
+                identity = self._identity_for_task(task)
+            if identity is None:
+                continue
+            receipts.append(
+                {
+                    "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
+                    "task_id": task_id,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "board_namespace": identity.board_namespace,
+                    "status": "succeeded",
+                }
+            )
+        return receipts
+
     def _mark_task_or_bundle_completed_in_todo(self, task: PortalTask) -> dict[str, Any]:
         work_order = self._bundle_work_order_for_task(task)
         if work_order is None:
@@ -2438,6 +2506,9 @@ class PortalImplementationDaemon:
         inserted_status_task_ids.reverse()
 
         if not updated_task_ids:
+            completed_task_ids = list(
+                dict.fromkeys([*updated_task_ids, *already_completed_task_ids])
+            )
             result = {
                 "updated": False,
                 "task_id": primary_task_id,
@@ -2451,6 +2522,11 @@ class PortalImplementationDaemon:
                 "inserted_status_task_ids": inserted_status_task_ids,
                 "updated_checkbox_task_ids": updated_checkbox_task_ids,
             }
+            completion_receipts = self._completion_receipts_for_task_ids(
+                completed_task_ids
+            )
+            if completion_receipts:
+                result["completion_receipts"] = completion_receipts
             if bundle_work_order is not None:
                 result["bundle_work_order"] = bundle_work_order
             commit_result = self._commit_generated_file_update(
@@ -2492,6 +2568,11 @@ class PortalImplementationDaemon:
             "inserted_status_task_ids": inserted_status_task_ids,
             "updated_checkbox_task_ids": updated_checkbox_task_ids,
         }
+        completion_receipts = self._completion_receipts_for_task_ids(
+            [*updated_task_ids, *already_completed_task_ids]
+        )
+        if completion_receipts:
+            result["completion_receipts"] = completion_receipts
         if bundle_work_order is not None:
             result["bundle_work_order"] = bundle_work_order
         if commit_result:
@@ -5690,6 +5771,14 @@ class PortalImplementationDaemon:
         pick up the new submodule state. This prevents merge conflicts caused
         solely by outdated submodule pointer commits.
         """
+        if self._git_ref_is_ancestor(branch_name, target_branch):
+            return {
+                "attempted": False,
+                "reason": "branch_already_merged",
+                "branch": branch_name,
+                "target_branch": target_branch,
+            }
+
         results: list[dict[str, Any]] = []
 
         # Check if branch is behind target on submodule paths
@@ -5772,7 +5861,20 @@ class PortalImplementationDaemon:
         # If all stale submodules can fast-forward, attempt rebase
         rebase_candidates = [r for r in results if r.get("fast_forward_possible")]
         if rebase_candidates and len(rebase_candidates) == len([r for r in results if r.get("action") == "rebase_candidate"]):
-            # Safe to rebase - all submodule changes are fast-forwardable
+            # ``git rebase ... <branch>`` checks out that branch in the
+            # invoking worktree. Preserve the canonical checkout so a
+            # successful merge can subsequently delete the implementation
+            # branch instead of retrying forever because it is still checked
+            # out at ``repo_root``.
+            original_branch = self._git_current_branch(self.repo_root)
+            original_head_result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            original_head = original_head_result.stdout.strip()
             rebase = subprocess.run(
                 ["git", "rebase", "--onto", target_branch, base_commit, branch_name],
                 cwd=self.repo_root,
@@ -5780,28 +5882,63 @@ class PortalImplementationDaemon:
                 capture_output=True,
                 check=False,
             )
+            abort = None
+            if rebase.returncode != 0:
+                abort = subprocess.run(
+                    ["git", "rebase", "--abort"],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            restore_command = (
+                ["git", "checkout", original_branch]
+                if original_branch
+                else ["git", "checkout", "--detach", original_head]
+            )
+            restore = subprocess.run(
+                restore_command,
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            checkout_restore = {
+                "restored": restore.returncode == 0,
+                "branch": original_branch,
+                "head": original_head,
+                "returncode": restore.returncode,
+                "stdout": restore.stdout[-2000:],
+                "stderr": restore.stderr[-2000:],
+            }
+            if restore.returncode != 0:
+                return {
+                    "attempted": True,
+                    "rebased": False,
+                    "reason": "rebase_checkout_restore_failed",
+                    "stale_submodules": list(stale_submodules),
+                    "rebase_returncode": rebase.returncode,
+                    "rebase_stderr": rebase.stderr[:2000],
+                    "checkout_restore": checkout_restore,
+                    "results": results,
+                }
             if rebase.returncode == 0:
                 return {
                     "attempted": True,
                     "rebased": True,
                     "stale_submodules": list(stale_submodules),
+                    "checkout_restore": checkout_restore,
                     "results": results,
                 }
-            else:
-                # Abort failed rebase
-                subprocess.run(
-                    ["git", "rebase", "--abort"],
-                    cwd=self.repo_root,
-                    capture_output=True,
-                    check=False,
-                )
-                return {
-                    "attempted": True,
-                    "rebased": False,
-                    "reason": "rebase_failed",
-                    "stderr": rebase.stderr[:2000],
-                    "results": results,
-                }
+            return {
+                "attempted": True,
+                "rebased": False,
+                "reason": "rebase_failed",
+                "stderr": rebase.stderr[:2000],
+                "abort_returncode": abort.returncode if abort is not None else None,
+                "checkout_restore": checkout_restore,
+                "results": results,
+            }
 
         return {
             "attempted": True,
@@ -10633,6 +10770,11 @@ class PortalImplementationDaemon:
                 "execution_packets": execution_packets[:2],
                 "aggregate_primary": aggregate_primary,
                 "covered_packet_task_ids": covered_packet_task_ids,
+                "covered_packet_records": {
+                    task_id: by_task[task_id]
+                    for task_id in covered_packet_task_ids
+                    if task_id in by_task
+                },
             }
         return None
 
@@ -10642,15 +10784,44 @@ class PortalImplementationDaemon:
         context = self._load_todo_vector_context(task)
         if context is None or not context.get("aggregate_primary"):
             return None
-        covered_task_ids = [
+        candidate_task_ids = [
             str(task_id).strip()
             for task_id in context.get("covered_packet_task_ids", [])
             if str(task_id).strip() and str(task_id).strip() != task.task_id
         ]
-        if not covered_task_ids:
+        if not candidate_task_ids:
             return None
         record = context.get("record")
         if not isinstance(record, dict):
+            return None
+        covered_records = context.get("covered_packet_records")
+        if not isinstance(covered_records, dict):
+            covered_records = {}
+        try:
+            shard_tasks = {
+                shard_task.task_id: shard_task
+                for shard_task in parse_task_file(self.todo_path, self.task_header_prefix)
+            }
+        except OSError:
+            return None
+        primary_bundle_key = (
+            self._task_metadata_value(task, "bundle")
+            or str(record.get("bundle_key") or "").strip()
+        )
+        covered_task_ids: list[str] = []
+        for task_id in candidate_task_ids:
+            shard_task = shard_tasks.get(task_id)
+            candidate_record = covered_records.get(task_id)
+            if shard_task is None or not isinstance(candidate_record, dict):
+                continue
+            candidate_bundle_key = (
+                self._task_metadata_value(shard_task, "bundle")
+                or str(candidate_record.get("bundle_key") or "").strip()
+            )
+            if primary_bundle_key and candidate_bundle_key != primary_bundle_key:
+                continue
+            covered_task_ids.append(task_id)
+        if not covered_task_ids:
             return None
         packet_key = str(record.get("goal_packet_key") or record.get("merge_family") or "").strip()
         goal_ids = self._compact_value_list(record.get("goal_packet_goal_ids"), limit=24)
@@ -11447,7 +11618,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Timeout for the merge resolver subprocess. "
-            f"Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 600 seconds; <=0 disables."
+            f"Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 1800 seconds; <=0 disables."
         ),
     )
     parser.add_argument(
@@ -11630,6 +11801,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Repeatable external dependency task ID already proven complete by the planner.",
     )
     parser.add_argument(
+        "--execution-slice-task-id",
+        action="append",
+        default=[],
+        help="Repeatable task ID this leased bundle lane is authorized to execute.",
+    )
+    parser.add_argument(
+        "--execution-slice-task-cid",
+        action="append",
+        default=[],
+        help="Repeatable canonical task CID this leased bundle lane is authorized to execute.",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -11672,6 +11855,8 @@ def main(argv: list[str] | None = None) -> None:
         generated_status_paths=args.generated_status_path,
         external_reservation_manifest_paths=args.external_reservation_manifest_path,
         assumed_completed_task_ids=args.assume_completed_task_id,
+        execution_slice_task_ids=args.execution_slice_task_id,
+        execution_slice_task_cids=args.execution_slice_task_cid,
         llm_merge_resolver_command=args.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,

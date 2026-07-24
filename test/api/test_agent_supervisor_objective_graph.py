@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import types
+from dataclasses import replace
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor import (
@@ -32,6 +33,9 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     ObjectiveFinding,
+    add_goal_packet_aggregate_findings,
+    assign_goal_subgoal_packets,
+    evidence_index,
     materialize_task_dependency_dag,
     materialize_task_planning_graph,
     objective_fingerprint,
@@ -138,6 +142,115 @@ def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
     assert finding.missing_evidence == ["missing_meta_glasses_contract"]
     assert finding.present_evidence["CapabilityRouter.dispatch_task"] == ["src/runtime_router.py (ast)"]
     assert finding.present_evidence["meta glasses terminal router"][0].startswith("docs/runtime_notes.md (embedding:")
+
+
+def test_hsslev0097b20_empty_symbol_normalizations_are_not_ast_evidence(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    records = [
+        {
+            "root_relative_path": "assets/minified.js",
+            "evidence_text": "const unrelated = true;",
+            "symbols_json": json.dumps(["", " \t", "e", "v", "$"]),
+            "document_tokens_json": "[]",
+            "document_embedding_json": "[]",
+        }
+    ]
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=["HSSLEV0097B20"],
+        embedding_min_score=2.0,
+        records=records,
+    )
+
+    assert evidence == {"HSSLEV0097B20": []}
+
+
+def test_short_ast_symbols_are_not_substring_evidence_for_unique_markers(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    records = [
+        {
+            "root_relative_path": "src/unrelated.py",
+            "evidence_text": "short identifiers only",
+            "symbols_json": json.dumps(["le", "ssl", "hssl", "hsslev"]),
+            "document_tokens_json": "[]",
+            "document_embedding_json": "[]",
+        }
+    ]
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=["HSSLEV0097B20"],
+        embedding_min_score=2.0,
+        records=records,
+    )
+
+    assert evidence == {"HSSLEV0097B20": []}
+
+
+def test_empty_symbol_filter_preserves_nonempty_ast_and_exact_evidence(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    records = [
+        {
+            "root_relative_path": "src/proof.py",
+            "evidence_text": "literal objective receipt",
+            "symbols_json": json.dumps(["e", "$", "CapabilityRouter.dispatch_task"]),
+            "document_tokens_json": "[]",
+            "document_embedding_json": "[]",
+        }
+    ]
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=["CapabilityRouter.dispatch_task", "literal objective receipt"],
+        embedding_min_score=2.0,
+        records=records,
+    )
+
+    assert evidence["CapabilityRouter.dispatch_task"] == ["src/proof.py (ast)"]
+    assert evidence["literal objective receipt"] == ["src/proof.py (exact)"]
+
+
+def test_empty_symbol_only_source_keeps_unique_objective_evidence_missing(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    minified_source = repo / "src" / "minified.js"
+    minified_source.write_text(
+        "const e = 1; let le = e; var ssl = le; let hssl = ssl;\n",
+        encoding="utf-8",
+    )
+    objective_path.write_text(
+        """# Objective Heap
+
+## HSSL-G009 Reject empty AST symbols as objective evidence
+
+- Status: active
+- Parent: HSSL-G000
+- Priority: P0
+- Track: benchmark-protocol
+- Bundle: objective/hssl/supervisor-compatibility
+- Goal: Prevent token-empty AST symbols from satisfying objective evidence.
+- Evidence: HSSLEV0097B20
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/minified.js", "objective-heap.md")
+    _git(repo, "commit", "-m", "seed token-empty AST symbols")
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        embedding_min_score=2.0,
+    )
+
+    assert len(findings) == 1
+    assert findings[0].goal_id == "HSSL-G009"
+    assert findings[0].missing_evidence == ["HSSLEV0097B20"]
+    assert findings[0].present_evidence == {}
 
 
 def test_objective_scan_assigns_shared_evidence_to_deepest_refinement(tmp_path):
@@ -908,6 +1021,77 @@ def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
     assert findings[0].parallel_lane == findings[0].bundle_key
 
 
+def test_goal_packets_respect_explicit_bundles_and_preserve_implicit_grouping():
+    def finding(goal_id: str, bundle_key: str, *, explicit: bool) -> ObjectiveFinding:
+        return ObjectiveFinding(
+            fingerprint=f"fingerprint-{goal_id}",
+            goal_id=goal_id,
+            title=f"{goal_id} gap",
+            summary=f"{goal_id} summary",
+            priority="P1",
+            track="runtime",
+            missing_evidence=[f"missing-{goal_id}"],
+            present_evidence={},
+            evidence_methods=["exact"],
+            objective_path="objective-heap.md",
+            outputs=["src/bridge.py"],
+            validation="true",
+            parent_goal_ids=["VAIOS-G100"],
+            bundle_key=bundle_key,
+            parallel_lane=bundle_key,
+            bundle_explicit=explicit,
+            work_item_count=1,
+        )
+
+    explicit_findings = [
+        finding("VAIOS-G101", "objective/runtime/shard-a", explicit=True),
+        finding("VAIOS-G102", "objective/runtime/shard-a", explicit=True),
+        finding("VAIOS-G103", "objective/runtime/shard-b", explicit=True),
+        finding("VAIOS-G104", "objective/runtime/shard-b", explicit=True),
+    ]
+    packeted = assign_goal_subgoal_packets(explicit_findings)
+
+    packets_by_bundle = {
+        bundle_key: {
+            item.goal_packet_key
+            for item in packeted
+            if item.bundle_key == bundle_key
+        }
+        for bundle_key in ("objective/runtime/shard-a", "objective/runtime/shard-b")
+    }
+    assert all(len(packet_keys) == 1 for packet_keys in packets_by_bundle.values())
+    assert packets_by_bundle["objective/runtime/shard-a"] != packets_by_bundle["objective/runtime/shard-b"]
+    assert {
+        tuple(item.goal_packet_goal_ids)
+        for item in packeted
+        if item.bundle_key == "objective/runtime/shard-a"
+    } == {("VAIOS-G101", "VAIOS-G102")}
+    assert {
+        tuple(item.goal_packet_goal_ids)
+        for item in packeted
+        if item.bundle_key == "objective/runtime/shard-b"
+    } == {("VAIOS-G103", "VAIOS-G104")}
+
+    expanded = add_goal_packet_aggregate_findings(packeted, max_findings=6)
+    aggregates = [item for item in expanded if item.candidate_kind == "goal_packet_aggregate"]
+    assert {
+        (item.bundle_key, tuple(item.goal_packet_goal_ids))
+        for item in aggregates
+    } == {
+        ("objective/runtime/shard-a", ("VAIOS-G101", "VAIOS-G102")),
+        ("objective/runtime/shard-b", ("VAIOS-G103", "VAIOS-G104")),
+    }
+
+    implicit = assign_goal_subgoal_packets(
+        [
+            finding("VAIOS-G201", "objective/runtime/semantic-a", explicit=False),
+            finding("VAIOS-G202", "objective/runtime/semantic-b", explicit=False),
+        ]
+    )
+    assert implicit[0].goal_packet_key
+    assert implicit[0].goal_packet_key == implicit[1].goal_packet_key
+
+
 def test_objective_graph_appends_playwright_validation_for_launch_goals(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -1192,6 +1376,75 @@ def test_generate_objective_todos_recognizes_legacy_refinement_obligation(
     assert records == []
     assert todo_path.read_text(encoding="utf-8") == original_todo
     assert not discovery_dir.exists()
+
+
+def test_legacy_atomic_tasks_cover_reordered_aggregate_obligation(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G000 Aggregate outcome
+
+- Status: active
+- Track: ops
+- Bundle: objective/ops/root
+- Evidence: requirement_alpha, requirement_beta, requirement_gamma
+- Outputs: src, tests
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    task_blocks = []
+    for index, requirement in enumerate(
+        ("requirement_alpha", "requirement_beta", "requirement_gamma"),
+        start=2,
+    ):
+        task_blocks.append(
+            f"""## ACCEL-{index:03d} Legacy atomic task
+
+- Status: todo
+- Goal id: VAIOS-G{index:03d}
+- Graph parents: VAIOS-G000
+- Missing evidence: {requirement}
+- Candidate kind: aggregate
+- Acceptance: Produce one exact requirement.
+"""
+        )
+    todo_path.write_text(
+        "# Objective Todos\n\n" + "\n".join(task_blocks),
+        encoding="utf-8",
+    )
+    original_todo = todo_path.read_text(encoding="utf-8")
+    finding = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+    )[0]
+    assert set(finding.missing_evidence) == {
+        "requirement_alpha",
+        "requirement_beta",
+        "requirement_gamma",
+    }
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[replace(
+            finding,
+            missing_evidence=list(reversed(finding.missing_evidence)),
+        )],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert records == []
+    assert todo_path.read_text(encoding="utf-8") == original_todo
 
 
 def test_bundle_regeneration_preserves_projected_task_status(tmp_path):
@@ -1628,20 +1881,30 @@ def test_bundle_payload_admits_only_the_dependency_closed_ready_member_slice(tmp
     assert mixed["ready_member_task_ids"] == []
     assert mixed["deferred_member_task_ids"] == ["B"]
     assert mixed["execution_slice_task_ids"] == ["B"]
-    assert mixed["dependency_task_cids"] == [
-        waiting["objective/prerequisite"]["canonical_task_cid"]
-    ]
+    assert mixed["dependency_task_cids"] == ["cid-x"]
 
-    payload["bundles"]["objective/prerequisite"]["tasks"][0]["status"] = "completed"
-    index_path.write_text(json.dumps(payload), encoding="utf-8")
     replenished = {
-        item["bundle_key"]: item for item in build_bundle_task_payloads(index_path)
+        item["bundle_key"]: item
+        for item in build_bundle_task_payloads(
+            index_path,
+            merge_receipts={
+                "cid-x": {
+                    "status": "succeeded",
+                    "receipt_cid": "receipt-x",
+                }
+            },
+        )
     }
     mixed = replenished["objective/mixed"]
     assert mixed["claimable"] is True
     assert mixed["ready_member_task_ids"] == ["B"]
     assert mixed["execution_slice_task_ids"] == ["B"]
     assert mixed["dependency_task_cids"] == []
+    prerequisite = replenished["objective/prerequisite"]
+    assert prerequisite["completed_member_task_ids"] == ["X"]
+    assert prerequisite["ready_member_task_ids"] == []
+    assert prerequisite["execution_slice_task_ids"] == []
+    assert prerequisite["tasks"][0]["claimable"] is False
 
 
 def test_active_member_fences_bundle_slice_from_duplicate_launch(tmp_path):
@@ -1795,7 +2058,9 @@ def test_task_dependency_dag_requires_successful_merge_receipts_and_scores_criti
         merge_receipts={"cid-a": {"status": "succeeded", "receipt_cid": "receipt-a"}},
         now=10_000,
     )
-    assert next(item for item in unblocked.schedule if item.task_cid == "cid-b").claimable is True
+    unblocked_schedule = {item.task_cid: item for item in unblocked.schedule}
+    assert unblocked_schedule["cid-a"].claimable is False
+    assert unblocked_schedule["cid-b"].claimable is True
 
 
 def test_task_dependency_dag_bounds_cycle_and_missing_dependency_repairs_without_deadlock():

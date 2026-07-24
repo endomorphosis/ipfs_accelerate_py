@@ -36,6 +36,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .checkout_lock import git_common_dir
+
 logger = logging.getLogger(__name__)
 
 _GC_INTERVAL_ENV = "IPFS_ACCELERATE_AGENT_GC_INTERVAL_SECONDS"
@@ -177,7 +179,12 @@ class GitGarbageCollector:
 
     def __post_init__(self) -> None:
         if self.state_path is None:
-            self.state_path = self.repo_root / "data" / "agent_supervisor" / "gc_state.json"
+            # Git objects and worktree metadata are repository-wide. Keep the
+            # shared maintenance state in the common Git directory so linked
+            # worktrees reuse it without making any checkout dirty.
+            self.state_path = (
+                git_common_dir(self.repo_root) / "agent-supervisor" / "gc_state.json"
+            )
         if self.worktree_root is None:
             env_root = os.environ.get(_GC_WORKTREE_ROOT_ENV)
             if env_root:

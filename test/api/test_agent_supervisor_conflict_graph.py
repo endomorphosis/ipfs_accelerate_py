@@ -238,6 +238,221 @@ def test_file_isolated_bundle_policy_scopes_generated_ast_terms(
     assert all(not lane.conflicting_task_ids for lane in lanes)
 
 
+def test_bundle_lane_prefers_canonical_files_over_broad_planning_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payloads = [
+        {
+            "bundle_key": "bundle/alpha",
+            "todo_path": "alpha.md",
+            "tasks": [
+                {
+                    "task_id": "ALPHA",
+                    "files": ["src/alpha.py", "tests/test_alpha.py"],
+                    "outputs": ["src/alpha.py", "tests/test_alpha.py"],
+                    "predicted_files": [
+                        "src/alpha.py",
+                        "tests/test_alpha.py",
+                        "data/agent_supervisor/discovery",
+                        "docs/objectives.md",
+                    ],
+                }
+            ],
+            "profile_g": {"task_cid": "cid-alpha"},
+        }
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    [lane] = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+    )
+
+    assert lane.conflict_surface["files"] == ["src/alpha.py", "tests/test_alpha.py"]
+    metadata = lane.conflict_surface["metadata"]["metadata"]
+    assert metadata["advisory_paths"] == [
+        "data/agent_supervisor/discovery",
+        "docs/objectives.md",
+    ]
+
+
+def test_shared_bookkeeping_paths_do_not_block_disjoint_bundle_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    shared = [
+        "data/agent_supervisor/discovery",
+        "docs/objectives.md",
+    ]
+    payloads = [
+        {
+            "bundle_key": f"bundle/{name}",
+            "todo_path": f"{name}.md",
+            "tasks": [
+                {
+                    "task_id": name.upper(),
+                    "files": [f"src/{name}.py"],
+                    "outputs": [f"src/{name}.py"],
+                    "predicted_files": [f"src/{name}.py", *shared],
+                }
+            ],
+            "profile_g": {"task_cid": f"cid-{name}"},
+        }
+        for name in ("alpha", "beta")
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert by_key["bundle/alpha"].conflicting_task_ids == []
+    assert by_key["bundle/beta"].conflicting_task_ids == []
+    assert by_key["bundle/alpha"].conflict_color == by_key["bundle/beta"].conflict_color
+    assert by_key["bundle/alpha"].conflict_surface["files"] == ["src/alpha.py"]
+    assert by_key["bundle/beta"].conflict_surface["files"] == ["src/beta.py"]
+
+
+def test_same_canonical_file_still_blocks_bundle_concurrency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payloads = [
+        {
+            "bundle_key": f"bundle/{name}",
+            "todo_path": f"{name}.md",
+            "tasks": [
+                {
+                    "task_id": name.upper(),
+                    "files": ["src/shared.py"],
+                    "predicted_files": [
+                        "src/shared.py",
+                        "data/agent_supervisor/discovery",
+                    ],
+                }
+            ],
+            "profile_g": {"task_cid": f"cid-{name}"},
+        }
+        for name in ("alpha", "beta")
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert "bundle/beta" in by_key["bundle/alpha"].conflicting_task_ids
+    assert "bundle/alpha" in by_key["bundle/beta"].conflicting_task_ids
+    assert by_key["bundle/alpha"].conflict_color != by_key["bundle/beta"].conflict_color
+    assert any(
+        "src/shared.py" in decision["explanation"]
+        for decision in by_key["bundle/alpha"].conflict_decisions
+        if decision["action"] == "separate"
+    )
+
+
+def test_bundle_ast_symbols_are_file_local_unless_explicitly_global(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payloads = [
+        {
+            "bundle_key": f"bundle/{name}",
+            "todo_path": f"{name}.md",
+            "tasks": [
+                {
+                    "task_id": name.upper(),
+                    "files": [f"src/{name}.py"],
+                    "ast_symbols": ["__post_init__", "_digest"],
+                    **(
+                        {"global_ast_symbols": ["GlobalRegistry"]}
+                        if name.startswith("global-")
+                        else {}
+                    ),
+                }
+            ],
+            "profile_g": {"task_cid": f"cid-{name}"},
+        }
+        for name in ("alpha", "beta", "global-alpha", "global-beta")
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert "bundle/beta" not in by_key["bundle/alpha"].conflicting_task_ids
+    assert by_key["bundle/alpha"].conflict_surface["global_ast_symbols"] == []
+    assert by_key["bundle/alpha"].conflict_surface["ast_symbols"] == [
+        "__post_init__",
+        "_digest",
+    ]
+    assert "bundle/global-beta" in by_key["bundle/global-alpha"].conflicting_task_ids
+
+
+def test_non_python_path_overlap_does_not_inflate_discovered_ast_conflict(
+    tmp_path: Path,
+) -> None:
+    for name in ("alpha.py", "beta.py"):
+        path = tmp_path / "src" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "class Record:\n    def __post_init__(self):\n        return None\n",
+            encoding="utf-8",
+        )
+
+    graph = materialize_task_conflict_graph(
+        [
+            {
+                "task_id": "ALPHA",
+                "task_cid": "cid-alpha",
+                "outputs": ["src/alpha.py", "docs/shared.md"],
+            },
+            {
+                "task_id": "BETA",
+                "task_cid": "cid-beta",
+                "outputs": ["src/beta.py", "docs/shared.md"],
+            },
+        ],
+        repo_root=tmp_path,
+    )
+
+    edge = _edge(graph, "cid-alpha", "cid-beta")
+    assert edge.overlaps["files"] == ["docs/shared.md"]
+    assert "ast_symbols" not in edge.overlaps
+
+
 def test_actual_diffs_and_conflict_receipts_increase_future_pair_weight(tmp_path: Path) -> None:
     tasks = [
         {

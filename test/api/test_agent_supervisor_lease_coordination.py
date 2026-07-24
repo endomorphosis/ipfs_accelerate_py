@@ -101,6 +101,101 @@ def test_claimability_evidence_is_bounded_and_aliases_resolve_to_bundle_receipts
         assert coordinator.claimability(dependent_task["task_cid"])["claimable"] is True
 
 
+def test_serial_bundle_slices_preserve_completed_member_receipt_aliases(
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    coordination_path = tmp_path / "leases.duckdb"
+    first_member_cid = profile_g_cid({"member": "SERIAL-A"})
+    second_member_cid = profile_g_cid({"member": "SERIAL-B"})
+    tasks = [
+        {
+            "task_id": "SERIAL-A",
+            "title": "Implement the foundation",
+            "canonical_task_cid": first_member_cid,
+        },
+        {
+            "task_id": "SERIAL-B",
+            "title": "Implement the dependent protocol",
+            "canonical_task_cid": second_member_cid,
+        },
+    ]
+    bundle = {
+        "bundle_key": "objective/serial",
+        "source_todo": "serial.todo.md",
+        "tasks": tasks,
+    }
+    first_slice = {
+        **bundle,
+        "execution_slice_task_cids": [first_member_cid],
+        "execution_slice_task_ids": ["SERIAL-A"],
+    }
+    second_slice = {
+        **bundle,
+        "execution_slice_task_cids": [second_member_cid],
+        "execution_slice_task_ids": ["SERIAL-B"],
+    }
+    terminal_slice = {
+        **bundle,
+        "execution_slice_task_cids": [],
+        "execution_slice_task_ids": [],
+    }
+
+    with LeaseCoordinator(coordination_path) as coordinator:
+        first = coordinator.register_bundle(first_slice, created_at_ms=1)
+        first_grant = coordinator.claim(
+            first["task_cid"],
+            "did:web:first-slice.example",
+        )
+        coordinator.receipt(
+            first_grant,
+            status="succeeded",
+            output={"merge_commit": "first"},
+        )
+
+        # Simulate the pre-slice implementation, which aliased every bundle
+        # member to the first slice. Identical registration must repair this
+        # state even though its task payload is otherwise a no-op.
+        legacy = duckdb.connect(str(coordination_path))
+        try:
+            legacy.execute(
+                "INSERT OR REPLACE INTO task_aliases VALUES(?,?)",
+                (second_member_cid, first["task_cid"]),
+            )
+        finally:
+            legacy.close()
+        coordinator.register_bundle(first_slice, created_at_ms=1)
+        with pytest.raises(KeyError):
+            coordinator.claimability(second_member_cid)
+
+        second = coordinator.register_bundle(second_slice, created_at_ms=2)
+        coordinator.register_bundle(terminal_slice, created_at_ms=3)
+
+        assert first["task_cid"] != second["task_cid"]
+        assert coordinator.claimability(first_member_cid)["task_cid"] == first["task_cid"]
+        assert coordinator.claimability(second_member_cid)["task_cid"] == second["task_cid"]
+
+        depends_on_first = coordinator.register_bundle(
+            {
+                **_named_bundle("AFTER-FIRST"),
+                "dependency_task_cids": [first_member_cid],
+            },
+            created_at_ms=4,
+        )
+        depends_on_second = coordinator.register_bundle(
+            {
+                **_named_bundle("AFTER-SECOND"),
+                "dependency_task_cids": [second_member_cid],
+            },
+            created_at_ms=4,
+        )
+
+        assert coordinator.claimability(depends_on_first["task_cid"])["claimable"] is True
+        second_readiness = coordinator.claimability(depends_on_second["task_cid"])
+        assert second_readiness["claimable"] is False
+        assert second_readiness["blocked_dependency_task_cids"] == [second_member_cid]
+
+
 def test_dependency_cycle_produces_repair_evidence_instead_of_claiming(tmp_path: Path) -> None:
     first = _named_bundle("CYCLE-A")
     second = _named_bundle("CYCLE-B")
@@ -649,3 +744,72 @@ def test_bundle_launcher_runs_only_an_accepted_lease(monkeypatch: pytest.MonkeyP
     assert second[0]["accepted"] is False
     assert second[0]["code"] == "G_CLAIM_CONFLICT"
     assert len(starts) == 1
+
+
+def test_bundle_launcher_propagates_only_the_leased_execution_slice(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    index = repo / "index.json"
+    index.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: [
+            {
+                "bundle_key": "objective/hssl/protocol",
+                "todo_path": "protocol.todo.md",
+                "tasks": [
+                    {"task_id": "HSSL-BENCH-001"},
+                    {"task_id": "HSSL-BENCH-011"},
+                ],
+                "execution_slice_task_ids": ["HSSL-BENCH-011"],
+            }
+        ],
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+    )
+    assert lanes[0].task_ids == ["HSSL-BENCH-011"]
+
+    starts: list[list[str]] = []
+
+    class Process:
+        pid = 4321
+
+    def fake_popen(command, **_kwargs):
+        starts.append(list(command))
+        return Process()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        fake_popen,
+    )
+    launched = launch_bundle_lanes(
+        lanes,
+        repo_root=repo,
+        coordination_path=repo / "coordination.sqlite3",
+    )
+
+    assert launched[0]["accepted"] is True
+    assert len(starts) == 1
+    guarded_command = starts[0]
+    child_separator = guarded_command.index("--")
+    wrapper_command = guarded_command[:child_separator]
+    supervisor_command = guarded_command[child_separator + 1 :]
+    assert [
+        wrapper_command[index + 1]
+        for index, value in enumerate(wrapper_command)
+        if value == "--expected-task-id"
+    ] == ["HSSL-BENCH-011"]
+    assert [
+        supervisor_command[index + 1]
+        for index, value in enumerate(supervisor_command)
+        if value == "--execution-slice-task-id"
+    ] == ["HSSL-BENCH-011"]

@@ -29,7 +29,7 @@ from .event_log import read_jsonl_events
 
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
-DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS = 600.0
+DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS = 1800.0
 DEFAULT_PROMPT_HEADING = "Resolve the autonomous-agent supervisor merge conflict in this repository."
 DEFAULT_COMPLETION_RULE = "Do not unblock the source task until validation passes."
 MergePromptCallback = Callable[..., str]
@@ -1338,7 +1338,10 @@ def build_configured_merge_resolver_arg_parser(config: MergeResolverCliConfig) -
         "--timeout-seconds",
         type=float,
         default=None,
-        help=f"Resolver subprocess timeout. Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 600 seconds; <=0 disables.",
+        help=(
+            f"Resolver subprocess timeout. Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} "
+            f"or {DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS:g} seconds; <=0 disables."
+        ),
     )
     return parser
 
@@ -1389,7 +1392,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--timeout-seconds",
         type=float,
         default=None,
-        help=f"Resolver subprocess timeout. Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 600 seconds; <=0 disables.",
+        help=(
+            f"Resolver subprocess timeout. Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} "
+            f"or {DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS:g} seconds; <=0 disables."
+        ),
     )
     return parser
 

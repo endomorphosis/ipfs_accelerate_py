@@ -82,6 +82,62 @@ def test_bundle_identity_preserves_metadata_poor_task_cardinality() -> None:
     assert canonical_bundle_identity(single).canonical_task_cid != canonical_bundle_identity(pair).canonical_task_cid
 
 
+def test_bundle_identity_uses_nonempty_execution_slice() -> None:
+    first_task = _task("FIRST")
+    second_task = {
+        **_task("SECOND"),
+        "title": "Add dependency-aware task scheduling",
+        "outputs": ["src/scheduler.py", "tests/test_scheduler.py"],
+    }
+    full_bundle = {
+        "bundle_key": "objective/g9",
+        "tasks": [first_task, second_task],
+    }
+    first_slice = {
+        **full_bundle,
+        "execution_slice_task_ids": ["FIRST"],
+    }
+    second_cid = canonical_task_identity(second_task).canonical_task_cid
+    second_slice = {
+        **full_bundle,
+        "execution_slice_task_cids": [second_cid],
+    }
+
+    first_identity = canonical_bundle_identity(first_slice).canonical_task_cid
+    second_identity = canonical_bundle_identity(second_slice).canonical_task_cid
+
+    assert first_identity != second_identity
+    assert first_identity == canonical_bundle_identity(
+        {"bundle_key": "objective/g9", "tasks": [first_task]}
+    ).canonical_task_cid
+    assert second_identity == canonical_bundle_identity(
+        {"bundle_key": "objective/g9", "tasks": [second_task]}
+    ).canonical_task_cid
+    assert canonical_bundle_identity(
+        {**full_bundle, "execution_slice_task_ids": []}
+    ).canonical_task_cid == canonical_bundle_identity(full_bundle).canonical_task_cid
+
+
+def test_bundle_slice_identity_ignores_member_status_changes() -> None:
+    task = _task("FIRST")
+    bundle = {
+        "bundle_key": "objective/g9",
+        "tasks": [task, {**_task("SECOND"), "title": "A deferred task"}],
+        "execution_slice_task_ids": ["FIRST"],
+    }
+    changed = {
+        **bundle,
+        "tasks": [
+            {**task, "status": "completed"},
+            {**bundle["tasks"][1], "status": "blocked"},
+        ],
+    }
+
+    assert canonical_bundle_identity(bundle).canonical_task_cid == canonical_bundle_identity(
+        changed
+    ).canonical_task_cid
+
+
 def test_provided_identity_uses_git_safe_execution_fingerprint() -> None:
     identity = canonical_task_identity(
         {

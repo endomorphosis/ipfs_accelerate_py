@@ -267,6 +267,8 @@ class PortalSupervisorConfig:
     generated_dirty_repair_paths: tuple[Path, ...] = field(default_factory=tuple)
     external_reservation_manifest_paths: tuple[Path, ...] = field(default_factory=tuple)
     assumed_completed_task_ids: tuple[str, ...] = field(default_factory=tuple)
+    execution_slice_task_ids: tuple[str, ...] = field(default_factory=tuple)
+    execution_slice_task_cids: tuple[str, ...] = field(default_factory=tuple)
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -5462,6 +5464,10 @@ class PortalImplementationSupervisor:
             command.extend(["--external-reservation-manifest-path", str(path)])
         for task_id in self.config.assumed_completed_task_ids:
             command.extend(["--assume-completed-task-id", str(task_id)])
+        for task_id in self.config.execution_slice_task_ids:
+            command.extend(["--execution-slice-task-id", str(task_id)])
+        for task_cid in self.config.execution_slice_task_cids:
+            command.extend(["--execution-slice-task-cid", str(task_cid)])
         return command
 
     def _managed_daemon_pid_path(self) -> Path:
@@ -5691,6 +5697,23 @@ class PortalImplementationSupervisor:
         has_implement_flag = "--implement" in command_line
         if self.config.implement != has_implement_flag:
             return False
+        tokens = command_line.split()
+
+        def option_values(option: str) -> set[str]:
+            return {
+                tokens[index + 1]
+                for index, token in enumerate(tokens[:-1])
+                if token == option
+            }
+
+        if option_values("--execution-slice-task-id") != set(
+            self.config.execution_slice_task_ids
+        ):
+            return False
+        if option_values("--execution-slice-task-cid") != set(
+            self.config.execution_slice_task_cids
+        ):
+            return False
         return True
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
@@ -5781,7 +5804,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Timeout for the merge resolver subprocess. Passed to the managed daemon as "
             "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS; defaults to that env var "
-            "or 600 seconds; <=0 disables."
+            "or 1800 seconds; <=0 disables."
         ),
     )
     parser.add_argument(
@@ -5936,6 +5959,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         help="Repeatable external dependency task ID already proven complete by the planner.",
+    )
+    parser.add_argument(
+        "--execution-slice-task-id",
+        action="append",
+        default=[],
+        help="Repeatable task ID this leased bundle lane is authorized to execute.",
+    )
+    parser.add_argument(
+        "--execution-slice-task-cid",
+        action="append",
+        default=[],
+        help="Repeatable canonical task CID this leased bundle lane is authorized to execute.",
     )
     parser.add_argument(
         "--no-retry-budget-guardrail",
@@ -6354,6 +6389,8 @@ def supervisor_config_from_args(
             args.external_reservation_manifest_path or ()
         ),
         assumed_completed_task_ids=tuple(args.assume_completed_task_id or ()),
+        execution_slice_task_ids=tuple(args.execution_slice_task_id or ()),
+        execution_slice_task_cids=tuple(args.execution_slice_task_cid or ()),
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
         retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,

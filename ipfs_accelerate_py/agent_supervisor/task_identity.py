@@ -262,8 +262,13 @@ def canonical_task_identity(
 def canonical_bundle_identity(bundle: Mapping[str, Any]) -> TaskIdentity:
     """Derive one execution identity from the canonical work items in a bundle."""
 
-    tasks = bundle.get("tasks") if isinstance(bundle.get("tasks"), Sequence) else []
-    task_cids: list[str] = []
+    raw_tasks = bundle.get("tasks")
+    tasks = (
+        [item for item in raw_tasks if isinstance(item, Mapping)]
+        if isinstance(raw_tasks, Sequence) and not isinstance(raw_tasks, (str, bytes, bytearray))
+        else []
+    )
+    identified_tasks: list[tuple[Mapping[str, Any], TaskIdentity]] = []
     for item in tasks:
         if not isinstance(item, Mapping):
             continue
@@ -276,7 +281,34 @@ def canonical_bundle_identity(bundle: Mapping[str, Any]) -> TaskIdentity:
                     "semantic_key": bundle.get("bundle_key") or "objective/general",
                 }
             )
-        task_cids.append(identity.canonical_task_cid)
+        identified_tasks.append((item, identity))
+
+    selected_cids = {
+        str(value).strip()
+        for value in _sequence(bundle.get("execution_slice_task_cids"))
+        if str(value).strip()
+    }
+    selected_ids = {
+        str(value).strip()
+        for value in _sequence(bundle.get("execution_slice_task_ids"))
+        if str(value).strip()
+    }
+    if (
+        "execution_slice_task_cids" in bundle
+        or "execution_slice_task_ids" in bundle
+    ) and (selected_cids or selected_ids):
+        selected_tasks = [
+            (item, identity)
+            for item, identity in identified_tasks
+            if identity.canonical_task_cid in selected_cids
+            or str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
+            in selected_cids
+            or str(item.get("task_id") or "").strip() in selected_ids
+        ]
+        if selected_tasks:
+            identified_tasks = selected_tasks
+
+    task_cids = [identity.canonical_task_cid for _, identity in identified_tasks]
     material = {
         "title": "agent supervisor bundle execution",
         "semantic_key": "|".join(sorted(task_cids))
@@ -285,8 +317,8 @@ def canonical_bundle_identity(bundle: Mapping[str, Any]) -> TaskIdentity:
     }
     display_ids = sorted(
         str(item.get("task_id"))
-        for item in tasks
-        if isinstance(item, Mapping) and item.get("task_id")
+        for item, _ in identified_tasks
+        if item.get("task_id")
     )
     return canonical_task_identity(
         {**material, "task_id": ",".join(display_ids)},

@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.artifact_store import query_artifact
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
+from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
 from ipfs_accelerate_py.agent_supervisor.resource_scheduler import HostResourceSnapshot
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
@@ -606,6 +607,61 @@ def test_lane_command_carries_planner_proven_cross_bundle_dependencies(
     assert lane.command[lane.command.index("--assume-completed-task-id") + 1] == "T-1"
 
 
+def test_plan_cache_observes_new_durable_completion_event(
+    tmp_path: Path,
+) -> None:
+    """An event-only completion must invalidate the cached execution slice."""
+
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "title": "Foundation"},
+        {"task_id": "T-2", "title": "Dependent", "depends_on": ["T-1"]},
+    ]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {"objective/test/t-1": bundle},
+            }
+        ),
+        encoding="utf-8",
+    )
+    scheduler = _scheduler(tmp_path, index, _FakeLauncher())
+
+    first = scheduler._plan()[0]
+    assert first.task_ids == ["T-1"]
+    member = next(
+        task
+        for task in (first.queue_payload or {})["tasks"]
+        if task["task_id"] == "T-1"
+    )
+    first.state_dir.mkdir(parents=True, exist_ok=True)
+    (first.state_dir / f"{first.state_prefix}_events.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "implementation_finished",
+                "timestamp": "2026-07-24T00:00:00Z",
+                "task_id": "T-1",
+                "canonical_task_cid": member["canonical_task_cid"],
+                "returncode": 0,
+                "merge_result": {"merged": True},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    second = scheduler._plan()[0]
+
+    assert second.task_ids == ["T-2"]
+    assert second.task_cid != first.task_cid
+    assert second.command.count("--assume-completed-task-id") == 1
+    assert second.command[second.command.index("--assume-completed-task-id") + 1] == "T-1"
+
+
 def test_two_scheduler_processes_with_same_did_do_not_share_one_grant(tmp_path: Path) -> None:
     """A DID identifies authority, not a particular local executing process."""
 
@@ -624,6 +680,185 @@ def test_two_scheduler_processes_with_same_did_do_not_share_one_grant(tmp_path: 
     assert not peer_launcher.starts
     assert peer_manifest["counts"]["active"] == 0
     assert peer_manifest["counts"]["blocked"] == 1
+
+
+def test_restarted_scheduler_reconciles_terminal_lease_and_starts_dependent(
+    tmp_path: Path,
+) -> None:
+    """A predecessor's completed slice must not pin the next slice forever."""
+
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "title": "Foundation"},
+        {"task_id": "T-2", "title": "Dependent", "depends_on": ["T-1"]},
+    ]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {"objective/test/t-1": bundle},
+            }
+        ),
+        encoding="utf-8",
+    )
+    owner_launcher = _FakeLauncher()
+    owner = _scheduler(tmp_path, index, owner_launcher, manifest_name="owner.json")
+
+    owner.reconcile_once()
+    completed_lane, completed_grant, owner_process = owner_launcher.starts[0]
+    assert completed_lane.task_ids == ["T-1"]
+    completed_member = next(
+        task
+        for task in (completed_lane.queue_payload or {})["tasks"]
+        if task["task_id"] == "T-1"
+    )
+
+    completed_lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
+    completed_lane.todo_path.write_text(
+        "## T-1 Foundation\n\n"
+        "- Status: completed\n"
+        "- Depends on: none\n\n"
+        "## T-2 Dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-1\n",
+        encoding="utf-8",
+    )
+    completed_lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (
+        completed_lane.state_dir
+        / f"{completed_lane.state_prefix}_task_state.json"
+    ).write_text(
+        json.dumps(
+            {
+                "task_count": 2,
+                "completed_count": 1,
+                "ready_count": 0,
+                "blocked_count": 0,
+                "waiting_count": 1,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "task_statuses": {"T-1": "completed", "T-2": "waiting"},
+                "task_identities": {
+                    task_id: {"display_task_id": task_id}
+                    for task_id in ("T-1", "T-2")
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (completed_lane.state_dir / f"{completed_lane.state_prefix}_events.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "implementation_finished",
+                "timestamp": "2026-07-24T00:00:00Z",
+                "task_id": "T-1",
+                "canonical_task_cid": completed_member["canonical_task_cid"],
+                "canonical_task_key": completed_member.get("canonical_task_key", ""),
+                "returncode": 0,
+                "merge_result": {"merged": True, "target_commit": "abc123"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    replacement_launcher = _FakeLauncher()
+    replacement = _scheduler(
+        tmp_path,
+        index,
+        replacement_launcher,
+        claimant="did:web:replacement.example",
+        manifest_name="replacement.json",
+    )
+    recovered = replacement.reconcile_once()
+
+    assert owner_process.alive
+    assert recovered["reconciled_task_cids"] == [completed_grant.task_cid]
+    assert recovered["counts"]["completed"] == 1
+    assert recovered["counts"]["active"] == 1
+    assert [lane.task_ids for lane, _grant, _process in replacement_launcher.starts] == [
+        ["T-2"]
+    ]
+    assert replacement_launcher.starts[0][1].task_cid != completed_grant.task_cid
+    recovery_decision = next(
+        item
+        for item in recovered["scheduler_decisions"]
+        if item["task_cid"] == completed_grant.task_cid
+    )
+    assert recovery_decision == {
+        "task_cid": completed_grant.task_cid,
+        "bundle_key": completed_lane.bundle_key,
+        "decision": "settled",
+        "reason": "reconciled_terminal_completed",
+        "recovery": "untracked_accepted_lease",
+        "snapshot_id": recovered["scheduler_decision_snapshot_id"],
+    }
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        assert coordinator.task_state(completed_grant.task_cid)["state"] == "completed"
+        receipts = coordinator.list_receipts(completed_grant.task_cid)
+    assert len(receipts) == 1
+    assert receipts[0]["receipt"]["status"] == "succeeded"
+    assert receipts[0]["receipt"]["output_cid"]
+
+
+def test_restarted_scheduler_does_not_trust_terminal_projection_without_receipt(
+    tmp_path: Path,
+) -> None:
+    """Mutable board state alone cannot manufacture a successful receipt."""
+
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    owner_launcher = _FakeLauncher()
+    owner = _scheduler(tmp_path, index, owner_launcher, manifest_name="owner.json")
+    owner.reconcile_once()
+    lane, grant, owner_process = owner_launcher.starts[0]
+
+    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
+    lane.todo_path.write_text(
+        "## T-1 Terminal-looking board\n\n- Status: completed\n",
+        encoding="utf-8",
+    )
+    lane.state_dir.mkdir(parents=True, exist_ok=True)
+    (lane.state_dir / f"{lane.state_prefix}_task_state.json").write_text(
+        json.dumps(
+            {
+                "task_count": 1,
+                "completed_count": 1,
+                "ready_count": 0,
+                "blocked_count": 0,
+                "waiting_count": 0,
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "task_statuses": {"T-1": "completed"},
+                "task_identities": {"T-1": {"display_task_id": "T-1"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    replacement_launcher = _FakeLauncher()
+    replacement = _scheduler(
+        tmp_path,
+        index,
+        replacement_launcher,
+        claimant="did:web:replacement.example",
+        manifest_name="replacement.json",
+    )
+    manifest = replacement.reconcile_once()
+
+    assert owner_process.alive
+    assert replacement_launcher.starts == []
+    assert manifest["reconciled_task_cids"] == []
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        task = coordinator.task_state(grant.task_cid)
+        receipts = coordinator.list_receipts(grant.task_cid)
+    assert task is not None and task["state"] == "accepted"
+    assert task["bundle"]["execution_slice_task_ids"] == ["T-1"]
+    assert receipts == []
 
 
 def test_settled_boards_release_capacity_without_starting_workers(tmp_path: Path) -> None:
@@ -1274,6 +1509,98 @@ def test_leased_lane_publishes_terminal_and_blocked_projection(tmp_path: Path) -
             eligible_task_cids=(blocked_grant.task_cid,),
             requested_lease_ms=5_000,
         ) is None
+
+
+def test_leased_lane_fails_retryably_when_child_runs_outside_execution_slice(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    coordination = tmp_path / "coordination.sqlite3"
+    phase_state = tmp_path / "phase-state.json"
+    phase_state.write_text(
+        json.dumps(
+            {
+                "active_phase": "implementation",
+                "active_task_id": "HSSL-BENCH-001",
+            }
+        ),
+        encoding="utf-8",
+    )
+    bundle = {
+        "bundle_key": "objective/hssl/protocol",
+        "tasks": [
+            {"task_id": "HSSL-BENCH-001"},
+            {"task_id": "HSSL-BENCH-011"},
+        ],
+        "execution_slice_task_ids": ["HSSL-BENCH-011"],
+    }
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(bundle)
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:slice-worker.example",
+            requested_lease_ms=5_000,
+        )
+    parsed = leased_lane_module.build_parser().parse_args(
+        [
+            "--coordination-path",
+            str(coordination),
+            "--grant-json",
+            json.dumps(grant.to_dict()),
+            "--expected-task-id",
+            "HSSL-BENCH-011",
+            "--",
+            sys.executable,
+            "-c",
+            "pass",
+        ]
+    )
+    assert parsed.expected_task_id == ["HSSL-BENCH-011"]
+
+    class Process:
+        pid = 4321
+        returncode: int | None = None
+        tree_stopped = False
+        poll_calls = 0
+
+        def poll(self):
+            self.poll_calls += 1
+            if self.returncode is None and self.poll_calls > 10:
+                self.returncode = 0
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = Process()
+
+    def stop_tree(candidate, *, timeout=5.0):
+        assert candidate is process
+        candidate.tree_stopped = True
+        candidate.returncode = -signal.SIGTERM
+
+    monkeypatch.setattr(leased_lane_module.subprocess, "Popen", lambda _command: process)
+    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
+
+    result = run_leased_lane_result(
+        coordination_path=coordination,
+        grant=grant,
+        command=(sys.executable, "-c", "pass"),
+        lease_ms=5_000,
+        heartbeat_interval=0.01,
+        phase_state_path=phase_state,
+        expected_task_ids=("HSSL-BENCH-011",),
+    )
+
+    assert process.tree_stopped is True
+    assert result.successful is False
+    assert result.disposition in {"failed", "cancelled"}
+    with LeaseCoordinator(coordination) as coordinator:
+        receipts = coordinator.list_receipts(grant.task_cid)
+    assert len(receipts) == 1
+    assert receipts[0]["receipt"]["status"] in {"failed", "cancelled"}
+    assert receipts[0]["receipt"]["status"] != "succeeded"
+    assert receipts[0]["receipt"]["failure_class"] == "retryable"
 
 
 def test_leased_lane_signal_terminates_detached_descendants(tmp_path: Path) -> None:

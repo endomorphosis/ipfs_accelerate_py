@@ -1126,6 +1126,51 @@ def test_objective_tracker_does_not_treat_an_empty_configured_board_as_task_drai
     assert "- Status: active" in objective_path.read_text(encoding="utf-8")
 
 
+def test_open_validation_gate_does_not_reopen_implementation_stage(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Goals
+
+## G10.S3 Implemented goal awaiting proof
+
+- Status: active
+- Acceptance: criterion one
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text(
+        """# Task board
+
+## PORTAL-001 Produce completion evidence
+
+- Status: todo
+- Goal id: G10.S3
+- Candidate kind: validation_gate
+- Merge role: validation_gate
+- Missing evidence: objective validation repair
+""",
+        encoding="utf-8",
+    )
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+    )
+
+    assert result.provisional_goal_ids == ["G10.S3"]
+    assert result.decisions["G10.S3"]["state"] == "provisionally_complete"
+    assert "- Status: provisionally_complete" in objective_path.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_objective_tracker_automatically_aggregates_descendant_state(tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

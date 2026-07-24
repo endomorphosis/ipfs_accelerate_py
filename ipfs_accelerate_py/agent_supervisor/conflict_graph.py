@@ -1732,9 +1732,20 @@ def _make_edge(
         overlaps["cross_surface_paths"] = cross_paths
         predicted += float(weights["files"]) * len(cross_paths)
 
+    # Auto-discovered AST terms are local to the Python files from which they
+    # were parsed.  A shared non-code path (for example a plan document or a
+    # discovery directory) must not make unrelated modules conflict merely
+    # because both define common names such as ``__post_init__`` or ``_digest``.
+    # Explicit global_ast_symbols remain available for genuine cross-file
+    # semantic conflicts.
+    python_path_overlap = [
+        path
+        for path in all_path_overlap
+        if PurePosixPath(path).suffix.lower() in {".py", ".pyi", ".pyw"}
+    ]
     ast_symbol_values = (
         (left.ast_symbols, right.ast_symbols)
-        if all_path_overlap
+        if python_path_overlap
         else (left.global_ast_symbols or [], right.global_ast_symbols or [])
     )
     for surface, left_values, right_values in (

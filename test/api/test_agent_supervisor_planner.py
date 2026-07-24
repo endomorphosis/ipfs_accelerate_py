@@ -331,7 +331,7 @@ def test_bundle_lane_planner_skips_explicitly_excluded_execution_units(
     assert [lane.bundle_key for lane in lanes] == ["bundle/included"]
 
 
-def test_bundle_index_enrichment_maps_member_edges_to_bundle_execution_cids(
+def test_bundle_index_enrichment_preserves_member_receipt_dependencies(
     tmp_path: Path,
 ) -> None:
     index_path = tmp_path / "index.json"
@@ -378,12 +378,10 @@ def test_bundle_index_enrichment_maps_member_edges_to_bundle_execution_cids(
     ]
     assert root["claimable"] is True
     assert child["claimable"] is False
-    assert child["dependency_task_cids"] == [root["canonical_task_cid"]]
-    assert child["profile_g"]["task"]["dependency_task_cids"] == [
-        root["canonical_task_cid"]
-    ]
-    # Member-level provenance remains in the embedded graph, but the lease
-    # dependency is the bundle execution identity that actually gets receipts.
+    assert child["dependency_task_cids"] == ["cid-root-member"]
+    assert child["profile_g"]["task"]["dependency_task_cids"] == ["cid-root-member"]
+    # The lease dependency stays member-scoped. Registration aliases it to the
+    # exact execution slice that owns the member's successful receipt.
     assert child["tasks"][0]["dependency_task_cids"] == ["cid-root-member"]
     assert (
         child["task_dependency_graph"]["edges"][0]["source_task_cid"]
@@ -399,9 +397,7 @@ def test_bundle_index_enrichment_maps_member_edges_to_bundle_execution_cids(
         log_dir=tmp_path / "logs",
     )
     assert [lane.bundle_key for lane in lanes] == ["bundle/root", "bundle/child"]
-    assert lanes[1].dependency_task_cids == [
-        lanes[0].queue_payload["canonical_task_cid"]
-    ]
+    assert lanes[1].dependency_task_cids == ["cid-root-member"]
 
 
 def test_truncated_graph_repairs_still_block_every_invalid_bundle(
