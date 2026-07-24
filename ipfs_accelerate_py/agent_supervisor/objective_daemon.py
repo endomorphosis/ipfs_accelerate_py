@@ -1623,12 +1623,38 @@ def run_objective_analysis_escalation(
     objective_terms: Sequence[str] = (),
     artifact_path: Path | None = None,
     policy: Any = None,
+    analysis_pipeline: Any = None,
+    analysis_cache_path: Path | None = None,
+    analysis_provider: Any = None,
     **kwargs: Any,
 ) -> Any:
     """Production bridge from objective state to the read-only analysis policy."""
 
     from .audit_scanner import run_low_backlog_analysis
 
+    if analysis_pipeline is None and (
+        analysis_cache_path is not None or artifact_path is not None
+    ):
+        from .analysis_cache import AnalysisCache
+        from .analysis_pipeline import AnalysisPipeline, make_analysis_stage_receipt
+
+        cache_path = Path(
+            analysis_cache_path
+            or (Path(artifact_path).parent / "analysis_cache")
+        )
+
+        def objective_pipeline_analyzer(context: Any) -> Any:
+            return make_analysis_stage_receipt(
+                context.request,
+                successful=True,
+                reason_code="bounded_objective_analysis_complete",
+            )
+
+        analysis_pipeline = AnalysisPipeline(
+            AnalysisCache(cache_path),
+            objective_pipeline_analyzer,
+            provider=analysis_provider,
+        )
     terms = tuple(objective_terms) or objective_terms_for_analysis(objective_path)
     result = run_low_backlog_analysis(
         repo_root,
@@ -1636,6 +1662,7 @@ def run_objective_analysis_escalation(
         healthy_backlog_count=healthy_backlog_count,
         objective_terms=terms,
         policy=policy,
+        analysis_pipeline=analysis_pipeline,
         **kwargs,
     )
     if artifact_path is not None:
@@ -2248,6 +2275,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             healthy_backlog_count=healthy_backlog_count,
             objective_terms=objective_terms_for_analysis(objective_path, records),
             artifact_path=analysis_escalation_path,
+            analysis_cache_path=state_root / "analysis_cache",
             policy=analysis_policy,
             seen_fingerprints=seen_fingerprints,
             router_config=escalation_router_config,

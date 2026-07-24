@@ -854,6 +854,11 @@ class AnalysisPipelineResult:
     )
     ast_index_id: str = ""
     retrieval_response_id: str = ""
+    ranked_evidence_references: tuple[Mapping[str, Any], ...] = ()
+    retrieval_backend_health: Mapping[str, Mapping[str, Any]] = field(
+        default_factory=dict
+    )
+    retrieval_truncation: Mapping[str, Any] = field(default_factory=dict)
     provider_result: Any = None
     advisory_evidence_claim_references: tuple[str, ...] = ()
     provider_request: AnalysisProviderRequest | None = field(
@@ -892,6 +897,22 @@ class AnalysisPipelineResult:
         )
         object.__setattr__(
             self, "advisory_evidence_claim_references", advisory_claims
+        )
+        object.__setattr__(
+            self,
+            "ranked_evidence_references",
+            tuple(dict(item) for item in self.ranked_evidence_references),
+        )
+        object.__setattr__(
+            self,
+            "retrieval_backend_health",
+            {
+                str(name): dict(value)
+                for name, value in self.retrieval_backend_health.items()
+            },
+        )
+        object.__setattr__(
+            self, "retrieval_truncation", dict(self.retrieval_truncation)
         )
         if advisory_claims:
             if not isinstance(self.provider_result, AnalysisProviderResult):
@@ -1006,6 +1027,20 @@ class AnalysisPipelineResult:
         return self.cache_status is PipelineCacheStatus.EXACT_HIT
 
     @property
+    def evidence_references(self) -> tuple[Mapping[str, Any], ...]:
+        """Ranked compact retrieval references, identical on cold/warm runs."""
+
+        return self.ranked_evidence_references
+
+    @property
+    def backend_health(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.retrieval_backend_health
+
+    @property
+    def truncation(self) -> Mapping[str, Any]:
+        return self.retrieval_truncation
+
+    @property
     def evidence_claim_references(self) -> tuple[str, ...]:
         """Established completion-authority evidence channel."""
 
@@ -1069,6 +1104,14 @@ class AnalysisPipelineResult:
             ),
             "ast_index_id": self.ast_index_id,
             "retrieval_response_id": self.retrieval_response_id,
+            "ranked_evidence_references": [
+                dict(item) for item in self.ranked_evidence_references
+            ],
+            "retrieval_backend_health": {
+                name: dict(value)
+                for name, value in sorted(self.retrieval_backend_health.items())
+            },
+            "retrieval_truncation": dict(self.retrieval_truncation),
             "provider_result": provider,
             "safe_for_completion_reasoning": self.safe_for_completion_reasoning,
         }
@@ -1181,8 +1224,11 @@ def _cache_receipt(
     packet: AnalysisEvidencePacket,
     artifact: Mapping[str, str],
     request: AnalysisPipelineRequest,
+    retrieval: RetrievalResponse,
+    ast_index: AnalysisASTIndex | None,
 ) -> dict[str, Any]:
     successful = packet.safe_for_completion_reasoning
+    ranked_references = _ranked_retrieval_references(retrieval)
     return {
         "status": (
             CacheOutcome.SUCCESSFUL.value
@@ -1201,9 +1247,37 @@ def _cache_receipt(
             "policy_digest": request.effective_policy_digest,
             "packet_id": packet.packet_id,
             "safe_for_completion_reasoning": successful,
+            "ast_index_id": ast_index.index_id if ast_index is not None else "",
+            "retrieval_response_id": retrieval.response_id,
+            "ranked_evidence_references": list(ranked_references),
+            "retrieval_backend_health": {
+                name: value.to_dict()
+                for name, value in sorted(retrieval.backend_health.items())
+            },
+            "retrieval_truncation": retrieval.truncation.to_dict(),
         },
         "artifact_refs": [dict(artifact)],
     }
+
+
+def _ranked_retrieval_references(
+    retrieval: RetrievalResponse,
+) -> tuple[dict[str, Any], ...]:
+    """Project ranked durable references without retaining retrieved bodies."""
+
+    references: list[dict[str, Any]] = []
+    for rank, result in enumerate(retrieval.results):
+        for reference in result.evidence_references:
+            references.append(
+                {
+                    "rank": rank,
+                    "evidence_id": result.evidence_id,
+                    "entity_kind": result.entity_kind,
+                    "score": round(float(result.score), 6),
+                    "reference": reference.to_dict(),
+                }
+            )
+    return tuple(references)
 
 
 def _packet_from_producer(
@@ -1421,6 +1495,9 @@ class AnalysisPipeline:
 
         packet = self._load_cached_packet(lookup, request)
         witness = ExactTreeReuseEvidence.from_lookup(request, packet, lookup)
+        receipt = lookup.receipt if isinstance(lookup.receipt, Mapping) else {}
+        summary = receipt.get("summary")
+        summary = summary if isinstance(summary, Mapping) else {}
         return AnalysisPipelineResult(
             request=request,
             packet=packet,
@@ -1429,6 +1506,25 @@ class AnalysisPipeline:
             cache_reason_codes=tuple(lookup.reason_codes),
             exact_tree_reuse_evidence=witness,
             cache_lookup=lookup,
+            ast_index_id=str(summary.get("ast_index_id") or ""),
+            retrieval_response_id=str(
+                summary.get("retrieval_response_id") or ""
+            ),
+            ranked_evidence_references=tuple(
+                item
+                for item in (summary.get("ranked_evidence_references") or ())
+                if isinstance(item, Mapping)
+            ),
+            retrieval_backend_health=(
+                summary.get("retrieval_backend_health")
+                if isinstance(summary.get("retrieval_backend_health"), Mapping)
+                else {}
+            ),
+            retrieval_truncation=(
+                summary.get("retrieval_truncation")
+                if isinstance(summary.get("retrieval_truncation"), Mapping)
+                else {}
+            ),
         )
 
     def _accept_completion_lookup(
@@ -1619,7 +1715,13 @@ class AnalysisPipeline:
         context = self._build_context(request)
         packet = self._invoke_analyzer(context)
         artifact = self._artifacts.put(packet)
-        receipt = _cache_receipt(packet, artifact, request)
+        receipt = _cache_receipt(
+            packet,
+            artifact,
+            request,
+            context.retrieval,
+            context.ast_index,
+        )
         return receipt, packet, context
 
     def analyze(
@@ -1763,6 +1865,19 @@ class AnalysisPipeline:
             status = PipelineCacheStatus.PRODUCED
         else:
             status = PipelineCacheStatus.INCONCLUSIVE
+        cached_summary: Mapping[str, Any] = {}
+        if context is None:
+            diagnostic_lookup = self.cache.lookup(
+                request.cache_key, require_completion_evidence=False
+            )
+            diagnostic_receipt = (
+                diagnostic_lookup.receipt
+                if isinstance(diagnostic_lookup.receipt, Mapping)
+                else {}
+            )
+            candidate_summary = diagnostic_receipt.get("summary")
+            if isinstance(candidate_summary, Mapping):
+                cached_summary = candidate_summary
         return AnalysisPipelineResult(
             request=request,
             packet=packet,
@@ -1774,10 +1889,50 @@ class AnalysisPipeline:
             ast_index_id=(
                 context.ast_index.index_id
                 if context is not None and context.ast_index
-                else ""
+                else str(cached_summary.get("ast_index_id") or "")
             ),
             retrieval_response_id=(
-                context.retrieval.response_id if context is not None else ""
+                context.retrieval.response_id
+                if context is not None
+                else str(cached_summary.get("retrieval_response_id") or "")
+            ),
+            ranked_evidence_references=(
+                _ranked_retrieval_references(context.retrieval)
+                if context is not None
+                else tuple(
+                    item
+                    for item in (
+                        cached_summary.get("ranked_evidence_references") or ()
+                    )
+                    if isinstance(item, Mapping)
+                )
+            ),
+            retrieval_backend_health=(
+                {
+                    name: value.to_dict()
+                    for name, value in sorted(
+                        context.retrieval.backend_health.items()
+                    )
+                }
+                if context is not None
+                else (
+                    cached_summary.get("retrieval_backend_health")
+                    if isinstance(
+                        cached_summary.get("retrieval_backend_health"), Mapping
+                    )
+                    else {}
+                )
+            ),
+            retrieval_truncation=(
+                context.retrieval.truncation.to_dict()
+                if context is not None
+                else (
+                    cached_summary.get("retrieval_truncation")
+                    if isinstance(
+                        cached_summary.get("retrieval_truncation"), Mapping
+                    )
+                    else {}
+                )
             ),
             provider_result=(
                 context.provider_result if context is not None else None

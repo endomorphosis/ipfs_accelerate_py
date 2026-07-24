@@ -7,6 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+    AnalysisEscalationPolicy,
+)
 from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
     AnalysisCache,
     AnalysisCacheLookupStatus,
@@ -22,6 +25,9 @@ from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
     ExactTreeReuseEvidence,
     PipelineCacheStatus,
     make_analysis_stage_receipt,
+)
+from ipfs_accelerate_py.agent_supervisor.audit_scanner import (
+    run_low_backlog_analysis,
 )
 from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
     build_python_ast_blob_record,
@@ -993,3 +999,92 @@ def test_callable_authority_claim_and_awaitable_result_degrade_locally(
     assert awaitable.safe_for_completion_reasoning
     assert authority.advisory_evidence_claim_references == ()
     assert awaitable.advisory_evidence_claim_references == ()
+
+
+def test_restart_preserves_ranked_retrieval_health_and_truncation_semantics(
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "restart-cache"
+    request = _request(
+        ast_records=(
+            (
+                "src/cache.py",
+                build_python_ast_blob_record(
+                    "class RestartCache:\n"
+                    "    def lookup(self):\n"
+                    "        return 'warm'\n"
+                ),
+            ),
+        )
+    )
+    first_analyzer = _Analyzer()
+    cold = AnalysisPipeline(
+        AnalysisCache(cache_path), first_analyzer
+    ).analyze(request)
+
+    restarted_analyzer = _Analyzer()
+    warm = AnalysisPipeline(
+        AnalysisCache(cache_path), restarted_analyzer
+    ).analyze(request)
+
+    assert cold.cache_status is PipelineCacheStatus.PRODUCED
+    assert warm.cache_status is PipelineCacheStatus.EXACT_HIT
+    assert warm.packet.packet_id == cold.packet.packet_id
+    assert warm.ast_index_id == cold.ast_index_id
+    assert warm.ast_index_id
+    assert warm.retrieval_response_id == cold.retrieval_response_id
+    assert warm.evidence_references == cold.evidence_references
+    assert warm.backend_health == cold.backend_health
+    assert warm.truncation == cold.truncation
+    assert warm.truncation["returned_count"] == len(
+        {item["evidence_id"] for item in warm.evidence_references}
+    )
+    assert first_analyzer.calls == 1
+    assert restarted_analyzer.calls == 0
+
+
+def test_low_backlog_analysis_uses_pipeline_only_as_bounded_nomination_context(
+    tmp_path: Path,
+) -> None:
+    analyzer = _Analyzer()
+    pipeline = AnalysisPipeline(AnalysisCache(tmp_path / "cache"), analyzer)
+    policy = AnalysisEscalationPolicy(
+        backlog_target=1,
+        max_router_calls=1,
+        max_router_retries=0,
+    )
+
+    def run_once():
+        return run_low_backlog_analysis(
+            tmp_path,
+            healthy_backlog_count=0,
+            objective_terms=["cache ast retrieval"],
+            policy=policy,
+            incremental_scanner=lambda: [],
+            ast_scanner=lambda: {
+                "healthy": True,
+                "complete": True,
+                "candidates": [{"candidate": "ast-backed proposal"}],
+            },
+            analysis_pipeline=pipeline,
+        )
+
+    cold = run_once()
+    warm = run_once()
+
+    assert cold.pipeline_result["cache_status"] == "produced"
+    assert warm.pipeline_result["cache_status"] == "exact_hit"
+    assert warm.pipeline_result["cache_lookup_status"] == "hit"
+    assert warm.pipeline_result["retrieval_response_id"] == cold.pipeline_result[
+        "retrieval_response_id"
+    ]
+    assert warm.pipeline_result["retrieval_backend_health"] == cold.pipeline_result[
+        "retrieval_backend_health"
+    ]
+    assert warm.pipeline_result["retrieval_truncation"] == cold.pipeline_result[
+        "retrieval_truncation"
+    ]
+    assert warm.pipeline_result["nomination_only"] is True
+    assert warm.pipeline_result["safe_for_completion_reasoning"] is False
+    assert warm.safe_for_completion_reasoning is False
+    assert analyzer.calls == 1

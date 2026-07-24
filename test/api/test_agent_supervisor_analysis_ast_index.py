@@ -258,3 +258,16 @@ def test_index_rejects_unsafe_or_unassociated_paths() -> None:
         build_analysis_ast_index([("../outside.py", record)])
     with pytest.raises(AnalysisASTIndexError, match="repository path"):
         build_analysis_ast_index([record])
+
+
+def test_symbol_queries_reject_prefix_and_partial_substring_matches() -> None:
+    record = _record(
+        "def foobar():\n    return True\n",
+        "blob:foobar-v1",
+    )
+    index = build_analysis_ast_index([("src/foobar.py", record)])
+
+    assert index.query_symbols("foobar").evidence
+    assert index.query_symbols("foo").evidence == ()
+    assert index.query_symbols("oob").evidence == ()
+    assert index.query_definitions("bar").evidence == ()

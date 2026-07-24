@@ -525,13 +525,6 @@ def _rank(query: str, values: Iterable[str]) -> tuple[int, tuple[str, ...]]:
     elif any(value.rsplit(".", 1)[-1] == normalized for value in lowered):
         score = 90
         reasons.append("exact_leaf_match")
-    elif any(value.startswith(normalized) for value in lowered):
-        score = 80
-        reasons.append("prefix_match")
-    elif any(normalized in value for value in lowered):
-        score = 70
-        reasons.append("substring_match")
-
     candidate_tokens = {
         token for value in candidates for token in _tokens(value)
     }
