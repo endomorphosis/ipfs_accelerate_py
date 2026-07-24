@@ -137,6 +137,34 @@ def _authorized_mutation_request(
     )
 
 
+def _guard_rejection_payload(
+    request: OperationRequest, scenario: str
+) -> dict[str, Any]:
+    payload = request.to_record()
+    payload.pop("content_id")
+    if scenario == "unauthorized":
+        payload.pop("authorization")
+    elif scenario == "unscoped_idempotency":
+        idempotency = dict(payload["idempotency"])
+        idempotency.pop("content_id")
+        idempotency["objective_id"] = "objective:outside-request-scope"
+        payload["idempotency"] = idempotency
+    elif scenario == "unfenced":
+        payload.pop("lease_id")
+        payload.pop("fencing_epoch")
+    elif scenario == "stale_binding":
+        payload["tree_id"] = f"{request.tree_id}:stale-request-binding"
+    elif scenario == "path_escape":
+        parameters = dict(payload["parameters"])
+        parameters["target_path"] = "../outside-repository"
+        payload["parameters"] = parameters
+    elif scenario == "undeclared_effect":
+        payload["expected_effects"] = []
+    else:
+        raise AssertionError(f"unknown guard scenario {scenario}")
+    return payload
+
+
 def _invoke(
     capsys: pytest.CaptureFixture[str],
     service: SupervisorControlService,
@@ -290,17 +318,20 @@ def test_cli_rejects_ambiguous_roots_and_non_dry_run_mutation(
 
 
 @pytest.mark.parametrize(
-    ("removed_fields", "message_fragment"),
+    ("scenario", "message_fragment"),
     (
-        (("authorization",), "authorization"),
-        (("idempotency",), "idempotency"),
-        (("lease_id", "fencing_epoch"), "lease_id and fencing_epoch"),
+        ("unauthorized", "authorization"),
+        ("unscoped_idempotency", "scope does not match"),
+        ("unfenced", "lease_id and fencing_epoch"),
+        ("stale_binding", "binding does not match"),
+        ("path_escape", "repository-relative"),
+        ("undeclared_effect", "declare expected effects"),
     ),
 )
-def test_cli_rejects_malformed_real_mutation_before_service_resolution(
+def test_cli_rejects_every_unsafe_real_mutation_before_service_resolution(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
-    removed_fields: tuple[str, ...],
+    scenario: str,
     message_fragment: str,
 ) -> None:
     repo_root = tmp_path / "repo"
@@ -308,10 +339,7 @@ def test_cli_rejects_malformed_real_mutation_before_service_resolution(
     repo_root.mkdir()
     state_root.mkdir()
     request = _authorized_mutation_request(repo_root, state_root)
-    payload = request.to_record()
-    payload.pop("content_id")
-    for field in removed_fields:
-        payload.pop(field)
+    payload = _guard_rejection_payload(request, scenario)
     factory_calls = 0
 
     def forbidden_factory(_request: OperationRequest) -> SupervisorControlService:

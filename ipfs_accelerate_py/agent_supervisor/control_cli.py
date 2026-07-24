@@ -27,6 +27,7 @@ from .control_contracts import (
     OperationRequest,
     OperationResult,
     OperationStatus,
+    decode_operation_request,
 )
 from .control_plane import SupervisorControlService
 
@@ -263,7 +264,9 @@ def build_agent_request(args: argparse.Namespace) -> OperationRequest:
     operation = Operation(str(args.agent_operation))
     payload = _request_payload(args)
     if payload is not None:
-        request = OperationRequest.from_dict(payload)
+        # Canonical decoding happens before the caller-supplied service or
+        # factory is resolved, so malformed real mutations cannot dispatch.
+        request = decode_operation_request(payload)
         if request.operation is not operation:
             raise AgentCLIError(
                 "request operation does not match the selected CLI command"

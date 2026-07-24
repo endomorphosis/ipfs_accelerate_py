@@ -85,14 +85,18 @@ CONTROL_SURFACE_PARITY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-surface-parity-evidence@1"
 )
 MUTATION_GUARD_REJECTION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mutation-guard-rejection@1"
+    "ipfs_accelerate_py/agent-supervisor/mutation-guard-rejection@2"
 )
 CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/control-mutation-guard-evidence@2"
+    "ipfs_accelerate_py/agent-supervisor/control-mutation-guard-evidence@3"
 )
 CONTROL_MUTATION_COMPLETION_QUORUM_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "control-mutation-completion-quorum-evidence@1"
+    "control-mutation-completion-quorum-evidence@2"
+)
+CONTROL_MUTATION_COMPLETION_MEMBER_HEALTH_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "control-mutation-completion-member-health@1"
 )
 CONTROL_MUTATION_RUNTIME_STATE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-mutation-runtime-state@1"
@@ -112,7 +116,7 @@ CONTROL_MUTATION_GUARD_REQUIREMENT_ID: Final[str] = (
 )
 CONTROL_MUTATION_GUARD_OBJECTIVE_ID: Final[str] = "ASI-G104"
 CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION: Final[str] = (
-    "ASI-G104@asi-071"
+    "ASI-G104@asi-077"
 )
 CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION: Final[str] = (
     "asi-g104-objective-validation@1"
@@ -121,6 +125,14 @@ CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION: Final[str] = (
     "unified-control-mutation-completion@1"
 )
 CONTROL_MUTATION_GUARD_REQUIRED_EXHAUSTIVE_RECEIPTS: Final[int] = 2
+CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS: Final[tuple[str, ...]] = (
+    "path_escape",
+    "stale_binding",
+    "unauthorized",
+    "undeclared_effect",
+    "unfenced",
+    "unscoped_idempotency",
+)
 CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     (
         "Unauthorized, unscoped, unfenced, stale, path-escaping, or "
@@ -588,8 +600,9 @@ def _freeze_value(
     max_depth: int,
     max_items: int,
     max_text_bytes: int,
+    check_paths: bool = True,
 ) -> Any:
-    """Validate, path-check, and deeply freeze a canonical open value."""
+    """Validate and deeply freeze a canonical, optionally path-checked value."""
 
     seen = 0
 
@@ -608,7 +621,11 @@ def _freeze_value(
             text = _text(
                 item, name, required=False, max_bytes=max_text_bytes
             )
-            if key_name in _PATH_KEYS and not key_name.endswith("paths"):
+            if (
+                check_paths
+                and key_name in _PATH_KEYS
+                and not key_name.endswith("paths")
+            ):
                 return _relative_path(text, key_name, required=False)
             return text
         if isinstance(item, Enum):
@@ -622,7 +639,11 @@ def _freeze_value(
                     key, f"{name} key", max_bytes=max_text_bytes
                 )
                 raw = item[key]
-                if normalized_key in _PATH_KEYS and normalized_key.endswith("paths"):
+                if (
+                    check_paths
+                    and normalized_key in _PATH_KEYS
+                    and normalized_key.endswith("paths")
+                ):
                     if isinstance(raw, str) or not isinstance(raw, Sequence):
                         raise PathEscapeError(
                             f"{normalized_key} must be a sequence of paths"
@@ -1424,9 +1445,10 @@ class OperationRequest(_ControlCanonicalContract):
             )
         expected_ids = {item.effect_id for item in self.expected_effects}
         allowed_ids = set(decision.authorized_effect_ids)
-        if "*" not in allowed_ids and not expected_ids.issubset(allowed_ids):
+        if allowed_ids != expected_ids:
             raise AuthorizationBindingError(
-                "authorization does not cover every expected effect"
+                "mutation authorization effect scope must exactly match "
+                "every expected effect declared by the request"
             )
 
     def _validate_optional_authorization(
@@ -3838,16 +3860,58 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
 
 @dataclass(frozen=True)
 class MutationGuardRejection(_ControlCanonicalContract):
-    """A malformed mutation replayed through the authoritative request parser."""
+    """One surface-observed pre-dispatch canonical mutation rejection.
+
+    The payload is independently replayed through the authoritative parser.
+    The two cumulative counters bind the observation to an adapter invocation
+    that neither resolved a service nor reached a mutation backend.
+    """
 
     SCHEMA: ClassVar[str] = MUTATION_GUARD_REJECTION_SCHEMA
 
     scenario: str
+    surface: ControlSurface
     request_payload: Mapping[str, Any]
     error_type: str
+    service_resolution_count_before: int = 0
+    service_resolution_count_after: int = 0
+    dispatch_count_before: int = 0
+    dispatch_count_after: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "scenario", _text(self.scenario, "scenario"))
+        if self.scenario not in CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS:
+            raise ControlContractError(
+                "mutation guard rejection scenario is not in the closed "
+                "rejection vocabulary"
+            )
+        object.__setattr__(
+            self,
+            "surface",
+            _enum(self.surface, ControlSurface, "surface"),
+        )
+        for name in (
+            "service_resolution_count_before",
+            "service_resolution_count_after",
+            "dispatch_count_before",
+            "dispatch_count_after",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _nonnegative(getattr(self, name), name),
+            )
+        if (
+            self.service_resolution_count_after
+            != self.service_resolution_count_before
+        ):
+            raise ControlContractError(
+                "rejected mutation must not resolve a control service"
+            )
+        if self.dispatch_count_after != self.dispatch_count_before:
+            raise ControlContractError(
+                "rejected mutation must fail before backend dispatch"
+            )
         if not isinstance(self.request_payload, Mapping):
             raise ControlContractError("request_payload must be a mapping")
         payload = dict(self.request_payload)
@@ -3861,6 +3925,7 @@ class MutationGuardRejection(_ControlCanonicalContract):
                 max_depth=ABSOLUTE_MAX_CONTROL_DEPTH,
                 max_items=ABSOLUTE_MAX_CONTROL_ITEMS,
                 max_text_bytes=ABSOLUTE_MAX_CONTROL_TEXT_BYTES,
+                check_paths=False,
             ),
         )
         error_type = _text(self.error_type, "error_type")
@@ -3883,8 +3948,17 @@ class MutationGuardRejection(_ControlCanonicalContract):
         return {
             "contract_version": CONTROL_CONTRACT_VERSION,
             "scenario": self.scenario,
+            "surface": self.surface,
             "request_payload": self.request_payload,
             "error_type": self.error_type,
+            "service_resolution_count_before": (
+                self.service_resolution_count_before
+            ),
+            "service_resolution_count_after": (
+                self.service_resolution_count_after
+            ),
+            "dispatch_count_before": self.dispatch_count_before,
+            "dispatch_count_after": self.dispatch_count_after,
         }
 
     @classmethod
@@ -3897,16 +3971,30 @@ class MutationGuardRejection(_ControlCanonicalContract):
                 "schema_version",
                 "contract_version",
                 "scenario",
+                "surface",
                 "request_payload",
                 "error_type",
+                "service_resolution_count_before",
+                "service_resolution_count_after",
+                "dispatch_count_before",
+                "dispatch_count_after",
                 "content_id",
             },
             "mutation guard rejection",
         )
         result = cls(
             scenario=payload.get("scenario", ""),
+            surface=payload.get("surface", ""),
             request_payload=payload.get("request_payload") or {},
             error_type=payload.get("error_type", ""),
+            service_resolution_count_before=payload.get(
+                "service_resolution_count_before", 0
+            ),
+            service_resolution_count_after=payload.get(
+                "service_resolution_count_after", 0
+            ),
+            dispatch_count_before=payload.get("dispatch_count_before", 0),
+            dispatch_count_after=payload.get("dispatch_count_after", 0),
         )
         _identity(payload, result.content_id, "mutation guard rejection")
         return result
@@ -4209,16 +4297,21 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             MutationGuardRejection.from_dict,
             "rejections",
         )
-        scenarios = {item.scenario for item in rejections}
-        required = {
-            "missing_authorization",
-            "missing_idempotency",
-            "missing_lease_or_fence",
+        observed_cases = {
+            (item.surface, item.scenario) for item in rejections
         }
-        if scenarios != required or len(rejections) != len(required):
+        required_cases = {
+            (surface, scenario)
+            for surface in ControlSurface
+            for scenario in CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS
+        }
+        if (
+            observed_cases != required_cases
+            or len(rejections) != len(required_cases)
+        ):
             raise ControlContractError(
-                "mutation evidence requires authorization, idempotency, and "
-                "lease/fence rejection replays"
+                "mutation evidence requires the complete rejection scenario "
+                "matrix on Python, CLI, and MCP"
             )
         canonical_request = request.to_record()
         canonical_request.pop("content_id", None)
@@ -4231,31 +4324,57 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
                 max_text_bytes=ABSOLUTE_MAX_CONTROL_TEXT_BYTES,
             )
         )
-        expected_rejections: dict[str, dict[str, Any]] = {}
-        for scenario, removed_fields in (
-            ("missing_authorization", ("authorization",)),
-            ("missing_idempotency", ("idempotency",)),
-            (
-                "missing_lease_or_fence",
-                ("lease_id", "fencing_epoch"),
-            ),
-        ):
-            rejected_payload = dict(canonical_request)
-            for field_name in removed_fields:
-                rejected_payload.pop(field_name, None)
-            expected_rejections[scenario] = rejected_payload
+        unauthorized = dict(canonical_request)
+        unauthorized.pop("authorization", None)
+
+        unscoped_idempotency = dict(canonical_request)
+        idempotency = dict(unscoped_idempotency["idempotency"])
+        idempotency.pop("content_id", None)
+        idempotency["objective_id"] = "objective:outside-request-scope"
+        unscoped_idempotency["idempotency"] = idempotency
+
+        unfenced = dict(canonical_request)
+        unfenced.pop("lease_id", None)
+        unfenced.pop("fencing_epoch", None)
+
+        stale_binding = dict(canonical_request)
+        stale_binding["tree_id"] = (
+            f"{self.repository_tree}:stale-request-binding"
+        )
+
+        path_escape = dict(canonical_request)
+        parameters = dict(path_escape["parameters"])
+        parameters["target_path"] = "../outside-repository"
+        path_escape["parameters"] = parameters
+
+        undeclared_effect = dict(canonical_request)
+        undeclared_effect["expected_effects"] = ()
+
+        expected_rejections: dict[str, dict[str, Any]] = {
+            "unauthorized": unauthorized,
+            "unscoped_idempotency": unscoped_idempotency,
+            "unfenced": unfenced,
+            "stale_binding": stale_binding,
+            "path_escape": path_escape,
+            "undeclared_effect": undeclared_effect,
+        }
         for rejection in rejections:
             if dict(rejection.request_payload) != expected_rejections[
                 rejection.scenario
             ]:
                 raise ControlContractError(
                     "mutation guard rejection is not the bound request with "
-                    f"only {rejection.scenario} bindings removed"
+                    f"only the {rejection.scenario} guard invalidated"
                 )
         object.__setattr__(
             self,
             "rejections",
-            tuple(sorted(rejections, key=lambda item: item.scenario)),
+            tuple(
+                sorted(
+                    rejections,
+                    key=lambda item: (item.surface.value, item.scenario),
+                )
+            ),
         )
         _bounded_record(
             self,
@@ -4305,9 +4424,9 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
         assert isinstance(replay, OperationResult)
         assert isinstance(execution, MutationGuardExecutionObservation)
         required_rejections = {
-            "missing_authorization",
-            "missing_idempotency",
-            "missing_lease_or_fence",
+            (surface, scenario)
+            for surface in ControlSurface
+            for scenario in CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS
         }
         operational_complete = bool(
             self.proved_requirement_ids
@@ -4321,7 +4440,10 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             and execution.request_id == self.request.request_id
             and execution.result_id == result.result_id
             and execution.audit_receipt_id == result.audit_receipt_id
-            and {item.scenario for item in self.rejections}
+            and {
+                (item.surface, item.scenario)
+                for item in self.rejections
+            }
             == required_rejections
         )
         return _evaluate_control_objective_completion(
@@ -4416,6 +4538,71 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
 
 
 @dataclass(frozen=True)
+class ControlMutationCompletionMemberHealth(_ControlCanonicalContract):
+    """Explicit completion-safety attestation for one G104 receipt."""
+
+    SCHEMA: ClassVar[str] = CONTROL_MUTATION_COMPLETION_MEMBER_HEALTH_SCHEMA
+
+    member_id: str
+    receipt_cid: str
+    healthy: bool
+    safe_for_completion_reasoning: bool
+
+    def __post_init__(self) -> None:
+        for name in ("member_id", "receipt_cid"):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        for name in ("healthy", "safe_for_completion_reasoning"):
+            if not isinstance(getattr(self, name), bool):
+                raise ControlContractError(f"{name} must be a boolean")
+        _bounded_record(self, "control mutation completion member health")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "member_id": self.member_id,
+            "receipt_cid": self.receipt_cid,
+            "healthy": self.healthy,
+            "safe_for_completion_reasoning": (
+                self.safe_for_completion_reasoning
+            ),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlMutationCompletionMemberHealth":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "member_id",
+                "receipt_cid",
+                "healthy",
+                "safe_for_completion_reasoning",
+                "content_id",
+            },
+            "control mutation completion member health",
+        )
+        result = cls(
+            member_id=payload.get("member_id", ""),
+            receipt_cid=payload.get("receipt_cid", ""),
+            healthy=payload.get("healthy", False),
+            safe_for_completion_reasoning=payload.get(
+                "safe_for_completion_reasoning", False
+            ),
+        )
+        _identity(
+            payload,
+            result.content_id,
+            "control mutation completion member health",
+        )
+        return result
+
+
+@dataclass(frozen=True)
 class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
     """Bind a generic exhaustive quorum to one G104 mutation witness."""
 
@@ -4427,6 +4614,9 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
     policy_revision: str
     operational_receipt_id: str
     quorum: Any
+    member_health: tuple[
+        ControlMutationCompletionMemberHealth | Mapping[str, Any], ...
+    ]
     objective_id: str = CONTROL_MUTATION_GUARD_OBJECTIVE_ID
     requirement_id: str = CONTROL_MUTATION_GUARD_REQUIREMENT_ID
 
@@ -4462,6 +4652,40 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
                     "completion quorum is malformed"
                 ) from exc
         object.__setattr__(self, "quorum", quorum)
+        member_health = _coerce_tuple(
+            self.member_health,
+            ControlMutationCompletionMemberHealth,
+            ControlMutationCompletionMemberHealth.from_dict,
+            "member_health",
+        )
+        expected_members = {
+            (member.member_id, member.receipt_cid)
+            for member in quorum.members
+        }
+        attested_members = {
+            (member.member_id, member.receipt_cid)
+            for member in member_health
+        }
+        if (
+            len(member_health) != len(attested_members)
+            or attested_members != expected_members
+        ):
+            raise ControlContractError(
+                "completion member health must cover every quorum receipt exactly"
+            )
+        if not all(
+            member.healthy and member.safe_for_completion_reasoning
+            for member in member_health
+        ):
+            raise ControlContractError(
+                "every exhaustive receipt must be explicitly healthy and "
+                "safe for completion reasoning"
+            )
+        object.__setattr__(
+            self,
+            "member_health",
+            tuple(sorted(member_health, key=lambda item: item.member_id)),
+        )
         _bounded_record(self, "control mutation completion quorum evidence")
 
     def _payload(self) -> dict[str, Any]:
@@ -4475,6 +4699,9 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
             "policy_revision": self.policy_revision,
             "operational_receipt_id": self.operational_receipt_id,
             "quorum": quorum,
+            "member_health": tuple(
+                item.to_record() for item in self.member_health
+            ),
         }
 
     @classmethod
@@ -4494,6 +4721,7 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
                 "policy_revision",
                 "operational_receipt_id",
                 "quorum",
+                "member_health",
                 "content_id",
             },
             "control mutation completion quorum evidence",
@@ -4505,6 +4733,7 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
             policy_revision=payload.get("policy_revision", ""),
             operational_receipt_id=payload.get("operational_receipt_id", ""),
             quorum=payload.get("quorum") or {},
+            member_health=payload.get("member_health", ()),
         )
         _identity(
             payload,
@@ -4809,6 +5038,25 @@ def canonical_control_json_bytes(value: Any) -> bytes:
     return canonical_json_bytes(value)
 
 
+def decode_operation_request(
+    payload: Mapping[str, Any],
+) -> OperationRequest:
+    """Run the canonical pre-resolution request boundary used by all surfaces.
+
+    Real mutations that are structurally unauthorized, unscoped, unfenced,
+    stale-bound, path-escaping, or missing declared effects raise here before
+    a Python backend, CLI service factory, or MCP service resolver can run.
+    Deployment freshness and allowlist checks then converge on the control
+    service's pre-dispatch boundary.
+    """
+
+    if not isinstance(payload, Mapping):
+        raise ControlContractError(
+            "operation request payload must contain an object"
+        )
+    return OperationRequest.from_dict(payload)
+
+
 def operation_authority(operation: Operation | str) -> OperationAuthority:
     """Return the registry authority for an operation, rejecting unknown IDs."""
 
@@ -4849,6 +5097,7 @@ __all__ = [
     "CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION",
     "CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID",
+    "CONTROL_MUTATION_COMPLETION_MEMBER_HEALTH_SCHEMA",
     "CONTROL_MUTATION_COMPLETION_QUORUM_EVIDENCE_SCHEMA",
     "CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA",
     "CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION",
@@ -4856,6 +5105,7 @@ __all__ = [
     "CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA",
     "CONTROL_MUTATION_GUARD_OBJECTIVE_ID",
     "CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION",
+    "CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS",
     "CONTROL_MUTATION_GUARD_REQUIRED_EXHAUSTIVE_RECEIPTS",
     "CONTROL_MUTATION_GUARD_REQUIREMENT_ID",
     "CONTROL_MUTATION_RUNTIME_STATE_SCHEMA",
@@ -4898,6 +5148,7 @@ __all__ = [
     "ControlDiscoveryRuntimeState",
     "ControlDiscoverySafetyEvidence",
     "ControlLimits",
+    "ControlMutationCompletionMemberHealth",
     "ControlMutationCompletionQuorumEvidence",
     "ControlMutationGuardEvidence",
     "ControlMutationRuntimeState",
@@ -4935,6 +5186,7 @@ __all__ = [
     "TypedOperationError",
     "UnknownOperationError",
     "canonical_control_json_bytes",
+    "decode_operation_request",
     "operation_authority",
     "operation_request_json_schema",
     "operation_result_json_schema",

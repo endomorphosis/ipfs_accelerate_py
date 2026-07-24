@@ -18,13 +18,16 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION,
     CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
     CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION,
+    CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS,
     CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlContractError,
-    EffectKind,
+    ControlMutationCompletionMemberHealth,
     ControlMutationCompletionQuorumEvidence,
     ControlMutationGuardEvidence,
+    ControlSurface,
+    EffectKind,
     ExpectedEffect,
     IdempotencyKey,
     LifecycleAction,
@@ -192,18 +195,63 @@ def _mutation_guard_witness(
     after_replay = service.mutation_runtime_state()
     canonical = request.to_record()
 
-    def rejected(
-        scenario: str, *removed: str, error_type: str
-    ) -> MutationGuardRejection:
-        payload = dict(canonical)
-        payload.pop("content_id", None)
-        for name in removed:
-            payload.pop(name, None)
-        return MutationGuardRejection(
-            scenario=scenario,
-            request_payload=payload,
-            error_type=error_type,
-        )
+    canonical.pop("content_id", None)
+    payloads: dict[str, dict[str, Any]] = {}
+
+    unauthorized = dict(canonical)
+    unauthorized.pop("authorization")
+    payloads["unauthorized"] = unauthorized
+
+    unscoped = dict(canonical)
+    idempotency = dict(unscoped["idempotency"])
+    idempotency.pop("content_id")
+    idempotency["objective_id"] = "objective:outside-request-scope"
+    unscoped["idempotency"] = idempotency
+    payloads["unscoped_idempotency"] = unscoped
+
+    unfenced = dict(canonical)
+    unfenced.pop("lease_id")
+    unfenced.pop("fencing_epoch")
+    payloads["unfenced"] = unfenced
+
+    stale = dict(canonical)
+    stale["tree_id"] = f"{request.tree_id}:stale-request-binding"
+    payloads["stale_binding"] = stale
+
+    escaping = dict(canonical)
+    parameters = dict(escaping["parameters"])
+    parameters["target_path"] = "../outside-repository"
+    escaping["parameters"] = parameters
+    payloads["path_escape"] = escaping
+
+    undeclared = dict(canonical)
+    undeclared["expected_effects"] = ()
+    payloads["undeclared_effect"] = undeclared
+
+    assert set(payloads) == set(CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS)
+    rejections: list[MutationGuardRejection] = []
+    for surface in ControlSurface:
+        for scenario in CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS:
+            payload = payloads[scenario]
+            try:
+                if surface is ControlSurface.PYTHON:
+                    service.execute(payload)
+                else:
+                    OperationRequest.from_dict(payload)
+            except (ControlContractError, ValueError) as exc:
+                error_type = type(exc).__name__
+            else:
+                raise AssertionError(f"{scenario} unexpectedly decoded")
+            rejections.append(
+                MutationGuardRejection(
+                    scenario=scenario,
+                    surface=surface,
+                    request_payload=payload,
+                    error_type=error_type,
+                    dispatch_count_before=after_replay.dispatch_count,
+                    dispatch_count_after=after_replay.dispatch_count,
+                )
+            )
 
     return ControlMutationGuardEvidence(
         repository_tree=request.tree_id,
@@ -221,24 +269,7 @@ def _mutation_guard_witness(
             after_result=after_result,
             after_replay=after_replay,
         ),
-        rejections=(
-            rejected(
-                "missing_authorization",
-                "authorization",
-                error_type="AuthorizationBindingError",
-            ),
-            rejected(
-                "missing_idempotency",
-                "idempotency",
-                error_type="MissingIdempotencyError",
-            ),
-            rejected(
-                "missing_lease_or_fence",
-                "lease_id",
-                "fencing_epoch",
-                error_type="AuthorizationBindingError",
-            ),
-        ),
+        rejections=tuple(rejections),
     )
 
 
@@ -345,8 +376,31 @@ def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(
     assert evidence.proved_requirement_ids == (
         CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
     )
+    assert {
+        (item.surface, item.scenario) for item in evidence.rejections
+    } == {
+        (surface, scenario)
+        for surface in ControlSurface
+        for scenario in CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS
+    }
     assert calls == [request.request_id]
     assert ControlMutationGuardEvidence.from_dict(evidence.to_record()) == evidence
+
+    overbroad_effect_scope = request.to_record()
+    overbroad_effect_scope.pop("content_id")
+    authorization = dict(overbroad_effect_scope["authorization"])
+    authorization.pop("content_id")
+    authorization["authorized_effect_ids"] = [
+        request.expected_effects[0].effect_id,
+        "effect:not-declared-by-request",
+    ]
+    overbroad_effect_scope["authorization"] = authorization
+    with pytest.raises(
+        ControlContractError,
+        match="effect scope must exactly match",
+    ):
+        OperationRequest.from_dict(overbroad_effect_scope)
+    assert calls == [request.request_id]
 
     foreign_objective = evidence.to_record()
     foreign_objective.pop("content_id")
@@ -406,7 +460,7 @@ def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(
 def test_g104_completion_requires_bound_validation_health_and_quorum(
     tmp_path: Path,
 ) -> None:
-    """ASI-071: a mutation witness cannot self-certify objective completion."""
+    """ASI-077: a mutation witness cannot self-certify objective completion."""
 
     repo_root = tmp_path / "repo"
     state_root = tmp_path / "state"
@@ -433,14 +487,14 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
     completion_evidence = tuple(
         CompletionEvidence(
             acceptance_criterion=criterion,
-            producing_task_or_scan="ASI-071",
+            producing_task_or_scan="ASI-077",
             producer_kind="task",
             validation_receipt=validation_binding,
             validation_passed=True,
             repository_tree=operational.repository_tree,
             freshness={"fresh": True},
             observed_at=now,
-            provenance_cid=f"validation:asi-071:{index}",
+            provenance_cid=f"validation:asi-077:{index}",
             metadata={
                 "evidence_source_policy": {
                     "satisfies": True,
@@ -456,7 +510,7 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
     coverage_receipts = [
         ValidationReceiptCoverage(
             receipt_id=item.provenance_cid,
-            task_id="ASI-071",
+            task_id="ASI-077",
             criterion=item.acceptance_criterion,
             command=command,
             status=CoverageStatus.VERIFIED,
@@ -464,7 +518,7 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
             repository_tree=operational.repository_tree,
             observed_at=now.isoformat(),
             provenance_cid=item.provenance_cid,
-            explanation="fresh passing ASI-071 criterion validation",
+            explanation="fresh passing ASI-077 criterion validation",
             outcome="passed",
             reason_code="validation_verified",
             fresh=True,
@@ -527,28 +581,38 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
         required_members=2,
         members=(
             ExhaustionQuorumMember(
-                member_id="asi-071-implementation",
+                member_id="asi-077-implementation",
                 evidence_channel="implementation-validation",
-                receipt_cid="scan:asi-071:implementation",
+                receipt_cid="scan:asi-077:implementation",
                 binding=generic_binding,
                 scan_mode="exhaustive",
                 finished_at=now.isoformat(),
             ),
             ExhaustionQuorumMember(
-                member_id="asi-071-replay",
+                member_id="asi-077-replay",
                 evidence_channel="receipt-replay-audit",
-                receipt_cid="scan:asi-071:replay",
+                receipt_cid="scan:asi-077:replay",
                 binding=generic_binding,
                 scan_mode="exhaustive",
                 finished_at=now.isoformat(),
             ),
         ),
     )
+    member_health = tuple(
+        ControlMutationCompletionMemberHealth(
+            member_id=member.member_id,
+            receipt_cid=member.receipt_cid,
+            healthy=True,
+            safe_for_completion_reasoning=True,
+        )
+        for member in generic_quorum.members
+    )
     quorum = ControlMutationCompletionQuorumEvidence(
         validation_policy_id=operational.policy_id,
         policy_revision=operational.policy_revision,
         operational_receipt_id=operational.content_id,
         quorum=generic_quorum,
+        member_health=member_health,
     )
     assert (
         ControlMutationCompletionQuorumEvidence.from_json(
@@ -644,9 +708,9 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
         "binding": artifact_binding,
         "members": [
             {
-                "member_id": f"asi-071-mapping-{index}",
+                "member_id": f"asi-077-mapping-{index}",
                 "evidence_channel": channel,
-                "receipt_cid": f"scan:asi-071:mapping:{index}",
+                "receipt_cid": f"scan:asi-077:mapping:{index}",
                 "binding": artifact_binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -680,6 +744,24 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
             },
         }
     )
+    failed_evidence = list(completion_evidence)
+    failed_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **failed_evidence[0].to_dict(),
+            "validation_passed": False,
+            "validation_receipt": {
+                **validation_binding,
+                "status": "failed",
+            },
+        }
+    )
+    stale_evidence = list(completion_evidence)
+    stale_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **stale_evidence[0].to_dict(),
+            "observed_at": (now - timedelta(seconds=301)).isoformat(),
+        }
+    )
     incomplete_coverage = copy.deepcopy(mapping_coverage)
     incomplete_coverage["criteria"] = incomplete_coverage["criteria"][:-1]
     unbound_coverage = copy.deepcopy(mapping_coverage)
@@ -695,6 +777,10 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
         "objective_id": "ASI-G999",
         "repository_tree": "tree:foreign",
     }
+    wrong_analyzer_health = {
+        **mapping_health,
+        "analyzer_version": "asi-g104-objective-validation@stale",
+    }
     duplicate_quorum = copy.deepcopy(mapping_quorum)
     duplicate_quorum["members"][1]["evidence_channel"] = (
         duplicate_quorum["members"][0]["evidence_channel"]
@@ -707,13 +793,47 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
     foreign_quorum["binding"]["tree_id"] = "tree:foreign"
     for member in foreign_quorum["members"]:
         member["binding"]["tree_id"] = "tree:foreign"
+    with pytest.raises(ControlContractError, match="cover every quorum"):
+        ControlMutationCompletionQuorumEvidence(
+            validation_policy_id=operational.policy_id,
+            policy_revision=operational.policy_revision,
+            operational_receipt_id=operational.content_id,
+            quorum=generic_quorum,
+            member_health=member_health[:-1],
+        )
+    with pytest.raises(ControlContractError, match="explicitly healthy"):
+        ControlMutationCompletionQuorumEvidence(
+            validation_policy_id=operational.policy_id,
+            policy_revision=operational.policy_revision,
+            operational_receipt_id=operational.content_id,
+            quorum=generic_quorum,
+            member_health=(
+                ControlMutationCompletionMemberHealth(
+                    member_id=member_health[0].member_id,
+                    receipt_cid=member_health[0].receipt_cid,
+                    healthy=False,
+                    safe_for_completion_reasoning=True,
+                ),
+                member_health[1],
+            ),
+        )
+    incomplete_tasks = operational.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**mapping_values, "tasks_complete": False},
+    )
+    assert incomplete_tasks.state is GoalState.REOPENED
+    assert not incomplete_tasks.verified
+    assert incomplete_tasks.tasks_complete is False
     rejected_inputs = (
         {"evidence": tuple(detached_evidence)},
+        {"evidence": tuple(failed_evidence)},
+        {"evidence": tuple(stale_evidence)},
         {"evidence": completion_evidence[:-1]},
         {"coverage": incomplete_coverage},
         {"coverage": unbound_coverage},
         {"analyzer_health": unsafe_health},
         {"analyzer_health": foreign_health},
+        {"analyzer_health": wrong_analyzer_health},
         {"exhaustion_quorum": generic_quorum},
         {
             "exhaustion_quorum": ControlMutationCompletionQuorumEvidence(
@@ -721,6 +841,7 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
                 policy_revision=operational.policy_revision,
                 operational_receipt_id=operational.content_id,
                 quorum=generic_quorum,
+                member_health=member_health,
             )
         },
         {
@@ -729,6 +850,7 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
                 policy_revision=operational.policy_revision,
                 operational_receipt_id="sha256:detached",
                 quorum=generic_quorum,
+                member_health=member_health,
             )
         },
         {"exhaustion_quorum": duplicate_quorum},

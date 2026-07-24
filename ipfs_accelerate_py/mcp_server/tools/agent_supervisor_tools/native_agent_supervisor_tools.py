@@ -19,6 +19,7 @@ from ....agent_supervisor.control_contracts import (
     ControlSurface,
     Operation,
     OperationRequest,
+    decode_operation_request,
     operation_request_json_schema,
     operation_result_json_schema,
 )
@@ -113,7 +114,9 @@ async def execute_agent_supervisor_operation(
     """Decode, dispatch, and return the canonical shared result record."""
 
     selected = operation if isinstance(operation, Operation) else Operation(operation)
-    decoded = OperationRequest.from_dict(request)
+    # Decode before resolving server policy/service state. Unsafe mutation
+    # payloads therefore cannot trigger a service factory or backend.
+    decoded = decode_operation_request(request)
     if decoded.operation is not selected:
         raise ValueError(
             "request operation does not match the selected MCP tool"
@@ -127,7 +130,7 @@ async def agent_supervisor_control(
 ) -> dict[str, Any]:
     """Generic canonical adapter, useful for direct embedding and tests."""
 
-    decoded = OperationRequest.from_dict(request)
+    decoded = decode_operation_request(request)
     return _resolve_service(decoded).execute(decoded).to_record()
 
 

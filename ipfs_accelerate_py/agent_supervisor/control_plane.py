@@ -59,6 +59,7 @@ from .control_contracts import (
     OperationStatus,
     PathEscapeError,
     canonical_control_json_bytes,
+    decode_operation_request,
 )
 
 
@@ -1646,22 +1647,40 @@ class SupervisorControlService:
             pass
         return result
 
+    def _preflight_dispatch_boundary(
+        self, request: OperationRequest
+    ) -> Union[OperationResult, None]:
+        """Apply every runtime guard before a mutating adapter can dispatch.
+
+        Structural authorization, idempotency scope, declared effects, and
+        path containment have already been checked by ``OperationRequest``.
+        This boundary adds deployment allowlists, current identity and
+        authorization checks, replay/conflict detection, and the live
+        lease/fencing decision.  CLI and MCP decode before resolving their
+        service, then converge here with direct Python calls.
+        """
+
+        self._check_target(request)
+        self._check_bounds(request)
+        self._check_authorization(request)
+        replay = self._check_idempotency(request)
+        if replay is not None:
+            return replay
+        self._check_lease(request)
+        return None
+
     def execute(
         self, request: Union[OperationRequest, Mapping[str, Any]]
     ) -> OperationResult:
         """Validate, dispatch, audit, and return one typed operation result."""
 
         if not isinstance(request, OperationRequest):
-            request = OperationRequest.from_dict(request)
+            request = decode_operation_request(request)
         with self._lock:
             try:
-                self._check_target(request)
-                self._check_bounds(request)
-                self._check_authorization(request)
-                replay = self._check_idempotency(request)
+                replay = self._preflight_dispatch_boundary(request)
                 if replay is not None:
                     return replay
-                self._check_lease(request)
                 if request.dry_run and request.operation in MUTATION_OPERATIONS:
                     # A dry run never invokes a mutating adapter.
                     response = BackendResponse(

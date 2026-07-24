@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.control_cli import (
 from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
     CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
+    AuthorityViolationError,
     AuthorizationBindingError,
     AuthorizationDecision,
     AuthorizationVerdict,
@@ -33,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     OperationAuthority,
     OperationRequest,
     OperationResult,
+    PathEscapeError,
     READ_OPERATIONS,
 )
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
@@ -168,6 +170,34 @@ def _matrix_requests(
         ),
         ("independent_mutation_success", mutation),
     )
+
+
+def _guard_rejection_payload(
+    request: OperationRequest, scenario: str
+) -> dict[str, Any]:
+    payload = request.to_record()
+    payload.pop("content_id")
+    if scenario == "unauthorized":
+        payload.pop("authorization")
+    elif scenario == "unscoped_idempotency":
+        idempotency = dict(payload["idempotency"])
+        idempotency.pop("content_id")
+        idempotency["objective_id"] = "objective:outside-request-scope"
+        payload["idempotency"] = idempotency
+    elif scenario == "unfenced":
+        payload.pop("lease_id")
+        payload.pop("fencing_epoch")
+    elif scenario == "stale_binding":
+        payload["tree_id"] = f"{request.tree_id}:stale-request-binding"
+    elif scenario == "path_escape":
+        parameters = dict(payload["parameters"])
+        parameters["target_path"] = "../outside-repository"
+        payload["parameters"] = parameters
+    elif scenario == "undeclared_effect":
+        payload["expected_effects"] = []
+    else:
+        raise AssertionError(f"unknown guard scenario {scenario}")
+    return payload
 
 
 def _service(
@@ -476,16 +506,19 @@ async def test_named_tool_rejects_a_different_request_operation(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("removed_fields", "error_type"),
+    ("scenario", "error_type"),
     (
-        (("authorization",), AuthorizationBindingError),
-        (("idempotency",), MissingIdempotencyError),
-        (("lease_id", "fencing_epoch"), AuthorizationBindingError),
+        ("unauthorized", AuthorizationBindingError),
+        ("unscoped_idempotency", MissingIdempotencyError),
+        ("unfenced", AuthorizationBindingError),
+        ("stale_binding", AuthorizationBindingError),
+        ("path_escape", PathEscapeError),
+        ("undeclared_effect", AuthorityViolationError),
     ),
 )
-async def test_mcp_rejects_malformed_real_mutation_before_service_resolution(
+async def test_mcp_rejects_every_unsafe_real_mutation_before_service_resolution(
     tmp_path: Path,
-    removed_fields: tuple[str, ...],
+    scenario: str,
     error_type: type[Exception],
 ) -> None:
     repo_root = tmp_path / "repo"
@@ -493,10 +526,7 @@ async def test_mcp_rejects_malformed_real_mutation_before_service_resolution(
     repo_root.mkdir()
     state_root.mkdir()
     request = _matrix_requests(repo_root, state_root)[-1][1]
-    payload = request.to_record()
-    payload.pop("content_id")
-    for field in removed_fields:
-        payload.pop(field)
+    payload = _guard_rejection_payload(request, scenario)
     factory_calls = 0
 
     def forbidden_factory(_request: OperationRequest) -> SupervisorControlService:
