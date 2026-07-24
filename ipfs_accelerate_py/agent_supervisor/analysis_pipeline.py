@@ -444,6 +444,56 @@ class OptionalProviderFailure:
         }
 
 
+def _optional_provider_violation(
+    value: Any,
+    request: AnalysisPipelineRequest,
+) -> str:
+    """Return a fail-closed reason for an unsafe provider projection.
+
+    Optional providers are outside the supervisor authority boundary.  The
+    pipeline therefore rejects, rather than merely ignores, a provider value
+    that is rebound to another request or claims any form of completion
+    authority.  The rejection itself remains advisory so healthy local
+    analysis can continue.
+    """
+
+    if isinstance(value, Mapping):
+        projected: Mapping[str, Any] = value
+    else:
+        converter = getattr(value, "to_dict", None)
+        projected = converter() if callable(converter) else {}
+        if not isinstance(projected, Mapping):
+            projected = {}
+
+    expected_bindings = {
+        "repository_id": request.repository_id,
+        "tree_id": request.tree_id,
+        "objective_revision": request.objective_revision,
+    }
+    for name, expected in expected_bindings.items():
+        actual = projected.get(name)
+        if actual in (None, ""):
+            actual = getattr(value, name, None)
+        if actual not in (None, "", expected):
+            return "optional_provider_identity_mismatch"
+
+    for name in (
+        "authoritative",
+        "completion_authority",
+        "is_completion_evidence",
+        "proof_success",
+        "safe_for_completion_reasoning",
+    ):
+        claim = projected.get(name)
+        if claim is None:
+            claim = getattr(value, name, None)
+        if callable(claim):
+            continue
+        if claim is not None and claim is not False:
+            return "optional_provider_authority_claim_rejected"
+    return ""
+
+
 @dataclass(frozen=True)
 class ExactTreeReuseEvidence:
     """Content-addressed witness for an authoritative exact-key cache hit."""
@@ -1108,6 +1158,16 @@ class AnalysisPipeline:
                 if inspect.isawaitable(provider_result):
                     raise AnalysisProducerError(
                         "async datasets providers require AnalysisPipeline.aanalyze"
+                    )
+                violation = _optional_provider_violation(
+                    provider_result, request
+                )
+                if violation:
+                    provider_result = OptionalProviderFailure(
+                        repository_id=request.repository_id,
+                        tree_id=request.tree_id,
+                        objective_revision=request.objective_revision,
+                        reason_code=violation,
                     )
         return AnalysisStageContext(
             request=request,

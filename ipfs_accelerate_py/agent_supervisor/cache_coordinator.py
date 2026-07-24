@@ -48,8 +48,15 @@ ProducerValue = Union[
     AnalysisCacheLookupResult,
     AnalysisCacheStoreResult,
 ]
-SyncProducer = Callable[[], ProducerValue]
-AsyncProducer = Callable[[], Union[ProducerValue, Awaitable[ProducerValue]]]
+SyncProducer = Callable[[], Union[ProducerValue, "CachePublication"]]
+AsyncProducer = Callable[
+    [],
+    Union[
+        ProducerValue,
+        "CachePublication",
+        Awaitable[Union[ProducerValue, "CachePublication"]],
+    ],
+]
 
 
 class CacheCoordinationError(RuntimeError):
@@ -90,7 +97,9 @@ class CachePublication:
     This lets a producer coalesce expensive work while applying a result-aware
     cache policy: conclusive receipts can be durable, negative receipts can
     have a bounded TTL, and explicitly non-cacheable receipts can still be
-    delivered to all in-process followers.
+    delivered to all in-process followers.  An omitted publication TTL
+    inherits the coordination call's TTL; an explicit publication TTL
+    overrides it.
     """
 
     value: Any
@@ -446,7 +455,8 @@ class AnalysisCacheCoordinator:
         should_store = True
         if isinstance(value, CachePublication):
             should_store = value.store
-            ttl_seconds = value.ttl_seconds
+            if value.ttl_seconds is not None:
+                ttl_seconds = value.ttl_seconds
             value = value.value
 
         if not should_store:
@@ -697,6 +707,7 @@ __all__ = [
     "CacheCoordinationResult",
     "CacheCoordinationStatus",
     "CacheCoordinationTimeout",
+    "CachePublication",
     "CacheCoordinator",
     "CacheCoordinatorMetrics",
     "CacheCoordinatorResult",
