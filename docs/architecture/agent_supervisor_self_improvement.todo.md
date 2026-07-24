@@ -2555,3 +2555,48 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: validation_gate
 - Todo vector key: 7994c1509fc6a036
 - Acceptance: Objective scan filed this gap for ASI-G105. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-072-objective-gap-5dcde08ee9be.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-073 Produce completion evidence for Prove 003778425160038348524906247302938706902 for Evidence-aware planning and responsive goal refinement
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: planning
+- Depends on: 
+- Outputs: data/agent_supervisor/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_goal_refiner.py -q
+- Bundle: agent-supervisor/self-improvement/planning
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-planning.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: ASI-G030
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/planning
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Changed paths: 
+- AST symbols: 003778425160038348524906247302938706902
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G098
+- Canonical task key: task/v1/9fd7f221ad93ea923f802b85bf009f64b5324ccf913484ec26cd802ee4cfe91b
+- Canonical task CID: baguqeerat7l7einnspvjep4afoc36ae7ms2tetgpse2ij3bgzwac5zgp5enq
+- Evidence obligation key: objective-work/v1/2a7f341e9c9dec24c6e4403a835ec127ddb90b23
+- Missing evidence: completion analyzer health, completion criterion coverage, completion exhaustion quorum
+- Embedding query: 003778425160038348524906247302938706902
+- AST query: 003778425160038348524906247302938706902
+- Surplus group: ASI-G098
+- Merge key: objective-work/v1/2a7f341e9c9dec24c6e4403a835ec127ddb90b23
+- Merge family: ASI-G098
+- Merge role: completion_gate
+- Work item count: 3
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: 2a7f341e9c9dec24
+- Acceptance: Objective scan filed this gap for ASI-G098. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-073-objective-gap-3fa69d827550.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (completion analyzer health, completion criterion coverage, completion exhaustion quorum), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.

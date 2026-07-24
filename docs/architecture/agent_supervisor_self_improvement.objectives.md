@@ -287,7 +287,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G091 Prove 208290439421789408250562066350459701853 for Token-efficient context and end-to-end measurement
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G010
 - Fib priority: 5000
 - Track: token-efficiency
@@ -316,10 +316,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: The compiler derives the effective input limit from the supervisor ceiling, provider input/window limits, and reserved output/tool tokens; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G092 Prove 306437607356117177048620815571362227127 for Token-efficient context and end-to-end measurement
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G010
 - Fib priority: 5001
 - Track: token-efficiency
@@ -348,10 +351,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: A compact retry references its exact parent capsule without replaying the invariant core and transmits only deterministic changed or newly requested evidence; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G093 Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G010
 - Fib priority: 5002
 - Track: token-efficiency
@@ -380,10 +386,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: The exact requirement ID is emitted only by a bounded, content-addressed benchmark receipt carrying the complete typed baseline and candidate receipt populations, one frozen goal/tree/policy binding, the independently replayed paired result, source and report identities, a deterministic input digest, and a passing accounting result. A completion gate verifies the artifact against its independently enumerated benchmark cohort, so an omitted, duplicated, reordered, or substituted input is either canonicalized to the same evidence identity or fails closed. The accepted-task population must be non-empty and identical across arms; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G094 Prove 189057730455837902155591890661235220962 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G020
 - Fib priority: 5000
 - Track: analysis
@@ -412,6 +421,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: The live pipeline composes the existing cache, incremental AST index, bounded multi-signal retrieval, and optional datasets adapter; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G095 Prove 184801846437522667882915494501685213497 for Integrated analysis, caching, and ipfs_datasets_py offload
 
@@ -463,7 +475,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G096 Prove 206259342916458424196977899134352826879 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G020
 - Fib priority: 5002
 - Track: analysis
@@ -492,10 +504,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: Sync, async, and mixed facades share one keyed flight; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G097 Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G030
 - Fib priority: 5000
 - Track: planning
@@ -523,6 +538,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: Deterministic evaluation covers acceptance evidence, assumptions, semantics, dependencies, conflicts, validation and proof feasibility, novelty, and bounded resource/token cost; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G098 Prove 003778425160038348524906247302938706902 for Evidence-aware planning and responsive goal refinement
 
@@ -594,7 +612,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G101 Prove 266404049326363900535699811645710804440 for Strict output, code, test, semantic, and proof validation
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G040
 - Fib priority: 5001
 - Track: validation
@@ -623,10 +641,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: The validation DAG is derived from the canonical changed-file and dependency/interface impact graph and validated declarations that explicitly name impact targets, node dependencies, and downstream authority gates. Its receipt contains the complete selected population, includes every mandatory direct and transitive validation exactly once, schedules only dependency-ready nodes under bounded parallelism, records selected, executed, succeeded, failed, blocked, and omitted dispositions deterministically, and identifies the failed prerequisite for every blocked descendant. Missing, stale, cyclic, inconsistent, or population-incomplete impact evidence fails closed before it can grant authority. A seeded upstream defect must select and execute its transitively affected consumer test, whose real failure creates explicit closed records for semantic/proof promotion, merge, freshness, and completion authority. The exact requirement ID is emitted only by a tamper-evident receipt binding the current tree, objective, policy, accepted proposal, change and graph identities, declaration set, affected closure, selected-node population, DAG dependencies, authority-gate closure, impact paths, actual defect-detecting result, fail-fast disposition, and content digest.; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G102 Prove 006818797857632260116084792540150258746 for Strict output, code, test, semantic, and proof validation
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G040
 - Fib priority: 5002
 - Track: validation
@@ -655,10 +676,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: An accepted proposal and complete passing test DAG remain insufficient for completion. Strict admission requires canonical fresh authoritative code-proof receipts covering the complete implementation-obligation population; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G103 Prove 031486194157679117987393491870400400279 for Unified Python, CLI, and MCP supervisor control
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G070
 - Fib priority: 5000
 - Track: control
@@ -687,10 +711,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: The shared schema describes all operations; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G104 Prove 184125100306462690646212311073240043804 for Unified Python, CLI, and MCP supervisor control
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G070
 - Fib priority: 5001
 - Track: control
@@ -719,10 +746,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: Unauthorized, unscoped, unfenced, stale, path-escaping, or undeclared-effect mutations fail before dispatch on every surface; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
 
 ## ASI-G105 Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G070
 - Fib priority: 5002
 - Track: control
@@ -751,3 +781,6 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T14:29:29.529514+00:00
+- State transition reason: Produce completion evidence for: Repeated Python, CLI, and MCP discovery is byte-deterministic and covers the same closed operation/schema population; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T14:29:29.529514+00:00
