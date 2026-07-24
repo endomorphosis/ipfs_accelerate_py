@@ -26,6 +26,7 @@ from .formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
     canonical_json_bytes,
+    content_identity,
 )
 
 
@@ -56,6 +57,28 @@ CAPABILITY_REPORT_SCHEMA = (
 )
 LIFECYCLE_COMMAND_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/lifecycle-command@1"
+)
+CONTROL_SURFACE_PARITY_CASE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-surface-parity-case@1"
+)
+CONTROL_SURFACE_PARITY_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-surface-parity-evidence@1"
+)
+MUTATION_GUARD_REJECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/mutation-guard-rejection@1"
+)
+CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-mutation-guard-evidence@1"
+)
+
+# ASI-G070/ASI-G103: the requirement is emitted only by a validated
+# ControlSurfaceParityEvidence record.  Merely mentioning this opaque ID is
+# intentionally not completion evidence.
+CONTROL_SURFACE_PARITY_REQUIREMENT_ID: Final[str] = (
+    "031486194157679117987393491870400400279"
+)
+CONTROL_MUTATION_GUARD_REQUIREMENT_ID: Final[str] = (
+    "184125100306462690646212311073240043804"
 )
 
 ABSOLUTE_MAX_CONTROL_BYTES = 1_048_576
@@ -133,6 +156,23 @@ class OperationAuthority(str, Enum):
 
 
 Authority = OperationAuthority
+
+
+class ControlSurface(str, Enum):
+    """The independently invoked public supervisor control surfaces."""
+
+    PYTHON = "python"
+    CLI = "cli"
+    MCP = "mcp"
+
+
+class ControlBehaviorClass(str, Enum):
+    """Behavior classes required before cross-surface parity can qualify."""
+
+    READ_SUCCESS = "read_success"
+    PROPOSAL_SUCCESS = "proposal_success"
+    STABLE_FAILURE = "stable_failure"
+    MUTATION_SUCCESS = "mutation_success"
 
 
 class Operation(str, Enum):
@@ -2107,6 +2147,610 @@ class CapabilityReport(_ControlCanonicalContract):
 
 
 @dataclass(frozen=True)
+class ControlSurfaceParityCase(_ControlCanonicalContract):
+    """One independently invoked Python/CLI/MCP behavior comparison.
+
+    Full canonical records are retained rather than caller-supplied booleans
+    or digests.  Construction re-decodes every record, validates each result
+    against the request, and requires byte-for-byte equality across surfaces.
+    """
+
+    SCHEMA: ClassVar[str] = CONTROL_SURFACE_PARITY_CASE_SCHEMA
+
+    scenario: str
+    request: OperationRequest | Mapping[str, Any]
+    python_result: OperationResult | Mapping[str, Any]
+    cli_result: OperationResult | Mapping[str, Any]
+    mcp_result: OperationResult | Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "scenario", _text(self.scenario, "scenario", max_bytes=128)
+        )
+        request = self.request
+        if not isinstance(request, OperationRequest):
+            if not isinstance(request, Mapping):
+                raise ControlContractError(
+                    "parity case request must be an OperationRequest"
+                )
+            request = OperationRequest.from_dict(request)
+        object.__setattr__(self, "request", request)
+
+        decoded: list[OperationResult] = []
+        for field_name in ("python_result", "cli_result", "mcp_result"):
+            result = getattr(self, field_name)
+            if not isinstance(result, OperationResult):
+                if not isinstance(result, Mapping):
+                    raise ControlContractError(
+                        f"{field_name} must be an OperationResult"
+                    )
+                result = OperationResult.from_dict(result)
+            result.validate_against(request)
+            object.__setattr__(self, field_name, result)
+            decoded.append(result)
+        records = [item.to_record() for item in decoded]
+        if records[1:] != records[:-1]:
+            raise ControlContractError(
+                "Python, CLI, and MCP results are not canonically identical"
+            )
+        _bounded_record(
+            self,
+            "control surface parity case",
+            maximum=ABSOLUTE_MAX_CONTROL_BYTES,
+        )
+
+    @property
+    def operation(self) -> Operation:
+        assert isinstance(self.request, OperationRequest)
+        return self.request.operation
+
+    @property
+    def status(self) -> OperationStatus:
+        assert isinstance(self.python_result, OperationResult)
+        return self.python_result.status
+
+    @property
+    def result_id(self) -> str:
+        assert isinstance(self.python_result, OperationResult)
+        return self.python_result.result_id
+
+    @property
+    def behavior_class(self) -> ControlBehaviorClass:
+        """Derive, rather than trust, the qualifying behavior class."""
+
+        assert isinstance(self.request, OperationRequest)
+        assert isinstance(self.python_result, OperationResult)
+        if not self.python_result.succeeded:
+            if self.python_result.error is None:
+                raise ControlContractError(
+                    "failed parity result must carry a stable typed error"
+                )
+            return ControlBehaviorClass.STABLE_FAILURE
+        if self.request.operation.mutating and not self.request.dry_run:
+            if (
+                not self.python_result.audit_receipt_id
+                or not any(
+                    effect.applied for effect in self.python_result.effects
+                )
+            ):
+                raise ControlContractError(
+                    "successful mutation parity case must be audited and applied"
+                )
+            return ControlBehaviorClass.MUTATION_SUCCESS
+        if self.request.effective_authority is OperationAuthority.PROPOSAL:
+            if self.python_result.preview is None:
+                raise ControlContractError(
+                    "successful proposal parity case must carry a preview"
+                )
+            return ControlBehaviorClass.PROPOSAL_SUCCESS
+        return ControlBehaviorClass.READ_SUCCESS
+
+    def _payload(self) -> dict[str, Any]:
+        assert isinstance(self.request, OperationRequest)
+        assert isinstance(self.python_result, OperationResult)
+        assert isinstance(self.cli_result, OperationResult)
+        assert isinstance(self.mcp_result, OperationResult)
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "scenario": self.scenario,
+            "behavior_class": self.behavior_class,
+            "operation": self.operation,
+            "status": self.status,
+            "request": self.request.to_record(),
+            "python_result": self.python_result.to_record(),
+            "cli_result": self.cli_result.to_record(),
+            "mcp_result": self.mcp_result.to_record(),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlSurfaceParityCase":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "scenario",
+                "behavior_class",
+                "operation",
+                "status",
+                "request",
+                "python_result",
+                "cli_result",
+                "mcp_result",
+                "content_id",
+            },
+            "control surface parity case",
+        )
+        result = cls(
+            scenario=payload.get("scenario", ""),
+            request=payload.get("request") or {},
+            python_result=payload.get("python_result") or {},
+            cli_result=payload.get("cli_result") or {},
+            mcp_result=payload.get("mcp_result") or {},
+        )
+        claimed_operation = payload.get("operation")
+        if claimed_operation not in (None, "") and _operation(
+            claimed_operation
+        ) is not result.operation:
+            raise ControlContractError(
+                "parity case operation does not match its request"
+            )
+        claimed_behavior = payload.get("behavior_class")
+        if claimed_behavior not in (None, "") and _enum(
+            claimed_behavior,
+            ControlBehaviorClass,
+            "behavior_class",
+        ) is not result.behavior_class:
+            raise ControlContractError(
+                "parity case behavior_class does not match its result"
+            )
+        claimed_status = payload.get("status")
+        if claimed_status not in (None, "") and _enum(
+            claimed_status, OperationStatus, "status"
+        ) is not result.status:
+            raise ControlContractError(
+                "parity case status does not match its result"
+            )
+        _identity(payload, result.content_id, "control surface parity case")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlSurfaceParityEvidence(_ControlCanonicalContract):
+    """Tamper-evident proof that all public control surfaces share one contract."""
+
+    SCHEMA: ClassVar[str] = CONTROL_SURFACE_PARITY_EVIDENCE_SCHEMA
+
+    repository_tree: str
+    objective_id: str
+    policy_id: str
+    policy_revision: str
+    capability_report: CapabilityReport | Mapping[str, Any]
+    cases: tuple[ControlSurfaceParityCase, ...]
+    operations: tuple[Operation, ...] = tuple(
+        sorted(Operation, key=lambda item: item.value)
+    )
+    surfaces: tuple[ControlSurface, ...] = tuple(ControlSurface)
+    requirement_id: str = CONTROL_SURFACE_PARITY_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_tree",
+            "objective_id",
+            "policy_id",
+            "policy_revision",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        if self.requirement_id != CONTROL_SURFACE_PARITY_REQUIREMENT_ID:
+            raise ControlContractError(
+                "parity evidence requirement_id is not the ASI-G103 requirement"
+            )
+        report = self.capability_report
+        if not isinstance(report, CapabilityReport):
+            if not isinstance(report, Mapping):
+                raise ControlContractError(
+                    "capability_report must be a CapabilityReport"
+                )
+            report = CapabilityReport.from_dict(report)
+        object.__setattr__(self, "capability_report", report)
+
+        cases = _coerce_tuple(
+            self.cases,
+            ControlSurfaceParityCase,
+            ControlSurfaceParityCase.from_dict,
+            "cases",
+        )
+        if not cases:
+            raise ControlContractError(
+                "parity evidence requires independently invoked cases"
+            )
+        scenarios = [item.scenario for item in cases]
+        if len(scenarios) != len(set(scenarios)):
+            raise ControlContractError("parity case scenarios must be unique")
+        behavior_classes = {item.behavior_class for item in cases}
+        required_behavior_classes = set(ControlBehaviorClass)
+        if behavior_classes != required_behavior_classes:
+            missing = sorted(
+                item.value
+                for item in required_behavior_classes - behavior_classes
+            )
+            raise ControlContractError(
+                "parity evidence requires the complete behavior matrix"
+                + (": missing " + ", ".join(missing) if missing else "")
+            )
+        for item in cases:
+            assert isinstance(item.request, OperationRequest)
+            if (
+                item.request.tree_id != self.repository_tree
+                or item.request.objective_id != self.objective_id
+                or item.request.policy_id != self.policy_id
+                or item.request.policy_revision != self.policy_revision
+            ):
+                raise ControlContractError(
+                    "parity case is stale or bound to another objective/policy"
+                )
+        object.__setattr__(self, "cases", tuple(cases))
+
+        operations = tuple(
+            sorted(
+                {_operation(item) for item in self.operations},
+                key=lambda item: item.value,
+            )
+        )
+        expected_operations = tuple(
+            sorted(Operation, key=lambda item: item.value)
+        )
+        if operations != expected_operations:
+            raise ControlContractError(
+                "parity evidence must bind the complete operation vocabulary"
+            )
+        if report.supported_operations != expected_operations:
+            raise ControlContractError(
+                "capability report must support the complete operation vocabulary"
+            )
+        object.__setattr__(self, "operations", operations)
+
+        surfaces = tuple(
+            sorted(
+                {_enum(item, ControlSurface, "surface") for item in self.surfaces},
+                key=lambda item: item.value,
+            )
+        )
+        expected_surfaces = tuple(
+            sorted(ControlSurface, key=lambda item: item.value)
+        )
+        if surfaces != expected_surfaces:
+            raise ControlContractError(
+                "parity evidence requires Python, CLI, and MCP observations"
+            )
+        object.__setattr__(self, "surfaces", surfaces)
+        _bounded_record(
+            self,
+            "control surface parity evidence",
+            maximum=ABSOLUTE_MAX_CONTROL_BYTES,
+        )
+
+    @property
+    def request_schema_id(self) -> str:
+        return content_identity(operation_request_json_schema())
+
+    @property
+    def result_schema_id(self) -> str:
+        return content_identity(operation_result_json_schema())
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (CONTROL_SURFACE_PARITY_REQUIREMENT_ID,)
+
+    def _payload(self) -> dict[str, Any]:
+        assert isinstance(self.capability_report, CapabilityReport)
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "requirement_id": self.requirement_id,
+            "repository_tree": self.repository_tree,
+            "objective_id": self.objective_id,
+            "policy_id": self.policy_id,
+            "policy_revision": self.policy_revision,
+            "surfaces": self.surfaces,
+            "operations": self.operations,
+            "request_schema_id": self.request_schema_id,
+            "result_schema_id": self.result_schema_id,
+            "capability_report": self.capability_report.to_record(),
+            "cases": tuple(item.to_record() for item in self.cases),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlSurfaceParityEvidence":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "requirement_id",
+                "repository_tree",
+                "objective_id",
+                "policy_id",
+                "policy_revision",
+                "surfaces",
+                "operations",
+                "request_schema_id",
+                "result_schema_id",
+                "capability_report",
+                "cases",
+                "content_id",
+            },
+            "control surface parity evidence",
+        )
+        result = cls(
+            requirement_id=payload.get("requirement_id", ""),
+            repository_tree=payload.get("repository_tree", ""),
+            objective_id=payload.get("objective_id", ""),
+            policy_id=payload.get("policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            surfaces=payload.get("surfaces", ()),
+            operations=payload.get("operations", ()),
+            capability_report=payload.get("capability_report") or {},
+            cases=payload.get("cases", ()),
+        )
+        for name, actual in (
+            ("request_schema_id", result.request_schema_id),
+            ("result_schema_id", result.result_schema_id),
+        ):
+            claimed = payload.get(name)
+            if claimed not in (None, "") and claimed != actual:
+                raise ControlContractError(
+                    f"parity evidence {name} does not match the shared schema"
+                )
+        _identity(payload, result.content_id, "control surface parity evidence")
+        return result
+
+
+@dataclass(frozen=True)
+class MutationGuardRejection(_ControlCanonicalContract):
+    """A malformed mutation replayed through the authoritative request parser."""
+
+    SCHEMA: ClassVar[str] = MUTATION_GUARD_REJECTION_SCHEMA
+
+    scenario: str
+    request_payload: Mapping[str, Any]
+    error_type: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "scenario", _text(self.scenario, "scenario"))
+        if not isinstance(self.request_payload, Mapping):
+            raise ControlContractError("request_payload must be a mapping")
+        payload = dict(self.request_payload)
+        payload.pop("content_id", None)
+        object.__setattr__(
+            self,
+            "request_payload",
+            _freeze_value(
+                payload,
+                name="rejected request payload",
+                max_depth=ABSOLUTE_MAX_CONTROL_DEPTH,
+                max_items=ABSOLUTE_MAX_CONTROL_ITEMS,
+                max_text_bytes=ABSOLUTE_MAX_CONTROL_TEXT_BYTES,
+            ),
+        )
+        error_type = _text(self.error_type, "error_type")
+        try:
+            OperationRequest.from_dict(payload)
+        except (ControlContractError, ValueError) as exc:
+            actual = type(exc).__name__
+        else:
+            raise ControlContractError(
+                "mutation guard rejection payload was accepted"
+            )
+        if actual != error_type:
+            raise ControlContractError(
+                "mutation guard rejection error_type does not match replay"
+            )
+        object.__setattr__(self, "error_type", error_type)
+        _bounded_record(self, "mutation guard rejection")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "scenario": self.scenario,
+            "request_payload": self.request_payload,
+            "error_type": self.error_type,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MutationGuardRejection":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "scenario",
+                "request_payload",
+                "error_type",
+                "content_id",
+            },
+            "mutation guard rejection",
+        )
+        result = cls(
+            scenario=payload.get("scenario", ""),
+            request_payload=payload.get("request_payload") or {},
+            error_type=payload.get("error_type", ""),
+        )
+        _identity(payload, result.content_id, "mutation guard rejection")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlMutationGuardEvidence(_ControlCanonicalContract):
+    """Evidence that an applied mutation was guarded, audited, and replay-safe."""
+
+    SCHEMA: ClassVar[str] = CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA
+
+    repository_tree: str
+    objective_id: str
+    policy_id: str
+    policy_revision: str
+    request: OperationRequest | Mapping[str, Any]
+    result: OperationResult | Mapping[str, Any]
+    replay_result: OperationResult | Mapping[str, Any]
+    rejections: tuple[MutationGuardRejection, ...]
+    requirement_id: str = CONTROL_MUTATION_GUARD_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_tree",
+            "objective_id",
+            "policy_id",
+            "policy_revision",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        if self.requirement_id != CONTROL_MUTATION_GUARD_REQUIREMENT_ID:
+            raise ControlContractError(
+                "mutation evidence requirement_id is not the ASI-G104 requirement"
+            )
+        request = self.request
+        if not isinstance(request, OperationRequest):
+            if not isinstance(request, Mapping):
+                raise ControlContractError("request must be an OperationRequest")
+            request = OperationRequest.from_dict(request)
+        if not request.operation.mutating or request.dry_run:
+            raise ControlContractError(
+                "mutation guard evidence requires a real mutation request"
+            )
+        if (
+            request.tree_id != self.repository_tree
+            or request.objective_id != self.objective_id
+            or request.policy_id != self.policy_id
+            or request.policy_revision != self.policy_revision
+        ):
+            raise ControlContractError(
+                "mutation guard evidence request binding is stale"
+            )
+        object.__setattr__(self, "request", request)
+
+        decoded_results: list[OperationResult] = []
+        for name in ("result", "replay_result"):
+            item = getattr(self, name)
+            if not isinstance(item, OperationResult):
+                if not isinstance(item, Mapping):
+                    raise ControlContractError(
+                        f"{name} must be an OperationResult"
+                    )
+                item = OperationResult.from_dict(item)
+            item.validate_against(request)
+            if not item.succeeded:
+                raise ControlContractError(
+                    "mutation guard evidence requires successful results"
+                )
+            object.__setattr__(self, name, item)
+            decoded_results.append(item)
+        if (
+            decoded_results[0].to_record() != decoded_results[1].to_record()
+            or not decoded_results[0].audit_receipt_id
+            or not any(effect.applied for effect in decoded_results[0].effects)
+        ):
+            raise ControlContractError(
+                "mutation result is not audited, applied, and exactly replayed"
+            )
+
+        rejections = _coerce_tuple(
+            self.rejections,
+            MutationGuardRejection,
+            MutationGuardRejection.from_dict,
+            "rejections",
+        )
+        scenarios = {item.scenario for item in rejections}
+        required = {
+            "missing_authorization",
+            "missing_idempotency",
+            "missing_lease_or_fence",
+        }
+        if scenarios != required or len(rejections) != len(required):
+            raise ControlContractError(
+                "mutation evidence requires authorization, idempotency, and "
+                "lease/fence rejection replays"
+            )
+        object.__setattr__(
+            self,
+            "rejections",
+            tuple(sorted(rejections, key=lambda item: item.scenario)),
+        )
+        _bounded_record(
+            self,
+            "control mutation guard evidence",
+            maximum=ABSOLUTE_MAX_CONTROL_BYTES,
+        )
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (CONTROL_MUTATION_GUARD_REQUIREMENT_ID,)
+
+    def _payload(self) -> dict[str, Any]:
+        assert isinstance(self.request, OperationRequest)
+        assert isinstance(self.result, OperationResult)
+        assert isinstance(self.replay_result, OperationResult)
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "requirement_id": self.requirement_id,
+            "repository_tree": self.repository_tree,
+            "objective_id": self.objective_id,
+            "policy_id": self.policy_id,
+            "policy_revision": self.policy_revision,
+            "request": self.request.to_record(),
+            "result": self.result.to_record(),
+            "replay_result": self.replay_result.to_record(),
+            "rejections": tuple(item.to_record() for item in self.rejections),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlMutationGuardEvidence":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "requirement_id",
+                "repository_tree",
+                "objective_id",
+                "policy_id",
+                "policy_revision",
+                "request",
+                "result",
+                "replay_result",
+                "rejections",
+                "content_id",
+            },
+            "control mutation guard evidence",
+        )
+        result = cls(
+            requirement_id=payload.get("requirement_id", ""),
+            repository_tree=payload.get("repository_tree", ""),
+            objective_id=payload.get("objective_id", ""),
+            policy_id=payload.get("policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            request=payload.get("request") or {},
+            result=payload.get("result") or {},
+            replay_result=payload.get("replay_result") or {},
+            rejections=payload.get("rejections", ()),
+        )
+        _identity(payload, result.content_id, "control mutation guard evidence")
+        return result
+
+
+@dataclass(frozen=True)
 class LifecycleCommand(_ControlCanonicalContract):
     """A typed lifecycle intent, suitable for conversion to a request."""
 
@@ -2202,6 +2846,199 @@ class LifecycleCommand(_ControlCanonicalContract):
         return result
 
 
+def operation_request_json_schema(
+    operation: Operation | str | None = None,
+) -> dict[str, Any]:
+    """Return the shared JSON Schema advertised by CLI and MCP adapters.
+
+    JSON Schema is an early validation aid, not an authorization decision.
+    :class:`OperationRequest` remains the authoritative parser and performs
+    cross-field identity, effect, idempotency, authorization, and lease checks.
+    """
+
+    selected = _operation(operation) if operation is not None else None
+    operation_values = (
+        [selected.value]
+        if selected is not None
+        else [item.value for item in sorted(Operation, key=lambda item: item.value)]
+    )
+    string_id = {"type": "string", "minLength": 1, "maxLength": 65536}
+    root = {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 65536,
+        "pattern": "^/",
+    }
+    properties: dict[str, Any] = {
+        "schema": {"const": OPERATION_REQUEST_SCHEMA},
+        "schema_version": {"type": "integer", "const": CONTROL_CONTRACT_VERSION},
+        "contract_version": {
+            "type": "integer",
+            "const": CONTROL_CONTRACT_VERSION,
+        },
+        "operation": (
+            {"const": selected.value}
+            if selected is not None
+            else {"type": "string", "enum": operation_values}
+        ),
+        "authority": {
+            "type": "string",
+            "enum": [item.value for item in OperationAuthority],
+        },
+        "effective_authority": {
+            "type": "string",
+            "enum": [item.value for item in OperationAuthority],
+        },
+        "repository_root": root,
+        "state_root": root,
+        "repository_id": string_id,
+        "tree_id": string_id,
+        "objective_id": string_id,
+        "objective_revision": string_id,
+        "policy_id": string_id,
+        "policy_revision": string_id,
+        "caller": string_id,
+        "bounds": {"type": "object"},
+        "expected_effects": {"type": "array", "maxItems": 64},
+        "parameters": {"type": "object"},
+        "dry_run": {"type": "boolean"},
+        "idempotency": {"type": ["object", "null"]},
+        "idempotency_key": {"type": "string"},
+        "authorization": {"type": ["object", "null"]},
+        "lease_id": {"type": "string"},
+        "fencing_epoch": {"type": ["integer", "null"], "minimum": 0},
+        "content_id": {"type": "string"},
+    }
+    required = [
+        "operation",
+        "repository_root",
+        "state_root",
+        "repository_id",
+        "tree_id",
+        "objective_id",
+        "objective_revision",
+        "policy_id",
+        "policy_revision",
+        "caller",
+    ]
+    schema: dict[str, Any] = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": (
+            f"{OPERATION_REQUEST_SCHEMA}#{selected.value}"
+            if selected is not None
+            else OPERATION_REQUEST_SCHEMA
+        ),
+        "title": "Agent supervisor operation request",
+        "type": "object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": False,
+    }
+    if selected is not None and selected.mutating:
+        schema["allOf"] = [
+            {
+                "if": {
+                    "properties": {"dry_run": {"const": False}},
+                },
+                "then": {
+                    "required": [
+                        "expected_effects",
+                        "idempotency",
+                        "authorization",
+                        "lease_id",
+                        "fencing_epoch",
+                    ]
+                },
+            }
+        ]
+    return schema
+
+
+def operation_result_json_schema(
+    operation: Operation | str | None = None,
+) -> dict[str, Any]:
+    """Return the stable result-envelope JSON Schema for every surface."""
+
+    selected = _operation(operation) if operation is not None else None
+    operation_property: dict[str, Any] = (
+        {"const": selected.value}
+        if selected is not None
+        else {
+            "type": "string",
+            "enum": [
+                item.value
+                for item in sorted(Operation, key=lambda item: item.value)
+            ],
+        }
+    )
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": (
+            f"{OPERATION_RESULT_SCHEMA}#{selected.value}"
+            if selected is not None
+            else OPERATION_RESULT_SCHEMA
+        ),
+        "title": "Agent supervisor operation result",
+        "type": "object",
+        "properties": {
+            "schema": {"const": OPERATION_RESULT_SCHEMA},
+            "schema_version": {
+                "type": "integer",
+                "const": CONTROL_CONTRACT_VERSION,
+            },
+            "contract_version": {
+                "type": "integer",
+                "const": CONTROL_CONTRACT_VERSION,
+            },
+            "request_id": {"type": "string", "minLength": 1},
+            "operation": operation_property,
+            "authority": {
+                "type": "string",
+                "enum": [item.value for item in OperationAuthority],
+            },
+            "status": {
+                "type": "string",
+                "enum": [item.value for item in OperationStatus],
+            },
+            "repository_id": {"type": "string", "minLength": 1},
+            "tree_id": {"type": "string", "minLength": 1},
+            "objective_id": {"type": "string", "minLength": 1},
+            "policy_id": {"type": "string", "minLength": 1},
+            "caller": {"type": "string", "minLength": 1},
+            "bounds": {"type": "object"},
+            "data": {"type": "object"},
+            "effects": {"type": "array"},
+            "error": {"type": ["object", "null"]},
+            "preview": {"type": ["object", "null"]},
+            "idempotency_key": {"type": "string"},
+            "audit_receipt_id": {"type": "string"},
+            "content_id": {"type": "string", "minLength": 1},
+        },
+        "required": [
+            "schema",
+            "contract_version",
+            "request_id",
+            "operation",
+            "authority",
+            "status",
+            "repository_id",
+            "tree_id",
+            "objective_id",
+            "policy_id",
+            "caller",
+            "bounds",
+            "data",
+            "effects",
+            "error",
+            "preview",
+            "idempotency_key",
+            "audit_receipt_id",
+            "content_id",
+        ],
+        "additionalProperties": False,
+    }
+
+
 def canonical_control_json_bytes(value: Any) -> bytes:
     """Return canonical DAG-JSON bytes for a control value."""
 
@@ -2234,6 +3071,11 @@ __all__ = [
     "CONTRACT_VERSION",
     "CONTROL_BOUNDS_SCHEMA",
     "CONTROL_CONTRACT_VERSION",
+    "CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA",
+    "CONTROL_MUTATION_GUARD_REQUIREMENT_ID",
+    "CONTROL_SURFACE_PARITY_CASE_SCHEMA",
+    "CONTROL_SURFACE_PARITY_EVIDENCE_SCHEMA",
+    "CONTROL_SURFACE_PARITY_REQUIREMENT_ID",
     "DRY_RUN_PREVIEW_SCHEMA",
     "EFFECT_CLAIM_SCHEMA",
     "EXPECTED_EFFECT_SCHEMA",
@@ -2256,13 +3098,18 @@ __all__ = [
     "AuthorizationResult",
     "AuthorizationVerdict",
     "CapabilityReport",
+    "ControlBehaviorClass",
     "ControlBounds",
     "ControlBoundsError",
     "ControlContractError",
     "ControlContractValidationError",
     "ControlError",
     "ControlLimits",
+    "ControlMutationGuardEvidence",
     "ControlOperation",
+    "ControlSurface",
+    "ControlSurfaceParityCase",
+    "ControlSurfaceParityEvidence",
     "DryRunPreview",
     "EffectClaim",
     "EffectKind",
@@ -2274,6 +3121,8 @@ __all__ = [
     "LifecycleCommand",
     "LifecycleOperation",
     "MissingIdempotencyError",
+    "MUTATION_GUARD_REJECTION_SCHEMA",
+    "MutationGuardRejection",
     "Operation",
     "OperationAuthority",
     "OperationCapability",
@@ -2290,4 +3139,6 @@ __all__ = [
     "UnknownOperationError",
     "canonical_control_json_bytes",
     "operation_authority",
+    "operation_request_json_schema",
+    "operation_result_json_schema",
 ]

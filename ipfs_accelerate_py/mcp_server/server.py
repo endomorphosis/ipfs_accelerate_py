@@ -27,6 +27,7 @@ from .server_context import UnifiedServerContext
 from .wave_a_loaders import configure_wave_a_loaders
 from .tools.idl import load_idl_tools
 from .tools.admin_tools import register_native_admin_tools
+from .tools.agent_supervisor_tools import register_native_agent_supervisor_tools
 from .tools.alert_tools import register_native_alert_tools
 from .tools.analysis_tools import register_native_analysis_tools
 from .tools.auth_tools import register_native_auth_tools
@@ -340,6 +341,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         except Exception as exc:
             secrets_status["error"] = str(exc)
     configure_wave_a_loaders(manager)
+    manager.register_category_loader(
+        "agent_supervisor",
+        lambda mgr: register_native_agent_supervisor_tools(mgr),
+    )
     manager.register_category_loader(
         "admin_tools",
         lambda mgr: register_native_admin_tools(mgr),
