@@ -1,381 +1,163 @@
-# Frequently Asked Questions (FAQ)
+# Frequently Asked Questions
 
-## Installation & Setup
+This page answers current setup and runtime questions. For a complete
+installation sequence, see [Getting started](../getting-started/README.md) and
+the [installation guide](../getting-started/installation.md).
 
-### Q: What are the system requirements?
+## Installation
 
-**A:** Minimal requirements:
-- Python 3.8 or later
-- 2GB RAM (4GB+ recommended)
-- Any modern CPU (x86/x64/ARM)
+### What are the minimum requirements?
 
-For GPU acceleration, see [Hardware Requirements](HARDWARE.md#requirements).
+Use Python 3.8 or newer. The base package runs on CPU; GPU, browser, IPFS,
+MCP, and analysis features are optional extras. Install only the capability
+sets needed by the deployment, for example:
 
-### Q: How do I install without pip?
+```bash
+python -m pip install "ipfs-accelerate-py[minimal]"
+python -m pip install "ipfs-accelerate-py[mcp]"
+```
 
-**A:** Clone and install from source:
+The available extras are defined in `pyproject.toml`; they are not a promise
+that every optional backend is present in every environment.
+
+### Can I install from a checkout?
+
+Yes:
+
 ```bash
 git clone https://github.com/endomorphosis/ipfs_accelerate_py.git
 cd ipfs_accelerate_py
-pip install -e .
+python -m pip install -e .
 ```
 
-### Q: Can I use this offline?
+The [installation guide](../getting-started/installation.md) also covers
+source builds, CUDA requirements, and optional extras.
 
-**A:** Yes! Models can be:
-- Pre-downloaded from HuggingFace
-- Loaded from local files
-- Cached from previous downloads
+### Can I run it offline?
 
-IPFS features require internet connectivity but fall back gracefully.
+Yes, when models and dependencies are already available locally. Model
+downloads, IPFS, remote providers, and P2P services require network access;
+they are optional and should be disabled or configured explicitly for an
+offline deployment.
 
----
+## API and inference
 
-## Hardware & Performance
+### What is the main Python API?
 
-### Q: Which hardware should I use?
-
-**A:** The framework **automatically selects** the best available hardware. Priority order:
-1. CUDA (NVIDIA GPUs) - Best performance
-2. ROCm (AMD GPUs) - Excellent performance
-3. MPS (Apple Silicon) - Excellent for M1/M2/M3
-4. OpenVINO (Intel) - Good CPU/GPU performance
-5. CPU - Works everywhere
-
-### Q: Why is inference slow?
-
-**A:** Common causes and fixes:
-
-| Issue | Solution |
-|-------|----------|
-| First run | Models are being downloaded - subsequent runs are faster |
-| CPU only | Install GPU drivers for acceleration |
-| Large models | Use quantization: `load_model("model", quantize=True)` |
-| No caching | Enable caching: `IPFSAccelerator(enable_cache=True)` |
-
-### Q: How much memory do I need?
-
-**A:** Depends on model size:
-- BERT-base: ~500MB
-- GPT-2: ~1GB
-- Large models: 4GB+
-
-Use quantization to reduce memory by 50-75%.
-
----
-
-## Models & Inference
-
-### Q: What models are supported?
-
-**A:** Over 300 models including:
-- All HuggingFace Transformers models
-- Custom PyTorch models
-- ONNX models
-- TensorFlow (with conversion)
-
-See [Getting Started](../getting-started/README.md) for complete setup and usage guidance.
-
-### Q: Can I use my own custom model?
-
-**A:** Yes! Three ways:
+The package-level API is the stable starting point:
 
 ```python
-# 1. Load from local directory
-model = accelerator.load_model("./my_model/")
+import ipfs_accelerate_py
 
-# 2. Load PyTorch model directly
-model = accelerator.load_pytorch_model(my_torch_model)
-
-# 3. Convert and load
-model = accelerator.from_tensorflow(tf_model)
+accelerator = ipfs_accelerate_py.get_instance()
+print(accelerator.get_capabilities(detail=True))
 ```
 
-See [Custom Models Guide](USAGE.md#custom-models) for details.
+The runtime also exposes `ipfs_accelerate_py.run_model` for the common
+inference path. Do not use the retired `IPFSAccelerator` class name from older
+examples; inspect [API overview](../../api/overview.md) for the current
+exports.
 
-### Q: How do I improve inference speed?
+### Which models and providers are supported?
 
-**A:** Multiple optimization strategies:
+Support depends on the installed backend, model format, provider, and local
+hardware. There is no fixed "300 models" guarantee. Query capabilities and
+run a small model-specific smoke before planning production capacity.
 
-```python
-# 1. Use mixed precision (2x faster)
-accelerator = IPFSAccelerator(precision="fp16")
+### Why is inference slow?
 
-# 2. Enable batching
-results = model.batch_inference(inputs, batch_size=32)
+Check the following in order:
 
-# 3. Use quantization (4x faster, uses less memory)
-model = accelerator.load_model("bert-base", quantize=True)
+1. Confirm the intended backend with `get_capabilities(detail=True)`.
+2. Confirm that the model is already cached or locally available.
+3. Use batching, an appropriate model size, and a supported precision.
+4. Measure first-run download time separately from steady-state inference.
+5. Check provider-specific logs before changing scheduler settings.
 
-# 4. Enable caching for repeated queries
-accelerator = IPFSAccelerator(enable_cache=True)
-```
+The [hardware guide](../hardware/overview.md) documents capability checks and
+CUDA smoke tests.
 
----
+### Why does a GPU not appear?
 
-## IPFS & Networking
+The installed framework wheel must match the driver and architecture. Check
+the backend directly, then inspect the package capability report:
 
-### Q: Do I need IPFS installed?
-
-**A:** No! The framework includes everything needed. However:
-- Optional: Install IPFS daemon for better P2P features
-- Automatic fallback to HTTP if IPFS unavailable
-- Local caching reduces network dependency
-
-### Q: How does P2P inference work?
-
-**A:** Models are:
-1. Content-addressed (unique hash)
-2. Automatically shared across network
-3. Cached locally and on peers
-4. Load-balanced across available nodes
-
-Enable with: `IPFSAccelerator(enable_p2p=True)`
-
-### Q: Is my data private?
-
-**A:** Yes! Options:
-- **Local mode**: No network communication
-- **Private networks**: Run your own IPFS network
-- **Encryption**: All network traffic can be encrypted
-
-See [Security Guide](ARCHITECTURE.md#security) for details.
-
----
-
-## Browser & WebNN/WebGPU
-
-### Q: Which browsers support WebNN/WebGPU?
-
-**A:** Current support:
-
-| Browser | WebNN | WebGPU | Status |
-|---------|-------|--------|--------|
-| Chrome 113+ | ✅ | ✅ | Full support |
-| Edge 113+ | ✅ | ✅ | Full support |
-| Firefox | ⚠️ | ✅ | WebGPU only |
-| Safari | ❌ | ✅ | WebGPU only |
-
-### Q: How do I use in the browser?
-
-**A:** Two approaches:
-
-1. **Direct JavaScript** (see [examples/browser/](../examples/browser/))
-2. **Python API** generates browser-compatible code
-
-See [WebNN/WebGPU Guide](../../features/webnn-webgpu/WEBNN_WEBGPU_README.md) for complete tutorial.
-
----
-
-## Development & Integration
-
-### Q: How do I integrate with my application?
-
-**A:** Multiple integration methods:
-
-```python
-# 1. Python API (most flexible)
-from ipfs_accelerate_py import IPFSAccelerator
-accelerator = IPFSAccelerator()
-
-# 2. CLI (for scripting)
-# ipfs-accelerate inference generate --model bert-base
-
-# 3. MCP Server (for automation)
-# ipfs-accelerate mcp start
-
-# 4. REST API (coming soon)
-```
-
-### Q: Is there a REST API?
-
-**A:** Coming soon! Meanwhile, use:
-- FastAPI integration (see examples/)
-- MCP Server for automation
-- Direct Python API
-
-### Q: Can I use with Docker?
-
-**A:** Yes! See [Docker Guide](../docker/DOCKER_CONTAINER_GUIDE.md) for:
-- Pre-built images
-- Custom Dockerfile examples
-- Kubernetes deployment
-- GPU passthrough setup
-
----
-
-## Troubleshooting
-
-### Q: Import error: "No module named 'ipfs_accelerate_py'"
-
-**A:** Fix:
 ```bash
-# Upgrade installation
-pip install --upgrade ipfs-accelerate-py
-
-# Or install from source
-pip install -e .
-
-# Verify
-python -c "import ipfs_accelerate_py; print('OK')"
+python - <<'PY'
+import torch
+print("cuda_available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("device:", torch.cuda.get_device_name(0))
+PY
 ```
 
-### Q: CUDA not found despite having NVIDIA GPU
+If the check is positive but the accelerator report is not, compare the
+environment used by the shell, service, and worker. Optional backends should
+fail with a capability report rather than be assumed available.
 
-**A:** Install CUDA Toolkit:
+## IPFS, P2P, and MCP
+
+### Do I need a local IPFS daemon?
+
+No. Core local inference does not require IPFS. IPFS, libp2p, and P2P task
+queues are optional integrations and have their own binaries, credentials,
+ports, and lifecycle requirements.
+
+### How do I start MCP?
+
+Install the MCP extra and use the product CLI:
+
 ```bash
-# Check current CUDA version
-nvidia-smi
-
-# Install CUDA 11.8+ from:
-# https://developer.nvidia.com/cuda-downloads
-
-# Verify
-python -c "import torch; print(torch.cuda.is_available())"
+python -m pip install "ipfs-accelerate-py[mcp]"
+ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
+ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
 ```
 
-### Q: "Connection refused" errors
+See [MCP setup](../MCP_SETUP_GUIDE.md) for direct module entry points,
+capability inspection, and P2P notes.
 
-**A:** Check:
-1. IPFS daemon status
-2. Firewall settings
-3. Network connectivity
+### Is my data sent to a remote service?
 
-Fallback to local mode:
-```python
-accelerator = IPFSAccelerator(offline_mode=True)
-```
+Local execution stays local unless a remote model/provider, IPFS, P2P, or
+other network integration is enabled. Review provider and deployment
+configuration before processing sensitive material.
 
-### Q: Out of memory errors
+## CLI and supervisor
 
-**A:** Solutions:
-```python
-# 1. Use quantization
-model = accelerator.load_model("model", quantize=True)
+### Which CLI commands are current?
 
-# 2. Reduce batch size
-results = model.batch_inference(inputs, batch_size=8)
+Run `ipfs-accelerate --help` for the installed command set. The current
+top-level groups include `mcp`, `github`, `copilot`, `copilot-sdk`, `text`,
+`audio`, `vision`, `multimodal`, `specialized`, and `models`. Older examples
+using `inference`, `hardware`, `workflow`, or `network` as top-level groups
+are not current product documentation.
 
-# 3. Use smaller model variant
-model = accelerator.load_model("distilbert-base")  # vs bert-base
-```
+### How do I run the agent supervisor?
 
----
+The supervisor is an optional maintainer/operator surface, not required for
+ordinary inference. Start with the
+[Agent Supervisor Guide](../AGENT_SUPERVISOR_GUIDE.md), which documents the
+objective daemon, bundle supervisor, implementation supervisor, lifecycle
+wrappers, evidence queries, and formal-assurance workflow.
 
-## GitHub Actions & CI/CD
+## Browser support
 
-### Q: How do I use the autoscaler?
+Browser execution depends on the browser, runtime, and WebNN/WebGPU support
+available on the target machine. Consult the
+[WebNN/WebGPU feature guide](../../features/webnn-webgpu/WEBNN_WEBGPU_README.md)
+and test the target browser rather than relying on a hard-coded compatibility
+table.
 
-**A:** Start the autoscaler:
+## Testing and troubleshooting
+
+Run the focused current checks from the
+[testing guide](../../development/testing.md):
+
 ```bash
-ipfs-accelerate github autoscaler --token YOUR_TOKEN
+python -m pytest test/test_unified_cli_integration.py -q
+python -m pytest test/api/test_agent_supervisor_objective_graph.py -q
 ```
 
-It automatically:
-- Provisions runners when needed
-- Scales down when idle
-- Manages P2P cache distribution
-
-See [Autoscaler Guide](../../architecture/AUTOSCALER.md) for full setup.
-
-### Q: How does the GitHub Actions cache work?
-
-**A:** The P2P cache:
-1. Shares artifacts across runners
-2. Reduces duplicate downloads
-3. Automatically synchronizes
-4. Falls back to GitHub cache
-
-Setup: [GitHub Actions Guide](../github/GITHUB_CACHE_COMPREHENSIVE.md)
-
----
-
-## Contributing & Support
-
-### Q: How can I contribute?
-
-**A:** Many ways to help:
-- 🐛 Report bugs
-- 📚 Improve documentation
-- 🧪 Add tests
-- 💡 Suggest features
-- 🌍 Translate docs
-
-See [Contributing Guide](../../../CONTRIBUTING.md) for details.
-
-### Q: Where can I get help?
-
-**A:** Multiple channels:
-- 📖 [Documentation](../../README.md)
-- 🐛 [GitHub Issues](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
-- 💬 [Discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
-- 📧 Email: starworks5@gmail.com
-
-### Q: Is commercial use allowed?
-
-**A:** Yes! Licensed under AGPLv3+:
-- ✅ Commercial use allowed
-- ✅ Modification allowed
-- ✅ Distribution allowed
-- ⚠️ Must disclose source for network services
-- ⚠️ Must use same license
-
-See [LICENSE](../LICENSE) for full terms.
-
----
-
-## Advanced Topics
-
-### Q: How do I optimize for production?
-
-**A:** Production checklist:
-1. ✅ Enable monitoring and logging
-2. ✅ Set up caching infrastructure
-3. ✅ Configure autoscaling
-4. ✅ Implement health checks
-5. ✅ Use containerization
-6. ✅ Set up CI/CD pipeline
-
-See [Production Deployment Guide](../deployment/DEPLOYMENT_GUIDE.md).
-
-### Q: Can I run multiple models simultaneously?
-
-**A:** Yes! Use multiple accelerator instances:
-
-```python
-# Option 1: Separate instances
-acc1 = IPFSAccelerator()
-acc2 = IPFSAccelerator()
-model1 = acc1.load_model("bert-base")
-model2 = acc2.load_model("gpt2")
-
-# Option 2: Share accelerator (automatic resource management)
-acc = IPFSAccelerator()
-models = {
-    "bert": acc.load_model("bert-base"),
-    "gpt2": acc.load_model("gpt2"),
-}
-```
-
-### Q: What's the performance overhead of IPFS?
-
-**A:** Minimal with caching:
-- First load: ~2-5 seconds (download)
-- Cached loads: < 100ms (same as local)
-- P2P lookup: ~100-500ms
-- Fallback to HTTP if needed
-
-Optimize with: `IPFSAccelerator(enable_cache=True)`
-
----
-
-## Still Have Questions?
-
-- 📖 **Check the docs**: [Complete Documentation](../../README.md)
-- 💬 **Ask the community**: [GitHub Discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
-- 🐛 **Report an issue**: [Issue Tracker](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
-- 📧 **Email us**: starworks5@gmail.com
-
----
-
-*Last updated: January 2026*
+When a command fails, capture the first traceback, the Python executable, the
+installed package version, and the capability report. This is more useful than
+retrying with unrelated optional extras.

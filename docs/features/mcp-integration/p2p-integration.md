@@ -1,5 +1,11 @@
 # P2P Workflow Scheduling and MCP Server Architecture
 
+> **Compatibility note:** This is a historical architecture/reference record.
+> The current MCP boundary is documented in
+> [MCP setup](../../guides/MCP_SETUP_GUIDE.md); validate module names, CLI
+> commands, and optional dependencies against that guide and the live package
+> before using examples below.
+
 ## Overview
 
 IPFS Accelerate Python includes advanced peer-to-peer (P2P) workflow scheduling and Model Context Protocol (MCP) server capabilities that enable distributed task execution and standardized AI model interaction.

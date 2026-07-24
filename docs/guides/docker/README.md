@@ -1,72 +1,74 @@
-# Docker Integration Guides
+# Docker
 
-Comprehensive guides for Docker deployment, caching, and containerized runners.
+This repository includes Docker files for reproducible development, CI, and
+selected service workflows. The image and compose files are deployment
+artifacts, not a promise that every optional backend is installed in every
+image.
 
-## Quick Links
+## Inspect before building
 
-- [Docker Usage](DOCKER_USAGE.md) - Basic Docker usage guide
-- [Docker Container Guide](DOCKER_CONTAINER_GUIDE.md) - Container configuration
-- [Docker Cache Quick Start](DOCKER_CACHE_QUICK_START.md) - Get started with Docker cache
-- [Docker Group Setup](DOCKER_GROUP_SETUP.md) - User permissions and group setup
-
-## Cache Guides
-
-- **[Docker Cache README](../infrastructure/DOCKER_CACHE_README.md)** - Overview of Docker cache system
-- **[Docker Cache Quick Start](DOCKER_CACHE_QUICK_START.md)** - Quick setup guide
-- **[Docker Runner Cache Plan](DOCKER_RUNNER_CACHE_PLAN.md)** - Cache architecture for runners
-
-## Container Setup
-
-- **[Docker Usage](DOCKER_USAGE.md)** - Basic Docker commands and usage
-- **[Docker Container Guide](DOCKER_CONTAINER_GUIDE.md)** - Container configuration and best practices
-- **[Docker Group Setup](DOCKER_GROUP_SETUP.md)** - Configure user permissions
-
-## Security
-
-- **[Containerized CI Security](CONTAINERIZED_CI_SECURITY.md)** - Security best practices for containerized CI/CD
-
-## Quick Start
-
-### Build and Run Container
+From the repository root:
 
 ```bash
-# Build the container
-docker build -t ipfs-accelerate .
-
-# Run inference container
-docker run -p 8080:8080 \
-  -v $(pwd)/models:/models \
-  ipfs-accelerate
-
-# Run with GPU support
-docker run --gpus all \
-  -p 8080:8080 \
-  ipfs-accelerate
+docker build -f Dockerfile -t ipfs-accelerate-py .
+docker compose -f docker-compose.yml config
 ```
 
-### Docker Compose
+Use the compose configuration only after reviewing its services, mounts,
+environment variables, ports, credentials, and model/cache paths:
 
 ```bash
-# Start all services
-docker-compose up -d
-
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
+docker compose -f docker-compose.yml up
+docker compose -f docker-compose.yml ps
+docker compose -f docker-compose.yml logs -f
+docker compose -f docker-compose.yml down
 ```
 
-## See Also
+The `deployments/`, `install/`, and `docker/` directories contain additional
+workflow-specific files. Do not assume that a file in one of those directories
+uses the same image name, port, or entry point as the root compose file.
 
-- [Main Documentation](../../README.md)
-- [Deployment Guides](../deployment/)
-- [GitHub Guides](../github/)
-- [Installation Guide](../../INSTALL.md)
+## GPU containers
 
----
+GPU access requires a compatible host driver, container runtime, and framework
+wheel inside the image. Validate the host and container separately:
 
-**Last Updated**: January 2026
+```bash
+python - <<'PY'
+import torch
+print("cuda_available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("device:", torch.cuda.get_device_name(0))
+PY
+```
+
+The [hardware guide](../hardware/overview.md) explains capability discovery;
+the [installation guide](../getting-started/installation.md) covers CUDA
+requirements. A container being able to see `/dev/nvidia*` is not by itself a
+successful inference check.
+
+## MCP in a container
+
+The canonical service is started through the installed product CLI. Keep the
+listener private until authentication and TLS are provided by the deployment:
+
+```bash
+ipfs-accelerate mcp start --host 0.0.0.0 --port 9000
+```
+
+See [MCP setup](../MCP_SETUP_GUIDE.md) and [deployment guidance](../deployment/README.md)
+for the runtime boundary and health check.
+
+## CI and cache files
+
+Some Docker documents in this directory describe GitHub runner or cache
+workflows. Treat those as workflow-specific runbooks and verify their
+referenced compose files and secrets before use. They do not define the core
+Python API.
+
+## Related documentation
+
+- [Deployment](../deployment/README.md)
+- [Installation](../getting-started/installation.md)
+- [Testing](../../development/testing.md)
+- [Hardware](../hardware/overview.md)

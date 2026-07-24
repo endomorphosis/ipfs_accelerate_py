@@ -1,183 +1,61 @@
 # IPFS Accelerate Python Documentation
 
-> **Comprehensive documentation for the IPFS Accelerate Python framework** - a complete solution for hardware-accelerated machine learning inference with IPFS network-based distribution.
+The documentation is organized around the code that is maintained today. The
+[documentation index](INDEX.md) is the canonical navigation page; this file is
+the shorter orientation page for new readers.
 
-[![Documentation Status](https://img.shields.io/badge/docs-excellent-brightgreen.svg)](development_history/DOCUMENTATION_AUDIT_REPORT.md)
-[![Coverage](https://img.shields.io/badge/coverage-200%2B%20files-blue.svg)](INDEX.md)
-[![Last Audit](https://img.shields.io/badge/audit-Jan%202026-green.svg)](development_history/DOCUMENTATION_AUDIT_REPORT.md)
+## Choose a path
 
-## 🎯 Quick Navigation
+| You want to... | Read |
+| --- | --- |
+| Install the package | [Installation guide](guides/getting-started/installation.md) |
+| Run inference or start MCP | [Getting started](guides/getting-started/README.md) and [Quick start](guides/QUICKSTART.md) |
+| Operate the objective-driven agent supervisor | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
+| Understand system structure | [Architecture overview](architecture/overview.md) |
+| Use Python APIs | [API overview](api/overview.md) |
+| Configure hardware | [Hardware guide](guides/hardware/overview.md) |
+| Run tests | [Testing guide](development/testing.md) |
+| Find a feature guide | [Documentation index](INDEX.md) |
 
-### **Essential Reading**
-- 🚀 **[Getting Started](guides/getting-started/README.md)** - Complete beginner's guide (5 minutes to first inference!)
-- 📖 **[Installation & Setup](guides/getting-started/installation.md)** - Detailed installation instructions
-- 📚 **[Usage Guide](archive/USAGE.md)** - Learn how to use all framework features  
-- 🔧 **[API Reference](api/overview.md)** - Complete API documentation with examples
-- 🏗️ **[Architecture Overview](architecture/overview.md)** - System design and components
-- 🤖 **[Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)** - Objective-driven planning, execution lanes, evidence, and proof gates
-- ❓ **[FAQ](guides/troubleshooting/faq.md)** - Frequently asked questions and troubleshooting
+## Current system boundaries
 
-### **Project Information**
-- 📋 **[Changelog](../CHANGELOG.md)** - Version history and release notes
-- 🔐 **[Security Policy](../SECURITY.md)** - Security reporting and best practices
-- 🤝 **[Contributing Guide](../CONTRIBUTING.md)** - How to contribute to the project
-- 📄 **[License](../LICENSE)** - AGPLv3+ license details
-- 🗂️ **[Project Docs](project/README.md)** - production project status, summaries, dashboard, router, and migration docs
-- 🧠 **[MCP++ Docs](../mcpplusplus/README.md)** - conformance, cutover, and unification records
+The repository contains several related but distinct runtimes:
 
-### **Platform-Specific**
-- ⚙️ **[Hardware Optimization](guides/hardware/overview.md)** - Maximize performance across different hardware
-- 🌐 **[IPFS Integration](features/ipfs/IPFS.md)** - Leverage distributed inference and content addressing
-- 🌍 **[WebNN/WebGPU Integration](features/webnn-webgpu/WEBNN_WEBGPU_README.md)** - Browser-based acceleration
+- `ipfs_accelerate_py`: the Python library, model/inference integrations, and
+  optional IPFS/P2P services;
+- `ipfs_accelerate_py.mcp_server`: the canonical MCP runtime;
+- `ipfs_accelerate_py.agent_supervisor`: objective analysis, task generation,
+  scheduling, implementation, and assurance infrastructure;
+- `examples/`, `test/`, and `scripts/`: executable examples, validation suites,
+  and operational tooling.
 
-### **Advanced Topics**
-- 🔗 **[P2P Architecture](guides/p2p/)** - P2P workflow scheduling and distributed computing
-- 🧪 **[Testing Guide](guides/testing/TESTING_README.md)** - Comprehensive testing framework and best practices
-- 📊 **[Performance Tuning](guides/hardware/overview.md#performance-optimization)** - Advanced optimization techniques
+The package supports optional dependencies. A successful import of the base
+package does not imply that CUDA, Transformers, IPFS, MCP, P2P, browser, or
+formal-prover integrations are installed or healthy. Use the relevant
+capability/status command or test for those integrations.
 
-## What is IPFS Accelerate Python?
+## Agent supervisor documentation
 
-IPFS Accelerate Python is a **comprehensive, enterprise-grade framework** that combines:
+The supervisor is a maintainer/operator subsystem, not a prerequisite for
+ordinary inference. Start with the [operator guide](guides/AGENT_SUPERVISOR_GUIDE.md),
+then use the design documents for the trust and assurance model:
 
-- ✨ **Hardware Acceleration**: Support for CPU, CUDA, ROCm, OpenVINO, Apple MPS, WebNN, and WebGPU
-- 🌐 **IPFS Integration**: Distributed model storage, caching, and peer-to-peer inference
-- 🌍 **Browser Support**: Client-side acceleration using WebNN and WebGPU
-- 🤖 **300+ Models**: Compatible with HuggingFace Transformers and custom models
-- 🔒 **Enterprise Security**: Zero-trust architecture with compliance validation
-- ⚡ **High Performance**: Optimized inference pipelines with intelligent caching
-- 🚀 **Cross-Platform**: Works on Linux, macOS, and Windows
+- [Agent supervisor architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
+- [Formal planning and prover matrix](architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md)
+- [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md)
+- [Leanstral goal-development benchmark](architecture/AGENT_SUPERVISOR_LEANSTRAL_GOAL_DEVELOPMENT.md)
 
-### Why Choose IPFS Accelerate?
+The four documents above are normative design/current-state references. Files
+whose names include `summary`, `history`, `complete`, or `todo` are records of a
+particular delivery or backlog tranche and should be read in that context.
 
-| Feature | Benefit |
-|---------|---------|
-| **Multi-Hardware Support** | Run on any device - from servers to browsers |
-| **Distributed Architecture** | Scale horizontally with P2P networking |
-| **Zero Configuration** | Sensible defaults, works out of the box |
-| **Production Ready** | Battle-tested, comprehensive monitoring |
-| **Open Source** | AGPLv3+ license, community-driven |
+## Project information
 
----
+- [Root README](../README.md)
+- [Changelog](../CHANGELOG.md)
+- [Contributing](../CONTRIBUTING.md)
+- [Security policy](../SECURITY.md)
+- [Project records](project/README.md)
+- [MCP++ records](../mcpplusplus/README.md)
 
-## Documentation Structure
-
-### Getting Started
-1. **[Installation & Setup](guides/getting-started/installation.md)** - Complete installation guide with hardware setup
-2. **[Usage Guide](archive/USAGE.md)** - Basic to advanced usage patterns with examples
-3. **[Examples](../examples/README.md)** - Practical examples and demos
-
-### Technical Reference
-4. **[API Reference](api/overview.md)** - Complete API documentation with all methods and parameters
-5. **[Architecture Overview](architecture/overview.md)** - System design, components, and data flow
-6. **[Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)** - Agent planning, scheduling, validation, and recovery
-7. **[Testing Guide](guides/testing/TESTING_README.md)** - Testing framework, benchmarks, and quality assurance
-
-### Specialization Guides
-8. **[Hardware Optimization](guides/hardware/overview.md)** - Platform-specific optimization strategies
-9. **[IPFS Integration](features/ipfs/IPFS.md)** - Distributed inference and content addressing
-10. **[P2P Architecture](guides/p2p/)** - P2P workflow scheduling and distributed computing
-11. **[WebNN/WebGPU Integration](features/webnn-webgpu/WEBNN_WEBGPU_README.md)** - Browser-based acceleration
-
-### Organized Guides
-12. **[GitHub Guides](guides/github/)** - GitHub Actions, autoscaling, authentication, P2P cache
-13. **[Docker Guides](guides/docker/)** - Container deployment, caching, security
-14. **[P2P Guides](guides/p2p/)** - Distributed computing, libp2p, workflow scheduling
-15. **[Deployment Guides](guides/deployment/)** - Production deployment, cross-platform
-16. **[Project Documentation](project/README.md)** - permanent location for project status, summary, and migration records
-17. **[MCP++ Records](../mcplusplus/README.md)** - cutover evidence, conformance, and migration backlog
-
-## Key Features Covered
-
-### 🔧 Hardware Acceleration
-- **CPU Optimization**: x86/x64, ARM with SIMD acceleration
-- **NVIDIA CUDA**: GPU acceleration with TensorRT optimization  
-- **AMD ROCm**: AMD GPU support with HIP/ROCm
-- **Intel OpenVINO**: CPU and Intel GPU optimization
-- **Apple Silicon**: Metal Performance Shaders (MPS) for M1/M2/M3
-- **WebNN/WebGPU**: Browser-based hardware acceleration
-- **Qualcomm**: Mobile and edge device acceleration
-
-### 🌐 IPFS Network Features
-- **Content Addressing**: Cryptographically secure model storage
-- **Distributed Inference**: Peer-to-peer model sharing and processing
-- **Intelligent Caching**: Multi-level caching with LRU eviction
-- **Provider Discovery**: Automatic network peer discovery and selection
-- **Fault Tolerance**: Robust error handling and fallback mechanisms
-
-### 🤖 Model Support
-- **Text Models**: BERT, GPT, T5, RoBERTa, DistilBERT, ALBERT, etc.
-- **Vision Models**: ViT, ResNet, EfficientNet, CLIP, DETR, etc.  
-- **Audio Models**: Whisper, Wav2Vec2, WavLM, etc.
-- **Multimodal**: CLIP, BLIP, LLaVA, etc.
-- **Custom Models**: Support for custom model architectures
-
-### 🌍 Browser Integration
-- **Cross-Browser**: Chrome, Firefox, Edge, Safari support
-- **WebNN API**: Native neural network acceleration
-- **WebGPU**: High-performance GPU compute in browsers
-- **Precision Control**: fp16, fp32, mixed precision support
-- **Real-time Performance**: Optimized for interactive applications
-
-### Getting Help
-
-### Documentation Navigation
-- 📖 **[Getting Started Guide](guides/getting-started/README.md)** - Complete beginner's tutorial
-- ❓ **[FAQ](guides/troubleshooting/faq.md)** - Frequently asked questions and quick answers
-- 📚 **[Full Documentation Index](INDEX.md)** - Comprehensive guide listing
-- Use the **Table of Contents** in each document for quick navigation
-- Look for **🔗 Cross-references** between related sections  
-- Check **💡 Tips and Examples** throughout the documentation
-- Reference **⚠️ Troubleshooting** sections when needed
-
-### Community Support
-- **GitHub Issues**: [Report bugs and request features](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
-- **Discussions**: [Community questions and sharing](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
-- **Examples**: Browse the [examples directory](../examples/) for inspiration
-
-### Contributing
-- **[Contributing Guide](../CONTRIBUTING.md)** - Detailed contribution guidelines
-- **[Security Policy](../SECURITY.md)** - Security reporting and best practices
-- **[Code of Conduct](../CONTRIBUTING.md#community-guidelines)** - Community guidelines
-- **[Development Setup](guides/testing/TESTING_README.md#development-setup)** - Follow the Testing Guide
-
-## Documentation Organization
-
-### **Current Documentation**
-All active, maintained documentation is organized in this directory:
-- **Core Docs**: Installation, Usage, API, Architecture, Testing
-- **[Guides](guides/)**: Topic-specific guides (GitHub, Docker, P2P, Deployment)
-- **[Architecture](architecture/)**: System architecture and design docs
-- **[Project](project/)**: project execution history, dashboard workstreams, router summaries, SDK-utilization records, and migration guides
-- **[MCP++](../mcpplusplus/)**: MCP++ cutover, conformance, and server-unification records
-
-### **Historical Documentation**
-- **[Archive](archive/README.md)**: Historical session summaries and implementation reports
-- **[Development History](development_history/README.md)**: Major milestones and phase completions
-- **[Exports](exports/README.md)**: HTML, PDF, and other non-markdown exports
-
-### **Documentation Audit**
-A comprehensive audit was completed in January 2026:
-- **[Audit Report](development_history/DOCUMENTATION_AUDIT_REPORT.md)**: Complete findings and recommendations
-- 200+ files reviewed, duplicates removed, links fixed
-- Archive organized and documented
-
-## Documentation Updates
-
-This documentation was comprehensively updated to reflect the current state of the IPFS Accelerate Python framework, including recent additions such as:
-
-- **P2P Workflow Scheduler**: Distributed task execution with merkle clocks and fibonacci heaps
-- **MCP Server**: Model Context Protocol server with 14+ tools
-- **CLI Endpoint Adapters**: Direct integration with Claude, OpenAI, Gemini, VSCode CLIs
-- **Enhanced Inference**: Multi-backend routing (local, distributed, API, CLI modes)
-- **GitHub Integration**: P2P cache, autoscaler, workflow discovery
-
-All examples, APIs, and features have been verified and updated for accuracy.
-
-**Last Updated**: January 2026  
-**Last Audit**: January 31, 2026  
-**Framework Version**: 0.0.45+  
-**Documentation Coverage**: Comprehensive (Core + Recent Features)
-
----
-
-Start with the [Installation Guide](guides/getting-started/installation.md) to begin using IPFS Accelerate Python! 🚀
+**Current documentation baseline:** 2026-07-24.

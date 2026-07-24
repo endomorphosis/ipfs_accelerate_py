@@ -1,5 +1,11 @@
 # Objective-Driven Agent Supervisor
 
+> **Current operator entry point:** use the [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md)
+> for installation, CLI commands, lifecycle operations, and the proposal versus
+> assurance boundary. This document is the detailed objective-graph and bundle
+> implementation note; it is not a replacement for the current architecture
+> or operator guide.
+
 `ipfs_accelerate_py.agent_supervisor` is the acceleration-layer home for
 objective-driven autonomous agent execution.  It ports the repo-local objective
 scanner and the reusable todo-daemon concepts into `ipfs_accelerate_py` without

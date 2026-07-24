@@ -1,433 +1,141 @@
-# 🚀 Getting Started with IPFS Accelerate Python
+# Getting Started
 
-**Welcome!** This guide will have you running ML inference in **5 minutes**. Choose your path:
+This guide gets a source checkout or an installed package to a verified Python
+import, a capability report, and an optional MCP server. The framework has
+optional backends, so the first useful question is which capabilities are
+available on the current host.
 
----
+## 1. Install
 
-## 👤 Choose Your Path
-
-### 🎯 I Want To...
-
-| Goal | Time | Path |
-|------|------|------|
-| **Try it quickly** | 5 min | → [Quick Start](#quick-start-5-minutes) |
-| **Learn by example** | 10 min | → [Hands-On Tutorial](#hands-on-tutorial) |
-| **Deploy to production** | 30 min | → [Production Setup](#production-setup) |
-| **Integrate with my app** | 15 min | → [Integration Guide](#integration-guide) |
-
----
-
-## Quick Start (5 minutes)
-
-### Step 1: Install
+For a source checkout:
 
 ```bash
-# Create virtual environment (recommended)
 python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# Install IPFS Accelerate
-pip install ipfs-accelerate-py
-
-# ✅ Verify installation (should print version)
-python -c "import ipfs_accelerate_py; print(ipfs_accelerate_py.__version__)"
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e ".[dev]"
 ```
 
-### Step 2: Run Your First Inference
-
-Create `hello_world.py`:
-
-```python
-from ipfs_accelerate_py import IPFSAccelerator
-
-# Initialize (detects your hardware automatically)
-print("🚀 Initializing IPFS Accelerate...")
-accelerator = IPFSAccelerator()
-
-# Load a model (downloads if needed)
-print("📥 Loading BERT model...")
-model = accelerator.load_model("bert-base-uncased")
-
-# Run inference
-print("🤖 Running inference...")
-text = "IPFS Accelerate makes ML inference easy and fast!"
-result = model.inference(text)
-
-print("✅ Success! Result:", result)
-```
-
-Run it:
-```bash
-python hello_world.py
-```
-
-**Expected output:**
-```
-🚀 Initializing IPFS Accelerate...
-✅ Hardware detected: CUDA (NVIDIA GeForce RTX 3090)
-📥 Loading BERT model...
-✅ Model loaded successfully
-🤖 Running inference...
-✅ Success! Result: [embeddings array...]
-```
-
-### Step 3: Check Your Hardware
+For a published installation:
 
 ```bash
-# See what hardware is available
-ipfs-accelerate hardware status
+python -m pip install ipfs-accelerate-py
 ```
 
-**Congratulations! 🎉** You're now running hardware-accelerated ML inference!
+Install an extra only when you need it. Common profiles include `full`, `mcp`,
+`mcp-p2p`, `webnn`, `llama_cpp`, `analysis`, and `testing`.
 
----
-
-## Hands-On Tutorial
-
-### Part 1: Understanding the Basics (2 minutes)
-
-The framework has **three main components**:
-
-```python
-# 1. Accelerator - Manages hardware and resources
-accelerator = IPFSAccelerator()
-
-# 2. Model - Loads and manages ML models
-model = accelerator.load_model("bert-base-uncased")
-
-# 3. Inference - Runs predictions
-result = model.inference("Your text here")
-```
-
-### Part 2: Hardware Selection (2 minutes)
-
-```python
-# Automatic (recommended) - picks best available
-acc = IPFSAccelerator()  
-
-# Manual selection - force specific hardware
-acc_cuda = IPFSAccelerator(device="cuda")    # NVIDIA GPU
-acc_mps = IPFSAccelerator(device="mps")      # Apple Silicon
-acc_cpu = IPFSAccelerator(device="cpu")      # CPU only
-
-# Check what you're using
-print(f"Using: {acc.device}")
-```
-
-### Part 3: Different Model Types (3 minutes)
-
-```python
-from ipfs_accelerate_py import IPFSAccelerator
-
-accelerator = IPFSAccelerator()
-
-# Text model
-bert = accelerator.load_model("bert-base-uncased")
-text_result = bert.inference("Hello world")
-
-# Vision model  
-vit = accelerator.load_model("google/vit-base-patch16-224")
-image_result = vit.inference(image_path="photo.jpg")
-
-# Audio model
-whisper = accelerator.load_model("openai/whisper-base")
-audio_result = whisper.inference(audio_path="speech.wav")
-```
-
-### Part 4: Optimization Tricks (3 minutes)
-
-```python
-# 1. Faster with mixed precision (2x speedup)
-fast_acc = IPFSAccelerator(precision="fp16")
-
-# 2. Use less memory with quantization (4x less RAM)
-model = accelerator.load_model("bert-base", quantize=True)
-
-# 3. Better throughput with batching
-texts = ["text 1", "text 2", "text 3"]
-results = model.batch_inference(texts, batch_size=32)
-
-# 4. Faster repeated queries with caching
-acc_cached = IPFSAccelerator(enable_cache=True)
-```
-
-**Next**: Try [examples/](../examples/) for more advanced scenarios!
-
----
-
-## Production Setup
-
-### Prerequisites
-
-- ✅ Python 3.8+
-- ✅ 4GB+ RAM
-- ✅ (Optional) GPU with drivers installed
-- ✅ (Optional) IPFS daemon for P2P features
-
-### Step 1: Install with Full Features
+## 2. Verify the base package
 
 ```bash
-# Virtual environment (recommended)
-python3 -m venv venv
-source venv/bin/activate
+python - <<'PY'
+import ipfs_accelerate_py
+from ipfs_accelerate_py import get_instance
 
-# Full installation
-pip install ipfs-accelerate-py[full]
-
-# For MCP server
-pip install ipfs-accelerate-py[mcp]
+print("version:", ipfs_accelerate_py.__version__)
+print("task types:", get_instance().get_capabilities()["task_types"])
+PY
 ```
 
-### Step 2: Configuration
+The base import is intentionally defensive. It may expose an availability flag
+or a fallback object when optional dependencies are missing.
 
-Create `config.yaml`:
+## 3. Inspect hardware and providers
 
-```yaml
-# Hardware settings
-device: cuda  # or 'mps', 'cpu', 'auto'
-precision: fp16  # or 'fp32', 'int8'
+```bash
+python - <<'PY'
+from ipfs_accelerate_py import get_instance
 
-# Performance
-enable_cache: true
-batch_size: 32
-max_workers: 4
-
-# IPFS/P2P
-enable_p2p: true
-ipfs_gateway: "https://ipfs.io"
-
-# Monitoring
-enable_metrics: true
-log_level: INFO
+report = get_instance().get_capabilities(detail=True)
+print("hardware:", report.get("hardware", {}))
+print("models:", report.get("models", []))
+print("mcp:", report.get("mcp", {}))
+PY
 ```
 
-Load configuration:
+For NVIDIA systems, verify the PyTorch CUDA build rather than relying on a
+static hardware label:
+
+```bash
+python - <<'PY'
+import torch
+print("torch:", torch.__version__)
+print("cuda_available:", torch.cuda.is_available())
+print("torch_cuda:", torch.version.cuda)
+if torch.cuda.is_available():
+    print("device:", torch.cuda.get_device_name(0))
+PY
+```
+
+The [installation guide](installation.md) covers stable CUDA wheels and CUDA 13
+nightly wheels for newer NVIDIA systems.
+
+## 4. Run a model operation
+
+The main compatibility API is `ipfs_accelerate_py`, not `IPFSAccelerator`.
+With the Transformers integration installed:
 
 ```python
-from ipfs_accelerate_py import IPFSAccelerator
+from ipfs_accelerate_py import ipfs_accelerate_py
 
-# Load from file
-accelerator = IPFSAccelerator.from_config("config.yaml")
-
-# Or pass directly
-accelerator = IPFSAccelerator(
-    device="cuda",
-    precision="fp16",
-    enable_cache=True
+accelerator = ipfs_accelerate_py({}, {})
+result = accelerator.run_model(
+    "bert-base-uncased",
+    {"input_ids": [[101, 2023, 2003, 102]]},
+    model_type="text_generation",
+    device="cpu",
 )
+print(result)
 ```
 
-### Step 3: Docker Deployment
+The model, tokenizer, task type, and device must agree. For a discovery-first
+workflow, call `get_capabilities(detail=True)` before loading a model.
 
-Create `Dockerfile`:
+## 5. Start MCP
 
-```dockerfile
-FROM python:3.10-slim
-
-# Install dependencies
-RUN pip install ipfs-accelerate-py[full]
-
-# Copy your application
-COPY app.py /app/
-WORKDIR /app
-
-# Run
-CMD ["python", "app.py"]
-```
-
-Build and run:
+Install the MCP extra and start the canonical server:
 
 ```bash
-docker build -t my-ml-service .
-docker run -p 8000:8000 my-ml-service
+python -m pip install -e ".[mcp]"
+ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
 ```
 
-For GPU support, see [Docker GPU Guide](../docker/DOCKER_CONTAINER_GUIDE.md).
-
-### Step 4: Monitoring
-
-```python
-from ipfs_accelerate_py import IPFSAccelerator
-
-# Enable monitoring
-accelerator = IPFSAccelerator(enable_metrics=True)
-
-# Get metrics
-metrics = accelerator.get_metrics()
-print(f"Total inferences: {metrics['total_inferences']}")
-print(f"Average latency: {metrics['avg_latency_ms']}ms")
-print(f"Cache hit rate: {metrics['cache_hit_rate']}%")
-```
-
-**Production Guides**:
-- [Deployment Guide](../deployment/DEPLOYMENT_GUIDE.md)
-- [Monitoring Setup](../infrastructure/README.md)
-- [Security Best Practices](ARCHITECTURE.md#security)
-
----
-
-## Integration Guide
-
-### REST API Server
-
-Create a FastAPI server:
-
-```python
-from fastapi import FastAPI
-from ipfs_accelerate_py import IPFSAccelerator
-
-app = FastAPI()
-accelerator = IPFSAccelerator()
-model = accelerator.load_model("bert-base-uncased")
-
-@app.post("/inference")
-async def run_inference(text: str):
-    result = model.inference(text)
-    return {"result": result}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-```
-
-Run and test:
+Verify it from another terminal:
 
 ```bash
-# Start server
-python api_server.py
-
-# Test (in another terminal)
-curl -X POST "http://localhost:8000/inference" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Hello world"}'
+ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
 ```
 
-### CLI Integration
+Use `--dashboard`, `--open-browser`, or `--disable-autoscaler` only when those
+behaviors are wanted. Read [MCP setup](../MCP_SETUP_GUIDE.md) before binding to
+an external interface.
 
-Use in bash scripts:
+## 6. Start the agent supervisor (optional)
+
+The agent supervisor is a maintainer/operator control plane, not a requirement
+for inference. It turns an objective heap into evidence-backed tasks and can
+launch isolated implementation lanes. Use the [Agent Supervisor Guide](../AGENT_SUPERVISOR_GUIDE.md)
+for the complete workflow.
 
 ```bash
-#!/bin/bash
-
-# Run batch inference
-for file in *.txt; do
-  echo "Processing $file..."
-  ipfs-accelerate inference generate \
-    --model bert-base-uncased \
-    --input "$file" \
-    --output "${file}.result"
-done
-
-echo "✅ All files processed!"
+python -m ipfs_accelerate_py.agent_supervisor.todo_daemon list
 ```
 
-### Python Library
+## Troubleshooting
 
-Integrate into your application:
+| Symptom | First check |
+| --- | --- |
+| Import fails | Confirm the virtual environment and run `python -m pip show ipfs-accelerate-py`. |
+| CUDA is unavailable | Check `torch.cuda.is_available()` and install a matching CUDA wheel. |
+| Model provider is unavailable | Install the relevant extra and inspect `get_capabilities(detail=True)`. |
+| MCP status is unhealthy | Run `ipfs-accelerate mcp status` and inspect the server log. |
+| Supervisor appears idle | Check its heartbeat/status artifact; a live PID alone is not progress. |
 
-```python
-import ipfs_accelerate_py as ia
+## Further reading
 
-class MyMLService:
-    def __init__(self):
-        self.accelerator = ia.IPFSAccelerator()
-        self.models = {
-            'text': self.accelerator.load_model('bert-base'),
-            'vision': self.accelerator.load_model('vit-base'),
-        }
-    
-    def process_text(self, text):
-        return self.models['text'].inference(text)
-    
-    def process_image(self, image):
-        return self.models['vision'].inference(image)
-
-# Use in your app
-service = MyMLService()
-result = service.process_text("Hello!")
-```
-
-### MCP Server (Automation)
-
-Start the MCP server for automation tools:
-
-```bash
-# Start server
-ipfs-accelerate mcp start --port 8080
-
-# The server provides 14+ tools for:
-# - Model management
-# - Inference
-# - Hardware monitoring
-# - Cache management
-```
-
----
-
-## 🎓 Learning Resources
-
-### Documentation
-
-| Resource | Description | Time |
-|----------|-------------|------|
-| [API Reference](../../api/overview.md) | Complete API docs | Reference |
-| [Architecture](../../architecture/overview.md) | System design | 15 min |
-| [Hardware Guide](../hardware/overview.md) | Platform optimization | 20 min |
-| [IPFS Integration](../../features/ipfs/IPFS.md) | Distributed features | 15 min |
-
-### Examples
-
-| Example | Description | Complexity |
-|---------|-------------|------------|
-| [basic_usage.py](../examples/basic_usage.py) | Simple inference | Beginner |
-| [batch_processing.py](../examples/batch_processing.py) | Process multiple inputs | Beginner |
-| [hardware_selection.py](../examples/hardware_selection.py) | Choose hardware | Intermediate |
-| [custom_model.py](../examples/custom_model.py) | Use your own model | Intermediate |
-| [p2p_inference.py](../examples/p2p_inference.py) | Distributed inference | Advanced |
-| [production_deploy.py](../examples/production_deploy.py) | Full production setup | Advanced |
-
-### Video Tutorials (Coming Soon)
-
-- 🎥 Installation and Setup
-- 🎥 Your First Inference
-- 🎥 Hardware Optimization
-- 🎥 Production Deployment
-
----
-
-## 🆘 Need Help?
-
-### Common Issues
-
-| Problem | Solution |
-|---------|----------|
-| Installation fails | Try `pip install --upgrade pip setuptools wheel` first |
-| Import error | Check virtual environment is activated |
-| Slow inference | See [Performance Guide](#part-4-optimization-tricks-3-minutes) |
-| CUDA not found | Install [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) |
-
-### Get Support
-
-- 📖 **Documentation**: [docs/](../../README.md)
-- ❓ **FAQ**: [FAQ.md](../troubleshooting/faq.md)
-- 🐛 **Issues**: [GitHub Issues](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
-- 💬 **Community**: [Discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
-- 📧 **Email**: starworks5@gmail.com
-
----
-
-## 🎯 What's Next?
-
-Choose your learning path:
-
-1. **Explore Examples** → [examples/](../../../examples/)
-2. **Read Architecture** → [../../architecture/overview.md](../../architecture/overview.md)
-3. **Optimize Performance** → [../hardware/overview.md](../hardware/overview.md)
-4. **Deploy to Production** → [../deployment/DEPLOYMENT_GUIDE.md](../deployment/DEPLOYMENT_GUIDE.md)
-5. **Join Community** → [Discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
-
----
-
-**Happy coding! 🚀**
-
-*Last updated: January 2026*
+- [Quick start](../QUICKSTART.md)
+- [API overview](../../api/overview.md)
+- [Architecture overview](../../architecture/overview.md)
+- [Hardware guide](../hardware/overview.md)
+- [Testing guide](../../development/testing.md)
+- [Examples](../../../examples/README.md)

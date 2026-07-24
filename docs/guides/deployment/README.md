@@ -1,176 +1,85 @@
-# Deployment Guides
+# Deployment
 
-Comprehensive guides for deploying IPFS Accelerate in various environments.
+IPFS Accelerate can run as a local Python library, a CLI-managed MCP server,
+or an application-specific service. Optional IPFS, P2P, model-provider, and
+agent-supervisor integrations should be enabled only when their dependencies
+and operational controls are available.
 
-## Quick Links
+## Choose a deployment surface
 
-- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Main deployment guide
-- [Cross-Platform Testing](CROSS_PLATFORM_TESTING_GUIDE.md) - Multi-platform deployment
+- [Installation](../getting-started/installation.md) for package and extra
+  selection.
+- [Quick start](../QUICKSTART.md) for a local inference or MCP smoke.
+- [MCP setup](../MCP_SETUP_GUIDE.md) for the canonical server entry point.
+- [P2P guide](../p2p/README.md) for optional queue and libp2p services.
+- [Docker guide](../docker/README.md) for the repository's container files.
+- [Agent Supervisor Guide](../AGENT_SUPERVISOR_GUIDE.md) for maintainer/operator
+  workloads.
 
-## Deployment Options
+## Local or managed process
 
-### 1. Docker Deployment
-
-See [Docker Guides](../docker/) for container-based deployment.
-
-```bash
-# Quick start with Docker
-docker-compose up -d
-
-# Or build from Dockerfile
-docker build -t ipfs-accelerate .
-docker run -p 8080:8080 ipfs-accelerate
-```
-
-### 2. Kubernetes Deployment
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ipfs-accelerate
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: ipfs-accelerate
-  template:
-    metadata:
-      labels:
-        app: ipfs-accelerate
-    spec:
-      containers:
-      - name: ipfs-accelerate
-        image: ipfs-accelerate:latest
-        ports:
-        - containerPort: 8080
-```
-
-### 3. Bare Metal Deployment
+Install the package and verify capabilities before selecting a model or
+provider:
 
 ```bash
-# Install dependencies
-pip install ipfs-accelerate-py[full]
-
-# Start MCP server
-ipfs-accelerate mcp start --port 8080
-
-# Start P2P node
-ipfs-accelerate p2p start
+python -m pip install "ipfs-accelerate-py[minimal]"
+python - <<'PY'
+from ipfs_accelerate_py import get_instance
+print(get_instance().get_capabilities(detail=True))
+PY
 ```
 
-### 4. Cloud Deployment
-
-#### AWS
+For a local MCP service, bind to localhost during development:
 
 ```bash
-# Use ECS/EKS for container deployment
-# Configure auto-scaling groups
-# Setup load balancers
+python -m pip install "ipfs-accelerate-py[mcp]"
+ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
+ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
 ```
 
-#### GCP
+For a production service, put the selected process behind the deployment's
+process manager and network boundary. Configure authentication, TLS, logging,
+resource limits, health checks, and shutdown behavior in that environment;
+the package CLI is not a substitute for those controls.
+
+## Containers in this checkout
+
+The repository contains several Docker configurations for different workflows:
 
 ```bash
-# Use GKE for Kubernetes deployment
-# Configure Cloud Run for serverless
+docker build -f Dockerfile -t ipfs-accelerate-py .
+docker compose -f docker-compose.yml config
+docker compose -f docker-compose.yml up
 ```
 
-#### Azure
+The `deployments/` and `install/` directories contain additional, workflow-
+specific Docker files. Inspect the compose services and environment variables
+before using them in a shared or production environment; image names and
+service ports are not universal package defaults.
 
-```bash
-# Use AKS for Kubernetes deployment
-# Configure Container Instances
-```
+## Scaling and parallelism
 
-## Cross-Platform Considerations
+Scale only after measuring the selected model/provider and confirming the
+resource report. More processes can duplicate model memory, compete for one
+GPU, or overload a provider. For the agent supervisor, admission is controlled
+by leases, CPU/memory, provider capacity, dependencies, conflicts, and
+validation receipts rather than by an arbitrary worker count.
 
-- **Linux**: Native support, optimal performance
-- **macOS**: Apple Silicon (M1/M2/M3) with MPS acceleration
-- **Windows**: WSL2 recommended for best compatibility
-- **ARM64**: Full support on modern ARM processors
+## Deployment checklist
 
-See [Cross-Platform Testing Guide](CROSS_PLATFORM_TESTING_GUIDE.md) for details.
+- Verify the installed version and capability report.
+- Pin model/provider versions and cache policy for reproducible deployments.
+- Keep development MCP listeners on localhost.
+- Configure authentication and TLS before remote exposure.
+- Set explicit CPU, memory, GPU, disk, and concurrency limits.
+- Capture health, error, latency, and shutdown metrics.
+- Exercise the same focused tests used by CI in the target environment.
+- Keep optional P2P and supervisor services separate from ordinary inference
+  until their dependencies and trust boundaries are verified.
 
-## Production Checklist
+## Related references
 
-### Security
-
-- [ ] Configure authentication and authorization
-- [ ] Enable HTTPS/TLS encryption
-- [ ] Set up firewall rules
-- [ ] Configure rate limiting
-- [ ] Enable audit logging
-
-### Performance
-
-- [ ] Optimize hardware selection (GPU/CPU/TPU)
-- [ ] Configure caching layers
-- [ ] Set up load balancing
-- [ ] Enable CDN for static assets
-- [ ] Configure auto-scaling
-
-### Monitoring
-
-- [ ] Set up health checks
-- [ ] Configure metrics collection
-- [ ] Enable log aggregation
-- [ ] Set up alerts and notifications
-- [ ] Configure distributed tracing
-
-### Reliability
-
-- [ ] Configure backups
-- [ ] Set up disaster recovery
-- [ ] Enable high availability
-- [ ] Configure failover mechanisms
-- [ ] Test recovery procedures
-
-## Environment-Specific Guides
-
-### Development
-
-```bash
-# Local development setup
-pip install -e ".[dev]"
-ipfs-accelerate mcp start --debug
-```
-
-### Staging
-
-```bash
-# Staging environment with monitoring
-docker-compose -f docker-compose.staging.yml up -d
-```
-
-### Production
-
-```bash
-# Production deployment with HA
-kubectl apply -f k8s/production/
-```
-
-## Scaling Strategies
-
-### Horizontal Scaling
-
-- Add more worker nodes
-- Use P2P distribution
-- Configure load balancing
-
-### Vertical Scaling
-
-- Upgrade hardware (more CPU/GPU/RAM)
-- Optimize model serving
-- Use hardware acceleration
-
-## See Also
-
-- [Main Documentation](../../README.md)
-- [Docker Guides](../docker/)
-- [GitHub Guides](../github/)
-- [Installation Guide](../../INSTALL.md)
-
----
-
-**Last Updated**: January 2026
+- [Architecture overview](../../architecture/overview.md)
+- [Hardware guide](../hardware/overview.md)
+- [Testing guide](../../development/testing.md)
+- [Troubleshooting FAQ](../troubleshooting/faq.md)

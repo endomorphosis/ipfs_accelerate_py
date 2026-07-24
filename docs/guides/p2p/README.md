@@ -1,153 +1,77 @@
-# P2P and Distributed Computing Guides
+# P2P and Distributed Workflows
 
-Comprehensive guides for peer-to-peer networking, distributed workflows, and libp2p integration.
+IPFS, libp2p, TaskQueue, and distributed workflow support are optional
+integrations. They are separate from the base local inference path and require
+their own dependencies, identities, ports, credentials, and failure handling.
 
-## Quick Links
-
-- [P2P Setup Guide](P2P_SETUP_GUIDE.md) - Main P2P setup guide
-- [P2P & MCP Architecture](../../features/mcp-integration/p2p-integration.md) - Complete P2P and MCP documentation
-- [P2P Workflow Scheduler](P2P_WORKFLOW_SCHEDULER.md) - Workflow scheduling guide
-- [P2P Workflow Quick Start](P2P_WORKFLOW_QUICK_START.md) - Quick start guide
-
-## Specialized Guides (in this directory)
-
-### P2P Cache
-
-- **[P2P Cache Deadlock Fix](P2P_CACHE_DEADLOCK_FIX.md)** - Troubleshooting deadlocks
-- **[P2P Cache Encryption](P2P_CACHE_ENCRYPTION.md)** - Secure P2P communications
-
-### P2P Workflow Management
-
-- **[P2P Workflow Discovery](P2P_WORKFLOW_DISCOVERY.md)** - Discover and join P2P workflows
-- **[P2P Workflow Scheduler](P2P_WORKFLOW_SCHEDULER.md)** - Advanced scheduling features
-
-### Autoscaling
-
-- **[P2P Autoscaler Quick Reference](P2P_AUTOSCALER_QUICK_REF.md)** - Quick reference for autoscaling
-
-### libp2p Integration
-
-- **[libp2p Universal Connectivity](LIBP2P_UNIVERSAL_CONNECTIVITY.md)** - Universal connectivity setup
-- **[MCP P2P Setup Guide](MCP_P2P_SETUP_GUIDE.md)** - Integrate MCP with P2P
-
-## Core Concepts
-
-### Peer-to-Peer Networking
-
-IPFS Accelerate uses libp2p for peer-to-peer networking, enabling:
-
-- **Distributed Inference**: Share compute across network peers
-- **Content Addressing**: Cryptographically secure model distribution
-- **Fault Tolerance**: Automatic failover and recovery
-- **Load Balancing**: Distribute work across available peers
-
-### Merkle Clock Consensus
-
-The P2P workflow scheduler uses Merkle clocks for distributed consensus:
-
-```python
-from ipfs_accelerate_py.p2p_workflow_scheduler import MerkleClock
-
-# Create clock for this node
-clock = MerkleClock(node_id="node-123")
-
-# Synchronize with other nodes
-clock.update(other_node_clock)
-
-# Get consensus hash
-consensus_hash = clock.get_hash()
-```
-
-### Fibonacci Heap Scheduling
-
-Efficient priority-based task scheduling:
-
-```python
-from ipfs_accelerate_py.p2p_workflow_scheduler import P2PWorkflowScheduler
-
-scheduler = P2PWorkflowScheduler(node_id="worker-01")
-await scheduler.start()
-
-# Submit high-priority task
-await scheduler.submit_workflow({
-    "name": "urgent-task",
-    "priority": 1,  # Lower = higher priority
-    "tasks": [...]
-})
-```
-
-## Quick Start
-
-### Basic P2P Setup
+## Install the optional capabilities
 
 ```bash
-# Install P2P dependencies
-pip install ipfs-accelerate-py[p2p]
-
-# Start P2P node
-ipfs-accelerate p2p start --node-id my-node
-
-# Join network
-ipfs-accelerate p2p join --bootstrap /ip4/...
+python -m pip install "ipfs-accelerate-py[mcp-p2p]"
+# Or install the lower-level libp2p extra when MCP is not needed.
+python -m pip install "ipfs-accelerate-py[libp2p]"
 ```
 
-### Distributed Workflow
+The P2P extras include dependencies, not a running peer network. Configure the
+queue/service and network policy separately.
 
-```python
-from ipfs_accelerate_py.p2p_workflow_scheduler import (
-    P2PWorkflowScheduler,
-    WorkflowTag
-)
+## MCP-backed P2P
 
-async def main():
-    # Create scheduler
-    scheduler = P2PWorkflowScheduler(node_id="worker-01")
-    await scheduler.start()
-    
-    # Submit distributed workflow
-    workflow_id = await scheduler.submit_workflow({
-        "name": "batch-inference",
-        "tag": WorkflowTag.P2P_ELIGIBLE,
-        "tasks": [
-            {"model": "bert-base", "input": "text1"},
-            {"model": "bert-base", "input": "text2"}
-        ]
-    })
-    
-    # Monitor progress
-    status = await scheduler.get_workflow_status(workflow_id)
-    print(f"Progress: {status['completed']}/{status['total']}")
+The canonical MCP runtime owns the current server and P2P integration boundary:
+
+```bash
+ipfs-accelerate mcp --help
+ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
 ```
 
-## Network Architecture
+Use `--no-p2p` when the optional P2P service should be disabled. Before
+enabling it, inspect the installed manifest and direct module help:
 
-```
-┌─────────────────────────────────────────────┐
-│         P2P Network Topology                │
-├─────────────────────────────────────────────┤
-│                                             │
-│  ┌──────────┐      ┌──────────┐            │
-│  │  Node A  │◄────►│  Node B  │            │
-│  │ (Worker) │      │ (Worker) │            │
-│  └──────────┘      └──────────┘            │
-│       ▲                 ▲                   │
-│       │                 │                   │
-│       ▼                 ▼                   │
-│  ┌──────────┐      ┌──────────┐            │
-│  │  Node C  │◄────►│  Node D  │            │
-│  │(Scheduler)│      │(Bootstrap)│           │
-│  └──────────┘      └──────────┘            │
-│                                             │
-└─────────────────────────────────────────────┘
+```bash
+python -m ipfs_accelerate_py.mcp.cli --help
+python - <<'PY'
+from ipfs_accelerate_py import get_instance
+print(get_instance().get_capabilities(detail=True).get("mcp", {}))
+PY
 ```
 
-## See Also
+There is no general-purpose `ipfs-accelerate p2p start` command in the current
+product CLI. Older examples using that command are historical.
 
-- [Main Documentation](../../README.md)
-- [P2P & MCP Architecture](../../features/mcp-integration/p2p-integration.md)
-- [GitHub Guides](../github/)
-- [Deployment Guides](../deployment/)
+## Code and test boundaries
 
----
+The implementation is distributed across optional modules rather than one
+public P2P facade. Relevant code includes:
 
-**Last Updated**: January 2026
+- `ipfs_accelerate_py/p2p_workflow_scheduler.py` for workflow scheduling;
+- `ipfs_accelerate_py/p2p_tasks/` for TaskQueue/libp2p runtime pieces;
+- `ipfs_accelerate_py/mcp_server/` for MCP transport and service integration;
+- `ipfs_accelerate_py/mcp/tools/` for registered P2P tool adapters.
+
+Use the MCP and P2P tests as the conformance surface. Networked tests may need
+optional packages, ports, peer identity, and an explicit opt-in:
+
+```bash
+python -m pytest ipfs_accelerate_py/mcp/tests -q
+```
+
+Start with the import/manifest checks and add live network tests only in an
+isolated environment.
+
+## Operational checklist
+
+- Pin the optional dependency set and record the peer/runtime versions.
+- Configure peer identity, bootstrap addresses, queue limits, and timeouts.
+- Keep control-plane and data-plane ports private until authenticated.
+- Bound task payloads, concurrency, retries, and cache retention.
+- Record content identifiers and receipts for artifacts shared between peers.
+- Test degraded operation with IPFS/P2P disabled.
+- Monitor memory and shutdown behavior; distributed caches can amplify
+  persistence and artifact sizes.
+
+## Related documentation
+
+- [MCP setup](../MCP_SETUP_GUIDE.md)
+- [Deployment](../deployment/README.md)
+- [MCP/P2P architecture](../../features/mcp-integration/p2p-integration.md)
+- [Testing](../../development/testing.md)
