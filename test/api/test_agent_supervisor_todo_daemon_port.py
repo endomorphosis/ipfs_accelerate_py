@@ -3914,6 +3914,72 @@ def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     return repo, submodule
 
 
+def test_stale_submodule_rebase_skips_branch_already_merged_without_switching_checkout(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/already-merged"
+    branch_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "branch", branch_name)
+
+    (submodule / "later.txt").write_text("later\n", encoding="utf-8")
+    _git(submodule, "add", "later.txt")
+    _git(submodule, "commit", "-m", "advance child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child on main")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._rebase_stale_submodule_pointers(branch_name, "main")
+
+    assert result["attempted"] is False
+    assert result["reason"] == "branch_already_merged"
+    assert _git(repo, "branch", "--show-current") == "main"
+    assert _git(repo, "rev-parse", branch_name) == branch_commit
+
+
+def test_stale_submodule_rebase_restores_canonical_checkout(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/rebase-with-restore"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "implementation feature")
+    _git(repo, "checkout", "main")
+
+    (submodule / "later.txt").write_text("later\n", encoding="utf-8")
+    _git(submodule, "add", "later.txt")
+    _git(submodule, "commit", "-m", "advance child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child on main")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._rebase_stale_submodule_pointers(branch_name, "main")
+
+    assert result["rebased"] is True
+    assert result["checkout_restore"]["restored"] is True
+    assert result["checkout_restore"]["branch"] == "main"
+    assert _git(repo, "branch", "--show-current") == "main"
+    assert _git(repo, "merge-base", "--is-ancestor", "main", branch_name) == ""
+
+
 def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
     tmp_path: Path,
 ):

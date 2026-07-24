@@ -5426,6 +5426,14 @@ class PortalImplementationDaemon:
         pick up the new submodule state. This prevents merge conflicts caused
         solely by outdated submodule pointer commits.
         """
+        if self._git_ref_is_ancestor(branch_name, target_branch):
+            return {
+                "attempted": False,
+                "reason": "branch_already_merged",
+                "branch": branch_name,
+                "target_branch": target_branch,
+            }
+
         results: list[dict[str, Any]] = []
 
         # Check if branch is behind target on submodule paths
@@ -5508,7 +5516,20 @@ class PortalImplementationDaemon:
         # If all stale submodules can fast-forward, attempt rebase
         rebase_candidates = [r for r in results if r.get("fast_forward_possible")]
         if rebase_candidates and len(rebase_candidates) == len([r for r in results if r.get("action") == "rebase_candidate"]):
-            # Safe to rebase - all submodule changes are fast-forwardable
+            # ``git rebase ... <branch>`` checks out that branch in the
+            # invoking worktree. Preserve the canonical checkout so a
+            # successful merge can subsequently delete the implementation
+            # branch instead of retrying forever because it is still checked
+            # out at ``repo_root``.
+            original_branch = self._git_current_branch(self.repo_root)
+            original_head_result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            original_head = original_head_result.stdout.strip()
             rebase = subprocess.run(
                 ["git", "rebase", "--onto", target_branch, base_commit, branch_name],
                 cwd=self.repo_root,
@@ -5516,28 +5537,63 @@ class PortalImplementationDaemon:
                 capture_output=True,
                 check=False,
             )
+            abort = None
+            if rebase.returncode != 0:
+                abort = subprocess.run(
+                    ["git", "rebase", "--abort"],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            restore_command = (
+                ["git", "checkout", original_branch]
+                if original_branch
+                else ["git", "checkout", "--detach", original_head]
+            )
+            restore = subprocess.run(
+                restore_command,
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            checkout_restore = {
+                "restored": restore.returncode == 0,
+                "branch": original_branch,
+                "head": original_head,
+                "returncode": restore.returncode,
+                "stdout": restore.stdout[-2000:],
+                "stderr": restore.stderr[-2000:],
+            }
+            if restore.returncode != 0:
+                return {
+                    "attempted": True,
+                    "rebased": False,
+                    "reason": "rebase_checkout_restore_failed",
+                    "stale_submodules": list(stale_submodules),
+                    "rebase_returncode": rebase.returncode,
+                    "rebase_stderr": rebase.stderr[:2000],
+                    "checkout_restore": checkout_restore,
+                    "results": results,
+                }
             if rebase.returncode == 0:
                 return {
                     "attempted": True,
                     "rebased": True,
                     "stale_submodules": list(stale_submodules),
+                    "checkout_restore": checkout_restore,
                     "results": results,
                 }
-            else:
-                # Abort failed rebase
-                subprocess.run(
-                    ["git", "rebase", "--abort"],
-                    cwd=self.repo_root,
-                    capture_output=True,
-                    check=False,
-                )
-                return {
-                    "attempted": True,
-                    "rebased": False,
-                    "reason": "rebase_failed",
-                    "stderr": rebase.stderr[:2000],
-                    "results": results,
-                }
+            return {
+                "attempted": True,
+                "rebased": False,
+                "reason": "rebase_failed",
+                "stderr": rebase.stderr[:2000],
+                "abort_returncode": abort.returncode if abort is not None else None,
+                "checkout_restore": checkout_restore,
+                "results": results,
+            }
 
         return {
             "attempted": True,
