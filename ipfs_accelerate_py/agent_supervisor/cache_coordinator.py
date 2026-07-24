@@ -21,12 +21,14 @@ Cross-process coordination belongs in a durable lease implementation.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
+import secrets
 import threading
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Any, Awaitable, Callable, Mapping, TypeVar, Union
+from typing import Any, Awaitable, Callable, Final, Mapping, TypeVar, Union
 
 from .analysis_cache import (
     AnalysisCache,
@@ -37,6 +39,18 @@ from .analysis_cache import (
     AnalysisCacheStoreResult,
     AnalysisOutcome,
     AnalysisReceipt,
+    canonical_analysis_json,
+)
+
+
+SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID: Final = (
+    "206259342916458424196977899134352826879"
+)
+CONCURRENT_IDENTICAL_MISS_COLLAPSE_REQUIREMENT_ID: Final = (
+    SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID
+)
+SINGLE_FLIGHT_COLLAPSE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/single-flight-collapse-evidence@1"
 )
 
 
@@ -118,6 +132,271 @@ class CachePublication:
             raise ValueError("ttl_seconds must be a positive integer or None")
 
 
+def _required_text(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise CacheCoordinationError(f"{name} is required")
+    result = value.strip()
+    if "\x00" in result:
+        raise CacheCoordinationError(f"{name} must not contain NUL bytes")
+    return result
+
+
+@dataclass(frozen=True)
+class _SingleFlightAttestation:
+    """Opaque coordinator-issued authority retained only on typed results."""
+
+    cache_key_id: str
+    flight_id: str
+    publication_entry_digest: str
+    receipt_id: str
+    producer_invocation_count: int
+    participant_count: int
+    follower_count: int
+    seal: object
+
+
+@dataclass(frozen=True)
+class SingleFlightCollapseEvidence:
+    """Content-addressed proof that one active keyed miss had one producer.
+
+    The witness is deliberately created from the coordinator's private flight
+    state, never from global metrics or caller-supplied participant counts.
+    It binds the complete seven-dimension cache key, the active flight, and
+    the exact durable publication shared by at least one follower.
+    """
+
+    cache_key: AnalysisCacheKey
+    flight_id: str
+    publication_entry_digest: str
+    receipt_id: str
+    producer_invocation_count: int
+    participant_count: int
+    follower_count: int
+    requirement_id: str = SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cache_key, AnalysisCacheKey):
+            raise CacheCoordinationError(
+                "single-flight evidence requires an AnalysisCacheKey"
+            )
+        for name in ("flight_id", "publication_entry_digest", "receipt_id"):
+            object.__setattr__(
+                self, name, _required_text(getattr(self, name), name)
+            )
+        if self.requirement_id != SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID:
+            raise CacheCoordinationError(
+                "unexpected single-flight collapse requirement ID"
+            )
+        for name in (
+            "producer_invocation_count",
+            "participant_count",
+            "follower_count",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise CacheCoordinationError(f"{name} must be an integer")
+        if self.producer_invocation_count != 1:
+            raise CacheCoordinationError(
+                "single-flight evidence requires exactly one producer"
+            )
+        if self.follower_count < 1:
+            raise CacheCoordinationError(
+                "single-flight evidence requires at least one follower"
+            )
+        if self.participant_count != self.follower_count + 1:
+            raise CacheCoordinationError(
+                "single-flight participant count must equal leader plus followers"
+            )
+
+    def _content(self) -> dict[str, Any]:
+        return {
+            "schema": SINGLE_FLIGHT_COLLAPSE_EVIDENCE_SCHEMA,
+            "requirement_id": self.requirement_id,
+            "cache_key": self.cache_key.to_dict(),
+            "cache_key_id": self.cache_key.key_id,
+            "flight_id": self.flight_id,
+            "publication_entry_digest": self.publication_entry_digest,
+            "receipt_id": self.receipt_id,
+            "producer_invocation_count": self.producer_invocation_count,
+            "participant_count": self.participant_count,
+            "follower_count": self.follower_count,
+        }
+
+    @property
+    def evidence_id(self) -> str:
+        digest = hashlib.sha256(
+            canonical_analysis_json(self._content()).encode("utf-8")
+        ).hexdigest()
+        return f"single-flight-collapse:sha256:{digest}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._content(), "evidence_id": self.evidence_id}
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "SingleFlightCollapseEvidence":
+        if not isinstance(value, Mapping):
+            raise CacheCoordinationError(
+                "single-flight evidence must be an object"
+            )
+        allowed = {
+            "schema",
+            "evidence_id",
+            "requirement_id",
+            "cache_key",
+            "cache_key_id",
+            "flight_id",
+            "publication_entry_digest",
+            "receipt_id",
+            "producer_invocation_count",
+            "participant_count",
+            "follower_count",
+        }
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise CacheCoordinationError(
+                "single-flight evidence has unknown fields: "
+                + ", ".join(unknown)
+            )
+        if value.get("schema") != SINGLE_FLIGHT_COLLAPSE_EVIDENCE_SCHEMA:
+            raise CacheCoordinationError(
+                "unsupported single-flight evidence schema"
+            )
+        key_value = value.get("cache_key")
+        if not isinstance(key_value, Mapping):
+            raise CacheCoordinationError(
+                "single-flight evidence cache_key must be an object"
+            )
+        try:
+            cache_key = AnalysisCacheKey.from_dict(key_value)
+            restored = cls(
+                cache_key=cache_key,
+                flight_id=value.get("flight_id", ""),
+                publication_entry_digest=value.get(
+                    "publication_entry_digest", ""
+                ),
+                receipt_id=value.get("receipt_id", ""),
+                producer_invocation_count=value.get(
+                    "producer_invocation_count", 0
+                ),
+                participant_count=value.get("participant_count", 0),
+                follower_count=value.get("follower_count", 0),
+                requirement_id=value.get("requirement_id", ""),
+            )
+        except (CacheCoordinationError, TypeError, ValueError) as exc:
+            if isinstance(exc, CacheCoordinationError):
+                raise
+            raise CacheCoordinationError(
+                "malformed single-flight evidence"
+            ) from exc
+        if value.get("cache_key_id") != cache_key.key_id:
+            raise CacheCoordinationError(
+                "single-flight cache key identity does not match its content"
+            )
+        if value.get("evidence_id") != restored.evidence_id:
+            raise CacheCoordinationError(
+                "single-flight evidence identity does not match its content"
+            )
+        return restored
+
+    @classmethod
+    def from_result(
+        cls,
+        result: "CacheCoordinationResult",
+        *,
+        follower_count: int,
+        _attestation: _SingleFlightAttestation | None = None,
+    ) -> "SingleFlightCollapseEvidence":
+        """Create evidence from a sealed leader publication."""
+
+        entry = result.entry
+        receipt = result.receipt
+        if (
+            result.status is not CacheCoordinationStatus.PRODUCED
+            or not result.leader
+            or result.waited
+            or not result.is_completion_evidence
+            or entry is None
+            or not isinstance(receipt, Mapping)
+            or not isinstance(_attestation, _SingleFlightAttestation)
+            or _attestation.cache_key_id != result.key.key_id
+            or _attestation.flight_id != result.flight_id
+            or _attestation.publication_entry_digest != entry.entry_digest
+            or _attestation.receipt_id != receipt.get("receipt_id")
+            or _attestation.producer_invocation_count
+            != result.producer_invocation_count
+            or _attestation.follower_count != follower_count
+            or _attestation.participant_count != follower_count + 1
+        ):
+            raise CacheCoordinationError(
+                "single-flight evidence requires a coordinator-attested "
+                "completed leader publication"
+            )
+        witness = cls(
+            cache_key=result.key,
+            flight_id=result.flight_id,
+            publication_entry_digest=entry.entry_digest,
+            receipt_id=receipt.get("receipt_id", ""),
+            producer_invocation_count=result.producer_invocation_count,
+            participant_count=follower_count + 1,
+            follower_count=follower_count,
+        )
+        return witness
+
+    def proves_for(
+        self,
+        active_key: AnalysisCacheKey,
+        result: "CacheCoordinationResult",
+    ) -> bool:
+        """Revalidate the witness against an active key and typed result."""
+
+        if (
+            not isinstance(active_key, AnalysisCacheKey)
+            or not isinstance(result, CacheCoordinationResult)
+            or active_key != self.cache_key
+            or result.key != active_key
+            or result.status
+            not in (
+                CacheCoordinationStatus.PRODUCED,
+                CacheCoordinationStatus.SHARED,
+            )
+            or result.flight_id != self.flight_id
+            or result.producer_invocation_count
+            != self.producer_invocation_count
+            or not result.is_completion_evidence
+        ):
+            return False
+        if result.status is CacheCoordinationStatus.PRODUCED:
+            if not result.leader or result.waited:
+                return False
+        elif result.leader or not result.waited:
+            return False
+        entry = result.entry
+        receipt = result.receipt
+        attestation = result._single_flight_attestation
+        return bool(
+            entry is not None
+            and entry.key == active_key
+            and entry.entry_digest
+            and entry.entry_digest == entry.computed_digest
+            and entry.entry_digest == self.publication_entry_digest
+            and isinstance(receipt, Mapping)
+            and receipt.get("receipt_id") == self.receipt_id
+            and isinstance(attestation, _SingleFlightAttestation)
+            and attestation.cache_key_id == active_key.key_id
+            and attestation.flight_id == self.flight_id
+            and attestation.publication_entry_digest
+            == self.publication_entry_digest
+            and attestation.receipt_id == self.receipt_id
+            and attestation.producer_invocation_count
+            == self.producer_invocation_count
+            and attestation.participant_count == self.participant_count
+            and attestation.follower_count == self.follower_count
+            and type(attestation.seal) is object
+        )
+
+
 @dataclass(frozen=True)
 class CacheCoordinationResult:
     """Typed outcome of one coordinated cache operation.
@@ -135,6 +414,78 @@ class CacheCoordinationResult:
     producer_value: Any = None
     leader: bool = False
     waited: bool = False
+    flight_id: str = ""
+    producer_invocation_count: int = 0
+    single_flight_collapse_evidence: SingleFlightCollapseEvidence | None = None
+    _single_flight_attestation: _SingleFlightAttestation | None = field(
+        default=None, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, CacheCoordinationStatus):
+            object.__setattr__(
+                self, "status", CacheCoordinationStatus(str(self.status))
+            )
+        if not isinstance(self.key, AnalysisCacheKey):
+            raise CacheCoordinationError(
+                "coordination result requires an AnalysisCacheKey"
+            )
+        if not isinstance(self.lookup, AnalysisCacheLookupResult):
+            raise CacheCoordinationError(
+                "coordination result requires a typed cache lookup"
+            )
+        if self.lookup.key != self.key:
+            raise CacheCoordinationError(
+                "coordination result lookup is bound to another cache key"
+            )
+        if isinstance(self.producer_invocation_count, bool) or not isinstance(
+            self.producer_invocation_count, int
+        ):
+            raise CacheCoordinationError(
+                "producer_invocation_count must be an integer"
+            )
+        if self.status is CacheCoordinationStatus.CACHE_HIT:
+            if (
+                self.leader
+                or self.waited
+                or self.flight_id
+                or self.producer_invocation_count
+                or self.single_flight_collapse_evidence is not None
+                or self._single_flight_attestation is not None
+            ):
+                raise CacheCoordinationError(
+                    "cache hits cannot carry single-flight execution state"
+                )
+        else:
+            _required_text(self.flight_id, "flight_id")
+            if self.producer_invocation_count != 1:
+                raise CacheCoordinationError(
+                    "produced/shared results require one producer invocation"
+                )
+            if self.status is CacheCoordinationStatus.PRODUCED and (
+                not self.leader or self.waited
+            ):
+                raise CacheCoordinationError(
+                    "produced results must carry the leader role"
+                )
+            if self.status is CacheCoordinationStatus.SHARED and (
+                self.leader or not self.waited
+            ):
+                raise CacheCoordinationError(
+                    "shared results must carry the follower role"
+                )
+        witness = self.single_flight_collapse_evidence
+        if (
+            self._single_flight_attestation is not None
+            and witness is None
+        ):
+            raise CacheCoordinationError(
+                "single-flight attestation cannot be detached from its witness"
+            )
+        if witness is not None and not witness.proves_for(self.key, self):
+            raise CacheCoordinationError(
+                "single-flight evidence is detached from coordination result"
+            )
 
     @property
     def cache_hit(self) -> bool:
@@ -206,6 +557,34 @@ class CacheCoordinationResult:
     def authoritative(self) -> bool:
         return self.is_completion_evidence
 
+    def proved_requirement_ids_for(
+        self, active_key: AnalysisCacheKey | Mapping[str, Any]
+    ) -> tuple[str, ...]:
+        """Return operational proof IDs only after active-key rebinding."""
+
+        try:
+            key = (
+                active_key
+                if isinstance(active_key, AnalysisCacheKey)
+                else AnalysisCacheKey.from_dict(active_key)
+            )
+        except (TypeError, ValueError):
+            return ()
+        witness = self.single_flight_collapse_evidence
+        if witness is None or not witness.proves_for(key, self):
+            return ()
+        return (witness.requirement_id,)
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        """Fail closed without the caller's active cache-key context."""
+
+        return ()
+
+    @property
+    def operational_evidence_claim_references(self) -> tuple[str, ...]:
+        return self.proved_requirement_ids_for(self.key)
+
     @property
     def value(self) -> Any:
         """Return the producer value, falling back to the compact receipt."""
@@ -233,6 +612,16 @@ class CacheCoordinationResult:
             "shared": self.shared,
             "leader": self.leader,
             "waited": self.waited,
+            "flight_id": self.flight_id,
+            "producer_invocation_count": self.producer_invocation_count,
+            "single_flight_collapse_evidence": (
+                self.single_flight_collapse_evidence.to_dict()
+                if self.single_flight_collapse_evidence is not None
+                else None
+            ),
+            "operational_evidence_claim_references": list(
+                self.operational_evidence_claim_references
+            ),
             "is_completion_evidence": self.is_completion_evidence,
             "reason_codes": list(self.reason_codes),
             "outcome": self.outcome.value if self.outcome is not None else "",
@@ -301,6 +690,9 @@ CoordinatorMetrics = CacheCoordinatorMetrics
 @dataclass
 class _Flight:
     future: Future[CacheCoordinationResult]
+    flight_id: str
+    follower_count: int = 0
+    producer_invocation_count: int = 0
 
 
 class AnalysisCacheCoordinator:
@@ -461,8 +853,15 @@ class AnalysisCacheCoordinator:
             existing = self._flights.get(key.key_id)
             if existing is not None:
                 self._metric_values["followers"] += 1
+                existing.follower_count += 1
                 return None, existing, False
-            flight = _Flight(Future())
+            flight = _Flight(
+                Future(),
+                flight_id=(
+                    "analysis-single-flight:"
+                    + secrets.token_hex(24)
+                ),
+            )
             self._flights[key.key_id] = flight
             self._metric_values["leaders"] += 1
             return None, flight, True
@@ -489,6 +888,7 @@ class AnalysisCacheCoordinator:
         value: ProducerValue | CachePublication,
         *,
         ttl_seconds: int | None,
+        flight: _Flight,
     ) -> CacheCoordinationResult:
         store_result: AnalysisCacheStoreResult | None = None
         should_store = True
@@ -519,6 +919,8 @@ class AnalysisCacheCoordinator:
                 lookup=lookup,
                 producer_value=value,
                 leader=True,
+                flight_id=flight.flight_id,
+                producer_invocation_count=flight.producer_invocation_count,
             )
             self._increment("produced")
             self._increment("non_authoritative_results")
@@ -563,6 +965,8 @@ class AnalysisCacheCoordinator:
             store_result=store_result,
             producer_value=value,
             leader=True,
+            flight_id=flight.flight_id,
+            producer_invocation_count=flight.producer_invocation_count,
         )
         self._increment("produced")
         self._increment(
@@ -571,6 +975,44 @@ class AnalysisCacheCoordinator:
             else "non_authoritative_results"
         )
         return result
+
+    def _seal_publication(
+        self,
+        result: CacheCoordinationResult,
+        flight: _Flight,
+    ) -> CacheCoordinationResult:
+        """Snapshot the cohort and attach a proof before publishing its future."""
+
+        with self._lock:
+            follower_count = flight.follower_count
+        if follower_count < 1 or not result.is_completion_evidence:
+            return result
+        entry = result.entry
+        receipt = result.receipt
+        if entry is None or not isinstance(receipt, Mapping):
+            raise CacheCoordinationError(
+                "completion publication lacks attestation bindings"
+            )
+        attestation = _SingleFlightAttestation(
+            cache_key_id=result.key.key_id,
+            flight_id=result.flight_id,
+            publication_entry_digest=entry.entry_digest,
+            receipt_id=_required_text(receipt.get("receipt_id"), "receipt_id"),
+            producer_invocation_count=result.producer_invocation_count,
+            participant_count=follower_count + 1,
+            follower_count=follower_count,
+            seal=object(),
+        )
+        evidence = SingleFlightCollapseEvidence.from_result(
+            result,
+            follower_count=follower_count,
+            _attestation=attestation,
+        )
+        return replace(
+            result,
+            single_flight_collapse_evidence=evidence,
+            _single_flight_attestation=attestation,
+        )
 
     def _shared_result(
         self, result: CacheCoordinationResult
@@ -636,6 +1078,7 @@ class AnalysisCacheCoordinator:
 
         if leader:
             try:
+                flight.producer_invocation_count += 1
                 value = producer()
                 if inspect.isawaitable(value):
                     close = getattr(value, "close", None)
@@ -646,8 +1089,12 @@ class AnalysisCacheCoordinator:
                         "async_get_or_compute"
                     )
                 result = self._publish_producer_value(
-                    cache_key, value, ttl_seconds=ttl_seconds
+                    cache_key,
+                    value,
+                    ttl_seconds=ttl_seconds,
+                    flight=flight,
                 )
+                result = self._seal_publication(result, flight)
                 flight.future.set_result(result)
                 return result
             except BaseException as exc:
@@ -709,12 +1156,17 @@ class AnalysisCacheCoordinator:
 
         if leader:
             try:
+                flight.producer_invocation_count += 1
                 value = producer()
                 if inspect.isawaitable(value):
                     value = await value
                 result = self._publish_producer_value(
-                    cache_key, value, ttl_seconds=ttl_seconds
+                    cache_key,
+                    value,
+                    ttl_seconds=ttl_seconds,
+                    flight=flight,
                 )
+                result = self._seal_publication(result, flight)
                 flight.future.set_result(result)
                 return result
             except BaseException as exc:
@@ -764,6 +1216,7 @@ SingleFlightCacheCoordinator = AnalysisCacheCoordinator
 
 __all__ = [
     "AnalysisCacheCoordinator",
+    "CONCURRENT_IDENTICAL_MISS_COLLAPSE_REQUIREMENT_ID",
     "CacheCoordinationError",
     "CacheCoordinationResult",
     "CacheCoordinationStatus",
@@ -778,5 +1231,8 @@ __all__ = [
     "CoordinatorMetrics",
     "CoordinatorResult",
     "CoordinatorStatus",
+    "SINGLE_FLIGHT_COLLAPSE_EVIDENCE_SCHEMA",
+    "SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID",
+    "SingleFlightCollapseEvidence",
     "SingleFlightCacheCoordinator",
 ]

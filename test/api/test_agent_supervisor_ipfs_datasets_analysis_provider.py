@@ -8,6 +8,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import (
     IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY,
     MAX_CONCURRENT_PROVIDER_DISPATCHES,
     AnalysisProviderBounds,
     AnalysisProviderCapability,
@@ -212,6 +213,22 @@ def test_compact_success_is_deterministic_bounded_and_non_authoritative() -> Non
     assert first.result_id == second.result_id
     assert not first.safe_for_completion_reasoning
     assert first.proved_requirement_ids == ()
+
+
+def test_direct_provider_dispatch_does_not_create_a_competing_cache_boundary() -> None:
+    backend = _Backend()
+    provider = IpfsDatasetsAnalysisProvider(backend=backend)
+
+    first = provider.analyze(_request())
+    second = provider.analyze(_request())
+
+    assert IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY == (
+        "analysis_pipeline.single_flight"
+    )
+    assert len(backend.requests) == 2
+    assert first.result_id == second.result_id
+    assert first.proved_requirement_ids == ()
+    assert second.proved_requirement_ids == ()
 
 
 def test_heavy_or_malformed_backend_payload_fails_closed() -> None:

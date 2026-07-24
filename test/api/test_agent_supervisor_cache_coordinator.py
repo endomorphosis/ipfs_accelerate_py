@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -13,9 +15,12 @@ from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
     AnalysisCacheReason,
 )
 from ipfs_accelerate_py.agent_supervisor.cache_coordinator import (
+    SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
     AnalysisCacheCoordinator,
+    CacheCoordinationError,
     CacheCoordinationStatus,
     CachePublication,
+    SingleFlightCollapseEvidence,
 )
 
 
@@ -90,15 +95,161 @@ def test_threads_with_identical_key_execute_one_producer(
             for _ in range(16)
         ]
         assert entered.wait(5)
+        deadline = time.monotonic() + 5
+        while (
+            coordinator.metrics().followers < 15
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.001)
+        assert coordinator.metrics().followers == 15
         release.set()
         results = [future.result(timeout=10) for future in futures]
 
     assert calls == 1
     assert sum(item.status is CacheCoordinationStatus.PRODUCED for item in results) == 1
+    assert sum(item.status is CacheCoordinationStatus.SHARED for item in results) == 15
     assert all(item.is_completion_evidence for item in results)
+    evidence = {
+        item.single_flight_collapse_evidence.evidence_id
+        for item in results
+        if item.single_flight_collapse_evidence is not None
+    }
+    assert len(evidence) == 1
+    assert all(
+        item.proved_requirement_ids_for(_key())
+        == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
+        for item in results
+    )
+    witness = results[0].single_flight_collapse_evidence
+    assert witness is not None
+    assert witness.producer_invocation_count == 1
+    assert witness.follower_count == 15
+    assert witness.participant_count == 16
+    assert (
+        SingleFlightCollapseEvidence.from_dict(witness.to_dict()) == witness
+    )
     metrics = coordinator.metrics()
     assert metrics.followers + metrics.cache_hits >= 15
     assert metrics.active_flights == 0
+
+
+def test_single_flight_evidence_is_active_key_and_publication_bound(
+    tmp_path: Path,
+) -> None:
+    coordinator = AnalysisCacheCoordinator(AnalysisCache(tmp_path))
+    entered = threading.Event()
+    release = threading.Event()
+
+    def producer():
+        entered.set()
+        assert release.wait(5)
+        return _receipt()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        leader = executor.submit(coordinator.get_or_compute, _key(), producer)
+        assert entered.wait(5)
+        follower = executor.submit(
+            coordinator.get_or_compute,
+            _key(),
+            lambda: pytest.fail("follower ran a second producer"),
+        )
+        deadline = time.monotonic() + 5
+        while (
+            coordinator.metrics().followers < 1
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.001)
+        assert coordinator.metrics().followers == 1
+        release.set()
+        results = [leader.result(timeout=10), follower.result(timeout=10)]
+
+    witness = results[0].single_flight_collapse_evidence
+    assert witness is not None
+    assert all(witness.proves_for(_key(), result) for result in results)
+    assert not witness.proves_for(
+        _key(query_digest="sha256:other"), results[0]
+    )
+    assert results[0].proved_requirement_ids == ()
+
+    unattested = replace(
+        results[0],
+        single_flight_collapse_evidence=None,
+        _single_flight_attestation=None,
+    )
+    assert not witness.proves_for(_key(), unattested)
+    with pytest.raises(CacheCoordinationError, match="coordinator-attested"):
+        SingleFlightCollapseEvidence.from_result(
+            unattested,
+            follower_count=1,
+        )
+
+    forged = replace(
+        witness,
+        publication_entry_digest="sha256:" + ("0" * 64),
+    )
+    assert not forged.proves_for(_key(), results[0])
+    with pytest.raises(CacheCoordinationError, match="detached"):
+        replace(
+            results[0],
+            single_flight_collapse_evidence=forged,
+        )
+
+    malformed = witness.to_dict()
+    malformed["participant_count"] = 99
+    with pytest.raises(CacheCoordinationError):
+        SingleFlightCollapseEvidence.from_dict(malformed)
+
+
+def test_singleton_hit_and_non_authoritative_flight_cannot_claim_collapse(
+    tmp_path: Path,
+) -> None:
+    coordinator = AnalysisCacheCoordinator(AnalysisCache(tmp_path))
+    singleton = coordinator.get_or_compute(_key(), lambda: _receipt())
+    cached = coordinator.get_or_compute(
+        _key(), lambda: pytest.fail("cache hit executed producer")
+    )
+
+    assert singleton.single_flight_collapse_evidence is None
+    assert singleton.operational_evidence_claim_references == ()
+    assert cached.status is CacheCoordinationStatus.CACHE_HIT
+    assert cached.operational_evidence_claim_references == ()
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    def inconclusive():
+        entered.set()
+        assert release.wait(5)
+        return CachePublication(_receipt("partial", 2), store=False)
+
+    other_key = _key(query_digest="sha256:negative")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        leader = executor.submit(
+            coordinator.get_or_compute, other_key, inconclusive
+        )
+        assert entered.wait(5)
+        follower = executor.submit(
+            coordinator.get_or_compute,
+            other_key,
+            lambda: pytest.fail("negative follower ran producer"),
+        )
+        deadline = time.monotonic() + 5
+        while (
+            coordinator.metrics().followers < 1
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.001)
+        assert coordinator.metrics().followers == 1
+        release.set()
+        results = [leader.result(timeout=10), follower.result(timeout=10)]
+
+    assert all(not item.is_completion_evidence for item in results)
+    assert all(
+        item.single_flight_collapse_evidence is None for item in results
+    )
+    assert all(
+        item.proved_requirement_ids_for(other_key) == () for item in results
+    )
 
 
 def test_unrelated_keys_are_not_globally_serialized(tmp_path: Path) -> None:
@@ -287,6 +438,11 @@ def test_async_identical_misses_share_the_sync_safe_flight(
     assert calls == 1
     assert all(result.is_completion_evidence for result in results)
     assert sum(result.shared for result in results) == 7
+    assert all(
+        result.proved_requirement_ids_for(_key())
+        == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
+        for result in results
+    )
     assert coordinator.metrics().active_flights == 0
 
 
@@ -335,4 +491,17 @@ def test_sync_leader_and_async_followers_share_one_cross_facade_flight(
     assert produced.status is CacheCoordinationStatus.PRODUCED
     assert all(item.status is CacheCoordinationStatus.SHARED for item in followers)
     assert all(item.is_completion_evidence for item in followers)
+    all_results = (produced, *followers)
+    assert len(
+        {
+            item.single_flight_collapse_evidence.evidence_id
+            for item in all_results
+            if item.single_flight_collapse_evidence is not None
+        }
+    ) == 1
+    assert all(
+        item.proved_requirement_ids_for(_key())
+        == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
+        for item in all_results
+    )
     assert coordinator.metrics().active_flights == 0
