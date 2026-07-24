@@ -2696,7 +2696,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-078 Produce completion evidence for Prove 031486194157679117987393491870400400279 for Unified Python, CLI, and MCP supervisor control
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
