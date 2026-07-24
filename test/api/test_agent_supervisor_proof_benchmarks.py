@@ -110,6 +110,12 @@ def test_cold_and_warm_runs_report_every_phase_cpu_memory_and_cache_reuse() -> N
     assert warm["accepted_tasks_per_second"] > cold["accepted_tasks_per_second"]
     assert warm["cpu_time_ms"] > 0
     assert warm["memory_peak_bytes"] > 0
+    assert warm["accepted_tasks_per_cpu_second"] == 1.5
+    assert report["summary"]["cold_to_warm"]["cache_hit_rate_improvement"] == 0.9
+    assert report["summary"]["cold_to_warm"]["wall_time_reduction"] == pytest.approx(
+        1 / 3, abs=1e-6
+    )
+    assert set(report["summary"]["by_mode"]) == {"cold", "warm", "parallel"}
     assert report.rollout_expansion_allowed is True
 
 
@@ -177,6 +183,93 @@ def test_rollout_thresholds_reject_low_value_or_unsupported_templates() -> None:
         "retrieval_precision_below_threshold",
         "unsupported_template_rate_above_threshold",
     }
+
+
+def test_template_attribution_identifies_unsupported_and_low_value_surfaces() -> None:
+    sample = _sample(
+        "cold",
+        template_count=3,
+        unsupported_template_count=1,
+        template_measurements=(
+            {
+                "template_id": "template:unsupported",
+                "attempted_tasks": 4,
+                "accepted_tasks": 0,
+                "unsupported_tasks": 4,
+                "baseline_model_tokens": 100,
+                "proof_model_tokens": 90,
+                "proof_term": "private proof body",
+            },
+            {
+                "template_id": "template:low-value",
+                "attempted_tasks": 4,
+                "accepted_tasks": 4,
+                "unsupported_tasks": 0,
+                "baseline_model_tokens": 100,
+                "proof_model_tokens": 95,
+            },
+            {
+                "template_id": "template:useful",
+                "attempted_tasks": 4,
+                "accepted_tasks": 4,
+                "unsupported_tasks": 0,
+                "baseline_model_tokens": 100,
+                "proof_model_tokens": 50,
+            },
+        ),
+    )
+    report = build_proof_benchmark_report(
+        (sample,),
+        thresholds=ProofBenchmarkThresholds(required_modes=("cold",)),
+    )
+    findings = {
+        finding["template_id"]: finding for finding in report["template_findings"]
+    }
+
+    assert report["unsupported_template_ids"] == ["template:unsupported"]
+    assert report["low_value_template_ids"] == [
+        "template:low-value",
+        "template:unsupported",
+    ]
+    assert findings["template:useful"]["eligible_for_enforcement"] is True
+    assert findings["template:low-value"]["model_work_reduction"] == 0.05
+    assert findings["template:unsupported"]["unsupported_rate"] == 1.0
+    assert "private proof body" not in json.dumps(report.to_dict())
+    assert {failure["reason_code"] for failure in report["failures"]} >= {
+        "low_value_template_rate_above_threshold",
+        "unsupported_template_rate_above_threshold",
+    }
+
+
+def test_missing_measurements_and_ambiguous_sample_identity_fail_closed() -> None:
+    incomplete = _sample("cold")
+    del incomplete["cpu_time_ms"]
+    report = build_proof_benchmark_report(
+        (incomplete,),
+        thresholds=ProofBenchmarkThresholds(required_modes=("cold",)),
+    )
+
+    assert report.rollout_expansion_allowed is False
+    assert report["samples"][0]["missing_measurements"] == ["cpu_time_ms"]
+    assert {failure["reason_code"] for failure in report["failures"]} >= {
+        "benchmark_measurement_incomplete",
+        "resource_measurement_missing",
+    }
+
+    with pytest.raises(ValueError, match="sample_id values must be unique"):
+        build_proof_benchmark_report(
+            (
+                _sample("cold", sample_id="duplicate"),
+                _sample("warm", sample_id="duplicate"),
+            )
+        )
+
+
+def test_benchmark_thresholds_require_integral_host_limits() -> None:
+    with pytest.raises(ValueError, match="non-negative integer"):
+        ProofBenchmarkThresholds(max_nested_oversubscription=1.5)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        ProofBenchmarkThresholds(max_memory_peak_bytes=True)
 
 
 @pytest.mark.parametrize(
