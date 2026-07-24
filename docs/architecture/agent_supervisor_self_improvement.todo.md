@@ -140,7 +140,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-008 Add cost- and evidence-aware adaptive planning
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: planning
