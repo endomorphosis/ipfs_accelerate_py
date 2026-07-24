@@ -39,6 +39,8 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Goal: Measure total cost per accepted task and compile the smallest sufficient stage context with progressive evidence disclosure and delta retries.
 - Evidence: 208290439421789408250562066350459701853, 306437607356117177048620815571362227127, 248026856102230635452423769994290240744
 - Evidence criteria: 208290439421789408250562066350459701853=required fields survive the effective provider budget; 306437607356117177048620815571362227127=delta retry lowers tokens without coverage loss; 248026856102230635452423769994290240744=efficiency accounting includes only terminal accepted work
+- Evidence producer bindings: 208290439421789408250562066350459701853=context_compiler.REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID and a content-addressed RequiredContextBudgetEvidence witness carried by ContextCompilationReceipt record the requirement only when goal, authority, scope, acceptance, and every required reference survive the effective provider input budget, as asserted by test/api/test_agent_supervisor_context_compiler.py; 306437607356117177048620815571362227127=context_compiler.DELTA_RETRY_EVIDENCE_ID and a content-addressed DeltaRetryContextEvidence witness carried by ContextDeltaReceipt record the requirement only when a parent-bound changed-evidence retry uses fewer tokens than full replay without losing required coverage, as asserted by test/api/test_agent_supervisor_context_delta.py; 248026856102230635452423769994290240744=supervisor_efficiency_metrics.TERMINAL_ACCEPTED_WORK_EVIDENCE_ID emitted through PairedEfficiencyReport.evidence_claim_references only for a non-empty, population-complete same-task comparison of terminal accepted work that charges every attempt, as asserted by test/api/test_agent_supervisor_efficiency_metrics.py
+- Evidence source policy: Producer bindings are routing metadata, not completion evidence. A requirement is covered only by a fresh passing typed compiler or benchmark receipt from the bound code/test producer with the exact requirement ID, repository tree, policy, inputs, result, and content digest; this heap, todo/task prose, generated discovery reports, and an unbound occurrence of an ID remain non-qualifying sources.
 - Outputs: ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py, ipfs_accelerate_py/agent_supervisor/context_contracts.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, test/api/test_agent_supervisor_efficiency_metrics.py, test/api/test_agent_supervisor_context_compiler.py, test/api/test_agent_supervisor_context_delta.py
 - Validation: python -m pytest test/api/test_agent_supervisor_efficiency_metrics.py test/api/test_agent_supervisor_context_compiler.py test/api/test_agent_supervisor_context_delta.py -q
 - Acceptance: Required goal, authority, scope, and acceptance context is never truncated; optional evidence has deterministic inclusion reasons; retries use changed evidence rather than full replay; paired fixtures reduce median input tokens by at least 35 percent without lowering required evidence coverage or safety.
@@ -206,6 +208,52 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep end-to-end measurement separate from public export and documentation changes until promotion passes.
 - Embedding query: agent supervisor paired benchmark rollout shadow assist production smoke exports documentation safety efficiency
 - AST query: evaluate_goal_rollout_promotion agent_supervisor __getattr__ register_native_agent_supervisor_tools
+
+## ASI-G091 Prove 208290439421789408250562066350459701853 for Token-efficient context and end-to-end measurement
+
+- Status: active
+- Parent: ASI-G010
+- Fib priority: 5000
+- Track: token-efficiency
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement/context
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `208290439421789408250562066350459701853`.
+- Evidence: 208290439421789408250562066350459701853
+- Evidence criterion: Goal, authority, scope, acceptance, and every explicitly required evidence reference survive the effective provider input budget, while a compilation that cannot fit that invariant core fails closed instead of truncating it.
+- Evidence producer: ipfs_accelerate_py/agent_supervisor/context_compiler.py REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID and the content-addressed RequiredContextBudgetEvidence witness carried by ContextCompilationReceipt, exercised by test/api/test_agent_supervisor_context_compiler.py
+- Evidence source policy: This child goal and its discovery report do not satisfy their own evidence requirement; only a fresh passing receipt from the bound producer/test on the current repository tree and policy qualifies.
+- Outputs: ipfs_accelerate_py/agent_supervisor/context_contracts.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py, test/api/test_agent_supervisor_context_compiler.py, test/api/test_agent_supervisor_efficiency_metrics.py
+- Validation: python -m pytest test/api/test_agent_supervisor_efficiency_metrics.py test/api/test_agent_supervisor_context_compiler.py test/api/test_agent_supervisor_context_delta.py -q
+- Acceptance: The compiler derives the effective input limit from the supervisor ceiling, provider input/window limits, and reserved output/tool tokens; preserves the complete invariant core and every required reference or rejects compilation; orders optional material deterministically with explicit inclusion/omission reasons and bounded expansion handles; and emits the exact requirement ID only in a witness binding the repository tree, policy, effective budget, required and selected fields/references, capsule identity, result, and content digest. A paired efficiency report remains promotion-ineligible unless the same terminal accepted task population retains full required coverage.
+- Refinement depth: 2
+- Embedding query: 208290439421789408250562066350459701853
+- AST query: 208290439421789408250562066350459701853
+- Parallel lane: agent-supervisor/self-improvement/context
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `208290439421789408250562066350459701853` with a narrow, verifiable change.
+
+## ASI-G092 Prove 306437607356117177048620815571362227127 for Token-efficient context and end-to-end measurement
+
+- Status: active
+- Parent: ASI-G010
+- Fib priority: 5001
+- Track: token-efficiency
+- Priority: P0
+- Bundle: agent-supervisor/self-improvement/context
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `306437607356117177048620815571362227127`.
+- Evidence: 306437607356117177048620815571362227127
+- Evidence criterion: A retry is a parent-bound changed-evidence delta whose transmitted input is smaller than full replay and whose effective context preserves every required field and evidence requirement.
+- Evidence producer: ipfs_accelerate_py/agent_supervisor/context_compiler.py DELTA_RETRY_EVIDENCE_ID and the content-addressed DeltaRetryContextEvidence witness carried by ContextDeltaReceipt, exercised by test/api/test_agent_supervisor_context_delta.py
+- Evidence source policy: This child goal and its discovery report do not satisfy their own evidence requirement; only a fresh passing receipt from the bound producer/test on the current repository tree and policy qualifies.
+- Outputs: ipfs_accelerate_py/agent_supervisor/context_contracts.py, ipfs_accelerate_py/agent_supervisor/context_compiler.py, ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py, test/api/test_agent_supervisor_context_delta.py, test/api/test_agent_supervisor_efficiency_metrics.py
+- Validation: python -m pytest test/api/test_agent_supervisor_efficiency_metrics.py test/api/test_agent_supervisor_context_compiler.py test/api/test_agent_supervisor_context_delta.py -q
+- Acceptance: A retry references its exact parent capsule and transmits only deterministic changed or newly requested evidence; applying the delta reconstructs the required context without loss, stale or unchanged references cannot masquerade as new evidence, and the delta must consume fewer input tokens than full replay. The exact requirement ID is emitted only in a witness binding the repository tree, policy, parent and delta capsule identities, changed/retained coverage, full-replay and delta token counts, result, and content digest. The paired same-task benchmark must retain full required coverage and meet the 35 percent median input-token reduction gate before promotion.
+- Refinement depth: 2
+- Embedding query: 306437607356117177048620815571362227127
+- AST query: 306437607356117177048620815571362227127
+- Parallel lane: agent-supervisor/self-improvement/context
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `306437607356117177048620815571362227127` with a narrow, verifiable change.
 
 ## ASI-G097 Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
 

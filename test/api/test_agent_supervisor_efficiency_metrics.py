@@ -9,6 +9,9 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     EFFICIENCY_CONTRACT_VERSION,
     EFFICIENCY_RECEIPT_SCHEMA,
     EFFICIENCY_REPORT_SCHEMA,
+    PAIRED_EFFICIENCY_CASE_SCHEMA,
+    PAIRED_EFFICIENCY_REPORT_SCHEMA,
+    TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
     MAX_ARTIFACT_REFERENCES,
     MAX_CHANGED_PATHS,
     MAX_DURATION_MS,
@@ -25,6 +28,8 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     EfficiencyScenario,
     EfficiencyValidationError,
     EvidenceDelta,
+    PairedEfficiencyCase,
+    PairedEfficiencyReport,
     RetryObservation,
     StageName,
     StageTiming,
@@ -35,6 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     WorkStatus,
     aggregate_efficiency_receipts,
     build_efficiency_baseline_fixtures,
+    build_paired_efficiency_report,
 )
 
 
@@ -294,6 +300,164 @@ def test_aggregation_rejects_duplicate_or_double_accepted_receipts() -> None:
         EfficiencyValidationError, match="only one accepted receipt"
     ):
         aggregate_efficiency_receipts((cold, second))
+
+
+def test_paired_report_measures_only_terminal_accepted_tasks_and_charges_attempts() -> None:
+    fixtures = _fixtures()
+    baseline_terminal = fixtures["cold"]
+    failed_attempt = replace(
+        fixtures["failed"],
+        task_reference=baseline_terminal.task_reference,
+        goal_reference=baseline_terminal.goal_reference,
+        repository_tree_digest=baseline_terminal.repository_tree_digest,
+        policy_digest=baseline_terminal.policy_digest,
+    )
+    failed_only = replace(
+        fixtures["failed"],
+        task_reference="task:failed-only",
+    )
+    candidate_terminal = replace(
+        baseline_terminal,
+        tokens=TokenUsage(input_tokens=2_000, output_tokens=300),
+        inference_cost_microunits=2_600,
+    )
+
+    report = build_paired_efficiency_report(
+        (failed_attempt, baseline_terminal, failed_only),
+        (candidate_terminal, failed_only),
+    )
+
+    assert report.schema == PAIRED_EFFICIENCY_REPORT_SCHEMA
+    assert report.paired_task_count == 1
+    assert report.population_complete
+    assert report.terminal_accepted_work_accounting_proven
+    assert report.evidence_claim_references == (
+        TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
+    )
+    case = report.cases[0]
+    assert case.schema == PAIRED_EFFICIENCY_CASE_SCHEMA
+    assert case.task_reference == baseline_terminal.task_reference
+    assert len(case.baseline_receipt_ids) == 2
+    assert failed_attempt.receipt_id in case.baseline_receipt_ids
+    assert failed_only.task_reference not in {
+        item.task_reference for item in report.cases
+    }
+    assert case.baseline_input_tokens == (
+        failed_attempt.input_tokens + baseline_terminal.input_tokens
+    )
+    assert case.candidate_input_tokens == candidate_terminal.input_tokens
+    assert report.median_input_token_reduction_bps == 7_500
+    assert report.token_gate_passed
+    assert report.coverage_gate_passed
+    assert report.passed
+
+
+def test_paired_report_couples_token_reduction_to_required_coverage() -> None:
+    baseline = _fixtures()["cold"]
+    candidate = replace(
+        baseline,
+        tokens=TokenUsage(input_tokens=2_000, output_tokens=300),
+        inference_cost_microunits=2_600,
+        evidence=EvidenceDelta(
+            baseline_references=("evidence:syntax",),
+            terminal_references=(
+                "evidence:syntax",
+                "evidence:acceptance",
+            ),
+        ),
+    )
+
+    report = build_paired_efficiency_report(
+        (baseline,),
+        (candidate,),
+        required_evidence_by_task={
+            baseline.task_reference: (
+                "evidence:syntax",
+                "evidence:unit",
+                "evidence:acceptance",
+            )
+        },
+    )
+
+    case = report.cases[0]
+    assert report.median_input_token_reduction_bps == 5_000
+    assert report.token_gate_passed
+    assert case.baseline_coverage_bps == 10_000
+    assert case.candidate_coverage_bps == 6_666
+    assert not case.coverage_preserved
+    assert not case.candidate_has_full_required_coverage
+    assert report.coverage_regression_count == 1
+    assert report.candidate_incomplete_coverage_count == 1
+    assert not report.coverage_gate_passed
+    assert not report.passed
+
+
+def test_paired_report_discloses_population_mismatch_and_round_trips() -> None:
+    fixtures = _fixtures()
+    baseline = fixtures["cold"]
+    candidate = replace(
+        baseline,
+        tokens=TokenUsage(input_tokens=2_000, output_tokens=300),
+        inference_cost_microunits=2_600,
+    )
+    candidate_only = fixtures["warm"]
+
+    report = build_paired_efficiency_report(
+        (baseline,),
+        (candidate, candidate_only),
+    )
+
+    assert report.candidate_unpaired_accepted_task_references == (
+        candidate_only.task_reference,
+    )
+    assert not report.population_complete
+    assert not report.terminal_accepted_work_accounting_proven
+    assert not report.evidence_claim_references
+    assert not report.passed
+    assert PairedEfficiencyReport.from_json(report.to_json()) == report
+    identified = report.to_dict(include_report_id=True)
+    assert PairedEfficiencyReport.from_dict(identified) == report
+    assert PairedEfficiencyCase.from_dict(
+        report.cases[0].to_dict(include_case_id=True)
+    ) == report.cases[0]
+
+    tampered = report.to_dict()
+    tampered["median_input_token_reduction_bps"] += 1
+    with pytest.raises(EfficiencyValidationError, match="reduction"):
+        PairedEfficiencyReport.from_dict(tampered)
+
+
+def test_paired_report_rejects_unfrozen_or_ambiguous_populations() -> None:
+    baseline = _fixtures()["cold"]
+    candidate = replace(
+        baseline,
+        tokens=TokenUsage(input_tokens=2_000, output_tokens=300),
+        inference_cost_microunits=2_600,
+    )
+
+    with pytest.raises(EfficiencyValidationError, match="define every paired"):
+        build_paired_efficiency_report(
+            (baseline,),
+            (candidate,),
+            required_evidence_by_task={},
+        )
+
+    with pytest.raises(EfficiencyValidationError, match="repository_tree_digest"):
+        build_paired_efficiency_report(
+            (baseline,),
+            (
+                replace(
+                    candidate,
+                    repository_tree_digest="f" * 64,
+                ),
+            ),
+        )
+
+    with pytest.raises(EfficiencyValidationError, match="only one accepted"):
+        build_paired_efficiency_report(
+            (baseline,),
+            (candidate, replace(candidate, output_digest="e" * 64)),
+        )
 
 
 @pytest.mark.parametrize(

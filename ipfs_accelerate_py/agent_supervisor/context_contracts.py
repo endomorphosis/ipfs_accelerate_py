@@ -330,6 +330,67 @@ class ContextBudget(_ContextCanonicalContract):
     def input_token_limit(self) -> int:
         return self.max_input_tokens
 
+    def effective_input_limit(
+        self,
+        *,
+        provider_context_window: int | None = None,
+        provider_max_input_tokens: int | None = None,
+        reserved_output_tokens: int | None = None,
+        reserved_tool_tokens: int | None = None,
+    ) -> int:
+        """Return the usable input limit for one concrete provider call.
+
+        ``max_input_tokens`` is the supervisor-side ceiling.  A provider may
+        expose either a total context window, a direct input ceiling, or both.
+        Output and tool reserves are removed from the total window *before*
+        the ceilings are combined.  Returning zero is intentional: the
+        compiler uses it to fail closed when even the invariant core cannot
+        be sent.
+        """
+
+        output_reserve = (
+            self.reserved_output_tokens
+            if reserved_output_tokens is None
+            else _nonnegative(reserved_output_tokens, "reserved_output_tokens")
+        )
+        tool_reserve = (
+            self.reserved_tool_tokens
+            if reserved_tool_tokens is None
+            else _nonnegative(reserved_tool_tokens, "reserved_tool_tokens")
+        )
+        limits = [self.max_input_tokens]
+        if provider_context_window is not None:
+            window = _positive(
+                provider_context_window, "provider_context_window"
+            )
+            limits.append(max(0, window - output_reserve - tool_reserve))
+        if provider_max_input_tokens is not None:
+            limits.append(
+                _positive(
+                    provider_max_input_tokens, "provider_max_input_tokens"
+                )
+            )
+        return min(limits)
+
+    def for_effective_input_limit(self, limit: int) -> "ContextBudget":
+        """Copy this budget with a previously negotiated input ceiling."""
+
+        effective = _positive(limit, "effective_input_limit")
+        if effective > self.max_input_tokens:
+            raise ContextBoundsError(
+                "effective_input_limit cannot exceed max_input_tokens"
+            )
+        return ContextBudget(
+            max_input_tokens=effective,
+            reserved_output_tokens=self.reserved_output_tokens,
+            reserved_tool_tokens=self.reserved_tool_tokens,
+            max_items=self.max_items,
+            max_item_bytes=self.max_item_bytes,
+            max_serialized_bytes=self.max_serialized_bytes,
+            max_depth=self.max_depth,
+            max_text_bytes=self.max_text_bytes,
+        )
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": CONTEXT_CONTRACT_VERSION,
@@ -492,6 +553,44 @@ class ContextReference(_ContextCanonicalContract):
     @property
     def reference_content_id(self) -> str:
         return self.content_id
+
+    @property
+    def required(self) -> bool:
+        """Whether the compiler must select this reference or fail closed."""
+
+        return self.tier is ContextTier.INVARIANT or bool(
+            self.metadata.get("required", False)
+        )
+
+    @property
+    def priority(self) -> int:
+        """Deterministic integer ranking hint used by context compilers."""
+
+        value = self.metadata.get("priority", 0)
+        if isinstance(value, bool) or not isinstance(value, int):
+            return 0
+        return value
+
+    @property
+    def coverage_ids(self) -> tuple[str, ...]:
+        """Stable requirement identifiers covered by this reference."""
+
+        raw = self.metadata.get(
+            "coverage_ids", self.metadata.get("requirement_ids", ())
+        )
+        if isinstance(raw, str):
+            raw = (raw,)
+        if not isinstance(raw, Sequence):
+            return ()
+        return tuple(
+            sorted(
+                {
+                    item.strip()
+                    for item in raw
+                    if isinstance(item, str) and item.strip()
+                }
+            )
+        )
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ContextReference":
@@ -713,6 +812,26 @@ class ContextCapsule(_ContextCanonicalContract):
     @property
     def is_delta(self) -> bool:
         return bool(self.parent_capsule_id)
+
+    @property
+    def required_field_names(self) -> tuple[str, ...]:
+        """Names of the non-truncatable context fields."""
+
+        return ("goal", "authority", "scope", "acceptance")
+
+    @property
+    def evidence_coverage_ids(self) -> tuple[str, ...]:
+        """Requirement identifiers carried by selected evidence."""
+
+        return tuple(
+            sorted(
+                {
+                    coverage_id
+                    for reference in self.evidence
+                    for coverage_id in reference.coverage_ids
+                }
+            )
+        )
 
     def _payload(self) -> dict[str, Any]:
         return {
