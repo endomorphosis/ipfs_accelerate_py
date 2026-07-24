@@ -944,7 +944,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G109 Prove 020061024173618462922348580596364003627 for Benchmark-driven bounded self-refill
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G080
 - Fib priority: 5000
 - Track: self-refill
@@ -968,15 +968,18 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Objective validation repair: ASI-081 resolves discovery fingerprint `c28d97df1330f03cb8be6cc7e3fa8abe2f71b3bc` for this packet. The stale ASI-038 aggregate mapping is refined to the existing ASI-G109 leaf under ASI-G080. Its bounded proposal, transaction, exact backlog projection, and typed receipt form one cohesive obligation, so no smaller child goal or duplicate task is required.
 - Goal completion schema version: 1
 - Completion confidence: 0.166667
-- Uncovered criteria: ["020061024173618462922348580596364003627"]
+- Uncovered criteria: ["A valid actionable epoch creates at least one and at most the configured number of novel successors","invalid or foreign observations create none","every admitted proposal creates exactly one objective goal and every created goal creates exactly one backlog task","forced committed goals outrank unrelated gaps under a bounded refill","the typed evidence round-trips and fails closed on tampering."]
 - Stale evidence: []
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T23:13:40.056337+00:00
+- State transition reason: Produce completion evidence for: A valid actionable epoch creates at least one and at most the configured number of novel successors; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T23:13:40.056337+00:00
 
 ## ASI-G110 Prove 065313778069923158401871898168782520190 for Benchmark-driven bounded self-refill
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G080
 - Fib priority: 5001
 - Track: self-refill
@@ -1000,15 +1003,18 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Objective validation repair: ASI-081 resolves discovery fingerprint `c28d97df1330f03cb8be6cc7e3fa8abe2f71b3bc` for this packet. The stale ASI-039 aggregate mapping is refined to the existing ASI-G110 leaf under ASI-G080. Replay identity, callback suppression, artifact immutability, and typed restoration are inseparable parts of one obligation, so no smaller child goal or duplicate task is required.
 - Goal completion schema version: 1
 - Completion confidence: 0.166667
-- Uncovered criteria: ["065313778069923158401871898168782520190"]
+- Uncovered criteria: ["Exact healthy and post-successor epochs return persisted receipts before external callbacks","post-successor replay leaves the heap and task board byte-identical","the typed witness proves zero provider, proposal, materialization, and task-board writes and round-trips through strict restoration","meaningful state changes produce a distinct evaluation rather than stale replay."]
 - Stale evidence: []
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T23:13:40.056337+00:00
+- State transition reason: Produce completion evidence for: Exact healthy and post-successor epochs return persisted receipts before external callbacks; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T23:13:40.056337+00:00
 
 ## ASI-G111 Prove 119294002389522221490347364495731444366 for Benchmark-driven bounded self-refill
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G080
 - Fib priority: 5002
 - Track: self-refill
@@ -1038,10 +1044,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T23:13:40.056337+00:00
+- State transition reason: Produce completion evidence for: The epoch identity binds the tree, canonical ASI-G111 objective projection, drained board, benchmark policy, capabilities, observation window, and operator policy; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T23:13:40.056337+00:00
 
 ## ASI-G112 Prove 109590900757783560279417463762322084165 for Paired rollout, stable exports, and operator adoption
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G090
 - Fib priority: 5000
 - Track: rollout
@@ -1064,10 +1073,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T23:13:40.056337+00:00
+- State transition reason: Produce completion evidence for: 109590900757783560279417463762322084165; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T23:13:40.056337+00:00
 
 ## ASI-G113 Prove 146189916032404266364029134505159070240 for Paired rollout, stable exports, and operator adoption
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G090
 - Fib priority: 5001
 - Track: rollout
@@ -1090,6 +1102,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-24T23:13:40.056337+00:00
+- State transition reason: Produce completion evidence for: 146189916032404266364029134505159070240; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T23:13:40.056337+00:00
 
 ## ASI-G114 Prove 300500866741873729474343907613893393545 for Paired rollout, stable exports, and operator adoption
 
