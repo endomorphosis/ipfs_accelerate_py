@@ -5831,6 +5831,12 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     repo.mkdir()
     log_path = repo / "validation.log"
     captured: dict[str, object] = {}
+    hostile_bin = tmp_path / "hostile-bin"
+    hostile_bin.mkdir()
+    monkeypatch.setenv("BASH_ENV", str(tmp_path / "hostile-bash-env"))
+    monkeypatch.setenv("ENV", str(tmp_path / "hostile-env"))
+    monkeypatch.setenv("VALIDATION_SECRET", "must-not-leak")
+    monkeypatch.setenv("PATH", f"{hostile_bin}{os.pathsep}{os.environ['PATH']}")
 
     def fake_run(*args, **kwargs):
         captured["args"] = args
@@ -5862,8 +5868,21 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     result = daemon._run_validation_commands(repo, task, log_path)
 
     assert result["passed"] is True
+    assert captured["args"][0][:4] == [
+        "/bin/bash",
+        "--noprofile",
+        "--norc",
+        "-c",
+    ]
+    assert captured["args"][0][4].endswith(
+        f"readonly -f python; {task.validation[0]}"
+    )
     assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
     assert captured["kwargs"]["timeout"] == 1
+    environment = captured["kwargs"]["env"]
+    assert isinstance(environment, dict)
+    assert hostile_bin.as_posix() not in environment["PATH"].split(os.pathsep)
+    assert not {"BASH_ENV", "ENV", "VALIDATION_SECRET"} & set(environment)
 
 
 def test_implementation_daemon_selects_only_configured_task_shard(tmp_path):
@@ -11490,6 +11509,64 @@ def test_run_goal_validation_preserves_quoted_validation_semicolons(tmp_path):
 
     assert result["passed"] is True
     assert [item["command"] for item in result["results"]] == [inline_python, "test -f src/config.yml"]
+
+
+def test_run_goal_validation_scrubs_profile_bash_env_secret_and_path_injection(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    hostile_bin = tmp_path / "hostile-bin"
+    hostile_bin.mkdir()
+    profile_marker = tmp_path / "profile-loaded"
+    bash_env_marker = tmp_path / "bash-env-loaded"
+    path_marker = tmp_path / "path-shadow-ran"
+    (home / ".bash_profile").write_text(
+        f"touch {shlex.quote(str(profile_marker))}\n",
+        encoding="utf-8",
+    )
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(bash_env_marker))}\n",
+        encoding="utf-8",
+    )
+    shadow_python = hostile_bin / "python3"
+    shadow_python.write_text(
+        f"#!/bin/sh\ntouch {shlex.quote(str(path_marker))}\nexit 97\n",
+        encoding="utf-8",
+    )
+    shadow_python.chmod(0o755)
+    inherited_path = os.environ["PATH"]
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("BASH_ENV", str(bash_env))
+    monkeypatch.setenv("ENV", str(bash_env))
+    monkeypatch.setenv("VALIDATION_SECRET", "must-not-leak")
+    monkeypatch.setenv("PATH", f"{hostile_bin}{os.pathsep}{inherited_path}")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_VALIDATION_PATH",
+        os.pathsep.join(("/usr/bin", "/bin")),
+    )
+    command = (
+        f"test ! -e {shlex.quote(str(profile_marker))} "
+        f"&& test ! -e {shlex.quote(str(bash_env_marker))} "
+        '&& test -z "${VALIDATION_SECRET-}" '
+        "&& python3 -c 'raise SystemExit(0)'"
+    )
+    goal = ObjectiveGoal(
+        goal_id="VAIOS-G002",
+        title="Validate isolated runtime",
+        fields={"validation": command},
+    )
+
+    result = run_goal_validation(repo_root=repo, goal=goal)
+
+    assert result["passed"] is True
+    assert not profile_marker.exists()
+    assert not bash_env_marker.exists()
+    assert not path_marker.exists()
 
 
 def test_objective_daemon_materializes_completion_proof_work_without_receipts(tmp_path):

@@ -76,6 +76,50 @@ def _seed_objective_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     return repo, objective, tmp_path / "datasets"
 
 
+def test_objective_scan_skips_external_symlink_targets_and_keeps_internal_links(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    objective = repo / "objective.md"
+    objective.write_text("# Objective\n", encoding="utf-8")
+    internal_target = repo / "internal.py"
+    internal_target.write_text("INTERNAL_EVIDENCE = True\n", encoding="utf-8")
+    internal_link = repo / "internal-link.py"
+    internal_link.symlink_to(internal_target.name)
+    external_target = tmp_path / "external.py"
+    external_target.write_text(
+        "EXTERNAL_EVIDENCE_MUST_NOT_BE_SCANNED = True\n",
+        encoding="utf-8",
+    )
+    external_link = repo / "external-link.py"
+    external_link.symlink_to(external_target)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed symlink containment")
+
+    candidates = objective_graph.objective_candidate_files(
+        repo,
+        objective_path=objective,
+    )
+
+    assert internal_target in candidates
+    assert internal_link in candidates
+    assert external_link not in candidates
+    records = objective_graph.collect_ast_dataset_records(
+        repo,
+        objective_path=objective,
+    )
+    assert records
+    assert all(
+        not Path(str(row["root_relative_path"])).is_absolute()
+        for row in records
+    )
+    assert all(
+        "EXTERNAL_EVIDENCE_MUST_NOT_BE_SCANNED" not in str(row.get("evidence_text") or "")
+        for row in records
+    )
+
+
 def test_scan_details_are_content_addressed_durable_and_fully_recoverable(tmp_path: Path) -> None:
     store = ObjectiveDatasetStore(tmp_path / "datasets")
     details = [

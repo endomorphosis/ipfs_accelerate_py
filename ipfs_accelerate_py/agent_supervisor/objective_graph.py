@@ -3220,7 +3220,16 @@ def tracked_files(git_root: Path) -> list[Path]:
 
 
 def scan_candidate(path: Path, *, repo_root: Path, objective_path: Path) -> bool:
-    if path.resolve() == objective_path.resolve():
+    resolved_root = repo_root.resolve()
+    resolved_path = path.resolve()
+    try:
+        resolved_path.relative_to(resolved_root)
+    except ValueError:
+        # Tracked symlinks may point outside the reviewed repository.  Do not
+        # let objective evidence or incremental cache rows depend on mutable
+        # host files that are not part of the Git tree being scanned.
+        return False
+    if resolved_path == objective_path.resolve():
         return False
     root_relative = repo_relative_path(repo_root, path)
     parts = set(Path(root_relative).parts)

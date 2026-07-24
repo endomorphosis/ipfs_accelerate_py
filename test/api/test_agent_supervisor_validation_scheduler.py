@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import os
+import shlex
 import subprocess
 import threading
 from pathlib import Path
+
+import pytest
 
 from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     ValidationStage,
@@ -14,6 +18,13 @@ from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ValidationScheduler,
     build_validation_cache_key,
     collect_dependency_state,
+)
+from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
+    VALIDATION_NPM_CACHE_ENV,
+    VALIDATION_PATH_ENV,
+    ValidationRuntimeError,
+    build_validation_environment,
+    validation_shell_command,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -50,6 +61,135 @@ def _repo(path: Path) -> str:
     _git(path, "add", "-A")
     _git(path, "commit", "-qm", "baseline")
     return _git(path, "rev-parse", "HEAD")
+
+
+def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
+    tmp_path: Path,
+) -> None:
+    trusted_bin = Path("/usr/bin").resolve()
+    approved_npm_cache = tmp_path / "approved-npm-cache"
+    approved_npm_cache.mkdir()
+    source = {
+        "AWS_SECRET_ACCESS_KEY": "secret",
+        "BASH_ENV": str(tmp_path / "bash-env"),
+        "CARGO_HOME": str(tmp_path / "cargo-home"),
+        "ENV": str(tmp_path / "env"),
+        "GRADLE_USER_HOME": str(tmp_path / "gradle-home"),
+        "HOME": str(tmp_path / "home"),
+        "NPM_CONFIG_CACHE": str(tmp_path / "inherited-npm-cache"),
+        "NPM_CONFIG_OFFLINE": "true",
+        "PATH": str(tmp_path / "hostile-bin"),
+        "PROMPT_COMMAND": "touch compromised",
+        "RUSTUP_HOME": str(tmp_path / "rustup-home"),
+        VALIDATION_NPM_CACHE_ENV: str(approved_npm_cache),
+        VALIDATION_PATH_ENV: str(trusted_bin),
+    }
+
+    environment = build_validation_environment(source)
+
+    assert environment["PATH"] == str(trusted_bin)
+    assert environment["HOME"] == "/nonexistent/ipfs-accelerate-validation"
+    assert environment["XDG_CONFIG_HOME"] == environment["HOME"]
+    assert environment["PYTHONNOUSERSITE"] == "1"
+    assert environment["NPM_CONFIG_CACHE"] == str(approved_npm_cache.resolve())
+    assert environment["NPM_CONFIG_OFFLINE"] == "true"
+    assert environment["GIT_TERMINAL_PROMPT"] == "0"
+    assert environment["PYTHONHASHSEED"] == "0"
+    assert not {
+        "AWS_SECRET_ACCESS_KEY",
+        "BASH_ENV",
+        "CARGO_HOME",
+        "ENV",
+        "GRADLE_USER_HOME",
+        "PROMPT_COMMAND",
+        "RUSTUP_HOME",
+        VALIDATION_NPM_CACHE_ENV,
+        VALIDATION_PATH_ENV,
+    } & set(environment)
+    shell_command = validation_shell_command("test -f artifact")
+    assert shell_command[:4] == ["/bin/bash", "--noprofile", "--norc", "-c"]
+    assert shell_command[4].endswith("readonly -f python; test -f artifact")
+
+    with pytest.raises(ValidationRuntimeError, match="must be absolute"):
+        build_validation_environment({VALIDATION_PATH_ENV: "relative/bin"})
+    writable_bin = tmp_path / "writable-bin"
+    writable_bin.mkdir()
+    with pytest.raises(ValidationRuntimeError, match="must not be writable"):
+        build_validation_environment({VALIDATION_PATH_ENV: str(writable_bin)})
+    replaceable_bin = tmp_path / "replaceable-bin"
+    replaceable_bin.mkdir()
+    replaceable_bin.chmod(0o555)
+    with pytest.raises(ValidationRuntimeError, match="ancestor must not be writable"):
+        build_validation_environment({VALIDATION_PATH_ENV: str(replaceable_bin)})
+
+
+def test_real_validation_runner_ignores_profile_bash_env_and_path_injection(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    hostile_bin = tmp_path / "hostile-bin"
+    hostile_bin.mkdir()
+    profile_marker = tmp_path / "profile-loaded"
+    bash_env_marker = tmp_path / "bash-env-loaded"
+    path_marker = tmp_path / "path-shadow-ran"
+    (home / ".bash_profile").write_text(
+        f"touch {shlex.quote(str(profile_marker))}\n",
+        encoding="utf-8",
+    )
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(bash_env_marker))}\n",
+        encoding="utf-8",
+    )
+    shadow_python = hostile_bin / "python"
+    shadow_python.write_text(
+        f"#!/bin/sh\ntouch {shlex.quote(str(path_marker))}\nexit 97\n",
+        encoding="utf-8",
+    )
+    shadow_python.chmod(0o755)
+    trusted_path = os.pathsep.join(("/usr/bin", "/bin"))
+    hostile_environment = {
+        "BASH_ENV": str(bash_env),
+        "ENV": str(bash_env),
+        "HOME": str(home),
+        "PATH": str(hostile_bin),
+        "VALIDATION_SECRET": "must-not-leak",
+        VALIDATION_PATH_ENV: trusted_path,
+    }
+    command = (
+        f"test ! -e {shlex.quote(str(profile_marker))} "
+        f"&& test ! -e {shlex.quote(str(bash_env_marker))} "
+        '&& test -z "${VALIDATION_SECRET-}" '
+        '&& test "$HOME" = /nonexistent/ipfs-accelerate-validation '
+        '&& test "$XDG_CONFIG_HOME" = "$HOME" '
+        "&& python -c 'raise SystemExit(0)'"
+    )
+
+    report = ValidationScheduler().run(
+        [command],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+        environment=hostile_environment,
+    )
+
+    assert report["passed"] is True
+    assert not profile_marker.exists()
+    assert not bash_env_marker.exists()
+    assert not path_marker.exists()
+    expected_environment = build_validation_environment(hostile_environment)
+    expected_key = build_validation_cache_key(
+        target_commit="test-commit",
+        command=build_validation_commands([command])[0],
+        environment=expected_environment,
+        dependency_state="test-dependencies",
+        relevant_environment_keys=expected_environment,
+    )
+    assert report["results"][0]["cache_key"] == expected_key.digest
 
 
 def test_cheap_checks_run_before_expensive_tests_and_fail_fast(tmp_path: Path) -> None:

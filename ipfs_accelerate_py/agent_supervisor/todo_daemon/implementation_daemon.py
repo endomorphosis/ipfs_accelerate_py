@@ -37,6 +37,7 @@ from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
 from ..merge_queue import MergeQueue
 from ..validation_commands import normalize_validation_command_text, split_validation_commands
+from ..validation_runtime import validation_shell_command
 from ..validation_scheduler import ValidationScheduler
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
@@ -5480,7 +5481,7 @@ class PortalImplementationDaemon:
 
         started_at = utc_now()
         completed = subprocess.run(
-            ["/bin/bash", "-lc", str(spec.command)],
+            validation_shell_command(str(spec.command)),
             cwd=workspace_path,
             text=True,
             stdin=subprocess.DEVNULL,

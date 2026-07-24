@@ -43,6 +43,10 @@ from .validation_commands import (
     normalize_validation_command_text,
     select_validation_commands,
 )
+from .validation_runtime import (
+    build_validation_environment,
+    validation_shell_command,
+)
 
 
 CACHE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/validation-cache@1"
@@ -394,7 +398,7 @@ def run_validation_command(
     started_at = utc_now()
     try:
         completed = subprocess.run(
-            ["/bin/bash", "-lc", spec.command],
+            validation_shell_command(spec.command),
             cwd=workspace_path,
             text=True,
             stdin=subprocess.DEVNULL,
@@ -827,6 +831,7 @@ class ValidationScheduler:
             command=spec,
             environment=environment,
             dependency_state=dependency_state,
+            relevant_environment_keys=environment,
         )
         if spec.cacheable and self.cache is not None:
             cached = self.cache.get(cache_key)
@@ -1037,10 +1042,7 @@ class ValidationScheduler:
             if dependency_state is None
             else dependency_state
         )
-        environment_source = os.environ if environment is None else environment
-        execution_environment = {
-            str(key): str(value) for key, value in environment_source.items()
-        }
+        execution_environment = build_validation_environment(environment)
         selected = tuple(selection.selected)
         command_runner = runner or self.runner
         results: list[dict[str, object]] = []

@@ -42,6 +42,10 @@ from .objective_graph import (
     utc_now,
 )
 from .validation_commands import split_validation_commands
+from .validation_runtime import (
+    build_validation_environment,
+    validation_shell_command,
+)
 from .scan_receipts import RepositoryTreeIdentity, scan_identity
 from .task_identity import canonical_content_cid
 
@@ -398,17 +402,19 @@ def run_goal_validation(
         return payload
     results: list[dict[str, Any]] = []
     failure: dict[str, Any] = {}
+    validation_environment = build_validation_environment()
     for command in commands:
         command_started_at = utc_now()
         try:
             completed = subprocess.run(
-                ["/bin/bash", "-lc", command],
+                validation_shell_command(command),
                 cwd=repo_root,
                 text=True,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 timeout=timeout_seconds,
                 check=False,
+                env=validation_environment,
             )
         except subprocess.TimeoutExpired as exc:
             result = {
