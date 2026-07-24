@@ -523,7 +523,7 @@ The dashboard provides several specialized tabs:
 - **Live Runs Tab**: Real-time monitoring of active benchmark runs with progress tracking and the ability to start new benchmark runs with customizable parameters
 - **Reports Tab**: Access to available benchmark reports and a custom SQL query interface for advanced analysis
 
-For comprehensive documentation of the interactive dashboard, see [BENCHMARK_FASTAPI_DASHBOARD.md](../test/refactored_benchmark_suite/BENCHMARK_FASTAPI_DASHBOARD.md).
+For comprehensive documentation of the interactive dashboard, see [BENCHMARK_FASTAPI_DASHBOARD.md](../../test/refactored_benchmark_suite/BENCHMARK_FASTAPI_DASHBOARD.md).
 
 The dashboard connects to the FastAPI server and provides a comprehensive interface for analyzing benchmark results and monitoring benchmark execution.
 
