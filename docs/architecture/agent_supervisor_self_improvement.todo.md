@@ -2513,3 +2513,48 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: generated_task
 - Todo vector key: 2a7f341e9c9dec24
 - Acceptance: Objective scan filed this gap for ASI-G098. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-073-objective-gap-3fa69d827550.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (completion analyzer health, completion criterion coverage, completion exhaustion quorum), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
+
+## ASI-074 Produce completion evidence for Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: token-efficiency
+- Depends on: 
+- Outputs: data/agent_supervisor/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/context_compiler.py, ipfs_accelerate_py/agent_supervisor/context_contracts.py, ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py, test/api/test_agent_supervisor_context_compiler.py, test/api/test_agent_supervisor_context_delta.py, test/api/test_agent_supervisor_efficiency_metrics.py
+- Validation: python -m pytest test/api/test_agent_supervisor_efficiency_metrics.py test/api/test_agent_supervisor_context_compiler.py test/api/test_agent_supervisor_context_delta.py -q
+- Bundle: agent-supervisor/self-improvement/context
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-context.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: ASI-G010
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/context
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/context_compiler.py, ipfs_accelerate_py/agent_supervisor/context_contracts.py, ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py, test/api/test_agent_supervisor_context_compiler.py, test/api/test_agent_supervisor_context_delta.py, test/api/test_agent_supervisor_efficiency_metrics.py
+- Changed paths: 
+- AST symbols: 248026856102230635452423769994290240744
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G093
+- Canonical task key: task/v1/cade23456b0a03fd035d97d0ef3dad9db204fd173ef2e5d0a9f60f5178a184e0
+- Canonical task CID: baguqeerazlpcgrllbib72a25s7io6pnntwzaj7ixh3zolufj6yhvc6fbqtqa
+- Evidence obligation key: objective-work/v1/573cd85b5929284ecec96a6deb6dc6ac1b0e7a9b
+- Missing evidence: Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: The exact requirement ID is emitted only by a bounded, content-addressed benchmark receipt carrying the complete typed baseline and candidate receipt populations, one frozen goal/tree/policy binding, the independently replayed paired result, source and report identities, a deterministic input digest, and a passing accounting result. A completion gate verifies the artifact against its independently enumerated benchmark cohort, so an omitted, duplicated, reordered, or substituted input is either canonicalized to the same evidence identity or fails closed. The accepted-task population must be non-empty and identical across arms, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.
+- Embedding query: 248026856102230635452423769994290240744
+- AST query: 248026856102230635452423769994290240744
+- Surplus group: ASI-G093
+- Merge key: objective-work/v1/573cd85b5929284ecec96a6deb6dc6ac1b0e7a9b
+- Merge family: ASI-G093
+- Merge role: completion_gate
+- Work item count: 6
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: 573cd85b5929284e
+- Acceptance: Objective scan filed this gap for ASI-G093. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-074-objective-gap-4a168d424c57.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: The exact requirement ID is emitted only by a bounded, content-addressed benchmark receipt carrying the complete typed baseline and candidate receipt populations, one frozen goal/tree/policy binding, the independently replayed paired result, source and report identities, a deterministic input digest, and a passing accounting result. A completion gate verifies the artifact against its independently enumerated benchmark cohort, so an omitted, duplicated, reordered, or substituted input is either canonicalized to the same evidence identity or fails closed. The accepted-task population must be non-empty and identical across arms, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
