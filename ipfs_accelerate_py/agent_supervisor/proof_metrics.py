@@ -50,6 +50,7 @@ PROOF_BENCHMARK_PHASES: Final = (
 )
 PROOF_BENCHMARK_MODES: Final = ("cold", "warm", "parallel")
 MAX_PROOF_BENCHMARK_SAMPLES: Final = 256
+MAX_PROOF_BENCHMARK_TEMPLATE_MEASUREMENTS: Final = 1_024
 UNKNOWN_METRIC_DIMENSION: Final = "unknown"
 PROOF_METRIC_DIMENSIONS: Final = (
     "goal_cid",
@@ -1063,8 +1064,11 @@ class ProofBenchmarkThresholds:
     min_cancellation_savings: float = 0.10
     min_single_flight_savings: float = 0.10
     max_unsupported_template_rate: float = 0.25
+    max_low_value_template_rate: float = 0.25
+    min_template_model_work_reduction: float = 0.10
     max_cpu_percent: float = 95.0
     max_memory_peak_bytes: int = 2 * 1024 * 1024 * 1024
+    require_complete_measurements: bool = True
     required_modes: tuple[str, ...] = PROOF_BENCHMARK_MODES
 
     def __post_init__(self) -> None:
@@ -1077,24 +1081,37 @@ class ProofBenchmarkThresholds:
             "min_cancellation_savings",
             "min_single_flight_savings",
             "max_unsupported_template_rate",
+            "max_low_value_template_rate",
+            "min_template_model_work_reduction",
         )
         for name in fraction_fields:
-            value = float(getattr(self, name))
-            if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            value = _benchmark_number(getattr(self, name), name)
+            if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be between zero and one")
             object.__setattr__(self, name, value)
-        accepted_cost = float(self.max_accepted_task_cost)
-        if not math.isfinite(accepted_cost) or accepted_cost < 0:
-            raise ValueError("max_accepted_task_cost must be non-negative")
+        accepted_cost = _benchmark_number(
+            self.max_accepted_task_cost,
+            "max_accepted_task_cost",
+        )
         object.__setattr__(self, "max_accepted_task_cost", accepted_cost)
-        if int(self.max_nested_oversubscription) < 0:
-            raise ValueError("max_nested_oversubscription must be non-negative")
-        cpu_percent = float(self.max_cpu_percent)
-        if not math.isfinite(cpu_percent) or not 0.0 < cpu_percent <= 100.0:
+        nested_limit = _benchmark_integer(
+            self.max_nested_oversubscription,
+            "max_nested_oversubscription",
+        )
+        object.__setattr__(self, "max_nested_oversubscription", nested_limit)
+        cpu_percent = _benchmark_number(self.max_cpu_percent, "max_cpu_percent")
+        if not 0.0 < cpu_percent <= 100.0:
             raise ValueError("max_cpu_percent must be in (0, 100]")
         object.__setattr__(self, "max_cpu_percent", cpu_percent)
-        if int(self.max_memory_peak_bytes) <= 0:
+        memory_limit = _benchmark_integer(
+            self.max_memory_peak_bytes,
+            "max_memory_peak_bytes",
+        )
+        if memory_limit <= 0:
             raise ValueError("max_memory_peak_bytes must be positive")
+        object.__setattr__(self, "max_memory_peak_bytes", memory_limit)
+        if not isinstance(self.require_complete_measurements, bool):
+            raise ValueError("require_complete_measurements must be a boolean")
         modes = tuple(str(mode).strip().lower() for mode in self.required_modes)
         if (
             not modes
@@ -1134,6 +1151,15 @@ class ProofBenchmarkReport(Mapping[str, Any]):
             raise ValueError("proof benchmark samples must be non-empty and bounded")
         if not isinstance(failures, list):
             raise ValueError("proof benchmark failures must be a list")
+        if not isinstance(copied.get("summary"), Mapping):
+            raise ValueError("proof benchmark summary must be a mapping")
+        template_findings = copied.get("template_findings")
+        if (
+            not isinstance(template_findings, list)
+            or len(template_findings)
+            > MAX_PROOF_BENCHMARK_TEMPLATE_MEASUREMENTS
+        ):
+            raise ValueError("proof benchmark template findings are invalid")
         if copied.get("sample_count") != len(samples):
             raise ValueError("proof benchmark sample count is inconsistent")
         if copied.get("failure_count") != len(failures):
@@ -1147,6 +1173,31 @@ class ProofBenchmarkReport(Mapping[str, Any]):
         )
         if copied.get("modes") != modes:
             raise ValueError("proof benchmark modes are inconsistent")
+        for sample in samples:
+            if not isinstance(sample, Mapping):
+                raise ValueError("proof benchmark samples must be mappings")
+            phase_latencies = sample.get("phase_latencies_ms")
+            if (
+                not isinstance(phase_latencies, Mapping)
+                or set(phase_latencies) != set(PROOF_BENCHMARK_PHASES)
+            ):
+                raise ValueError("proof benchmark phase latencies are incomplete")
+            if not isinstance(sample.get("missing_measurements"), list):
+                raise ValueError("proof benchmark missing measurements are invalid")
+        unsupported_ids = sorted(
+            str(finding.get("template_id"))
+            for finding in template_findings
+            if isinstance(finding, Mapping) and finding.get("unsupported") is True
+        )
+        low_value_ids = sorted(
+            str(finding.get("template_id"))
+            for finding in template_findings
+            if isinstance(finding, Mapping) and finding.get("low_value") is True
+        )
+        if copied.get("unsupported_template_ids") != unsupported_ids:
+            raise ValueError("unsupported template identifiers are inconsistent")
+        if copied.get("low_value_template_ids") != low_value_ids:
+            raise ValueError("low-value template identifiers are inconsistent")
         if copied.get("rollout_expansion_allowed") is not (not failures):
             raise ValueError("proof benchmark rollout decision is inconsistent")
         if copied.get("bounded") is not True:
@@ -1232,6 +1283,121 @@ def _benchmark_number(
     if not math.isfinite(numeric) or numeric < 0:
         raise ValueError(f"{field_name} must be a non-negative number")
     return numeric
+
+
+def _benchmark_template_measurements(
+    value: Any,
+) -> list[dict[str, Any]]:
+    """Normalize bounded, attribution-only template observations.
+
+    Template observations deliberately retain counts and token totals rather
+    than obligation statements or source excerpts.  They are optional because
+    older retained benchmark rows only contain cohort totals; when present
+    they make unsupported and low-value templates actionable.
+    """
+
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes, Mapping)) or not isinstance(value, Iterable):
+        raise ValueError("template_measurements must be a sequence")
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for ordinal, item in enumerate(value, start=1):
+        if ordinal > MAX_PROOF_BENCHMARK_TEMPLATE_MEASUREMENTS:
+            raise ValueError("template measurement count exceeds its bound")
+        if not isinstance(item, Mapping):
+            raise ValueError("template measurements must be mappings")
+        template_id = _text(item.get("template_id"))
+        if not template_id or template_id == UNKNOWN_METRIC_DIMENSION:
+            raise ValueError("template measurements require template_id")
+        if template_id in seen:
+            raise ValueError("template measurements require unique template_id values")
+        seen.add(template_id)
+        attempted = _benchmark_integer(
+            item.get("attempted_tasks"),
+            f"template_measurements[{ordinal}].attempted_tasks",
+        )
+        accepted = _benchmark_integer(
+            item.get("accepted_tasks"),
+            f"template_measurements[{ordinal}].accepted_tasks",
+        )
+        unsupported = _benchmark_integer(
+            item.get("unsupported_tasks"),
+            f"template_measurements[{ordinal}].unsupported_tasks",
+        )
+        if accepted > attempted or unsupported > attempted:
+            raise ValueError("template task counts are inconsistent")
+        baseline_tokens = _benchmark_integer(
+            item.get("baseline_model_tokens"),
+            f"template_measurements[{ordinal}].baseline_model_tokens",
+        )
+        proof_tokens = _benchmark_integer(
+            item.get("proof_model_tokens"),
+            f"template_measurements[{ordinal}].proof_model_tokens",
+        )
+        normalized.append(
+            {
+                "template_id": template_id,
+                "attempted_tasks": attempted,
+                "accepted_tasks": accepted,
+                "unsupported_tasks": unsupported,
+                "baseline_model_tokens": baseline_tokens,
+                "proof_model_tokens": proof_tokens,
+                "model_work_reduction": _benchmark_fraction(
+                    baseline_tokens - proof_tokens,
+                    baseline_tokens,
+                ),
+            }
+        )
+    return normalized
+
+
+def _benchmark_missing_measurements(
+    value: Mapping[str, Any],
+    mode: str,
+) -> list[str]:
+    """Return missing measurement names without confusing zero with absence."""
+
+    phase_values = _record(value.get("phase_latencies_ms"))
+    required = (
+        "raw_context_bytes",
+        "capsule_context_bytes",
+        "raw_context_tokens",
+        "capsule_context_tokens",
+        "retrieved_items",
+        "relevant_retrieved_items",
+        "attempted_tasks",
+        "accepted_tasks",
+        "wall_time_ms",
+        "baseline_accepted_tasks_per_second",
+        "cpu_percent",
+        "cpu_time_ms",
+        "memory_peak_bytes",
+        "cache_lookups",
+        "cache_hits",
+        "template_count",
+        "unsupported_template_count",
+    )
+    missing = [name for name in required if value.get(name) is None]
+    if value.get("model_cost") is None and value.get("accepted_task_cost_total") is None:
+        missing.append("model_cost")
+    for phase in PROOF_BENCHMARK_PHASES:
+        if value.get(f"{phase}_latency_ms") is None and phase_values.get(phase) is None:
+            missing.append(f"{phase}_latency_ms")
+    if mode == "parallel":
+        for name in (
+            "requested_workers",
+            "worker_limit",
+            "peak_workers",
+            "nested_workers",
+            "cancelled_work_baseline_ms",
+            "cancelled_work_actual_ms",
+            "single_flight_requests",
+            "single_flight_executions",
+        ):
+            if value.get(name) is None:
+                missing.append(name)
+    return sorted(missing)
 
 
 def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
@@ -1343,6 +1509,20 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
     )
     if unsupported > templates:
         raise ValueError("unsupported templates cannot exceed template count")
+    template_measurements = _benchmark_template_measurements(
+        value.get("template_measurements")
+    )
+    if len(template_measurements) > templates:
+        raise ValueError("template measurements cannot exceed template count")
+    attributed_unsupported = sum(
+        int(measurement["unsupported_tasks"] > 0)
+        for measurement in template_measurements
+    )
+    if attributed_unsupported > unsupported:
+        raise ValueError(
+            "attributed unsupported templates exceed unsupported template count"
+        )
+    cpu_time_ms = _benchmark_integer(value.get("cpu_time_ms"), "cpu_time_ms")
 
     return {
         "sample_id": sample_id,
@@ -1362,12 +1542,17 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
         "retrieval_precision": _benchmark_fraction(relevant, retrieved),
         "attempted_tasks": attempted_tasks,
         "accepted_tasks": accepted_tasks,
+        "model_cost": model_cost,
         "accepted_task_cost": round(
             model_cost / accepted_tasks, 6
         ) if accepted_tasks else 0.0,
         "phase_latencies_ms": phase_latencies,
         "wall_time_ms": wall_time_ms,
         "accepted_tasks_per_second": throughput,
+        "accepted_tasks_per_cpu_second": (
+            round(accepted_tasks / (cpu_time_ms / 1000.0), 6)
+            if cpu_time_ms > 0 else 0.0
+        ),
         "baseline_accepted_tasks_per_second": baseline_throughput,
         "throughput_regression": (
             _benchmark_fraction(baseline_throughput - throughput, baseline_throughput)
@@ -1377,9 +1562,7 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
         "cpu_percent": _benchmark_number(
             value.get("cpu_percent"), "cpu_percent"
         ),
-        "cpu_time_ms": _benchmark_integer(
-            value.get("cpu_time_ms"), "cpu_time_ms"
-        ),
+        "cpu_time_ms": cpu_time_ms,
         "memory_peak_bytes": _benchmark_integer(
             value.get("memory_peak_bytes"), "memory_peak_bytes"
         ),
@@ -1391,6 +1574,8 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
         "cache_lookups": cache_lookups,
         "cache_hits": cache_hits,
         "cache_hit_rate": _benchmark_fraction(cache_hits, cache_lookups),
+        "cancelled_work_baseline_ms": cancelled_baseline_ms,
+        "cancelled_work_actual_ms": cancelled_actual_ms,
         "cancellation_savings": _benchmark_fraction(
             cancelled_baseline_ms - cancelled_actual_ms,
             cancelled_baseline_ms,
@@ -1403,7 +1588,215 @@ def _benchmark_sample(value: Mapping[str, Any], ordinal: int) -> dict[str, Any]:
         "template_count": templates,
         "unsupported_template_count": unsupported,
         "unsupported_template_rate": _benchmark_fraction(unsupported, templates),
+        "template_measurements": template_measurements,
+        "missing_measurements": _benchmark_missing_measurements(value, mode),
     }
+
+
+def _benchmark_summary(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Build weighted cohort metrics and a directly comparable run matrix."""
+
+    raw_bytes = sum(_integer(sample["raw_context_bytes"]) for sample in samples)
+    capsule_bytes = sum(
+        _integer(sample["capsule_context_bytes"]) for sample in samples
+    )
+    raw_tokens = sum(_integer(sample["raw_context_tokens"]) for sample in samples)
+    capsule_tokens = sum(
+        _integer(sample["capsule_context_tokens"]) for sample in samples
+    )
+    retrieved = sum(_integer(sample["retrieved_items"]) for sample in samples)
+    relevant = sum(
+        _integer(sample["relevant_retrieved_items"]) for sample in samples
+    )
+    accepted = sum(_integer(sample["accepted_tasks"]) for sample in samples)
+    model_cost = sum(_number(sample["model_cost"]) for sample in samples)
+
+    by_mode: dict[str, dict[str, Any]] = {}
+    for mode in PROOF_BENCHMARK_MODES:
+        mode_samples = [sample for sample in samples if sample["mode"] == mode]
+        if not mode_samples:
+            continue
+        lookups = sum(_integer(sample["cache_lookups"]) for sample in mode_samples)
+        hits = sum(_integer(sample["cache_hits"]) for sample in mode_samples)
+        by_mode[mode] = {
+            "sample_count": len(mode_samples),
+            "wall_time_ms": sum(
+                _integer(sample["wall_time_ms"]) for sample in mode_samples
+            ),
+            "accepted_tasks": sum(
+                _integer(sample["accepted_tasks"]) for sample in mode_samples
+            ),
+            "cache_lookups": lookups,
+            "cache_hits": hits,
+            "cache_hit_rate": _benchmark_fraction(hits, lookups),
+            "cpu_time_ms": sum(
+                _integer(sample["cpu_time_ms"]) for sample in mode_samples
+            ),
+            "cpu_percent_peak": max(
+                _number(sample["cpu_percent"]) for sample in mode_samples
+            ),
+            "memory_peak_bytes": max(
+                _integer(sample["memory_peak_bytes"]) for sample in mode_samples
+            ),
+            "phase_latencies_ms": {
+                phase: sum(
+                    _integer(sample["phase_latencies_ms"][phase])
+                    for sample in mode_samples
+                )
+                for phase in PROOF_BENCHMARK_PHASES
+            },
+        }
+        mode_wall_seconds = by_mode[mode]["wall_time_ms"] / 1000.0
+        cpu_seconds = by_mode[mode]["cpu_time_ms"] / 1000.0
+        by_mode[mode]["accepted_tasks_per_second"] = (
+            round(by_mode[mode]["accepted_tasks"] / mode_wall_seconds, 6)
+            if mode_wall_seconds
+            else 0.0
+        )
+        by_mode[mode]["accepted_tasks_per_cpu_second"] = (
+            round(by_mode[mode]["accepted_tasks"] / cpu_seconds, 6)
+            if cpu_seconds
+            else 0.0
+        )
+
+    cold_to_warm: dict[str, Any] = {}
+    cold = by_mode.get("cold")
+    warm = by_mode.get("warm")
+    if cold and warm:
+        cold_to_warm = {
+            "cache_hit_rate_improvement": round(
+                warm["cache_hit_rate"] - cold["cache_hit_rate"], 6
+            ),
+            "wall_time_reduction": _benchmark_fraction(
+                cold["wall_time_ms"] - warm["wall_time_ms"],
+                cold["wall_time_ms"],
+            ),
+            "cpu_time_reduction": _benchmark_fraction(
+                cold["cpu_time_ms"] - warm["cpu_time_ms"],
+                cold["cpu_time_ms"],
+            ),
+            "phase_latency_reduction": {
+                phase: _benchmark_fraction(
+                    cold["phase_latencies_ms"][phase]
+                    - warm["phase_latencies_ms"][phase],
+                    cold["phase_latencies_ms"][phase],
+                )
+                for phase in PROOF_BENCHMARK_PHASES
+            },
+        }
+
+    return {
+        "context": {
+            "raw_bytes": raw_bytes,
+            "capsule_bytes": capsule_bytes,
+            "byte_reduction": _benchmark_fraction(
+                raw_bytes - capsule_bytes, raw_bytes
+            ),
+            "raw_tokens": raw_tokens,
+            "capsule_tokens": capsule_tokens,
+            "token_reduction": _benchmark_fraction(
+                raw_tokens - capsule_tokens, raw_tokens
+            ),
+            "retrieval_precision": _benchmark_fraction(relevant, retrieved),
+            "accepted_task_cost": (
+                round(model_cost / accepted, 6) if accepted else 0.0
+            ),
+        },
+        "by_mode": by_mode,
+        "cold_to_warm": cold_to_warm,
+    }
+
+
+def _benchmark_template_findings(
+    samples: Sequence[Mapping[str, Any]],
+    thresholds: ProofBenchmarkThresholds,
+) -> list[dict[str, Any]]:
+    """Identify templates that should stay unsupported or advisory."""
+
+    findings: dict[str, dict[str, Any]] = {}
+    for sample in samples:
+        for measurement in sample["template_measurements"]:
+            template_id = str(measurement["template_id"])
+            unsupported = _integer(measurement["unsupported_tasks"]) > 0
+            low_value = (
+                _integer(measurement["accepted_tasks"]) == 0
+                or _integer(measurement["baseline_model_tokens"]) == 0
+                or _number(measurement["model_work_reduction"])
+                < thresholds.min_template_model_work_reduction
+            )
+            finding = findings.setdefault(
+                template_id,
+                {
+                    "template_id": template_id,
+                    "sample_ids": [],
+                    "modes": [],
+                    "attempted_tasks": 0,
+                    "accepted_tasks": 0,
+                    "unsupported_tasks": 0,
+                    "baseline_model_tokens": 0,
+                    "proof_model_tokens": 0,
+                    "unsupported": False,
+                    "low_value": False,
+                    "model_work_unmeasured": False,
+                    "minimum_model_work_reduction": 1.0,
+                },
+            )
+            if len(findings) > MAX_PROOF_BENCHMARK_TEMPLATE_MEASUREMENTS:
+                raise ValueError(
+                    "attributed template count exceeds its report bound"
+                )
+            finding["sample_ids"].append(str(sample["sample_id"]))
+            finding["modes"].append(str(sample["mode"]))
+            for name in (
+                "attempted_tasks",
+                "accepted_tasks",
+                "unsupported_tasks",
+                "baseline_model_tokens",
+                "proof_model_tokens",
+            ):
+                finding[name] += _integer(measurement[name])
+            finding["unsupported"] = finding["unsupported"] or unsupported
+            finding["low_value"] = finding["low_value"] or low_value
+            finding["model_work_unmeasured"] = (
+                finding["model_work_unmeasured"]
+                or _integer(measurement["baseline_model_tokens"]) == 0
+            )
+            finding["minimum_model_work_reduction"] = min(
+                finding["minimum_model_work_reduction"],
+                _number(measurement["model_work_reduction"]),
+            )
+
+    result: list[dict[str, Any]] = []
+    for template_id in sorted(findings):
+        finding = findings[template_id]
+        reasons: list[str] = []
+        if finding["unsupported"]:
+            reasons.append("unsupported_observations")
+        if finding["low_value"]:
+            reasons.append(
+                "template_model_work_unmeasured"
+                if finding["model_work_unmeasured"]
+                else "model_work_reduction_below_threshold"
+            )
+        result.append(
+            {
+                **finding,
+                "sample_ids": sorted(set(finding["sample_ids"])),
+                "modes": sorted(set(finding["modes"])),
+                "unsupported_rate": _benchmark_fraction(
+                    finding["unsupported_tasks"],
+                    finding["attempted_tasks"],
+                ),
+                "model_work_reduction": _benchmark_fraction(
+                    finding["baseline_model_tokens"]
+                    - finding["proof_model_tokens"],
+                    finding["baseline_model_tokens"],
+                ),
+                "eligible_for_enforcement": not reasons,
+                "reason_codes": reasons,
+            }
+        )
+    return result
 
 
 def build_proof_benchmark_report(
@@ -1427,6 +1820,9 @@ def build_proof_benchmark_report(
         normalized.append(_benchmark_sample(dict(sample), ordinal))
     if not normalized:
         raise ValueError("at least one proof benchmark sample is required")
+    sample_ids = [sample["sample_id"] for sample in normalized]
+    if len(set(sample_ids)) != len(sample_ids):
+        raise ValueError("proof benchmark sample_id values must be unique")
 
     failures: list[dict[str, str]] = []
 
@@ -1447,6 +1843,12 @@ def build_proof_benchmark_report(
             )
 
     for sample in normalized:
+        require(
+            sample,
+            "benchmark_measurement_incomplete",
+            not limits.require_complete_measurements
+            or not sample["missing_measurements"],
+        )
         require(sample, "accepted_task_sample_missing", sample["accepted_tasks"] > 0)
         require(
             sample,
@@ -1491,6 +1893,11 @@ def build_proof_benchmark_report(
         )
         require(
             sample,
+            "resource_measurement_missing",
+            sample["cpu_time_ms"] > 0 and sample["memory_peak_bytes"] > 0,
+        )
+        require(
+            sample,
             "unsupported_template_rate_above_threshold",
             sample["unsupported_template_rate"]
             <= limits.max_unsupported_template_rate,
@@ -1520,12 +1927,43 @@ def build_proof_benchmark_report(
                 sample["single_flight_savings"]
                 >= limits.min_single_flight_savings,
             )
+        attributed_templates = sample["template_measurements"]
+        if attributed_templates:
+            low_value_count = sum(
+                1
+                for measurement in attributed_templates
+                if (
+                    measurement["accepted_tasks"] == 0
+                    or measurement["baseline_model_tokens"] == 0
+                    or measurement["model_work_reduction"]
+                    < limits.min_template_model_work_reduction
+                )
+            )
+            require(
+                sample,
+                "low_value_template_rate_above_threshold",
+                _benchmark_fraction(low_value_count, len(attributed_templates))
+                <= limits.max_low_value_template_rate,
+            )
 
+    template_findings = _benchmark_template_findings(normalized, limits)
     material = {
         "schema": PROOF_BENCHMARK_SCHEMA,
         "schema_version": PROOF_BENCHMARK_SCHEMA_VERSION,
         "thresholds": limits.to_dict(),
         "samples": normalized,
+        "summary": _benchmark_summary(normalized),
+        "template_findings": template_findings,
+        "unsupported_template_ids": [
+            finding["template_id"]
+            for finding in template_findings
+            if finding["unsupported"]
+        ],
+        "low_value_template_ids": [
+            finding["template_id"]
+            for finding in template_findings
+            if finding["low_value"]
+        ],
         "sample_count": len(normalized),
         "modes": sorted({sample["mode"] for sample in normalized}),
         "failure_count": len(failures),
@@ -2160,6 +2598,7 @@ __all__ = [
     "MAX_PUBLIC_SEQUENCE_ITEMS",
     "MAX_PUBLIC_TEXT_BYTES",
     "MAX_PROOF_BENCHMARK_SAMPLES",
+    "MAX_PROOF_BENCHMARK_TEMPLATE_MEASUREMENTS",
     "PROOF_LATENCY_FIELDS",
     "PROOF_BENCHMARK_MODES",
     "PROOF_BENCHMARK_PHASES",
