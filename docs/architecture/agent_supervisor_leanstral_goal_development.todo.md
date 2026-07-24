@@ -133,7 +133,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-010 Build paired benchmarks and rollout gates
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P2
 - Track: leanstral-goal-development
