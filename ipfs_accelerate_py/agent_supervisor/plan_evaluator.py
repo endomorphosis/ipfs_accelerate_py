@@ -22,7 +22,7 @@ from typing import Any, Iterable, Mapping, Sequence
 PLAN_EVALUATOR_VERSION = "objective-plan-evaluator-v1"
 PROOF_AWARE_PLAN_EVALUATOR_VERSION = "proof-aware-plan-evaluator-v1"
 OBJECTIVE_WORK_EVALUATOR_VERSION = "objective-work-evaluator-v1"
-EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION = "evidence-aware-plan-evaluator-v1"
+EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION = "evidence-aware-plan-evaluator-v2"
 # Objective-heap evidence identity for the non-compensable authority gate.
 AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID = (
     "173075880069453142914839090434430341799"
@@ -1348,6 +1348,7 @@ class EvidenceAwarePlanCandidate:
     resource_classes: tuple[str, ...]
     estimated_resource_cost: float
     estimated_tokens: int
+    estimated_runtime_seconds: float = 0.0
 
     def __post_init__(self) -> None:
         branch = (
@@ -1418,6 +1419,18 @@ class EvidenceAwarePlanCandidate:
             "estimated_tokens",
             _non_negative_integer(self.estimated_tokens, "estimated_tokens"),
         )
+        object.__setattr__(
+            self,
+            "estimated_runtime_seconds",
+            round(
+                _number(
+                    self.estimated_runtime_seconds,
+                    "estimated_runtime_seconds",
+                    minimum=0.0,
+                ),
+                3,
+            ),
+        )
 
     @property
     def candidate_id(self) -> str:
@@ -1441,7 +1454,9 @@ class EvidenceAwarePlanCandidate:
                 "unknown evidence-aware plan candidate fields: "
                 + ", ".join(unknown)
             )
-        required = fields - {"branch"}
+        # Runtime was added after the original evidence-aware schema.  It has
+        # a safe zero default so older declarations remain readable.
+        required = fields - {"branch", "estimated_runtime_seconds"}
         missing = sorted(name for name in required if name not in payload)
         if "branch" not in payload and "plan_branch" not in payload:
             missing.append("branch")
@@ -1454,6 +1469,10 @@ class EvidenceAwarePlanCandidate:
             name: payload[name]
             for name in required
         }
+        if "estimated_runtime_seconds" in payload:
+            values["estimated_runtime_seconds"] = payload[
+                "estimated_runtime_seconds"
+            ]
         branch_value = payload.get("branch", payload.get("plan_branch"))
         candidate = cls(
             branch=(
@@ -1509,6 +1528,10 @@ class EvidenceAwarePlanCandidate:
                         self.estimated_resource_cost
                     ),
                     "estimated_tokens": self.estimated_tokens,
+                    "estimated_runtime_milliseconds": _to_millionths(
+                        self.estimated_runtime_seconds
+                    )
+                    // 1_000,
                 }
             )
         else:
@@ -1517,6 +1540,7 @@ class EvidenceAwarePlanCandidate:
                     "novelty": self.novelty,
                     "estimated_resource_cost": self.estimated_resource_cost,
                     "estimated_tokens": self.estimated_tokens,
+                    "estimated_runtime_seconds": self.estimated_runtime_seconds,
                 }
             )
         return payload
@@ -1535,6 +1559,7 @@ class EvidenceAwarePlanPolicy:
     available_resource_classes: tuple[str, ...] = ()
     max_estimated_resource_cost: float = 1_000_000.0
     max_estimated_tokens: int = 1_000_000_000
+    max_estimated_runtime_seconds: float = 1_000_000.0
     min_novelty: float = 0.0
     require_validation: bool = True
     require_proof: bool = True
@@ -1570,6 +1595,18 @@ class EvidenceAwarePlanPolicy:
             "max_estimated_tokens",
             _non_negative_integer(
                 self.max_estimated_tokens, "max_estimated_tokens"
+            ),
+        )
+        object.__setattr__(
+            self,
+            "max_estimated_runtime_seconds",
+            round(
+                _number(
+                    self.max_estimated_runtime_seconds,
+                    "max_estimated_runtime_seconds",
+                    minimum=0.0,
+                ),
+                3,
             ),
         )
         object.__setattr__(
@@ -1625,6 +1662,15 @@ class EvidenceAwarePlanPolicy:
         payload.update(
             {
                 "max_estimated_tokens": self.max_estimated_tokens,
+                (
+                    "max_estimated_runtime_milliseconds"
+                    if profile_g
+                    else "max_estimated_runtime_seconds"
+                ): (
+                    _to_millionths(self.max_estimated_runtime_seconds) // 1_000
+                    if profile_g
+                    else self.max_estimated_runtime_seconds
+                ),
                 "min_novelty_millionths" if profile_g else "min_novelty": (
                     _to_millionths(self.min_novelty)
                     if profile_g
@@ -1700,6 +1746,44 @@ class PlanDimensionAssessment:
 
 
 @dataclass(frozen=True)
+class PlanQualityCostMetrics:
+    """The separate quality/cost pair used to explain adaptive selection."""
+
+    candidate_id: str
+    quality_score_millionths: int
+    cost_efficiency_millionths: int
+    estimated_tokens: int
+    estimated_runtime_milliseconds: int
+    estimated_resource_cost_millionths: int
+    estimated_branch_cost_millionths: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "candidate_id", _required_string(self.candidate_id, "candidate_id")
+        )
+        for name in (
+            "quality_score_millionths",
+            "cost_efficiency_millionths",
+            "estimated_tokens",
+            "estimated_runtime_milliseconds",
+            "estimated_resource_cost_millionths",
+            "estimated_branch_cost_millionths",
+        ):
+            value = _non_negative_integer(getattr(self, name), name)
+            if name in {
+                "quality_score_millionths",
+                "cost_efficiency_millionths",
+            } and value > 1_000_000:
+                raise PlanBranchValidationError(
+                    f"{name} must not exceed 1000000"
+                )
+            object.__setattr__(self, name, value)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class EvaluatedEvidenceAwarePlan:
     candidate: EvidenceAwarePlanCandidate
     score_millionths: int
@@ -1758,6 +1842,38 @@ class EvaluatedEvidenceAwarePlan:
             for reason in assessment.reasons
         )
 
+    @property
+    def quality_cost_metrics(self) -> PlanQualityCostMetrics:
+        cost_dimension = next(
+            item
+            for item in self.dimensions
+            if item.dimension is PlanEvaluationDimension.RESOURCES_AND_TOKEN_COST
+        )
+        quality_dimensions = tuple(
+            item
+            for item in self.dimensions
+            if item.dimension is not PlanEvaluationDimension.RESOURCES_AND_TOKEN_COST
+        )
+        quality = sum(item.score_millionths for item in quality_dimensions) // len(
+            quality_dimensions
+        )
+        return PlanQualityCostMetrics(
+            candidate_id=self.candidate_id,
+            quality_score_millionths=quality,
+            cost_efficiency_millionths=cost_dimension.score_millionths,
+            estimated_tokens=self.candidate.estimated_tokens,
+            estimated_runtime_milliseconds=_to_millionths(
+                self.candidate.estimated_runtime_seconds
+            )
+            // 1_000,
+            estimated_resource_cost_millionths=_to_millionths(
+                self.candidate.estimated_resource_cost
+            ),
+            estimated_branch_cost_millionths=_to_millionths(
+                self.candidate.branch.estimated_cost
+            ),
+        )
+
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         return {
             "candidate": self.candidate.to_dict(profile_g=profile_g),
@@ -1766,6 +1882,7 @@ class EvaluatedEvidenceAwarePlan:
             "hard_gate_failures": list(self.hard_gate_failures),
             "dimensions": [item.to_dict() for item in self.dimensions],
             "rationale": list(self.rationale),
+            "quality_cost_metrics": self.quality_cost_metrics.to_dict(),
         }
 
 
@@ -1826,6 +1943,32 @@ class EvidenceAwarePlanEvaluation:
 
         return ()
 
+    @property
+    def non_selection_reasons(self) -> Mapping[str, tuple[str, ...]]:
+        """Explain every non-winner without conflating valid runners-up with rejects."""
+
+        selected = self.selected
+        reasons: dict[str, tuple[str, ...]] = {}
+        for item in self.ranked:
+            if selected is not None and item.candidate_id == selected.candidate_id:
+                continue
+            if not item.admissible:
+                reasons[item.candidate_id] = tuple(
+                    f"hard_gate_failed:{failure}"
+                    for failure in item.hard_gate_failures
+                )
+            elif selected is None:
+                reasons[item.candidate_id] = ("no_admissible_selection",)
+            elif item.score_millionths < selected.score_millionths:
+                reasons[item.candidate_id] = (
+                    "lower_deterministic_quality_cost_score",
+                )
+            else:
+                reasons[item.candidate_id] = (
+                    "deterministic_candidate_id_tie_break",
+                )
+        return MappingProxyType(reasons)
+
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         return {
             "evaluator_version": self.evaluator_version,
@@ -1843,6 +1986,15 @@ class EvidenceAwarePlanEvaluation:
             ],
             "rejected": [
                 item.to_dict(profile_g=profile_g) for item in self.rejected
+            ],
+            "non_selection_reasons": {
+                candidate_id: list(reasons)
+                for candidate_id, reasons in sorted(
+                    self.non_selection_reasons.items()
+                )
+            },
+            "paired_quality_cost_metrics": [
+                item.quality_cost_metrics.to_dict() for item in self.ranked
             ],
             "policy": self.policy.to_dict(profile_g=profile_g),
         }
@@ -1977,6 +2129,13 @@ def _assess_evidence_aware_plan(
         resource_failures += (
             "estimated token cost exceeds the frozen policy bound",
         )
+    if (
+        candidate.estimated_runtime_seconds
+        > policy.max_estimated_runtime_seconds
+    ):
+        resource_failures += (
+            "estimated runtime exceeds the frozen policy bound",
+        )
 
     assumptions_total = len(candidate.assumptions) + len(
         candidate.semantic_requirements
@@ -2010,8 +2169,18 @@ def _assess_evidence_aware_plan(
         / Decimal(str(policy.max_estimated_resource_cost or 1)),
         Decimal(candidate.estimated_tokens)
         / Decimal(policy.max_estimated_tokens or 1),
+        Decimal(str(candidate.estimated_runtime_seconds))
+        / Decimal(str(policy.max_estimated_runtime_seconds or 1)),
     )
     cost_efficiency = Decimal(1) - min(Decimal(1), max(cost_ratios))
+    acceptance_quality_score = (
+        coverage_score + Decimal(str(candidate.branch.expected_objective_delta))
+    ) / Decimal(2)
+    conflict_risk_score = (
+        Decimal(0)
+        if conflict_failures
+        else Decimal(1) - Decimal(str(candidate.branch.risk))
+    )
 
     dimensions = (
         _dimension(
@@ -2019,9 +2188,11 @@ def _assess_evidence_aware_plan(
             failures=coverage_failures,
             successes=(
                 "all frozen acceptance criteria and objective evidence terms are covered",
+                "expected objective delta is "
+                f"{candidate.branch.expected_objective_delta:.6f}",
             ),
             hard_gate=True,
-            score=coverage_score,
+            score=acceptance_quality_score,
         ),
         _dimension(
             PlanEvaluationDimension.ASSUMPTIONS_AND_SEMANTICS,
@@ -2044,9 +2215,10 @@ def _assess_evidence_aware_plan(
             failures=conflict_failures,
             successes=(
                 "changed scopes are authorized and have no unresolved conflicts",
+                f"estimated conflict risk is {candidate.branch.risk:.6f}",
             ),
             hard_gate=True,
-            score=Decimal(0) if conflict_failures else Decimal(1),
+            score=conflict_risk_score,
         ),
         _dimension(
             PlanEvaluationDimension.VALIDATION_AND_PROOF,
@@ -2070,8 +2242,12 @@ def _assess_evidence_aware_plan(
             successes=(
                 "required resources are available",
                 f"estimated token cost is {candidate.estimated_tokens}",
+                "estimated runtime is "
+                f"{candidate.estimated_runtime_seconds:.6f} seconds",
                 "estimated resource cost is "
                 f"{candidate.estimated_resource_cost:.6f}",
+                "estimated branch cost is "
+                f"{candidate.branch.estimated_cost:.6f}",
             ),
             hard_gate=True,
             score=cost_efficiency,
