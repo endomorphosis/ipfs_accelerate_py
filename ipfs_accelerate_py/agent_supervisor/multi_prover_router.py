@@ -77,6 +77,7 @@ ObligationProperty = PropertyKind
 
 
 class ProverRole(str, Enum):
+    MODEL_ASSISTANT = "model_assistant"
     DOMAIN_REASONER = "domain_reasoner"
     ORCHESTRATOR = "orchestrator"
     CANDIDATE = "candidate"
@@ -336,6 +337,13 @@ class ProverLane:
             raise ContractValidationError(
                 "only model-checker and kernel lanes may declare authority"
             )
+        if self.prover_id.casefold().startswith("leanstral") and (
+            self.role is not ProverRole.MODEL_ASSISTANT
+            or self.authority_capability
+        ):
+            raise ContractValidationError(
+                "Leanstral lanes must be model-assistant candidates"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -386,6 +394,13 @@ class PropertyPolicy:
         ids = [item.prover_id for item in lanes]
         if len(ids) != len(set(ids)):
             raise ContractValidationError("a policy cannot route a prover twice")
+        if any(
+            lane.role is ProverRole.MODEL_ASSISTANT and lane.requires_candidate
+            for lane in lanes
+        ):
+            raise ContractValidationError(
+                "model assistants produce candidates and cannot require one"
+            )
         object.__setattr__(self, "lanes", lanes)
         policy_id = self.policy_id or f"property-portfolio:{kind.value}@1"
         object.__setattr__(self, "policy_id", _text(policy_id, "policy_id"))
@@ -1095,6 +1110,11 @@ class MultiProverRouter:
                 )
 
         authoritative = lane.role.authoritative
+        # Model-produced proof sketches are useful inputs to later stages but
+        # are never an authority, even if a capability matrix is malformed or
+        # overclaims the provider.
+        if lane.role is ProverRole.MODEL_ASSISTANT:
+            authoritative = False
         if authoritative and entry is not None:
             authoritative = (
                 lane.authority_capability in entry.authoritative_for
