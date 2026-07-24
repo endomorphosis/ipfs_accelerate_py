@@ -1370,7 +1370,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-046 Close objective gap: Prove 006818797857632260116084792540150258746 for Strict output, code, test, semantic, and proof validation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -2380,3 +2380,47 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: validation_gate
 - Todo vector key: 69018645615511a5
 - Acceptance: Objective scan filed this gap for ASI-G093. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-068-objective-gap-65d7599db40b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-069 Close objective gap: Prove 206259342916458424196977899134352826879 for Integrated analysis, caching, and ipfs_datasets_py offload
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: analysis
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py, test/api/test_agent_supervisor_cache_coordinator.py
+- Validation: python -m pytest test/api/test_agent_supervisor_analysis_pipeline.py test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py test/api/test_agent_supervisor_cache_coordinator.py -q
+- Bundle: agent-supervisor/self-improvement/analysis
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-analysis.todo.md
+- Bundle strategy: explicit
+- Graph parents: ASI-G020
+- Graph depth: 2
+- Parallel lane: agent-supervisor/self-improvement/analysis
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py, test/api/test_agent_supervisor_cache_coordinator.py
+- Changed paths: 
+- AST symbols: SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID SingleFlightCollapseEvidence AnalysisCacheCoordinator._begin AnalysisCacheCoordinator.get_or_compute AnalysisCacheCoordinator.async_get_or_compute
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: ASI-G096
+- Canonical task key: task/v1/37ada3bc65f6335e73c29909ae5bd7c7d4389486e87f443df5db03b636dbb21b
+- Canonical task CID: baguqeerag6w2hpdf6yzv446ctee24w6xy7kdrfeg5b7uippv3mb3mnw3winq
+- Missing evidence: objective validation repair
+- Embedding query: 206259342916458424196977899134352826879
+- AST query: SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID SingleFlightCollapseEvidence AnalysisCacheCoordinator._begin AnalysisCacheCoordinator.get_or_compute AnalysisCacheCoordinator.async_get_or_compute
+- Surplus group: objective/ASI-G096
+- Merge key: 86e40333ee77c18b
+- Merge family: objective/ASI-G096
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: validation_gate
+- Todo vector key: bd187c1d5f6279c6
+- Acceptance: Objective scan filed this gap for ASI-G096. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-069-objective-gap-17b2c8bb470e.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
