@@ -3225,7 +3225,25 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
         except ContractValidationError:
             population_verified = False
 
-        coverage_value = payload(coverage)
+        coverage_projection = getattr(
+            coverage,
+            "completion_gate_evidence",
+            None,
+        )
+        if callable(coverage_projection):
+            try:
+                projected_coverage = coverage_projection(
+                    TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID
+                )
+            except (TypeError, ValueError):
+                projected_coverage = {}
+            coverage_value = (
+                dict(projected_coverage)
+                if isinstance(projected_coverage, Mapping)
+                else {}
+            )
+        else:
+            coverage_value = payload(coverage)
         rows_value = coverage_value.get("criteria")
         rows = (
             rows_value
@@ -3236,10 +3254,99 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             " ".join(item.strip().lower().split())
             for item in TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
         }
-        mapped_criteria = [
-            " ".join(
-                str(row.get("criterion") or "").strip().lower().split()
+
+        def criterion_key(row: Mapping[str, Any]) -> str:
+            return " ".join(
+                str(
+                    row.get(
+                        "criterion",
+                        row.get(
+                            "acceptance_criterion",
+                            row.get("acceptance", ""),
+                        ),
+                    )
+                    or ""
+                )
+                .strip()
+                .lower()
+                .split()
             )
+
+        def populated(row: Mapping[str, Any], *names: str) -> bool:
+            for name in names:
+                value = row.get(name)
+                if isinstance(value, str) and value.strip():
+                    return True
+                if (
+                    isinstance(value, Sequence)
+                    and not isinstance(value, (str, bytes, bytearray))
+                    and any(str(item or "").strip() for item in value)
+                ):
+                    return True
+            return False
+
+        submitted_validation_ids: dict[str, set[str]] = {}
+        for item in evidence:
+            source = item
+            if isinstance(source, Mapping) and isinstance(
+                source.get("evidence"),
+                Mapping,
+            ):
+                source = source["evidence"]
+            identity = (
+                source.get("provenance_cid")
+                if isinstance(source, Mapping)
+                else getattr(source, "provenance_cid", "")
+            )
+            normalized_identity = str(identity or "").strip()
+            criterion = (
+                source.get(
+                    "acceptance_criterion",
+                    source.get("criterion", ""),
+                )
+                if isinstance(source, Mapping)
+                else getattr(source, "acceptance_criterion", "")
+            )
+            normalized_criterion = " ".join(
+                str(criterion or "").strip().lower().split()
+            )
+            if normalized_identity and normalized_criterion:
+                submitted_validation_ids.setdefault(
+                    normalized_criterion,
+                    set(),
+                ).add(normalized_identity)
+
+        def validation_bound(row: Mapping[str, Any]) -> bool:
+            if "validation_receipt_ids" in row:
+                receipt_ids = row.get("validation_receipt_ids")
+                if not (
+                    isinstance(receipt_ids, Sequence)
+                    and not isinstance(
+                        receipt_ids,
+                        (str, bytes, bytearray),
+                    )
+                ):
+                    return False
+                normalized = {
+                    str(item or "").strip()
+                    for item in receipt_ids
+                    if str(item or "").strip()
+                }
+                return bool(
+                    normalized
+                    and normalized.intersection(
+                        submitted_validation_ids.get(
+                            criterion_key(row),
+                            set(),
+                        )
+                    )
+                )
+            # Compatibility with persisted ASI-068 coverage mappings. New
+            # canonical GoalCoverageMap projections always use receipt IDs.
+            return populated(row, "validation")
+
+        mapped_criteria = [
+            criterion_key(row)
             for row in rows
             if isinstance(row, Mapping)
         ]
@@ -3249,8 +3356,15 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             and len(mapped_criteria) == len(set(mapped_criteria))
             and all(
                 isinstance(row, Mapping)
-                and bool(str(row.get("implementation") or "").strip())
-                and bool(str(row.get("validation") or "").strip())
+                and populated(
+                    row,
+                    "implementation",
+                    "changed_files",
+                    "predicted_files",
+                    "ast_symbols",
+                    "interfaces",
+                )
+                and validation_bound(row)
                 for row in rows
             )
         )
@@ -3273,10 +3387,28 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
                 "reason_codes": reasons,
             }
 
+        from .analyzer_health import AnalyzerHealthReport
+        from .scan_receipts import ExhaustionQuorumResult
+
+        typed_health = isinstance(analyzer_health, AnalyzerHealthReport)
+        evaluated_quorum = isinstance(
+            exhaustion_quorum,
+            ExhaustionQuorumResult,
+        )
+        quorum_value = payload(exhaustion_quorum)
+        binding_value = quorum_value.get("binding")
+        binding_value = (
+            binding_value if isinstance(binding_value, Mapping) else {}
+        )
+
         health_value = payload(analyzer_health)
         analyzer_version = str(
             health_value.get("analyzer_version") or ""
         ).strip()
+        if typed_health and not analyzer_version:
+            analyzer_version = str(
+                binding_value.get("analyzer_version") or ""
+            ).strip()
         health_complete = (
             str(health_value.get("status") or "").strip().lower()
             == "healthy"
@@ -3291,31 +3423,32 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
                 "safe_for_completion_reasoning": False,
             }
 
-        quorum_value = payload(exhaustion_quorum)
-        binding_value = quorum_value.get("binding")
-        binding_value = (
-            binding_value if isinstance(binding_value, Mapping) else {}
-        )
         configuration_revision = str(
             binding_value.get("configuration_revision") or ""
         ).strip()
-        expected_binding = {
+        canonical_binding = {
             "repository_id": repository_id,
             "tree_id": repository_tree,
-            "objective_id": TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID,
+            "analyzer_version": analyzer_version,
+            "configuration_revision": configuration_revision,
             "objective_revision": objective_revision,
+        }
+        artifact_binding = {
+            **canonical_binding,
+            "objective_id": TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID,
             "goal_reference": goal_reference,
             "policy_revision": policy_revision,
             "requirement_id": TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,
             "terminal_evidence_id": self.evidence_id,
             "paired_report_id": self.report_id,
             "benchmark_input_digest": self.benchmark_input_digest,
-            "analyzer_version": analyzer_version,
-            "configuration_revision": configuration_revision,
         }
+        required_binding = (
+            canonical_binding if evaluated_quorum else artifact_binding
+        )
         binding_complete = bool(configuration_revision) and all(
             binding_value.get(name) == expected
-            for name, expected in expected_binding.items()
+            for name, expected in required_binding.items()
         )
         members_value = quorum_value.get("members")
         members = (
@@ -3323,16 +3456,36 @@ class TerminalAcceptedWorkEvidence(CanonicalContract):
             if isinstance(members_value, (list, tuple))
             else ()
         )
-        members_complete = bool(members) and all(
-            isinstance(member, Mapping)
-            and member.get("healthy") is True
-            and member.get("safe_for_completion_reasoning") is True
-            and str(member.get("scan_mode") or "").strip().lower()
-            == "exhaustive"
+        evaluated_members_complete = bool(
+            evaluated_quorum
+            and quorum_value.get("satisfied") is True
             and all(
-                isinstance(member.get("binding"), Mapping)
-                and member["binding"].get(name) == expected
-                for name, expected in expected_binding.items()
+                isinstance(member, Mapping)
+                and (
+                    "exhaustive"
+                    in str(member.get("scan_mode") or "").strip().lower()
+                    or str(member.get("scan_mode") or "").strip().lower()
+                    == "audit"
+                )
+                for member in members
+            )
+        )
+        members_complete = bool(members) and (
+            evaluated_members_complete
+            or all(
+                isinstance(member, Mapping)
+                and member.get("healthy") is True
+                and member.get("safe_for_completion_reasoning") is True
+                and str(member.get("scan_mode") or "").strip().lower()
+                == "exhaustive"
+                for member in members
+            )
+        ) and all(
+            isinstance(member, Mapping)
+            and isinstance(member.get("binding"), Mapping)
+            and all(
+                member["binding"].get(name) == expected
+                for name, expected in required_binding.items()
             )
             for member in members
         )
