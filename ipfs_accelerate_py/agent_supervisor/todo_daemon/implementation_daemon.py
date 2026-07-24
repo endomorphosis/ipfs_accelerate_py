@@ -67,6 +67,7 @@ PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
+DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
 DEFAULT_WORKTREE_POOL_MAX_ENTRIES = 4
 SHARED_WORKTREE_SOURCE_ROOT_ENV = "IPFS_ACCELERATE_AGENT_SHARED_WORKTREE_SOURCE_ROOT"
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
@@ -10911,7 +10912,13 @@ Compact todo vector context:
         )
         # Build sub-agent guidance when multiple outputs suggest parallelizable work
         subagent_guidance = ""
-        if len(task.outputs) > 3:
+        if _env_bool(DISABLE_SUBAGENTS_ENV, False):
+            subagent_guidance = """
+- Do not invoke collaboration or sub-agent tools in this implementation run.
+  The noninteractive supervisor session may not have a registered collaboration
+  thread; perform the task locally instead of waiting on unavailable workers.
+"""
+        elif len(task.outputs) > 3:
             subagent_guidance = """
 - This task has many expected outputs. Use sub-agents or parallel execution when possible:
   decompose into independent file/module implementations and work on them concurrently.

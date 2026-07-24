@@ -10738,6 +10738,32 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     assert '"embedding"' not in prompt
 
 
+def test_implementation_prompt_can_disable_unavailable_subagents(monkeypatch, tmp_path):
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS", "1")
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Create several outputs without collaboration",
+        status="todo",
+        completion="",
+        priority="P1",
+        track="runtime",
+        outputs=["src/a.py", "src/b.py", "src/c.py", "src/d.py"],
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## ACCEL-",
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=1)
+
+    assert "Do not invoke collaboration or sub-agent tools" in prompt
+    assert "Use sub-agents or parallel execution" not in prompt
+
+
 def test_implementation_daemon_budgets_todo_vector_context_packet_first(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
