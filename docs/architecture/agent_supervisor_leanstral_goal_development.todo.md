@@ -63,7 +63,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-005 Generate and independently verify refinement obligations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
