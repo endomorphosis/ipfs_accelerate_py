@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, ClassVar, Final
 
@@ -1212,31 +1212,78 @@ class ContextCompileResult:
 
 @dataclass(frozen=True)
 class ContextDeltaResult:
+    parent_capsule: ContextCapsule
     delta_capsule: ContextDeltaCapsule
     reconstructed_capsule: ContextCapsule
     receipt: ContextDeltaReceipt
     decisions: tuple[EvidenceSelectionDecision, ...]
+    verifier: Any = field(default=None, repr=False, compare=False)
 
     @property
     def capsule(self) -> ContextDeltaCapsule:
         return self.delta_capsule
 
     def __post_init__(self) -> None:
-        if (
-            self.receipt.delta_capsule_id != self.delta_capsule.capsule_id
-            or self.receipt.reconstructed_capsule_id
-            != self.reconstructed_capsule.capsule_id
-            or self.decisions != self.receipt.decisions
-        ):
+        if not isinstance(self.parent_capsule, ContextCapsule):
+            raise ContextDeltaError("delta result parent must be a ContextCapsule")
+        if not isinstance(self.delta_capsule, ContextDeltaCapsule):
+            raise ContextDeltaError(
+                "delta result capsule must be a ContextDeltaCapsule"
+            )
+        if not isinstance(self.reconstructed_capsule, ContextCapsule):
+            raise ContextDeltaError(
+                "delta result reconstruction must be a ContextCapsule"
+            )
+        if not isinstance(self.receipt, ContextDeltaReceipt):
+            raise ContextDeltaError(
+                "delta result receipt must be a ContextDeltaReceipt"
+            )
+        if self.decisions != self.receipt.decisions:
             raise ContextDeltaError("delta result is not receipt-bound")
+        reconstructed = reconstruct_context(
+            self.parent_capsule, self.delta_capsule
+        )
+        if reconstructed != self.reconstructed_capsule:
+            raise ContextDeltaError(
+                "delta result is not an exact reconstruction of its parent"
+            )
+        receipt_bindings = {
+            "repository_id": self.parent_capsule.repository_id,
+            "tree_id": self.parent_capsule.tree_id,
+            "objective_id": self.parent_capsule.objective_id,
+            "policy_id": self.parent_capsule.policy_id,
+            "policy_revision": self.parent_capsule.policy_revision,
+            "parent_capsule_id": self.parent_capsule.capsule_id,
+            "delta_capsule_id": self.delta_capsule.capsule_id,
+            "reconstructed_capsule_id": self.reconstructed_capsule.capsule_id,
+            "full_replay_tokens": self.reconstructed_capsule.input_tokens,
+        }
+        if any(
+            getattr(self.receipt, name) != expected
+            for name, expected in receipt_bindings.items()
+        ):
+            raise ContextDeltaError(
+                "delta receipt does not bind the complete parent reconstruction"
+            )
+        if (
+            self.delta_capsule.reconstructed_input_tokens
+            != self.reconstructed_capsule.input_tokens
+        ):
+            raise ContextDeltaError(
+                "delta reconstruction token accounting is inconsistent"
+            )
         evidence = self.receipt.evidence
         if evidence is None:
             raise ContextDeltaError(
                 "delta result requires qualifying delta-retry evidence"
             )
-        transmitted_ids = {
-            item.reference_id for item in self.delta_capsule.evidence
+        parent_by_id = {
+            item.reference_id: item for item in self.parent_capsule.evidence
         }
+        transmitted_by_id = {
+            item.reference_id: item for item in self.delta_capsule.evidence
+        }
+        transmitted_ids = set(transmitted_by_id)
         witnessed_ids = set(evidence.changed_reference_ids).union(
             evidence.requested_reference_ids
         )
@@ -1250,6 +1297,63 @@ class ContextDeltaResult:
         ):
             raise ContextDeltaError(
                 "delta witness does not bind explicitly requested references"
+            )
+        decisions_by_id = {
+            item.reference_id: item for item in self.decisions
+        }
+        included_ids = {
+            item.reference_id for item in self.decisions if item.included
+        }
+        if included_ids != transmitted_ids:
+            raise ContextDeltaError(
+                "delta decisions do not bind every transmitted reference"
+            )
+        for reference_id, decision in decisions_by_id.items():
+            transmitted = transmitted_by_id.get(reference_id)
+            previous = parent_by_id.get(reference_id)
+            if transmitted is not None:
+                expected_reason = (
+                    InclusionReason.REQUESTED
+                    if reference_id
+                    in self.delta_capsule.requested_reference_ids
+                    else InclusionReason.CHANGED
+                )
+                if (
+                    decision.reason is not expected_reason
+                    or decision.priority != transmitted.priority
+                    or decision.token_count < transmitted.token_count
+                ):
+                    raise ContextDeltaError(
+                        "delta decision does not match transmitted evidence"
+                    )
+                if (
+                    expected_reason is InclusionReason.REQUESTED
+                    and previous != transmitted
+                ) or (
+                    expected_reason is InclusionReason.CHANGED
+                    and previous == transmitted
+                ):
+                    raise ContextDeltaError(
+                        "delta decision misclassifies changed or requested evidence"
+                    )
+            elif (
+                decision.included
+                or decision.reason is not ExclusionReason.UNCHANGED
+                or previous is None
+                or decision.priority != previous.priority
+                or decision.token_count < previous.token_count
+            ):
+                raise ContextDeltaError(
+                    "delta decision does not match retained evidence"
+                )
+        actual_changed_ids = {
+            reference_id
+            for reference_id, item in transmitted_by_id.items()
+            if parent_by_id.get(reference_id) != item
+        }
+        if set(evidence.changed_reference_ids) != actual_changed_ids:
+            raise ContextDeltaError(
+                "delta witness does not bind the actual changed references"
             )
         retained_ids = {
             item.reference_id for item in self.reconstructed_capsule.evidence
@@ -1288,6 +1392,12 @@ class ContextDeltaResult:
             raise ContextDeltaError(
                 "delta witness artifact digest does not match its capsules"
             )
+        if self.verifier is not None:
+            if not isinstance(self.verifier, ContextCompiler):
+                raise ContextDeltaError(
+                    "delta result verifier must be its ContextCompiler"
+                )
+            self.verifier.verify_delta_result(self)
 
 
 class ContextCompiler:
@@ -1405,6 +1515,47 @@ class ContextCompiler:
             acceptance=capsule.acceptance,
             evidence=capsule.evidence,
         )
+
+    def verify_delta_result(
+        self, result: ContextDeltaResult
+    ) -> ContextDeltaResult:
+        """Remeasure and return one exact-parent delta proof.
+
+        ``ContextDeltaResult`` independently verifies all structural,
+        identity, coverage, and reconstruction bindings.  Provider token
+        accounting additionally requires the same effective tokenizer used
+        by this compiler, so this final producer gate recomputes both sides
+        instead of trusting counts carried by the receipt.
+        """
+
+        if not isinstance(result, ContextDeltaResult):
+            raise ContextDeltaError("result must be a ContextDeltaResult")
+        reconstructed_tokens = self.estimate_capsule_input(
+            result.reconstructed_capsule
+        )
+        if (
+            reconstructed_tokens
+            != result.reconstructed_capsule.input_tokens
+            or result.receipt.full_replay_tokens != reconstructed_tokens
+        ):
+            raise ContextDeltaError(
+                "delta full-replay token accounting is not reproducible"
+            )
+        delta_tokens = self.estimator.estimate(
+            result.delta_capsule.to_record()
+        )
+        if delta_tokens != result.receipt.delta_tokens:
+            raise ContextDeltaError(
+                "delta transmitted token accounting is not reproducible"
+            )
+        if (
+            delta_tokens >= reconstructed_tokens
+            or delta_tokens > self.effective_input_limit
+        ):
+            raise ContextDeltaError(
+                "delta no longer qualifies against the effective token budget"
+            )
+        return result
 
     def compile(
         self,
@@ -1781,12 +1932,15 @@ class ContextCompiler:
             decisions=ordered_decisions,
             evidence=witness,
         )
-        return ContextDeltaResult(
+        result = ContextDeltaResult(
+            parent,
             delta_capsule,
             reconstructed,
             receipt,
             ordered_decisions,
+            self,
         )
+        return result
 
     compile_retry = compile_delta
 
@@ -1849,6 +2003,19 @@ def reconstruct_context(
         for item in parent.expansion_references
         if item.reference_id not in selected_ids
     }
+    retained_omissions = {
+        omission
+        for omission in parent.omissions
+        if omission.rpartition(":")[0] in expansions
+    }
+    recorded_expansion_ids = {
+        omission.rpartition(":")[0] for omission in retained_omissions
+    }
+    retained_omissions.update(
+        f"{reference_id}:{ExclusionReason.TOKEN_BUDGET.value}"
+        for reference_id in expansions
+        if reference_id not in recorded_expansion_ids
+    )
     return ContextCapsule(
         repository_id=parent.repository_id,
         tree_id=parent.tree_id,
@@ -1868,6 +2035,8 @@ def reconstruct_context(
             expansions[key] for key in sorted(expansions)
         ),
         input_tokens=reconstructed_tokens,
+        truncated=bool(expansions),
+        omissions=tuple(sorted(retained_omissions)),
     )
 
 

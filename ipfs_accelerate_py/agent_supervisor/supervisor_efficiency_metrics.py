@@ -80,7 +80,7 @@ PAIRED_EFFICIENCY_CASE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/paired-efficiency-case@1"
 )
 PAIRED_EFFICIENCY_REPORT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/paired-efficiency-report@1"
+    "ipfs_accelerate_py/agent-supervisor/paired-efficiency-report@2"
 )
 REQUIRED_CONTEXT_PROOF_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/required-context-proof-binding@1"
@@ -90,10 +90,10 @@ REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA = (
     "required-context-promotion-report@1"
 )
 DELTA_RETRY_PROOF_BINDING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/delta-retry-proof-binding@1"
+    "ipfs_accelerate_py/agent-supervisor/delta-retry-proof-binding@2"
 )
 DELTA_RETRY_PROMOTION_REPORT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/delta-retry-promotion-report@1"
+    "ipfs_accelerate_py/agent-supervisor/delta-retry-promotion-report@2"
 )
 
 BASIS_POINTS = 10_000
@@ -2718,13 +2718,11 @@ class PairedEfficiencyReport(CanonicalContract):
 
     @property
     def median_input_token_reduction_bps(self) -> int:
-        baseline = self.median_baseline_input_tokens
-        if not baseline:
-            return 0
-        return (
-            (baseline - self.median_candidate_input_tokens)
-            * BASIS_POINTS
-            // baseline
+        # Preserve the pairing when aggregating.  A ratio of the two arm
+        # medians can combine different tasks and report a gate-passing
+        # reduction even when the median same-task reduction fails.
+        return _median_integer(
+            tuple(item.input_token_reduction_bps for item in self.cases)
         )
 
     @property
@@ -3518,17 +3516,21 @@ class RequiredContextPromotionReport(CanonicalContract):
 
 @dataclass(frozen=True)
 class DeltaRetryProofBinding(CanonicalContract):
-    """Bound projection of one qualifying typed context-delta receipt.
+    """Bound projection of one capsule-verified context-delta result.
 
-    The projection is deliberately small but retains every identity needed to
-    join the context proof to a paired task.  Instances used for promotion are
-    created with :meth:`from_context_delta_receipt`; the original receipt and
-    witness identities remain available for independent artifact lookup.
+    A receipt by itself is not proof that its claimed artifact digest describes
+    a real parent-bound delta and reconstructed context.  The binding therefore
+    carries all three bounded capsules as well as the receipt and reruns
+    ``ContextDeltaResult`` validation whenever it is constructed or decoded
+    from the wire.
     """
 
     SCHEMA: ClassVar[str] = DELTA_RETRY_PROOF_BINDING_SCHEMA
 
     task_reference: str
+    parent_context_capsule: Any
+    context_delta_capsule: Any
+    reconstructed_context_capsule: Any
     context_delta_receipt: Any
     receipt_id: str
     evidence_id: str
@@ -3550,32 +3552,76 @@ class DeltaRetryProofBinding(CanonicalContract):
     required_fields: tuple[str, ...]
     artifact_digest: str
     requirement_id: str = DELTA_RETRY_CONTEXT_EVIDENCE_ID
+    verifier: Any = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         from .context_compiler import (
             DELTA_RETRY_EVIDENCE_ID,
             ContextDeltaReceipt,
+            ContextDeltaResult,
         )
+        from .context_contracts import ContextCapsule, ContextDeltaCapsule
 
-        source = self.context_delta_receipt
-        if isinstance(source, Mapping):
-            source = ContextDeltaReceipt.from_dict(source)
-        if not isinstance(source, ContextDeltaReceipt):
-            raise ContractValidationError(
-                "context_delta_receipt must be a typed ContextDeltaReceipt"
+        parent_capsule = self.parent_context_capsule
+        if isinstance(parent_capsule, Mapping):
+            parent_capsule = ContextCapsule.from_dict(parent_capsule)
+        delta_capsule = self.context_delta_capsule
+        if isinstance(delta_capsule, Mapping):
+            delta_capsule = ContextDeltaCapsule.from_dict(delta_capsule)
+        reconstructed_capsule = self.reconstructed_context_capsule
+        if isinstance(reconstructed_capsule, Mapping):
+            reconstructed_capsule = ContextCapsule.from_dict(
+                reconstructed_capsule
             )
-        evidence = source.evidence
+        receipt = self.context_delta_receipt
+        if isinstance(receipt, Mapping):
+            receipt = ContextDeltaReceipt.from_dict(receipt)
+        if (
+            not isinstance(parent_capsule, ContextCapsule)
+            or not isinstance(delta_capsule, ContextDeltaCapsule)
+            or not isinstance(reconstructed_capsule, ContextCapsule)
+            or not isinstance(receipt, ContextDeltaReceipt)
+        ):
+            raise ContractValidationError(
+                "delta retry proof requires typed parent, delta, "
+                "reconstructed, and receipt artifacts"
+            )
+        # Re-run the producer's complete receipt/capsule/witness/digest checks.
+        # This is deliberately stronger than accepting an independently
+        # constructible ContextDeltaReceipt.
+        structural_result = ContextDeltaResult(
+            parent_capsule=parent_capsule,
+            delta_capsule=delta_capsule,
+            reconstructed_capsule=reconstructed_capsule,
+            receipt=receipt,
+            decisions=receipt.decisions,
+            verifier=None,
+        )
+        if self.verifier is not None:
+            from .context_compiler import ContextCompiler
+
+            if not isinstance(self.verifier, ContextCompiler):
+                raise ContractValidationError(
+                    "delta retry proof verifier must be a ContextCompiler"
+                )
+            self.verifier.verify_delta_result(structural_result)
+        evidence = receipt.evidence
         if (
             evidence is None
             or DELTA_RETRY_EVIDENCE_ID
             != DELTA_RETRY_CONTEXT_EVIDENCE_ID
-            or source.evidence_claim_references
+            or receipt.evidence_claim_references
             != (DELTA_RETRY_CONTEXT_EVIDENCE_ID,)
         ):
             raise ContractValidationError(
-                "context delta receipt does not carry qualifying typed evidence"
+                "context delta result does not carry qualifying typed evidence"
             )
-        object.__setattr__(self, "context_delta_receipt", source)
+        object.__setattr__(self, "parent_context_capsule", parent_capsule)
+        object.__setattr__(self, "context_delta_capsule", delta_capsule)
+        object.__setattr__(
+            self, "reconstructed_context_capsule", reconstructed_capsule
+        )
+        object.__setattr__(self, "context_delta_receipt", receipt)
         for name in (
             "task_reference",
             "receipt_id",
@@ -3671,18 +3717,18 @@ class DeltaRetryProofBinding(CanonicalContract):
                 "delta retry proof must preserve every invariant context field"
             )
         source_claims = {
-            "receipt_id": source.receipt_id,
+            "receipt_id": receipt.receipt_id,
             "evidence_id": evidence.content_id,
-            "repository_id": source.repository_id,
-            "tree_id": source.tree_id,
-            "objective_id": source.objective_id,
-            "policy_id": source.policy_id,
-            "policy_revision": source.policy_revision,
-            "parent_capsule_id": source.parent_capsule_id,
-            "delta_capsule_id": source.delta_capsule_id,
-            "reconstructed_capsule_id": source.reconstructed_capsule_id,
-            "full_replay_tokens": source.full_replay_tokens,
-            "delta_tokens": source.delta_tokens,
+            "repository_id": receipt.repository_id,
+            "tree_id": receipt.tree_id,
+            "objective_id": receipt.objective_id,
+            "policy_id": receipt.policy_id,
+            "policy_revision": receipt.policy_revision,
+            "parent_capsule_id": parent_capsule.capsule_id,
+            "delta_capsule_id": delta_capsule.capsule_id,
+            "reconstructed_capsule_id": reconstructed_capsule.capsule_id,
+            "full_replay_tokens": receipt.full_replay_tokens,
+            "delta_tokens": receipt.delta_tokens,
             "required_coverage_ids": evidence.required_coverage_ids,
             "reconstructed_coverage_ids": (
                 evidence.reconstructed_coverage_ids
@@ -3708,7 +3754,7 @@ class DeltaRetryProofBinding(CanonicalContract):
         )
         _record_size(
             self,
-            maximum=MAX_SERIALIZED_RECEIPT_BYTES,
+            maximum=MAX_SERIALIZED_REPORT_BYTES,
             name="delta retry proof binding",
         )
 
@@ -3730,10 +3776,21 @@ class DeltaRetryProofBinding(CanonicalContract):
             // self.full_replay_tokens
         )
 
+    @property
+    def provider_tokens_verified(self) -> bool:
+        from .context_compiler import ContextCompiler
+
+        return isinstance(self.verifier, ContextCompiler)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
             "task_reference": self.task_reference,
+            "parent_context_capsule": self.parent_context_capsule,
+            "context_delta_capsule": self.context_delta_capsule,
+            "reconstructed_context_capsule": (
+                self.reconstructed_context_capsule
+            ),
             "context_delta_receipt": self.context_delta_receipt,
             "receipt_id": self.receipt_id,
             "evidence_id": self.evidence_id,
@@ -3757,21 +3814,23 @@ class DeltaRetryProofBinding(CanonicalContract):
             "requirement_id": self.requirement_id,
             "coverage_preserved": self.coverage_preserved,
             "input_token_reduction_bps": self.input_token_reduction_bps,
+            "provider_tokens_verified": self.provider_tokens_verified,
         }
 
     @classmethod
-    def from_context_delta_receipt(
+    def from_context_delta_result(
         cls,
         task_reference: str,
-        receipt: Any,
+        result: Any,
     ) -> "DeltaRetryProofBinding":
-        """Verify and project a strict ``ContextDeltaReceipt`` instance."""
+        """Verify and project a complete ``ContextDeltaResult`` instance."""
 
         # Local import keeps the foundational efficiency receipt contract
         # usable without importing the context compiler during module import.
         from .context_compiler import (
             DELTA_RETRY_EVIDENCE_ID,
-            ContextDeltaReceipt,
+            ContextCompiler,
+            ContextDeltaResult,
         )
 
         if DELTA_RETRY_EVIDENCE_ID != DELTA_RETRY_CONTEXT_EVIDENCE_ID:
@@ -3779,12 +3838,25 @@ class DeltaRetryProofBinding(CanonicalContract):
                 "context compiler and efficiency verifier disagree on the "
                 "delta retry requirement ID"
             )
-        if isinstance(receipt, Mapping):
-            receipt = ContextDeltaReceipt.from_dict(receipt)
-        if not isinstance(receipt, ContextDeltaReceipt):
+        if not isinstance(result, ContextDeltaResult):
             raise ContractValidationError(
-                "delta retry proofs must be typed ContextDeltaReceipt values"
+                "delta retry proofs must be typed ContextDeltaResult values"
             )
+        if not isinstance(result.verifier, ContextCompiler):
+            raise ContractValidationError(
+                "delta retry proof requires its provider-token verifier"
+            )
+        # Revalidate both the structural artifacts and canonical provider-token
+        # measurements at the promotion trust boundary.
+        ContextDeltaResult(
+            parent_capsule=result.parent_capsule,
+            delta_capsule=result.delta_capsule,
+            reconstructed_capsule=result.reconstructed_capsule,
+            receipt=result.receipt,
+            decisions=result.decisions,
+            verifier=result.verifier,
+        )
+        receipt = result.receipt
         evidence = receipt.evidence
         if evidence is None or receipt.evidence_claim_references != (
             DELTA_RETRY_CONTEXT_EVIDENCE_ID,
@@ -3794,6 +3866,9 @@ class DeltaRetryProofBinding(CanonicalContract):
             )
         return cls(
             task_reference=task_reference,
+            parent_context_capsule=result.parent_capsule,
+            context_delta_capsule=result.delta_capsule,
+            reconstructed_context_capsule=result.reconstructed_capsule,
             context_delta_receipt=receipt,
             receipt_id=receipt.receipt_id,
             evidence_id=evidence.content_id,
@@ -3815,12 +3890,22 @@ class DeltaRetryProofBinding(CanonicalContract):
             required_fields=evidence.required_fields,
             artifact_digest=evidence.artifact_digest,
             requirement_id=evidence.requirement_id,
+            verifier=result.verifier,
         )
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "DeltaRetryProofBinding":
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        verifier: Any = None,
+    ) -> "DeltaRetryProofBinding":
         _schema(payload, cls.SCHEMA, "delta retry proof binding")
-        derived = {"coverage_preserved", "input_token_reduction_bps"}
+        derived = {
+            "coverage_preserved",
+            "input_token_reduction_bps",
+            "provider_tokens_verified",
+        }
         _reject_unknown(
             payload,
             {
@@ -3828,6 +3913,9 @@ class DeltaRetryProofBinding(CanonicalContract):
                 "schema_version",
                 "contract_version",
                 "task_reference",
+                "parent_context_capsule",
+                "context_delta_capsule",
+                "reconstructed_context_capsule",
                 "context_delta_receipt",
                 "receipt_id",
                 "evidence_id",
@@ -3857,6 +3945,11 @@ class DeltaRetryProofBinding(CanonicalContract):
         )
         result = cls(
             task_reference=payload.get("task_reference", ""),
+            parent_context_capsule=payload.get("parent_context_capsule"),
+            context_delta_capsule=payload.get("context_delta_capsule"),
+            reconstructed_context_capsule=payload.get(
+                "reconstructed_context_capsule"
+            ),
             context_delta_receipt=payload.get("context_delta_receipt"),
             receipt_id=payload.get("receipt_id", ""),
             evidence_id=payload.get("evidence_id", ""),
@@ -3890,6 +3983,7 @@ class DeltaRetryProofBinding(CanonicalContract):
             required_fields=tuple(payload.get("required_fields") or ()),
             artifact_digest=payload.get("artifact_digest", ""),
             requirement_id=payload.get("requirement_id", ""),
+            verifier=verifier,
         )
         for name in derived:
             if payload.get(name, getattr(result, name)) != getattr(result, name):
@@ -3992,18 +4086,24 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
     @property
     def median_delta_input_token_reduction_bps(self) -> int:
-        baseline = self.median_full_replay_input_tokens
-        if not baseline:
-            return 0
-        return (
-            (baseline - self.median_delta_input_tokens)
-            * BASIS_POINTS
-            // baseline
+        totals: dict[str, list[int]] = {}
+        for binding in self.proof_bindings:
+            task = totals.setdefault(binding.task_reference, [0, 0])
+            task[0] += binding.full_replay_tokens
+            task[1] += binding.delta_tokens
+        return _median_integer(
+            tuple(
+                (full - delta) * BASIS_POINTS // full
+                for full, delta in (
+                    totals[task] for task in sorted(totals)
+                )
+                if full
+            )
         )
 
     @property
     def token_accounting_consistent(self) -> bool:
-        """Whether context tokens exactly reconcile charged lifecycle input."""
+        """Whether every charged lifecycle input token has a retry proof."""
 
         case_by_task = {
             item.task_reference: item for item in self.paired_report.cases
@@ -4033,6 +4133,10 @@ class DeltaRetryPromotionReport(CanonicalContract):
         return (
             self.proof_population_complete
             and bool(self.proof_bindings)
+            and all(
+                item.provider_tokens_verified
+                for item in self.proof_bindings
+            )
             and all(item.coverage_preserved for item in self.proof_bindings)
             and all(
                 item.delta_tokens < item.full_replay_tokens
@@ -4103,9 +4207,18 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
     @classmethod
     def from_dict(
-        cls, payload: Mapping[str, Any]
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        verifiers_by_receipt: Mapping[str, Any] | None = None,
     ) -> "DeltaRetryPromotionReport":
         _schema(payload, cls.SCHEMA, "delta retry promotion report")
+        if verifiers_by_receipt is not None and not isinstance(
+            verifiers_by_receipt, Mapping
+        ):
+            raise ContractValidationError(
+                "verifiers_by_receipt must be an object"
+            )
         derived = {
             "proof_task_references",
             "missing_proof_task_references",
@@ -4141,12 +4254,28 @@ class DeltaRetryPromotionReport(CanonicalContract):
             raise ContractValidationError(
                 "delta retry promotion report requires a paired report"
             )
+        binding_payloads = payload.get("proof_bindings") or ()
+        bindings: list[DeltaRetryProofBinding] = []
+        for item in binding_payloads:
+            if not isinstance(item, Mapping):
+                raise ContractValidationError(
+                    "delta retry proof binding must be an object"
+                )
+            receipt_id = item.get("receipt_id", "")
+            verifier = (
+                verifiers_by_receipt.get(receipt_id)
+                if verifiers_by_receipt is not None
+                else None
+            )
+            bindings.append(
+                DeltaRetryProofBinding.from_dict(
+                    item,
+                    verifier=verifier,
+                )
+            )
         result = cls(
             paired_report=PairedEfficiencyReport.from_dict(paired_payload),
-            proof_bindings=tuple(
-                DeltaRetryProofBinding.from_dict(item)
-                for item in payload.get("proof_bindings") or ()
-            ),
+            proof_bindings=tuple(bindings),
         )
         for name in derived:
             claimed = payload.get(name, getattr(result, name))
@@ -4161,10 +4290,14 @@ class DeltaRetryPromotionReport(CanonicalContract):
 
     @classmethod
     def from_json(
-        cls, value: str | bytes | bytearray
+        cls,
+        value: str | bytes | bytearray,
+        *,
+        verifiers_by_receipt: Mapping[str, Any] | None = None,
     ) -> "DeltaRetryPromotionReport":
         return cls.from_dict(
-            _load_json(value, artifact_name="delta retry promotion report")
+            _load_json(value, artifact_name="delta retry promotion report"),
+            verifiers_by_receipt=verifiers_by_receipt,
         )
 
 
@@ -4250,14 +4383,16 @@ def build_required_context_promotion_report(
 
 def build_delta_retry_promotion_report(
     paired_report: PairedEfficiencyReport | Mapping[str, Any],
-    delta_receipts_by_task: Mapping[str, Sequence[Any]],
+    delta_results_by_task: Mapping[str, Sequence[Any]],
 ) -> DeltaRetryPromotionReport:
-    """Join a paired report to qualifying typed delta receipts by task.
+    """Join a paired report to capsule-verified delta results by task.
 
     Missing task proofs produce a deterministic, promotion-ineligible report
     so operators can diagnose incomplete benchmark collection.  Unknown task
     keys and identity mismatches are rejected because they indicate a stale or
-    ambiguously joined evidence population.
+    ambiguously joined evidence population.  Receipt-only inputs are rejected:
+    promotion requires the delta and reconstructed capsules so the producer's
+    artifact digest and reconstruction checks can be rerun.
     """
 
     if isinstance(paired_report, Mapping):
@@ -4266,19 +4401,19 @@ def build_delta_retry_promotion_report(
         raise ContractValidationError(
             "paired_report must be a PairedEfficiencyReport"
         )
-    if not isinstance(delta_receipts_by_task, Mapping):
+    if not isinstance(delta_results_by_task, Mapping):
         raise ContractValidationError(
-            "delta_receipts_by_task must be an object"
+            "delta_results_by_task must be an object"
         )
     cases = {item.task_reference: item for item in paired_report.cases}
-    unknown = set(delta_receipts_by_task).difference(cases)
+    unknown = set(delta_results_by_task).difference(cases)
     if unknown:
         raise ContractValidationError(
             "delta retry proofs contain tasks outside the paired population"
         )
     bindings: list[DeltaRetryProofBinding] = []
-    for task_reference in sorted(delta_receipts_by_task):
-        values = delta_receipts_by_task[task_reference]
+    for task_reference in sorted(delta_results_by_task):
+        values = delta_results_by_task[task_reference]
         if not isinstance(values, Sequence) or isinstance(
             values, (str, bytes, bytearray, memoryview)
         ):
@@ -4290,10 +4425,10 @@ def build_delta_retry_promotion_report(
                 f"a task cannot carry more than {MAX_RETRIES} delta receipts"
             )
         case = cases[task_reference]
-        for receipt in values:
-            binding = DeltaRetryProofBinding.from_context_delta_receipt(
+        for result in values:
+            binding = DeltaRetryProofBinding.from_context_delta_result(
                 task_reference,
-                receipt,
+                result,
             )
             if binding.objective_id != case.goal_reference:
                 raise ContractValidationError(

@@ -153,7 +153,7 @@ def _delta_retry_fixture(*, requested_only: bool = False):
             parent,
             evidence=(required, changed, *optional[1:]),
         )
-    return result.receipt
+    return result
 
 
 def _required_context_fixture():
@@ -231,7 +231,8 @@ def _paired_required_context_report(context_result):
     )
 
 
-def _paired_delta_report(delta_receipt):
+def _paired_delta_report(delta_result, *, common_input_tokens: int = 0):
+    delta_receipt = delta_result.receipt
     baseline = replace(
         _fixtures()["cold"],
         task_reference="task:delta-retry",
@@ -239,7 +240,9 @@ def _paired_delta_report(delta_receipt):
         repository_tree_digest=delta_receipt.tree_id,
         policy_digest=delta_receipt.policy_revision,
         tokens=TokenUsage(
-            input_tokens=delta_receipt.full_replay_tokens,
+            input_tokens=(
+                common_input_tokens + delta_receipt.full_replay_tokens
+            ),
             output_tokens=200,
         ),
         evidence=EvidenceDelta(
@@ -250,7 +253,7 @@ def _paired_delta_report(delta_receipt):
     candidate = replace(
         baseline,
         tokens=TokenUsage(
-            input_tokens=delta_receipt.delta_tokens,
+            input_tokens=common_input_tokens + delta_receipt.delta_tokens,
             output_tokens=100,
         ),
         output_digest="f" * 64,
@@ -608,6 +611,48 @@ def test_paired_report_couples_token_reduction_to_required_coverage() -> None:
     assert not report.passed
 
 
+def test_paired_report_uses_median_same_task_reduction() -> None:
+    baseline = _fixtures()["cold"]
+    candidate = replace(
+        baseline,
+        tokens=TokenUsage(input_tokens=2_000, output_tokens=300),
+    )
+    template = build_paired_efficiency_report(
+        (baseline,),
+        (candidate,),
+    ).cases[0]
+    report = PairedEfficiencyReport(
+        cases=(
+            replace(
+                template,
+                task_reference="task:paired-a",
+                baseline_input_tokens=100,
+                candidate_input_tokens=100,
+            ),
+            replace(
+                template,
+                task_reference="task:paired-b",
+                baseline_input_tokens=1_000,
+                candidate_input_tokens=650,
+            ),
+            replace(
+                template,
+                task_reference="task:paired-c",
+                baseline_input_tokens=10_000,
+                candidate_input_tokens=9_000,
+            ),
+        ),
+    )
+
+    # The old ratio-of-medians calculation was 35%; preserving each pair
+    # reveals that the median task improved by only 10%.
+    assert report.median_baseline_input_tokens == 1_000
+    assert report.median_candidate_input_tokens == 650
+    assert report.median_input_token_reduction_bps == 1_000
+    assert not report.token_gate_passed
+    assert not report.passed
+
+
 def test_paired_report_discloses_population_mismatch_and_round_trips() -> None:
     fixtures = _fixtures()
     baseline = fixtures["cold"]
@@ -785,13 +830,14 @@ def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
         )
 
 
-def test_delta_retry_promotion_binds_typed_receipt_to_same_task_gate() -> None:
-    receipt = _delta_retry_fixture()
-    paired = _paired_delta_report(receipt)
+def test_delta_retry_promotion_binds_typed_result_to_same_task_gate() -> None:
+    result = _delta_retry_fixture()
+    receipt = result.receipt
+    paired = _paired_delta_report(result)
 
     report = build_delta_retry_promotion_report(
         paired,
-        {"task:delta-retry": (receipt,)},
+        {"task:delta-retry": (result,)},
     )
 
     assert report.schema == DELTA_RETRY_PROMOTION_REPORT_SCHEMA
@@ -809,6 +855,12 @@ def test_delta_retry_promotion_binds_typed_receipt_to_same_task_gate() -> None:
     assert report.promotion_eligible
 
     binding = report.proof_bindings[0]
+    assert binding.parent_context_capsule == result.parent_capsule
+    assert binding.context_delta_capsule == result.delta_capsule
+    assert (
+        binding.reconstructed_context_capsule
+        == result.reconstructed_capsule
+    )
     assert binding.receipt_id == receipt.receipt_id
     assert binding.evidence_id == receipt.evidence.content_id
     assert binding.parent_capsule_id == receipt.parent_capsule_id
@@ -823,21 +875,32 @@ def test_delta_retry_promotion_binds_typed_receipt_to_same_task_gate() -> None:
         "scope",
     )
     assert binding.coverage_preserved
-    assert DeltaRetryProofBinding.from_context_delta_receipt(
+    assert DeltaRetryProofBinding.from_context_delta_result(
         "task:delta-retry",
-        receipt.to_dict(),
+        result,
     ) == binding
 
+    verifiers = {receipt.receipt_id: result.verifier}
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="provider_tokens_verified",
+    ):
+        DeltaRetryPromotionReport.from_json(report.to_json())
     assert DeltaRetryPromotionReport.from_json(
-        report.to_json()
+        report.to_json(),
+        verifiers_by_receipt=verifiers,
     ) == report
     identified = report.to_dict(include_report_id=True)
-    assert DeltaRetryPromotionReport.from_dict(identified) == report
+    assert DeltaRetryPromotionReport.from_dict(
+        identified,
+        verifiers_by_receipt=verifiers,
+    ) == report
 
 
-def test_delta_retry_promotion_fails_closed_for_missing_or_stale_proof() -> None:
-    receipt = _delta_retry_fixture()
-    paired = _paired_delta_report(receipt)
+def test_delta_retry_promotion_fails_closed_for_missing_stale_or_unverified_proof() -> None:
+    result = _delta_retry_fixture()
+    receipt = result.receipt
+    paired = _paired_delta_report(result)
 
     incomplete = build_delta_retry_promotion_report(paired, {})
     assert incomplete.missing_proof_task_references == (
@@ -852,7 +915,7 @@ def test_delta_retry_promotion_fails_closed_for_missing_or_stale_proof() -> None
             paired,
             candidate_unpaired_accepted_task_references=("task:unpaired",),
         ),
-        {"task:delta-retry": (receipt,)},
+        {"task:delta-retry": (result,)},
     )
     assert incomplete_population.typed_delta_gate_passed
     assert not incomplete_population.paired_efficiency_gate_passed
@@ -862,52 +925,126 @@ def test_delta_retry_promotion_fails_closed_for_missing_or_stale_proof() -> None
     with pytest.raises(EfficiencyValidationError, match="outside"):
         build_delta_retry_promotion_report(
             paired,
-            {"task:stale": (receipt,)},
+            {"task:stale": (result,)},
         )
+    forged_evidence = replace(
+        receipt.evidence,
+        artifact_digest="sha256:" + "0" * 64,
+    )
+    forged_receipt = replace(receipt, evidence=forged_evidence)
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="ContextDeltaResult",
+    ):
+        build_delta_retry_promotion_report(
+            paired,
+            {"task:delta-retry": (forged_receipt,)},
+        )
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="provider-token verifier",
+    ):
+        build_delta_retry_promotion_report(
+            paired,
+            {"task:delta-retry": (replace(result, verifier=None),)},
+        )
+    assert receipt.evidence is not None
+    forged_token_evidence = replace(
+        receipt.evidence,
+        delta_tokens=receipt.delta_tokens - 1,
+    )
+    forged_token_receipt = replace(
+        receipt,
+        delta_tokens=receipt.delta_tokens - 1,
+        evidence=forged_token_evidence,
+    )
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="not reproducible",
+    ):
+        replace(result, receipt=forged_token_receipt)
     with pytest.raises(EfficiencyValidationError, match="objective"):
-        build_delta_retry_promotion_report(
+        wrong_objective_paired = replace(
             paired,
-            {
-                "task:delta-retry": (
-                    replace(receipt, objective_id="ASI-G091"),
-                )
-            },
+            cases=(
+                replace(
+                    paired.cases[0],
+                    goal_reference="ASI-G091",
+                ),
+            ),
         )
-    with pytest.raises(EfficiencyValidationError, match="qualifying typed"):
         build_delta_retry_promotion_report(
-            paired,
-            {
-                "task:delta-retry": (
-                    replace(receipt, evidence=None),
-                )
-            },
+            wrong_objective_paired,
+            {"task:delta-retry": (result,)},
         )
 
     forged = build_delta_retry_promotion_report(
         paired,
-        {"task:delta-retry": (receipt,)},
+        {"task:delta-retry": (result,)},
     ).to_dict()
     forged["typed_delta_gate_passed"] = False
     with pytest.raises(EfficiencyValidationError, match="typed_delta"):
-        DeltaRetryPromotionReport.from_dict(forged)
+        DeltaRetryPromotionReport.from_dict(
+            forged,
+            verifiers_by_receipt={receipt.receipt_id: result.verifier},
+        )
+
+    verified_report = build_delta_retry_promotion_report(
+        paired,
+        {"task:delta-retry": (result,)},
+    )
+    unverified_binding = replace(
+        verified_report.proof_bindings[0],
+        verifier=None,
+    )
+    unverified_report = replace(
+        verified_report,
+        proof_bindings=(unverified_binding,),
+    )
+    assert not unverified_binding.provider_tokens_verified
+    assert not unverified_report.typed_delta_gate_passed
+    assert not unverified_report.evidence_claim_references
+    assert not unverified_report.promotion_eligible
 
     forged_receipt = build_delta_retry_promotion_report(
         paired,
-        {"task:delta-retry": (receipt,)},
+        {"task:delta-retry": (result,)},
     ).to_dict()
     forged_receipt["proof_bindings"][0]["context_delta_receipt"][
         "delta_tokens"
     ] += 1
-    with pytest.raises(EfficiencyValidationError, match="bound|identity"):
-        DeltaRetryPromotionReport.from_dict(forged_receipt)
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="bound|identity|not reproducible",
+    ):
+        DeltaRetryPromotionReport.from_dict(
+            forged_receipt,
+            verifiers_by_receipt={receipt.receipt_id: result.verifier},
+        )
+
+    forged_parent = build_delta_retry_promotion_report(
+        paired,
+        {"task:delta-retry": (result,)},
+    ).to_dict()
+    forged_parent["proof_bindings"][0]["parent_context_capsule"]["goal"][
+        "summary"
+    ] = "forged parent"
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="parent|reconstruct|identity",
+    ):
+        DeltaRetryPromotionReport.from_dict(
+            forged_parent,
+            verifiers_by_receipt={receipt.receipt_id: result.verifier},
+        )
 
 
 def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> None:
-    requested_receipt = _delta_retry_fixture(requested_only=True)
-    paired = _paired_delta_report(requested_receipt)
+    requested_result = _delta_retry_fixture(requested_only=True)
+    paired = _paired_delta_report(requested_result)
     report = build_delta_retry_promotion_report(
         paired,
-        {"task:delta-retry": (requested_receipt,)},
+        {"task:delta-retry": (requested_result,)},
     )
 
     binding = report.proof_bindings[0]
@@ -916,24 +1053,20 @@ def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> No
     assert binding.retained_reference_ids
     assert report.promotion_eligible
 
-    evidence = replace(
-        requested_receipt.evidence,
-        full_replay_tokens=100,
-        delta_tokens=99,
+    stricter_threshold = binding.input_token_reduction_bps + 1
+    inefficient_paired = replace(
+        paired,
+        minimum_input_token_reduction_bps=stricter_threshold,
     )
-    inefficient_receipt = replace(
-        requested_receipt,
-        full_replay_tokens=100,
-        delta_tokens=99,
-        evidence=evidence,
-    )
-    inefficient_paired = _paired_delta_report(inefficient_receipt)
     inefficient = build_delta_retry_promotion_report(
         inefficient_paired,
-        {"task:delta-retry": (inefficient_receipt,)},
+        {"task:delta-retry": (requested_result,)},
     )
 
-    assert inefficient.median_delta_input_token_reduction_bps == 100
+    assert (
+        inefficient.median_delta_input_token_reduction_bps
+        < stricter_threshold
+    )
     assert not inefficient.typed_delta_gate_passed
     assert not inefficient.evidence_claim_references
     assert not inefficient.promotion_eligible
@@ -950,11 +1083,29 @@ def test_delta_retry_gate_accepts_requested_only_and_enforces_35_percent() -> No
                 ),
             ),
         ),
-        {"task:delta-retry": (requested_receipt,)},
+        {"task:delta-retry": (requested_result,)},
     )
     assert not unexplained.token_accounting_consistent
     assert not unexplained.evidence_claim_references
     assert not unexplained.promotion_eligible
+
+
+def test_delta_retry_gate_rejects_unattributed_lifecycle_input() -> None:
+    result = _delta_retry_fixture()
+    paired = _paired_delta_report(result, common_input_tokens=275)
+
+    report = build_delta_retry_promotion_report(
+        paired,
+        {"task:delta-retry": (result,)},
+    )
+
+    case = paired.cases[0]
+    binding = report.proof_bindings[0]
+    assert case.baseline_input_tokens - binding.full_replay_tokens == 275
+    assert case.candidate_input_tokens - binding.delta_tokens == 275
+    assert not report.token_accounting_consistent
+    assert not report.evidence_claim_references
+    assert not report.promotion_eligible
 
 
 @pytest.mark.parametrize(

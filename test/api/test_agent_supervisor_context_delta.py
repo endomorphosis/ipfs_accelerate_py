@@ -184,6 +184,53 @@ def test_delta_receipt_and_witness_round_trip_and_reject_forged_claims() -> None
     with pytest.raises(ContextDeltaError, match="artifact digest"):
         replace(result, receipt=forged_receipt)
 
+    forged_receipt = replace(result.receipt, objective_id="ASI-G999")
+    with pytest.raises(ContextDeltaError, match="complete parent"):
+        replace(result, receipt=forged_receipt)
+
+    assert result.receipt.evidence is not None
+    forged_evidence = replace(
+        result.receipt.evidence,
+        full_replay_tokens=result.receipt.full_replay_tokens + 1,
+    )
+    forged_receipt = replace(
+        result.receipt,
+        full_replay_tokens=result.receipt.full_replay_tokens + 1,
+        evidence=forged_evidence,
+    )
+    with pytest.raises(ContextDeltaError, match="complete parent"):
+        replace(result, receipt=forged_receipt)
+
+    forged_decisions = tuple(
+        replace(item, reason=InclusionReason.REQUESTED)
+        if item.reference_id == "diagnostic"
+        else item
+        for item in result.decisions
+    )
+    forged_receipt = replace(result.receipt, decisions=forged_decisions)
+    with pytest.raises(ContextDeltaError, match="transmitted evidence"):
+        replace(
+            result,
+            receipt=forged_receipt,
+            decisions=forged_decisions,
+        )
+
+    forged_evidence = replace(
+        result.receipt.evidence,
+        delta_tokens=result.receipt.delta_tokens + 1,
+    )
+    forged_receipt = replace(
+        result.receipt,
+        delta_tokens=result.receipt.delta_tokens + 1,
+        evidence=forged_evidence,
+    )
+    with pytest.raises(ContextDeltaError, match="not reproducible"):
+        replace(result, receipt=forged_receipt)
+
+    stale_parent = replace(parent, objective_revision="sha256:stale")
+    with pytest.raises(ContextDeltaError, match="exact reconstruction|not bound"):
+        replace(result, parent_capsule=stale_parent)
+
 
 def test_unchanged_retry_and_required_evidence_loss_fail_closed() -> None:
     compiler, parent, required, optional = _parent()
@@ -229,6 +276,8 @@ def test_requested_expansion_is_parent_bound_and_deterministic() -> None:
     assert {
         item.reference_id for item in rebuilt.evidence
     } == {"required", "large"}
+    assert not rebuilt.truncated
+    assert rebuilt.omissions == ()
 
 
 def test_reconstruction_rejects_stale_parent_and_delta_omits_invariant_core() -> None:
@@ -347,6 +396,10 @@ def test_reconstruction_preserves_expansion_handles_and_rejects_token_forgery() 
         item.reference_id
         for item in result.reconstructed_capsule.expansion_references
     ) == ("still-deferred",)
+    assert result.reconstructed_capsule.truncated
+    assert result.reconstructed_capsule.omissions == (
+        "still-deferred:token_budget",
+    )
     forged = replace(
         result.delta_capsule,
         reconstructed_input_tokens=sum(
@@ -355,6 +408,37 @@ def test_reconstruction_preserves_expansion_handles_and_rejects_token_forgery() 
     )
     with pytest.raises(ContextDeltaError, match="omits inherited core"):
         reconstruct_context(parent, forged)
+
+
+def test_reconstruction_preserves_colon_reference_omission_reason() -> None:
+    compiler = _compiler()
+    required = _reference("required", "required", 50, required=True)
+    parent = compiler.compile(
+        **BINDING,
+        **CORE,
+        evidence=(required, _reference("deferred", "large", 700)),
+    ).capsule
+    deferred = replace(
+        parent.expansion_references[0],
+        reference_id="evidence:still-deferred",
+    )
+    parent = replace(
+        parent,
+        expansion_references=(deferred,),
+        truncated=True,
+        omissions=("evidence:still-deferred:item_limit",),
+    )
+
+    result = compiler.compile_delta(
+        parent,
+        evidence=(
+            replace(required, referenced_content_id="sha256:changed"),
+        ),
+    )
+
+    assert result.reconstructed_capsule.omissions == (
+        "evidence:still-deferred:item_limit",
+    )
 
 
 def test_new_required_candidate_is_included_in_witness_coverage() -> None:
