@@ -212,7 +212,7 @@ We have implemented comprehensive solutions to address compatibility challenges 
 
 ## Remaining Tasks
 
-See [PHASE16_COMPLETION_TASKS.md](PHASE16_COMPLETION_TASKS.md) for the detailed plan to address the remaining implementation gaps. The priorities include:
+See [PHASE16_COMPLETION_SUMMARY.md](PHASE16_COMPLETION_SUMMARY.md) for the Phase 16 implementation status and completion details. The priorities include:
 
 1. **MPS Support for Multimodal Models** (✅ Completed)
    - ✅ Replaced mock implementations in LLaVA and LLaVA-Next with real ones
@@ -251,7 +251,7 @@ python scripts/generators/models/test_single_model_hardware.py --model-file key_
 python duckdb_api/core/benchmark_all_key_models.py --output-dir ./benchmark_results
 ```
 
-For detailed information on benchmarking, see [HARDWARE_BENCHMARKING_GUIDE_PHASE16.md](HARDWARE_BENCHMARKING_GUIDE_PHASE16.md).
+For detailed information on benchmarking, see [HARDWARE_BENCHMARKING_GUIDE_UPDATED.md](../data/benchmarks/HARDWARE_BENCHMARKING_GUIDE_UPDATED.md).
 
 ## Extended HuggingFace Model Coverage
 
@@ -302,7 +302,7 @@ python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report comprehens
 python duckdb_api/core/benchmark_db_visualizer.py --comprehensive-matrix --output matrix.html
 ```
 
-For detailed information on the database integration, see [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md).
+For detailed information on the database integration, see [BENCHMARK_DATABASE_GUIDE.md](../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md).
 
 ## Cross-Platform Compatibility Implementation
 
