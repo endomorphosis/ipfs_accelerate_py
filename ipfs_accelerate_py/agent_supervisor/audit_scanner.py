@@ -9,7 +9,7 @@ and contributes a distinct audit channel to the exhaustion quorum.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -675,6 +675,7 @@ class AnalysisEscalationResult:
     analysis_inconclusive: bool = False
     deterministic_fallback: bool = False
     reason: str = ""
+    pipeline_result: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def backlog_satisfied(self) -> bool:
@@ -708,6 +709,7 @@ class AnalysisEscalationResult:
             "analysis_inconclusive": self.analysis_inconclusive,
             "deterministic_fallback": self.deterministic_fallback,
             "reason": self.reason,
+            "analysis_pipeline": dict(self.pipeline_result),
             "exhausted": False,
             "safe_for_completion_reasoning": False,
             "exhaustion_eligible": False,
@@ -794,6 +796,8 @@ def run_low_backlog_analysis(
     router: Callable[[str], str] | None = None,
     router_config: Any = None,
     fallback_planner: Callable[[object, int], Sequence[Any]] | None = None,
+    analysis_pipeline: Any = None,
+    analysis_pipeline_request: Any = None,
 ) -> AnalysisEscalationResult:
     """Escalate static -> exhaustive AST -> bounded LLM planning.
 
@@ -815,6 +819,8 @@ def run_low_backlog_analysis(
     effective_terms = terms or ("unresolved objective",)
     records: list[AnalysisEscalationRecord] = []
     proposals: list[dict[str, Any]] = []
+    pipeline_payload: dict[str, Any] = {}
+    ast_value: object | None = None
     if projected >= limits.backlog_target:
         return AnalysisEscalationResult(
             AnalysisEscalationStatus.SATISFIED,
@@ -933,6 +939,137 @@ def run_low_backlog_analysis(
             )
         )
 
+    if analysis_pipeline is not None:
+        try:
+            from .analysis_pipeline import AnalysisPipelineRequest
+            from .conflict_graph import build_python_ast_blob_record
+
+            if analysis_pipeline_request is None:
+                identity = scan_identity(Path(repo_root).resolve())
+                ast_records: list[tuple[str, Any]] = []
+                retrieval_records: list[dict[str, Any]] = []
+                if isinstance(ast_value, AstCoverageReport):
+                    for row in ast_value.records:
+                        path = str(row.get("root_relative_path") or "")
+                        compact = {
+                            str(key): value
+                            for key, value in row.items()
+                            if key not in {"evidence_text", "ast_text"}
+                        }
+                        compact.setdefault("record_id", path)
+                        compact.setdefault("path", path)
+                        retrieval_records.append(compact)
+                        if str(row.get("suffix") or "").lower() != ".py":
+                            continue
+                        source = row.get("evidence_text")
+                        if not isinstance(source, str):
+                            continue
+                        ast_records.append(
+                            (
+                                path,
+                                build_python_ast_blob_record(
+                                    source,
+                                    blob_identity=str(
+                                        row.get("blob_hash")
+                                        or row.get("source_sha1")
+                                        or ""
+                                    ),
+                                ),
+                            )
+                        )
+                analysis_pipeline_request = AnalysisPipelineRequest(
+                    repository_id=identity.repository_id,
+                    tree_id=canonical_revision(
+                        {
+                            "repository_id": identity.repository_id,
+                            "objective_revision": canonical_objective_revision(
+                                objective_path or effective_terms
+                            ),
+                            "records": [
+                                {
+                                    "path": str(
+                                        row.get("root_relative_path") or ""
+                                    ),
+                                    "blob": str(
+                                        row.get("blob_hash")
+                                        or row.get("source_sha1")
+                                        or ""
+                                    ),
+                                }
+                                for row in (
+                                    ast_value.records
+                                    if isinstance(ast_value, AstCoverageReport)
+                                    else ()
+                                )
+                            ],
+                        },
+                        namespace="low-backlog-analysis-tree",
+                    ),
+                    objective_revision=canonical_objective_revision(
+                        objective_path or effective_terms
+                    ),
+                    query={
+                        "text": " ".join(effective_terms),
+                        "objective_terms": list(effective_terms),
+                    },
+                    analyzer_id="objective.low_backlog_analysis",
+                    analyzer_version=AST_COVERAGE_ANALYZER_VERSION,
+                    configuration={
+                        "escalation_policy": limits.to_dict(),
+                        "objective_path": str(objective_path or ""),
+                    },
+                    policy={"purpose": "low_backlog_proposal_analysis"},
+                    ast_records=tuple(ast_records),
+                    retrieval_inputs={"records": tuple(retrieval_records)},
+                )
+            pipeline_value = analysis_pipeline.analyze(
+                analysis_pipeline_request
+            )
+            converter = getattr(pipeline_value, "to_dict", None)
+            pipeline_projection = (
+                converter() if callable(converter) else pipeline_value
+            )
+            if not isinstance(pipeline_projection, Mapping):
+                raise TypeError("analysis pipeline returned no result mapping")
+            # Pipeline output is ranked proposal context only.  Even a
+            # conclusive local packet cannot become exhaustion/completion
+            # evidence through this escalation channel.
+            pipeline_payload = {
+                "result_id": pipeline_projection.get("result_id", ""),
+                "cache_status": pipeline_projection.get("cache_status", ""),
+                "cache_lookup_status": pipeline_projection.get(
+                    "cache_lookup_status", ""
+                ),
+                "cache_reason_codes": list(
+                    pipeline_projection.get("cache_reason_codes") or ()
+                ),
+                "retrieval_response_id": pipeline_projection.get(
+                    "retrieval_response_id", ""
+                ),
+                "ranked_evidence_references": list(
+                    pipeline_projection.get("ranked_evidence_references") or ()
+                ),
+                "retrieval_backend_health": dict(
+                    pipeline_projection.get("retrieval_backend_health") or {}
+                ),
+                "retrieval_truncation": dict(
+                    pipeline_projection.get("retrieval_truncation") or {}
+                ),
+                "safe_for_completion_reasoning": False,
+                "nomination_only": True,
+            }
+            ast_summary["analysis_pipeline"] = dict(pipeline_payload)
+        except Exception as exc:
+            pipeline_payload = {
+                "status": "failed",
+                "reason_code": "integrated_analysis_pipeline_failed",
+                "error_type": type(exc).__name__,
+                "detail": str(exc)[:500],
+                "safe_for_completion_reasoning": False,
+                "nomination_only": True,
+            }
+            ast_summary["analysis_pipeline"] = dict(pipeline_payload)
+
     if projected >= limits.backlog_target and ast_healthy:
         return AnalysisEscalationResult(
             AnalysisEscalationStatus.SATISFIED,
@@ -942,6 +1079,7 @@ def run_low_backlog_analysis(
             tuple(records),
             tuple(proposals),
             reason="exhaustive AST analysis restored the backlog target",
+            pipeline_result=pipeline_payload,
         )
 
     shortage = max(1, limits.backlog_target - projected)
@@ -1038,6 +1176,7 @@ def run_low_backlog_analysis(
                 if inconclusive
                 else "schema-constrained proposals restored the backlog target"
             ),
+            pipeline_result=pipeline_payload,
         )
     except Exception as exc:
         records.append(
@@ -1057,6 +1196,7 @@ def run_low_backlog_analysis(
             tuple(proposals),
             analysis_inconclusive=True,
             reason="router and fallback planning failed; completion is forbidden",
+            pipeline_result=pipeline_payload,
         )
 
 

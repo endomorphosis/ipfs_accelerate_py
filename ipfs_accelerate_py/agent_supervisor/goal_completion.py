@@ -1554,6 +1554,40 @@ def validate_completion_evidence(
         reject("repository_mismatch", "Use evidence produced by the current repository.")
     if not evidence.provenance_cid:
         reject("missing_provenance_cid", "Persist the evidence and attach its provenance CID.")
+    source_policy = evidence.metadata.get("evidence_source_policy")
+    if not isinstance(source_policy, Mapping) and evidence.acceptance_criterion:
+        try:
+            # Local import preserves the contract module's independence while
+            # ensuring API callers cannot bypass the objective source policy
+            # by skipping the markdown tracker.
+            from .objective_graph import completion_evidence_source_decision
+
+            source_policy = completion_evidence_source_decision(
+                evidence,
+                repository_tree=str(repository_tree or evidence.repository_tree),
+            ).to_dict()
+        except (TypeError, ValueError):
+            source_policy = {
+                "satisfies": False,
+                "reason_codes": ["source_policy_evaluation_failed"],
+            }
+    if isinstance(source_policy, Mapping) and source_policy.get("satisfies") is not True:
+        source_reasons = source_policy.get("reason_codes")
+        if isinstance(source_reasons, str):
+            source_reasons = (source_reasons,)
+        if not isinstance(source_reasons, (list, tuple)):
+            source_reasons = ()
+        reject(
+            "evidence_source_forbidden",
+            "Use an exact typed receipt from an allowed implementation, validation, proof, benchmark, or runtime source.",
+        )
+        for source_reason in source_reasons:
+            normalized_reason = str(source_reason).strip()
+            if normalized_reason:
+                reject(
+                    f"evidence_source_{normalized_reason}",
+                    f"Repair the evidence source policy violation: {normalized_reason}.",
+                )
 
     required = _assurance_level(evidence.required_assurance)
     declared_assurance = _assurance_level(evidence.authoritative_assurance)

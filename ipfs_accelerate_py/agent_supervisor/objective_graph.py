@@ -27,7 +27,13 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
-from .scan_receipts import RefillScanResult, ScanTerminalReason, build_scan_result
+from .scan_receipts import (
+    RefillScanResult,
+    ScanTerminalReason,
+    build_scan_result,
+    canonical_revision,
+    scan_identity,
+)
 from .task_identity import TaskIdentity, canonical_bundle_identity, canonical_task_identity
 from .taskboard_store import (
     locked_taskboard,
@@ -110,6 +116,659 @@ SKIP_DIRS = {
     "playwright-report",
     "test-results",
 }
+
+OPAQUE_EVIDENCE_REQUIREMENT_PATTERN = re.compile(r"^[0-9]{20,}$")
+EVIDENCE_SOURCE_POLICY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/evidence-source-policy@1"
+)
+
+
+class EvidenceRequirementKind(str, Enum):
+    """Authority class of an objective evidence requirement."""
+
+    OPAQUE_RECEIPT = "opaque_receipt"
+    PATH = "path"
+    CODE = "code"
+    TEST = "test"
+    PROOF = "proof"
+    BENCHMARK = "benchmark"
+    RUNTIME = "runtime"
+    DOCUMENTATION = "documentation"
+    OTHER = "other"
+
+
+class EvidenceSourceTier(str, Enum):
+    """Trust tier of a discovered evidence source."""
+
+    IMPLEMENTATION = "implementation"
+    VALIDATION = "validation"
+    PROOF = "proof"
+    BENCHMARK = "benchmark"
+    RUNTIME = "runtime"
+    RECEIPT = "receipt"
+    DOCUMENTATION = "documentation"
+    PROPOSAL = "proposal"
+    UNKNOWN = "unknown"
+
+
+class EvidenceMatchKind(str, Enum):
+    """How a source was associated with a requirement."""
+
+    PATH = "path"
+    EXACT_TEXT = "exact_text"
+    EXACT_AST = "exact_ast"
+    SEMANTIC = "semantic"
+    RETRIEVAL = "retrieval"
+    TYPED_RECEIPT = "typed_receipt"
+
+
+@dataclass(frozen=True)
+class EvidenceSourceDecision:
+    """Fail-closed decision separating discovery from completion authority."""
+
+    requirement: str
+    requirement_kind: EvidenceRequirementKind
+    source_tier: EvidenceSourceTier
+    match_kind: EvidenceMatchKind
+    source_path: str = ""
+    reference: str = ""
+    satisfies: bool = False
+    nominated: bool = True
+    reason_codes: tuple[str, ...] = ()
+
+    @property
+    def qualifies(self) -> bool:
+        return self.satisfies
+
+    @property
+    def nomination_only(self) -> bool:
+        return self.nominated and not self.satisfies
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": EVIDENCE_SOURCE_POLICY_SCHEMA,
+            "requirement": self.requirement,
+            "requirement_kind": self.requirement_kind.value,
+            "source_tier": self.source_tier.value,
+            "match_kind": self.match_kind.value,
+            "source_path": self.source_path,
+            "reference": self.reference,
+            "satisfies": self.satisfies,
+            "qualifies": self.satisfies,
+            "nominated": self.nominated,
+            "nomination_only": self.nomination_only,
+            "reason_codes": list(self.reason_codes),
+        }
+
+
+def _evidence_enum(value: Any, enum_type: type[Enum], field_name: str) -> Any:
+    if isinstance(value, enum_type):
+        return value
+    try:
+        return enum_type(str(getattr(value, "value", value)).strip().lower())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid {field_name}: {value!r}") from exc
+
+
+def _receipt_strings(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value.strip(),) if value.strip() else ()
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return tuple(
+            dict.fromkeys(str(item).strip() for item in value if str(item).strip())
+        )
+    return ()
+
+
+@dataclass(frozen=True)
+class EvidenceSourcePolicy:
+    """Policy for objective discovery and completion-evidence admission.
+
+    Text and semantic matches remain useful nominations.  They are never
+    promoted into opaque receipt authority, and proposal-tier prose never
+    satisfies implementation, validation, proof, benchmark, or runtime
+    requirements.
+    """
+
+    policy_id: str = "objective-evidence-source-policy@1"
+    max_nominations_per_requirement: int = 8
+    max_nomination_bytes: int = 16_384
+
+    def __post_init__(self) -> None:
+        if not str(self.policy_id).strip():
+            raise ValueError("policy_id is required")
+        for name in ("max_nominations_per_requirement", "max_nomination_bytes"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+
+    @staticmethod
+    def requirement_kind(
+        requirement: str,
+        declared: EvidenceRequirementKind | str | None = None,
+    ) -> EvidenceRequirementKind:
+        if declared is not None:
+            return _evidence_enum(
+                declared, EvidenceRequirementKind, "requirement kind"
+            )
+        normalized = str(requirement or "").strip()
+        if OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(normalized):
+            return EvidenceRequirementKind.OPAQUE_RECEIPT
+        if repo_relative_path_safe(normalized):
+            suffix = Path(normalized).suffix.lower()
+            if suffix or "/" in normalized:
+                return EvidenceRequirementKind.PATH
+        words = set(re.findall(r"[a-z0-9_]+", normalized.casefold()))
+        if words & {"benchmark", "benchmarks", "performance", "throughput"}:
+            return EvidenceRequirementKind.BENCHMARK
+        if words & {"proof", "proofs", "theorem", "formal"}:
+            return EvidenceRequirementKind.PROOF
+        if words & {"runtime", "telemetry", "production", "operational"}:
+            return EvidenceRequirementKind.RUNTIME
+        if words & {"test", "tests", "testing", "validation"}:
+            return EvidenceRequirementKind.TEST
+        if words & {"code", "implementation", "source", "symbol", "ast"}:
+            return EvidenceRequirementKind.CODE
+        return EvidenceRequirementKind.OTHER
+
+    @staticmethod
+    def classify_path(path: str | os.PathLike[str] | None) -> EvidenceSourceTier:
+        normalized = str(path or "").strip().replace("\\", "/").lower()
+        if not normalized:
+            return EvidenceSourceTier.UNKNOWN
+        parts = tuple(part for part in normalized.split("/") if part not in {"", "."})
+        name = parts[-1] if parts else ""
+        proposal_markers = {
+            "discovery",
+            "generated-discovery",
+            "generated_discovery",
+            "goal-packet",
+            "objective_bundles",
+            "objective-bundles",
+            "execution_packet",
+            "execution_packets",
+            "execution-packet",
+            "execution-packets",
+            "goal_packet",
+            "goal_packets",
+            "planning",
+            "plans",
+            "proposals",
+            "task-board",
+            "task-boards",
+            "task_board",
+            "task_boards",
+            "taskboard",
+            "taskboards",
+        }
+        if (
+            any(part in proposal_markers for part in parts)
+            or ".todo." in name
+            or name.endswith(".todo")
+            or "-objective-gap-" in name
+            or "objective" in name
+            or name.endswith(("_plan.md", "-plan.md", ".plan.md"))
+            or name
+            in {
+                "plan.md",
+                "plan.json",
+                "todo.md",
+                "todo.json",
+                "taskboard.md",
+                "taskboard.json",
+                "task-board.md",
+                "task-board.json",
+            }
+        ):
+            return EvidenceSourceTier.PROPOSAL
+        if name.endswith(
+            (".receipt.json", ".receipt.jsonl", ".receipt.cbor", ".receipt")
+        ):
+            return EvidenceSourceTier.RECEIPT
+        if (
+            "test" in parts
+            or "tests" in parts
+            or name.startswith("test_")
+            or name.endswith((".spec.ts", ".spec.js", ".test.ts", ".test.js"))
+        ):
+            return EvidenceSourceTier.VALIDATION
+        if "benchmarks" in parts or "benchmark" in name or "bench" in parts:
+            return EvidenceSourceTier.BENCHMARK
+        if "proof" in parts or "proofs" in parts or name.endswith((".lean", ".smt2")):
+            return EvidenceSourceTier.PROOF
+        if "runtime" in parts or "telemetry" in parts:
+            return EvidenceSourceTier.RUNTIME
+        if name.endswith((".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".c", ".h", ".sh")):
+            return EvidenceSourceTier.IMPLEMENTATION
+        if name.endswith((".md", ".rst", ".txt")) or "docs" in parts:
+            return EvidenceSourceTier.DOCUMENTATION
+        return EvidenceSourceTier.UNKNOWN
+
+    @staticmethod
+    def _receipt_tier(receipt: Mapping[str, Any]) -> EvidenceSourceTier:
+        raw = str(
+            receipt.get("source_tier")
+            or receipt.get("receipt_kind")
+            or receipt.get("producer_kind")
+            or receipt.get("kind")
+            or ""
+        ).strip().lower()
+        aliases = {
+            "task": EvidenceSourceTier.VALIDATION,
+            "scan": EvidenceSourceTier.VALIDATION,
+            "code": EvidenceSourceTier.IMPLEMENTATION,
+            "implementation": EvidenceSourceTier.IMPLEMENTATION,
+            "test": EvidenceSourceTier.VALIDATION,
+            "validation": EvidenceSourceTier.VALIDATION,
+            "proof": EvidenceSourceTier.PROOF,
+            "benchmark": EvidenceSourceTier.BENCHMARK,
+            "runtime": EvidenceSourceTier.RUNTIME,
+            "receipt": EvidenceSourceTier.RECEIPT,
+            "proposal": EvidenceSourceTier.PROPOSAL,
+            "objective": EvidenceSourceTier.PROPOSAL,
+            "plan": EvidenceSourceTier.PROPOSAL,
+            "task_board": EvidenceSourceTier.PROPOSAL,
+            "generated_discovery": EvidenceSourceTier.PROPOSAL,
+        }
+        if raw in aliases:
+            return aliases[raw]
+        if raw:
+            return EvidenceSourceTier.UNKNOWN
+        schema = str(
+            receipt.get("schema") or receipt.get("schema_version") or ""
+        ).casefold()
+        schema_tiers = (
+            (("benchmark", "bench"), EvidenceSourceTier.BENCHMARK),
+            (("runtime", "telemetry"), EvidenceSourceTier.RUNTIME),
+            (("proof", "formal"), EvidenceSourceTier.PROOF),
+            (("validation", "test"), EvidenceSourceTier.VALIDATION),
+            (("implementation", "code", "ast"), EvidenceSourceTier.IMPLEMENTATION),
+            (("receipt",), EvidenceSourceTier.RECEIPT),
+        )
+        for markers, tier in schema_tiers:
+            if any(marker in schema for marker in markers):
+                return tier
+        return EvidenceSourceTier.UNKNOWN
+
+    @staticmethod
+    def _receipt_tier_allowed(
+        requirement_kind: EvidenceRequirementKind,
+        source_tier: EvidenceSourceTier,
+    ) -> bool:
+        """Return whether a typed receipt's producer can prove this claim kind."""
+
+        allowed = {
+            EvidenceRequirementKind.CODE: {
+                EvidenceSourceTier.IMPLEMENTATION,
+                EvidenceSourceTier.VALIDATION,
+                EvidenceSourceTier.RECEIPT,
+            },
+            EvidenceRequirementKind.TEST: {
+                EvidenceSourceTier.VALIDATION,
+                EvidenceSourceTier.RECEIPT,
+            },
+            EvidenceRequirementKind.PROOF: {
+                EvidenceSourceTier.PROOF,
+                EvidenceSourceTier.VALIDATION,
+                EvidenceSourceTier.RECEIPT,
+            },
+            EvidenceRequirementKind.BENCHMARK: {
+                EvidenceSourceTier.BENCHMARK,
+                EvidenceSourceTier.VALIDATION,
+                EvidenceSourceTier.RECEIPT,
+            },
+            EvidenceRequirementKind.RUNTIME: {
+                EvidenceSourceTier.RUNTIME,
+                EvidenceSourceTier.VALIDATION,
+                EvidenceSourceTier.RECEIPT,
+            },
+            EvidenceRequirementKind.OPAQUE_RECEIPT: {
+                EvidenceSourceTier.IMPLEMENTATION,
+                EvidenceSourceTier.VALIDATION,
+                EvidenceSourceTier.PROOF,
+                EvidenceSourceTier.BENCHMARK,
+                EvidenceSourceTier.RUNTIME,
+                EvidenceSourceTier.RECEIPT,
+            },
+        }
+        expected = allowed.get(requirement_kind)
+        if expected is None:
+            return source_tier not in {
+                EvidenceSourceTier.PROPOSAL,
+                EvidenceSourceTier.UNKNOWN,
+            }
+        return source_tier in expected
+
+    @staticmethod
+    def _direct_source_tier_allowed(
+        requirement_kind: EvidenceRequirementKind,
+        source_tier: EvidenceSourceTier,
+    ) -> bool:
+        allowed = {
+            EvidenceRequirementKind.CODE: {
+                EvidenceSourceTier.IMPLEMENTATION,
+                EvidenceSourceTier.VALIDATION,
+            },
+            EvidenceRequirementKind.TEST: {EvidenceSourceTier.VALIDATION},
+            EvidenceRequirementKind.PROOF: {EvidenceSourceTier.PROOF},
+            EvidenceRequirementKind.BENCHMARK: {
+                EvidenceSourceTier.BENCHMARK
+            },
+            EvidenceRequirementKind.RUNTIME: {EvidenceSourceTier.RUNTIME},
+        }
+        expected = allowed.get(requirement_kind)
+        return expected is not None and source_tier in expected
+
+    @staticmethod
+    def _receipt_requirement_ids(receipt: Mapping[str, Any]) -> tuple[str, ...]:
+        ids: list[str] = []
+        for name in (
+            "requirement_id",
+            "requirement_ids",
+            "evidence_claim_references",
+            "authoritative_evidence_claim_references",
+            "completion_evidence_receipt_ids",
+        ):
+            ids.extend(_receipt_strings(receipt.get(name)))
+        return tuple(dict.fromkeys(ids))
+
+    @staticmethod
+    def _receipt_terminal_reasons(receipt: Mapping[str, Any]) -> tuple[str, ...]:
+        reasons: list[str] = []
+        status = str(
+            receipt.get("status")
+            or receipt.get("outcome")
+            or receipt.get("terminal_reason")
+            or ""
+        ).strip().lower().replace("-", "_")
+        bad = {
+            "failed",
+            "failure",
+            "error",
+            "partial",
+            "timed_out",
+            "timeout",
+            "cancelled",
+            "canceled",
+            "stale",
+            "expired",
+            "inconclusive",
+            "unsupported",
+            "skipped",
+        }
+        if not status:
+            reasons.append("receipt_terminal_status_missing")
+        elif status in bad:
+            reasons.append(f"receipt_terminal_status_{status}")
+        elif status not in {
+            "passed",
+            "pass",
+            "success",
+            "successful",
+            "succeeded",
+            "completed",
+            "complete",
+            "conclusive",
+            "satisfied",
+            "verified",
+            "fresh",
+            "current",
+        }:
+            reasons.append("receipt_terminal_status_unsupported")
+        freshness = str(receipt.get("freshness") or "").strip().lower()
+        if freshness in {"stale", "expired", "unknown"}:
+            reasons.append("receipt_stale")
+        if receipt.get("validation_passed") is False or receipt.get("passed") is False:
+            reasons.append("receipt_failed")
+        if receipt.get("safe_for_completion_reasoning") is False:
+            reasons.append("receipt_not_completion_safe")
+        if receipt.get("complete") is False or receipt.get("coverage_complete") is False:
+            reasons.append("receipt_partial")
+        if receipt.get("truncated") is True:
+            reasons.append("receipt_truncated")
+        return tuple(dict.fromkeys(reasons))
+
+    def evaluate(
+        self,
+        requirement: str,
+        *,
+        match_kind: EvidenceMatchKind | str,
+        source_path: str = "",
+        source_tier: EvidenceSourceTier | str | None = None,
+        requirement_kind: EvidenceRequirementKind | str | None = None,
+        typed_receipt: Mapping[str, Any] | Any | None = None,
+        repository_tree: str = "",
+        policy_id: str = "",
+        reference: str = "",
+    ) -> EvidenceSourceDecision:
+        normalized = " ".join(str(requirement or "").strip().split())
+        if not normalized:
+            raise ValueError("requirement is required")
+        kind = self.requirement_kind(normalized, requirement_kind)
+        match = _evidence_enum(match_kind, EvidenceMatchKind, "match kind")
+        tier = (
+            _evidence_enum(source_tier, EvidenceSourceTier, "source tier")
+            if source_tier is not None
+            else self.classify_path(source_path)
+        )
+        receipt: Mapping[str, Any] | None = None
+        if typed_receipt is not None:
+            if isinstance(typed_receipt, Mapping):
+                receipt = typed_receipt
+            else:
+                converter = getattr(typed_receipt, "to_dict", None)
+                projected = converter() if callable(converter) else None
+                if isinstance(projected, Mapping):
+                    receipt = projected
+            if receipt is None:
+                return EvidenceSourceDecision(
+                    normalized, kind, tier, match, source_path, reference,
+                    reason_codes=("typed_receipt_required",),
+                )
+            tier = self._receipt_tier(receipt)
+            if self.classify_path(source_path) is EvidenceSourceTier.PROPOSAL:
+                tier = EvidenceSourceTier.PROPOSAL
+
+        reasons: list[str] = []
+        satisfies = False
+        authoritative_kinds = {
+            EvidenceRequirementKind.CODE,
+            EvidenceRequirementKind.TEST,
+            EvidenceRequirementKind.PROOF,
+            EvidenceRequirementKind.BENCHMARK,
+            EvidenceRequirementKind.RUNTIME,
+            EvidenceRequirementKind.OPAQUE_RECEIPT,
+        }
+        if tier is EvidenceSourceTier.PROPOSAL:
+            reasons.append("proposal_source_forbidden")
+        if match in {EvidenceMatchKind.SEMANTIC, EvidenceMatchKind.RETRIEVAL}:
+            reasons.append("semantic_match_nomination_only")
+        if kind is EvidenceRequirementKind.OPAQUE_RECEIPT and match is not EvidenceMatchKind.TYPED_RECEIPT:
+            reasons.append("opaque_requirement_requires_typed_receipt")
+        if receipt is not None:
+            if match is not EvidenceMatchKind.TYPED_RECEIPT:
+                reasons.append("typed_receipt_match_kind_required")
+            if not receipt.get("schema") and not receipt.get("schema_version"):
+                reasons.append("receipt_schema_missing")
+            if not any(
+                receipt.get(name)
+                for name in ("receipt_id", "evidence_id", "witness_id", "provenance_cid")
+            ):
+                reasons.append("receipt_identity_missing")
+            if normalized not in self._receipt_requirement_ids(receipt):
+                reasons.append("receipt_requirement_id_mismatch")
+            receipt_tree = str(
+                receipt.get("repository_tree")
+                or receipt.get("repository_tree_id")
+                or receipt.get("tree_id")
+                or ""
+            ).strip()
+            if not receipt_tree:
+                reasons.append("receipt_tree_missing")
+            elif repository_tree and receipt_tree != str(repository_tree):
+                reasons.append("receipt_tree_mismatch")
+            expected_policy = str(policy_id or "").strip()
+            receipt_policy = str(
+                receipt.get("policy_id") or receipt.get("policy_digest") or ""
+            ).strip()
+            if expected_policy and receipt_policy != expected_policy:
+                reasons.append("receipt_policy_mismatch")
+            reasons.extend(self._receipt_terminal_reasons(receipt))
+            if not self._receipt_tier_allowed(kind, tier):
+                reasons.append("receipt_source_kind_not_allowed")
+            if tier is EvidenceSourceTier.PROPOSAL:
+                reasons.append("proposal_receipt_forbidden")
+            satisfies = not reasons
+        elif (
+            kind in authoritative_kinds
+            and kind is not EvidenceRequirementKind.OPAQUE_RECEIPT
+            and match
+            in {
+                EvidenceMatchKind.PATH,
+                EvidenceMatchKind.EXACT_TEXT,
+                EvidenceMatchKind.EXACT_AST,
+            }
+            and self._direct_source_tier_allowed(kind, tier)
+        ):
+            satisfies = True
+        elif (
+            kind not in authoritative_kinds
+            and tier is not EvidenceSourceTier.PROPOSAL
+            and (
+                match in {
+                    EvidenceMatchKind.PATH,
+                    EvidenceMatchKind.EXACT_TEXT,
+                    EvidenceMatchKind.EXACT_AST,
+                }
+                or (
+                    match in {
+                        EvidenceMatchKind.SEMANTIC,
+                        EvidenceMatchKind.RETRIEVAL,
+                    }
+                    and kind
+                    in {
+                        EvidenceRequirementKind.OTHER,
+                        EvidenceRequirementKind.DOCUMENTATION,
+                    }
+                )
+            )
+        ):
+            satisfies = True
+            reasons = [
+                reason
+                for reason in reasons
+                if reason != "semantic_match_nomination_only"
+            ]
+        elif not reasons:
+            reasons.append("source_not_authoritative_for_requirement")
+        return EvidenceSourceDecision(
+            requirement=normalized,
+            requirement_kind=kind,
+            source_tier=tier,
+            match_kind=match,
+            source_path=str(source_path or ""),
+            reference=str(reference or ""),
+            satisfies=satisfies,
+            nominated=True,
+            reason_codes=tuple(dict.fromkeys(reasons)),
+        )
+
+    def validate_completion_evidence(
+        self,
+        requirement: str,
+        evidence: Mapping[str, Any] | Any,
+        *,
+        repository_tree: str = "",
+        policy_id: str = "",
+        requirement_kind: EvidenceRequirementKind | str | None = None,
+    ) -> EvidenceSourceDecision:
+        source_path = ""
+        if isinstance(evidence, Mapping):
+            metadata = evidence.get("metadata")
+            metadata = metadata if isinstance(metadata, Mapping) else {}
+            source_path = str(
+                evidence.get("source_path")
+                or evidence.get("path")
+                or metadata.get("source_path")
+                or metadata.get("path")
+                or ""
+            )
+        return self.evaluate(
+            requirement,
+            match_kind=EvidenceMatchKind.TYPED_RECEIPT,
+            source_path=source_path,
+            requirement_kind=requirement_kind,
+            typed_receipt=evidence,
+            repository_tree=repository_tree,
+            policy_id=policy_id,
+        )
+
+
+# Discoverable aliases retained for callers using objective-specific wording.
+ObjectiveEvidenceSourcePolicy = EvidenceSourcePolicy
+ObjectiveEvidenceDecision = EvidenceSourceDecision
+
+
+def completion_evidence_source_decision(
+    evidence: Mapping[str, Any] | Any,
+    *,
+    requirement: str = "",
+    repository_tree: str = "",
+    policy: EvidenceSourcePolicy | None = None,
+    policy_id: str = "",
+) -> EvidenceSourceDecision:
+    """Evaluate a goal-completion record as an exact typed source receipt."""
+
+    if isinstance(evidence, Mapping):
+        payload = dict(evidence)
+    else:
+        converter = getattr(evidence, "to_dict", None)
+        projected = converter() if callable(converter) else None
+        if not isinstance(projected, Mapping):
+            raise TypeError("completion evidence must be a mapping or expose to_dict()")
+        payload = dict(projected)
+    criterion = str(
+        requirement
+        or payload.get("acceptance_criterion")
+        or payload.get("criterion")
+        or ""
+    ).strip()
+    payload.setdefault("requirement_id", criterion)
+    payload.setdefault("receipt_id", payload.get("provenance_cid"))
+    validation = payload.get("validation_receipt")
+    validation = validation if isinstance(validation, Mapping) else {}
+    if not payload.get("status"):
+        passed = payload.get("validation_passed")
+        if passed is None:
+            passed = validation.get("passed")
+        payload["status"] = "passed" if passed is True else (
+            str(validation.get("status") or "failed")
+        )
+    metadata = payload.get("metadata")
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    payload.setdefault(
+        "source_tier",
+        metadata.get("source_tier")
+        or metadata.get("source_kind")
+        or payload.get("producer_kind"),
+    )
+    source_path = str(
+        metadata.get("source_path")
+        or metadata.get("path")
+        or payload.get("source_path")
+        or ""
+    )
+    return (policy or EvidenceSourcePolicy()).evaluate(
+        criterion,
+        match_kind=EvidenceMatchKind.TYPED_RECEIPT,
+        source_path=source_path,
+        typed_receipt=payload,
+        repository_tree=repository_tree,
+        policy_id=policy_id,
+        reference=str(payload.get("provenance_cid") or ""),
+    )
 
 _DERIVED_TASK_PLANNING_FIELDS = frozenset(
     {
@@ -3260,6 +3919,40 @@ def evidence_methods(present_evidence: Mapping[str, Any]) -> list[str]:
     return sorted(methods)
 
 
+@dataclass(frozen=True)
+class ObjectiveEvidenceIndex:
+    """Bounded objective evidence with authority and nominations separated."""
+
+    qualifying: Mapping[str, tuple[str, ...]]
+    nominations: Mapping[str, tuple[EvidenceSourceDecision, ...]]
+    total_nominations: int
+    returned_nominations: int
+    omitted_nominations: int
+    truncated: bool
+    max_nominations_per_requirement: int
+    max_nomination_bytes: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": EVIDENCE_SOURCE_POLICY_SCHEMA,
+            "qualifying": {
+                key: list(self.qualifying[key]) for key in sorted(self.qualifying)
+            },
+            "nominations": {
+                key: [item.to_dict() for item in self.nominations[key]]
+                for key in sorted(self.nominations)
+            },
+            "truncation": {
+                "truncated": self.truncated,
+                "total_nominations": self.total_nominations,
+                "returned_nominations": self.returned_nominations,
+                "omitted_nominations": self.omitted_nominations,
+                "max_nominations_per_requirement": self.max_nominations_per_requirement,
+                "max_nomination_bytes": self.max_nomination_bytes,
+            },
+        }
+
+
 def evidence_index(
     repo_root: Path,
     *,
@@ -3267,11 +3960,109 @@ def evidence_index(
     terms: Sequence[str],
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
     records: Sequence[Mapping[str, Any]] | None = None,
-) -> dict[str, list[str]]:
+    typed_receipts: Sequence[Mapping[str, Any] | Any] = (),
+    source_policy: EvidenceSourcePolicy | None = None,
+    repository_tree: str = "",
+    policy_id: str = "",
+    return_metadata: bool = False,
+) -> dict[str, list[str]] | ObjectiveEvidenceIndex:
     normalized_terms = [term for term in dict.fromkeys(str(term).strip() for term in terms) if term]
     evidence = {term: [] for term in normalized_terms}
+    selected_policy = source_policy or EvidenceSourcePolicy()
+    effective_repository_tree = str(repository_tree or "").strip()
+    if typed_receipts and not effective_repository_tree:
+        effective_repository_tree = scan_identity(repo_root).tree_id
+    nominations: dict[str, list[EvidenceSourceDecision]] = {
+        term: [] for term in normalized_terms
+    }
+    priority = {
+        EvidenceMatchKind.TYPED_RECEIPT: 0,
+        EvidenceMatchKind.PATH: 1,
+        EvidenceMatchKind.EXACT_AST: 2,
+        EvidenceMatchKind.EXACT_TEXT: 3,
+        EvidenceMatchKind.RETRIEVAL: 4,
+        EvidenceMatchKind.SEMANTIC: 5,
+    }
+    nomination_count = 0
+    candidate_cap = max(
+        8, selected_policy.max_nominations_per_requirement * 4
+    )
     if not normalized_terms:
-        return evidence
+        if not return_metadata:
+            return evidence
+        return ObjectiveEvidenceIndex(
+            qualifying={},
+            nominations={},
+            total_nominations=0,
+            returned_nominations=0,
+            omitted_nominations=0,
+            truncated=False,
+            max_nominations_per_requirement=selected_policy.max_nominations_per_requirement,
+            max_nomination_bytes=selected_policy.max_nomination_bytes,
+        )
+
+    def consider(
+        term: str,
+        *,
+        match_kind: EvidenceMatchKind,
+        source_path: str = "",
+        reference: str,
+        typed_receipt: Mapping[str, Any] | Any | None = None,
+    ) -> None:
+        nonlocal nomination_count
+        decision = selected_policy.evaluate(
+            term,
+            match_kind=match_kind,
+            source_path=source_path,
+            typed_receipt=typed_receipt,
+            repository_tree=effective_repository_tree,
+            policy_id=policy_id,
+            reference=reference,
+        )
+        nomination_count += 1
+        nominations[term].append(decision)
+        if len(nominations[term]) > candidate_cap:
+            nominations[term].sort(
+                key=lambda item: (
+                    0 if item.satisfies else 1,
+                    priority[item.match_kind],
+                    item.source_path,
+                    item.reference,
+                )
+            )
+            del nominations[term][candidate_cap:]
+        if (
+            decision.satisfies
+            and len(evidence[term]) < 3
+            and reference not in evidence[term]
+        ):
+            evidence[term].append(reference)
+
+    for receipt in typed_receipts:
+        if isinstance(receipt, Mapping):
+            projected = receipt
+        else:
+            converter = getattr(receipt, "to_dict", None)
+            projected = converter() if callable(converter) else {}
+        if not isinstance(projected, Mapping):
+            continue
+        receipt_id = str(
+            projected.get("receipt_id")
+            or projected.get("evidence_id")
+            or projected.get("witness_id")
+            or projected.get("provenance_cid")
+            or "unknown"
+        )
+        source_path = str(projected.get("source_path") or projected.get("path") or "")
+        reference = f"{receipt_id} (typed_receipt)"
+        for term in normalized_terms:
+            consider(
+                term,
+                match_kind=EvidenceMatchKind.TYPED_RECEIPT,
+                source_path=source_path,
+                reference=reference,
+                typed_receipt=projected,
+            )
 
     term_tokens = {term: set(objective_tokens(term)) for term in normalized_terms}
     term_embeddings = {term: text_embedding(term) for term in normalized_terms}
@@ -3281,7 +4072,13 @@ def evidence_index(
             continue
         candidate = repo_root / term
         if candidate.exists():
-            evidence[term].append(f"{Path(term).as_posix()} (path)")
+            reference = f"{Path(term).as_posix()} (path)"
+            consider(
+                term,
+                match_kind=EvidenceMatchKind.PATH,
+                source_path=Path(term).as_posix(),
+                reference=reference,
+            )
 
     lowered_terms = {term: term.lower() for term in normalized_terms}
     cached_records = list(records) if records is not None else None
@@ -3336,14 +4133,26 @@ def evidence_index(
             if len(evidence[term]) >= 3:
                 continue
             if lowered in haystack:
-                evidence[term].append(f"{root_relative} (exact)")
+                consider(
+                    term,
+                    match_kind=EvidenceMatchKind.EXACT_TEXT,
+                    source_path=root_relative,
+                    reference=f"{root_relative} (exact)",
+                )
                 continue
             normalized_symbol = " ".join(objective_tokens(term))
-            if normalized_symbol and (
-                normalized_symbol in symbols
-                or any(normalized_symbol in symbol or symbol in normalized_symbol for symbol in symbols)
-            ):
-                evidence[term].append(f"{root_relative} (ast)")
+            normalized_symbols = {
+                " ".join(objective_tokens(symbol))
+                for symbol in symbols
+                if " ".join(objective_tokens(symbol))
+            }
+            if normalized_symbol and normalized_symbol in normalized_symbols:
+                consider(
+                    term,
+                    match_kind=EvidenceMatchKind.EXACT_AST,
+                    source_path=root_relative,
+                    reference=f"{root_relative} (ast)",
+                )
                 continue
             overlap = term_tokens[term] & document_tokens
             required_overlap = max(1, min(2, len(term_tokens[term])))
@@ -3353,8 +4162,56 @@ def evidence_index(
             if overlap_ratio >= 0.75:
                 threshold = min(threshold, 0.30)
             if len(overlap) >= required_overlap and score >= threshold:
-                evidence[term].append(f"{root_relative} (embedding:{score:.2f})")
-    return evidence
+                consider(
+                    term,
+                    match_kind=EvidenceMatchKind.SEMANTIC,
+                    source_path=root_relative,
+                    reference=f"{root_relative} (embedding:{score:.2f})",
+                )
+    if not return_metadata:
+        return evidence
+
+    total = nomination_count
+    selected: dict[str, tuple[EvidenceSourceDecision, ...]] = {}
+    returned = 0
+    used_bytes = 0
+    for term in normalized_terms:
+        ordered = sorted(
+            nominations[term],
+            key=lambda item: (
+                0 if item.satisfies else 1,
+                priority[item.match_kind],
+                item.source_path,
+                item.reference,
+            ),
+        )
+        accepted: list[EvidenceSourceDecision] = []
+        for decision in ordered[: selected_policy.max_nominations_per_requirement]:
+            encoded = len(
+                json.dumps(
+                    decision.to_dict(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            )
+            if used_bytes + encoded > selected_policy.max_nomination_bytes:
+                break
+            accepted.append(decision)
+            used_bytes += encoded
+        selected[term] = tuple(accepted)
+        returned += len(accepted)
+    return ObjectiveEvidenceIndex(
+        qualifying={
+            term: tuple(evidence[term]) for term in normalized_terms
+        },
+        nominations=selected,
+        total_nominations=total,
+        returned_nominations=returned,
+        omitted_nominations=max(0, total - returned),
+        truncated=returned < total,
+        max_nominations_per_requirement=selected_policy.max_nominations_per_requirement,
+        max_nomination_bytes=selected_policy.max_nomination_bytes,
+    )
 
 
 def goal_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, Any]:
@@ -5442,6 +6299,12 @@ def scan_objective_gaps(
     dataset_dir: Path | None = None,
     dataset_id: str = "objective-ast",
     scan_stats: dict[str, Any] | None = None,
+    analysis_pipeline: Any = None,
+    analysis_pipeline_request: Any = None,
+    typed_evidence_receipts: Sequence[Mapping[str, Any] | Any] = (),
+    evidence_source_policy: EvidenceSourcePolicy | None = None,
+    evidence_repository_tree: str = "",
+    evidence_policy_id: str = "",
 ) -> list[ObjectiveFinding]:
     if max_findings <= 0 or not objective_path.exists():
         return []
@@ -5468,12 +6331,154 @@ def scan_objective_gaps(
         if scan_stats is not None:
             scan_stats.clear()
             scan_stats.update(artifact.to_dict())
+    pipeline_diagnostics: dict[str, Any] = {}
+    if dataset_dir is not None or analysis_pipeline is not None:
+        try:
+            from .analysis_cache import AnalysisCache
+            from .analysis_pipeline import (
+                AnalysisPipeline,
+                AnalysisPipelineRequest,
+                make_analysis_stage_receipt,
+            )
+            from .conflict_graph import build_python_ast_blob_record
+
+            if analysis_pipeline is None:
+                def objective_scan_analyzer(context: Any) -> Any:
+                    return make_analysis_stage_receipt(
+                        context.request,
+                        successful=True,
+                        reason_code="bounded_objective_scan_complete",
+                    )
+
+                analysis_pipeline = AnalysisPipeline(
+                    AnalysisCache(Path(dataset_dir) / "analysis_cache"),
+                    objective_scan_analyzer,
+                )
+            if analysis_pipeline_request is None:
+                identity = scan_identity(repo_root)
+                ast_records: list[tuple[str, Any]] = []
+                retrieval_records: list[dict[str, Any]] = []
+                for row in cached_records or ():
+                    path = str(row.get("root_relative_path") or "")
+                    compact = {
+                        str(key): value
+                        for key, value in row.items()
+                        if key not in {"evidence_text", "ast_text"}
+                    }
+                    compact.setdefault("record_id", path)
+                    compact.setdefault("path", path)
+                    retrieval_records.append(compact)
+                    if str(row.get("suffix") or "").lower() != ".py":
+                        continue
+                    source = row.get("evidence_text")
+                    if isinstance(source, str):
+                        ast_records.append(
+                            (
+                                path,
+                                build_python_ast_blob_record(
+                                    source,
+                                    blob_identity=str(
+                                        row.get("blob_hash")
+                                        or row.get("source_sha1")
+                                        or ""
+                                    ),
+                                ),
+                            )
+                        )
+                analysis_pipeline_request = AnalysisPipelineRequest(
+                    repository_id=identity.repository_id,
+                    tree_id=canonical_revision(
+                        {
+                            "repository_id": identity.repository_id,
+                            "objective_revision": objective_heap_content_id(
+                                objective_path.read_text(
+                                    encoding="utf-8", errors="replace"
+                                )
+                            ),
+                            "records": [
+                                {
+                                    "path": str(
+                                        row.get("root_relative_path") or ""
+                                    ),
+                                    "blob": str(
+                                        row.get("blob_hash")
+                                        or row.get("source_sha1")
+                                        or ""
+                                    ),
+                                }
+                                for row in cached_records or ()
+                            ],
+                        },
+                        namespace="objective-analysis-tree",
+                    ),
+                    objective_revision=objective_heap_content_id(
+                        objective_path.read_text(
+                            encoding="utf-8", errors="replace"
+                        )
+                    ),
+                    query={
+                        "text": " ".join(required_terms),
+                        "objective_terms": required_terms,
+                    },
+                    analyzer_id="objective.gap_scan",
+                    analyzer_version=OBJECTIVE_SCAN_ANALYZER_VERSION,
+                    configuration={
+                        "dataset_id": dataset_id,
+                        "embedding_min_score": embedding_min_score,
+                    },
+                    policy={"purpose": "objective_evidence_nomination"},
+                    ast_records=tuple(ast_records),
+                    retrieval_inputs={"records": tuple(retrieval_records)},
+                )
+            pipeline_value = analysis_pipeline.analyze(
+                analysis_pipeline_request
+            )
+            pipeline_projection = pipeline_value.to_dict()
+            pipeline_diagnostics = {
+                "result_id": pipeline_projection.get("result_id", ""),
+                "cache_status": pipeline_projection.get("cache_status", ""),
+                "cache_lookup_status": pipeline_projection.get(
+                    "cache_lookup_status", ""
+                ),
+                "cache_reason_codes": list(
+                    pipeline_projection.get("cache_reason_codes") or ()
+                ),
+                "retrieval_response_id": pipeline_projection.get(
+                    "retrieval_response_id", ""
+                ),
+                "ranked_evidence_references": list(
+                    pipeline_projection.get("ranked_evidence_references") or ()
+                ),
+                "retrieval_backend_health": dict(
+                    pipeline_projection.get("retrieval_backend_health") or {}
+                ),
+                "retrieval_truncation": dict(
+                    pipeline_projection.get("retrieval_truncation") or {}
+                ),
+                "nomination_only": True,
+                "safe_for_completion_reasoning": False,
+            }
+        except Exception as exc:
+            pipeline_diagnostics = {
+                "status": "failed",
+                "reason_code": "integrated_analysis_pipeline_failed",
+                "error_type": type(exc).__name__,
+                "detail": str(exc)[:500],
+                "nomination_only": True,
+                "safe_for_completion_reasoning": False,
+            }
+        if scan_stats is not None:
+            scan_stats["analysis_pipeline"] = pipeline_diagnostics
     evidence = evidence_index(
         repo_root,
         objective_path=objective_path,
         terms=required_terms,
         embedding_min_score=embedding_min_score,
         records=cached_records,
+        typed_receipts=typed_evidence_receipts,
+        source_policy=evidence_source_policy,
+        repository_tree=evidence_repository_tree,
+        policy_id=evidence_policy_id,
     )
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
     forced_goal_ids = {str(item) for item in force_goal_ids if str(item).strip()}

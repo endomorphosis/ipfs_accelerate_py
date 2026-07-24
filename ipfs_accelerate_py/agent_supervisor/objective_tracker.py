@@ -30,6 +30,7 @@ from .objective_graph import (
     ObjectiveGoal,
     ObjectiveGoalMaterializationPreview,
     canonical_interoperability_component,
+    completion_evidence_source_decision,
     evidence_index,
     goal_graph,
     normalize_field_key,
@@ -691,6 +692,27 @@ def _goal_completion_records(
             # rest of the board.
             continue
     return result
+
+
+def _apply_completion_evidence_source_policy(
+    records: Sequence[CompletionEvidence],
+    *,
+    repository_tree: str,
+) -> list[CompletionEvidence]:
+    """Attach deterministic source-policy decisions before completion gates."""
+
+    evaluated: list[CompletionEvidence] = []
+    for record in records:
+        decision = completion_evidence_source_decision(
+            record,
+            repository_tree=repository_tree,
+        )
+        payload = record.to_dict()
+        metadata = dict(payload.get("metadata") or {})
+        metadata["evidence_source_policy"] = decision.to_dict()
+        payload["metadata"] = metadata
+        evaluated.append(CompletionEvidence.from_dict(payload))
+    return evaluated
 
 
 def _goal_completion_gate_record(
@@ -1509,7 +1531,10 @@ def migrate_legacy_objective_goals(
         return result
 
     for goal in batch:
-        evidence = _goal_completion_records(goal, supplied_records)
+        evidence = _apply_completion_evidence_source_policy(
+            _goal_completion_records(goal, supplied_records),
+            repository_tree=identity.tree_id,
+        )
         gate = _goal_completion_gate_record(goal, gate_records)
         criteria = str(
             goal.fields.get("acceptance_criteria")
@@ -1625,10 +1650,16 @@ def reconcile_objective_goal_completion(
     )
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
+    repository_identity = completion_tree_identity(
+        repo_root, objective_path=objective_path
+    )
     candidate_goals = []
     persisted_records: dict[str, list[CompletionEvidence]] = {}
     for goal in goals:
-        records = _goal_completion_records(goal, supplied_records)
+        records = _apply_completion_evidence_source_policy(
+            _goal_completion_records(goal, supplied_records),
+            repository_tree=repository_identity.tree_id,
+        )
         persisted_records[goal.goal_id] = records
         state = normalize_goal_state(goal.status)
         if state in {
@@ -1664,7 +1695,6 @@ def reconcile_objective_goal_completion(
         completion_boards.append((todo_path, task_header_prefix))
     completion_boards.extend(todo_boards or ())
     open_goal_ids = open_goal_ids_from_todo_boards(completion_boards)
-    repository_identity = completion_tree_identity(repo_root, objective_path=objective_path)
     hierarchy = goal_graph(goals)
     goals_by_id = {item.goal_id: item for item in goals if item.goal_id}
 
