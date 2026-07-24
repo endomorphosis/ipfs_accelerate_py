@@ -1813,7 +1813,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-056 Close objective gap: Prove 208290439421789408250562066350459701853 for Token-efficient context and end-to-end measurement
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -1898,3 +1898,91 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: validation_gate
 - Todo vector key: 4d06f7b8f0af0d28
 - Acceptance: Objective scan filed this gap for ASI-G092. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-057-objective-gap-47b60a795e58.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/token_efficiency/ipfs_accelerate_py/3841d2bd1acb; implement a complete, cohesive change that fully advances the packet goals (ASI-G091, ASI-G092) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-058 Produce completion evidence for Prove 003778425160038348524906247302938706902 for Evidence-aware planning and responsive goal refinement
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: planning
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_goal_refiner.py -q
+- Bundle: agent-supervisor/self-improvement/planning
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-planning.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: ASI-G030
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/planning
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, test/api/test_agent_supervisor_adaptive_goal_refiner.py
+- Changed paths: 
+- AST symbols: 003778425160038348524906247302938706902
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G098
+- Canonical task key: task/v1/9c2483cd94c42f49caaee0ba12207dc685c9b3b6fc819aa6ac504ba8700c6dce
+- Canonical task CID: baguqeeratqsihtmuyqxutsvo4c5beid5y2c4tm5w7sazvjvmkbf2q4amnxha
+- Missing evidence: Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: A changed typed counterexample can generate and admit at most one bounded refinement in the next cycle, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.
+- Embedding query: 003778425160038348524906247302938706902
+- AST query: 003778425160038348524906247302938706902
+- Surplus group: ASI-G098
+- Merge key: objective-work/v1/3e3d8913fae5a1f14a4d6f5f67e4ed03da9c353b
+- Merge family: ASI-G098
+- Merge role: completion_gate
+- Work item count: 6
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: 3e3d8913fae5a1f1
+- Acceptance: Objective scan filed this gap for ASI-G098. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-058-objective-gap-705cb78ae6b6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: A changed typed counterexample can generate and admit at most one bounded refinement in the next cycle, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
+
+## ASI-059 Produce completion evidence for Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: planning
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, test/api/test_agent_supervisor_adaptive_planner.py
+- Validation: python -m pytest test/api/test_agent_supervisor_adaptive_planner.py -q
+- Bundle: agent-supervisor/self-improvement/planning
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-planning.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: ASI-G030
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/planning
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/adaptive_planner.py, ipfs_accelerate_py/agent_supervisor/formal_replanner.py, ipfs_accelerate_py/agent_supervisor/plan_evaluator.py, test/api/test_agent_supervisor_adaptive_planner.py
+- Changed paths: 
+- AST symbols: 173075880069453142914839090434430341799
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G097
+- Canonical task key: task/v1/37520313089e13e0d58d7b08023fbccabbeb14f23a1227b3bbd31996a1ff1326
+- Canonical task CID: baguqeerag5jageyityj6bvmnpmeaep54zk56wfhshijcpm532mmznip7cmta
+- Missing evidence: Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Deterministic evaluation covers acceptance evidence, assumptions, semantics, dependencies, conflicts, validation and proof feasibility, novelty, and bounded resource/token cost, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.
+- Embedding query: 173075880069453142914839090434430341799
+- AST query: 173075880069453142914839090434430341799
+- Surplus group: ASI-G097
+- Merge key: objective-work/v1/1fcfeaf708579f9e141b309b5ec484e0f2102e47
+- Merge family: ASI-G097
+- Merge role: completion_gate
+- Work item count: 6
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: 1fcfeaf708579f9e
+- Acceptance: Objective scan filed this gap for ASI-G097. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-059-objective-gap-7aebdd419a0a.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Deterministic evaluation covers acceptance evidence, assumptions, semantics, dependencies, conflicts, validation and proof feasibility, novelty, and bounded resource/token cost, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
