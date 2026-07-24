@@ -5,6 +5,7 @@ from dataclasses import replace
 from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
     DCEC,
     ReviewedPredicate,
+    TDFOL,
     TermSort,
     atom,
     constant,
@@ -29,9 +30,12 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
 from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     EffectOperation,
     EventKind,
+    RefinementMode,
     Norm,
     NormKind,
     PlanConsistencyLevel,
+    PlanEvent,
+    Subgoal,
 )
 
 
@@ -107,6 +111,55 @@ def _replace_event(plan, event_id: str, **updates):
         for item in plan.events
     )
     return replace(plan, events=events)
+
+
+def _with_subgoals(plan, formulas, *, equivalent_second: bool = False):
+    first_formula = TDFOL.subgoal_satisfaction("subgoal:a", plan.trace_bound)
+    second_formula = TDFOL.subgoal_satisfaction("subgoal:b", plan.trace_bound)
+    tasks = tuple(
+        replace(
+            item,
+            subgoal_id="subgoal:a" if item.task_id == "task:a" else "subgoal:b",
+        )
+        for item in plan.tasks
+    )
+    first_task = next(item for item in tasks if item.task_id == "task:a")
+    second_task = next(item for item in tasks if item.task_id == "task:b")
+    subgoals = (
+        Subgoal(
+            "subgoal:a",
+            "goal:cid",
+            first_formula.formula_id,
+            evidence_requirement_ids=first_task.evidence_requirement_ids,
+            metadata={"source_ids": ["source:subgoal:a"]},
+        ),
+        Subgoal(
+            "subgoal:b",
+            "goal:cid",
+            second_formula.formula_id,
+            refinement_mode=(
+                RefinementMode.EQUIVALENT
+                if equivalent_second
+                else RefinementMode.SUFFICIENT
+            ),
+            depends_on=("subgoal:a",),
+            evidence_requirement_ids=second_task.evidence_requirement_ids,
+            metadata={"source_ids": ["source:subgoal:b"]},
+        ),
+    )
+    all_formulas = {
+        item.formula_id: item
+        for item in (*formulas, first_formula, second_formula)
+    }
+    return (
+        replace(
+            plan,
+            subgoals=subgoals,
+            tasks=tasks,
+            formulas=tuple(all_formulas.values()),
+        ),
+        tuple(all_formulas.values()),
+    )
 
 
 def test_consistent_compiled_plan_checks_every_required_property() -> None:
@@ -441,3 +494,216 @@ def test_fake_clock_and_bounds_make_timeout_deterministic() -> None:
 
     assert result.outcome is PlanValidationOutcome.TIMEOUT
     assert result.validation_id == validator.validate(plan, formulas).validation_id
+
+
+def test_subgoal_hierarchy_has_deterministic_witnesses_and_legacy_compatibility():
+    legacy, formulas = _compiled()
+    legacy_result = validate_formal_plan(legacy, formulas)
+    plan, formulas = _with_subgoals(legacy, formulas)
+
+    result = validate_formal_plan(plan, formulas)
+    automatic = validate_formal_plan(plan)
+
+    assert legacy_result.status is PlanValidationStatus.CONSISTENT
+    assert result.status is automatic.status is PlanValidationStatus.CONSISTENT
+    assert result.bounds.domain_sizes["subgoals"] == 2
+    assert PlanCheckKind.SUBGOAL_WITNESS in result.checks_performed
+    assert PlanCheckKind.PARENT_REFINEMENT in result.checks_performed
+
+
+def test_parent_refinement_and_subgoal_liveness_have_bounded_countermodels():
+    plan, formulas = _compiled()
+    plan, formulas = _with_subgoals(plan, formulas)
+    false_parent = TDFOL.goal_satisfaction(
+        "goal:without-a-trace-witness", plan.trace_bound
+    )
+    parent_violation = replace(
+        plan,
+        goals=(
+            replace(
+                plan.goals[0],
+                satisfaction_formula_id=false_parent.formula_id,
+            ),
+        ),
+        formulas=(*plan.formulas, false_parent),
+    )
+
+    result = validate_formal_plan(
+        parent_violation, (*formulas, false_parent)
+    )
+
+    assert result.outcome is PlanValidationOutcome.COUNTERMODEL
+    assert PlanFindingCode.PARENT_REFINEMENT_VIOLATED in {
+        item.code for item in result.findings
+    }
+
+    equivalent, equivalent_formulas = _with_subgoals(
+        *_compiled(), equivalent_second=True
+    )
+    without_child_work = replace(
+        equivalent,
+        tasks=tuple(
+            replace(item, subgoal_id="")
+            if item.task_id == "task:b"
+            else item
+            for item in equivalent.tasks
+        ),
+    )
+    liveness = validate_formal_plan(without_child_work, equivalent_formulas)
+
+    assert liveness.outcome is PlanValidationOutcome.COUNTERMODEL
+    assert {
+        PlanFindingCode.SUBGOAL_NOT_SATISFIED,
+        PlanFindingCode.EQUIVALENT_REFINEMENT_VIOLATED,
+    }.issubset({item.code for item in liveness.findings})
+
+
+def test_subgoal_dependency_readiness_returns_a_concrete_countermodel():
+    plan, formulas = _compiled()
+    plan, formulas = _with_subgoals(plan, formulas)
+    first_completion = next(
+        item
+        for item in plan.events
+        if item.task_id == "task:a" and item.kind is EventKind.COMPLETED
+    )
+    plan = _replace_event(
+        plan, first_completion.event_id, logical_time=plan.trace_bound
+    )
+
+    result = validate_formal_plan(plan, formulas)
+
+    assert result.outcome is PlanValidationOutcome.COUNTERMODEL
+    assert PlanFindingCode.SUBGOAL_DEPENDENCY_NOT_READY in {
+        item.code for item in result.findings
+    }
+    assert result.countermodel is not None
+    assert result.countermodel.states[-1].satisfied_subgoal_ids == ()
+
+
+def test_stale_and_circular_subgoal_evidence_fail_closed():
+    plan, formulas = _compiled()
+    plan, formulas = _with_subgoals(plan, formulas)
+    first_task = next(item for item in plan.tasks if item.task_id == "task:a")
+    requirement_id = first_task.evidence_requirement_ids[0]
+    requirement = next(
+        item
+        for item in plan.evidence_requirements
+        if item.requirement_id == requirement_id
+    )
+    completed = next(
+        item
+        for item in plan.events
+        if item.task_id == first_task.task_id and item.kind is EventKind.COMPLETED
+    )
+    producer = PlanEvent(
+        event_id="task:a:event:evidence",
+        kind=EventKind.EVIDENCE_PRODUCED,
+        actor_id=completed.actor_id,
+        task_id=first_task.task_id,
+        logical_time=completed.logical_time - 1,
+        provenance_ids=(requirement_id,),
+        metadata={"requirement_ids": [requirement_id]},
+    )
+    tasks = tuple(
+        replace(item, event_ids=(*item.event_ids, producer.event_id))
+        if item.task_id == first_task.task_id
+        else item
+        for item in plan.tasks
+    )
+    requirements = tuple(
+        replace(item, freshness_seconds=0)
+        if item.requirement_id == requirement_id
+        else item
+        for item in plan.evidence_requirements
+    )
+    stale = validate_formal_plan(
+        replace(
+            plan,
+            tasks=tasks,
+            events=(*plan.events, producer),
+            evidence_requirements=requirements,
+        ),
+        formulas,
+    )
+    assert PlanFindingCode.STALE_EVIDENCE in {
+        item.code for item in stale.findings
+    }
+
+    circular_requirements = tuple(
+        replace(
+            item,
+            fallback_check_ids=(requirement_id,),
+            source_scope_ids=(),
+            metadata={**item.metadata, "available": True},
+        )
+        if item.requirement_id == requirement_id
+        else item
+        for item in plan.evidence_requirements
+    )
+    circular = validate_formal_plan(
+        replace(plan, evidence_requirements=circular_requirements), formulas
+    )
+    assert circular.outcome is PlanValidationOutcome.COUNTERMODEL
+    assert PlanFindingCode.CIRCULAR_EVIDENCE in {
+        item.code for item in circular.findings
+    }
+
+
+def test_scope_only_and_future_dated_evidence_cannot_witness_a_subgoal():
+    plan, formulas = _with_subgoals(*_compiled())
+    first_task = next(item for item in plan.tasks if item.task_id == "task:a")
+    requirement_id = first_task.evidence_requirement_ids[0]
+    requirements = tuple(
+        replace(item, fallback_check_ids=())
+        if item.requirement_id == requirement_id
+        else item
+        for item in plan.evidence_requirements
+    )
+
+    scope_only = validate_formal_plan(
+        replace(plan, evidence_requirements=requirements), formulas
+    )
+
+    assert PlanFindingCode.REQUIRED_EVIDENCE_UNAVAILABLE in {
+        item.code for item in scope_only.findings
+    }
+
+    completion = next(
+        item
+        for item in plan.events
+        if item.task_id == first_task.task_id and item.kind is EventKind.COMPLETED
+    )
+    future_dated = validate_formal_plan(
+        replace(
+            plan,
+            evidence_requirements=requirements,
+            metadata={
+                **plan.metadata,
+                "available_evidence_ids": [requirement_id],
+                "evidence_observed_at": {
+                    requirement_id: completion.logical_time + 1
+                },
+            },
+        ),
+        formulas,
+    )
+
+    assert PlanFindingCode.STALE_EVIDENCE in {
+        item.code for item in future_dated.findings
+    }
+
+
+def test_subgoal_bound_and_timeout_remain_distinct_from_assurance():
+    plan, formulas = _compiled()
+    plan, formulas = _with_subgoals(plan, formulas)
+
+    exhausted = validate_formal_plan(
+        plan, formulas, bounds=ValidationBounds(max_subgoals=1)
+    )
+    timed_out = validate_formal_plan(
+        plan, formulas, bounds=ValidationBounds(timeout_ms=0)
+    )
+
+    assert exhausted.outcome is PlanValidationOutcome.RESOURCE_EXHAUSTED
+    assert timed_out.outcome is PlanValidationOutcome.TIMEOUT
+    assert timed_out.consistency_level is PlanConsistencyLevel.INCONCLUSIVE

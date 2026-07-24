@@ -47,6 +47,7 @@ from .formal_planning_contracts import (
     NormKind,
     PlanConsistencyLevel,
     PlanEvent,
+    RefinementMode,
 )
 from .formal_verification_contracts import canonical_json, content_identity
 from .formal_verification_provider import CancellationToken
@@ -119,6 +120,10 @@ class PlanCheckKind(str, Enum):
     TEMPORAL_FORMULA = "temporal_formula"
     FORMULA_SUPPORT = "formula_support"
     RESOURCE_BOUND = "resource_bound"
+    SUBGOAL_WITNESS = "subgoal_witness"
+    PARENT_REFINEMENT = "parent_refinement"
+    EVIDENCE_FRESHNESS = "evidence_freshness"
+    CIRCULAR_EVIDENCE = "circular_evidence"
 
 
 class FindingDisposition(str, Enum):
@@ -158,6 +163,13 @@ class PlanFindingCode(str, Enum):
     TRACE_BOUND_TRUNCATED = "trace_bound_truncated"
     SEARCH_BOUND_EXHAUSTED = "search_bound_exhausted"
     DOMAIN_BOUND_EXCEEDED = "domain_bound_exceeded"
+    SUBGOAL_NOT_SATISFIED = "subgoal_not_satisfied"
+    SUBGOAL_DEPENDENCY_NOT_READY = "subgoal_dependency_not_ready"
+    SUBGOAL_EVIDENCE_UNAVAILABLE = "subgoal_evidence_unavailable"
+    PARENT_REFINEMENT_VIOLATED = "parent_refinement_violated"
+    EQUIVALENT_REFINEMENT_VIOLATED = "equivalent_refinement_violated"
+    STALE_EVIDENCE = "stale_evidence"
+    CIRCULAR_EVIDENCE = "circular_evidence"
 
 
 @dataclass(frozen=True)
@@ -167,6 +179,7 @@ class ValidationBounds:
     max_trace_steps: int = 256
     max_actors: int = 128
     max_goals: int = 128
+    max_subgoals: int = 512
     max_tasks: int = 512
     max_events: int = 4096
     max_fluents: int = 4096
@@ -430,6 +443,7 @@ class CountermodelState:
     event_ids: tuple[str, ...] = ()
     task_states: Mapping[str, str] = field(default_factory=dict)
     available_evidence_ids: tuple[str, ...] = ()
+    satisfied_subgoal_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if (
@@ -449,6 +463,11 @@ class CountermodelState:
             "available_evidence_ids",
             tuple(sorted(set(self.available_evidence_ids))),
         )
+        object.__setattr__(
+            self,
+            "satisfied_subgoal_ids",
+            tuple(sorted(set(self.satisfied_subgoal_ids))),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -456,6 +475,7 @@ class CountermodelState:
             "event_ids": list(self.event_ids),
             "task_states": dict(self.task_states),
             "available_evidence_ids": list(self.available_evidence_ids),
+            "satisfied_subgoal_ids": list(self.satisfied_subgoal_ids),
         }
 
     @classmethod
@@ -465,6 +485,9 @@ class CountermodelState:
             event_ids=tuple(payload.get("event_ids") or ()),
             task_states=payload.get("task_states") or {},
             available_evidence_ids=tuple(payload.get("available_evidence_ids") or ()),
+            satisfied_subgoal_ids=tuple(
+                payload.get("satisfied_subgoal_ids") or ()
+            ),
         )
 
 
@@ -871,8 +894,10 @@ class _TraceModel:
     task_states: list[dict[str, str]]
     event_ids: list[tuple[str, ...]]
     available_evidence: list[set[str]]
+    satisfied_subgoals: list[set[str]]
     completed_at: dict[str, int]
     terminal_at: dict[str, int]
+    subgoal_satisfied_at: dict[str, int]
     facts: FiniteTrace
     assumptions: list[PlanValidationAssumption]
 
@@ -990,6 +1015,7 @@ class FormalPlanValidator:
         domain_sizes = {
             "actors": len(plan.actors),
             "goals": len(plan.goals),
+            "subgoals": len(plan.subgoals),
             "tasks": len(plan.tasks),
             "events": len(plan.events),
             "fluents": len(plan.fluents),
@@ -1183,6 +1209,9 @@ class FormalPlanValidator:
                     PlanCheckKind.LEGAL_TRANSITION,
                     PlanCheckKind.EVENTUAL_TERMINAL,
                     PlanCheckKind.FORBIDDEN_MERGE_STATE,
+                    PlanCheckKind.SUBGOAL_WITNESS,
+                    PlanCheckKind.EVIDENCE_FRESHNESS,
+                    PlanCheckKind.CIRCULAR_EVIDENCE,
                 }
             )
             if findings:
@@ -1232,7 +1261,13 @@ class FormalPlanValidator:
                 )
 
             formula_violations = self._check_formulas(plan, formula_map, trace, guard)
-            checks.add(PlanCheckKind.TEMPORAL_FORMULA)
+            checks.update(
+                {
+                    PlanCheckKind.TEMPORAL_FORMULA,
+                    PlanCheckKind.SUBGOAL_WITNESS,
+                    PlanCheckKind.PARENT_REFINEMENT,
+                }
+            )
             if formula_violations:
                 findings.extend(formula_violations)
                 countermodel = self._countermodel(findings[0], trace)
@@ -1341,7 +1376,10 @@ class FormalPlanValidator:
         metadata_values: Iterable[Formula | Mapping[str, Any]] = ()
         if isinstance(records, Sequence) and not isinstance(records, (str, bytes)):
             metadata_values = records
-        values = chain(metadata_values, supplied or ())
+        # Revision-two plans carry reviewed formulas as first-class canonical
+        # records.  Metadata remains a compatibility transport for revision
+        # one compiler output; explicit caller records may supplement either.
+        values = chain(plan.formulas, metadata_values, supplied or ())
         formulas: dict[str, Formula] = {}
         findings: list[PlanValidationFinding] = []
         for index, value in enumerate(values):
@@ -1459,6 +1497,7 @@ class FormalPlanValidator:
         limits = {
             "actors": self.bounds.max_actors,
             "goals": self.bounds.max_goals,
+            "subgoals": self.bounds.max_subgoals,
             "tasks": self.bounds.max_tasks,
             "events": self.bounds.max_events,
             "fluents": self.bounds.max_fluents,
@@ -1480,7 +1519,7 @@ class FormalPlanValidator:
         return [
             _assumption(
                 "finite_domain",
-                "Only actors, goals, tasks, events, fluents, norms, and evidence requirements declared by the plan are enumerated.",
+                "Only actors, goals, subgoals, tasks, events, fluents, norms, and evidence requirements declared by the plan are enumerated.",
                 plan.plan_id,
             ),
             _assumption(
@@ -1687,6 +1726,8 @@ class FormalPlanValidator:
         requirements = {
             item.requirement_id: item for item in plan.evidence_requirements
         }
+        evidence_dependencies = _evidence_dependencies(requirements)
+        circular_evidence = _cyclic_nodes(evidence_dependencies, guard)
         events_by_time: dict[int, list[PlanEvent]] = defaultdict(list)
         for event in plan.events:
             if event.logical_time <= bound:
@@ -1698,14 +1739,30 @@ class FormalPlanValidator:
         state = {task_id: "pending" for task_id in tasks}
         available = set(_string_values(plan.metadata.get("available_evidence_ids")))
         available.update(_string_values(plan.metadata.get("evidence_cids")))
+        observed_at: dict[str, int] = {item: 0 for item in available}
+        raw_observed = plan.metadata.get("evidence_observed_at")
+        if isinstance(raw_observed, Mapping):
+            for evidence_id, at in raw_observed.items():
+                if (
+                    str(evidence_id).strip()
+                    and isinstance(at, int)
+                    and not isinstance(at, bool)
+                    and at >= 0
+                ):
+                    observed_at[str(evidence_id).strip()] = at
+                    available.add(str(evidence_id).strip())
         task_states: list[dict[str, str]] = []
         step_events: list[tuple[str, ...]] = []
         evidence_steps: list[set[str]] = []
+        subgoal_steps: list[set[str]] = []
         completed_at: dict[str, int] = {}
         terminal_at: dict[str, int] = {}
+        subgoal_satisfied_at: dict[str, int] = {}
         findings: list[PlanValidationFinding] = []
         assumptions: list[PlanValidationAssumption] = []
         reported_goal_evidence: set[str] = set()
+        reported_subgoal_evidence: set[str] = set()
+        reported_subgoal_dependency: set[str] = set()
         effect_by_event: dict[str, list[Any]] = defaultdict(list)
         effect_by_task_terminal: dict[str, list[Any]] = defaultdict(list)
         for effect in plan.effects:
@@ -1713,6 +1770,58 @@ class FormalPlanValidator:
                 effect_by_event[effect.event_id].append(effect)
             else:
                 effect_by_task_terminal[effect.task_id].append(effect)
+
+        def evidence_status(
+            required_ids: Iterable[str],
+            at: int,
+            subject_id: str,
+        ) -> tuple[set[str], dict[str, int]]:
+            """Materialize independent checks, then report missing/stale IDs."""
+
+            required = set(required_ids)
+            changed = True
+            while changed:
+                changed = False
+                for requirement_id in sorted(required - available):
+                    guard.checkpoint()
+                    requirement = requirements[requirement_id]
+                    dependencies = evidence_dependencies.get(requirement_id, ())
+                    if (
+                        requirement_id in circular_evidence
+                        or not _evidence_is_realisable(requirement)
+                        or any(
+                            dependency not in available
+                            or not _evidence_is_fresh(
+                                requirements[dependency],
+                                observed_at.get(dependency),
+                                at,
+                            )
+                            for dependency in dependencies
+                        )
+                    ):
+                        continue
+                    available.add(requirement_id)
+                    observed_at[requirement_id] = at
+                    assumptions.append(
+                        _assumption(
+                            "evidence_realisability",
+                            "A declared accepted independent check can produce this required evidence at the bounded transition.",
+                            requirement_id,
+                            subject_id,
+                        )
+                    )
+                    changed = True
+            stale = {
+                requirement_id: observed_at[requirement_id]
+                for requirement_id in sorted(required & available)
+                if not _evidence_is_fresh(
+                    requirements[requirement_id],
+                    observed_at.get(requirement_id),
+                    at,
+                )
+            }
+            missing = required - available
+            return missing, stale
 
         for logical_time in range(bound + 1):
             guard.checkpoint()
@@ -1780,9 +1889,15 @@ class FormalPlanValidator:
                         dependency_evidence = set(
                             dependency_task.evidence_requirement_ids
                         )
+                        missing_dependency_evidence, stale_dependency_evidence = (
+                            evidence_status(
+                                dependency_evidence, logical_time, dependency
+                            )
+                        )
                         if (
                             dependency not in completed_at
-                            or not dependency_evidence <= available
+                            or missing_dependency_evidence
+                            or stale_dependency_evidence
                         ):
                             findings.append(
                                 _finding(
@@ -1794,11 +1909,36 @@ class FormalPlanValidator:
                                     details={
                                         "dependency_state": state[dependency],
                                         "missing_evidence_ids": sorted(
-                                            dependency_evidence - available
+                                            missing_dependency_evidence
+                                        ),
+                                        "stale_evidence_ids": sorted(
+                                            stale_dependency_evidence
                                         ),
                                     },
                                 )
                             )
+                    if task.subgoal_id:
+                        subgoal = next(
+                            item
+                            for item in plan.subgoals
+                            if item.subgoal_id == task.subgoal_id
+                        )
+                        for dependency in subgoal.depends_on:
+                            if dependency not in subgoal_satisfied_at:
+                                findings.append(
+                                    _finding(
+                                        PlanFindingCode.SUBGOAL_DEPENDENCY_NOT_READY,
+                                        PlanCheckKind.DEPENDENCY_READINESS,
+                                        "subgoal work starts before a declared subgoal dependency has a bounded witness",
+                                        event,
+                                        subgoal.subgoal_id,
+                                        dependency,
+                                        details={
+                                            "subgoal_id": subgoal.subgoal_id,
+                                            "dependency_subgoal_id": dependency,
+                                        },
+                                    )
+                                )
 
                 for norm in plan.norms:
                     if (
@@ -1845,6 +1985,9 @@ class FormalPlanValidator:
                 )
                 if event.kind is EventKind.EVIDENCE_PRODUCED:
                     available.update(produced)
+                    observed_at.update(
+                        {evidence_id: logical_time for evidence_id in produced}
+                    )
 
                 if event.kind in _TERMINAL_EVENT_STATES:
                     terminal_state = _TERMINAL_EVENT_STATES[event.kind]
@@ -1863,25 +2006,39 @@ class FormalPlanValidator:
                         if event.kind is EventKind.COMPLETED
                         else set()
                     )
-                    missing = required - available
-                    synthesizable = {
-                        item
-                        for item in missing
-                        if _evidence_is_realisable(requirements[item])
-                    }
-                    if synthesizable:
-                        available.update(synthesizable)
-                        for requirement_id in sorted(synthesizable):
-                            assumptions.append(
-                                _assumption(
-                                    "evidence_realisability",
-                                    "A declared accepted check can produce this required evidence before the planned terminal transition.",
-                                    requirement_id,
-                                    task.task_id,
+                    missing, stale = evidence_status(
+                        required, logical_time, task.task_id
+                    )
+                    for requirement_id, produced_at in stale.items():
+                        requirement = requirements[requirement_id]
+                        findings.append(
+                            _finding(
+                                PlanFindingCode.STALE_EVIDENCE,
+                                PlanCheckKind.EVIDENCE_FRESHNESS,
+                                "terminal transition relies on stale mandatory evidence",
+                                event,
+                                requirement_id,
+                                details={
+                                    "produced_at": produced_at,
+                                    "required_at": logical_time,
+                                    "age": logical_time - produced_at,
+                                    "freshness_seconds": requirement.freshness_seconds,
+                                },
+                            )
+                        )
+                    if missing:
+                        circular = sorted(missing & circular_evidence)
+                        if circular:
+                            findings.append(
+                                _finding(
+                                    PlanFindingCode.CIRCULAR_EVIDENCE,
+                                    PlanCheckKind.CIRCULAR_EVIDENCE,
+                                    "mandatory evidence has only a circular production path",
+                                    event,
+                                    *circular,
+                                    details={"circular_evidence_ids": circular},
                                 )
                             )
-                    missing = required - available
-                    if missing:
                         findings.append(
                             _finding(
                                 PlanFindingCode.REQUIRED_EVIDENCE_UNAVAILABLE,
@@ -1973,38 +2130,183 @@ class FormalPlanValidator:
                     item.task_id in completed_at for item in goal_tasks
                 ):
                     continue
-                missing_goal_evidence = set(goal.evidence_requirement_ids) - available
-                for requirement_id in sorted(missing_goal_evidence):
-                    requirement = requirements[requirement_id]
-                    if not _evidence_is_realisable(requirement):
-                        continue
-                    available.add(requirement_id)
-                    assumptions.append(
-                        _assumption(
-                            "evidence_realisability",
-                            "A declared accepted check can produce this required goal evidence before bounded goal satisfaction.",
-                            requirement_id,
-                            goal.goal_id,
-                        )
-                    )
-                unavailable = set(goal.evidence_requirement_ids) - available
-                if unavailable and goal.goal_id not in reported_goal_evidence:
+                unavailable, stale = evidence_status(
+                    goal.evidence_requirement_ids, logical_time, goal.goal_id
+                )
+                if (unavailable or stale) and goal.goal_id not in reported_goal_evidence:
                     reported_goal_evidence.add(goal.goal_id)
-                    findings.append(
-                        PlanValidationFinding(
-                            PlanFindingCode.REQUIRED_EVIDENCE_UNAVAILABLE,
-                            FindingDisposition.COUNTERMODEL,
-                            PlanCheckKind.REQUIRED_EVIDENCE,
-                            "goal completion lacks mandatory evidence and no accepted production path is declared",
-                            (goal.goal_id, *sorted(unavailable)),
-                            logical_time,
-                            {"missing_evidence_ids": sorted(unavailable)},
+                    for requirement_id, produced_at in stale.items():
+                        requirement = requirements[requirement_id]
+                        findings.append(
+                            PlanValidationFinding(
+                                PlanFindingCode.STALE_EVIDENCE,
+                                FindingDisposition.COUNTERMODEL,
+                                PlanCheckKind.EVIDENCE_FRESHNESS,
+                                "goal completion relies on stale mandatory evidence",
+                                (goal.goal_id, requirement_id),
+                                logical_time,
+                                {
+                                    "produced_at": produced_at,
+                                    "required_at": logical_time,
+                                    "age": logical_time - produced_at,
+                                    "freshness_seconds": requirement.freshness_seconds,
+                                },
+                            )
                         )
+                    circular = sorted(unavailable & circular_evidence)
+                    if circular:
+                        findings.append(
+                            PlanValidationFinding(
+                                PlanFindingCode.CIRCULAR_EVIDENCE,
+                                FindingDisposition.COUNTERMODEL,
+                                PlanCheckKind.CIRCULAR_EVIDENCE,
+                                "goal evidence has only a circular production path",
+                                (goal.goal_id, *circular),
+                                logical_time,
+                                {"circular_evidence_ids": circular},
+                            )
+                        )
+                    if unavailable:
+                        findings.append(
+                            PlanValidationFinding(
+                                PlanFindingCode.REQUIRED_EVIDENCE_UNAVAILABLE,
+                                FindingDisposition.COUNTERMODEL,
+                                PlanCheckKind.REQUIRED_EVIDENCE,
+                                "goal completion lacks mandatory evidence and no accepted production path is declared",
+                                (goal.goal_id, *sorted(unavailable)),
+                                logical_time,
+                                {"missing_evidence_ids": sorted(unavailable)},
+                            )
+                        )
+
+            # A subgoal witness is a concrete completed-work/evidence state.
+            # Iterate to a fixed point so same-step dependencies are resolved
+            # deterministically without depending on record order.
+            changed = True
+            while changed:
+                changed = False
+                for subgoal in plan.subgoals:
+                    guard.checkpoint()
+                    if subgoal.subgoal_id in subgoal_satisfied_at:
+                        continue
+                    subgoal_tasks = [
+                        item
+                        for item in plan.tasks
+                        if item.subgoal_id == subgoal.subgoal_id
+                    ]
+                    if not subgoal_tasks or not all(
+                        item.task_id in completed_at for item in subgoal_tasks
+                    ):
+                        continue
+                    missing_dependencies = set(subgoal.depends_on).difference(
+                        subgoal_satisfied_at
                     )
+                    if missing_dependencies:
+                        if subgoal.subgoal_id not in reported_subgoal_dependency:
+                            reported_subgoal_dependency.add(subgoal.subgoal_id)
+                            findings.append(
+                                PlanValidationFinding(
+                                    PlanFindingCode.SUBGOAL_DEPENDENCY_NOT_READY,
+                                    FindingDisposition.COUNTERMODEL,
+                                    PlanCheckKind.DEPENDENCY_READINESS,
+                                    "completed subgoal work has no ready dependency witness",
+                                    (
+                                        subgoal.subgoal_id,
+                                        *sorted(missing_dependencies),
+                                    ),
+                                    logical_time,
+                                    {
+                                        "missing_dependency_subgoal_ids": sorted(
+                                            missing_dependencies
+                                        )
+                                    },
+                                )
+                            )
+                        continue
+                    unavailable, stale = evidence_status(
+                        {
+                            *subgoal.evidence_requirement_ids,
+                            *(
+                                requirement_id
+                                for task in subgoal_tasks
+                                for requirement_id in task.evidence_requirement_ids
+                            ),
+                        },
+                        logical_time,
+                        subgoal.subgoal_id,
+                    )
+                    if unavailable or stale:
+                        if subgoal.subgoal_id not in reported_subgoal_evidence:
+                            reported_subgoal_evidence.add(subgoal.subgoal_id)
+                            for requirement_id, produced_at in stale.items():
+                                requirement = requirements[requirement_id]
+                                findings.append(
+                                    PlanValidationFinding(
+                                        PlanFindingCode.STALE_EVIDENCE,
+                                        FindingDisposition.COUNTERMODEL,
+                                        PlanCheckKind.EVIDENCE_FRESHNESS,
+                                        "subgoal witness relies on stale mandatory evidence",
+                                        (subgoal.subgoal_id, requirement_id),
+                                        logical_time,
+                                        {
+                                            "produced_at": produced_at,
+                                            "required_at": logical_time,
+                                            "age": logical_time - produced_at,
+                                            "freshness_seconds": requirement.freshness_seconds,
+                                        },
+                                    )
+                                )
+                            circular = sorted(unavailable & circular_evidence)
+                            if circular:
+                                findings.append(
+                                    PlanValidationFinding(
+                                        PlanFindingCode.CIRCULAR_EVIDENCE,
+                                        FindingDisposition.COUNTERMODEL,
+                                        PlanCheckKind.CIRCULAR_EVIDENCE,
+                                        "subgoal evidence has only a circular production path",
+                                        (subgoal.subgoal_id, *circular),
+                                        logical_time,
+                                        {"circular_evidence_ids": circular},
+                                    )
+                                )
+                            if unavailable:
+                                findings.append(
+                                    PlanValidationFinding(
+                                        PlanFindingCode.SUBGOAL_EVIDENCE_UNAVAILABLE,
+                                        FindingDisposition.COUNTERMODEL,
+                                        PlanCheckKind.REQUIRED_EVIDENCE,
+                                        "subgoal has no complete mandatory evidence witness",
+                                        (
+                                            subgoal.subgoal_id,
+                                            *sorted(unavailable),
+                                        ),
+                                        logical_time,
+                                        {
+                                            "missing_evidence_ids": sorted(
+                                                unavailable
+                                            )
+                                        },
+                                    )
+                                )
+                        continue
+                    subgoal_satisfied_at[subgoal.subgoal_id] = logical_time
+                    changed = True
 
             task_states.append(dict(state))
             step_events.append(tuple(item.event_id for item in current_events))
-            evidence_steps.append(set(available))
+            evidence_steps.append(
+                {
+                    evidence_id
+                    for evidence_id in available
+                    if evidence_id not in requirements
+                    or _evidence_is_fresh(
+                        requirements[evidence_id],
+                        observed_at.get(evidence_id),
+                        logical_time,
+                    )
+                }
+            )
+            subgoal_steps.append(set(subgoal_satisfied_at))
 
         for task in plan.tasks:
             guard.checkpoint()
@@ -2027,6 +2329,7 @@ class FormalPlanValidator:
             task_states,
             step_events,
             evidence_steps,
+            subgoal_steps,
             completed_at,
             terminal_at,
             authorization,
@@ -2036,8 +2339,10 @@ class FormalPlanValidator:
                 task_states,
                 step_events,
                 evidence_steps,
+                subgoal_steps,
                 completed_at,
                 terminal_at,
+                subgoal_satisfied_at,
                 finite_trace,
                 assumptions,
             ),
@@ -2110,6 +2415,75 @@ class FormalPlanValidator:
                         trace.facts.bound,
                     )
                 )
+        goal_by_id = {item.goal_id: item for item in plan.goals}
+        subgoal_by_id = {item.subgoal_id: item for item in plan.subgoals}
+        for subgoal in plan.subgoals:
+            guard.checkpoint()
+            formula = formulas[subgoal.satisfaction_formula_id]
+            child_holds = _evaluate_supported(formula, trace.facts, plan)
+            if not child_holds:
+                findings.append(
+                    PlanValidationFinding(
+                        PlanFindingCode.SUBGOAL_NOT_SATISFIED,
+                        FindingDisposition.COUNTERMODEL,
+                        PlanCheckKind.SUBGOAL_WITNESS,
+                        "subgoal satisfaction formula has no witness in the complete bounded trace",
+                        (subgoal.subgoal_id, formula.formula_id),
+                        trace.facts.bound,
+                    )
+                )
+
+            if subgoal.parent_id in subgoal_by_id:
+                parent = subgoal_by_id[subgoal.parent_id]
+            else:
+                parent = goal_by_id[subgoal.goal_id]
+            parent_formula = formulas[parent.satisfaction_formula_id]
+            parent_holds = _evaluate_supported(parent_formula, trace.facts, plan)
+            if child_holds and not parent_holds:
+                findings.append(
+                    PlanValidationFinding(
+                        PlanFindingCode.PARENT_REFINEMENT_VIOLATED,
+                        FindingDisposition.COUNTERMODEL,
+                        PlanCheckKind.PARENT_REFINEMENT,
+                        "bounded child satisfaction does not establish its declared parent refinement",
+                        (
+                            subgoal.subgoal_id,
+                            subgoal.parent_id,
+                            formula.formula_id,
+                            parent_formula.formula_id,
+                        ),
+                        trace.subgoal_satisfied_at.get(
+                            subgoal.subgoal_id, trace.facts.bound
+                        ),
+                        {
+                            "refinement_mode": subgoal.refinement_mode.value,
+                            "child_witness_at": trace.subgoal_satisfied_at.get(
+                                subgoal.subgoal_id
+                            ),
+                        },
+                    )
+                )
+            if (
+                subgoal.refinement_mode is RefinementMode.EQUIVALENT
+                and parent_holds
+                and not child_holds
+            ):
+                findings.append(
+                    PlanValidationFinding(
+                        PlanFindingCode.EQUIVALENT_REFINEMENT_VIOLATED,
+                        FindingDisposition.COUNTERMODEL,
+                        PlanCheckKind.PARENT_REFINEMENT,
+                        "declared equivalent refinement has a parent witness but no child witness",
+                        (
+                            subgoal.subgoal_id,
+                            subgoal.parent_id,
+                            formula.formula_id,
+                            parent_formula.formula_id,
+                        ),
+                        trace.facts.bound,
+                        {"refinement_mode": subgoal.refinement_mode.value},
+                    )
+                )
         return findings
 
     def _countermodel(
@@ -2127,6 +2501,7 @@ class FormalPlanValidator:
                 trace.event_ids[index],
                 trace.task_states[index],
                 tuple(trace.available_evidence[index]),
+                tuple(trace.satisfied_subgoals[index]),
             )
             for index in range(start, end + 1)
         )
@@ -2391,10 +2766,121 @@ def _evidence_is_realisable(requirement: EvidenceRequirement) -> bool:
         return False
     return bool(
         requirement.fallback_check_ids
-        or requirement.source_scope_ids
         or requirement.kind is EvidenceRequirementKind.PLAN_CHECK
         or requirement.metadata.get("production_event_id")
+        or metadata_available is True
     )
+
+
+def _evidence_is_fresh(
+    requirement: EvidenceRequirement,
+    observed_at: int | None,
+    required_at: int,
+) -> bool:
+    """Return whether an observation is usable at one bounded logical time."""
+
+    if observed_at is None:
+        return False
+    if observed_at > required_at:
+        return False
+    freshness = requirement.freshness_seconds
+    return freshness is None or required_at - observed_at <= freshness
+
+
+def _evidence_dependencies(
+    requirements: Mapping[str, EvidenceRequirement],
+) -> dict[str, tuple[str, ...]]:
+    """Extract the closed, reviewed evidence-dependency projection.
+
+    Fallback check IDs normally name external checks.  They become dependency
+    edges only when they name another declared evidence requirement.  A small
+    compatibility set of explicit metadata spellings is accepted because the
+    canonical requirement contract retains provider-independent metadata.
+    Unknown IDs are external observations and cannot participate in a local
+    circular-evidence proof.
+    """
+
+    known = set(requirements)
+    result: dict[str, tuple[str, ...]] = {}
+    for requirement_id, requirement in requirements.items():
+        values: set[str] = {
+            item for item in requirement.fallback_check_ids if item in known
+        }
+        for field_name in (
+            "depends_on",
+            "depends_on_evidence_ids",
+            "evidence_dependency_ids",
+            "required_evidence_ids",
+            "producer_evidence_ids",
+        ):
+            values.update(
+                item
+                for item in _string_values(requirement.metadata.get(field_name))
+                if item in known
+            )
+        result[requirement_id] = tuple(sorted(values))
+    return result
+
+
+def _cyclic_nodes(
+    graph: Mapping[str, tuple[str, ...]], guard: _BudgetGuard
+) -> set[str]:
+    """Return every node in a directed evidence dependency cycle.
+
+    The two iterative DFS passes implement Kosaraju's algorithm.  Avoiding
+    recursion is material here because the reviewed evidence domain can be
+    larger than Python's interpreter recursion limit.
+    """
+
+    visited: set[str] = set()
+    finish_order: list[str] = []
+    cyclic: set[str] = set()
+
+    for node in sorted(graph):
+        if node in visited:
+            continue
+        stack: list[tuple[str, bool]] = [(node, False)]
+        while stack:
+            guard.checkpoint()
+            current, expanded = stack.pop()
+            if expanded:
+                finish_order.append(current)
+                continue
+            if current in visited:
+                continue
+            visited.add(current)
+            stack.append((current, True))
+            for dependency in reversed(graph.get(current, ())):
+                guard.checkpoint()
+                if dependency not in visited:
+                    stack.append((dependency, False))
+
+    reverse_graph: dict[str, list[str]] = {node: [] for node in graph}
+    for node, dependencies in graph.items():
+        for dependency in dependencies:
+            guard.checkpoint()
+            reverse_graph.setdefault(dependency, []).append(node)
+
+    assigned: set[str] = set()
+    for node in reversed(finish_order):
+        guard.checkpoint()
+        if node in assigned:
+            continue
+        component: set[str] = set()
+        stack = [node]
+        assigned.add(node)
+        while stack:
+            guard.checkpoint()
+            current = stack.pop()
+            component.add(current)
+            for predecessor in reverse_graph.get(current, ()):
+                guard.checkpoint()
+                if predecessor not in assigned:
+                    assigned.add(predecessor)
+                    stack.append(predecessor)
+        if len(component) > 1 or node in graph.get(node, ()):
+            cyclic.update(component)
+    return cyclic
 
 
 def _finding(
@@ -2458,6 +2944,7 @@ def _finite_trace(
     task_states: Sequence[Mapping[str, str]],
     event_ids: Sequence[tuple[str, ...]],
     evidence: Sequence[set[str]],
+    satisfied_subgoals: Sequence[set[str]],
     completed_at: Mapping[str, int],
     terminal_at: Mapping[str, int],
     authorization: Mapping[tuple[str, str], bool],
@@ -2538,6 +3025,13 @@ def _finite_trace(
                 TraceFact(
                     ReviewedPredicate.EVIDENCE_AVAILABLE,
                     (constant(TermSort.EVIDENCE, evidence_id),),
+                )
+            )
+        for subgoal_id in satisfied_subgoals[index]:
+            facts.append(
+                TraceFact(
+                    ReviewedPredicate.SUBGOAL_SATISFIED,
+                    (constant(TermSort.SUBGOAL, subgoal_id),),
                 )
             )
         for goal in plan.goals:

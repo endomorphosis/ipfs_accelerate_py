@@ -48,6 +48,8 @@ from .formal_planning_contracts import (
     PlanEvent,
     PlanTask,
     Precondition,
+    RefinementMode,
+    Subgoal,
     TemporalConstraint,
     TemporalConstraintKind,
 )
@@ -376,13 +378,58 @@ _ABSTRACTED_FIELDS: Final = frozenset(
 )
 
 _UNSUPPORTED_SEMANTIC_FIELDS: Final = {
-    "objectives": frozenset({"subgoals"}),
+    "objectives": frozenset(),
     "tasks": frozenset({"preconditions", "events"}),
     "ast": frozenset(),
     "policies": frozenset({"obligations", "permissions", "prohibitions"}),
     "leases": frozenset(),
     "evidence": frozenset(),
 }
+
+_KNOWN_SUBGOAL_FIELDS: Final = frozenset(
+    {
+        "id",
+        "subgoal_id",
+        "subgoal_cid",
+        "canonical_subgoal_id",
+        "canonical_id",
+        "cid",
+        "content_id",
+        "goal_id",
+        "goal_cid",
+        "parent_id",
+        "parent_goal_id",
+        "parent_subgoal_id",
+        "refinement_mode",
+        "depends_on",
+        "dependencies",
+        "evidence_requirement_ids",
+        "evidence_requirements",
+        "acceptance_criteria",
+        "validation_commands",
+        "scope_ids",
+        "source_scope_ids",
+        "source_id",
+        "source_ids",
+        "satisfaction_formula_id",
+        "title",
+        "description",
+        "metadata",
+        "schema",
+    }
+)
+
+_UNSUPPORTED_SUBGOAL_SEMANTIC_FIELDS: Final = frozenset(
+    {
+        "formula",
+        "satisfaction_formula",
+        "operator",
+        "predicate",
+        "semantics",
+        "semantic_operator",
+        "semantic_predicate",
+    }
+)
 
 
 def _canonical_safe(value: Any) -> Any:
@@ -465,6 +512,41 @@ def _source_id(record: Mapping[str, Any], kind: str) -> str:
         "evidence": ("evidence_cid", "content_id", "cid", "evidence_id", "id"),
     }[kind]
     return _text(record, *preferred) or content_identity(record)
+
+
+def _subgoal_source_id(
+    record: Mapping[str, Any], objective_source_id: str = ""
+) -> str:
+    """Return the stable source identity of one reviewed nested subgoal."""
+
+    return (
+        _text(
+            record,
+            "source_id",
+            "subgoal_cid",
+            "content_id",
+            "cid",
+            "canonical_subgoal_id",
+            "canonical_id",
+            "subgoal_id",
+            "id",
+        )
+        or objective_source_id
+        or content_identity(record)
+    )
+
+
+def _subgoal_identity(record: Mapping[str, Any]) -> str:
+    return _text(
+        record,
+        "subgoal_cid",
+        "content_id",
+        "cid",
+        "canonical_subgoal_id",
+        "canonical_id",
+        "subgoal_id",
+        "id",
+    )
 
 
 def _unique_records(
@@ -580,6 +662,17 @@ def _normalize_bundle(payload: Mapping[str, Any]) -> dict[str, Any]:
         unique: dict[str, dict[str, Any]] = {}
         for item in bundle[section]:
             record = _record(item)
+            if section == "objectives" and record.get("subgoals") not in (
+                None,
+                "",
+                [],
+                (),
+            ):
+                nested = [_record(value) for value in _values(record["subgoals"])]
+                by_content = {canonical_json(value): value for value in nested}
+                record["subgoals"] = [
+                    by_content[key] for key in sorted(by_content)
+                ]
             unique[canonical_json(record)] = record
         bundle[section] = [
             unique[key] for key in sorted(unique)
@@ -960,6 +1053,98 @@ class FormalPlanCompiler:
                                 record[field_name],
                             )
                         )
+                if section == "objectives":
+                    for subgoal_index, raw_subgoal in enumerate(
+                        _values(record.get("subgoals"))
+                    ):
+                        if not isinstance(raw_subgoal, Mapping):
+                            issues.append(
+                                CompilationIssue(
+                                    CompilationIssueCode.INVALID_RECORD,
+                                    CompilationIssueSeverity.ERROR,
+                                    f"$.objectives[{index}].subgoals[{subgoal_index}]",
+                                    "reviewed subgoal records must be objects",
+                                    sid,
+                                    "subgoals",
+                                    raw_subgoal,
+                                )
+                            )
+                            continue
+                        subgoal_record = _record(raw_subgoal)
+                        subgoal_path = (
+                            f"$.objectives[{index}].subgoals[{subgoal_index}]"
+                        )
+                        for field_name in sorted(
+                            set(subgoal_record) - _KNOWN_SUBGOAL_FIELDS
+                        ):
+                            semantic = (
+                                field_name in _UNSUPPORTED_SUBGOAL_SEMANTIC_FIELDS
+                                or any(
+                                    token in field_name.lower()
+                                    for token in (
+                                        "formula",
+                                        "operator",
+                                        "predicate",
+                                        "semantic",
+                                    )
+                                )
+                            )
+                            issues.append(
+                                CompilationIssue(
+                                    (
+                                        CompilationIssueCode.UNKNOWN_SEMANTIC
+                                        if semantic
+                                        else CompilationIssueCode.UNKNOWN_FIELD
+                                    ),
+                                    (
+                                        CompilationIssueSeverity.UNSUPPORTED
+                                        if semantic and self.strict_unknown_semantics
+                                        else CompilationIssueSeverity.ABSTRACTION
+                                    ),
+                                    f"{subgoal_path}.{field_name}",
+                                    (
+                                        "subgoal field has no reviewed compiler rule"
+                                        if semantic
+                                        else "subgoal field is retained only as provenance"
+                                    ),
+                                    _subgoal_source_id(subgoal_record, sid),
+                                    field_name,
+                                    subgoal_record[field_name],
+                                )
+                            )
+                        for field_name in ("title", "description", "metadata", "schema"):
+                            if subgoal_record.get(field_name) not in (
+                                None,
+                                "",
+                                {},
+                                [],
+                            ):
+                                issues.append(
+                                    CompilationIssue(
+                                        CompilationIssueCode.ABSTRACTED_FIELD,
+                                        CompilationIssueSeverity.ABSTRACTION,
+                                        f"{subgoal_path}.{field_name}",
+                                        "descriptive subgoal field was retained as "
+                                        "provenance, not parsed into logic",
+                                        _subgoal_source_id(subgoal_record, sid),
+                                        field_name,
+                                        subgoal_record[field_name],
+                                    )
+                                )
+                        refinement = subgoal_record.get("refinement_mode")
+                        if refinement not in (None, "", "sufficient", "equivalent"):
+                            issues.append(
+                                CompilationIssue(
+                                    CompilationIssueCode.UNKNOWN_SEMANTIC,
+                                    CompilationIssueSeverity.UNSUPPORTED,
+                                    f"{subgoal_path}.refinement_mode",
+                                    "subgoal refinement mode is not in the reviewed "
+                                    "planning vocabulary",
+                                    _subgoal_source_id(subgoal_record, sid),
+                                    "refinement_mode",
+                                    refinement,
+                                )
+                            )
 
         objectives = list(bundle.get("objectives", ()))
         tasks = list(bundle.get("tasks", ()))
@@ -1132,8 +1317,294 @@ class FormalPlanCompiler:
         trace_bound = max(trace_candidates)
 
         goal_requirement_ids: dict[str, list[str]] = defaultdict(list)
+        subgoal_requirement_ids: dict[str, list[str]] = defaultdict(list)
         task_requirement_ids: dict[str, list[str]] = defaultdict(list)
         requirements: dict[str, EvidenceRequirement] = {}
+        policy_ids = tuple(sorted(_source_id(item, "policies") for item in policies))
+        policy_defaults = _policy_defaults(policies)
+
+        # A subgoal is semantic input only when it is nested in a reviewed
+        # objective record.  IDs and references are resolved in two passes so
+        # source ordering never changes the resulting hierarchy.
+        subgoal_records: dict[
+            str, tuple[Mapping[str, Any], str, str]
+        ] = {}
+        subgoal_ids: dict[str, str] = {}
+        for objective in objectives:
+            objective_key = _text(
+                objective,
+                "goal_cid",
+                "content_id",
+                "cid",
+                "canonical_goal_id",
+                "goal_id",
+                "id",
+            )
+            root_goal_id = objective_ids[objective_key]
+            objective_source_id = _source_id(objective, "objectives")
+            for raw_subgoal in _values(objective.get("subgoals")):
+                if not isinstance(raw_subgoal, Mapping):
+                    raise ValueError("reviewed subgoal records must be objects")
+                record = _record(raw_subgoal)
+                canonical = _subgoal_identity(record)
+                if not canonical:
+                    raise ValueError("subgoal identity is required")
+                value = (record, root_goal_id, objective_source_id)
+                previous = subgoal_records.get(canonical)
+                if previous is not None and previous != value:
+                    raise ValueError(
+                        f"conflicting subgoal records for {canonical}"
+                    )
+                subgoal_records[canonical] = value
+                for alias in (
+                    canonical,
+                    _text(record, "subgoal_id"),
+                    _text(record, "id"),
+                    _text(record, "canonical_subgoal_id"),
+                    _text(record, "canonical_id"),
+                ):
+                    if alias:
+                        existing = subgoal_ids.get(alias)
+                        if existing is not None and existing != canonical:
+                            raise ValueError(
+                                f"ambiguous subgoal alias {alias}"
+                            )
+                        subgoal_ids[alias] = canonical
+
+        plan_subgoals: list[Subgoal] = []
+        for subgoal_id, (
+            record,
+            enclosing_goal_id,
+            objective_source_id,
+        ) in sorted(subgoal_records.items()):
+            raw_goal_id = _text(record, "goal_cid", "goal_id")
+            goal_id = (
+                objective_ids.get(raw_goal_id, raw_goal_id)
+                if raw_goal_id
+                else enclosing_goal_id
+            )
+            if goal_id != enclosing_goal_id:
+                raise ValueError(
+                    f"subgoal {subgoal_id} belongs to a different enclosing goal"
+                )
+            raw_parent_id = _text(
+                record, "parent_id", "parent_subgoal_id", "parent_goal_id"
+            )
+            if not raw_parent_id:
+                parent_id = goal_id
+            else:
+                parent_id = objective_ids.get(
+                    raw_parent_id, subgoal_ids.get(raw_parent_id, raw_parent_id)
+                )
+            dependencies = tuple(
+                sorted(
+                    {
+                        subgoal_ids.get(value, value)
+                        for value in _strings(
+                            record.get("depends_on")
+                            or record.get("dependencies")
+                        )
+                    }
+                )
+            )
+            formula = TDFOL.subgoal_satisfaction(subgoal_id, trace_bound)
+            formulae[formula.formula_id] = formula
+            claimed_formula_id = _text(record, "satisfaction_formula_id")
+            if (
+                claimed_formula_id
+                and claimed_formula_id != formula.formula_id
+            ):
+                issues.append(
+                    CompilationIssue(
+                        CompilationIssueCode.UNKNOWN_SEMANTIC,
+                        CompilationIssueSeverity.UNSUPPORTED,
+                        f"$.subgoals[{subgoal_id}].satisfaction_formula_id",
+                        "claimed subgoal satisfaction formula does not match "
+                        "the deterministic reviewed formula",
+                        _subgoal_source_id(record, objective_source_id),
+                        "satisfaction_formula_id",
+                        claimed_formula_id,
+                    )
+                )
+
+            explicit_requirement_ids = list(
+                _strings(record.get("evidence_requirement_ids"))
+            )
+            scopes = _strings(
+                record.get("source_scope_ids") or record.get("scope_ids")
+            )
+            validation_commands = _strings(record.get("validation_commands"))
+            evidence_specs = [
+                *(
+                    ("evidence_requirement", ordinal, value)
+                    for ordinal, value in enumerate(
+                        _values(record.get("evidence_requirements"))
+                    )
+                ),
+                *(
+                    ("acceptance_criterion", ordinal, value)
+                    for ordinal, value in enumerate(
+                        _values(record.get("acceptance_criteria"))
+                    )
+                ),
+            ]
+            for category, ordinal, raw_spec in evidence_specs:
+                if isinstance(raw_spec, Mapping):
+                    spec = _record(raw_spec)
+                    kind = _evidence_kind(
+                        spec.get(
+                            "kind",
+                            (
+                                EvidenceRequirementKind.REVIEW.value
+                                if category == "acceptance_criterion"
+                                else EvidenceRequirementKind.ARTIFACT.value
+                            ),
+                        )
+                    )
+                    requirement_id = _text(spec, "requirement_id", "id")
+                    spec_scopes = _strings(
+                        spec.get("source_scope_ids") or spec.get("scope_ids")
+                    )
+                    check_ids = _strings(
+                        spec.get("fallback_check_ids")
+                        or spec.get("check_ids")
+                        or spec.get("validation_commands")
+                    )
+                    minimum_assurance = _assurance(
+                        spec.get(
+                            "minimum_code_assurance",
+                            policy_defaults["minimum_assurance"],
+                        )
+                    )
+                    freshness = _optional_nonnegative(
+                        spec.get(
+                            "freshness_seconds",
+                            policy_defaults["freshness_seconds"],
+                        )
+                    )
+                    metadata_spec: Any = spec
+                else:
+                    kind = (
+                        EvidenceRequirementKind.REVIEW
+                        if category == "acceptance_criterion"
+                        else EvidenceRequirementKind.ARTIFACT
+                    )
+                    requirement_id = ""
+                    spec_scopes = ()
+                    check_ids = ()
+                    minimum_assurance = policy_defaults["minimum_assurance"]
+                    freshness = policy_defaults["freshness_seconds"]
+                    metadata_spec = str(raw_spec)
+                requirement_id = requirement_id or content_identity(
+                    {
+                        "subgoal_id": subgoal_id,
+                        "category": category,
+                        "ordinal": ordinal,
+                        "requirement": metadata_spec,
+                    }
+                )
+                requirement = EvidenceRequirement(
+                    requirement_id=requirement_id,
+                    kind=kind,
+                    subject_ids=(subgoal_id,),
+                    source_scope_ids=spec_scopes or scopes,
+                    minimum_code_assurance=minimum_assurance,
+                    freshness_seconds=freshness,
+                    fallback_check_ids=tuple(
+                        sorted(
+                            {
+                                *check_ids,
+                                *validation_commands,
+                                *policy_defaults["fallback_checks"],
+                            }
+                        )
+                    ),
+                    metadata={
+                        "source_subgoal_id": subgoal_id,
+                        "category": category,
+                        "requirement": _canonical_safe(metadata_spec),
+                        "policy_ids": list(policy_ids),
+                    },
+                )
+                previous = requirements.get(requirement_id)
+                if previous is not None and previous != requirement:
+                    raise ValueError(
+                        f"conflicting evidence requirement {requirement_id}"
+                    )
+                requirements[requirement_id] = requirement
+                explicit_requirement_ids.append(requirement_id)
+            if not evidence_specs and validation_commands:
+                requirement_id = content_identity(
+                    {
+                        "subgoal_id": subgoal_id,
+                        "validation_commands": validation_commands,
+                    }
+                )
+                requirements[requirement_id] = EvidenceRequirement(
+                    requirement_id=requirement_id,
+                    kind=EvidenceRequirementKind.TEST,
+                    subject_ids=(subgoal_id,),
+                    source_scope_ids=scopes,
+                    minimum_code_assurance=policy_defaults["minimum_assurance"],
+                    freshness_seconds=policy_defaults["freshness_seconds"],
+                    fallback_check_ids=tuple(
+                        sorted(
+                            {
+                                *validation_commands,
+                                *policy_defaults["fallback_checks"],
+                            }
+                        )
+                    ),
+                    metadata={
+                        "source_subgoal_id": subgoal_id,
+                        "policy_ids": list(policy_ids),
+                    },
+                )
+                explicit_requirement_ids.append(requirement_id)
+            if not explicit_requirement_ids:
+                issues.append(
+                    CompilationIssue(
+                        CompilationIssueCode.MISSING_SEMANTICS,
+                        CompilationIssueSeverity.UNSUPPORTED,
+                        f"$.subgoals[{subgoal_id}].evidence_requirements",
+                        "subgoal has no reviewed evidence requirement",
+                        _subgoal_source_id(record, objective_source_id),
+                    )
+                )
+            subgoal_requirement_ids[subgoal_id].extend(explicit_requirement_ids)
+            source_ids = tuple(
+                sorted(
+                    {
+                        objective_source_id,
+                        subgoal_id,
+                        _subgoal_source_id(record, objective_source_id),
+                        _text(record, "source_id"),
+                        *_strings(record.get("source_ids")),
+                    }
+                    - {""}
+                )
+            )
+            plan_subgoals.append(
+                Subgoal(
+                    subgoal_id=subgoal_id,
+                    goal_id=goal_id,
+                    parent_id=parent_id,
+                    refinement_mode=record.get(
+                        "refinement_mode", RefinementMode.SUFFICIENT
+                    ),
+                    satisfaction_formula_id=formula.formula_id,
+                    depends_on=dependencies,
+                    evidence_requirement_ids=tuple(
+                        sorted(set(explicit_requirement_ids))
+                    ),
+                    metadata={
+                        **_descriptive_metadata(record),
+                        "source_ids": list(source_ids),
+                        "scope_ids": list(scopes),
+                        "compiler_rule": "reviewed_objective_subgoal",
+                    },
+                )
+            )
 
         # Changed AST scopes are authoritative evidence scopes, never formulas.
         ast_by_task: dict[str, set[str]] = defaultdict(set)
@@ -1222,8 +1693,6 @@ class FormalPlanCompiler:
         topo_times = _topological_times(task_by_canonical, task_ids)
 
         # Policy records become evidence requirements and reviewed deontic norms.
-        policy_ids = tuple(sorted(_source_id(item, "policies") for item in policies))
-        policy_defaults = _policy_defaults(policies)
         for task_id, record in sorted(task_by_canonical.items()):
             raw_goal = _text(record, "goal_cid", "goal_id")
             goal_id = objective_ids.get(raw_goal, raw_goal)
@@ -1241,6 +1710,12 @@ class FormalPlanCompiler:
                 )
             if goal_id not in {item.goal_id for item in plan_goals}:
                 raise ValueError(f"task {task_id} has unknown goal {goal_id!r}")
+            raw_subgoal_id = _text(record, "subgoal_cid", "subgoal_id")
+            subgoal_id = subgoal_ids.get(raw_subgoal_id, raw_subgoal_id)
+            if subgoal_id and subgoal_id not in subgoal_records:
+                raise ValueError(
+                    f"task {task_id} has unknown subgoal {subgoal_id!r}"
+                )
 
             dependencies = tuple(
                 sorted(
@@ -1607,7 +2082,7 @@ class FormalPlanCompiler:
                 PlanTask(
                     task_id=task_id,
                     goal_id=goal_id,
-                    subgoal_id="",
+                    subgoal_id=subgoal_id,
                     actor_ids=tuple(sorted(actor_values)),
                     depends_on=dependencies,
                     precondition_ids=tuple(
@@ -1728,12 +2203,24 @@ class FormalPlanCompiler:
                     )
                 subjects = tuple(
                     sorted(
-                        task_ids.get(value, objective_ids.get(value, value))
+                        task_ids.get(
+                            value,
+                            objective_ids.get(
+                                value, subgoal_ids.get(value, value)
+                            ),
+                        )
                         for value in _strings(item.get("subject_ids"))
                     )
                 )
                 if not subjects:
-                    subjects = tuple(item.goal_id for item in plan_goals)
+                    subjects = tuple(
+                        sorted(
+                            {
+                                *(item.goal_id for item in plan_goals),
+                                *(item.subgoal_id for item in plan_subgoals),
+                            }
+                        )
+                    )
                 requirement_id = _text(item, "requirement_id", "id") or content_identity(
                     {
                         "policy_id": _source_id(policy, "policies"),
@@ -1765,6 +2252,10 @@ class FormalPlanCompiler:
                 for subject in subjects:
                     if subject in {item.goal_id for item in plan_goals}:
                         goal_requirement_ids[subject].append(requirement_id)
+                    if subject in {
+                        item.subgoal_id for item in plan_subgoals
+                    }:
+                        subgoal_requirement_ids[subject].append(requirement_id)
 
         plan_goals = [
             Goal(
@@ -1780,6 +2271,36 @@ class FormalPlanCompiler:
             )
             for item in plan_goals
         ]
+        rebuilt_subgoals: list[Subgoal] = []
+        for item in plan_subgoals:
+            requirement_ids = tuple(
+                sorted(set(subgoal_requirement_ids[item.subgoal_id]))
+            )
+            for requirement_id in requirement_ids:
+                requirement = requirements.get(requirement_id)
+                if requirement is None:
+                    raise ValueError(
+                        f"subgoal {item.subgoal_id} references unknown evidence "
+                        f"requirement {requirement_id}"
+                    )
+                if item.subgoal_id not in requirement.subject_ids:
+                    raise ValueError(
+                        f"evidence requirement {requirement_id} does not cover "
+                        f"subgoal {item.subgoal_id}"
+                    )
+            rebuilt_subgoals.append(
+                Subgoal(
+                    subgoal_id=item.subgoal_id,
+                    goal_id=item.goal_id,
+                    parent_id=item.parent_id,
+                    refinement_mode=item.refinement_mode,
+                    satisfaction_formula_id=item.satisfaction_formula_id,
+                    depends_on=item.depends_on,
+                    evidence_requirement_ids=requirement_ids,
+                    metadata=item.metadata,
+                )
+            )
+        plan_subgoals = rebuilt_subgoals
         source_ids = sorted(
             {
                 _source_id(record, section)
@@ -1800,6 +2321,12 @@ class FormalPlanCompiler:
             for lease in lease_by_task[task_id]
             if _source_id(lease, "leases") not in source_ids
         )
+        source_ids.extend(
+            source_id
+            for item in plan_subgoals
+            for source_id in _strings(item.metadata.get("source_ids"))
+            if source_id not in source_ids
+        )
         source_ids.sort()
         abstraction_ids = tuple(
             sorted(
@@ -1813,7 +2340,7 @@ class FormalPlanCompiler:
             vocabulary_version=LOGIC_VOCABULARY_VERSION,
             actors=tuple(actors.values()),
             goals=tuple(plan_goals),
-            subgoals=(),
+            subgoals=tuple(plan_subgoals),
             tasks=tuple(plan_tasks),
             events=tuple(events),
             fluents=tuple(fluents),
@@ -1822,6 +2349,9 @@ class FormalPlanCompiler:
             norms=tuple(norms),
             temporal_constraints=tuple(constraints),
             evidence_requirements=tuple(requirements.values()),
+            formulas=(
+                tuple(formulae.values()) if plan_subgoals else ()
+            ),
             source_ids=tuple(source_ids),
             repository_tree_id=tree_id,
             trace_bound=trace_bound,
@@ -1962,7 +2492,60 @@ class FormalPlanCompiler:
                 ):
                     if alias:
                         node_by_alias[alias] = node["node_id"]
+                if section == "objectives":
+                    for raw_subgoal in _values(record.get("subgoals")):
+                        if not isinstance(raw_subgoal, Mapping):
+                            continue
+                        subgoal = _record(raw_subgoal)
+                        subgoal_id = _subgoal_identity(subgoal)
+                        if not subgoal_id:
+                            continue
+                        subgoal_node = _graph_node(
+                            "subgoal",
+                            subgoal_id,
+                            source_cid=_subgoal_source_id(subgoal, sid),
+                        )
+                        nodes.append(subgoal_node)
+                        for alias in (
+                            subgoal_id,
+                            _text(subgoal, "subgoal_id"),
+                            _text(subgoal, "id"),
+                            _text(subgoal, "canonical_subgoal_id"),
+                            _text(subgoal, "canonical_id"),
+                        ):
+                            if alias:
+                                node_by_alias[alias] = subgoal_node["node_id"]
         edges: list[dict[str, Any]] = []
+        for record in bundle.get("objectives", ()):
+            root_node = node_by_alias.get(_source_id(record, "objectives"))
+            for raw_subgoal in _values(record.get("subgoals")):
+                if not isinstance(raw_subgoal, Mapping):
+                    continue
+                subgoal = _record(raw_subgoal)
+                subgoal_node = node_by_alias.get(_subgoal_identity(subgoal))
+                if not subgoal_node:
+                    continue
+                parent_ref = _text(
+                    subgoal,
+                    "parent_id",
+                    "parent_subgoal_id",
+                    "parent_goal_id",
+                )
+                parent_node = node_by_alias.get(parent_ref) if parent_ref else root_node
+                if parent_node:
+                    edges.append(
+                        _graph_edge("refines", subgoal_node, parent_node)
+                    )
+                for dependency in _strings(
+                    subgoal.get("depends_on") or subgoal.get("dependencies")
+                ):
+                    dependency_node = node_by_alias.get(dependency)
+                    if dependency_node:
+                        edges.append(
+                            _graph_edge(
+                                "depends_on", subgoal_node, dependency_node
+                            )
+                        )
         for record in bundle.get("tasks", ()):
             task_node = node_by_alias.get(_source_id(record, "tasks"))
             if not task_node:
@@ -1994,6 +2577,7 @@ class FormalPlanCompiler:
         for kind, records, identity_name in (
             ("actor", plan.actors, "actor_id"),
             ("goal", plan.goals, "goal_id"),
+            ("subgoal", plan.subgoals, "subgoal_id"),
             ("task", plan.tasks, "task_id"),
             ("event", plan.events, "event_id"),
             ("fluent", plan.fluents, "fluent_id"),
@@ -2049,6 +2633,45 @@ class FormalPlanCompiler:
                     by_record[goal.owner_actor_id],
                 )
             )
+        for subgoal in plan.subgoals:
+            edges.append(
+                _graph_edge(
+                    "refines",
+                    by_record[subgoal.subgoal_id],
+                    by_record[subgoal.parent_id],
+                )
+            )
+            edges.append(
+                _graph_edge(
+                    "contributes_to",
+                    by_record[subgoal.subgoal_id],
+                    by_record[subgoal.goal_id],
+                )
+            )
+            for dependency in subgoal.depends_on:
+                edges.append(
+                    _graph_edge(
+                        "depends_on",
+                        by_record[subgoal.subgoal_id],
+                        by_record[dependency],
+                    )
+                )
+            for requirement_id in subgoal.evidence_requirement_ids:
+                edges.append(
+                    _graph_edge(
+                        "requires_evidence",
+                        by_record[subgoal.subgoal_id],
+                        by_record[requirement_id],
+                    )
+                )
+            if subgoal.satisfaction_formula_id in by_record:
+                edges.append(
+                    _graph_edge(
+                        "uses_predicate",
+                        by_record[subgoal.subgoal_id],
+                        by_record[subgoal.satisfaction_formula_id],
+                    )
+                )
         for task in plan.tasks:
             edges.append(
                 _graph_edge(
