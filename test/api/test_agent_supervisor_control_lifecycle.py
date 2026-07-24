@@ -9,6 +9,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
     AuthorizationDecision,
     AuthorizationVerdict,
+    ControlContractError,
     EffectKind,
     ControlMutationGuardEvidence,
     ExpectedEffect,
@@ -16,9 +17,11 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     LifecycleAction,
     LifecycleCommand,
     MutationGuardRejection,
+    MutationGuardExecutionObservation,
     Operation,
     OperationAuthority,
     OperationRequest,
+    OperationResult,
     OperationStatus,
 )
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
@@ -238,12 +241,16 @@ def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(
     state_root = tmp_path / "state"
     repo_root.mkdir()
     state_root.mkdir()
-    service = _service(repo_root, state_root, [])
+    calls: list[str] = []
+    service = _service(repo_root, state_root, calls)
     request = _request(
         repo_root, state_root, Operation.PAUSE, dry_run=False
     )
+    before = service.mutation_runtime_state()
     result = service.execute(request)
+    after_result = service.mutation_runtime_state()
     replay = service.execute(request)
+    after_replay = service.mutation_runtime_state()
     canonical = request.to_record()
 
     def rejected(
@@ -267,6 +274,14 @@ def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(
         request=request,
         result=result,
         replay_result=replay,
+        execution=MutationGuardExecutionObservation(
+            request_id=request.request_id,
+            result_id=result.result_id,
+            audit_receipt_id=result.audit_receipt_id,
+            before=before,
+            after_result=after_result,
+            after_replay=after_replay,
+        ),
         rejections=(
             rejected(
                 "missing_authorization",
@@ -290,7 +305,42 @@ def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(
     assert evidence.proved_requirement_ids == (
         CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
     )
+    assert calls == [request.request_id]
     assert ControlMutationGuardEvidence.from_dict(evidence.to_record()) == evidence
+
+    for field, message in (
+        ("result_id", "detached"),
+        ("audit_receipt_id", "bound audit receipt"),
+    ):
+        tampered = evidence.to_record()
+        tampered.pop("content_id")
+        execution = dict(tampered["execution"])
+        execution.pop("content_id")
+        execution[field] = "sha256:" + ("0" * 64)
+        tampered["execution"] = execution
+        with pytest.raises(ControlContractError, match=message):
+            ControlMutationGuardEvidence.from_dict(tampered)
+
+    duplicate_dispatch = evidence.to_record()
+    duplicate_dispatch.pop("content_id")
+    execution = dict(duplicate_dispatch["execution"])
+    execution.pop("content_id")
+    after_replay_record = dict(execution["after_replay"])
+    after_replay_record.pop("content_id")
+    after_replay_record["dispatch_count"] = 2
+    execution["after_replay"] = after_replay_record
+    duplicate_dispatch["execution"] = execution
+    with pytest.raises(ControlContractError, match="must not dispatch"):
+        ControlMutationGuardEvidence.from_dict(duplicate_dispatch)
+
+    mismatched_receipt = result.to_record()
+    mismatched_receipt.pop("content_id")
+    effect = dict(mismatched_receipt["effects"][0])
+    effect.pop("content_id")
+    effect["receipt_id"] = "sha256:" + ("f" * 64)
+    mismatched_receipt["effects"] = [effect]
+    with pytest.raises(ControlContractError, match="must match"):
+        OperationResult.from_dict(mismatched_receipt)
 
 
 def test_lifecycle_rejects_non_lifecycle_operation(

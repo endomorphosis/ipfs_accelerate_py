@@ -42,6 +42,7 @@ from .control_contracts import (
     ControlContractError,
     ControlDiscoveryManifest,
     ControlDiscoveryRuntimeState,
+    ControlMutationRuntimeState,
     ControlSurface,
     DryRunPreview,
     EffectClaim,
@@ -1148,6 +1149,10 @@ class SupervisorControlService:
         self._require_lease_validator = bool(require_lease_validator)
         self._clock_ms = clock_ms
         self._lock = threading.RLock()
+        self._mutation_dispatch_count = 0
+        self._mutation_audit_receipt_count = 0
+        self._last_mutation_dispatch_request_id = ""
+        self._last_mutation_audit_receipt_id = ""
         self._capability_report = self._build_capability_report()
 
     @property
@@ -1201,6 +1206,27 @@ class SupervisorControlService:
         """Return the side-effect-free capability handshake."""
 
         return self._capability_report
+
+    def mutation_runtime_state(self) -> ControlMutationRuntimeState:
+        """Return the observed dispatch/audit population for mutation proof.
+
+        The snapshot is maintained by the service itself, inside the same
+        lock as authorization, idempotency lookup, dispatch, and audit
+        persistence.  It therefore distinguishes a backend invocation from
+        an exact replay without trusting a backend-supplied counter.
+        """
+
+        with self._lock:
+            return ControlMutationRuntimeState(
+                dispatch_count=self._mutation_dispatch_count,
+                audit_receipt_count=self._mutation_audit_receipt_count,
+                last_dispatch_request_id=(
+                    self._last_mutation_dispatch_request_id
+                ),
+                last_audit_receipt_id=(
+                    self._last_mutation_audit_receipt_id
+                ),
+            )
 
     def discovery_manifest(self) -> ControlDiscoveryManifest:
         """Return deterministic Python discovery metadata without dispatch."""
@@ -1377,6 +1403,9 @@ class SupervisorControlService:
             raise OperationUnavailableError(
                 "control backend does not provide execute(request)"
             )
+        if request.operation in MUTATION_OPERATIONS and not request.dry_run:
+            self._mutation_dispatch_count += 1
+            self._last_mutation_dispatch_request_id = request.request_id
         return self._normalize_backend_response(execute(request), request)
 
     @staticmethod
@@ -1580,6 +1609,8 @@ class SupervisorControlService:
         self._state_store.append_receipt(request, receipt)
         if request.operation in MUTATION_OPERATIONS and not request.dry_run:
             self._state_store.put_idempotent(request, result)
+            self._mutation_audit_receipt_count += 1
+            self._last_mutation_audit_receipt_id = receipt.receipt_id
         return result
 
     def _error_result(

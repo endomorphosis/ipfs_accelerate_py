@@ -80,7 +80,13 @@ MUTATION_GUARD_REJECTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/mutation-guard-rejection@1"
 )
 CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/control-mutation-guard-evidence@1"
+    "ipfs_accelerate_py/agent-supervisor/control-mutation-guard-evidence@2"
+)
+CONTROL_MUTATION_RUNTIME_STATE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-mutation-runtime-state@1"
+)
+MUTATION_GUARD_EXECUTION_OBSERVATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/mutation-guard-execution-observation@1"
 )
 
 # ASI-G070/ASI-G103: the requirement is emitted only by a validated
@@ -1833,6 +1839,13 @@ class OperationResult(_ControlCanonicalContract):
             raise ControlContractError(
                 "applied mutation results require an audit receipt"
             )
+        if any(
+            effect.applied and effect.receipt_id != self.audit_receipt_id
+            for effect in effects
+        ):
+            raise ControlContractError(
+                "applied effect receipt must match the result audit receipt"
+            )
         if len(self.canonical_bytes()) > bounds.max_serialized_bytes:
             raise ControlBoundsError(
                 "operation result exceeds its serialized-byte bound"
@@ -3091,6 +3104,200 @@ class MutationGuardRejection(_ControlCanonicalContract):
 
 
 @dataclass(frozen=True)
+class ControlMutationRuntimeState(_ControlCanonicalContract):
+    """Observed mutation dispatch and durable-audit population at one instant."""
+
+    SCHEMA: ClassVar[str] = CONTROL_MUTATION_RUNTIME_STATE_SCHEMA
+
+    dispatch_count: int = 0
+    audit_receipt_count: int = 0
+    last_dispatch_request_id: str = ""
+    last_audit_receipt_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in ("dispatch_count", "audit_receipt_count"):
+            object.__setattr__(
+                self, name, _nonnegative(getattr(self, name), name)
+            )
+        for name in (
+            "last_dispatch_request_id",
+            "last_audit_receipt_id",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _text(getattr(self, name), name, required=False),
+            )
+        if bool(self.dispatch_count) != bool(self.last_dispatch_request_id):
+            raise ControlContractError(
+                "dispatch count and latest request identity must both be set"
+            )
+        if bool(self.audit_receipt_count) != bool(
+            self.last_audit_receipt_id
+        ):
+            raise ControlContractError(
+                "audit count and latest receipt identity must both be set"
+            )
+        _bounded_record(self, "control mutation runtime state")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "dispatch_count": self.dispatch_count,
+            "audit_receipt_count": self.audit_receipt_count,
+            "last_dispatch_request_id": self.last_dispatch_request_id,
+            "last_audit_receipt_id": self.last_audit_receipt_id,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlMutationRuntimeState":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "dispatch_count",
+                "audit_receipt_count",
+                "last_dispatch_request_id",
+                "last_audit_receipt_id",
+                "content_id",
+            },
+            "control mutation runtime state",
+        )
+        result = cls(
+            dispatch_count=payload.get("dispatch_count", 0),
+            audit_receipt_count=payload.get("audit_receipt_count", 0),
+            last_dispatch_request_id=payload.get(
+                "last_dispatch_request_id", ""
+            ),
+            last_audit_receipt_id=payload.get(
+                "last_audit_receipt_id", ""
+            ),
+        )
+        _identity(payload, result.content_id, "control mutation runtime state")
+        return result
+
+
+@dataclass(frozen=True)
+class MutationGuardExecutionObservation(_ControlCanonicalContract):
+    """Three runtime snapshots proving one dispatch and a dispatch-free replay."""
+
+    SCHEMA: ClassVar[str] = MUTATION_GUARD_EXECUTION_OBSERVATION_SCHEMA
+
+    request_id: str
+    result_id: str
+    audit_receipt_id: str
+    before: ControlMutationRuntimeState | Mapping[str, Any]
+    after_result: ControlMutationRuntimeState | Mapping[str, Any]
+    after_replay: ControlMutationRuntimeState | Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        for name in ("request_id", "result_id", "audit_receipt_id"):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        states: dict[str, ControlMutationRuntimeState] = {}
+        for name in ("before", "after_result", "after_replay"):
+            item = getattr(self, name)
+            if not isinstance(item, ControlMutationRuntimeState):
+                if not isinstance(item, Mapping):
+                    raise ControlContractError(
+                        f"{name} must be a ControlMutationRuntimeState"
+                    )
+                item = ControlMutationRuntimeState.from_dict(item)
+            object.__setattr__(self, name, item)
+            states[name] = item
+
+        before = states["before"]
+        after_result = states["after_result"]
+        after_replay = states["after_replay"]
+        if (
+            after_result.dispatch_count != before.dispatch_count + 1
+            or after_result.last_dispatch_request_id != self.request_id
+        ):
+            raise ControlContractError(
+                "mutation execution must add exactly one bound backend dispatch"
+            )
+        if (
+            after_replay.dispatch_count != after_result.dispatch_count
+            or after_replay.last_dispatch_request_id
+            != after_result.last_dispatch_request_id
+        ):
+            raise ControlContractError(
+                "idempotent replay must not dispatch the backend"
+            )
+        if (
+            after_result.audit_receipt_count
+            != before.audit_receipt_count + 1
+            or after_result.last_audit_receipt_id
+            != self.audit_receipt_id
+        ):
+            raise ControlContractError(
+                "mutation execution must add exactly one bound audit receipt"
+            )
+        if (
+            after_replay.audit_receipt_count
+            != after_result.audit_receipt_count
+            or after_replay.last_audit_receipt_id
+            != after_result.last_audit_receipt_id
+        ):
+            raise ControlContractError(
+                "idempotent replay must not append another audit receipt"
+            )
+        _bounded_record(self, "mutation guard execution observation")
+
+    def _payload(self) -> dict[str, Any]:
+        assert isinstance(self.before, ControlMutationRuntimeState)
+        assert isinstance(self.after_result, ControlMutationRuntimeState)
+        assert isinstance(self.after_replay, ControlMutationRuntimeState)
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "request_id": self.request_id,
+            "result_id": self.result_id,
+            "audit_receipt_id": self.audit_receipt_id,
+            "before": self.before.to_record(),
+            "after_result": self.after_result.to_record(),
+            "after_replay": self.after_replay.to_record(),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "MutationGuardExecutionObservation":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "request_id",
+                "result_id",
+                "audit_receipt_id",
+                "before",
+                "after_result",
+                "after_replay",
+                "content_id",
+            },
+            "mutation guard execution observation",
+        )
+        result = cls(
+            request_id=payload.get("request_id", ""),
+            result_id=payload.get("result_id", ""),
+            audit_receipt_id=payload.get("audit_receipt_id", ""),
+            before=payload.get("before") or {},
+            after_result=payload.get("after_result") or {},
+            after_replay=payload.get("after_replay") or {},
+        )
+        _identity(
+            payload, result.content_id, "mutation guard execution observation"
+        )
+        return result
+
+
+@dataclass(frozen=True)
 class ControlMutationGuardEvidence(_ControlCanonicalContract):
     """Evidence that an applied mutation was guarded, audited, and replay-safe."""
 
@@ -3103,6 +3310,7 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
     request: OperationRequest | Mapping[str, Any]
     result: OperationResult | Mapping[str, Any]
     replay_result: OperationResult | Mapping[str, Any]
+    execution: MutationGuardExecutionObservation | Mapping[str, Any]
     rejections: tuple[MutationGuardRejection, ...]
     requirement_id: str = CONTROL_MUTATION_GUARD_REQUIREMENT_ID
 
@@ -3163,6 +3371,25 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
                 "mutation result is not audited, applied, and exactly replayed"
             )
 
+        execution = self.execution
+        if not isinstance(execution, MutationGuardExecutionObservation):
+            if not isinstance(execution, Mapping):
+                raise ControlContractError(
+                    "execution must be a MutationGuardExecutionObservation"
+                )
+            execution = MutationGuardExecutionObservation.from_dict(execution)
+        if (
+            execution.request_id != request.request_id
+            or execution.result_id != decoded_results[0].result_id
+            or execution.audit_receipt_id
+            != decoded_results[0].audit_receipt_id
+        ):
+            raise ControlContractError(
+                "mutation execution observation is detached from its request "
+                "or result"
+            )
+        object.__setattr__(self, "execution", execution)
+
         rejections = _coerce_tuple(
             self.rejections,
             MutationGuardRejection,
@@ -3199,6 +3426,7 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
         assert isinstance(self.request, OperationRequest)
         assert isinstance(self.result, OperationResult)
         assert isinstance(self.replay_result, OperationResult)
+        assert isinstance(self.execution, MutationGuardExecutionObservation)
         return {
             "contract_version": CONTROL_CONTRACT_VERSION,
             "requirement_id": self.requirement_id,
@@ -3209,6 +3437,7 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             "request": self.request.to_record(),
             "result": self.result.to_record(),
             "replay_result": self.replay_result.to_record(),
+            "execution": self.execution.to_record(),
             "rejections": tuple(item.to_record() for item in self.rejections),
         }
 
@@ -3231,6 +3460,7 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
                 "request",
                 "result",
                 "replay_result",
+                "execution",
                 "rejections",
                 "content_id",
             },
@@ -3245,6 +3475,7 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             request=payload.get("request") or {},
             result=payload.get("result") or {},
             replay_result=payload.get("replay_result") or {},
+            execution=payload.get("execution") or {},
             rejections=payload.get("rejections", ()),
         )
         _identity(payload, result.content_id, "control mutation guard evidence")
@@ -3580,6 +3811,7 @@ __all__ = [
     "CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID",
     "CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA",
     "CONTROL_MUTATION_GUARD_REQUIREMENT_ID",
+    "CONTROL_MUTATION_RUNTIME_STATE_SCHEMA",
     "CONTROL_SURFACE_PARITY_CASE_SCHEMA",
     "CONTROL_SURFACE_PARITY_EVIDENCE_SCHEMA",
     "CONTROL_SURFACE_PARITY_REQUIREMENT_ID",
@@ -3618,6 +3850,7 @@ __all__ = [
     "ControlDiscoverySafetyEvidence",
     "ControlLimits",
     "ControlMutationGuardEvidence",
+    "ControlMutationRuntimeState",
     "ControlOperation",
     "ControlSurface",
     "ControlSurfaceParityCase",
@@ -3634,6 +3867,8 @@ __all__ = [
     "LifecycleOperation",
     "MissingIdempotencyError",
     "MUTATION_GUARD_REJECTION_SCHEMA",
+    "MUTATION_GUARD_EXECUTION_OBSERVATION_SCHEMA",
+    "MutationGuardExecutionObservation",
     "MutationGuardRejection",
     "Operation",
     "OperationAuthority",
