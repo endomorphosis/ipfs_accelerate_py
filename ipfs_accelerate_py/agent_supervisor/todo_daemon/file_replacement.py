@@ -602,20 +602,18 @@ def apply_file_replacement_proposal(
         if not changed:
             proposal.errors.append("Proposal made no content changes.")
             proposal.failure_kind = "no_change"
-            proposal.validation_results = hooks.run_validation(
-                worktree_config,
-                proposal_validation_commands,
-            )
+            # A no-op is a proposal-gate failure, not an unknown-impact
+            # change.  Running the validation suite here used to turn an empty
+            # change set into broad selection and violated the strict
+            # fail-fast boundary.
+            proposal.validation_results = []
             hooks.persist_failed_work(proposal, config, "", "no_change", "ephemeral_worktree")
             return proposal
 
         if proposal.requires_visible_source_change and not hooks.has_visible_source_change(changed):
             proposal.errors.append(hooks.no_visible_source_change_message)
             proposal.failure_kind = "no_visible_source_change"
-            proposal.validation_results = hooks.run_validation(
-                worktree_config,
-                proposal_validation_commands,
-            )
+            proposal.validation_results = []
             hooks.persist_failed_work(
                 proposal,
                 config,

@@ -17,9 +17,11 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections import deque
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
@@ -49,6 +51,13 @@ CACHE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/validation-cache@1"
 STAGED_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/staged-validation-report@1"
 )
+VALIDATION_DAG_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/validation-dag-receipt@1"
+)
+TRANSITIVE_IMPACT_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/transitive-impact-validation-evidence@1"
+)
+TRANSITIVE_IMPACT_REQUIREMENT_ID = "266404049326363900535699811645710804440"
 VALIDATION_VERDICT_KINDS = (
     "deterministic",
     "translation",
@@ -637,6 +646,522 @@ def _proof_phase_passed(
     return bool(succeeded)
 
 
+class ValidationDAGError(ValueError):
+    """Raised when a persisted impact graph or DAG receipt is inconsistent."""
+
+
+class ValidationNodeDisposition(str, Enum):
+    SELECTED = "selected"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+    OMITTED = "omitted"
+
+
+def _normalize_impact_path(value: object) -> str:
+    text = str(value or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    if not text or text.startswith("/") or "\0" in text:
+        return ""
+    parts: list[str] = []
+    for part in text.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if not parts:
+                return ""
+            parts.pop()
+        else:
+            parts.append(part)
+    return "/".join(parts)
+
+
+@dataclass(frozen=True)
+class ImpactDependencyGraph:
+    """Canonical file dependency graph used for validation impact closure.
+
+    Each mapping key is a dependent path and its values are the paths it
+    directly consumes.  Selection walks the reverse graph from a changed path
+    to every affected consumer and test.
+    """
+
+    dependencies: Mapping[str, Sequence[str]]
+    repository_tree_id: str
+    graph_version: str = "impact-dependency-v1"
+    graph_id: str = ""
+
+    def __post_init__(self) -> None:
+        tree = str(self.repository_tree_id or "").strip()
+        if not tree:
+            raise ValidationDAGError("impact graph requires repository_tree_id")
+        object.__setattr__(self, "repository_tree_id", tree)
+        normalized: dict[str, tuple[str, ...]] = {}
+        for raw_dependent, raw_dependencies in dict(self.dependencies or {}).items():
+            dependent = _normalize_impact_path(raw_dependent)
+            if not dependent:
+                raise ValidationDAGError("impact graph contains an unsafe dependent path")
+            if isinstance(raw_dependencies, str):
+                values: Iterable[object] = (raw_dependencies,)
+            else:
+                values = raw_dependencies
+            direct = tuple(
+                sorted(
+                    {
+                        path
+                        for value in values
+                        if (path := _normalize_impact_path(value))
+                    }
+                )
+            )
+            if dependent in direct:
+                raise ValidationDAGError("impact graph contains a self dependency")
+            normalized[dependent] = direct
+        object.__setattr__(self, "dependencies", dict(sorted(normalized.items())))
+        version = str(self.graph_version or "").strip()
+        if not version:
+            raise ValidationDAGError("impact graph version is required")
+        object.__setattr__(self, "graph_version", version)
+        claimed = str(self.graph_id or "").strip()
+        object.__setattr__(self, "graph_id", "")
+        actual = _sha256_bytes(_canonical_json(self._identity_payload()).encode("utf-8"))
+        if claimed and claimed != actual:
+            raise ValidationDAGError("impact graph identity mismatch")
+        object.__setattr__(self, "graph_id", actual)
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "repository_tree_id": self.repository_tree_id,
+            "graph_version": self.graph_version,
+            "dependencies": self.dependencies,
+        }
+
+    @property
+    def reverse_dependencies(self) -> Mapping[str, tuple[str, ...]]:
+        reverse: dict[str, set[str]] = {}
+        for dependent, dependencies in self.dependencies.items():
+            reverse.setdefault(dependent, set())
+            for dependency in dependencies:
+                reverse.setdefault(dependency, set()).add(dependent)
+        return {
+            path: tuple(sorted(dependents))
+            for path, dependents in sorted(reverse.items())
+        }
+
+    def affected_paths(self, changed_paths: Iterable[str]) -> tuple[str, ...]:
+        roots = tuple(
+            sorted(
+                {
+                    path
+                    for value in changed_paths
+                    if (path := _normalize_impact_path(value))
+                }
+            )
+        )
+        reverse = self.reverse_dependencies
+        visited = set(roots)
+        pending = deque(roots)
+        while pending:
+            current = pending.popleft()
+            for dependent in reverse.get(current, ()):
+                if dependent not in visited:
+                    visited.add(dependent)
+                    pending.append(dependent)
+        return tuple(sorted(visited))
+
+    def impact_path(self, source: str, target: str) -> tuple[str, ...]:
+        start = _normalize_impact_path(source)
+        goal = _normalize_impact_path(target)
+        if not start or not goal:
+            return ()
+        reverse = self.reverse_dependencies
+        pending = deque([(start, (start,))])
+        visited = {start}
+        while pending:
+            current, path = pending.popleft()
+            if current == goal:
+                return path
+            for dependent in reverse.get(current, ()):
+                if dependent not in visited:
+                    visited.add(dependent)
+                    pending.append((dependent, (*path, dependent)))
+        return ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity_payload(), "graph_id": self.graph_id}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ImpactDependencyGraph":
+        return cls(
+            dependencies=payload.get("dependencies") or {},
+            repository_tree_id=str(payload.get("repository_tree_id") or ""),
+            graph_version=str(payload.get("graph_version") or "impact-dependency-v1"),
+            graph_id=str(payload.get("graph_id") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class ValidationDAGNodeRecord:
+    node_id: str
+    command: str
+    stage: str
+    disposition: ValidationNodeDisposition
+    reason: str
+    impact_paths: tuple[str, ...] = ()
+    returncode: int | None = None
+    result_digest: str = ""
+
+    def __post_init__(self) -> None:
+        for name in ("node_id", "command", "stage", "reason", "result_digest"):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        if not self.node_id or not self.command or not self.stage or not self.reason:
+            raise ValidationDAGError("validation node record is incomplete")
+        object.__setattr__(
+            self, "disposition", ValidationNodeDisposition(self.disposition)
+        )
+        object.__setattr__(
+            self,
+            "impact_paths",
+            tuple(
+                sorted(
+                    {
+                        path
+                        for value in self.impact_paths
+                        if (path := _normalize_impact_path(value))
+                    }
+                )
+            ),
+        )
+        if self.returncode is not None:
+            if isinstance(self.returncode, bool):
+                raise ValidationDAGError("validation returncode must be an integer")
+            object.__setattr__(self, "returncode", int(self.returncode))
+        if self.disposition in {
+            ValidationNodeDisposition.SUCCEEDED,
+            ValidationNodeDisposition.FAILED,
+        }:
+            if self.returncode is None or not self.result_digest:
+                raise ValidationDAGError(
+                    "executed validation node requires a bound result"
+                )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "node_id": self.node_id,
+            "command": self.command,
+            "stage": self.stage,
+            "disposition": self.disposition.value,
+            "reason": self.reason,
+            "impact_paths": self.impact_paths,
+            "returncode": self.returncode,
+            "result_digest": self.result_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ValidationDAGNodeRecord":
+        return cls(
+            node_id=str(payload.get("node_id") or ""),
+            command=str(payload.get("command") or ""),
+            stage=str(payload.get("stage") or ""),
+            disposition=payload.get("disposition", ""),
+            reason=str(payload.get("reason") or ""),
+            impact_paths=tuple(payload.get("impact_paths") or ()),
+            returncode=payload.get("returncode"),
+            result_digest=str(payload.get("result_digest") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class TransitiveImpactValidationEvidence:
+    requirement_id: str
+    repository_tree_id: str
+    objective_id: str
+    policy_id: str
+    graph_id: str
+    seeded_defect_id: str
+    seeded_defect_path: str
+    impact_path: tuple[str, ...]
+    failing_node_id: str
+    failing_result_digest: str
+    receipt_id: str
+    evidence_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "requirement_id",
+            "repository_tree_id",
+            "objective_id",
+            "policy_id",
+            "graph_id",
+            "seeded_defect_id",
+            "failing_node_id",
+            "failing_result_digest",
+            "receipt_id",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+            if not getattr(self, name):
+                raise ValidationDAGError(f"{name} is required")
+        if self.requirement_id != TRANSITIVE_IMPACT_REQUIREMENT_ID:
+            raise ValidationDAGError("unsupported transitive-impact requirement")
+        defect_path = _normalize_impact_path(self.seeded_defect_path)
+        path = tuple(_normalize_impact_path(item) for item in self.impact_path)
+        if not defect_path or any(not item for item in path):
+            raise ValidationDAGError("transitive impact path is malformed")
+        if len(path) < 3 or path[0] != defect_path:
+            raise ValidationDAGError(
+                "evidence requires a genuinely transitive impact path"
+            )
+        object.__setattr__(self, "seeded_defect_path", defect_path)
+        object.__setattr__(self, "impact_path", path)
+        claimed = str(self.evidence_id or "").strip()
+        object.__setattr__(self, "evidence_id", "")
+        actual = _sha256_bytes(_canonical_json(self._identity_payload()).encode("utf-8"))
+        if claimed and claimed != actual:
+            raise ValidationDAGError("transitive impact evidence identity mismatch")
+        object.__setattr__(self, "evidence_id", actual)
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (self.requirement_id,)
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema": TRANSITIVE_IMPACT_EVIDENCE_SCHEMA,
+            "requirement_id": self.requirement_id,
+            "repository_tree_id": self.repository_tree_id,
+            "objective_id": self.objective_id,
+            "policy_id": self.policy_id,
+            "graph_id": self.graph_id,
+            "seeded_defect_id": self.seeded_defect_id,
+            "seeded_defect_path": self.seeded_defect_path,
+            "impact_path": self.impact_path,
+            "failing_node_id": self.failing_node_id,
+            "failing_result_digest": self.failing_result_digest,
+            "receipt_id": self.receipt_id,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity_payload(), "evidence_id": self.evidence_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "TransitiveImpactValidationEvidence":
+        schema = str(payload.get("schema") or TRANSITIVE_IMPACT_EVIDENCE_SCHEMA)
+        if schema != TRANSITIVE_IMPACT_EVIDENCE_SCHEMA:
+            raise ValidationDAGError(
+                f"unsupported transitive impact evidence schema: {schema}"
+            )
+        return cls(
+            requirement_id=str(payload.get("requirement_id") or ""),
+            repository_tree_id=str(payload.get("repository_tree_id") or ""),
+            objective_id=str(payload.get("objective_id") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            graph_id=str(payload.get("graph_id") or ""),
+            seeded_defect_id=str(payload.get("seeded_defect_id") or ""),
+            seeded_defect_path=str(payload.get("seeded_defect_path") or ""),
+            impact_path=tuple(payload.get("impact_path") or ()),
+            failing_node_id=str(payload.get("failing_node_id") or ""),
+            failing_result_digest=str(payload.get("failing_result_digest") or ""),
+            receipt_id=str(payload.get("receipt_id") or ""),
+            evidence_id=str(payload.get("evidence_id") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class ValidationDAGReceipt:
+    repository_tree_id: str
+    objective_id: str
+    policy_id: str
+    proposal_receipt_id: str
+    graph_id: str
+    changed_paths: tuple[str, ...]
+    affected_paths: tuple[str, ...]
+    nodes: tuple[ValidationDAGNodeRecord, ...]
+    passed: bool
+    seeded_defect_id: str = ""
+    seeded_defect_path: str = ""
+    uncovered_impact: bool = False
+    transitive_evidence: TransitiveImpactValidationEvidence | None = None
+    receipt_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_tree_id",
+            "objective_id",
+            "policy_id",
+            "proposal_receipt_id",
+            "graph_id",
+            "seeded_defect_id",
+            "seeded_defect_path",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        for name in (
+            "repository_tree_id",
+            "objective_id",
+            "policy_id",
+            "proposal_receipt_id",
+        ):
+            if not getattr(self, name):
+                raise ValidationDAGError(f"{name} is required")
+        object.__setattr__(
+            self,
+            "changed_paths",
+            tuple(sorted({_normalize_impact_path(item) for item in self.changed_paths if _normalize_impact_path(item)})),
+        )
+        object.__setattr__(
+            self,
+            "affected_paths",
+            tuple(sorted({_normalize_impact_path(item) for item in self.affected_paths if _normalize_impact_path(item)})),
+        )
+        nodes = tuple(
+            item
+            if isinstance(item, ValidationDAGNodeRecord)
+            else ValidationDAGNodeRecord.from_dict(item)
+            for item in self.nodes
+        )
+        if len({node.node_id for node in nodes}) != len(nodes):
+            raise ValidationDAGError("validation DAG contains duplicate nodes")
+        object.__setattr__(
+            self, "nodes", tuple(sorted(nodes, key=lambda node: node.node_id))
+        )
+        object.__setattr__(self, "uncovered_impact", bool(self.uncovered_impact))
+        actual_passed = not self.uncovered_impact and not any(
+            node.disposition
+            in {
+                ValidationNodeDisposition.FAILED,
+                ValidationNodeDisposition.BLOCKED,
+            }
+            for node in nodes
+        )
+        if bool(self.passed) != actual_passed:
+            raise ValidationDAGError("validation DAG verdict does not match nodes")
+        object.__setattr__(self, "passed", actual_passed)
+        evidence = self.transitive_evidence
+        if evidence is not None and not isinstance(
+            evidence, TransitiveImpactValidationEvidence
+        ):
+            evidence = TransitiveImpactValidationEvidence.from_dict(evidence)
+        object.__setattr__(self, "transitive_evidence", None)
+        claimed = str(self.receipt_id or "").strip()
+        object.__setattr__(self, "receipt_id", "")
+        actual = _sha256_bytes(_canonical_json(self._identity_payload()).encode("utf-8"))
+        if claimed and claimed != actual:
+            raise ValidationDAGError("validation DAG receipt identity mismatch")
+        object.__setattr__(self, "receipt_id", actual)
+        if evidence is not None:
+            by_id = {node.node_id: node for node in nodes}
+            failed = by_id.get(evidence.failing_node_id)
+            if (
+                evidence.receipt_id != actual
+                or evidence.repository_tree_id != self.repository_tree_id
+                or evidence.objective_id != self.objective_id
+                or evidence.policy_id != self.policy_id
+                or evidence.graph_id != self.graph_id
+                or evidence.seeded_defect_id != self.seeded_defect_id
+                or evidence.seeded_defect_path != self.seeded_defect_path
+                or failed is None
+                or failed.disposition is not ValidationNodeDisposition.FAILED
+                or failed.result_digest != evidence.failing_result_digest
+            ):
+                raise ValidationDAGError(
+                    "transitive evidence is detached from validation DAG receipt"
+                )
+            object.__setattr__(self, "transitive_evidence", evidence)
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema": VALIDATION_DAG_RECEIPT_SCHEMA,
+            "repository_tree_id": self.repository_tree_id,
+            "objective_id": self.objective_id,
+            "policy_id": self.policy_id,
+            "proposal_receipt_id": self.proposal_receipt_id,
+            "graph_id": self.graph_id,
+            "changed_paths": self.changed_paths,
+            "affected_paths": self.affected_paths,
+            "nodes": [node.to_dict() for node in self.nodes],
+            "passed": self.passed,
+            "seeded_defect_id": self.seeded_defect_id,
+            "seeded_defect_path": self.seeded_defect_path,
+            "uncovered_impact": self.uncovered_impact,
+        }
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (
+            self.transitive_evidence.proved_requirement_ids
+            if self.transitive_evidence is not None
+            else ()
+        )
+
+    @property
+    def completion_authoritative(self) -> bool:
+        return False
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            **self._identity_payload(),
+            "receipt_id": self.receipt_id,
+            "transitive_evidence": (
+                self.transitive_evidence.to_dict()
+                if self.transitive_evidence is not None
+                else None
+            ),
+            "proved_requirement_ids": self.proved_requirement_ids,
+            "completion_authoritative": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ValidationDAGReceipt":
+        schema = str(payload.get("schema") or VALIDATION_DAG_RECEIPT_SCHEMA)
+        if schema != VALIDATION_DAG_RECEIPT_SCHEMA:
+            raise ValidationDAGError(f"unsupported validation DAG schema: {schema}")
+        if payload.get("completion_authoritative") not in (None, False):
+            raise ValidationDAGError("validation DAG cannot claim completion")
+        base = cls(
+            repository_tree_id=str(payload.get("repository_tree_id") or ""),
+            objective_id=str(payload.get("objective_id") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            proposal_receipt_id=str(payload.get("proposal_receipt_id") or ""),
+            graph_id=str(payload.get("graph_id") or ""),
+            changed_paths=tuple(payload.get("changed_paths") or ()),
+            affected_paths=tuple(payload.get("affected_paths") or ()),
+            nodes=tuple(
+                ValidationDAGNodeRecord.from_dict(item)
+                for item in payload.get("nodes") or ()
+            ),
+            passed=payload.get("passed", False),
+            seeded_defect_id=str(payload.get("seeded_defect_id") or ""),
+            seeded_defect_path=str(payload.get("seeded_defect_path") or ""),
+            uncovered_impact=payload.get("uncovered_impact", False),
+            receipt_id=str(payload.get("receipt_id") or ""),
+        )
+        evidence_payload = payload.get("transitive_evidence")
+        if evidence_payload:
+            base = cls(
+                repository_tree_id=base.repository_tree_id,
+                objective_id=base.objective_id,
+                policy_id=base.policy_id,
+                proposal_receipt_id=base.proposal_receipt_id,
+                graph_id=base.graph_id,
+                changed_paths=base.changed_paths,
+                affected_paths=base.affected_paths,
+                nodes=base.nodes,
+                passed=base.passed,
+                seeded_defect_id=base.seeded_defect_id,
+                seeded_defect_path=base.seeded_defect_path,
+                uncovered_impact=base.uncovered_impact,
+                transitive_evidence=TransitiveImpactValidationEvidence.from_dict(
+                    evidence_payload
+                ),
+                receipt_id=base.receipt_id,
+            )
+        claimed = tuple(payload.get("proved_requirement_ids") or ())
+        if claimed and claimed != base.proved_requirement_ids:
+            raise ValidationDAGError("validation DAG requirement claims mismatch")
+        return base
+
+
 class ValidationScheduler:
     """Execute validation stages with bounded weighted parallelism and caching."""
 
@@ -957,6 +1482,362 @@ class ValidationScheduler:
                 if not admitted and not done and active:
                     continue
         return completed
+
+    @staticmethod
+    def _validation_node_id(spec: ValidationCommand) -> str:
+        return _sha256_bytes(
+            _canonical_json(
+                {
+                    "command": spec.command,
+                    "stage": spec.stage.label,
+                    "validation_id": spec.validation_id,
+                    "impact_paths": spec.impact_paths,
+                    "ordinal": spec.ordinal,
+                }
+            ).encode("utf-8")
+        )
+
+    def run_validated(
+        self,
+        proposal_validation: Any,
+        commands: Iterable[str | ValidationCommand] = (),
+        *,
+        workspace_path: Path | str,
+        impact_graph: ImpactDependencyGraph | Mapping[str, Any] | None = None,
+        validation_policy_id: str = "",
+        objective_id: str = "",
+        seeded_defect_id: str = "",
+        seeded_defect_path: str = "",
+        require_impact_graph: bool = True,
+        target_commit: str | None = None,
+        environment: Mapping[str, object] | None = None,
+        dependency_state: (
+            Mapping[str, object] | Sequence[object] | str | None
+        ) = None,
+        require_full_validation: bool = False,
+        scope: str | None = None,
+        runner: ValidationRunner | None = None,
+    ) -> dict[str, Any]:
+        """Run the strict proposal-first, impact-selected validation DAG.
+
+        This is the authority-bearing entry point for implementation output.
+        Legacy :meth:`run` remains available for administrative validation that
+        has no implementation proposal.  A rejected proposal never calls the
+        command runner, and its scheduler-bound receipt records every expensive
+        node as undispatched.
+        """
+
+        from .proposal_validation import ProposalValidationResult
+
+        proposal_result = (
+            proposal_validation
+            if isinstance(proposal_validation, ProposalValidationResult)
+            else ProposalValidationResult.from_dict(proposal_validation)
+        )
+        specs = build_validation_commands(commands)
+        expensive_specs = tuple(
+            spec for spec in specs if spec.stage is not ValidationStage.CHEAP
+        )
+        expensive_node_ids = tuple(
+            self._validation_node_id(spec) for spec in expensive_specs
+        )
+        if not proposal_result.accepted:
+            bound = proposal_result.with_dispatch_outcome(
+                expensive_node_ids=expensive_node_ids,
+                expensive_checks_started=0,
+            )
+            blocked_nodes = [
+                {
+                    "node_id": self._validation_node_id(spec),
+                    "command": spec.command,
+                    "stage": spec.stage.label,
+                    "disposition": ValidationNodeDisposition.BLOCKED.value,
+                    "reason": "proposal_gate_failed",
+                    "impact_paths": list(spec.impact_paths),
+                }
+                for spec in specs
+            ]
+            return {
+                "attempted": False,
+                "passed": False,
+                "returncode": 78,
+                "error": "proposal_validation_failed",
+                "reason": "proposal_gate_failed",
+                "results": [],
+                "stages": [
+                    {
+                        "stage": "proposal",
+                        "attempted": True,
+                        "passed": False,
+                        "planned_count": 1,
+                        "executed_count": 1,
+                    }
+                ],
+                "nodes": blocked_nodes,
+                "proposal_validation": bound.to_dict(),
+                "proposal_receipt": bound.receipt.to_dict(),
+                "validation_dag_receipt": None,
+                "proved_requirement_ids": bound.receipt.proved_requirement_ids,
+                "proof_authoritative": False,
+                "completion_authoritative": False,
+                "merge_eligible": False,
+            }
+
+        # An accepted proposal cannot claim the rejection requirement even
+        # though its descendant checks are about to run.
+        bound = proposal_result.with_dispatch_outcome(
+            expensive_node_ids=expensive_node_ids,
+            expensive_checks_started=0,
+        )
+        graph: ImpactDependencyGraph | None
+        if impact_graph is None:
+            graph = None
+        elif isinstance(impact_graph, ImpactDependencyGraph):
+            graph = impact_graph
+        else:
+            graph = ImpactDependencyGraph.from_dict(impact_graph)
+        if (
+            graph is not None
+            and graph.repository_tree_id
+            != bound.proposal.repository_tree_id
+        ):
+            raise ValidationDAGError(
+                "impact graph is stale for the proposal repository tree"
+            )
+        changed = bound.proposal.changed_paths
+        if graph is None and require_impact_graph and expensive_specs:
+            policy_id = str(validation_policy_id or "").strip() or _sha256_bytes(
+                _canonical_json(
+                    {
+                        "kind": "strict-validation-dag-policy@1",
+                        "proposal_policy_id": bound.policy.policy_id,
+                        "commands": [spec.command for spec in specs],
+                        "impact_graph_id": "missing-impact-graph",
+                    }
+                ).encode("utf-8")
+            )
+            records = tuple(
+                ValidationDAGNodeRecord(
+                    node_id=self._validation_node_id(spec),
+                    command=spec.command,
+                    stage=spec.stage.label,
+                    disposition=ValidationNodeDisposition.BLOCKED,
+                    reason="impact_graph_missing",
+                    impact_paths=spec.impact_paths,
+                )
+                for spec in specs
+            )
+            receipt = ValidationDAGReceipt(
+                repository_tree_id=bound.proposal.repository_tree_id,
+                objective_id=bound.proposal.objective_id,
+                policy_id=policy_id,
+                proposal_receipt_id=bound.receipt.receipt_id,
+                graph_id="missing-impact-graph",
+                changed_paths=changed,
+                affected_paths=changed,
+                nodes=records,
+                passed=False,
+                uncovered_impact=True,
+            )
+            return {
+                "attempted": False,
+                "passed": False,
+                "returncode": 78,
+                "error": "impact_graph_missing",
+                "reason": "impact_graph_missing",
+                "results": [],
+                "nodes": [node.to_dict() for node in records],
+                "proposal_validation": bound.to_dict(),
+                "proposal_receipt": bound.receipt.to_dict(),
+                "validation_dag_receipt": receipt.to_dict(),
+                "proved_requirement_ids": (),
+                "proof_authoritative": False,
+                "completion_authoritative": False,
+                "merge_eligible": False,
+                "impact_graph": None,
+                "affected_paths": list(changed),
+            }
+        affected = graph.affected_paths(changed) if graph is not None else changed
+        graph_id = graph.graph_id if graph is not None else "no-impact-graph"
+        policy_id = str(validation_policy_id or "").strip() or _sha256_bytes(
+            _canonical_json(
+                {
+                    "kind": "strict-validation-dag-policy@1",
+                    "proposal_policy_id": bound.policy.policy_id,
+                    "commands": [
+                        {
+                            "command": spec.command,
+                            "stage": spec.stage.label,
+                            "impact_paths": spec.impact_paths,
+                        }
+                        for spec in specs
+                    ],
+                    "impact_graph_id": graph_id,
+                }
+            ).encode("utf-8")
+        )
+        dag_objective = str(objective_id or bound.proposal.objective_id).strip()
+        if dag_objective != bound.proposal.objective_id:
+            raise ValidationDAGError(
+                "validation objective does not match the accepted proposal"
+            )
+
+        report = self.run(
+            specs,
+            workspace_path=workspace_path,
+            target_commit=target_commit or bound.proposal.repository_tree_id,
+            changed_files=affected,
+            environment=environment,
+            dependency_state=dependency_state,
+            require_full_validation=require_full_validation,
+            scope=scope,
+            runner=runner,
+        )
+        results_by_command: dict[str, list[Mapping[str, object]]] = {}
+        for result in report.get("results") or ():
+            results_by_command.setdefault(str(result.get("command") or ""), []).append(
+                result
+            )
+        decisions_by_command = {
+            str(item.get("command") or ""): item
+            for item in (report.get("selection") or {}).get("decisions", ())
+            if item.get("command")
+        }
+        records: list[ValidationDAGNodeRecord] = []
+        for spec in specs:
+            decision = decisions_by_command.get(spec.command, {})
+            result_values = results_by_command.get(spec.command, [])
+            result = result_values.pop(0) if result_values else None
+            if result is not None:
+                returncode = int(result.get("returncode", 1))
+                result_digest = _sha256_bytes(
+                    _canonical_json(_json_safe(dict(result))).encode("utf-8")
+                )
+                disposition = (
+                    ValidationNodeDisposition.SUCCEEDED
+                    if returncode == 0
+                    else ValidationNodeDisposition.FAILED
+                )
+                reason = (
+                    "validation_passed"
+                    if returncode == 0
+                    else "validation_failed"
+                )
+            elif decision.get("selected"):
+                returncode = None
+                result_digest = ""
+                disposition = ValidationNodeDisposition.BLOCKED
+                reason = "blocked_by_failed_dependency"
+            else:
+                returncode = None
+                result_digest = ""
+                disposition = ValidationNodeDisposition.OMITTED
+                reason = str(
+                    decision.get("reason")
+                    or "not_selected_by_impact_analysis"
+                )
+            records.append(
+                ValidationDAGNodeRecord(
+                    node_id=self._validation_node_id(spec),
+                    command=spec.command,
+                    stage=spec.stage.label,
+                    disposition=disposition,
+                    reason=reason,
+                    impact_paths=spec.impact_paths,
+                    returncode=returncode,
+                    result_digest=result_digest,
+                )
+            )
+
+        uncovered_impact = bool(expensive_specs) and not any(
+            record.stage != ValidationStage.CHEAP.label
+            and record.disposition
+            in {
+                ValidationNodeDisposition.SUCCEEDED,
+                ValidationNodeDisposition.FAILED,
+                ValidationNodeDisposition.BLOCKED,
+            }
+            for record in records
+        )
+        base_receipt = ValidationDAGReceipt(
+            repository_tree_id=bound.proposal.repository_tree_id,
+            objective_id=dag_objective,
+            policy_id=policy_id,
+            proposal_receipt_id=bound.receipt.receipt_id,
+            graph_id=graph_id,
+            changed_paths=changed,
+            affected_paths=affected,
+            nodes=tuple(records),
+            passed=bool(report.get("passed", False)) and not uncovered_impact,
+            seeded_defect_id=str(seeded_defect_id or ""),
+            seeded_defect_path=str(seeded_defect_path or ""),
+            uncovered_impact=uncovered_impact,
+        )
+        evidence: TransitiveImpactValidationEvidence | None = None
+        normalized_seed = _normalize_impact_path(seeded_defect_path)
+        if graph is not None and seeded_defect_id and normalized_seed in changed:
+            for spec, node in zip(specs, records):
+                if node.disposition is not ValidationNodeDisposition.FAILED:
+                    continue
+                for target in spec.impact_paths:
+                    path = graph.impact_path(normalized_seed, target)
+                    if len(path) >= 3:
+                        evidence = TransitiveImpactValidationEvidence(
+                            requirement_id=TRANSITIVE_IMPACT_REQUIREMENT_ID,
+                            repository_tree_id=base_receipt.repository_tree_id,
+                            objective_id=base_receipt.objective_id,
+                            policy_id=base_receipt.policy_id,
+                            graph_id=base_receipt.graph_id,
+                            seeded_defect_id=str(seeded_defect_id),
+                            seeded_defect_path=normalized_seed,
+                            impact_path=path,
+                            failing_node_id=node.node_id,
+                            failing_result_digest=node.result_digest,
+                            receipt_id=base_receipt.receipt_id,
+                        )
+                        break
+                if evidence is not None:
+                    break
+        receipt = (
+            ValidationDAGReceipt(
+                repository_tree_id=base_receipt.repository_tree_id,
+                objective_id=base_receipt.objective_id,
+                policy_id=base_receipt.policy_id,
+                proposal_receipt_id=base_receipt.proposal_receipt_id,
+                graph_id=base_receipt.graph_id,
+                changed_paths=base_receipt.changed_paths,
+                affected_paths=base_receipt.affected_paths,
+                nodes=base_receipt.nodes,
+                passed=base_receipt.passed,
+                seeded_defect_id=base_receipt.seeded_defect_id,
+                seeded_defect_path=base_receipt.seeded_defect_path,
+                uncovered_impact=base_receipt.uncovered_impact,
+                transitive_evidence=evidence,
+                receipt_id=base_receipt.receipt_id,
+            )
+            if evidence is not None
+            else base_receipt
+        )
+        report["proposal_validation"] = bound.to_dict()
+        report["proposal_receipt"] = bound.receipt.to_dict()
+        report["validation_dag_receipt"] = receipt.to_dict()
+        report["nodes"] = [node.to_dict() for node in receipt.nodes]
+        report["proved_requirement_ids"] = receipt.proved_requirement_ids
+        report["proof_authoritative"] = False
+        report["completion_authoritative"] = False
+        report["merge_eligible"] = False
+        report["impact_graph"] = graph.to_dict() if graph is not None else None
+        report["affected_paths"] = list(affected)
+        if receipt.uncovered_impact:
+            report["passed"] = False
+            report["returncode"] = 78
+            report["error"] = "uncovered_validation_impact"
+            report["reason"] = "no_expensive_validation_selected"
+        return report
+
+    # Compatibility names used by orchestration callers.
+    run_validation_dag = run_validated
+    run_strict = run_validated
 
     def run(
         self,
@@ -1968,5 +2849,40 @@ def schedule_staged_validations(
     )
 
 
+def schedule_validated_proposal(
+    proposal_validation: Any,
+    commands: Iterable[str | ValidationCommand] = (),
+    *,
+    workspace_path: Path | str,
+    **kwargs: object,
+) -> dict[str, Any]:
+    """Convenience wrapper for the strict proposal-first validation DAG."""
+
+    scheduler_keys = {
+        "cache",
+        "cache_dir",
+        "max_workers",
+        "resource_budget",
+        "resource_scheduler",
+        "resource_lease_budget",
+        "resource_policy",
+        "host_resource_source",
+        "provider_capacity_source",
+        "resource_admission_timeout_seconds",
+        "default_timeout_seconds",
+        "runner",
+    }
+    scheduler_kwargs = {
+        key: kwargs.pop(key) for key in tuple(kwargs) if key in scheduler_keys
+    }
+    return ValidationScheduler(**scheduler_kwargs).run_validated(
+        proposal_validation,
+        commands,
+        workspace_path=workspace_path,
+        **kwargs,
+    )
+
+
 # Compatibility spelling used by integrations that foreground proof work.
 schedule_proof_validations = schedule_staged_validations
+schedule_validation_dag = schedule_validated_proposal

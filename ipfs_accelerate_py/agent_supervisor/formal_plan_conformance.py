@@ -1606,6 +1606,115 @@ def evaluate_completion_evidence(
 
 
 @dataclass(frozen=True)
+class CompletionAdmissionGate:
+    """Proposal/DAG authority boundary evaluated before goal completion."""
+
+    admitted: bool
+    proposal_receipt_id: str = ""
+    validation_dag_receipt_id: str = ""
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "admitted", bool(self.admitted))
+        object.__setattr__(
+            self,
+            "proposal_receipt_id",
+            _text(self.proposal_receipt_id, field_name="proposal_receipt_id"),
+        )
+        object.__setattr__(
+            self,
+            "validation_dag_receipt_id",
+            _text(
+                self.validation_dag_receipt_id,
+                field_name="validation_dag_receipt_id",
+            ),
+        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes))
+        if self.admitted and self.reason_codes:
+            raise ConformanceValidationError(
+                "admitted completion gate cannot contain rejection reasons"
+            )
+        if not self.admitted and not self.reason_codes:
+            raise ConformanceValidationError(
+                "rejected completion gate requires a reason"
+            )
+
+    @property
+    def gate_id(self) -> str:
+        return content_identity(self.to_dict(include_id=False))
+
+    def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
+        payload = {
+            "admitted": self.admitted,
+            "proposal_receipt_id": self.proposal_receipt_id,
+            "validation_dag_receipt_id": self.validation_dag_receipt_id,
+            "reason_codes": self.reason_codes,
+        }
+        if include_id:
+            payload["gate_id"] = self.gate_id
+        return payload
+
+
+def evaluate_completion_admission(
+    *,
+    proposal_validation: Any = None,
+    validation_dag: Any = None,
+    required: bool = False,
+) -> CompletionAdmissionGate:
+    """Fail closed when rejected output is offered as completion evidence."""
+
+    reasons: list[str] = []
+    proposal_receipt_id = ""
+    dag_receipt_id = ""
+    proposal_result = None
+    if proposal_validation is None:
+        if required:
+            reasons.append("proposal_validation_missing")
+    else:
+        from .proposal_validation import ProposalValidationResult
+
+        proposal_result = (
+            proposal_validation
+            if isinstance(proposal_validation, ProposalValidationResult)
+            else ProposalValidationResult.from_dict(proposal_validation)
+        )
+        proposal_receipt_id = proposal_result.receipt.receipt_id
+        if not proposal_result.accepted:
+            reasons.append("proposal_validation_rejected")
+
+    if validation_dag is not None:
+        from .validation_scheduler import ValidationDAGReceipt
+
+        dag = (
+            validation_dag
+            if isinstance(validation_dag, ValidationDAGReceipt)
+            else ValidationDAGReceipt.from_dict(validation_dag)
+        )
+        dag_receipt_id = dag.receipt_id
+        if proposal_result is None:
+            reasons.append("validation_dag_without_proposal")
+        elif dag.proposal_receipt_id != proposal_receipt_id:
+            reasons.append("validation_dag_proposal_mismatch")
+        if proposal_result is not None and (
+            dag.repository_tree_id
+            != proposal_result.proposal.repository_tree_id
+            or dag.objective_id != proposal_result.proposal.objective_id
+        ):
+            reasons.append("validation_dag_authority_mismatch")
+        if not dag.passed:
+            reasons.append("validation_dag_failed")
+    elif required:
+        reasons.append("validation_dag_missing")
+
+    return CompletionAdmissionGate(
+        admitted=not reasons,
+        proposal_receipt_id=proposal_receipt_id,
+        validation_dag_receipt_id=dag_receipt_id,
+        reason_codes=tuple(reasons),
+    )
+
+
+@dataclass(frozen=True)
 class FormalGoalCompletionDecision:
     goal_id: str
     previous_state: GoalState
@@ -1615,6 +1724,7 @@ class FormalGoalCompletionDecision:
     evaluated_at: str
     reason_codes: tuple[str, ...] = ()
     plan_consistency: str = ""
+    completion_admission: CompletionAdmissionGate | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "goal_id", _text(self.goal_id, field_name="goal_id", required=True))
@@ -1641,6 +1751,25 @@ class FormalGoalCompletionDecision:
             "plan_consistency",
             _enum_value(self.plan_consistency),
         )
+        if self.completion_admission is not None and not isinstance(
+            self.completion_admission, CompletionAdmissionGate
+        ):
+            object.__setattr__(
+                self,
+                "completion_admission",
+                CompletionAdmissionGate(
+                    admitted=self.completion_admission.get("admitted", False),
+                    proposal_receipt_id=self.completion_admission.get(
+                        "proposal_receipt_id", ""
+                    ),
+                    validation_dag_receipt_id=self.completion_admission.get(
+                        "validation_dag_receipt_id", ""
+                    ),
+                    reason_codes=tuple(
+                        self.completion_admission.get("reason_codes") or ()
+                    ),
+                ),
+            )
 
     @property
     def verified(self) -> bool:
@@ -1661,7 +1790,7 @@ class FormalGoalCompletionDecision:
         return content_identity(self._identity_payload())
 
     def _identity_payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "goal_id": self.goal_id,
             "previous_state": self.previous_state.value,
             "state": self.state.value,
@@ -1670,6 +1799,11 @@ class FormalGoalCompletionDecision:
             "reason_codes": list(self.reason_codes),
             "plan_consistency": self.plan_consistency,
         }
+        if self.completion_admission is not None:
+            payload["completion_admission_gate_id"] = (
+                self.completion_admission.gate_id
+            )
+        return payload
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1683,6 +1817,11 @@ class FormalGoalCompletionDecision:
             "reopened": self.reopened,
             "conformance": self.conformance.to_dict(),
             "evidence_result": self.evidence_result.to_dict(),
+            "completion_admission": (
+                self.completion_admission.to_dict()
+                if self.completion_admission is not None
+                else None
+            ),
         }
 
     def to_json(self) -> str:
@@ -1703,6 +1842,7 @@ class FormalGoalCompletionDecision:
             evaluated_at=payload.get("evaluated_at", ""),
             reason_codes=tuple(payload.get("reason_codes") or ()),
             plan_consistency=payload.get("plan_consistency", ""),
+            completion_admission=payload.get("completion_admission"),
         )
         if payload.get("decision_id") and payload["decision_id"] != result.decision_id:
             raise ConformanceValidationError("goal completion decision identity mismatch")
@@ -1734,6 +1874,9 @@ def evaluate_formal_goal_completion(
     premise_ids: Sequence[str] = (),
     counterexample_ids: Sequence[str] = (),
     plan_consistency: Any = "",
+    proposal_validation: Any = None,
+    validation_dag: Any = None,
+    require_proposal_validation: bool = False,
 ) -> FormalGoalCompletionDecision:
     """Bind trace conformance and independent evidence into goal completion.
 
@@ -1786,8 +1929,27 @@ def evaluate_formal_goal_completion(
     for check in evidence_result.checks:
         if not check.satisfied:
             reasons.append(f"{check.kind.value}_evidence_{check.status.value}")
+    admission = (
+        evaluate_completion_admission(
+            proposal_validation=proposal_validation,
+            validation_dag=validation_dag,
+            required=require_proposal_validation,
+        )
+        if (
+            proposal_validation is not None
+            or validation_dag is not None
+            or require_proposal_validation
+        )
+        else None
+    )
+    if admission is not None:
+        reasons.extend(admission.reason_codes)
 
-    if conformance.conformant and evidence_result.satisfied:
+    if (
+        conformance.conformant
+        and evidence_result.satisfied
+        and (admission is None or admission.admitted)
+    ):
         state = GoalState.VERIFIED_COMPLETE
     elif previous is GoalState.VERIFIED_COMPLETE:
         state = GoalState.REOPENED
@@ -1804,6 +1966,7 @@ def evaluate_formal_goal_completion(
         evaluated_at=evaluation_time,
         reason_codes=tuple(reasons),
         plan_consistency=_enum_value(plan_consistency),
+        completion_admission=admission,
     )
 
 
@@ -2260,6 +2423,7 @@ __all__ = [
     "CompletionEvidenceKind",
     "CompletionEvidenceRecord",
     "CompletionEvidenceResult",
+    "CompletionAdmissionGate",
     "CompletionPolicy",
     "ConformanceBinding",
     "ConformanceIssueKind",
@@ -2293,6 +2457,7 @@ __all__ = [
     "check_plan_conformance",
     "compare_plan_conformance",
     "evaluate_completion_evidence",
+    "evaluate_completion_admission",
     "evaluate_formal_goal_completion",
     "evaluate_goal_completion",
     "evaluate_goal_completion_with_conformance",
