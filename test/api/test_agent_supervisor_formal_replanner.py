@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
 )
 from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
     BOUNDED_REFINEMENT_EVIDENCE_ID,
+    UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
     OBJECTIVE_COMPLETION_EVIDENCE_ROLES,
     CODEX_REPAIR_PACKET_SCHEMA,
     REPAIR_TRANSITION_SCHEMA,
@@ -493,8 +494,14 @@ def test_unchanged_counterexample_backs_off_before_compile_or_generation() -> No
         "completion_exhaustion_quorum",
     )
     assert payload["requirement_ids"] == [
-        BOUNDED_REFINEMENT_EVIDENCE_ID
+        UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID
     ]
+    assert decision.requirement_ids == (
+        UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
+    )
+    assert UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID == (
+        "312819945606360295782005228058369235550"
+    )
     assert BOUNDED_REFINEMENT_EVIDENCE_ID == (
         "003778425160038348524906247302938706902"
     )

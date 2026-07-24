@@ -62,6 +62,9 @@ RESPONSIVE_REPLAN_DECISION_SCHEMA: Final = (
 BOUNDED_REFINEMENT_EVIDENCE_ID: Final = (
     "003778425160038348524906247302938706902"
 )
+UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID: Final = (
+    "312819945606360295782005228058369235550"
+)
 # These are deliberately absent from ResponsiveReplanDecision.  Naming the
 # roles makes the trust boundary machine-readable: deterministic routing
 # metadata cannot be submitted as completion analyzer health, completion
@@ -737,6 +740,14 @@ class ResponsiveReplanDecision:
         return ()
 
     @property
+    def requirement_ids(self) -> tuple[str, ...]:
+        """Route to the bound producer without claiming evidence authority."""
+
+        if self.changed:
+            return (BOUNDED_REFINEMENT_EVIDENCE_ID,)
+        return (UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,)
+
+    @property
     def completion_evidence_roles(self) -> tuple[str, ...]:
         """Return no completion-proof authority for routing metadata.
 
@@ -752,7 +763,7 @@ class ResponsiveReplanDecision:
         return {
             "schema": RESPONSIVE_REPLAN_DECISION_SCHEMA,
             "replanner_version": FORMAL_REPLANNER_VERSION,
-            "requirement_ids": [BOUNDED_REFINEMENT_EVIDENCE_ID],
+            "requirement_ids": list(self.requirement_ids),
             "evidence_ids": list(self.evidence_ids),
             "counterexample_id": self.counterexample_id,
             "previous_counterexample_id": self.previous_counterexample_id,
@@ -1874,6 +1885,7 @@ def replan_if_changed(
 
 __all__ = [
     "BOUNDED_REFINEMENT_EVIDENCE_ID",
+    "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID",
     "CODEX_REPAIR_PACKET_SCHEMA",
     "FORMAL_REPLANNER_VERSION",
     "OBJECTIVE_COMPLETION_EVIDENCE_ROLES",
