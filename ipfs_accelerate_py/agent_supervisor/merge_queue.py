@@ -44,6 +44,9 @@ _CANONICAL_METADATA_KEYS = (
     "canonical_task_cid",
     "task_cid",
 )
+MERGE_QUEUE_THROUGHPUT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/merge-queue-throughput@1"
+)
 
 
 class MergeQueueFullError(RuntimeError):
@@ -206,6 +209,7 @@ class MergeQueue:
         *,
         max_age_seconds: float = 3600,
         max_queue_size: int = 100,
+        max_processing: int | None = None,
         priority_aging_seconds: float = 300,
         max_attempts: int = 3,
         clock: Callable[[], float] | None = None,
@@ -220,6 +224,14 @@ class MergeQueue:
         self._legacy_database_path = self.queue_dir / "merge_queue.sqlite3"
         self.max_age_seconds = max(0.0, float(max_age_seconds))
         self.max_queue_size = max(1, int(max_queue_size))
+        self.max_processing = max(
+            1,
+            int(
+                max_processing
+                if max_processing is not None
+                else self.max_queue_size
+            ),
+        )
         self.priority_aging_seconds = max(0.0, float(priority_aging_seconds))
         self.max_attempts = max(1, int(max_attempts))
         self._clock = clock or time.time
@@ -429,39 +441,76 @@ class MergeQueue:
     def dequeue(self, consumer_id: str = "") -> Optional[MergeRequest]:
         """Atomically claim the fairest pending request for one consumer."""
 
+        claimed = self.dequeue_many(1, consumer_id=consumer_id)
+        return claimed[0] if claimed else None
+
+    def dequeue_many(
+        self,
+        limit: int,
+        consumer_id: str = "",
+    ) -> tuple[MergeRequest, ...]:
+        """Atomically claim a bounded, deterministically ordered preflight batch.
+
+        ``max_processing`` is the merge-debt/backpressure fence.  Batch
+        producers cannot reserve more worktrees or validation capacity than
+        the configured number of in-flight requests, even when multiple
+        processes race to claim work.
+        """
+
+        requested = int(limit)
+        if requested <= 0:
+            return ()
         self._purge_stale()
         consumer = str(consumer_id or os.getpid())
         now = self._clock()
+        claimed_rows: list[DuckDBRow] = []
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
+                processing = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM merge_requests WHERE status='processing'"
+                    ).fetchone()[0]
+                )
+                capacity = max(0, self.max_processing - processing)
+                claim_count = min(requested, capacity)
+                if claim_count <= 0:
+                    connection.commit()
+                    return ()
                 rows = connection.execute(
                     "SELECT * FROM merge_requests WHERE status = 'pending'"
                 ).fetchall()
                 if not rows:
                     connection.commit()
-                    return None
-                row = min(rows, key=lambda item: self._fairness_key(item, now))
-                updated = connection.execute(
-                    """UPDATE merge_requests
-                       SET status='processing', claimed_at=?, consumer_id=?, updated_at=?
-                       WHERE request_id=? AND status='pending'""",
-                    (now, consumer, now, row["request_id"]),
-                )
-                if updated.rowcount != 1:
-                    connection.rollback()
-                    return None
-                row = connection.execute(
-                    "SELECT * FROM merge_requests WHERE request_id=?", (row["request_id"],)
-                ).fetchone()
+                    return ()
+                selected = sorted(
+                    rows, key=lambda item: self._fairness_key(item, now)
+                )[:claim_count]
+                for row in selected:
+                    updated = connection.execute(
+                        """UPDATE merge_requests
+                           SET status='processing', claimed_at=?, consumer_id=?, updated_at=?
+                           WHERE request_id=? AND status='pending'""",
+                        (now, consumer, now, row["request_id"]),
+                    )
+                    if updated.rowcount != 1:
+                        continue
+                    claimed_row = connection.execute(
+                        "SELECT * FROM merge_requests WHERE request_id=?",
+                        (row["request_id"],),
+                    ).fetchone()
+                    if claimed_row is not None:
+                        claimed_rows.append(claimed_row)
                 connection.commit()
             except Exception:
                 connection.rollback()
                 raise
-        assert row is not None
-        claimed = self._request_from_row(row)
-        receipt_path = self._write_stage_receipt(claimed)
-        return replace(claimed, file_path=receipt_path)
+        claimed: list[MergeRequest] = []
+        for row in claimed_rows:
+            request = self._request_from_row(row)
+            receipt_path = self._write_stage_receipt(request)
+            claimed.append(replace(request, file_path=receipt_path))
+        return tuple(claimed)
 
     def _fairness_key(self, row: DuckDBRow, now: float) -> tuple[int, float, str]:
         base = _PRIORITY_ORDER.get(str(row["priority"]), _PRIORITY_ORDER["P2"])
@@ -883,9 +932,26 @@ class MergeQueue:
                     "SELECT status, COUNT(*) AS count FROM merge_requests GROUP BY status"
                 ).fetchall()
             }
+            timing_rows = connection.execute(
+                """SELECT enqueued_at, finished_at
+                   FROM merge_requests
+                   WHERE status='completed' AND finished_at > 0
+                   ORDER BY finished_at"""
+            ).fetchall()
+        completed_span = (
+            max(
+                0.0,
+                float(timing_rows[-1]["finished_at"])
+                - float(timing_rows[0]["enqueued_at"]),
+            )
+            if timing_rows
+            else 0.0
+        )
+        active = counts.get("pending", 0) + counts.get("processing", 0)
+        merge_debt = counts.get("processing", 0)
         return {
             "pending": counts.get("pending", 0),
-            "processing": counts.get("processing", 0),
+            "processing": merge_debt,
             "completed": counts.get("completed", 0),
             "failed": counts.get("quarantined", 0),
             "quarantined": counts.get("quarantined", 0),
@@ -893,6 +959,24 @@ class MergeQueue:
             "queue_dir": str(self.queue_dir),
             "database_path": str(self.database_path),
             "max_attempts": self.max_attempts,
+            "max_queue_size": self.max_queue_size,
+            "max_processing": self.max_processing,
+            "merge_debt": merge_debt,
+            "backpressure": (
+                active >= self.max_queue_size
+                or merge_debt >= self.max_processing
+            ),
+            "throughput": {
+                "schema": MERGE_QUEUE_THROUGHPUT_SCHEMA,
+                "lane": "merge-queue-persistence",
+                "accepted_count": len(timing_rows),
+                "elapsed_seconds": completed_span,
+                "accepted_per_second": (
+                    len(timing_rows) / completed_span
+                    if completed_span > 0
+                    else 0.0
+                ),
+            },
         }
 
     def _request_from_row(self, row: DuckDBRow) -> MergeRequest:
