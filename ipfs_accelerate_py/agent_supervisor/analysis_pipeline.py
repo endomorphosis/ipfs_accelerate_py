@@ -54,6 +54,12 @@ from .analysis_retrieval import (
     RetrievalResponse,
     retrieve_analysis_evidence,
 )
+from .cache_coordinator import (
+    SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
+    CacheCoordinationResult,
+    CacheCoordinationStatus,
+    SingleFlightCollapseEvidence,
+)
 from .ipfs_datasets_analysis_provider import (
     AnalysisProviderPolicy,
     AnalysisProviderRequest,
@@ -867,6 +873,10 @@ class AnalysisPipelineResult:
     provider_policy: AnalysisProviderPolicy | None = field(
         default=None, repr=False, compare=False
     )
+    single_flight_collapse_evidence: SingleFlightCollapseEvidence | None = None
+    coordination_result: CacheCoordinationResult | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.cache_status, PipelineCacheStatus):
@@ -968,6 +978,10 @@ class AnalysisPipelineResult:
                 raise AnalysisBindingError(
                     "exact-tree authority cannot be an advisory provider claim"
                 )
+            if SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID in advisory_claims:
+                raise AnalysisBindingError(
+                    "single-flight proof cannot be an advisory provider claim"
+                )
         _validate_packet_binding(self.packet, self.request)
         witness = self.exact_tree_reuse_evidence
         if self.cache_status is PipelineCacheStatus.EXACT_HIT:
@@ -1017,6 +1031,40 @@ class AnalysisPipelineResult:
             and not self.joined_existing_flight
         ):
             raise AnalysisBindingError("joined results must record flight joining")
+        collapse = self.single_flight_collapse_evidence
+        coordinated = self.coordination_result
+        if collapse is not None:
+            if not isinstance(coordinated, CacheCoordinationResult):
+                raise AnalysisBindingError(
+                    "single-flight evidence requires the typed coordination result"
+                )
+            expected_status = (
+                CacheCoordinationStatus.SHARED
+                if self.cache_status is PipelineCacheStatus.JOINED
+                else CacheCoordinationStatus.PRODUCED
+            )
+            if (
+                self.cache_status
+                not in (
+                    PipelineCacheStatus.PRODUCED,
+                    PipelineCacheStatus.JOINED,
+                )
+                or coordinated.status is not expected_status
+                or coordinated.single_flight_collapse_evidence != collapse
+                or not collapse.proves_for(self.request.cache_key, coordinated)
+                or collapse.receipt_id != self.packet.packet_id
+                or not self.packet.safe_for_completion_reasoning
+            ):
+                raise AnalysisBindingError(
+                    "single-flight evidence is detached from the pipeline result"
+                )
+        elif (
+            isinstance(coordinated, CacheCoordinationResult)
+            and coordinated.single_flight_collapse_evidence is not None
+        ):
+            raise AnalysisBindingError(
+                "pipeline result dropped coordinator single-flight evidence"
+            )
 
     @property
     def safe_for_completion_reasoning(self) -> bool:
@@ -1048,14 +1096,33 @@ class AnalysisPipelineResult:
 
     @property
     def all_evidence_claim_references(self) -> tuple[str, ...]:
-        """All claims, including non-authoritative provider diagnostics."""
+        """All completion, operational, and advisory evidence claims."""
 
         authoritative = self.evidence_claim_references
         return tuple(
             dict.fromkeys(
-                (*authoritative, *self.advisory_evidence_claim_references)
+                (
+                    *authoritative,
+                    *self.operational_evidence_claim_references,
+                    *self.advisory_evidence_claim_references,
+                )
             )
         )
+
+    @property
+    def operational_evidence_claim_references(self) -> tuple[str, ...]:
+        """Current-request-bound execution invariants, not packet semantics."""
+
+        witness = self.single_flight_collapse_evidence
+        coordinated = self.coordination_result
+        if (
+            witness is None
+            or not isinstance(coordinated, CacheCoordinationResult)
+            or not witness.proves_for(self.request.cache_key, coordinated)
+            or witness.receipt_id != self.packet.packet_id
+        ):
+            return ()
+        return (witness.requirement_id,)
 
     @property
     def authoritative_evidence_claim_references(self) -> tuple[str, ...]:
@@ -1092,8 +1159,16 @@ class AnalysisPipelineResult:
                 if self.exact_tree_reuse_evidence is not None
                 else None
             ),
+            "single_flight_collapse_evidence": (
+                self.single_flight_collapse_evidence.to_dict()
+                if self.single_flight_collapse_evidence is not None
+                else None
+            ),
             "authoritative_evidence_claim_references": list(
                 self.authoritative_evidence_claim_references
+            ),
+            "operational_evidence_claim_references": list(
+                self.operational_evidence_claim_references
             ),
             "advisory_evidence_claim_references": list(
                 self.advisory_evidence_claim_references
@@ -1793,6 +1868,7 @@ class AnalysisPipeline:
         if coordinate is None:
             coordinate = getattr(self.coordinator, "run", None)
         if coordinate is None:
+            coordinated: CacheCoordinationResult | None = None
             receipt = produce()
             ttl = (
                 None
@@ -1948,6 +2024,16 @@ class AnalysisPipeline:
             provider_policy=(
                 context.provider_policy if context is not None else None
             ),
+            single_flight_collapse_evidence=(
+                coordinated.single_flight_collapse_evidence
+                if isinstance(coordinated, CacheCoordinationResult)
+                else None
+            ),
+            coordination_result=(
+                coordinated
+                if isinstance(coordinated, CacheCoordinationResult)
+                else None
+            ),
         )
 
     run = analyze
@@ -1982,6 +2068,7 @@ __all__ = [
     "EXACT_TREE_ANALYSIS_REUSE_REQUIREMENT_ID",
     "EXACT_TREE_REUSE_EVIDENCE_SCHEMA",
     "EXACT_TREE_REUSE_REQUIREMENT_ID",
+    "SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID",
     "AnalysisBindingError",
     "AnalysisPipeline",
     "AnalysisPipelineError",
@@ -1997,6 +2084,7 @@ __all__ = [
     "IntegratedAnalysisPipeline",
     "OptionalProviderFailure",
     "PipelineCacheStatus",
+    "SingleFlightCollapseEvidence",
     "SupervisorAnalysisPipeline",
     "make_analysis_stage_receipt",
 ]

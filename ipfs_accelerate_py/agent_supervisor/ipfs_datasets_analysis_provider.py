@@ -15,6 +15,11 @@ Backends can be injected directly for tests and embedded deployments.  A
 backend may be a callable, expose ``analyze(request)``, or expose one of the
 allowlisted operation methods.  Both ordinary and awaitable return values are
 supported without requiring an async test/runtime dependency.
+
+The adapter intentionally owns no cache or single-flight map.  Offload,
+retrieval, and local analysis are one authority-changing operation and are
+therefore coordinated together by ``AnalysisPipeline`` using its complete
+seven-dimension cache key.
 """
 
 from __future__ import annotations
@@ -39,6 +44,9 @@ from .formal_verification_contracts import content_identity
 IPFS_DATASETS_ANALYSIS_PROVIDER_VERSION: Final = 1
 IPFS_DATASETS_ANALYSIS_PROTOCOL_VERSION: Final = 1
 IPFS_DATASETS_ANALYSIS_PROVIDER_ID: Final = "ipfs_datasets_py.analysis"
+IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY: Final = (
+    "analysis_pipeline.single_flight"
+)
 IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID: Final = (
     "184801846437522667882915494501685213497"
 )
@@ -2290,6 +2298,7 @@ __all__ = [
     "IPFS_DATASETS_ANALYSIS_PROVIDER_VERSION",
     "IPFS_DATASETS_ANALYSIS_PROTOCOL_VERSION",
     "IPFS_DATASETS_ANALYSIS_PROVIDER_ID",
+    "IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY",
     "IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID",
     "OPTIONAL_DATASETS_DEGRADATION_REQUIREMENT_ID",
     "PROVIDER_CAPABILITY_SCHEMA",

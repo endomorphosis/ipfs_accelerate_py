@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -17,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
 )
 from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
     EXACT_TREE_REUSE_REQUIREMENT_ID,
+    SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
     AnalysisBindingError,
     AnalysisPipeline,
     AnalysisPipelinePolicy,
@@ -539,6 +541,35 @@ def test_identical_concurrent_misses_collapse_before_expensive_analysis(
     calls = 0
     call_lock = threading.Lock()
 
+    class Backend:
+        __version__ = "counting-backend@1"
+
+        def __init__(self):
+            self.capability_calls = 0
+            self.requests = []
+
+        def capabilities(self):
+            self.capability_calls += 1
+            return {
+                "protocol_versions": [1],
+                "available": True,
+                "operations": ["graph_retrieval"],
+                "provider_version": self.__version__,
+            }
+
+        def retrieve(self, request):
+            self.requests.append(request)
+            return {
+                "status": "completed",
+                "results": [
+                    {
+                        "evidence_id": "provider-evidence-1",
+                        "path": "src/cache.py",
+                        "symbol": "AnalysisCache.lookup",
+                    }
+                ],
+            }
+
     def analyzer(context):
         nonlocal calls
         with call_lock:
@@ -551,18 +582,72 @@ def test_identical_concurrent_misses_collapse_before_expensive_analysis(
             reason_code="complete",
         )
 
-    pipeline = AnalysisPipeline(AnalysisCache(tmp_path), analyzer)
+    backend = Backend()
+    pipeline = AnalysisPipeline(
+        AnalysisCache(tmp_path),
+        analyzer,
+        provider=IpfsDatasetsAnalysisProvider(backend=backend),
+    )
     request = _request()
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = [executor.submit(pipeline.analyze, request) for _ in range(8)]
         assert entered.wait(5)
+        deadline = time.monotonic() + 5
+        while (
+            pipeline.coordinator.metrics().followers < 7
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.001)
+        assert pipeline.coordinator.metrics().followers == 7
         release.set()
         results = [future.result(timeout=10) for future in futures]
 
     assert calls == 1
+    assert backend.capability_calls == 1
+    assert len(backend.requests) == 1
     assert len({result.packet.packet_id for result in results}) == 1
-    assert sum(result.joined_existing_flight for result in results) >= 1
+    assert sum(result.joined_existing_flight for result in results) == 7
     assert all(result.safe_for_completion_reasoning for result in results)
+    evidence_ids = {
+        result.single_flight_collapse_evidence.evidence_id
+        for result in results
+        if result.single_flight_collapse_evidence is not None
+    }
+    assert len(evidence_ids) == 1
+    assert all(
+        result.operational_evidence_claim_references
+        == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
+        for result in results
+    )
+    assert all(
+        result.authoritative_evidence_claim_references == ()
+        for result in results
+    )
+    assert all(
+        SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID
+        in result.all_evidence_claim_references
+        for result in results
+    )
+    assert all(
+        result.to_dict()["operational_evidence_claim_references"]
+        == [SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID]
+        for result in results
+    )
+
+    produced = next(
+        result
+        for result in results
+        if result.cache_status is PipelineCacheStatus.PRODUCED
+    )
+    assert produced.single_flight_collapse_evidence is not None
+    with pytest.raises(AnalysisBindingError, match="dropped"):
+        replace(produced, single_flight_collapse_evidence=None)
+    detached = replace(
+        produced.single_flight_collapse_evidence,
+        receipt_id="analysis-packet:sha256:" + ("0" * 64),
+    )
+    with pytest.raises(AnalysisBindingError, match="detached"):
+        replace(produced, single_flight_collapse_evidence=detached)
 
 
 def test_retrieval_is_integrated_and_bounded_before_local_analysis(
