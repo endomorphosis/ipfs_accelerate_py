@@ -35,7 +35,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-003 Compile and validate canonical subgoal hierarchies
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
