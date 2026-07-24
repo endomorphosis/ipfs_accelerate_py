@@ -873,6 +873,57 @@ class PortalTaskState:
             return cls()
 
 
+def consume_stale_active_attempt(state: PortalTaskState) -> dict[str, Any]:
+    """Promote a legacy in-flight attempt into durable retry accounting.
+
+    Current daemons charge an attempt in the same state write that marks the
+    implementation active.  This helper also covers state written by older
+    daemons, where ``active_attempt`` was durable but the per-task counters
+    were not updated until the worker returned.
+    """
+
+    attempt = max(0, int(state.active_attempt or 0))
+    task_id = str(state.active_task_id or state.last_implementation_task_id or "")
+    task_key = str(state.active_task_key or state.last_implementation_task_key or "")
+    task_cid = str(state.active_task_cid or state.last_implementation_task_cid or "")
+    if task_id and not task_cid:
+        identity = state.task_identities.get(task_id, {})
+        task_key = task_key or str(identity.get("canonical_task_key") or "")
+        task_cid = str(identity.get("canonical_task_cid") or "")
+    if attempt <= 0 or not task_id or not task_cid:
+        return {
+            "consumed": False,
+            "attempt": attempt,
+            "task_id": task_id,
+            "canonical_task_key": task_key,
+            "canonical_task_cid": task_cid,
+        }
+
+    previous_display_count = int(state.implementation_attempts.get(task_id, 0) or 0)
+    previous_cid_count = int(
+        state.implementation_attempts_by_cid.get(task_cid, 0) or 0
+    )
+    state.implementation_attempts[task_id] = max(previous_display_count, attempt)
+    state.implementation_attempts_by_cid[task_cid] = max(
+        previous_cid_count,
+        attempt,
+    )
+    state.last_implementation_task_id = task_id
+    state.last_implementation_task_key = task_key
+    state.last_implementation_task_cid = task_cid
+    return {
+        "consumed": (
+            previous_display_count < attempt or previous_cid_count < attempt
+        ),
+        "attempt": attempt,
+        "task_id": task_id,
+        "canonical_task_key": task_key,
+        "canonical_task_cid": task_cid,
+        "previous_display_count": previous_display_count,
+        "previous_cid_count": previous_cid_count,
+    }
+
+
 def state_file_repair_reason(path: Path) -> str:
     if not path.exists():
         return "missing_state_file"
@@ -1018,6 +1069,7 @@ class PortalImplementationDaemon:
         implement: bool = False,
         implementation_command: str | None = None,
         implementation_timeout: float = DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
+        max_task_attempts: int = 0,
         implementation_log_dir: Path | None = None,
         use_ephemeral_worktree: bool = False,
         worktree_root: Path | None = None,
@@ -1064,6 +1116,7 @@ class PortalImplementationDaemon:
         self.implement = implement
         self.implementation_command = implementation_command
         self.implementation_timeout = implementation_timeout
+        self.max_task_attempts = max(0, int(max_task_attempts))
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
@@ -1249,13 +1302,59 @@ class PortalImplementationDaemon:
     def _canonical_ref(self, task: PortalTask) -> str:
         return self._identity_for_task(task).canonical_task_cid
 
-    def _task_attempt(self, state: PortalTaskState, task: PortalTask) -> int:
+    def _task_attempt_count(self, state: PortalTaskState, task: PortalTask) -> int:
+        """Return the durable attempt count for this task's canonical identity."""
+
         canonical_task_cid = self._canonical_ref(task)
-        prior = max(
-            state.implementation_attempts.get(task.task_id, 0),
-            state.implementation_attempts_by_cid.get(canonical_task_cid, 0),
+        canonical_count = state.implementation_attempts_by_cid.get(
+            canonical_task_cid,
+            0,
         )
-        return prior + 1
+        stored_identity = state.task_identities.get(task.task_id, {})
+        stored_cid = str(stored_identity.get("canonical_task_cid") or "")
+        # The display-ID map predates revision-bound canonical identities.
+        # Use it only for migration when no identity was recorded, or when it
+        # is known to describe this exact canonical revision.
+        if stored_cid and stored_cid != canonical_task_cid:
+            return canonical_count
+        return max(
+            canonical_count,
+            state.implementation_attempts.get(task.task_id, 0),
+        )
+
+    def _task_attempt(self, state: PortalTaskState, task: PortalTask) -> int:
+        return self._task_attempt_count(state, task) + 1
+
+    def _partition_tasks_at_attempt_limit(
+        self,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        state: PortalTaskState,
+    ) -> tuple[list[PortalTask], list[dict[str, Any]]]:
+        """Remove ready tasks whose durable canonical attempt limit is spent."""
+
+        if self.max_task_attempts <= 0:
+            return list(tasks), []
+        selectable: list[PortalTask] = []
+        limited: list[dict[str, Any]] = []
+        for task in tasks:
+            attempt_count = self._task_attempt_count(state, task)
+            if (
+                resolved_statuses.get(task.task_id) == "ready"
+                and attempt_count >= self.max_task_attempts
+            ):
+                identity = self._identity_for_task(task)
+                limited.append(
+                    {
+                        "task_id": task.task_id,
+                        "canonical_task_key": identity.canonical_task_key,
+                        "canonical_task_cid": identity.canonical_task_cid,
+                        "attempt_count": attempt_count,
+                    }
+                )
+                continue
+            selectable.append(task)
+        return selectable, limited
 
     def _record_task_attempt(self, state: PortalTaskState, task: PortalTask, attempt: int) -> None:
         identity = self._identity_for_task(task)
@@ -1264,6 +1363,27 @@ class PortalImplementationDaemon:
         state.last_implementation_task_id = task.task_id
         state.last_implementation_task_key = identity.canonical_task_key
         state.last_implementation_task_cid = identity.canonical_task_cid
+
+    def _restore_task_attempt(
+        self,
+        state: PortalTaskState,
+        task: PortalTask,
+        attempt: int,
+    ) -> None:
+        """Restore the pre-launch count for a confirmed non-consuming deferral."""
+
+        identity = self._identity_for_task(task)
+        if attempt > 0:
+            state.implementation_attempts[task.task_id] = attempt
+            state.implementation_attempts_by_cid[identity.canonical_task_cid] = (
+                attempt
+            )
+        else:
+            state.implementation_attempts.pop(task.task_id, None)
+            state.implementation_attempts_by_cid.pop(
+                identity.canonical_task_cid,
+                None,
+            )
 
     def _record_task_queue_outcome(self, task: PortalTask, returncode: int, reason: str = "") -> None:
         canonical_task_cid = self._canonical_ref(task)
@@ -1408,6 +1528,8 @@ class PortalImplementationDaemon:
         state.task_identities = {}
         state.strategy_generation = int(strategy.get("generation", 0))
         if not (previous.implementation_in_progress and live_inflight_implementation is not None):
+            if previous.implementation_in_progress:
+                consume_stale_active_attempt(state)
             state.active_task_id = ""
             state.active_task_key = ""
             state.active_task_cid = ""
@@ -1522,6 +1644,7 @@ class PortalImplementationDaemon:
         live_inflight_implementation = self._find_live_inflight_implementation()
         if previous.implementation_in_progress and live_inflight_implementation is None:
             recovered_state = PortalTaskState.load(self.state_path)
+            recovered_attempt = consume_stale_active_attempt(recovered_state)
             self._clear_active_execution_state(recovered_state)
             recovered_state.save(self.state_path)
             self._record_event(
@@ -1532,6 +1655,7 @@ class PortalImplementationDaemon:
                     "reason": "inflight_process_missing",
                     "worktree_path": previous.active_worktree_path,
                     "branch": previous.active_branch,
+                    "attempt_recovery": recovered_attempt,
                 },
             )
             previous = recovered_state
@@ -1700,6 +1824,34 @@ class PortalImplementationDaemon:
                     },
                 )
                 selectable_tasks = fallback_tasks
+        selectable_tasks, attempt_limited_tasks = self._partition_tasks_at_attempt_limit(
+            selectable_tasks,
+            resolved_statuses,
+            previous,
+        )
+        attempt_limit_idle_reason = ""
+        if attempt_limited_tasks:
+            remaining_ready = any(
+                resolved_statuses.get(task.task_id) == "ready"
+                for task in selectable_tasks
+            )
+            if not remaining_ready:
+                attempt_limit_idle_reason = (
+                    "all_selectable_ready_tasks_reached_max_task_attempts"
+                )
+            self._record_event(
+                "task_attempt_limit_backpressure",
+                {
+                    "reason": "max_task_attempts_reached",
+                    "max_task_attempts": self.max_task_attempts,
+                    "limited_task_count": len(attempt_limited_tasks),
+                    "limited_task_ids": [
+                        item["task_id"] for item in attempt_limited_tasks
+                    ],
+                    "limited_tasks": attempt_limited_tasks,
+                    "selection_idle_reason": attempt_limit_idle_reason,
+                },
+            )
         selected = self._select_next_task(
             selectable_tasks,
             resolved_statuses,
@@ -1708,6 +1860,8 @@ class PortalImplementationDaemon:
             recent_outcomes,
         )
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
+        if selected is None and attempt_limit_idle_reason:
+            selection_scope["selection_idle_reason"] = attempt_limit_idle_reason
         state = PortalTaskState.load(self.state_path)
         state.heartbeat_at = now
         if newly_completed or not state.last_progress_at:
@@ -1739,8 +1893,23 @@ class PortalImplementationDaemon:
             for task in tasks
         }
         state.strategy_generation = int(strategy.get("generation", 0))
-        state.implementation_attempts = previous.implementation_attempts
-        state.implementation_attempts_by_cid = previous.implementation_attempts_by_cid
+        state.implementation_attempts = dict(previous.implementation_attempts)
+        state.implementation_attempts_by_cid = dict(
+            previous.implementation_attempts_by_cid
+        )
+        revision_reset_task_ids: list[str] = []
+        for task in tasks:
+            previous_identity = previous.task_identities.get(task.task_id, {})
+            previous_cid = str(
+                previous_identity.get("canonical_task_cid") or ""
+            )
+            current_cid = self._canonical_ref(task)
+            if previous_cid and previous_cid != current_cid:
+                # The display-ID counter is a legacy compatibility field. Its
+                # old value must not be rebound to a newly revised canonical
+                # task after the identity projection above is refreshed.
+                state.implementation_attempts.pop(task.task_id, None)
+                revision_reset_task_ids.append(task.task_id)
         state.active_attempt = previous.active_attempt
         state.active_phase = previous.active_phase
         state.active_phase_started_at = previous.active_phase_started_at
@@ -1801,6 +1970,11 @@ class PortalImplementationDaemon:
             state.selection_idle_reason = str(selection_scope["selection_idle_reason"])
 
         state.save(self.state_path)
+        if revision_reset_task_ids:
+            self._record_event(
+                "task_revision_attempt_budget_reset",
+                {"task_ids": sorted(revision_reset_task_ids)},
+            )
         for task_id in newly_completed:
             self._record_event("task_completed", {"task_id": task_id})
         implementation_result: dict[str, Any] | None = None
@@ -1837,6 +2011,10 @@ class PortalImplementationDaemon:
                 "eligible_ready_count": state.eligible_ready_count,
                 "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
                 "selection_idle_reason": state.selection_idle_reason,
+                "max_task_attempts": self.max_task_attempts,
+                "attempt_limited_task_ids": [
+                    item["task_id"] for item in attempt_limited_tasks
+                ],
                 "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
                 "shared_completed_task_ids": sorted(shared_completed_task_ids),
             },
@@ -1852,6 +2030,10 @@ class PortalImplementationDaemon:
             "blocked_count": state.blocked_count,
             "active_task_id": state.active_task_id,
             "selection_idle_reason": state.selection_idle_reason,
+            "max_task_attempts": self.max_task_attempts,
+            "attempt_limited_task_ids": [
+                item["task_id"] for item in attempt_limited_tasks
+            ],
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),
@@ -1945,6 +2127,7 @@ class PortalImplementationDaemon:
         if worktree_path is not None:
             state.last_implementation_worktree_path = str(worktree_path)
         state.last_implementation_branch = branch_name
+        self._restore_task_attempt(state, task, max(0, attempt - 1))
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
         result = {
@@ -4020,6 +4203,11 @@ class PortalImplementationDaemon:
         state.last_implementation_commit = ""
         state.heartbeat_at = started_at
         state.last_progress_at = started_at
+        # Charge the model invocation atomically with the active marker.  A
+        # process death after this save therefore cannot evade a finite retry
+        # budget. Confirmed provider-capacity deferrals explicitly roll this
+        # charge back.
+        self._record_task_attempt(state, task, attempt)
         state.save(self.state_path)
 
     def _mark_active_phase(
@@ -11566,6 +11754,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--implementation-timeout", type=float, default=DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS)
     parser.add_argument(
+        "--max-task-attempts",
+        type=int,
+        default=0,
+        help=(
+            "Maximum implementation attempts per canonical task identity. "
+            "Zero disables the limit."
+        ),
+    )
+    parser.add_argument(
         "--validation-max-workers",
         type=int,
         default=None,
@@ -11677,6 +11874,7 @@ def main(argv: list[str] | None = None) -> None:
         implement=args.implement,
         implementation_command=args.implementation_command or None,
         implementation_timeout=args.implementation_timeout,
+        max_task_attempts=args.max_task_attempts,
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,

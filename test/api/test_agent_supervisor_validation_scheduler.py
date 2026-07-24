@@ -3,32 +3,41 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import (
+    command_runner_from_legacy_function,
+    run_validation_commands,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalTask,
+    TodoImplementationDaemon,
+)
 from ipfs_accelerate_py.agent_supervisor.validation_commands import (
     ValidationStage,
     build_validation_commands,
     select_validation_commands,
+)
+from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
+    VALIDATION_NPM_CACHE_ENV,
+    VALIDATION_PATH_ENV,
+    VALIDATION_PYTHON_ENV,
+    VALIDATION_PYTHONPATH_ENV,
+    ValidationRuntimeError,
+    build_validation_environment,
+    validation_argv_command,
+    validation_python_executable,
+    validation_shell_command,
 )
 from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ValidationResultCache,
     ValidationScheduler,
     build_validation_cache_key,
     collect_dependency_state,
-)
-from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
-    VALIDATION_NPM_CACHE_ENV,
-    VALIDATION_PATH_ENV,
-    ValidationRuntimeError,
-    build_validation_environment,
-    validation_shell_command,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    PortalTask,
-    TodoImplementationDaemon,
 )
 
 
@@ -108,7 +117,48 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     } & set(environment)
     shell_command = validation_shell_command("test -f artifact")
     assert shell_command[:4] == ["/bin/bash", "--noprofile", "--norc", "-c"]
-    assert shell_command[4].endswith("readonly -f python; test -f artifact")
+    assert shell_command[4].endswith(
+        "readonly -f python python3 pytest; test -f artifact"
+    )
+    for nested_shell in (
+        "bash -lc 'python -c \"raise SystemExit(0)\"'",
+        "true && bash -lc 'python -V'",
+        "command bash -lc 'python -V'",
+        ":; /bin/sh -c 'python -V'",
+        "env SAFE=1 /bin/bash -c 'python -V'",
+        "true&&bash -lc 'python -V'",
+        "echo x|bash -lc 'python -V'",
+        "true;/bin/sh -c 'python -V'",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="nested validation shells",
+        ):
+            validation_shell_command(nested_shell)
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="must provide command text with -c",
+    ):
+        validation_argv_command(("/bin/bash", "validation-script.sh"))
+    for wrapped_shell in (
+        ("env", "SAFE=1", "bash", "-lc", "python -V"),
+        ("command", "/bin/sh", "-c", "python -V"),
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="wrapped validation shells",
+        ):
+            validation_argv_command(wrapped_shell)
+    for dynamic_shell in (
+        "echo `bash -lc 'python -V'`",
+        "echo $(bash -lc 'python -V')",
+        "eval \"bash -lc 'python -V'\"",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="dynamic command substitution|dynamic shell evaluation",
+        ):
+            validation_shell_command(dynamic_shell)
 
     with pytest.raises(ValidationRuntimeError, match="must be absolute"):
         build_validation_environment({VALIDATION_PATH_ENV: "relative/bin"})
@@ -119,7 +169,10 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     replaceable_bin = tmp_path / "replaceable-bin"
     replaceable_bin.mkdir()
     replaceable_bin.chmod(0o555)
-    with pytest.raises(ValidationRuntimeError, match="ancestor must not be writable"):
+    # A user namespace may report the chmod-555 leaf itself as writable due to
+    # its mapped root capability; either the leaf or its replaceable ancestor
+    # must still be rejected.
+    with pytest.raises(ValidationRuntimeError, match="must not be writable"):
         build_validation_environment({VALIDATION_PATH_ENV: str(replaceable_bin)})
 
 
@@ -190,6 +243,197 @@ def test_real_validation_runner_ignores_profile_bash_env_and_path_injection(
         relevant_environment_keys=expected_environment,
     )
     assert report["results"][0]["cache_key"] == expected_key.digest
+
+
+def test_validation_runtime_reuses_supervisor_python_and_installed_pytest(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    expected_python = str(Path(sys.executable).resolve())
+    command = (
+        "TASK_PREFIX=works python -c 'import os, sys; "
+        "assert os.environ[\"TASK_PREFIX\"] == \"works\"; print(sys.executable)' "
+        "&& python -m pytest --version "
+        "&& pytest --version"
+    )
+
+    report = ValidationScheduler().run(
+        [command],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+    )
+
+    assert report["passed"] is True
+    output = str(report["results"][0]["output"])
+    assert output.splitlines()[0] == expected_python
+    assert output.count("pytest ") == 2
+    environment = build_validation_environment()
+    assert environment["PYTHONNOUSERSITE"] == "1"
+    assert str(Path(pytest.__file__).parent.parent.resolve()) in environment.get(
+        "PYTHONPATH", ""
+    ).split(os.pathsep)
+
+
+def test_validation_runtime_canonicalizes_replaceable_python_launcher(
+    tmp_path: Path,
+) -> None:
+    interpreter = tmp_path / "replaceable-python"
+    interpreter.symlink_to(Path(sys.executable).resolve())
+    environment = {
+        VALIDATION_PATH_ENV: os.pathsep.join(("/usr/bin", "/bin")),
+        VALIDATION_PYTHON_ENV: str(interpreter),
+    }
+
+    report = ValidationScheduler().run(
+        ["python -c 'import sys; print(sys.executable)'"],
+        workspace_path=tmp_path,
+        changed_files=["pyproject.toml"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+        environment=environment,
+    )
+
+    assert report["passed"] is True
+    assert str(report["results"][0]["output"]).strip() == str(
+        Path(sys.executable).resolve()
+    )
+    child_environment = build_validation_environment(environment)
+    assert child_environment[
+        "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
+    ] == str(Path(sys.executable).resolve())
+    assert "PYTHONPATH" not in child_environment
+    assert child_environment["PYTHONNOUSERSITE"] == "1"
+    assert validation_python_executable(environment) != str(interpreter)
+
+
+def test_validation_runtime_does_not_reinject_inherited_pythonpath(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hostile = tmp_path / "hostile" / "site-packages"
+    hostile.mkdir(parents=True)
+    monkeypatch.setattr(sys, "path", [str(hostile), *sys.path])
+
+    environment = build_validation_environment()
+
+    assert str(hostile.resolve()) not in environment.get("PYTHONPATH", "").split(
+        os.pathsep
+    )
+    with pytest.raises(ValidationRuntimeError, match="must not be writable"):
+        build_validation_environment(
+            {VALIDATION_PYTHONPATH_ENV: str(hostile)}
+        )
+
+
+def test_legacy_argv_validation_normalizes_login_shell_and_scrubs_bash_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "bash-env-ran"
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(marker))}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BASH_ENV", str(bash_env))
+
+    results = run_validation_commands(
+        repo_root=tmp_path,
+        commands=(
+            (
+                "/bin/bash",
+                "-lc",
+                "python -c 'import sys; print(sys.executable)'",
+            ),
+        ),
+        timeout_seconds=10,
+    )
+
+    assert results[0].ok
+    assert results[0].command[:4] == (
+        "/bin/bash",
+        "--noprofile",
+        "--norc",
+        "-c",
+    )
+    assert results[0].stdout.strip() == str(Path(sys.executable).resolve())
+    assert not marker.exists()
+
+
+def test_legacy_adapter_forwards_sanitized_validation_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "bash-env-ran"
+    bash_env = tmp_path / "bash-env"
+    bash_env.write_text(
+        f"touch {shlex.quote(str(marker))}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BASH_ENV", str(bash_env))
+    monkeypatch.setenv("VALIDATION_SECRET", "must-not-leak")
+    captured_environment: dict[str, str] = {}
+
+    def legacy_runner(
+        command,
+        *,
+        cwd,
+        timeout,
+        input_text=None,
+        environment=None,
+    ):
+        assert environment is not None
+        captured_environment.update(
+            {str(key): str(value) for key, value in environment.items()}
+        )
+        completed = subprocess.run(
+            list(command),
+            cwd=cwd,
+            env=captured_environment,
+            input=input_text,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        return {
+            "command": list(command),
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+        }
+
+    results = run_validation_commands(
+        repo_root=tmp_path,
+        commands=(("/bin/bash", "-lc", "python -c 'print(\"safe\")'"),),
+        timeout_seconds=10,
+        run_command_fn=command_runner_from_legacy_function(legacy_runner),
+    )
+
+    assert results[0].ok
+    assert results[0].stdout.strip() == "safe"
+    assert not marker.exists()
+    assert "BASH_ENV" not in captured_environment
+    assert "VALIDATION_SECRET" not in captured_environment
+
+
+def test_legacy_adapter_rejects_runner_without_environment_contract() -> None:
+    def unsafe_legacy_runner(command, *, cwd, timeout, input_text=None):
+        return {
+            "command": command,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="must accept an environment keyword",
+    ):
+        command_runner_from_legacy_function(unsafe_legacy_runner)
 
 
 def test_cheap_checks_run_before_expensive_tests_and_fail_fast(tmp_path: Path) -> None:

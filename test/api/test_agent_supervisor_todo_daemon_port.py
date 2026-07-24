@@ -5928,7 +5928,7 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
         "-c",
     ]
     assert captured["args"][0][4].endswith(
-        f"readonly -f python; {task.validation[0]}"
+        f"readonly -f python python3 pytest; {task.validation[0]}"
     )
     assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
     assert captured["kwargs"]["timeout"] == 1

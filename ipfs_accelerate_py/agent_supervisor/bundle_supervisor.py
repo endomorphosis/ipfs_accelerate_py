@@ -1035,6 +1035,7 @@ def implementation_supervisor_command(
     watchdog_startup_grace_seconds: float | None,
     max_restarts: int,
     implementation_timeout: float,
+    max_task_attempts: int = 0,
     implementation_command: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
@@ -1071,6 +1072,8 @@ def implementation_supervisor_command(
         str(check_interval),
         "--max-restarts",
         str(max_restarts),
+        "--max-task-attempts",
+        str(max(0, int(max_task_attempts))),
         "--implementation-timeout",
         str(implementation_timeout),
         "--log-level",
@@ -1134,6 +1137,7 @@ def plan_bundle_lanes(
     watchdog_startup_grace_seconds: float | None = None,
     max_restarts: int = 10,
     implementation_timeout: float = 1800.0,
+    max_task_attempts: int = 0,
     implementation_command: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
@@ -1221,6 +1225,7 @@ def plan_bundle_lanes(
             watchdog_startup_grace_seconds=watchdog_startup_grace_seconds,
             max_restarts=max_restarts,
             implementation_timeout=implementation_timeout,
+            max_task_attempts=max_task_attempts,
             implementation_command=implementation_command,
             llm_merge_resolver_command=llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=llm_merge_resolver_timeout_seconds,
@@ -1811,7 +1816,7 @@ class DynamicBundleScheduler:
         if self._plan_cache is None:
             allowed = {
                 "task_prefix", "implement", "daemon_interval", "stale_seconds",
-                "check_interval", "max_restarts", "implementation_timeout",
+                "check_interval", "max_restarts", "max_task_attempts", "implementation_timeout",
                 "implementation_command", "llm_merge_resolver_command",
                 "llm_merge_resolver_timeout_seconds", "merge_reconciliation_max_merges",
                 "generated_dirty_repair_enabled", "generated_dirty_repair_commit_subject",
@@ -2859,6 +2864,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-interval", type=float, default=60.0)
     parser.add_argument("--watchdog-startup-grace-seconds", type=float, default=None)
     parser.add_argument("--max-restarts", type=int, default=0)
+    parser.add_argument(
+        "--max-task-attempts",
+        type=int,
+        default=0,
+        help=(
+            "Maximum implementation attempts per canonical task identity in each lane. "
+            "Zero disables the limit."
+        ),
+    )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
     parser.add_argument("--llm-merge-resolver-command", default="")
@@ -2927,6 +2941,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         check_interval=args.check_interval,
         watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
         max_restarts=args.max_restarts,
+        max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
         implementation_timeout=args.implementation_timeout,
         implementation_command=args.implementation_command,
         llm_merge_resolver_command=args.llm_merge_resolver_command,

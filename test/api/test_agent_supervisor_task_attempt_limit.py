@@ -1,0 +1,376 @@
+from __future__ import annotations
+
+import json
+
+from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+    build_arg_parser as build_bundle_arg_parser,
+    implementation_supervisor_command,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalImplementationDaemon,
+    PortalTaskState,
+    parse_task_file,
+    parse_args as parse_daemon_args,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
+    parse_args as parse_supervisor_args,
+    supervisor_config_from_args,
+)
+
+
+def _write_single_task_board(path) -> None:
+    path.write_text(
+        """# Tasks
+
+## TASK-001 Keep a failed task fenced
+
+- Status: todo
+- Priority: P0
+- Track: agent
+- Outputs: src/retry_fence.py
+- Acceptance: A failed first attempt must not launch a second model invocation.
+""",
+        encoding="utf-8",
+    )
+
+
+def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_single_task_board(todo_path)
+    state_dir = tmp_path / "state"
+    state_path = state_dir / "task_state.json"
+    events_path = state_dir / "events.jsonl"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        merge_queue_dir=tmp_path / "merge-queue",
+        validation_cache_dir=tmp_path / "validation-cache",
+        worktree_pool_enabled=False,
+    )
+    model_attempts: list[int] = []
+
+    def fake_model_invocation(task, state):
+        attempt = daemon._task_attempt(state, task)
+        model_attempts.append(attempt)
+        daemon._record_task_attempt(state, task, attempt)
+        state.last_implementation_returncode = 1
+        state.save(state_path)
+        daemon._record_task_queue_outcome(task, 1, reason="test_failure")
+        result = {"task_id": task.task_id, "attempt": attempt, "returncode": 1}
+        daemon._record_event("implementation_started", result)
+        daemon._record_event("implementation_finished", result)
+        return result
+
+    monkeypatch.setattr(daemon, "_run_implementation", fake_model_invocation)
+
+    first = daemon.run_once()
+    first_state = PortalTaskState.load(state_path)
+    canonical_task_cid = first_state.task_identities["TASK-001"]["canonical_task_cid"]
+
+    assert first["implementation_result"]["attempt"] == 1
+    assert first_state.implementation_attempts_by_cid[canonical_task_cid] == 1
+    assert daemon.task_queue.is_cooled_down(canonical_task_cid) is True
+
+    second = daemon.run_once()
+    second_state = PortalTaskState.load(state_path)
+
+    assert model_attempts == [1]
+    assert second["implementation_result"] is None
+    assert second["active_task_id"] == ""
+    assert second["ready_count"] == 1
+    assert second["selectable_ready_count"] == 0
+    assert second["attempt_limited_task_ids"] == ["TASK-001"]
+    assert second["selection_idle_reason"] == (
+        "all_selectable_ready_tasks_reached_max_task_attempts"
+    )
+    assert second_state.implementation_attempts_by_cid[canonical_task_cid] == 1
+
+    events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    backpressure = [
+        event
+        for event in events
+        if event["type"] == "task_attempt_limit_backpressure"
+    ]
+    assert len(backpressure) == 1
+    assert backpressure[0]["reason"] == "max_task_attempts_reached"
+    assert backpressure[0]["max_task_attempts"] == 1
+    assert backpressure[0]["limited_tasks"] == [
+        {
+            "task_id": "TASK-001",
+            "canonical_task_key": first_state.task_identities["TASK-001"][
+                "canonical_task_key"
+            ],
+            "canonical_task_cid": canonical_task_cid,
+            "attempt_count": 1,
+        }
+    ]
+
+
+def test_max_task_attempts_threads_from_bundle_to_daemon_command(tmp_path) -> None:
+    bundle_args = build_bundle_arg_parser().parse_args(
+        [
+            "--bundle-index-path",
+            str(tmp_path / "bundles.json"),
+            "--max-task-attempts",
+            "1",
+        ]
+    )
+    assert bundle_args.max_task_attempts == 1
+
+    supervisor_command = implementation_supervisor_command(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_dir=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        state_prefix="task",
+        task_prefix="## TASK-",
+        implement=True,
+        daemon_interval=1.0,
+        stale_seconds=2.0,
+        check_interval=3.0,
+        watchdog_startup_grace_seconds=None,
+        max_restarts=0,
+        implementation_timeout=4.0,
+        max_task_attempts=bundle_args.max_task_attempts,
+    )
+    supervisor_flag = supervisor_command.index("--max-task-attempts")
+    assert supervisor_command[supervisor_flag + 1] == "1"
+
+    supervisor_args = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.todo.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--max-task-attempts",
+            supervisor_command[supervisor_flag + 1],
+        ]
+    )
+    config = supervisor_config_from_args(supervisor_args, repo_root=tmp_path)
+    assert config.max_task_attempts == 1
+
+    daemon_command = PortalImplementationSupervisor(config)._build_daemon_command()
+    daemon_flag = daemon_command.index("--max-task-attempts")
+    assert daemon_command[daemon_flag + 1] == "1"
+    assert parse_daemon_args(
+        ["--max-task-attempts", daemon_command[daemon_flag + 1]]
+    ).max_task_attempts == 1
+
+
+def test_max_task_attempts_defaults_to_unlimited() -> None:
+    assert build_bundle_arg_parser().parse_args(
+        ["--bundle-index-path", "bundles.json"]
+    ).max_task_attempts == 0
+    assert parse_supervisor_args([]).max_task_attempts == 0
+    assert parse_daemon_args([]).max_task_attempts == 0
+
+
+def test_started_attempt_survives_abrupt_daemon_death(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_single_task_board(todo_path)
+    state_dir = tmp_path / "state"
+    state_path = state_dir / "task_state.json"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        worktree_pool_enabled=False,
+    )
+    task = parse_task_file(todo_path, "## TASK-")[0]
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = PortalTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+    )
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=1,
+        started_at="2026-07-24T00:00:00+00:00",
+        log_path=state_dir / "attempt-1.log",
+    )
+    launched: list[str] = []
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        lambda selected, _state: launched.append(selected.task_id),
+    )
+
+    result = daemon.run_once()
+    recovered = PortalTaskState.load(state_path)
+
+    assert launched == []
+    assert result["implementation_result"] is None
+    assert result["attempt_limited_task_ids"] == ["TASK-001"]
+    assert recovered.implementation_attempts["TASK-001"] == 1
+    assert recovered.implementation_attempts_by_cid[
+        identity.canonical_task_cid
+    ] == 1
+    assert recovered.implementation_in_progress is False
+
+
+def test_supervisor_stale_repair_migrates_legacy_active_attempt(tmp_path) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    task_cid = "baguqeerastaleattempt"
+    PortalTaskState(
+        active_task_id="TASK-001",
+        active_task_key="task/v1/stale",
+        active_task_cid=task_cid,
+        active_attempt=1,
+        active_worktree_path=str(tmp_path / "dead-worktree"),
+        active_branch="implementation/dead-attempt",
+        implementation_in_progress=True,
+    ).save(state_path)
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=tmp_path / "tasks.todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=tmp_path,
+        )
+    )
+    supervisor._read_managed_daemon_pid = lambda: None
+    supervisor._list_process_commands = lambda: []
+
+    result = supervisor.repair_stale_active_execution_state()
+    recovered = PortalTaskState.load(state_path)
+
+    assert result["repaired"] is True
+    assert result["attempt_recovery"]["consumed"] is True
+    assert recovered.implementation_attempts["TASK-001"] == 1
+    assert recovered.implementation_attempts_by_cid[task_cid] == 1
+    assert recovered.active_attempt == 0
+
+
+def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_single_task_board(todo_path)
+    state_dir = tmp_path / "state"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        worktree_pool_enabled=False,
+    )
+    task = parse_task_file(todo_path, "## TASK-")[0]
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = PortalTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+    )
+    log_path = state_dir / "attempt-1.log"
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=1,
+        started_at="2026-07-24T00:00:00+00:00",
+        log_path=log_path,
+    )
+
+    result = daemon._record_provider_capacity_deferral(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at="2026-07-24T00:00:00+00:00",
+        returncode=1,
+        log_path=log_path,
+        failure={"providers": ["codex"], "evidence": ["rate limited"]},
+    )
+    recovered = PortalTaskState.load(daemon.state_path)
+
+    assert result["attempt_consumed"] is False
+    assert task.task_id not in recovered.implementation_attempts
+    assert (
+        identity.canonical_task_cid
+        not in recovered.implementation_attempts_by_cid
+    )
+    assert daemon._task_attempt(recovered, task) == 1
+
+
+def test_new_canonical_revision_gets_fresh_attempt_budget(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_single_task_board(todo_path)
+    state_dir = tmp_path / "state"
+    state_path = state_dir / "task_state.json"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        worktree_pool_enabled=False,
+    )
+    revision_a = parse_task_file(todo_path, "## TASK-")[0]
+    daemon._register_task_identities([revision_a])
+    identity_a = daemon._identity_for_task(revision_a)
+    state = PortalTaskState(
+        task_identities={revision_a.task_id: identity_a.to_dict()},
+    )
+    daemon._record_task_attempt(state, revision_a, 1)
+    state.save(state_path)
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "A failed first attempt must not launch a second model invocation.",
+            "A DuckDB-backed revised task must receive a fresh canonical budget.",
+        ),
+        encoding="utf-8",
+    )
+    revision_b = parse_task_file(todo_path, "## TASK-")[0]
+    identity_b = daemon._identity_for_task(revision_b)
+    launched_attempts: list[int] = []
+
+    def record_launch(task, current_state):
+        launched_attempts.append(daemon._task_attempt(current_state, task))
+        return {
+            "task_id": task.task_id,
+            "attempt": launched_attempts[-1],
+            "returncode": 0,
+        }
+
+    monkeypatch.setattr(daemon, "_run_implementation", record_launch)
+
+    result = daemon.run_once()
+    updated = PortalTaskState.load(state_path)
+
+    assert identity_b.canonical_task_cid != identity_a.canonical_task_cid
+    assert launched_attempts == [1]
+    assert result["attempt_limited_task_ids"] == []
+    assert updated.implementation_attempts_by_cid[
+        identity_a.canonical_task_cid
+    ] == 1

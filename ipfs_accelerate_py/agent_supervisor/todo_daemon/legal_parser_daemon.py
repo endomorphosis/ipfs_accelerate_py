@@ -4765,12 +4765,18 @@ def _run_command(
     cwd: Path,
     input_text: Optional[str] = None,
     timeout: int = 60,
+    environment: Optional[Mapping[str, object]] = None,
 ) -> Dict[str, Any]:
     started = time.time()
     try:
         proc = subprocess.run(
             list(cmd),
             cwd=str(cwd),
+            env=(
+                None
+                if environment is None
+                else {str(key): str(value) for key, value in environment.items()}
+            ),
             input=input_text,
             text=True,
             capture_output=True,
