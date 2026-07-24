@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
     GateProducerKind,
     HardConstraintReceipt,
     HardPlanConstraint,
+    adaptive_plan_candidate_snapshot_id,
     select_adaptive_plan,
 )
 from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
@@ -125,10 +126,17 @@ def _candidate(
         "policy_digest": goal.policy_digest,
     }
     bindings.update(binding_overrides or {})
+    snapshot_id = adaptive_plan_candidate_snapshot_id(
+        plan,
+        goal_content_id=bindings["goal_content_id"],
+        repository_tree_id=bindings["repository_tree_id"],
+        policy_digest=bindings["policy_digest"],
+    )
     receipts = tuple(
         HardConstraintReceipt(
             constraint=constraint,
             candidate_id=candidate_id,
+            candidate_snapshot_id=snapshot_id,
             goal_content_id=bindings["goal_content_id"],
             repository_tree_id=bindings["repository_tree_id"],
             policy_digest=bindings["policy_digest"],
@@ -189,6 +197,12 @@ def test_cheaper_authority_violating_plan_is_absolutely_rejected() -> None:
     assert evidence.authority_receipt_ids == (
         cheap_invalid.receipt_for(HardPlanConstraint.AUTHORITY).receipt_id,
     )
+    assert {
+        item.candidate_snapshot_id
+        for item in receipt.hard_constraint_receipts
+        if item.candidate_id == cheap_invalid.candidate_id
+    } == {cheap_invalid.snapshot_id}
+    assert receipt.to_dict()["planner_version"] == 2
 
 
 def test_candidate_self_report_cannot_manufacture_authority_evidence() -> None:
@@ -299,6 +313,7 @@ def test_candidate_boundary_requires_exact_trusted_gate_receipts() -> None:
         HardConstraintReceipt(
             constraint=HardPlanConstraint.AUTHORITY,
             candidate_id="candidate",
+            candidate_snapshot_id=candidate.snapshot_id,
             goal_content_id=goal.goal_content_id,
             repository_tree_id=goal.repository_tree_id,
             policy_digest=goal.policy_digest,
@@ -374,7 +389,7 @@ def test_requirement_witness_is_recomputed_from_evaluation_and_gate_matrix() -> 
         "rejected_candidate_ids"
     ] = ["valid"]
     with pytest.raises(
-        AdaptivePlannerValidationError, match="was not rejected"
+        AdaptivePlannerValidationError, match="incomplete or inconsistent"
     ):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
@@ -383,7 +398,7 @@ def test_requirement_witness_is_recomputed_from_evaluation_and_gate_matrix() -> 
         "rejected_cost_millionths"
     ] = [1]
     with pytest.raises(
-        AdaptivePlannerValidationError, match="rejected cost"
+        AdaptivePlannerValidationError, match="incomplete or inconsistent"
     ):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
@@ -392,7 +407,7 @@ def test_requirement_witness_is_recomputed_from_evaluation_and_gate_matrix() -> 
         "authority_receipt_ids"
     ] = ["receipt:forged"]
     with pytest.raises(
-        AdaptivePlannerValidationError, match="authority receipt"
+        AdaptivePlannerValidationError, match="incomplete or inconsistent"
     ):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
@@ -429,3 +444,163 @@ def test_candidate_budget_duplicate_identity_and_empty_input_are_bounded() -> No
         AdaptivePlanner(max_candidates=1).select(
             goal, (candidate, _candidate(goal, "second", cost=2.0))
         )
+
+
+def test_hard_gate_receipt_cannot_be_replayed_onto_changed_plan_content() -> None:
+    goal = _goal()
+    inspected = _candidate(
+        goal,
+        "same-branch-id",
+        cost=100.0,
+        failed=HardPlanConstraint.AUTHORITY,
+    )
+
+    with pytest.raises(
+        AdaptivePlannerValidationError, match="candidate content"
+    ):
+        replace(
+            inspected,
+            plan=_plan("same-branch-id", cost=0.01),
+        )
+
+
+def test_authority_witness_is_complete_for_every_qualifying_rejection() -> None:
+    goal = _goal()
+    receipt = AdaptivePlanner().select(
+        goal,
+        (
+            _candidate(
+                goal,
+                "cheap-b",
+                cost=0.2,
+                failed=HardPlanConstraint.AUTHORITY,
+            ),
+            _candidate(
+                goal,
+                "cheap-a",
+                cost=0.1,
+                failed=HardPlanConstraint.AUTHORITY,
+            ),
+            _candidate(goal, "safe", cost=2.0),
+        ),
+    )
+
+    evidence = receipt.authority_non_compensation_evidence
+    assert evidence is not None
+    assert evidence.rejected_candidate_ids == ("cheap-a", "cheap-b")
+
+    omitted = copy.deepcopy(receipt.to_dict())
+    omitted.pop("receipt_id")
+    witness = omitted["authority_non_compensation_evidence"]
+    witness.pop("evidence_id")
+    for field in (
+        "rejected_candidate_ids",
+        "rejected_cost_millionths",
+        "authority_receipt_ids",
+    ):
+        witness[field].pop()
+    with pytest.raises(
+        AdaptivePlannerValidationError, match="incomplete or inconsistent"
+    ):
+        AdaptivePlanSelectionReceipt.from_dict(omitted)
+
+    stripped = copy.deepcopy(receipt.to_dict())
+    stripped.pop("receipt_id")
+    stripped["authority_non_compensation_evidence"] = None
+    stripped["proved_requirement_ids"] = []
+    with pytest.raises(
+        AdaptivePlannerValidationError, match="exactly cover"
+    ):
+        AdaptivePlanSelectionReceipt.from_dict(stripped)
+
+
+@pytest.mark.parametrize("invalid_cost", [2.0, 3.0])
+def test_non_cheaper_authority_failure_does_not_claim_requirement(
+    invalid_cost: float,
+) -> None:
+    goal = _goal()
+    receipt = AdaptivePlanner().select(
+        goal,
+        (
+            _candidate(
+                goal,
+                "authority-invalid",
+                cost=invalid_cost,
+                failed=HardPlanConstraint.AUTHORITY,
+            ),
+            _candidate(goal, "safe", cost=2.0),
+        ),
+    )
+
+    assert receipt.selected_candidate_id == "safe"
+    assert receipt.authority_non_compensation_evidence is None
+    assert receipt.proved_requirement_ids == ()
+
+
+def test_no_admissible_plan_emits_no_objective_evidence() -> None:
+    goal = _goal()
+    receipt = AdaptivePlanner().select(
+        goal,
+        (
+            _candidate(
+                goal,
+                "authority-invalid",
+                cost=0.01,
+                failed=HardPlanConstraint.AUTHORITY,
+            ),
+        ),
+    )
+
+    assert receipt.selected is None
+    assert receipt.authority_non_compensation_evidence is None
+    assert receipt.proved_requirement_ids == ()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("planner_version", 999, "planner version"),
+        ("evaluator_version", "unsupported", "receipt evaluator version"),
+    ],
+)
+def test_selection_receipt_rejects_unsupported_outer_versions(
+    field: str,
+    value: Any,
+    message: str,
+) -> None:
+    goal = _goal()
+    receipt = AdaptivePlanner().select(
+        goal,
+        (_candidate(goal, "safe", cost=1.0),),
+    )
+    payload = receipt.to_dict()
+    payload.pop("receipt_id")
+    payload[field] = value
+
+    with pytest.raises(AdaptivePlannerValidationError, match=message):
+        AdaptivePlanSelectionReceipt.from_dict(payload)
+
+
+def test_selection_receipt_recomputes_persisted_evaluation() -> None:
+    goal = _goal()
+    receipt = AdaptivePlanner().select(
+        goal,
+        (_candidate(goal, "safe", cost=1.0),),
+    )
+    payload = receipt.to_dict()
+    payload.pop("receipt_id")
+    payload["evaluation"]["selected"]["score_millionths"] += 1
+    payload["evaluation"]["admissible"][0]["score_millionths"] += 1
+
+    with pytest.raises(
+        AdaptivePlannerValidationError, match="deterministic recomputation"
+    ):
+        AdaptivePlanSelectionReceipt.from_dict(payload)
+
+    payload = receipt.to_dict()
+    payload.pop("receipt_id")
+    payload["evaluation"]["evaluator_version"] = "unsupported"
+    with pytest.raises(
+        AdaptivePlannerValidationError, match="evaluator version"
+    ):
+        AdaptivePlanSelectionReceipt.from_dict(payload)

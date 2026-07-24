@@ -30,6 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
     RepairTransition,
     ReplanLimits,
     ReplanStopReason,
+    ReplannerValidationError,
     ResponsiveReplanDecision,
 )
 
@@ -182,6 +183,43 @@ def test_every_typed_repair_rule_recompiles_checks_and_preserves_goal(kind) -> N
     assert transition.taskboard_records
     assert RepairTransition.from_dict(transition.to_dict()) == transition
     assert transition.to_dict()["schema"] == REPAIR_TRANSITION_SCHEMA
+
+
+def test_repair_transition_deserialization_fails_closed() -> None:
+    source = _source()
+    counterexample = _counterexample(source)
+    result = FormalReplanner().replan(
+        source,
+        counterexample,
+        candidate_repairs=(
+            _operation(
+                RepairRuleKind.ADD_DEPENDENCY,
+                counterexample.semantic_id,
+            ),
+        ),
+    )
+    transition = result.selected_transition
+    assert transition is not None
+
+    unsupported = transition.to_dict()
+    unsupported["replanner_version"] += 1
+    with pytest.raises(
+        ReplannerValidationError, match="replanner version"
+    ):
+        RepairTransition.from_dict(unsupported)
+    inconsistent = transition.to_dict()
+    inconsistent.pop("transition_id")
+    inconsistent["progress"]["improved"] = not transition.progress.improved
+    with pytest.raises(
+        ReplannerValidationError, match="progress projection"
+    ):
+        RepairTransition.from_dict(inconsistent)
+    unknown = transition.to_dict()
+    unknown["untrusted_metadata"] = {"claim": "safe"}
+    with pytest.raises(
+        ReplannerValidationError, match="unknown repair transition fields"
+    ):
+        RepairTransition.from_dict(unknown)
 
 
 def test_counterexample_classes_generate_focused_dependency_and_premise_repairs() -> None:
