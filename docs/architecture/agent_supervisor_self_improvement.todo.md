@@ -2383,7 +2383,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-071 Close objective gap: Prove 184125100306462690646212311073240043804 for Unified Python, CLI, and MCP supervisor control
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
