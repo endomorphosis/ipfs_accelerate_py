@@ -980,6 +980,15 @@ from .goal_completion import (
     reopen_goal_for_contradictions,
     validate_completion_evidence,
 )
+from .self_improvement_completion import (
+    SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA,
+    SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS,
+    SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID,
+    SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION,
+    SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS,
+    SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS,
+    evaluate_self_improvement_root_completion,
+)
 from .goal_coverage import (
     AcceptanceCoverage,
     CoverageEdge,
@@ -2274,6 +2283,13 @@ __all__ = [
     "normalize_goal_state",
     "proof_invalidation_contradictions",
     "validate_completion_evidence",
+    "SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA",
+    "SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS",
+    "SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID",
+    "SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION",
+    "SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS",
+    "SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS",
+    "evaluate_self_improvement_root_completion",
     "repo_external_package_root",
     "repo_external_package_roots",
     "repo_doc_path",

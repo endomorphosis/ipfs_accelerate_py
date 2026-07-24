@@ -146,6 +146,41 @@ may propose matches, but only an exact, typed, fresh receipt from an allowed
 producer can discharge a requirement. Objective, plan, task-board, and
 generated-discovery prose are never authoritative completion evidence.
 
+### Root completion is hierarchical and two-phase
+
+ASI-G000 uses a closed completion adapter rather than a caller-assembled
+generic summary. The adapter fixes the complete original producing-task
+population (ASI-001 through ASI-024), the exact nine direct workstream goals
+(ASI-G010 through ASI-G090), the four literal root acceptance clauses, and a
+two-member exhaustive-receipt policy. A caller cannot lower or narrow those
+sets. Every producer must be terminal-successful before root completion can be
+requested.
+
+Every submitted criterion receipt participates in the decision: a passing
+receipt cannot mask a failed, stale, contradictory, malformed, or foreign-tree
+sibling. Each literal criterion needs its own fresh passing receipt and an
+exact current-tree coverage row naming both a concrete implementation and that
+receipt identity. Analyzer health remains a separate authority input and must
+explicitly be healthy and safe for completion reasoning with the repository,
+tree, objective/revision, analyzer version, and configuration revision.
+Operational pipeline output, provider health, or a discovery report cannot
+stand in for analyzer health.
+
+The exhaustion quorum must retain the configured count. Every counted member
+is fresh, healthy, completion-safe, exhaustive, identically bound, and
+independent by member ID, evidence channel, and receipt identity. Every direct
+child must have a fresh passed current-tree completion gate, and recursive
+descendant proof requirements remain proved, current, conclusive,
+uncontradicted, and sufficient for their required assurance. An empty child
+list, a state-only child summary, or a drained todo board is not proof.
+
+Even a fully passing first evaluation can move an active root only to
+`provisionally_complete`. A later, separate evaluation may verify it while all
+bindings and proof remain fresh. Any later task regression, child reopening,
+tree change, failed validation, analyzer degradation, or quorum loss reopens a
+verified root. The ASI-082 discovery file is an audit index for this policy;
+it never performs either lifecycle transition.
+
 ## Workstream A: measurement and token efficiency
 
 Add one supervisor efficiency receipt that joins stage timings, input/output
