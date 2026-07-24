@@ -176,7 +176,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-010 Enforce a strict implementation proposal and patch validation envelope
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: output-validation
