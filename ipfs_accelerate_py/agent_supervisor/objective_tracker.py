@@ -13,6 +13,7 @@ from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .adaptive_goal_refiner import GoalDebtRecord, GoalQualityRecord
 from .goal_completion import (
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     GOAL_COMPLETION_SCHEMA_VERSION,
@@ -43,6 +44,7 @@ from .objective_graph import (
     utc_now,
 )
 from .validation_commands import split_validation_commands
+from .formal_verification_contracts import content_identity
 from .scan_receipts import RepositoryTreeIdentity, scan_identity
 from .task_identity import canonical_content_cid
 
@@ -67,6 +69,65 @@ TASK_GOAL_METADATA_KEYS = (
     "goal packet goals",
     "graph parents",
 )
+OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/objective-goal-quality-report@1"
+)
+
+
+def _quality_terms(goal: ObjectiveGoal, *field_names: str) -> tuple[str, ...]:
+    """Read one canonical JSON list or legacy delimited objective field."""
+
+    for name in field_names:
+        raw = str(goal.fields.get(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, list) and all(
+            isinstance(item, str) for item in payload
+        ):
+            return tuple(
+                sorted({item.strip() for item in payload if item.strip()})
+            )
+        return tuple(sorted(set(split_terms(raw))))
+    return ()
+
+
+def _quality_mapping(goal: ObjectiveGoal, *field_names: str) -> dict[str, Any]:
+    for name in field_names:
+        raw = str(goal.fields.get(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        if isinstance(payload, Mapping) and all(
+            isinstance(key, str) for key in payload
+        ):
+            # The quality type applies canonical-JSON validation and copying.
+            return dict(payload)
+        return {}
+    return {}
+
+
+def _quality_nonnegative_integer(
+    goal: ObjectiveGoal,
+    *field_names: str,
+    default: int = 0,
+) -> int:
+    for name in field_names:
+        raw = str(goal.fields.get(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            return default
+        return value if value >= 0 else default
+    return default
 
 
 @dataclass(frozen=True)
@@ -84,6 +145,356 @@ class ObjectiveTrackingResult:
         if self.graph_path is not None:
             payload["graph_path"] = str(self.graph_path)
         return payload
+
+
+@dataclass(frozen=True)
+class ObjectiveGoalQualityReport:
+    """Restart-safe quality/debt projection of one exact objective heap."""
+
+    objective_heap_id: str
+    quality_records: tuple[GoalQualityRecord, ...]
+
+    def __post_init__(self) -> None:
+        heap_id = str(self.objective_heap_id or "").strip()
+        if not heap_id:
+            raise ValueError("objective_heap_id is required")
+        object.__setattr__(self, "objective_heap_id", heap_id)
+        records = tuple(self.quality_records)
+        if any(not isinstance(item, GoalQualityRecord) for item in records):
+            raise TypeError(
+                "quality_records must contain GoalQualityRecord values"
+            )
+        if len({item.goal_id for item in records}) != len(records):
+            raise ValueError("quality_records contain duplicate goal IDs")
+        object.__setattr__(
+            self,
+            "quality_records",
+            tuple(sorted(records, key=lambda item: item.goal_id)),
+        )
+
+    @property
+    def debt_records(self) -> tuple[GoalDebtRecord, ...]:
+        return tuple(
+            debt
+            for quality in self.quality_records
+            for debt in quality.debt_records
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA,
+            "version": 1,
+            "objective_heap_id": self.objective_heap_id,
+            "quality_records": tuple(
+                item.to_dict() for item in self.quality_records
+            ),
+            "debt_records": tuple(item.to_dict() for item in self.debt_records),
+        }
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ObjectiveGoalQualityReport":
+        if not isinstance(payload, Mapping):
+            raise TypeError("objective goal-quality report must be an object")
+        allowed = {
+            "schema",
+            "version",
+            "content_id",
+            "objective_heap_id",
+            "quality_records",
+            "debt_records",
+        }
+        unknown = sorted(set(payload) - allowed)
+        if unknown:
+            raise ValueError(
+                "unknown objective goal-quality report fields: "
+                + ", ".join(unknown)
+            )
+        if payload.get("schema") != OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA:
+            raise ValueError("unsupported objective goal-quality report schema")
+        if payload.get("version") != 1:
+            raise ValueError("unsupported objective goal-quality report version")
+        quality_values = payload.get("quality_records")
+        debt_values = payload.get("debt_records")
+        if not isinstance(quality_values, Sequence) or isinstance(
+            quality_values, (str, bytes, bytearray)
+        ):
+            raise ValueError("quality_records must be a sequence")
+        if not isinstance(debt_values, Sequence) or isinstance(
+            debt_values, (str, bytes, bytearray)
+        ):
+            raise ValueError("debt_records must be a sequence")
+        quality_records = tuple(
+            GoalQualityRecord.from_dict(item)
+            if isinstance(item, Mapping)
+            else (_raise_quality_report_value("quality_records"))
+            for item in quality_values
+        )
+        result = cls(
+            objective_heap_id=str(payload.get("objective_heap_id") or ""),
+            quality_records=quality_records,
+        )
+        restored_debt = tuple(
+            GoalDebtRecord.from_dict(item)
+            if isinstance(item, Mapping)
+            else (_raise_quality_report_value("debt_records"))
+            for item in debt_values
+        )
+        if restored_debt != result.debt_records:
+            raise ValueError(
+                "objective goal-quality debt records do not match quality records"
+            )
+        identity = payload.get("content_id")
+        if not isinstance(identity, str) or not identity.strip():
+            raise ValueError("objective goal-quality report identity is required")
+        if identity != result.content_id:
+            raise ValueError(
+                "objective goal-quality report content identity does not match"
+            )
+        return result
+
+
+def _raise_quality_report_value(field_name: str) -> Any:
+    raise ValueError(f"{field_name} must contain objects")
+
+
+def objective_goal_quality_record(
+    goal: ObjectiveGoal,
+    *,
+    breadth: int = 1,
+    default_max_breadth: int = 8,
+) -> GoalQualityRecord:
+    """Project one markdown goal into the reviewed adaptive quality schema."""
+
+    if not isinstance(goal, ObjectiveGoal):
+        raise TypeError("goal must be an ObjectiveGoal")
+    outcome = str(
+        goal.fields.get("outcome")
+        or goal.fields.get("goal")
+        or goal.fields.get("objective")
+        or goal.title
+        or ""
+    ).strip()
+    scope_ids = tuple(
+        sorted(
+            set(
+                _quality_terms(
+                    goal,
+                    "scope_ids_json",
+                    "scope_ids",
+                    "scope",
+                )
+                + tuple(goal.predicted_files)
+                + tuple(goal.predicted_symbols)
+            )
+        )
+    )
+    acceptance = _quality_terms(
+        goal,
+        "acceptance_criteria_json",
+        "acceptance_criteria",
+        "acceptance",
+    )
+    producers = set(
+        _quality_terms(
+            goal,
+            "evidence_producer_ids_json",
+            "evidence_producer_ids",
+            "evidence_producers",
+            "producing_task_or_scan",
+            "produced_by",
+        )
+    )
+    metadata_producer = str(
+        goal.completion_evidence_metadata.get("producer") or ""
+    ).strip()
+    if metadata_producer:
+        producers.add(metadata_producer)
+    validation = set(goal.validation_commands)
+    validation.update(
+        _quality_terms(
+            goal,
+            "validation_policy_json",
+            "validation_policy",
+            "validation_ids",
+        )
+    )
+    resource_envelope = _quality_mapping(
+        goal, "resource_envelope_json", "resource_envelope"
+    )
+    if not resource_envelope:
+        resource_envelope = {
+            key: value
+            for key, value in {
+                "resource_class": str(
+                    goal.fields.get("resource_class") or ""
+                ).strip(),
+                "estimated_tokens": str(
+                    goal.fields.get("estimated_tokens") or ""
+                ).strip(),
+                "estimated_runtime": str(
+                    goal.fields.get("estimated_runtime") or ""
+                ).strip(),
+                "estimated_memory": str(
+                    goal.fields.get("estimated_memory") or ""
+                ).strip(),
+                "artifact_budget": str(
+                    goal.fields.get("artifact_budget") or ""
+                ).strip(),
+            }.items()
+            if value
+        }
+    refinement_budget = _quality_mapping(
+        goal, "refinement_budget_json", "refinement_budget"
+    )
+    if not refinement_budget:
+        refinement_budget = {
+            key: value
+            for key, value in {
+                "max_depth": str(
+                    goal.fields.get("max_refinement_depth")
+                    or goal.fields.get("refinement_depth_limit")
+                    or ""
+                ).strip(),
+                "max_children": str(
+                    goal.fields.get("max_refinement_children")
+                    or goal.fields.get("refinement_breadth_limit")
+                    or ""
+                ).strip(),
+            }.items()
+            if value
+        }
+    explicit_breadth = _quality_nonnegative_integer(
+        goal, "breadth", default=max(1, breadth)
+    )
+    max_breadth = _quality_nonnegative_integer(
+        goal, "max_breadth", "refinement_breadth_limit",
+        default=default_max_breadth,
+    )
+    return GoalQualityRecord(
+        goal_id=goal.goal_id,
+        outcome=outcome,
+        scope_ids=scope_ids,
+        assumption_ids=_quality_terms(
+            goal,
+            "assumption_ids_json",
+            "assumptions_json",
+            "assumption_ids",
+            "assumptions",
+        ),
+        non_goals=_quality_terms(
+            goal, "non_goals_json", "non_goals", "non_goal"
+        ),
+        acceptance_criteria=acceptance,
+        evidence_producer_ids=tuple(sorted(producers)),
+        validation_ids=tuple(sorted(validation)),
+        freshness_horizon_seconds=_quality_nonnegative_integer(
+            goal,
+            "freshness_horizon_seconds",
+            "evidence_freshness_seconds",
+        ),
+        resource_envelope=resource_envelope,
+        refinement_budget=refinement_budget,
+        ambiguities=_quality_terms(
+            goal, "ambiguities_json", "ambiguities", "ambiguity"
+        ),
+        stale_evidence_ids=_quality_terms(
+            goal, "stale_evidence_ids_json", "stale_evidence", "stale_receipts"
+        ),
+        uncovered_acceptance_criteria=_quality_terms(
+            goal,
+            "uncovered_acceptance_criteria_json",
+            "uncovered_acceptance_criteria",
+            "uncovered_criteria",
+        ),
+        unsupported_semantics=_quality_terms(
+            goal,
+            "unsupported_semantics_json",
+            "unsupported_semantics",
+        ),
+        breadth=max(1, explicit_breadth),
+        max_breadth=max(1, max_breadth),
+    )
+
+
+def build_objective_goal_quality_report(
+    objective_text: str,
+    *,
+    default_max_breadth: int = 8,
+) -> ObjectiveGoalQualityReport:
+    """Build a deterministic report without mutating the objective heap."""
+
+    if not isinstance(objective_text, str):
+        raise TypeError("objective_text must be a string")
+    goals = parse_goal_heap(objective_text)
+    child_counts: dict[str, int] = {}
+    for goal in goals:
+        for parent_id in goal.parent_goal_ids:
+            child_counts[parent_id] = child_counts.get(parent_id, 0) + 1
+    return ObjectiveGoalQualityReport(
+        objective_heap_id=objective_heap_content_id(objective_text),
+        quality_records=tuple(
+            objective_goal_quality_record(
+                goal,
+                breadth=max(1, child_counts.get(goal.goal_id, 0)),
+                default_max_breadth=default_max_breadth,
+            )
+            for goal in goals
+        ),
+    )
+
+
+def write_objective_goal_quality_report(
+    objective_path: Path,
+    report_path: Path,
+    *,
+    default_max_breadth: int = 8,
+) -> ObjectiveGoalQualityReport:
+    """Atomically persist an exact-heap quality snapshot for restart reuse."""
+
+    if objective_path.resolve() == report_path.resolve():
+        raise ValueError(
+            "goal-quality report path must not overwrite the objective heap"
+        )
+    text = objective_path.read_text(encoding="utf-8")
+    report = build_objective_goal_quality_report(
+        text, default_max_breadth=default_max_breadth
+    )
+    _atomic_write_json(report_path, report.to_dict())
+    return report
+
+
+def load_objective_goal_quality_report(
+    report_path: Path,
+    *,
+    objective_path: Path | None = None,
+) -> ObjectiveGoalQualityReport:
+    """Restore a report fail-closed and optionally reject a stale heap."""
+
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid objective goal-quality report: {exc}") from exc
+    if not isinstance(payload, Mapping):
+        raise ValueError("objective goal-quality report must contain an object")
+    report = ObjectiveGoalQualityReport.from_dict(payload)
+    if objective_path is not None:
+        current_id = objective_heap_content_id(
+            objective_path.read_text(encoding="utf-8")
+        )
+        if report.objective_heap_id != current_id:
+            raise ValueError(
+                "objective goal-quality report is stale for the current heap"
+            )
+    return report
 
 
 @dataclass(frozen=True)
