@@ -4,7 +4,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
 from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
     EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA,
     EXACT_TREE_REUSE_REQUIREMENT_ID,
+    SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA,
     SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
     AnalysisBindingError,
     AnalysisPipeline,
@@ -678,6 +679,349 @@ def test_identical_concurrent_misses_collapse_before_expensive_analysis(
     )
     with pytest.raises(AnalysisBindingError, match="detached"):
         replace(produced, single_flight_collapse_evidence=detached)
+
+
+def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
+    tmp_path: Path,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    def analyzer(context):
+        entered.set()
+        assert release.wait(5)
+        return make_analysis_stage_receipt(
+            context.request,
+            successful=True,
+            reason_code="g096_complete",
+        )
+
+    pipeline = AnalysisPipeline(AnalysisCache(tmp_path / "cohort"), analyzer)
+    request = _request()
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        leader = executor.submit(pipeline.analyze, request)
+        assert entered.wait(5)
+        follower = executor.submit(pipeline.analyze, request)
+        deadline = time.monotonic() + 5
+        while (
+            pipeline.coordinator.metrics().followers < 1
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.001)
+        assert pipeline.coordinator.metrics().followers == 1
+        release.set()
+        cohort = (leader.result(timeout=10), follower.result(timeout=10))
+
+    result = next(
+        item
+        for item in cohort
+        if item.cache_status is PipelineCacheStatus.PRODUCED
+    )
+    assert result.operational_evidence_claim_references == (
+        SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
+    )
+    assert SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA == (
+        "Sync, async, and mixed facades share one keyed flight",
+        (
+            "the full AST/retrieval/provider/analyzer path executes once for "
+            "identical concurrent misses"
+        ),
+        "unrelated keys are not globally serialized",
+        "failed flights clean up before retry",
+        (
+            "singleton, cache-hit, different-key, non-authoritative, "
+            "malformed, detached, or replayed results cannot claim the "
+            "evidence ID"
+        ),
+    )
+
+    now = datetime(2026, 7, 24, 15, 0, tzinfo=timezone.utc)
+    validation_command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_analysis_pipeline.py "
+        "test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py "
+        "test/api/test_agent_supervisor_cache_coordinator.py -q"
+    )
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-069",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": result.request.tree_id,
+                "command": validation_command,
+            },
+            validation_passed=True,
+            repository_id=result.request.repository_id,
+            repository_tree=result.request.tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-069:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": result.request.tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "analysis_pipeline.py"
+                        if index == 2
+                        else "cache_coordinator.py"
+                    )
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_"
+                    + (
+                        "analysis_pipeline.py"
+                        if index == 2
+                        else "cache_coordinator.py"
+                    )
+                ),
+            }
+            for index, criterion in enumerate(
+                SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": result.request.analyzer_version,
+    }
+    binding = {
+        "repository_id": result.request.repository_id,
+        "tree_id": result.request.tree_id,
+        "analyzer_version": result.request.analyzer_version,
+        "configuration_revision": result.request.configuration_digest,
+        "objective_revision": result.request.objective_revision,
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-069-runtime",
+                "evidence_channel": "runtime-cohort",
+                "receipt_cid": "scan:asi-069:runtime",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-069-validation",
+                "evidence_channel": "fresh-validation",
+                "receipt_cid": "scan:asi-069:validation",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    values = {
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    provisional = result.evaluate_single_flight_collapse_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert provisional.acceptance_criteria == (
+        SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA
+    )
+    assert provisional.gate is not None and provisional.gate.passed
+    assert provisional.gate.evaluated_evidence["analysis_result"] == {}
+    assert "provisional_transition_required" in provisional.reason_codes
+
+    verified = result.evaluate_single_flight_collapse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    with pytest.raises(
+        ValueError, match="required_exhaustive_receipts must be"
+    ):
+        result.evaluate_single_flight_collapse_completion(
+            required_exhaustive_receipts=0,
+            **values,
+        )
+
+    missing = result.evaluate_single_flight_collapse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": evidence[:-1]},
+    )
+    assert not missing.verified
+    assert (
+        SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA[-1]
+        in missing.missing_criteria
+    )
+
+    failed = replace(
+        evidence[0],
+        validation_passed=False,
+        validation_receipt={
+            "status": "failed",
+            "tree_id": result.request.tree_id,
+            "command": validation_command,
+        },
+        provenance_cid="validation:asi-069:failed",
+    )
+    failed_validation = result.evaluate_single_flight_collapse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (*evidence, failed)},
+    )
+    assert not failed_validation.verified
+    assert "failed_validation" in failed_validation.reason_codes
+
+    stale = replace(
+        evidence[0],
+        observed_at=now - timedelta(hours=1),
+        provenance_cid="validation:asi-069:stale",
+    )
+    stale_validation = result.evaluate_single_flight_collapse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (stale, *evidence[1:])},
+    )
+    assert not stale_validation.verified
+    assert "stale_evidence" in stale_validation.reason_codes
+
+    unmapped_coverage = {
+        **coverage,
+        "criteria": [
+            {**coverage["criteria"][0], "validation": ""},
+            *coverage["criteria"][1:],
+        ],
+    }
+    unmapped = result.evaluate_single_flight_collapse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "coverage": unmapped_coverage},
+    )
+    assert not unmapped.verified
+    assert "coverage_unverified" in unmapped.reason_codes
+
+    for invalid_health in (
+        {"status": "healthy"},
+        {**health, "safe_for_completion_reasoning": False},
+        {**health, "analyzer_version": "fixture-analyzer@foreign"},
+    ):
+        unhealthy = result.evaluate_single_flight_collapse_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "analyzer_health": invalid_health},
+        )
+        assert not unhealthy.verified
+        assert any(
+            code in unhealthy.reason_codes
+            for code in ("analyzer_unhealthy", "analyzer_completion_unsafe")
+        )
+
+    invalid_quorums = (
+        {
+            **quorum,
+            "required_members": 1,
+            "member_count": 1,
+            "members": [quorum["members"][0]],
+        },
+        {**quorum, "required_members": 3},
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "receipt_cid": quorum["members"][0]["receipt_cid"],
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "healthy": False},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "scan_mode": "partial"},
+            ],
+        },
+        {
+            **quorum,
+            "binding": {**binding, "tree_id": "tree:sha256:foreign"},
+        },
+    )
+    for invalid_quorum in invalid_quorums:
+        no_quorum = result.evaluate_single_flight_collapse_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "exhaustion_quorum": invalid_quorum},
+        )
+        assert not no_quorum.verified
+        assert any(
+            code.startswith("exhaustion_quorum")
+            for code in no_quorum.reason_codes
+        )
+
+    foreign_tree = replace(
+        evidence[0],
+        repository_tree="tree:sha256:foreign",
+        tree_id="tree:sha256:foreign",
+        provenance_cid="validation:asi-069:foreign",
+    )
+    detached = result.evaluate_single_flight_collapse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (foreign_tree, *evidence[1:])},
+    )
+    assert not detached.verified
+    assert "repository_tree_mismatch" in detached.reason_codes
+
+    singleton = AnalysisPipeline(
+        AnalysisCache(tmp_path / "singleton"),
+        _Analyzer(),
+    ).analyze(request)
+    assert singleton.operational_evidence_claim_references == ()
+    non_qualifying = singleton.evaluate_single_flight_collapse_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert not non_qualifying.verified
+    assert "coverage_unverified" in non_qualifying.reason_codes
 
 
 def test_retrieval_is_integrated_and_bounded_before_local_analysis(

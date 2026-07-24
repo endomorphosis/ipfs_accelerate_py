@@ -99,6 +99,19 @@ EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     "achieves at least 70 percent reuse on repeated fixtures",
     "and reports zero stale authoritative hits.",
 )
+SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    "Sync, async, and mixed facades share one keyed flight",
+    (
+        "the full AST/retrieval/provider/analyzer path executes once for "
+        "identical concurrent misses"
+    ),
+    "unrelated keys are not globally serialized",
+    "failed flights clean up before retry",
+    (
+        "singleton, cache-hit, different-key, non-authoritative, malformed, "
+        "detached, or replayed results cannot claim the evidence ID"
+    ),
+)
 ANALYSIS_PIPELINE_VERSION: Final = "analysis-pipeline@1"
 DEFAULT_ANALYZER_VERSION: Final = "supervisor-integrated-analysis@1"
 DEFAULT_POLICY_DIGEST: Final = digest_analysis_input(
@@ -1276,9 +1289,12 @@ class AnalysisPipelineResult:
             values["clock_skew_seconds"] = clock_skew_seconds
         return evaluate_goal_completion(**values)
 
-    def evaluate_exact_tree_reuse_completion(
+    def _evaluate_closed_objective_completion(
         self,
         *,
+        acceptance_criteria: tuple[str, ...],
+        required_operational_requirement_id: str = "",
+        required_exhaustive_receipts: int | None = None,
         current_state: Any = "active",
         evidence: Sequence[Any] = (),
         tasks_complete: bool = False,
@@ -1292,21 +1308,7 @@ class AnalysisPipelineResult:
         analysis_inconclusive: bool = False,
         blocked_reason: str = "",
     ) -> "GoalCompletionDecision":
-        """Evaluate ASI-G094 against its closed mandatory proof population.
-
-        The exact-tree reuse result fixes the repository/tree boundary but
-        does not validate its own objective.  Callers must independently
-        submit one fresh passing validation per literal criterion, a fresh
-        implementation/validation coverage map, explicit analyzer health,
-        and a configured quorum of independent healthy exhaustive receipts.
-
-        This objective-specific bridge deliberately has no acceptance-criteria
-        argument.  It also tightens legacy-compatible completion records
-        before delegating to the canonical two-phase gate, so omitted safety,
-        coverage bindings, or member health cannot be interpreted as success.
-        Pipeline, cache, and optional-provider outputs remain bounded analysis
-        context and are never promoted into completion evidence.
-        """
+        """Apply strict inputs shared by closed objective-specific gates."""
 
         def payload(value: Any) -> dict[str, Any]:
             if isinstance(value, Mapping):
@@ -1337,22 +1339,65 @@ class AnalysisPipelineResult:
         coverage_rows = (
             coverage_rows if isinstance(coverage_rows, list) else []
         )
-        bindings_complete = bool(coverage_rows) and all(
-            isinstance(row, Mapping)
-            and bool(str(row.get("implementation") or "").strip())
-            and bool(str(row.get("validation") or "").strip())
-            for row in coverage_rows
+        rows_by_criterion: dict[str, list[Mapping[str, Any]]] = {}
+        for row in coverage_rows:
+            if not isinstance(row, Mapping):
+                continue
+            criterion = " ".join(
+                str(
+                    row.get(
+                        "criterion",
+                        row.get(
+                            "acceptance_criterion",
+                            row.get("acceptance", ""),
+                        ),
+                    )
+                    or ""
+                )
+                .strip()
+                .lower()
+                .split()
+            )
+            if criterion:
+                rows_by_criterion.setdefault(criterion, []).append(row)
+        expected_criteria = {
+            " ".join(criterion.strip().lower().split())
+            for criterion in acceptance_criteria
+        }
+        mapped_criteria = [
+            criterion
+            for criterion, rows in rows_by_criterion.items()
+            for _ in rows
+        ]
+        bindings_complete = bool(coverage_rows) and (
+            len(mapped_criteria) == len(expected_criteria)
+            and set(mapped_criteria) == expected_criteria
+            and len(mapped_criteria) == len(set(mapped_criteria))
+            and all(
+                isinstance(row, Mapping)
+                and bool(str(row.get("implementation") or "").strip())
+                and bool(str(row.get("validation") or "").strip())
+                for row in coverage_rows
+            )
         )
-        if not bindings_complete:
+        operational_proof_bound = (
+            not required_operational_requirement_id
+            or self.operational_evidence_claim_references
+            == (required_operational_requirement_id,)
+        )
+        if not bindings_complete or not operational_proof_bound:
             reasons = coverage_value.get("reason_codes")
             reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+            if not bindings_complete:
+                reasons.append(
+                    "coverage_missing_implementation_validation_binding"
+                )
+            if not operational_proof_bound:
+                reasons.append("active_operational_evidence_missing")
             coverage_value = {
                 **coverage_value,
                 "verified": False,
-                "reason_codes": [
-                    *reasons,
-                    "coverage_missing_implementation_validation_binding",
-                ],
+                "reason_codes": list(dict.fromkeys(reasons)),
             }
 
         quorum_value = payload(exhaustion_quorum)
@@ -1390,10 +1435,29 @@ class AnalysisPipelineResult:
             binding_value.get(name) == expected
             for name, expected in expected_binding.items()
         )
+        member_bindings_complete = bool(members) and all(
+            isinstance(member, Mapping)
+            and isinstance(member.get("binding"), Mapping)
+            and all(
+                member["binding"].get(name) == expected
+                for name, expected in expected_binding.items()
+            )
+            for member in members
+        )
+        configured_count_complete = (
+            required_exhaustive_receipts is None
+            or (
+                quorum_value.get("required_members")
+                == required_exhaustive_receipts
+                and len(members) >= required_exhaustive_receipts
+            )
+        )
         if (
             not members_complete
             or not receipts_independent
             or not binding_complete
+            or not member_bindings_complete
+            or not configured_count_complete
         ):
             quorum_value = {
                 **quorum_value,
@@ -1403,12 +1467,103 @@ class AnalysisPipelineResult:
 
         return self.evaluate_objective_completion(
             current_state=current_state,
-            acceptance_criteria=EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA,
+            acceptance_criteria=acceptance_criteria,
             evidence=evidence,
             tasks_complete=tasks_complete,
             coverage=coverage_value,
             analyzer_health=health_value,
             exhaustion_quorum=quorum_value,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
+    def evaluate_exact_tree_reuse_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate ASI-G094 against its closed mandatory proof population."""
+
+        return self._evaluate_closed_objective_completion(
+            acceptance_criteria=EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
+    def evaluate_single_flight_collapse_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = 2,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate ASI-G096 with a live, active-key-bound collapse witness.
+
+        The caller cannot replace or narrow the five literal criteria.  A
+        qualifying pipeline result must carry the coordinator-attested
+        operational witness for its complete cache key and packet identity.
+        That runtime witness supplies context only: independent current-tree
+        validations, coverage, analyzer health, and exhaustive quorum records
+        remain mandatory, and the canonical two-phase lifecycle gate decides
+        completion.
+        """
+
+        if (
+            isinstance(required_exhaustive_receipts, bool)
+            or not isinstance(required_exhaustive_receipts, int)
+            or required_exhaustive_receipts < 1
+        ):
+            raise ValueError(
+                "required_exhaustive_receipts must be a positive integer"
+            )
+
+        return self._evaluate_closed_objective_completion(
+            acceptance_criteria=SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA,
+            required_operational_requirement_id=(
+                SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID
+            ),
+            required_exhaustive_receipts=required_exhaustive_receipts,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
             child_goals=child_goals,
             now=now,
             freshness_seconds=freshness_seconds,
@@ -2292,6 +2447,7 @@ __all__ = [
     "EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA",
     "EXACT_TREE_REUSE_EVIDENCE_SCHEMA",
     "EXACT_TREE_REUSE_REQUIREMENT_ID",
+    "SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA",
     "SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID",
     "AnalysisBindingError",
     "AnalysisPipeline",
