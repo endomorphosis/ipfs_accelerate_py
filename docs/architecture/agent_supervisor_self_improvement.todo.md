@@ -930,7 +930,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-038 Close objective gap: Prove 020061024173618462922348580596364003627 for Benchmark-driven bounded self-refill
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: self-refill
@@ -974,7 +974,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-039 Close objective gap: Prove 065313778069923158401871898168782520190 for Benchmark-driven bounded self-refill
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: self-refill
@@ -2831,7 +2831,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-081 Close objective gap packet: ASI-G109, ASI-G110, ASI-G111
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: self-refill
