@@ -87,11 +87,11 @@ TERMINAL_ACCEPTED_WORK_EVIDENCE_SCHEMA = (
     "terminal-accepted-work-evidence@1"
 )
 REQUIRED_CONTEXT_PROOF_BINDING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/required-context-proof-binding@1"
+    "ipfs_accelerate_py/agent-supervisor/required-context-proof-binding@2"
 )
 REQUIRED_CONTEXT_PROMOTION_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "required-context-promotion-report@2"
+    "required-context-promotion-report@3"
 )
 DELTA_RETRY_PROOF_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/delta-retry-proof-binding@2"
@@ -3236,6 +3236,7 @@ class RequiredContextProofBinding(CanonicalContract):
     required_fields: tuple[str, ...]
     artifact_digest: str
     requirement_id: str = REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID
+    verifier: Any = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         from .context_compiler import (
@@ -3259,7 +3260,19 @@ class RequiredContextProofBinding(CanonicalContract):
             )
         # This performs the strong capsule/receipt/witness/decision/digest
         # cross-check.  A receipt alone is intentionally not sufficient.
-        ContextCompileResult(capsule, receipt, receipt.decisions)
+        structural_result = ContextCompileResult(
+            capsule,
+            receipt,
+            receipt.decisions,
+        )
+        if self.verifier is not None:
+            from .context_compiler import ContextCompiler
+
+            if not isinstance(self.verifier, ContextCompiler):
+                raise ContractValidationError(
+                    "required context proof verifier must be a ContextCompiler"
+                )
+            self.verifier.verify_compile_result(structural_result)
         evidence = receipt.evidence
         if (
             evidence is None
@@ -3409,6 +3422,12 @@ class RequiredContextProofBinding(CanonicalContract):
             self.selected_coverage_ids
         )
 
+    @property
+    def provider_tokens_verified(self) -> bool:
+        from .context_compiler import ContextCompiler
+
+        return isinstance(self.verifier, ContextCompiler)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
@@ -3436,6 +3455,7 @@ class RequiredContextProofBinding(CanonicalContract):
                 self.required_references_preserved
             ),
             "required_coverage_preserved": self.required_coverage_preserved,
+            "provider_tokens_verified": self.provider_tokens_verified,
         }
 
     @classmethod
@@ -3444,7 +3464,7 @@ class RequiredContextProofBinding(CanonicalContract):
         task_reference: str,
         result: Any,
     ) -> "RequiredContextProofBinding":
-        from .context_compiler import ContextCompileResult
+        from .context_compiler import ContextCompiler, ContextCompileResult
 
         if not isinstance(result, ContextCompileResult):
             raise ContractValidationError(
@@ -3452,7 +3472,16 @@ class RequiredContextProofBinding(CanonicalContract):
             )
         # Re-run result validation even if a caller constructed the dataclass
         # before crossing this promotion boundary.
-        ContextCompileResult(result.capsule, result.receipt, result.decisions)
+        if not isinstance(result.verifier, ContextCompiler):
+            raise ContractValidationError(
+                "required context proof requires its provider-token verifier"
+            )
+        ContextCompileResult(
+            result.capsule,
+            result.receipt,
+            result.decisions,
+            result.verifier,
+        )
         evidence = result.receipt.evidence
         if evidence is None:
             raise ContractValidationError(
@@ -3489,14 +3518,21 @@ class RequiredContextProofBinding(CanonicalContract):
             required_fields=evidence.required_fields,
             artifact_digest=evidence.artifact_digest,
             requirement_id=evidence.requirement_id,
+            verifier=result.verifier,
         )
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "RequiredContextProofBinding":
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        verifier: Any = None,
+    ) -> "RequiredContextProofBinding":
         _schema(payload, cls.SCHEMA, "required context proof binding")
         derived = {
             "required_references_preserved",
             "required_coverage_preserved",
+            "provider_tokens_verified",
         }
         _reject_unknown(
             payload,
@@ -3561,6 +3597,7 @@ class RequiredContextProofBinding(CanonicalContract):
             required_fields=tuple(payload.get("required_fields") or ()),
             artifact_digest=payload.get("artifact_digest", ""),
             requirement_id=payload.get("requirement_id", ""),
+            verifier=verifier,
         )
         for name in derived:
             if payload.get(name, getattr(result, name)) != getattr(result, name):
@@ -3705,6 +3742,40 @@ class RequiredContextPromotionReport(CanonicalContract):
         ) and not set(totals).difference(case_by_task)
 
     @property
+    def source_bindings_consistent(self) -> bool:
+        """Require every proof to match its measured task and one objective."""
+
+        from .context_compiler import REQUIRED_CONTEXT_OBJECTIVE_ID
+
+        case_by_task = {
+            item.task_reference: item for item in self.paired_report.cases
+        }
+        if not self.proof_bindings:
+            return False
+        repositories = {item.repository_id for item in self.proof_bindings}
+        policies = {item.policy_id for item in self.proof_bindings}
+        objective_revisions = {
+            item.context_capsule.objective_revision
+            for item in self.proof_bindings
+        }
+        return (
+            len(repositories) == 1
+            and len(policies) == 1
+            and len(objective_revisions) == 1
+            and all(
+                item.task_reference in case_by_task
+                and item.objective_id == REQUIRED_CONTEXT_OBJECTIVE_ID
+                and item.objective_id
+                == case_by_task[item.task_reference].goal_reference
+                and item.tree_id
+                == case_by_task[item.task_reference].repository_tree_digest
+                and item.policy_revision
+                == case_by_task[item.task_reference].policy_digest
+                for item in self.proof_bindings
+            )
+        )
+
+    @property
     def typed_context_gate_passed(self) -> bool:
         return (
             self.proof_population_complete
@@ -3712,9 +3783,11 @@ class RequiredContextPromotionReport(CanonicalContract):
             and all(
                 item.required_references_preserved
                 and item.required_coverage_preserved
+                and item.provider_tokens_verified
                 and item.input_tokens <= item.effective_input_limit
                 for item in self.proof_bindings
             )
+            and self.source_bindings_consistent
             and self.coverage_requirements_consistent
             and self.token_accounting_consistent
         )
@@ -3743,6 +3816,194 @@ class RequiredContextPromotionReport(CanonicalContract):
             return ()
         return (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,)
 
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> Any:
+        """Evaluate ASI-G091 with a closed, current-tree completion gate.
+
+        The promotion report proves the runtime and measurement obligation,
+        but it cannot self-supply criterion validations, analyzer health, or
+        exhaustive scan quorum.  This bridge fixes the objective criteria and
+        repository identity from the typed proof population, tightens the
+        generic mapping boundary, and preserves the mandatory two-phase
+        provisional transition.
+        """
+
+        from .context_compiler import (
+            REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA,
+            REQUIRED_CONTEXT_OBJECTIVE_ID,
+        )
+        from .goal_completion import evaluate_goal_completion
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        repositories = {item.repository_id for item in self.proof_bindings}
+        trees = {item.tree_id for item in self.proof_bindings}
+        objectives = {item.objective_id for item in self.proof_bindings}
+        revisions = {
+            item.context_capsule.objective_revision
+            for item in self.proof_bindings
+        }
+        policies = {item.policy_revision for item in self.proof_bindings}
+        identity_complete = bool(
+            self.promotion_eligible
+            and self.source_bindings_consistent
+            and repositories
+            and len(repositories) == 1
+            and len(trees) == 1
+            and objectives == {REQUIRED_CONTEXT_OBJECTIVE_ID}
+            and len(revisions) == 1
+            and len(policies) == 1
+        )
+        repository_id = next(iter(repositories), "")
+        repository_tree = next(iter(trees), "")
+        objective_revision = next(iter(revisions), "")
+        policy_revision = next(iter(policies), "")
+
+        coverage_value = payload(coverage)
+        rows_value = coverage_value.get("criteria")
+        rows = rows_value if isinstance(rows_value, list) else []
+        bindings_complete = bool(rows) and all(
+            isinstance(row, Mapping)
+            and bool(str(row.get("implementation") or "").strip())
+            and bool(str(row.get("validation") or "").strip())
+            for row in rows
+        )
+        if not bindings_complete:
+            reasons = coverage_value.get("reason_codes")
+            reasons = (
+                list(reasons)
+                if isinstance(reasons, (list, tuple))
+                else []
+            )
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": [
+                    *reasons,
+                    "coverage_missing_implementation_validation_binding",
+                ],
+            }
+
+        health_value = payload(analyzer_health)
+        analyzer_version = str(
+            health_value.get("analyzer_version") or ""
+        ).strip()
+        health_complete = (
+            str(health_value.get("status") or "").strip().lower()
+            == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+            and bool(analyzer_version)
+        )
+        if not health_complete:
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        quorum_value = payload(exhaustion_quorum)
+        binding_value = quorum_value.get("binding")
+        binding_value = (
+            binding_value if isinstance(binding_value, Mapping) else {}
+        )
+        configuration_revision = str(
+            binding_value.get("configuration_revision") or ""
+        ).strip()
+        expected_binding = {
+            "repository_id": repository_id,
+            "tree_id": repository_tree,
+            "analyzer_version": analyzer_version,
+            "configuration_revision": configuration_revision,
+            "objective_revision": objective_revision,
+        }
+        binding_complete = bool(configuration_revision) and all(
+            binding_value.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        members_value = quorum_value.get("members")
+        members = members_value if isinstance(members_value, list) else []
+        members_complete = bool(members) and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            and all(
+                isinstance(member.get("binding"), Mapping)
+                and member["binding"].get(name) == expected
+                for name, expected in expected_binding.items()
+            )
+            for member in members
+        )
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        receipts_independent = (
+            bool(receipt_ids)
+            and all(receipt_ids)
+            and len(receipt_ids) == len(set(receipt_ids))
+        )
+        if not (
+            identity_complete
+            and health_complete
+            and binding_complete
+            and members_complete
+            and receipts_independent
+        ):
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA,
+            "evidence": evidence,
+            "tasks_complete": bool(tasks_complete and identity_complete),
+            "repository_tree": repository_tree,
+            "repository_id": repository_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage_value,
+            "analyzer_health": health_value,
+            "exhaustion_quorum": quorum_value,
+            "child_goals": child_goals,
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": EFFICIENCY_CONTRACT_VERSION,
@@ -3762,6 +4023,7 @@ class RequiredContextPromotionReport(CanonicalContract):
                 self.coverage_requirements_consistent
             ),
             "token_accounting_consistent": self.token_accounting_consistent,
+            "source_bindings_consistent": self.source_bindings_consistent,
             "typed_context_gate_passed": self.typed_context_gate_passed,
             "paired_efficiency_gate_passed": (
                 self.paired_efficiency_gate_passed
@@ -3779,9 +4041,18 @@ class RequiredContextPromotionReport(CanonicalContract):
 
     @classmethod
     def from_dict(
-        cls, payload: Mapping[str, Any]
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        verifiers_by_receipt: Mapping[str, Any] | None = None,
     ) -> "RequiredContextPromotionReport":
         _schema(payload, cls.SCHEMA, "required context promotion report")
+        if verifiers_by_receipt is not None and not isinstance(
+            verifiers_by_receipt, Mapping
+        ):
+            raise ContractValidationError(
+                "verifiers_by_receipt must be an object"
+            )
         derived = {
             "proof_task_references",
             "missing_proof_task_references",
@@ -3790,6 +4061,7 @@ class RequiredContextPromotionReport(CanonicalContract):
             "context_receipt_count",
             "coverage_requirements_consistent",
             "token_accounting_consistent",
+            "source_bindings_consistent",
             "typed_context_gate_passed",
             "paired_efficiency_gate_passed",
             "evidence_claim_references",
@@ -3823,6 +4095,25 @@ class RequiredContextPromotionReport(CanonicalContract):
             raise ContractValidationError(
                 "terminal_work_evidence must be an object"
             )
+        binding_payloads = payload.get("proof_bindings") or ()
+        bindings: list[RequiredContextProofBinding] = []
+        for item in binding_payloads:
+            if not isinstance(item, Mapping):
+                raise ContractValidationError(
+                    "required context proof binding must be an object"
+                )
+            receipt_id = item.get("receipt_id", "")
+            verifier = (
+                verifiers_by_receipt.get(receipt_id)
+                if verifiers_by_receipt is not None
+                else None
+            )
+            bindings.append(
+                RequiredContextProofBinding.from_dict(
+                    item,
+                    verifier=verifier,
+                )
+            )
         result = cls(
             paired_report=PairedEfficiencyReport.from_dict(paired_payload),
             terminal_work_evidence=(
@@ -3832,10 +4123,7 @@ class RequiredContextPromotionReport(CanonicalContract):
                 if terminal_payload is not None
                 else None
             ),
-            proof_bindings=tuple(
-                RequiredContextProofBinding.from_dict(item)
-                for item in payload.get("proof_bindings") or ()
-            ),
+            proof_bindings=tuple(bindings),
         )
         for name in derived:
             claimed = payload.get(name, getattr(result, name))
@@ -3850,10 +4138,14 @@ class RequiredContextPromotionReport(CanonicalContract):
 
     @classmethod
     def from_json(
-        cls, value: str | bytes | bytearray
+        cls,
+        value: str | bytes | bytearray,
+        *,
+        verifiers_by_receipt: Mapping[str, Any] | None = None,
     ) -> "RequiredContextPromotionReport":
         return cls.from_dict(
-            _load_json(value, artifact_name="required context promotion report")
+            _load_json(value, artifact_name="required context promotion report"),
+            verifiers_by_receipt=verifiers_by_receipt,
         )
 
 

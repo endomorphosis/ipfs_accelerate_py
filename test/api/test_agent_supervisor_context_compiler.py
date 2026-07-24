@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import json
 
 import pytest
@@ -20,9 +21,11 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
 )
 from ipfs_accelerate_py.agent_supervisor.context_contracts import (
     ContextBudget,
+    ContextBudgetResolution,
     ContextContractError,
     ContextReference,
     ContextTier,
+    canonical_context_json_bytes,
 )
 
 
@@ -148,6 +151,44 @@ def test_provider_window_subtracts_output_and_tool_reserves() -> None:
     )
     assert direct_ceiling.effective_input_limit == 111
 
+    constrained = ContextCompiler(
+        budget,
+        tokenizer=_tokenizer,
+        provider_context_window=420,
+        provider_max_input_tokens=310,
+        reserved_output_tokens=70,
+        reserved_tool_tokens=20,
+    )
+    result = constrained.compile(**BINDING, **CORE)
+    resolution = result.receipt.budget_resolution
+    assert resolution == result.receipt.evidence.budget_resolution
+    assert resolution.supervisor_max_input_tokens == 500
+    assert resolution.provider_context_window == 420
+    assert resolution.provider_max_input_tokens == 310
+    assert resolution.reserved_output_tokens == 70
+    assert resolution.reserved_tool_tokens == 20
+    assert resolution.effective_input_limit == 310
+    assert result.capsule.budget.reserved_output_tokens == 70
+    assert result.capsule.budget.reserved_tool_tokens == 20
+    assert ContextBudgetResolution.from_json(resolution.to_json()) == resolution
+
+    forged = resolution.to_dict()
+    forged["effective_input_limit"] = 311
+    with pytest.raises(ContextContractError, match="negotiated limits"):
+        ContextBudgetResolution.from_dict(forged)
+
+    with pytest.raises(
+        RequiredContextOverflowError,
+        match="no usable input budget",
+    ):
+        ContextCompiler(
+            budget,
+            tokenizer=_tokenizer,
+            provider_context_window=90,
+            reserved_output_tokens=70,
+            reserved_tool_tokens=20,
+        )
+
 
 def test_required_context_fails_closed_instead_of_truncating() -> None:
     tiny = ContextCompiler(
@@ -200,6 +241,66 @@ def test_canonical_provider_input_defeats_forged_reference_token_count() -> None
         valid.capsule.input_tokens
     )
     assert dict(valid.capsule.provider_input_payload)["evidence"]
+
+
+def test_provider_verifier_rejects_rebuilt_understated_base_context() -> None:
+    required = _reference(
+        "understated",
+        1,
+        required=True,
+        summary="x" * 8_000,
+    )
+    compiler = ContextCompiler(
+        _budget(max_input_tokens=1_000),
+        tokenizer=_tokenizer,
+    )
+    result = compiler.compile(
+        **BINDING,
+        **CORE,
+        evidence=(required,),
+    )
+    assert result.receipt.input_tokens > 1
+
+    capsule = replace(result.capsule, input_tokens=1)
+    assert result.receipt.evidence is not None
+    witness = replace(
+        result.receipt.evidence,
+        capsule_id=capsule.capsule_id,
+        input_tokens=1,
+        artifact_digest=(
+            "sha256:"
+            + hashlib.sha256(
+                canonical_context_json_bytes(capsule.to_record())
+            ).hexdigest()
+        ),
+    )
+    receipt = replace(
+        result.receipt,
+        capsule_id=capsule.capsule_id,
+        input_tokens=1,
+        evidence=witness,
+    )
+    structurally_rebuilt = ContextCompileResult(
+        capsule,
+        receipt,
+        receipt.decisions,
+    )
+
+    with pytest.raises(
+        ContextCompilationError,
+        match="token accounting is not reproducible",
+    ):
+        compiler.verify_compile_result(structurally_rebuilt)
+    with pytest.raises(
+        ContextCompilationError,
+        match="token accounting is not reproducible",
+    ):
+        ContextCompileResult(
+            capsule,
+            receipt,
+            receipt.decisions,
+            compiler,
+        )
 
 
 def test_optional_evidence_has_deterministic_ranking_and_decisions() -> None:

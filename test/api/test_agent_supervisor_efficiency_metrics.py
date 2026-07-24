@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from datetime import datetime, timezone
 
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     DELTA_RETRY_EVIDENCE_ID,
+    REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA,
     REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID as COMPILER_REQUIRED_CONTEXT_ID,
     ContextCompiler,
 )
@@ -14,6 +16,10 @@ from ipfs_accelerate_py.agent_supervisor.context_contracts import (
     ContextBudget,
     ContextReference,
     ContextTier,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+    CompletionEvidence,
+    GoalState,
 )
 from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     DELTA_RETRY_CONTEXT_EVIDENCE_ID,
@@ -1038,12 +1044,20 @@ def test_required_context_promotion_binds_capsule_to_same_task_gate() -> None:
         result,
     ) == binding
 
+    verifiers = {binding.receipt_id: result.verifier}
     assert RequiredContextPromotionReport.from_json(
-        report.to_json()
+        report.to_json(),
+        verifiers_by_receipt=verifiers,
     ) == report
     assert RequiredContextPromotionReport.from_dict(
-        report.to_dict(include_report_id=True)
+        report.to_dict(include_report_id=True),
+        verifiers_by_receipt=verifiers,
     ) == report
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="provider_tokens_verified",
+    ):
+        RequiredContextPromotionReport.from_json(report.to_json())
 
 
 def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
@@ -1086,6 +1100,23 @@ def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
     assert not inconsistent.evidence_claim_references
     assert not inconsistent.promotion_eligible
 
+    foreign_measurement = replace(
+        paired,
+        cases=(
+            replace(
+                paired.cases[0],
+                repository_tree_digest="sha256:" + "f" * 64,
+            ),
+        ),
+    )
+    rebound_without_builder = RequiredContextPromotionReport(
+        paired_report=foreign_measurement,
+        proof_bindings=detached.proof_bindings,
+    )
+    assert not rebound_without_builder.source_bindings_consistent
+    assert not rebound_without_builder.typed_context_gate_passed
+    assert not rebound_without_builder.evidence_claim_references
+
     assert result.receipt.evidence is not None
     with pytest.raises(EfficiencyValidationError, match="artifact digest"):
         forged_result = replace(
@@ -1118,6 +1149,267 @@ def test_required_context_promotion_fails_closed_for_gap_or_forgery() -> None:
             ),
             {"task:required-context": (result,)},
         )
+
+
+def test_g091_completion_requires_current_tree_health_quorum_and_two_phases() -> None:
+    result = _required_context_fixture()
+    terminal = _paired_required_context_report(result, verified=True)
+    report = build_required_context_promotion_report(
+        terminal,
+        {"task:required-context": (result,)},
+    )
+    assert report.promotion_eligible
+    assert report.source_bindings_consistent
+
+    now = datetime(2026, 7, 24, 15, 0, tzinfo=timezone.utc)
+    command = (
+        "python -m pytest "
+        "test/api/test_agent_supervisor_efficiency_metrics.py "
+        "test/api/test_agent_supervisor_context_compiler.py "
+        "test/api/test_agent_supervisor_context_delta.py -q"
+    )
+    repository_id = result.receipt.repository_id
+    tree_id = result.receipt.tree_id
+    evidence = tuple(
+        CompletionEvidence(
+            acceptance_criterion=criterion,
+            producing_task_or_scan="ASI-061",
+            producer_kind="task",
+            validation_receipt={
+                "status": "passed",
+                "tree_id": tree_id,
+                "command": command,
+                "promotion_report_id": report.report_id,
+            },
+            validation_passed=True,
+            repository_id=repository_id,
+            repository_tree=tree_id,
+            freshness={"fresh": True},
+            observed_at=now,
+            provenance_cid=f"validation:asi-061:{index}",
+            metadata={
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "source_tier": "validation_receipt",
+                }
+            },
+        )
+        for index, criterion in enumerate(
+            REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA,
+            start=1,
+        )
+    )
+    coverage = {
+        "repository_tree": tree_id,
+        "evaluated_at": now.isoformat(),
+        "verified": True,
+        "criteria": [
+            {
+                "criterion": criterion,
+                "status": "verified",
+                "verified": True,
+                "implementation": (
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    + (
+                        "context_contracts.py"
+                        if index == 1
+                        else "context_compiler.py"
+                        if index < 6
+                        else "supervisor_efficiency_metrics.py"
+                    )
+                ),
+                "validation": (
+                    "test/api/test_agent_supervisor_context_compiler.py"
+                    if index < 6
+                    else (
+                        "test/api/"
+                        "test_agent_supervisor_efficiency_metrics.py"
+                    )
+                ),
+            }
+            for index, criterion in enumerate(
+                REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+    }
+    analyzer_version = "required-context-completion@1"
+    health = {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "analyzer_version": analyzer_version,
+    }
+    binding = {
+        "repository_id": repository_id,
+        "tree_id": tree_id,
+        "analyzer_version": analyzer_version,
+        "configuration_revision": "sha256:completion-config",
+        "objective_revision": result.capsule.objective_revision,
+        "policy_revision": result.receipt.policy_revision,
+    }
+    quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": binding,
+        "members": [
+            {
+                "member_id": "asi-061-exhaustive-a",
+                "evidence_channel": "compiler-and-contracts",
+                "receipt_cid": "scan:asi-061:exhaustive-a",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+            {
+                "member_id": "asi-061-exhaustive-b",
+                "evidence_channel": "promotion-and-lifecycle",
+                "receipt_cid": "scan:asi-061:exhaustive-b",
+                "binding": binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            },
+        ],
+    }
+    values = {
+        "evidence": evidence,
+        "tasks_complete": True,
+        "coverage": coverage,
+        "analyzer_health": health,
+        "exhaustion_quorum": quorum,
+        "now": now,
+        "freshness_seconds": 300,
+    }
+
+    provisional = report.evaluate_objective_completion(
+        current_state=GoalState.ACTIVE,
+        **values,
+    )
+    assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
+    assert not provisional.verified
+    assert provisional.acceptance_criteria == (
+        REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA
+    )
+    assert provisional.gate is not None and provisional.gate.passed
+    assert "provisional_transition_required" in provisional.reason_codes
+
+    verified = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert verified.state is GoalState.VERIFIED_COMPLETE
+    assert verified.verified
+
+    no_validations = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": ()},
+    )
+    assert not no_validations.verified
+    assert no_validations.missing_criteria == (
+        REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA
+    )
+
+    failed = replace(
+        evidence[0],
+        provenance_cid="validation:asi-061:failed",
+        validation_passed=False,
+        validation_receipt={
+            "status": "failed",
+            "tree_id": tree_id,
+            "command": command,
+        },
+    )
+    failed_validation = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": (*evidence, failed)},
+    )
+    assert not failed_validation.verified
+    assert "failed_validation" in failed_validation.reason_codes
+
+    unmapped = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "coverage": {
+                **coverage,
+                "criteria": [
+                    *coverage["criteria"][:-1],
+                    {**coverage["criteria"][-1], "validation": ""},
+                ],
+            },
+        },
+    )
+    assert not unmapped.verified
+    assert "coverage_unverified" in unmapped.reason_codes
+
+    unsafe = report.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "analyzer_health": {
+                "status": "healthy",
+                "healthy": True,
+                "analyzer_version": analyzer_version,
+            },
+        },
+    )
+    assert not unsafe.verified
+    assert "analyzer_unhealthy" in unsafe.reason_codes
+
+    invalid_quorums = (
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {
+                    **quorum["members"][1],
+                    "receipt_cid": "scan:asi-061:exhaustive-a",
+                },
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "scan_mode": "audit"},
+            ],
+        },
+        {
+            **quorum,
+            "members": [
+                quorum["members"][0],
+                {**quorum["members"][1], "healthy": False},
+            ],
+        },
+        {
+            **quorum,
+            "binding": {**binding, "tree_id": "sha256:foreign"},
+        },
+    )
+    for invalid_quorum in invalid_quorums:
+        rejected = report.evaluate_objective_completion(
+            current_state=GoalState.PROVISIONALLY_COMPLETE,
+            **{**values, "exhaustion_quorum": invalid_quorum},
+        )
+        assert not rejected.verified
+        assert any(
+            code.startswith("exhaustion_quorum")
+            for code in rejected.reason_codes
+        )
+
+    detached = replace(report, terminal_work_evidence=None)
+    assert not detached.promotion_eligible
+    rejected = detached.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **values,
+    )
+    assert not rejected.verified
 
 
 def test_delta_retry_promotion_binds_typed_result_to_same_task_gate() -> None:
