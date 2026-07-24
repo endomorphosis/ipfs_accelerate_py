@@ -786,6 +786,116 @@ def refill_open_task_capacity(
     return min(max(0, int(max_findings)), available)
 
 
+def self_improvement_epoch_wait_active(
+    strategy: Mapping[str, Any],
+    *,
+    epoch_id: str,
+    evidence_id: str = "",
+    requirement_id: str = "",
+    next_triggers: Sequence[str] = (),
+) -> bool:
+    """Return whether a proved healthy epoch suppresses an identical refill.
+
+    A timestamp or empty finding list is deliberately insufficient.  The
+    strategy must name the exact content-addressed epoch, its healthy
+    exhaustion evidence, and the explicit wait state written after all proof
+    gates passed.
+    """
+
+    expected = str(epoch_id or "").strip()
+    if not expected:
+        return False
+    recorded_evidence = str(
+        strategy.get("last_self_improvement_exhaustion_evidence_id") or ""
+    ).strip()
+    recorded_requirement = str(
+        strategy.get("last_self_improvement_requirement_id") or ""
+    ).strip()
+    quorum = strategy.get("last_self_improvement_exhaustion_quorum")
+    recorded_triggers = tuple(
+        sorted(
+            str(item).strip()
+            for item in (
+                strategy.get("self_improvement_next_triggers") or ()
+            )
+            if str(item).strip()
+        )
+    )
+    expected_triggers = tuple(
+        sorted(str(item).strip() for item in next_triggers if str(item).strip())
+    )
+    return bool(
+        str(strategy.get("last_self_improvement_epoch_id") or "") == expected
+        and str(strategy.get("last_self_improvement_epoch_status") or "")
+        == "healthy_exhausted"
+        and str(strategy.get("self_improvement_refill_state") or "")
+        == "waiting_for_meaningful_trigger"
+        and recorded_evidence
+        and recorded_requirement
+        and isinstance(quorum, Mapping)
+        and quorum.get("satisfied") is True
+        and recorded_triggers
+        and (
+            not str(evidence_id or "").strip()
+            or recorded_evidence == str(evidence_id).strip()
+        )
+        and (
+            not str(requirement_id or "").strip()
+            or recorded_requirement == str(requirement_id).strip()
+        )
+        and (not expected_triggers or recorded_triggers == expected_triggers)
+    )
+
+
+def record_self_improvement_exhaustion(
+    strategy_path: Path,
+    *,
+    epoch_id: str,
+    evidence_id: str,
+    requirement_id: str,
+    quorum: Mapping[str, Any],
+    next_triggers: Sequence[str],
+    recorded_at: str,
+) -> dict[str, Any]:
+    """Persist the supervisor wait state after a qualified healthy epoch.
+
+    This helper does not decide that exhaustion is healthy; the typed
+    self-improvement witness owns that decision.  It accepts only a satisfied
+    quorum and non-empty content identities so a generic empty objective scan
+    cannot advance the drained marker.
+    """
+
+    epoch = str(epoch_id or "").strip()
+    evidence = str(evidence_id or "").strip()
+    requirement = str(requirement_id or "").strip()
+    triggers = tuple(
+        dict.fromkeys(str(item).strip() for item in next_triggers if str(item).strip())
+    )
+    if not epoch or not evidence or not requirement:
+        raise ValueError(
+            "epoch_id, evidence_id, and requirement_id are required"
+        )
+    if not isinstance(quorum, Mapping) or quorum.get("satisfied") is not True:
+        raise ValueError("a satisfied exhaustion quorum is required")
+    if not triggers:
+        raise ValueError("at least one meaningful next trigger is required")
+    strategy = load_strategy(strategy_path)
+    strategy.update(
+        {
+            "last_self_improvement_epoch_id": epoch,
+            "last_self_improvement_epoch_status": "healthy_exhausted",
+            "last_self_improvement_exhaustion_evidence_id": evidence,
+            "last_self_improvement_requirement_id": requirement,
+            "last_self_improvement_exhaustion_quorum": dict(quorum),
+            "last_self_improvement_exhausted_at": str(recorded_at or utc_now()),
+            "self_improvement_refill_state": "waiting_for_meaningful_trigger",
+            "self_improvement_next_triggers": list(triggers),
+        }
+    )
+    write_json(strategy_path, strategy)
+    return strategy
+
+
 def git_toplevel_for_path(cwd: Path) -> Path | None:
     try:
         result = subprocess.run(
@@ -5558,8 +5668,6 @@ def record_objective_backlog_findings(
     records = list(generation_result.items)
     strategy["last_objective_goal_scan_at"] = utc_now()
     strategy["last_objective_goal_scan_mode"] = mode
-    if current_open == 0 or mode.endswith("drained_exhaustive"):
-        strategy["last_drained_objective_goal_scan_task_count"] = task_count
     strategy["objective_goal_seen_fingerprints"] = sorted(
         seen | {record.finding.fingerprint for record in records}
     )
@@ -5632,7 +5740,12 @@ def record_objective_backlog_findings(
         repo_root,
         started_at,
         appended,
-        safe_for_completion_reasoning=(not appended and mode.endswith("exhaustive")),
+        # An empty objective-gap result is proposal evidence, not healthy
+        # exhaustion authority.  The benchmark-driven self-improvement epoch
+        # separately requires explicit analyzer health, an exact context
+        # binding, and an independent quorum before it advances the durable
+        # drained marker.
+        safe_for_completion_reasoning=False,
         metadata={
             **generation_result.metadata,
             "open_task_count": current_open,
@@ -5640,6 +5753,7 @@ def record_objective_backlog_findings(
             "refill_capacity": refill_capacity,
             "open_task_target": max(0, int(min_open_tasks))
             + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
+            "healthy_epoch_required_for_completion": True,
         },
     )
 
