@@ -1614,9 +1614,12 @@ class CompletionAdmissionGate:
     validation_dag_receipt_id: str = ""
     reason_codes: tuple[str, ...] = ()
     validation_policy_id: str = ""
+    code_proof_result_ids: tuple[str, ...] = ()
+    proof_candidate_receipt_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "admitted", bool(self.admitted))
+        if not isinstance(self.admitted, bool):
+            raise ConformanceValidationError("admitted must be boolean")
         object.__setattr__(
             self,
             "proposal_receipt_id",
@@ -1636,6 +1639,14 @@ class CompletionAdmissionGate:
             _text(self.validation_policy_id, field_name="validation_policy_id"),
         )
         object.__setattr__(self, "reason_codes", _strings(self.reason_codes))
+        object.__setattr__(
+            self, "code_proof_result_ids", _strings(self.code_proof_result_ids)
+        )
+        object.__setattr__(
+            self,
+            "proof_candidate_receipt_ids",
+            _strings(self.proof_candidate_receipt_ids),
+        )
         if self.admitted and self.reason_codes:
             raise ConformanceValidationError(
                 "admitted completion gate cannot contain rejection reasons"
@@ -1658,9 +1669,40 @@ class CompletionAdmissionGate:
         }
         if self.validation_policy_id:
             payload["validation_policy_id"] = self.validation_policy_id
+        if self.code_proof_result_ids:
+            payload["code_proof_result_ids"] = self.code_proof_result_ids
+        if self.proof_candidate_receipt_ids:
+            payload["proof_candidate_receipt_ids"] = (
+                self.proof_candidate_receipt_ids
+            )
         if include_id:
             payload["gate_id"] = self.gate_id
         return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CompletionAdmissionGate":
+        result = cls(
+            admitted=payload.get("admitted", False),
+            proposal_receipt_id=str(payload.get("proposal_receipt_id") or ""),
+            validation_dag_receipt_id=str(
+                payload.get("validation_dag_receipt_id") or ""
+            ),
+            validation_policy_id=str(
+                payload.get("validation_policy_id") or ""
+            ),
+            code_proof_result_ids=tuple(
+                payload.get("code_proof_result_ids") or ()
+            ),
+            proof_candidate_receipt_ids=tuple(
+                payload.get("proof_candidate_receipt_ids") or ()
+            ),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+        )
+        if payload.get("gate_id") and payload["gate_id"] != result.gate_id:
+            raise ConformanceValidationError(
+                "completion admission gate identity mismatch"
+            )
+        return result
 
 
 def evaluate_completion_admission(
@@ -1669,13 +1711,30 @@ def evaluate_completion_admission(
     validation_dag: Any = None,
     required: bool = False,
     expected_validation_policy_id: str = "",
+    code_proof_results: Iterable[Any] = (),
+    code_proof_receipts: Iterable[Any] = (),
+    implementation_obligations: Any = None,
+    required_code_assurance: Any = "kernel_verified",
+    require_code_proof: bool = False,
 ) -> CompletionAdmissionGate:
-    """Fail closed when rejected output is offered as completion evidence."""
+    """Fail closed when rejected output or a proof candidate is offered.
+
+    Proposal admission and a passing validation DAG only authorize derivation
+    of implementation obligations.  A required gate that reaches that point
+    automatically requires code proof; ``require_code_proof`` also enables
+    this fail-closed behavior before proposal/DAG inputs are complete.  Only
+    canonical receipts revalidated against the fresh obligation population
+    create positive proof authority; provider candidates and detached result
+    summaries remain explicit rejected inputs.
+    """
 
     reasons: list[str] = []
     proposal_receipt_id = ""
     dag_receipt_id = ""
     validation_policy_id = ""
+    dag_passed = False
+    code_proof_result_ids: list[str] = []
+    proof_candidate_receipt_ids: list[str] = []
     expected_validation_policy_id = _text(
         expected_validation_policy_id,
         field_name="expected_validation_policy_id",
@@ -1706,6 +1765,7 @@ def evaluate_completion_admission(
         )
         dag_receipt_id = dag.receipt_id
         validation_policy_id = dag.policy_id
+        dag_passed = dag.passed
         if proposal_result is None:
             reasons.append("validation_dag_without_proposal")
         elif dag.proposal_receipt_id != proposal_receipt_id:
@@ -1732,12 +1792,137 @@ def evaluate_completion_admission(
     elif required or expected_validation_policy_id:
         reasons.append("validation_dag_missing")
 
+    from .code_proof_obligations import (
+        CodeProofReceiptBindingResult,
+        ImplementationObligationSet,
+        validate_code_proof_receipt_bindings,
+    )
+    from .formal_verification_contracts import (
+        AssuranceLevel,
+        ProofReceipt,
+        ProofVerdict,
+    )
+
+    normalized_proof_results: list[CodeProofReceiptBindingResult] = []
+    for item in tuple(code_proof_results or ()):
+        try:
+            result = (
+                item
+                if isinstance(item, CodeProofReceiptBindingResult)
+                else CodeProofReceiptBindingResult.from_dict(item)
+            )
+        except (TypeError, ValueError) as exc:
+            raise ConformanceValidationError(
+                f"invalid code-proof binding result: {exc}"
+            ) from exc
+        normalized_proof_results.append(result)
+
+    proof_receipts = tuple(code_proof_receipts or ())
+    revalidated_result_ids: set[str] = set()
+    obligation_set = None
+    if implementation_obligations is not None:
+        try:
+            obligation_set = (
+                implementation_obligations
+                if isinstance(
+                    implementation_obligations, ImplementationObligationSet
+                )
+                else ImplementationObligationSet.from_dict(
+                    implementation_obligations
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise ConformanceValidationError(
+                f"invalid implementation obligation set: {exc}"
+            ) from exc
+    if proof_receipts and obligation_set is None:
+        reasons.append("code_proof_obligations_missing")
+    if obligation_set is not None:
+        if proposal_result is None:
+            reasons.append("code_proof_without_proposal")
+        else:
+            binding = obligation_set.binding
+            if (
+                binding.proposal_validation_receipt_id != proposal_receipt_id
+                or (
+                    dag_receipt_id
+                    and binding.validation_dag_receipt_id != dag_receipt_id
+                )
+                or (
+                    validation_policy_id
+                    and binding.validation_policy_id != validation_policy_id
+                )
+            ):
+                reasons.append("code_proof_authority_chain_mismatch")
+        for item in proof_receipts:
+            try:
+                receipt = (
+                    item
+                    if isinstance(item, ProofReceipt)
+                    else ProofReceipt.from_dict(item)
+                )
+                revalidated = validate_code_proof_receipt_bindings(
+                    receipt,
+                    obligation_set,
+                    required_assurance=AssuranceLevel(
+                        required_code_assurance
+                    ),
+                )
+                normalized_proof_results.append(revalidated)
+                revalidated_result_ids.add(revalidated.result_id)
+            except (TypeError, ValueError) as exc:
+                raise ConformanceValidationError(
+                    f"invalid canonical code-proof receipt: {exc}"
+                ) from exc
+
+    # Stable de-duplication allows callers to retain a diagnostic result while
+    # also supplying the canonical receipt needed for positive authority.
+    normalized_proof_results = list(
+        {
+            result.result_id: result for result in normalized_proof_results
+        }.values()
+    )
+    valid_obligation_ids: set[str] = set()
+    for result in normalized_proof_results:
+        code_proof_result_ids.append(result.result_id)
+        if result.authoritative_assurance is AssuranceLevel.CANDIDATE:
+            proof_candidate_receipt_ids.append(result.receipt_id)
+            reasons.append("code_proof_candidate_only")
+        if (
+            result.authoritative_verdict is not ProofVerdict.PROVED
+            or result.authoritative_assurance.rank
+            < AssuranceLevel.KERNEL_VERIFIED.rank
+        ):
+            reasons.append("code_proof_not_authoritative")
+        if not result.valid:
+            reasons.append("code_proof_binding_rejected")
+        elif result.result_id in revalidated_result_ids:
+            valid_obligation_ids.add(result.obligation_id)
+        else:
+            # A detached serialized/in-memory summary is useful diagnostic
+            # input, but only revalidating the canonical receipt against the
+            # obligation set may create positive proof authority.
+            reasons.append("code_proof_unverified_summary")
+    proof_required = require_code_proof or bool(
+        required
+        and proposal_result is not None
+        and proposal_result.accepted
+        and dag_passed
+    )
+    if proof_required:
+        if obligation_set is None or not proof_receipts:
+            reasons.append("code_proof_missing")
+        elif valid_obligation_ids != set(obligation_set.obligation_ids):
+            reasons.append("code_proof_population_incomplete")
+
     return CompletionAdmissionGate(
         admitted=not reasons,
         proposal_receipt_id=proposal_receipt_id,
         validation_dag_receipt_id=dag_receipt_id,
         validation_policy_id=validation_policy_id,
-        reason_codes=tuple(reasons),
+        code_proof_result_ids=tuple(code_proof_result_ids),
+        proof_candidate_receipt_ids=tuple(proof_candidate_receipt_ids),
+        reason_codes=tuple(dict.fromkeys(reasons)),
     )
 
 
@@ -1784,21 +1969,7 @@ class FormalGoalCompletionDecision:
             object.__setattr__(
                 self,
                 "completion_admission",
-                CompletionAdmissionGate(
-                    admitted=self.completion_admission.get("admitted", False),
-                    proposal_receipt_id=self.completion_admission.get(
-                        "proposal_receipt_id", ""
-                    ),
-                    validation_dag_receipt_id=self.completion_admission.get(
-                        "validation_dag_receipt_id", ""
-                    ),
-                    validation_policy_id=self.completion_admission.get(
-                        "validation_policy_id", ""
-                    ),
-                    reason_codes=tuple(
-                        self.completion_admission.get("reason_codes") or ()
-                    ),
-                ),
+                CompletionAdmissionGate.from_dict(self.completion_admission),
             )
 
     @property
@@ -1908,6 +2079,11 @@ def evaluate_formal_goal_completion(
     validation_dag: Any = None,
     require_proposal_validation: bool = False,
     expected_validation_policy_id: str = "",
+    code_proof_results: Iterable[Any] = (),
+    code_proof_receipts: Iterable[Any] = (),
+    implementation_obligations: Any = None,
+    required_code_assurance: Any = "kernel_verified",
+    require_code_proof: bool = False,
 ) -> FormalGoalCompletionDecision:
     """Bind trace conformance and independent evidence into goal completion.
 
@@ -1960,18 +2136,29 @@ def evaluate_formal_goal_completion(
     for check in evidence_result.checks:
         if not check.satisfied:
             reasons.append(f"{check.kind.value}_evidence_{check.status.value}")
+    proof_results = tuple(code_proof_results or ())
+    proof_receipts = tuple(code_proof_receipts or ())
     admission = (
         evaluate_completion_admission(
             proposal_validation=proposal_validation,
             validation_dag=validation_dag,
             required=require_proposal_validation,
             expected_validation_policy_id=expected_validation_policy_id,
+            code_proof_results=proof_results,
+            code_proof_receipts=proof_receipts,
+            implementation_obligations=implementation_obligations,
+            required_code_assurance=required_code_assurance,
+            require_code_proof=require_code_proof,
         )
         if (
             proposal_validation is not None
             or validation_dag is not None
             or require_proposal_validation
             or expected_validation_policy_id
+            or proof_results
+            or proof_receipts
+            or implementation_obligations is not None
+            or require_code_proof
         )
         else None
     )

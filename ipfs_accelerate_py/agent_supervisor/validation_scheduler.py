@@ -1508,6 +1508,12 @@ class ValidationDAGReceipt:
     def completion_authoritative(self) -> bool:
         return False
 
+    @property
+    def proof_authoritative(self) -> bool:
+        """A passing validation DAG authorizes proof work, not proof claims."""
+
+        return False
+
     def to_dict(self) -> dict[str, object]:
         return {
             **self._identity_payload(),
@@ -1518,6 +1524,7 @@ class ValidationDAGReceipt:
                 else None
             ),
             "proved_requirement_ids": self.proved_requirement_ids,
+            "proof_authoritative": False,
             "completion_authoritative": False,
         }
 
@@ -1528,6 +1535,8 @@ class ValidationDAGReceipt:
             raise ValidationDAGError(f"unsupported validation DAG schema: {schema}")
         if payload.get("completion_authoritative") not in (None, False):
             raise ValidationDAGError("validation DAG cannot claim completion")
+        if payload.get("proof_authoritative") not in (None, False):
+            raise ValidationDAGError("validation DAG cannot claim code-proof authority")
         base = cls(
             repository_tree_id=str(payload.get("repository_tree_id") or ""),
             objective_id=str(payload.get("objective_id") or ""),

@@ -27,6 +27,7 @@ PLAN_ID = "plan:strict-validation"
 REPOSITORY_ID = "repository:ipfs-accelerate"
 TREE_ID = "tree:strict-validation"
 OBJECTIVE_ID = "ASI-G100"
+G102_PROOF_CANDIDATE_REQUIREMENT = "006818797857632260116084792540150258746"
 
 
 def _policy(**overrides: object) -> ProposalValidationPolicy:
@@ -116,6 +117,9 @@ def test_accepts_an_exactly_bound_effectful_proposal() -> None:
     assert result.proof_authoritative is False
     assert result.completion_authoritative is False
     assert result.receipt.proved_requirement_ids == ()
+    assert G102_PROOF_CANDIDATE_REQUIREMENT not in result.receipt.proved_requirement_ids
+    assert result.code_proof_authoritative is False
+    assert result.receipt.code_proof_authoritative is False
     assert ProposalValidationResult.from_dict(result.to_dict()) == result
 
 
@@ -256,6 +260,7 @@ def test_syntax_and_every_frozen_authority_dimension_fail_closed() -> None:
         lambda payload: payload["receipt"].__setitem__(
             "proof_authoritative", True
         ),
+        lambda payload: payload.__setitem__("code_proof_authoritative", True),
         lambda payload: payload["receipt"].__setitem__(
             "changed_paths", ["forged.py"]
         ),

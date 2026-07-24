@@ -33,6 +33,7 @@ from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
 
 G100_FAIL_FAST_REQUIREMENT = "314133036252270790078901745919131980427"
 G101_TRANSITIVE_IMPACT_REQUIREMENT = "266404049326363900535699811645710804440"
+G102_PROOF_CANDIDATE_REQUIREMENT = "006818797857632260116084792540150258746"
 TREE_ID = "tree:validation-dag"
 TASK_ID = "ASI-032"
 OBJECTIVE_ID = "ASI-G101"
@@ -273,9 +274,11 @@ def test_transitive_impact_selects_failing_test_and_proves_exact_g101_requiremen
         "completion",
     }
     assert report["proof_authoritative"] is False
+    assert receipt.proof_authoritative is False
     assert report["completion_authoritative"] is False
     assert report["freshness_authoritative"] is False
     assert report["merge_eligible"] is False
+    assert G102_PROOF_CANDIDATE_REQUIREMENT not in receipt.proved_requirement_ids
 
 
 def test_stale_impact_graph_is_rejected_before_runner_dispatch(
@@ -654,6 +657,7 @@ def _tamper_evidence_path(payload: dict[str, object]) -> None:
         lambda payload: payload["impact_graph"]["validation_targets"].__setitem__(
             VALIDATION_ID, ["test/api/test_forged.py"]
         ),
+        lambda payload: payload.__setitem__("proof_authoritative", True),
     ],
     ids=(
         "graph-binding",
@@ -664,6 +668,7 @@ def _tamper_evidence_path(payload: dict[str, object]) -> None:
         "selected-population",
         "authority-closure",
         "required-validation-binding",
+        "proof-authority",
     ),
 )
 def test_validation_dag_receipt_rejects_tampering(

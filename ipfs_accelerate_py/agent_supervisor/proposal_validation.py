@@ -622,6 +622,12 @@ class ProposalValidationReceipt:
         return False
 
     @property
+    def code_proof_authoritative(self) -> bool:
+        """Proposal admission never proves the resulting implementation."""
+
+        return False
+
+    @property
     def completion_authoritative(self) -> bool:
         return False
 
@@ -653,6 +659,7 @@ class ProposalValidationReceipt:
             ),
             "proved_requirement_ids": self.proved_requirement_ids,
             "proof_authoritative": False,
+            "code_proof_authoritative": False,
             "completion_authoritative": False,
         }
 
@@ -661,7 +668,11 @@ class ProposalValidationReceipt:
         schema = str(payload.get("schema") or PROPOSAL_VALIDATION_RECEIPT_SCHEMA)
         if schema != PROPOSAL_VALIDATION_RECEIPT_SCHEMA:
             raise ProposalValidationError(f"unsupported proposal receipt schema: {schema}")
-        for field_name in ("proof_authoritative", "completion_authoritative"):
+        for field_name in (
+            "proof_authoritative",
+            "code_proof_authoritative",
+            "completion_authoritative",
+        ):
             if payload.get(field_name) not in (None, False):
                 raise ProposalValidationError(
                     f"proposal receipt cannot claim {field_name}"
@@ -818,6 +829,10 @@ class ProposalValidationResult:
         return False
 
     @property
+    def code_proof_authoritative(self) -> bool:
+        return False
+
+    @property
     def completion_authoritative(self) -> bool:
         return False
 
@@ -827,10 +842,22 @@ class ProposalValidationResult:
             "policy": self.policy.to_dict(),
             "receipt": self.receipt.to_dict(),
             "accepted": self.accepted,
+            "proof_authoritative": False,
+            "code_proof_authoritative": False,
+            "completion_authoritative": False,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProposalValidationResult":
+        for field_name in (
+            "proof_authoritative",
+            "code_proof_authoritative",
+            "completion_authoritative",
+        ):
+            if payload.get(field_name) not in (None, False):
+                raise ProposalValidationError(
+                    f"proposal result cannot claim {field_name}"
+                )
         result = cls(
             proposal=ImplementationProposal.from_dict(payload.get("proposal") or {}),
             policy=ProposalValidationPolicy.from_dict(payload.get("policy") or {}),
