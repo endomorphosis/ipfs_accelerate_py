@@ -3486,14 +3486,463 @@ def migrate_legacy_goal_completion(
     )
 
 
+def _implementation_obligations(value: Any) -> tuple[CodeProofObligation, ...]:
+    """Normalize a fresh implementation-obligation set without trusting maps.
+
+    ``ImplementationObligationSet`` lives in :mod:`code_proof_obligations`.
+    Structural access here avoids a module-level dependency cycle and keeps
+    persisted callers compatible.  Mapping obligations are accepted only when
+    the canonical proof contract can reconstruct and authenticate their
+    content identity.
+    """
+
+    if value is None:
+        return ()
+    source = getattr(value, "obligations", value)
+    if isinstance(source, Mapping):
+        source = source.get("obligations", source.get("required_obligations", source))
+    if isinstance(source, CodeProofObligation):
+        items: Iterable[Any] = (source,)
+    elif isinstance(source, Mapping):
+        items = (source,)
+    elif isinstance(source, Iterable) and not isinstance(source, (str, bytes)):
+        items = source
+    else:
+        items = (source,)
+
+    obligations: dict[str, CodeProofObligation] = {}
+    for item in items:
+        if isinstance(item, CodeProofObligation):
+            obligation = item
+        elif isinstance(item, Mapping):
+            try:
+                obligation = CodeProofObligation.from_dict(item)
+            except (ContractValidationError, TypeError, ValueError):
+                # Malformed or model-asserted obligation maps are not silently
+                # converted into proof requirements.  The empty/partial set
+                # subsequently fails the completion decision closed.
+                continue
+        else:
+            continue
+        obligations[obligation.obligation_id] = obligation
+    return tuple(obligations[key] for key in sorted(obligations))
+
+
+def _implementation_binding_id(value: Any) -> str:
+    binding = getattr(value, "binding", value)
+    if isinstance(binding, Mapping):
+        return str(
+            binding.get("binding_id")
+            or binding.get("implementation_binding_id")
+            or ""
+        ).strip()
+    return str(
+        getattr(binding, "binding_id", "")
+        or getattr(binding, "implementation_binding_id", "")
+        or ""
+    ).strip()
+
+
+def _receipt_obligation_id(value: Any) -> str:
+    if isinstance(value, ProofReceipt):
+        return value.obligation_id
+    if isinstance(value, Mapping):
+        return str(value.get("obligation_id", "") or "").strip()
+    return str(getattr(value, "obligation_id", "") or "").strip()
+
+
+def _receipt_identity(value: Any) -> str:
+    if isinstance(value, ProofReceipt):
+        return value.receipt_id
+    if isinstance(value, Mapping):
+        return str(
+            value.get("receipt_id")
+            or value.get("content_id")
+            or value.get("proof_receipt_id")
+            or ""
+        ).strip()
+    return str(
+        getattr(value, "receipt_id", "")
+        or getattr(value, "content_id", "")
+        or ""
+    ).strip()
+
+
+def _code_proof_result_payload(
+    result: Any,
+    *,
+    obligation_id: str,
+    receipt: Any,
+) -> dict[str, Any]:
+    to_dict = getattr(result, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        payload = dict(payload) if isinstance(payload, Mapping) else {}
+    elif isinstance(result, Mapping):
+        payload = dict(result)
+    else:
+        payload = {
+            name: getattr(result, name)
+            for name in (
+                "valid",
+                "reason_codes",
+                "stale",
+                "contradictory",
+                "receipt_id",
+                "binding_id",
+                "authoritative_assurance",
+                "authoritative_verdict",
+            )
+            if hasattr(result, name)
+        }
+    payload.setdefault("obligation_id", obligation_id)
+    payload.setdefault("receipt_id", _receipt_identity(receipt))
+    payload["valid"] = bool(payload.get("valid", False))
+    payload["stale"] = bool(payload.get("stale", False))
+    payload["contradictory"] = bool(payload.get("contradictory", False))
+    payload["reason_codes"] = list(_string_tuple(payload.get("reason_codes", ())))
+    return {str(key): _json_value(item) for key, item in payload.items()}
+
+
+@dataclass(frozen=True)
+class CodeProofCompletionDecision:
+    """Aggregate fresh implementation proofs into a goal lifecycle decision.
+
+    Planning consistency and observed plan conformance are deliberately absent
+    from the success predicate.  They may explain *which* implementation was
+    requested, but only canonical receipts accepted by
+    ``validate_code_proof_receipt_bindings`` can satisfy implementation
+    obligations.
+    """
+
+    previous_state: GoalState
+    state: GoalState
+    tasks_complete: bool
+    verified: bool
+    binding_id: str = ""
+    required_obligation_ids: tuple[str, ...] = ()
+    satisfied_obligation_ids: tuple[str, ...] = ()
+    unsatisfied_obligation_ids: tuple[str, ...] = ()
+    receipt_results: tuple[Mapping[str, Any], ...] = ()
+    reason_codes: tuple[str, ...] = ()
+    actionable_reasons: tuple[str, ...] = ()
+    schema_version: int = GOAL_COMPLETION_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "previous_state", normalize_goal_state(self.previous_state))
+        object.__setattr__(self, "state", normalize_goal_state(self.state))
+        object.__setattr__(self, "tasks_complete", bool(self.tasks_complete))
+        object.__setattr__(self, "verified", bool(self.verified))
+        object.__setattr__(self, "binding_id", str(self.binding_id or "").strip())
+        for name in (
+            "required_obligation_ids",
+            "satisfied_obligation_ids",
+            "unsatisfied_obligation_ids",
+            "reason_codes",
+            "actionable_reasons",
+        ):
+            object.__setattr__(self, name, _string_tuple(getattr(self, name)))
+        object.__setattr__(
+            self,
+            "receipt_results",
+            tuple(dict(item) for item in self.receipt_results),
+        )
+        object.__setattr__(self, "schema_version", int(self.schema_version))
+
+    @property
+    def reopened(self) -> bool:
+        return self.state is GoalState.REOPENED
+
+    @property
+    def stale(self) -> bool:
+        return any(bool(item.get("stale", False)) for item in self.receipt_results)
+
+    @property
+    def contradictory(self) -> bool:
+        return any(
+            bool(item.get("contradictory", False))
+            for item in self.receipt_results
+        )
+
+    @property
+    def validation_results(self) -> tuple[Mapping[str, Any], ...]:
+        """Compatibility alias for callers using the validator's noun."""
+
+        return self.receipt_results
+
+    @property
+    def all_obligations_satisfied(self) -> bool:
+        return bool(self.required_obligation_ids) and not self.unsatisfied_obligation_ids
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "ipfs_accelerate_py/agent-supervisor/code-proof-goal-completion@1",
+            "schema_version": self.schema_version,
+            "previous_state": self.previous_state.value,
+            "state": self.state.value,
+            "tasks_complete": self.tasks_complete,
+            "verified": self.verified,
+            "reopened": self.reopened,
+            "binding_id": self.binding_id,
+            "required_obligation_ids": list(self.required_obligation_ids),
+            "satisfied_obligation_ids": list(self.satisfied_obligation_ids),
+            "unsatisfied_obligation_ids": list(self.unsatisfied_obligation_ids),
+            "all_obligations_satisfied": self.all_obligations_satisfied,
+            "stale": self.stale,
+            "contradictory": self.contradictory,
+            "receipt_results": _json_value(self.receipt_results),
+            "reason_codes": list(self.reason_codes),
+            "actionable_reasons": list(self.actionable_reasons),
+        }
+
+
+def evaluate_code_proof_goal_completion(
+    *,
+    current_state: GoalState | str,
+    binding: Any,
+    required_obligations: Any = None,
+    receipts: Sequence[Any] = (),
+    plan_assurance: Any = None,
+    tasks_complete: bool = True,
+) -> CodeProofCompletionDecision:
+    """Evaluate generated-code correctness against fresh bound obligations.
+
+    ``binding`` is an ``ImplementationResultBinding`` or an
+    ``ImplementationObligationSet``.  The latter is also accepted as
+    ``required_obligations``.  Imports are deliberately local so this module
+    remains usable by the obligation compiler while it constructs a completion
+    packet.
+
+    A provisional or verified completion is reopened when a required receipt
+    is stale or contradictory.  Other incomplete proof states remain
+    provisional (or reopen an already verified goal), preserving the existing
+    two-phase lifecycle.
+    """
+
+    from .code_proof_obligations import validate_code_proof_receipt_bindings
+
+    previous = normalize_goal_state(current_state)
+    obligation_set = required_obligations
+    obligations = _implementation_obligations(obligation_set)
+    if not obligations and required_obligations is not binding:
+        # Convenience for callers which supply the ImplementationObligationSet
+        # as ``binding`` and omit/empty the redundant obligations argument.
+        obligations = _implementation_obligations(binding)
+        obligation_set = binding
+    validation_binding = (
+        obligation_set
+        if getattr(obligation_set, "binding", None) is not None
+        else binding
+    )
+    receipt_items = tuple(receipts or ())
+    binding_id = _implementation_binding_id(validation_binding)
+
+    reasons: list[str] = []
+    actionable: list[str] = []
+
+    def reject(code: str, detail: str) -> None:
+        if code not in reasons:
+            reasons.append(code)
+            actionable.append(detail)
+
+    if not binding_id:
+        reject(
+            "missing_implementation_binding",
+            "Bind completion to the accepted plan, repository tree, changed scope, assumptions, and validation bounds.",
+        )
+    if not obligations:
+        reject(
+            "missing_code_proof_obligations",
+            "Derive fresh implementation obligations from the completed code change before verification.",
+        )
+    if not tasks_complete:
+        reject(
+            "tasks_incomplete",
+            "Finish the implementation task before evaluating generated-code proof receipts.",
+        )
+
+    # PlanAssurance is useful context but is never evidence of generated-code
+    # correctness.  Detect the one prohibited crossing explicitly so a plan
+    # consistency/conformance receipt cannot be replayed as a code proof.
+    planning_receipt_ids: set[str] = set()
+    if plan_assurance is not None:
+        for name in ("consistency_receipt_ids", "conformance_receipt_ids"):
+            value = (
+                plan_assurance.get(name, ())
+                if isinstance(plan_assurance, Mapping)
+                else getattr(plan_assurance, name, ())
+            )
+            planning_receipt_ids.update(_string_tuple(value))
+        if receipt_items and any(
+            _receipt_identity(item) in planning_receipt_ids
+            for item in receipt_items
+            if _receipt_identity(item)
+        ):
+            reject(
+                "plan_receipt_reused_as_code_proof",
+                "Use independent code-proof receipts; plan consistency and conformance receipts cannot prove generated code.",
+            )
+        if not receipt_items:
+            reject(
+                "plan_assurance_not_code_proof",
+                "Plan assurance cannot replace fresh implementation proof receipts.",
+            )
+
+    result_payloads: list[dict[str, Any]] = []
+    satisfied: list[str] = []
+    unsatisfied: list[str] = []
+    stale_required = False
+    contradictory_required = False
+
+    for obligation in obligations:
+        candidates = [
+            item
+            for item in receipt_items
+            if _receipt_obligation_id(item) == obligation.obligation_id
+        ]
+        valid_for_obligation = False
+        if not candidates:
+            unsatisfied.append(obligation.obligation_id)
+            reject(
+                "missing_code_proof_receipt",
+                f"Produce a fresh code-proof receipt for obligation {obligation.obligation_id}.",
+            )
+            continue
+        for receipt in candidates:
+            try:
+                result = validate_code_proof_receipt_bindings(
+                    receipt,
+                    validation_binding,
+                    obligation=obligation,
+                    required_assurance=obligation.required_assurance,
+                    plan_assurance=plan_assurance,
+                )
+                payload = _code_proof_result_payload(
+                    result,
+                    obligation_id=obligation.obligation_id,
+                    receipt=receipt,
+                )
+            except (ContractValidationError, TypeError, ValueError) as exc:
+                payload = {
+                    "obligation_id": obligation.obligation_id,
+                    "receipt_id": _receipt_identity(receipt),
+                    "valid": False,
+                    "stale": False,
+                    "contradictory": False,
+                    "reason_codes": ["invalid_code_proof_receipt"],
+                    "error": str(exc),
+                }
+            result_payloads.append(payload)
+            if payload["valid"]:
+                valid_for_obligation = True
+            stale_required = stale_required or bool(payload["stale"])
+            contradictory_required = contradictory_required or bool(
+                payload["contradictory"]
+            )
+            for code in payload["reason_codes"]:
+                reject(
+                    str(code),
+                    f"Regenerate or repair the code-proof receipt for obligation {obligation.obligation_id} ({code}).",
+                )
+        if valid_for_obligation:
+            satisfied.append(obligation.obligation_id)
+        else:
+            unsatisfied.append(obligation.obligation_id)
+
+    # Receipts that do not correspond to the fresh obligation set are cached
+    # history, not affirmative evidence.  Record their rejection explicitly;
+    # otherwise a caller could mistake a nonempty receipt list for coverage.
+    required_ids = {item.obligation_id for item in obligations}
+    for receipt in receipt_items:
+        receipt_obligation = _receipt_obligation_id(receipt)
+        if receipt_obligation not in required_ids:
+            result_payloads.append(
+                {
+                    "obligation_id": receipt_obligation,
+                    "receipt_id": _receipt_identity(receipt),
+                    "valid": False,
+                    "stale": True,
+                    "contradictory": False,
+                    "reason_codes": ["receipt_not_required_by_fresh_obligation_set"],
+                }
+            )
+            stale_required = True
+            reject(
+                "receipt_not_required_by_fresh_obligation_set",
+                "Discard cached receipts that are not members of the fresh implementation-obligation set.",
+            )
+
+    proof_complete = bool(
+        tasks_complete
+        and binding_id
+        and obligations
+        and not unsatisfied
+        and "plan_receipt_reused_as_code_proof" not in reasons
+    )
+    must_reopen = bool(stale_required or contradictory_required)
+    if previous is GoalState.VERIFIED_COMPLETE and not proof_complete:
+        must_reopen = True
+    if must_reopen and previous in {
+        GoalState.PROVISIONALLY_COMPLETE,
+        GoalState.VERIFIED_COMPLETE,
+    }:
+        state = GoalState.REOPENED
+        reject(
+            "code_proof_completion_reopened",
+            "Reopen the goal because a required implementation-proof binding is stale, contradictory, or no longer satisfied.",
+        )
+    elif proof_complete and previous is GoalState.PROVISIONALLY_COMPLETE:
+        state = GoalState.VERIFIED_COMPLETE
+    elif proof_complete and previous is GoalState.VERIFIED_COMPLETE:
+        state = GoalState.VERIFIED_COMPLETE
+    elif tasks_complete and previous in {
+        GoalState.ACTIVE,
+        GoalState.REOPENED,
+        GoalState.ANALYSIS_INCONCLUSIVE,
+    }:
+        state = GoalState.PROVISIONALLY_COMPLETE
+        if proof_complete:
+            reject(
+                "provisional_transition_required",
+                "Record provisional completion before the separate verified-completion transition.",
+            )
+    elif previous is GoalState.VERIFIED_COMPLETE:
+        state = GoalState.REOPENED
+    else:
+        state = previous
+
+    if obligations and unsatisfied:
+        reject(
+            "code_proof_obligations_unsatisfied",
+            "Generated code remains unverified until every fresh implementation obligation has an accepted receipt.",
+        )
+    verified = bool(state is GoalState.VERIFIED_COMPLETE and proof_complete)
+    return CodeProofCompletionDecision(
+        previous_state=previous,
+        state=state,
+        tasks_complete=tasks_complete,
+        verified=verified,
+        binding_id=binding_id,
+        required_obligation_ids=tuple(item.obligation_id for item in obligations),
+        satisfied_obligation_ids=tuple(satisfied),
+        unsatisfied_obligation_ids=tuple(unsatisfied),
+        receipt_results=tuple(result_payloads),
+        reason_codes=tuple(reasons),
+        actionable_reasons=tuple(actionable),
+    )
+
+
 # Names used by older prototypes and external consumers.
 GoalLifecycleState = GoalState
 CompletionDecision = GoalCompletionDecision
 assess_goal_completion = evaluate_goal_completion
+evaluate_proof_goal_completion = evaluate_code_proof_goal_completion
+evaluate_implementation_completion = evaluate_code_proof_goal_completion
 
 
 __all__ = [
     "CONTRADICTION_KINDS",
+    "CodeProofCompletionDecision",
     "CompletionDecision",
     "CompletionGateCheck",
     "CompletionGateResult",
@@ -3519,6 +3968,9 @@ __all__ = [
     "assess_goal_completion",
     "discover_goal_contradictions",
     "evaluate_goal_completion",
+    "evaluate_code_proof_goal_completion",
+    "evaluate_implementation_completion",
+    "evaluate_proof_goal_completion",
     "evaluate_completion_gate",
     "completion_diagnostics",
     "contradictions_from_proof_invalidation",

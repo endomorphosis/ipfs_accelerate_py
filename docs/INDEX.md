@@ -1,113 +1,82 @@
-# IPFS Accelerate Python - Documentation Index
+# IPFS Accelerate Python Documentation Index
 
-Welcome to the complete documentation for IPFS Accelerate Python. This index helps you find the information you need quickly.
+This index separates current user/developer guidance from historical project
+records. Current documentation is maintained against the checked-out Python
+package; documents under `archive/` and `development_history/` preserve the
+context of earlier implementations and are not normative API references.
 
-## 📚 Quick Links
+## Start here
 
-- [Getting Started](guides/getting-started/README.md) - Installation and first steps
-- [API Reference](api/overview.md) - Complete API documentation
-- [Architecture](architecture/overview.md) - System architecture and design
-- [Contributing](../CONTRIBUTING.md) - How to contribute
-- [Project Docs](project/README.md) - Production project status, summaries, and migrations
-- [MCP++ Docs](../mcpplusplus/README.md) - Conformance, cutover, and unification records
+- [Getting started](guides/getting-started/README.md): install the package and
+  run a first inference or MCP server.
+- [Quick start](guides/QUICKSTART.md): short command-line and Python examples.
+- [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md): objective heaps,
+  bundle lanes, implementation daemons, evidence, and Leanstral boundaries.
+- [API reference](api/overview.md): current Python exports and supported entry
+  points.
+- [Architecture overview](architecture/overview.md): current runtime layers
+  and data flow.
 
-## 🗂️ Documentation Structure
+## User guides
 
-### 📖 Guides
+- [Installation](guides/getting-started/installation.md)
+- [Hardware support and tuning](guides/hardware/overview.md)
+- [MCP setup](guides/MCP_SETUP_GUIDE.md)
+- [P2P workflows](guides/p2p/README.md)
+- [Deployment](guides/deployment/README.md)
+- [Docker](guides/docker/README.md)
+- [Troubleshooting](guides/troubleshooting/faq.md)
+- [Examples](../examples/README.md)
 
-User-facing guides and tutorials for getting started and using the system.
+## Developer and operator references
 
-#### Getting Started
-- [Installation](guides/getting-started/installation.md) - Installation instructions for all platforms
-- [Quick Start](guides/QUICKSTART.md) - Get up and running in 5 minutes
-- [First Inference](guides/getting-started/README.md) - Run your first inference
+- [Testing](development/testing.md)
+- [Contributing](../CONTRIBUTING.md)
+- [LLM router](LLM_ROUTER.md)
+- [IPFS backend router](IPFS_BACKEND_ROUTER.md)
+- [Canonical MCP server README](../ipfs_accelerate_py/mcp_server/README.md)
+- [MCP++ records](../mcpplusplus/README.md)
 
-#### Hardware Setup
-- [Hardware Support Overview](guides/hardware/overview.md) - Supported hardware platforms
+## Agent supervisor architecture
 
-#### Troubleshooting
-- [FAQ](guides/troubleshooting/faq.md) - Frequently asked questions
+- [Architecture and assurance model](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
+- [Formal planning and prover matrix](architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md)
+- [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md)
+- [Leanstral goal development and benchmark](architecture/AGENT_SUPERVISOR_LEANSTRAL_GOAL_DEVELOPMENT.md)
+- [Objective graph implementation notes](agent_supervisor_objective_graph.md)
+- [Completed supervisor task records](architecture/)
 
-### 🔧 API Documentation
+## Feature areas
 
-Complete API reference for Python, CLI, and REST endpoints.
+- [IPFS integration](features/ipfs/IPFS.md)
+- [WebNN/WebGPU](features/webnn-webgpu/WEBNN_WEBGPU_README.md)
+- [Auto-healing](features/auto-healing/README.md)
+- [HuggingFace model server](features/hf-model-server/README.md)
+- [GitHub cache integration](features/github-cache/overview.md)
 
-- [API Overview](api/overview.md) - API concepts and authentication
+## Project records and archives
 
-### 🏗️ Architecture
+- [Project documentation hub](project/README.md)
+- [Status records](project/status/)
+- [Dashboard records](project/dashboard/)
+- [Migration records](project/migration/MIGRATION_GUIDE.md)
+- [Historical session summaries](archive/sessions/)
+- [Documentation audit history](development_history/README.md)
 
-System architecture, design decisions, and technical deep-dives.
+Historical reports may contain point-in-time scores, paths, test counts, or
+planned work. Use the current guides and source code for present behavior.
 
-- [Architecture Overview](architecture/overview.md) - High-level system design
-- [CI/CD Pipeline](architecture/ci-cd.md) - Continuous integration and deployment
+## By task
 
-### ⚙️ Features
+| Need | Start with |
+| --- | --- |
+| Install or verify the package | [Installation](guides/getting-started/installation.md) |
+| Run inference | [Quick start](guides/QUICKSTART.md) |
+| Start MCP | [MCP setup](guides/MCP_SETUP_GUIDE.md) |
+| Operate objective-driven agent lanes | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
+| Understand assurance and provers | [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md) |
+| Run tests | [Testing](development/testing.md) |
+| Troubleshoot | [FAQ](guides/troubleshooting/faq.md) |
 
-Feature-specific documentation for major system components.
-
-#### HuggingFace Model Server
-- [Overview](features/hf-model-server/README.md) - HF Model Server introduction
-- [Architecture](features/hf-model-server/architecture.md) - Server architecture
-- [Implementation](features/hf-model-server/implementation.md) - Implementation details
-- [Review](features/hf-model-server/review.md) - Technical review
-- [Testing & Deployment](features/hf-model-server/testing-deployment.md) - Testing and deployment
-- [anyio Migration](features/hf-model-server/anyio-migration.md) - Async migration guide
-- [Project Summary](features/hf-model-server/project-summary.md) - Complete project overview
-- [Final Summary](features/hf-model-server/final-summary.md) - Final implementation status
-
-#### Auto-Healing System
-- [Overview](features/auto-healing/overview.md) - Auto-healing capabilities
-- [README](features/auto-healing/README.md) - Auto-healing guide
-
-#### GitHub Cache Integration
-- [Overview](features/github-cache/overview.md) - GitHub Actions cache
-- [P2P Integration](features/github-cache/p2p-integration.md) - P2P cache sharing
-
-#### MCP Integration
-- [P2P Integration](features/mcp-integration/p2p-integration.md) - MCP & P2P integration
-
-### 🗂️ Project Records
-
-Production project records that were moved out of the repository root.
-
-- [Project documentation hub](project/README.md) - Landing page for project records
-- [Status](project/status/) - Current implementation and continuation status
-- [Dashboard](project/dashboard/) - Dashboard planning, reviews, and completion reports
-- [Routers](project/routers/) - Router implementation summaries
-- [SDK utilization](project/sdk-utilization/) - SDK utilization plans and implementation reports
-- [Migration](project/migration/MIGRATION_GUIDE.md) - Project migration guidance
-- [MCP++ records](../mcpplusplus/README.md) - Canonical MCP++ conformance and cutover docs
-
-### 💻 Development
-
-Developer documentation for contributing, testing, and building.
-
-- [Contributing](../CONTRIBUTING.md) - How to contribute
-- [Testing](development/testing.md) - Testing infrastructure
-
-### 📜 Archive
-
-Historical documentation and session summaries (for reference only).
-
-- [Session Summaries](archive/sessions/) - Implementation session notes
-
-## 🔍 Finding What You Need
-
-### By Task
-
-- **I want to install the software** → [Installation Guide](guides/getting-started/installation.md)
-- **I want to run my first inference** → [Quick Start](guides/QUICKSTART.md)
-- **I want to contribute** → [Contributing](../CONTRIBUTING.md)
-- **I have a problem** → [Troubleshooting](guides/troubleshooting/)
-- **I need API documentation** → [API Reference](api/overview.md)
-
-### By Role
-
-- **End User** → Start with [Getting Started](guides/getting-started/README.md)
-- **Developer** → See [Architecture](architecture/overview.md) and [API Docs](api/overview.md)
-- **Contributor** → Read [Contributing](../CONTRIBUTING.md) and [Testing](development/testing.md)
-
----
-
-**Last Updated:** 2026-02-02
-**Version:** Production Release
+**Documentation baseline:** 2026-07-24. Update this page when a maintained
+entry point or canonical architecture document changes.

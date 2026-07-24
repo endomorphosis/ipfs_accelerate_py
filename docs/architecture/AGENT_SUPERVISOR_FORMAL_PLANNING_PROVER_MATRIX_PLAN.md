@@ -35,6 +35,84 @@ Use the logic capabilities in `ipfs_datasets_py` to:
 7. Preserve implementation throughput with one CPU, memory, process, and model
    admission budget across all serial and parallel lanes.
 
+## Execution architecture
+
+The first executable slice of this plan is organized as a sequence of typed
+representation changes. Intent becomes a formal work plan; the plan becomes a
+property-specific proof DAG; the observed execution becomes a conformance
+trace; and typed counterexamples become bounded repair candidates:
+
+- `formal_plan_conformance.py` binds an accepted plan to canonical execution
+  events and evaluates transition order, authority, evidence freshness, and
+  invalidation. The same evidence model drives goal completion and reopening.
+- `formal_replanner.py` turns typed counterexamples into bounded repair
+  candidates (`add_dependency`, `split_effects`, `tighten_authority`,
+  `add_evidence`, `constrain_scope`, `add_premise`, `change_resource_bounds`,
+  or `human_review`). Candidates are semantically deduplicated and emitted as
+  bounded repair packets for model assistance.
+- `multi_prover_resources.py` provides one resource manager for every prover
+  family and nested child process. It supports dependency-closed bundle slices,
+  deterministic receipt caching, adaptive portfolio width, process-group
+  cancellation, and explicit CPU, memory, process, wall-time, and diagnostic
+  limits.
+- `formal_planning_adversarial.py` verifies plan/evidence identity bindings,
+  provider conformance, cache age and digest, property-specific evidence
+  classes, and public-output redaction. It fails closed on unknown, cancelled,
+  timed-out, forged, contradictory, or insufficient evidence.
+- `proof_carrying_planner.py` persists a resumable DAG for compile, bounded
+  verification, implementation, scope verification, merge, runtime monitor,
+  and repair. JSON and DuckDB projections are replayable; completion requires
+  accepted merges, an accepted runtime trace, and the configured authoritative
+  assurance.
+- `formal_planning_metrics.py` and `formal_planning_rollout.py` define the
+  benchmark report and promotion policy. Samples are explicitly `cold`,
+  `warm`, or `parallel`; reports exclude raw context, proof bodies,
+  counterexample bodies, and private witnesses.
+
+This is an executable integration slice, not a blanket verification claim.
+Unsupported providers continue through deterministic fallback validation, and
+provider output remains candidate evidence until the relevant conformance and
+assurance checks pass.
+
+The important invariant is that these stages are not interchangeable. A
+counterexample is an observation, not an instruction; a repair candidate is a
+proposal, not a changed objective; and a proof receipt is authoritative only
+for its exact obligation, tree, assumptions, translation, toolchain, and
+bounds. This preserves soundness when the model, cache, provider, or
+repository changes.
+
+### Rollout policy defaults
+
+Promotion evaluates context reduction, pre-dispatch defect detection, proof
+support, counterexample quality, warm-cache reuse, queue latency, CPU
+saturation, memory peak, and accepted-task throughput. The default thresholds
+are:
+
+| Mode | Context reduction | Proof support | Warm reuse | Throughput ratio | Minimum assurance |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `shadow` | 5% | 40% | 20% | 0.65 | `candidate` |
+| `canary` | 15% | 65% | 45% | 0.80 | `solver_checked` |
+| `enforcement` | 25% | 80% | 60% | 0.90 | `kernel_verified` |
+
+The policy also caps queue latency at 750/400/250 ms, CPU saturation at
+95/90/85%, and peak memory at 4/3/2 GiB for shadow/canary/enforcement. Each
+mode requires cold and warm samples by default. A lane that is unavailable,
+low-value, incomplete, or below its property-specific assurance remains
+diagnostic or shadow-only; aggregate benchmark success cannot promote it.
+
+### Recommended operating sequence for the new workflow
+
+1. Compile and adversarially admit the plan, retaining its tree, policy,
+   provider, cache, and resource identities.
+2. Run the proof-carrying DAG under the shared resource manager. Persist every
+   decision, evidence record, lease, and partial receipt.
+3. Compare observed events with the accepted plan before merge and completion.
+4. Feed bounded counterexamples to the replanner; accept only candidates that
+   improve the targeted finding without exceeding repair budgets.
+5. Evaluate the pinned cold/warm/parallel matrix before changing rollout mode.
+6. Replay the durable artifact after restart and verify that the same plan,
+   evidence, and assurance decision is obtained.
+
 ## Examined Logic Surfaces
 
 The assessment covered these implementation families:
@@ -52,7 +130,18 @@ The assessment covered these implementation families:
 | Security-model workflows | `logic/security_models/crypto_exchange/`, including AST extraction, SMT runners, TLA/Apalache reports, runtime MTL, receipts, and release policy |
 | Matrix definition | `docs/security_verification/prover_matrix.md` |
 
-## Capability Findings
+## Capability findings as an evidence architecture
+
+Capability discovery is a routing boundary, not a proof boundary. A provider
+is usable only when its executable, bindings, model, translation profile, and
+conformance fixtures satisfy the requested operation. Missing or degraded
+capabilities remain explicit inputs to planning and scheduling. They do not
+become false success, and they do not make the package import fail.
+
+The evidence graph is an architectural index rather than a transcript of
+implementation activity. Traversal must be deterministic, content addressed,
+bounded, and safe to rebuild. A graph edge can narrow context or identify a
+dependency, but it cannot by itself establish code correctness.
 
 ### Strong reusable foundations
 

@@ -8,13 +8,13 @@ submits those bundles to a local task queue.
 from __future__ import annotations
 
 import argparse
-from hashlib import sha1
+from hashlib import sha1, sha256
 import json
 import logging
 import os
 import re
 import tempfile
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
@@ -56,6 +56,9 @@ OBJECTIVE_COMPLETION_GATE_RECEIPT_SCHEMA = (
 )
 OBJECTIVE_GENERATION_ARTIFACT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.objective_daemon.generation.v1"
+)
+OBJECTIVE_ADMISSION_RECORD_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/objective-admission-record@1"
 )
 
 
@@ -395,6 +398,136 @@ def load_objective_generation_work(path: Path | None) -> tuple[dict[str, Any], .
     return tuple(by_id[key] for key in sorted(by_id))
 
 
+def _atomic_json_write(path: Path, payload: Mapping[str, Any]) -> None:
+    """Durably replace one JSON artifact without exposing partial bytes."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(dict(payload), handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+        try:
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+        except OSError:
+            directory_fd = -1
+        if directory_fd >= 0:
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    except BaseException:
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+        raise
+
+
+def _load_generation_payload(path: Path) -> dict[str, Any]:
+    """Load the complete generation artifact while validating its identity ledger."""
+
+    if not path.exists():
+        return {
+            "schema": OBJECTIVE_GENERATION_ARTIFACT_SCHEMA,
+            "cycle_count": 0,
+            "generated_work_count": 0,
+            "generated_work": [],
+            "admission_records": {},
+        }
+    # Validate every work identity before retaining any admission state.
+    load_objective_generation_work(path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError("objective generation artifact must be a JSON object")
+    result = dict(payload)
+    records = result.get("admission_records", {})
+    if not isinstance(records, Mapping) or any(
+        not isinstance(key, str) or not isinstance(value, Mapping)
+        for key, value in records.items()
+    ):
+        raise ValueError("objective generation admission_records must be an object")
+    result["admission_records"] = {
+        str(key): dict(value) for key, value in sorted(records.items())
+    }
+    return result
+
+
+def load_objective_admission_records(
+    path: Path | None,
+) -> dict[str, dict[str, Any]]:
+    """Return durable review/admission state keyed by canonical proposal ID."""
+
+    if path is None or not path.exists():
+        return {}
+    payload = _load_generation_payload(path)
+    return {
+        str(key): dict(value)
+        for key, value in (payload.get("admission_records") or {}).items()
+    }
+
+
+def _persist_objective_admission_records(
+    path: Path,
+    records: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Merge reviewable/admitted records without discarding generation history."""
+
+    payload = _load_generation_payload(path)
+    retained = {
+        str(key): dict(value)
+        for key, value in (payload.get("admission_records") or {}).items()
+    }
+    for value in records:
+        canonical_id = str(value.get("canonical_id") or "").strip()
+        if not canonical_id:
+            raise ValueError("objective admission records require canonical_id")
+        prior = retained.get(canonical_id)
+        next_record = dict(value)
+        if prior is not None:
+            for field_name in ("preview", "tracker_transaction"):
+                if (
+                    next_record.get(field_name) is None
+                    and prior.get(field_name) is not None
+                ):
+                    next_record[field_name] = prior[field_name]
+            attempts = [
+                *(
+                    prior.get("attempts", ())
+                    if isinstance(prior.get("attempts"), list)
+                    else ()
+                ),
+                *(
+                    next_record.get("attempts", ())
+                    if isinstance(next_record.get("attempts"), list)
+                    else ()
+                ),
+            ]
+            if attempts:
+                unique_attempts: dict[str, dict[str, Any]] = {}
+                for attempt in attempts:
+                    if not isinstance(attempt, Mapping):
+                        continue
+                    key = json.dumps(
+                        dict(attempt), sort_keys=True, separators=(",", ":"), default=str
+                    )
+                    unique_attempts[key] = dict(attempt)
+                next_record["attempts"] = [
+                    unique_attempts[key] for key in sorted(unique_attempts)
+                ]
+        retained[canonical_id] = next_record
+    payload["admission_records"] = {
+        key: retained[key] for key in sorted(retained)
+    }
+    _atomic_json_write(path, payload)
+    return payload
+
+
 def persist_objective_generation(
     path: Path,
     result: Any,
@@ -428,6 +561,17 @@ def persist_objective_generation(
             # Loading the identity ledger is separately fail-closed.  This
             # best-effort counter is observability only and cannot admit work.
             prior_cycle_count = 0
+    retained_admission_records: dict[str, Any] = {}
+    if path.exists():
+        try:
+            previous_payload = _load_generation_payload(path)
+            retained_admission_records = dict(
+                previous_payload.get("admission_records") or {}
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            # The identity load above remains fail-closed.  This branch is only
+            # reachable for observability fields in a legacy/corrupt artifact.
+            retained_admission_records = {}
     payload = {
         "schema": OBJECTIVE_GENERATION_ARTIFACT_SCHEMA,
         "cycle_count": prior_cycle_count + 1,
@@ -437,24 +581,9 @@ def persist_objective_generation(
         "last_evaluation": (
             evaluation.to_dict() if hasattr(evaluation, "to_dict") else evaluation
         ),
+        "admission_records": retained_admission_records,
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2, sort_keys=True)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_name, path)
-    except BaseException:
-        try:
-            os.unlink(temporary_name)
-        except OSError:
-            pass
-        raise
+    _atomic_json_write(path, payload)
     return payload
 
 
@@ -496,6 +625,723 @@ def materialize_objective_generation_cycle(
         existing_work=existing,
         evaluation=evaluation,
     )
+
+
+@dataclass(frozen=True)
+class ObjectiveGenerationAdmissionResult:
+    """Review/admission outcome for generated GOAL and SUBGOAL records."""
+
+    mode: str
+    status: str
+    transaction_id: str
+    preview: Any
+    reason_codes: tuple[str, ...] = ()
+    materialized_goal_ids: tuple[str, ...] = ()
+    review_persisted: bool = False
+    resumable: bool = False
+    tracker_transaction: Mapping[str, Any] | None = None
+
+    @property
+    def admitted(self) -> bool:
+        return self.status in {"committed", "already_committed", "resumed"}
+
+    def to_dict(self) -> dict[str, Any]:
+        preview_payload = (
+            self.preview.to_dict()
+            if hasattr(self.preview, "to_dict")
+            else dict(self.preview or {})
+        )
+        return {
+            "schema": "ipfs_accelerate_py/agent-supervisor/objective-generation-admission@1",
+            "mode": self.mode,
+            "status": self.status,
+            "transaction_id": self.transaction_id,
+            "admitted": self.admitted,
+            "reason_codes": list(self.reason_codes),
+            "materialized_goal_ids": list(self.materialized_goal_ids),
+            "review_persisted": self.review_persisted,
+            "resumable": self.resumable,
+            "preview": preview_payload,
+            "tracker_transaction": (
+                dict(self.tracker_transaction)
+                if isinstance(self.tracker_transaction, Mapping)
+                else self.tracker_transaction
+            ),
+        }
+
+
+def _contract_value(value: Any, contract_type: type[Any]) -> Any:
+    if isinstance(value, contract_type):
+        return value
+    if isinstance(value, Mapping):
+        return contract_type.from_dict(value)
+    raise TypeError(f"expected {contract_type.__name__}")
+
+
+def _verified_authority_receipt_ids(
+    verification: Any,
+    supplied_receipts: Iterable[Any] | Mapping[str, Any] = (),
+) -> set[str]:
+    """Resolve actual verified authority records instead of trusting claimed IDs."""
+
+    resolved: set[str] = set()
+    if verification is not None and bool(getattr(verification, "verified", False)):
+        content_id = str(getattr(verification, "content_id", "") or "").strip()
+        if content_id:
+            resolved.add(content_id)
+        rounds = tuple(getattr(verification, "rounds", ()) or ())
+        final_round = rounds[-1] if rounds else None
+        authoritative_attempt_ids: set[str] = set()
+        for result in tuple(getattr(final_round, "portfolio_results", ()) or ()):
+            verdict = str(
+                getattr(getattr(result, "verdict", ""), "value", getattr(result, "verdict", ""))
+            ).lower()
+            if verdict != "proved":
+                continue
+            result_id = str(
+                getattr(result, "result_id", "")
+                or getattr(result, "content_id", "")
+                or ""
+            ).strip()
+            if result_id:
+                resolved.add(result_id)
+            authoritative_attempt_ids.update(
+                str(item)
+                for item in (getattr(result, "authority_attempt_ids", ()) or ())
+                if str(item).strip()
+            )
+        for retained in tuple(getattr(verification, "all_attempts", ()) or ()):
+            attempt = getattr(retained, "attempt", retained)
+            attempt_id = str(
+                getattr(attempt, "attempt_id", "")
+                or getattr(attempt, "content_id", "")
+                or ""
+            ).strip()
+            outcome = str(
+                getattr(
+                    getattr(attempt, "effective_outcome", ""),
+                    "value",
+                    getattr(attempt, "effective_outcome", ""),
+                )
+            ).lower()
+            if (
+                attempt_id in authoritative_attempt_ids
+                and bool(getattr(attempt, "authoritative", False))
+                and outcome == "verified"
+            ):
+                resolved.add(attempt_id)
+                for name in ("capability_receipt_id", "conformance_gate_id"):
+                    identifier = str(getattr(attempt, name, "") or "").strip()
+                    if identifier:
+                        resolved.add(identifier)
+
+    if isinstance(supplied_receipts, Mapping):
+        values = supplied_receipts.items()
+    else:
+        values = (("", value) for value in supplied_receipts)
+    for supplied_id, receipt in values:
+        authoritative_verdict = getattr(receipt, "authoritative_verdict", "")
+        verdict_value = str(
+            getattr(authoritative_verdict, "value", authoritative_verdict) or ""
+        ).lower()
+        authoritative = bool(getattr(receipt, "authoritative", False)) or (
+            verdict_value in {"proved", "verified"}
+        )
+        verified = bool(
+            getattr(receipt, "verified", False)
+            or getattr(receipt, "proved", False)
+            or verdict_value in {"proved", "verified"}
+        )
+        if isinstance(receipt, Mapping):
+            status = str(
+                receipt.get("status")
+                or receipt.get("verdict")
+                or receipt.get("decision")
+                or ""
+            ).lower()
+            authoritative = receipt.get("authoritative") is True
+            verified = receipt.get("verified") is True or status in {
+                "verified",
+                "proved",
+            }
+        # Deterministic validation or supervisor acceptance is not proof
+        # authority.  External records must explicitly carry both properties;
+        # otherwise only receipts derived from the verified refinement
+        # portfolio above may authorize admission.
+        if not authoritative or not verified:
+            continue
+        identifiers = {
+            str(supplied_id or "").strip(),
+            str(
+                getattr(receipt, "receipt_id", "")
+                or getattr(receipt, "result_id", "")
+                or getattr(receipt, "content_id", "")
+                or ""
+            ).strip(),
+        }
+        if isinstance(receipt, Mapping):
+            identifiers.update(
+                str(receipt.get(name) or "").strip()
+                for name in ("receipt_id", "result_id", "content_id", "attempt_id")
+            )
+        resolved.update(item for item in identifiers if item)
+    return resolved
+
+
+def _objective_admission_transaction_id(
+    preview: Any,
+    *,
+    mode: str,
+    proposal_receipt_id: str = "",
+    admission_receipt_id: str = "",
+) -> str:
+    material = {
+        "schema": OBJECTIVE_ADMISSION_RECORD_SCHEMA,
+        "mode": mode,
+        "base_heap_content_id": str(preview.base_heap_content_id),
+        "candidate_heap_content_id": str(preview.candidate_heap_content_id),
+        "root_goal_id": str(preview.root_goal_id),
+        "root_content_id": str(preview.root_content_id),
+        "proposal_ids": list(preview.admitted_proposal_ids),
+        "proposal_receipt_id": proposal_receipt_id,
+        "admission_receipt_id": admission_receipt_id,
+    }
+    return "objective-admission:" + sha256(
+        json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def materialize_admitted_objective_work(
+    proposals: Iterable[Any],
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    generation_path: Path,
+    mode: Any,
+    limits: Any = None,
+    root_goal_id: str = "",
+    expected_root_content_id: str = "",
+    expected_repository_tree_id: str = "",
+    current_repository_tree_id: str = "",
+    lifecycle_owner: str = "objective_daemon",
+    draft: Any = None,
+    proposal_receipt: Any = None,
+    admission_receipt: Any = None,
+    refinement_verification: Any = None,
+    required_authoritative_receipt_ids: Sequence[str] = (),
+    authoritative_receipts: Iterable[Any] | Mapping[str, Any] = (),
+    proposal_bindings: Mapping[str, str] | None = None,
+    new_assumption_ids: Sequence[str] = (),
+    unsupported_semantics: Sequence[str] = (),
+    hard_policy_gates: Mapping[str, bool] | None = None,
+    journal_path: Path | None = None,
+    lease_guard: Callable[..., Any] | None = None,
+    expected_lease_token: str | None = None,
+    preview_only: bool = False,
+) -> ObjectiveGenerationAdmissionResult:
+    """Preview and transactionally admit generated goals under strict authority.
+
+    Shadow is pure and assist writes only review state to the generation
+    ledger.  Auto-safe is the sole mode which may call the objective tracker,
+    and only after validating the frozen draft, both receipts, independent
+    refinement verification, repository/root freshness, configured authority
+    records, and every graph-policy gate.
+    """
+
+    from .goal_development_contracts import (
+        GoalDevelopmentAdmissionReceipt,
+        GoalDevelopmentMode,
+        GoalDevelopmentProposalReceipt,
+        GoalDecompositionDraft,
+        GoalAdmissionDecision,
+        GoalProposalDecision,
+    )
+    from .goal_refinement_verification import RefinementVerificationResult
+    from .objective_graph import (
+        ObjectiveGoalMaterializationPolicy,
+        ObjectiveWorkKind,
+        ObjectiveWorkProposal,
+        parse_goal_heap,
+        preview_objective_goal_materialization,
+    )
+    from .objective_tracker import (
+        commit_objective_goal_materialization,
+        objective_materialization_tree_identity,
+    )
+
+    normalized_mode = (
+        mode if isinstance(mode, GoalDevelopmentMode) else GoalDevelopmentMode(str(mode))
+    )
+    objective_text = (
+        objective_path.read_text(encoding="utf-8", errors="strict")
+        if objective_path.exists()
+        else ""
+    )
+    goal_work: list[ObjectiveWorkProposal] = []
+    for raw in proposals:
+        item = (
+            raw
+            if isinstance(raw, ObjectiveWorkProposal)
+            else ObjectiveWorkProposal.from_dict(raw)
+        )
+        if item.kind in {ObjectiveWorkKind.GOAL, ObjectiveWorkKind.SUBGOAL}:
+            goal_work.append(item)
+
+    policy = ObjectiveGoalMaterializationPolicy(
+        limits=(limits or {}),
+        root_goal_id=root_goal_id,
+        expected_root_content_id=expected_root_content_id,
+        lifecycle_owner=lifecycle_owner,
+        atomic=True,
+    )
+    current_goals = {
+        goal.goal_id: goal for goal in parse_goal_heap(objective_text)
+    }
+    selected_root_id = str(root_goal_id or "").strip()
+    if not selected_root_id:
+        roots = [
+            goal.goal_id
+            for goal in current_goals.values()
+            if not goal.parent_goal_ids
+        ]
+        if len(roots) == 1:
+            selected_root_id = roots[0]
+
+    def is_exact_materialization(item: ObjectiveWorkProposal) -> bool:
+        """Recognize only a lossless prior commit of this exact proposal.
+
+        This makes the daemon resumable when the heap replacement completed
+        but final generation-ledger persistence was interrupted.  A merely
+        colliding canonical ID is deliberately not treated as a replay.
+        """
+
+        goal = current_goals.get(item.canonical_id)
+        if goal is None:
+            return False
+        parent_id = item.parent_goal_id
+        if item.kind is ObjectiveWorkKind.GOAL and (
+            not parent_id or parent_id in policy.root_parent_aliases
+        ):
+            parent_id = selected_root_id
+        expected_parents = [parent_id] if parent_id else []
+        try:
+            graph_depth = int(goal.fields.get("graph_depth") or -1)
+        except (TypeError, ValueError):
+            return False
+        return (
+            goal.title == item.title
+            and goal.parent_goal_ids == expected_parents
+            and tuple(goal.dependencies) == item.dependencies
+            and tuple(goal.required_evidence) == item.expected_evidence_delta
+            and tuple(goal.predicted_files) == item.predicted_files
+            and tuple(goal.predicted_symbols) == item.predicted_symbols
+            and tuple(goal.validation_commands) == item.validation_commands
+            and graph_depth == item.depth
+            and goal.canonical_proposal_id == item.canonical_id
+            and goal.semantic_key == item.semantic_key
+            and goal.lifecycle_owner == lifecycle_owner
+            and goal.fields.get("proposal_kind") == item.kind.value
+            and goal.fields.get("proposal_source") == item.source
+            and goal.fields.get("proposal_source_id", "") == item.source_id
+        )
+
+    already_materialized_ids = tuple(
+        item.canonical_id
+        for item in sorted(
+            goal_work, key=lambda value: (value.depth, value.canonical_id)
+        )
+        if is_exact_materialization(item)
+    )
+    already_materialized = set(already_materialized_ids)
+    pending_goal_work = [
+        item for item in goal_work if item.canonical_id not in already_materialized
+    ]
+    preview = preview_objective_goal_materialization(
+        objective_text,
+        # Keep an informative duplicate preview on a full replay.  For a
+        # partially finalized transaction, preview only the remaining suffix
+        # so it can be committed without duplicating the durable prefix.
+        pending_goal_work or goal_work,
+        policy=policy,
+    )
+    reason_codes = list(preview.fatal_reasons)
+    reason_codes.extend(
+        item.reason
+        for item in preview.rejected
+        if not (
+            not pending_goal_work
+            and item.reason == "canonical_duplicate"
+            and item.canonical_id in already_materialized
+        )
+    )
+    if not goal_work:
+        reason_codes.append("no_goal_or_subgoal_proposals")
+
+    parsed_proposal_receipt = None
+    parsed_admission_receipt = None
+    parsed_draft = None
+    parsed_verification = None
+    proposal_receipt_id = ""
+    admission_receipt_id = ""
+    if proposal_receipt is not None:
+        try:
+            parsed_proposal_receipt = _contract_value(
+                proposal_receipt, GoalDevelopmentProposalReceipt
+            )
+            proposal_receipt_id = parsed_proposal_receipt.receipt_id
+        except (TypeError, ValueError) as exc:
+            reason_codes.append(
+                f"invalid_proposal_receipt:{type(exc).__name__}"
+            )
+    if admission_receipt is not None:
+        try:
+            parsed_admission_receipt = _contract_value(
+                admission_receipt, GoalDevelopmentAdmissionReceipt
+            )
+            admission_receipt_id = parsed_admission_receipt.receipt_id
+        except (TypeError, ValueError) as exc:
+            reason_codes.append(
+                f"invalid_admission_receipt:{type(exc).__name__}"
+            )
+    transaction_id = _objective_admission_transaction_id(
+        preview,
+        mode=normalized_mode.value,
+        proposal_receipt_id=proposal_receipt_id,
+        admission_receipt_id=admission_receipt_id,
+    )
+    effective_journal_path = journal_path or generation_path.with_name(
+        f"{generation_path.stem}.objective-admission.json"
+    )
+
+    if normalized_mode is GoalDevelopmentMode.SHADOW:
+        return ObjectiveGenerationAdmissionResult(
+            mode=normalized_mode.value,
+            status="shadow",
+            transaction_id=transaction_id,
+            preview=preview,
+            reason_codes=tuple(sorted(set(reason_codes or ["shadow_mode"]))),
+        )
+
+    def admission_records(
+        status: str,
+        reasons: Sequence[str],
+        tracker_transaction: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        by_id = {item.proposal.canonical_id: item for item in preview.materialized}
+        return [
+            {
+                "schema": OBJECTIVE_ADMISSION_RECORD_SCHEMA,
+                "canonical_id": item.canonical_id,
+                "semantic_key": item.semantic_key,
+                "status": status,
+                "mode": normalized_mode.value,
+                "transaction_id": transaction_id,
+                "proposal": item.to_dict(),
+                "preview": (
+                    by_id[item.canonical_id].to_dict()
+                    if item.canonical_id in by_id
+                    else None
+                ),
+                "proposal_receipt_id": proposal_receipt_id,
+                "admission_receipt_id": admission_receipt_id,
+                "authoritative_receipt_ids": list(
+                    getattr(parsed_admission_receipt, "authoritative_receipt_ids", ())
+                    or ()
+                ),
+                "reason_codes": sorted(set(str(reason) for reason in reasons if reason)),
+                "lifecycle_owner": lifecycle_owner,
+                "tracker_transaction": (
+                    dict(tracker_transaction)
+                    if tracker_transaction is not None
+                    else None
+                ),
+                "attempts": [
+                    {
+                        "transaction_id": transaction_id,
+                        "status": status,
+                        "reason_codes": sorted(
+                            set(str(reason) for reason in reasons if reason)
+                        ),
+                    }
+                ],
+            }
+            for item in sorted(goal_work, key=lambda value: value.canonical_id)
+        ]
+
+    if normalized_mode is GoalDevelopmentMode.ASSIST:
+        reasons = tuple(sorted(set(reason_codes or ["review_required"])))
+        _persist_objective_admission_records(
+            generation_path, admission_records("review_required", reasons)
+        )
+        return ObjectiveGenerationAdmissionResult(
+            mode=normalized_mode.value,
+            status="review_required",
+            transaction_id=transaction_id,
+            preview=preview,
+            reason_codes=reasons,
+            review_persisted=True,
+            resumable=True,
+        )
+
+    if normalized_mode is not GoalDevelopmentMode.AUTO_SAFE:
+        reasons = tuple(
+            sorted(set(reason_codes or [f"{normalized_mode.value}_mode_not_admissible"]))
+        )
+        return ObjectiveGenerationAdmissionResult(
+            mode=normalized_mode.value,
+            status="not_admitted",
+            transaction_id=transaction_id,
+            preview=preview,
+            reason_codes=reasons,
+        )
+
+    # AUTO_SAFE trust boundary.
+    try:
+        parsed_draft = _contract_value(draft, GoalDecompositionDraft)
+    except (TypeError, ValueError) as exc:
+        reason_codes.append(f"invalid_draft:{type(exc).__name__}")
+    try:
+        if parsed_proposal_receipt is None:
+            raise TypeError("proposal receipt is required")
+        if parsed_draft is None:
+            raise TypeError("draft is required")
+        parsed_proposal_receipt.validate_draft(parsed_draft)
+        if parsed_proposal_receipt.decision is not GoalProposalDecision.ACCEPTED:
+            reason_codes.append("proposal_receipt_not_accepted")
+    except (TypeError, ValueError) as exc:
+        reason_codes.append(f"proposal_receipt_gate:{type(exc).__name__}")
+    try:
+        if parsed_admission_receipt is None:
+            raise TypeError("admission receipt is required")
+        if parsed_proposal_receipt is None:
+            raise TypeError("proposal receipt is required")
+        parsed_admission_receipt.validate_proposal_receipt(parsed_proposal_receipt)
+        if (
+            parsed_admission_receipt.mode is not GoalDevelopmentMode.AUTO_SAFE
+            or parsed_admission_receipt.decision is not GoalAdmissionDecision.ADMITTED
+        ):
+            reason_codes.append("admission_receipt_not_admitted")
+    except (TypeError, ValueError) as exc:
+        reason_codes.append(f"admission_receipt_gate:{type(exc).__name__}")
+
+    try:
+        parsed_verification = _contract_value(
+            refinement_verification, RefinementVerificationResult
+        )
+        if not parsed_verification.verified:
+            reason_codes.append("refinement_not_verified")
+    except (TypeError, ValueError) as exc:
+        reason_codes.append(f"refinement_verification_gate:{type(exc).__name__}")
+
+    if parsed_draft is not None:
+        request = parsed_draft.request
+        if request.root_goal_id != preview.root_goal_id:
+            reason_codes.append("changed_root_goal")
+        if parsed_verification is not None:
+            frozen = parsed_verification.frozen_context
+            if (
+                frozen.root_goal_id != request.root_goal_id
+                or frozen.root_goal_content_id != request.root_goal_content_id
+            ):
+                reason_codes.append("changed_frozen_root")
+            if tuple(frozen.assumption_ids) != tuple(request.assumption_ids):
+                reason_codes.append("changed_assumptions")
+        bindings = {
+            str(key): str(value)
+            for key, value in (proposal_bindings or {}).items()
+            if str(key).strip() and str(value).strip()
+        }
+        admitted_ids = set(
+            getattr(parsed_admission_receipt, "proposal_ids", ()) or ()
+        )
+        for item in goal_work:
+            source_proposal_id = (
+                bindings.get(item.canonical_id)
+                or item.source_id
+                or item.canonical_id
+            )
+            if source_proposal_id not in admitted_ids:
+                reason_codes.append(
+                    f"unbound_proposal:{item.canonical_id}"
+                )
+
+    if new_assumption_ids:
+        reason_codes.append("new_assumptions")
+    if unsupported_semantics:
+        reason_codes.append("unsupported_semantics")
+    for gate_name, passed in sorted((hard_policy_gates or {}).items()):
+        if passed is not True:
+            reason_codes.append(f"hard_policy_gate:{gate_name}")
+
+    current_tree = str(current_repository_tree_id or "").strip()
+    if not current_tree:
+        current_tree = objective_materialization_tree_identity(
+            repo_root,
+            objective_path=objective_path,
+            journal_path=effective_journal_path,
+            control_paths=(generation_path,),
+        ).tree_id
+    frozen_tree = str(expected_repository_tree_id or "").strip()
+    if parsed_draft is not None:
+        request_tree = str(parsed_draft.request.repository_tree_id)
+        if frozen_tree and frozen_tree != request_tree:
+            reason_codes.append("repository_tree_binding_mismatch")
+        frozen_tree = request_tree
+    if frozen_tree and current_tree != frozen_tree:
+        reason_codes.append("stale_repository_tree")
+
+    resolved_authorities = _verified_authority_receipt_ids(
+        parsed_verification, authoritative_receipts
+    )
+    claimed_authorities = set(
+        getattr(parsed_admission_receipt, "authoritative_receipt_ids", ()) or ()
+    )
+    configured_authorities = {
+        str(item).strip()
+        for item in required_authoritative_receipt_ids
+        if str(item).strip()
+    }
+    if configured_authorities and not configured_authorities.issubset(
+        claimed_authorities
+    ):
+        reason_codes.append("missing_configured_authoritative_receipts")
+    required_resolution = claimed_authorities | configured_authorities
+    if not required_resolution or not required_resolution.issubset(
+        resolved_authorities
+    ):
+        reason_codes.append("unresolved_authoritative_receipts")
+
+    reason_codes = sorted(set(reason_codes))
+    graph_ready = bool(goal_work) and (
+        len(already_materialized) == len(goal_work) or preview.ready
+    )
+    if reason_codes or not graph_ready:
+        _persist_objective_admission_records(
+            generation_path, admission_records("rejected", reason_codes)
+        )
+        return ObjectiveGenerationAdmissionResult(
+            mode=normalized_mode.value,
+            status="rejected",
+            transaction_id=transaction_id,
+            preview=preview,
+            reason_codes=tuple(reason_codes),
+            review_persisted=True,
+            resumable=True,
+        )
+    if len(already_materialized) == len(goal_work):
+        _persist_objective_admission_records(
+            generation_path, admission_records("admitted", ())
+        )
+        return ObjectiveGenerationAdmissionResult(
+            mode=normalized_mode.value,
+            status="already_committed",
+            transaction_id=transaction_id,
+            preview=preview,
+            materialized_goal_ids=already_materialized_ids,
+            review_persisted=True,
+            resumable=False,
+        )
+    if preview_only:
+        return ObjectiveGenerationAdmissionResult(
+            mode=normalized_mode.value,
+            status="prepared",
+            transaction_id=transaction_id,
+            preview=preview,
+            resumable=True,
+        )
+
+    _persist_objective_admission_records(
+        generation_path, admission_records("prepared", ())
+    )
+    try:
+        tracker_result = commit_objective_goal_materialization(
+            repo_root=repo_root,
+            objective_path=objective_path,
+            journal_path=effective_journal_path,
+            preview=preview,
+            expected_repository_tree_id=frozen_tree,
+            lease_guard=lease_guard,
+            expected_lease_token=expected_lease_token,
+            control_paths=(generation_path,),
+        )
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+        failure_reasons = (f"partial_write:{type(exc).__name__}",)
+        _persist_objective_admission_records(
+            generation_path, admission_records("prepared", failure_reasons)
+        )
+        return ObjectiveGenerationAdmissionResult(
+            mode=normalized_mode.value,
+            status="prepared",
+            transaction_id=transaction_id,
+            preview=preview,
+            reason_codes=failure_reasons,
+            materialized_goal_ids=already_materialized_ids,
+            review_persisted=True,
+            resumable=True,
+        )
+    tracker_payload = (
+        tracker_result.to_dict()
+        if hasattr(tracker_result, "to_dict")
+        else dict(tracker_result)
+    )
+    tracker_status = str(
+        getattr(
+            getattr(tracker_result, "state", ""),
+            "value",
+            getattr(tracker_result, "state", ""),
+        )
+        or tracker_payload.get("state")
+        or ""
+    )
+    committed = bool(
+        getattr(tracker_result, "committed", False)
+        or tracker_status in {"committed", "already_committed", "resumed"}
+    )
+    final_status = tracker_status or ("committed" if committed else "failed")
+    final_reasons = tuple(
+        sorted(
+            set(
+                str(item)
+                for item in (
+                    tracker_payload.get("reason_codes")
+                    or tracker_payload.get("reasons")
+                    or ()
+                )
+                if str(item)
+            )
+        )
+    )
+    _persist_objective_admission_records(
+        generation_path,
+        admission_records(
+            "admitted" if committed else "prepared",
+            final_reasons,
+            tracker_payload,
+        ),
+    )
+    return ObjectiveGenerationAdmissionResult(
+        mode=normalized_mode.value,
+        status=final_status,
+        transaction_id=transaction_id,
+        preview=preview,
+        reason_codes=final_reasons,
+        materialized_goal_ids=(
+            (
+                already_materialized_ids
+                + tuple(preview.admitted_proposal_ids)
+            )
+            if committed
+            else already_materialized_ids
+        ),
+        review_persisted=True,
+        resumable=not committed,
+        tracker_transaction=tracker_payload,
+    )
+
+
+# Discoverable aliases used by callers which phrase admission around goals or a cycle.
+materialize_objective_generation_admission = materialize_admitted_objective_work
+admit_objective_generation_cycle = materialize_admitted_objective_work
 
 
 def objective_generation_proposals(

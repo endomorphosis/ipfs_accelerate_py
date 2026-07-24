@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+import anyio
+
 logger = logging.getLogger(__name__)
 
 
@@ -114,6 +116,38 @@ async def generate_text(
         return _normalize_payload(result)
     except Exception as exc:
         logger.debug("generate_text inference backend failed: %s", exc)
+
+    try:
+        from ipfs_accelerate_py.llm_router import generate_text as route_generate_text
+
+        model_key = str(model or "auto").strip()
+        normalized_model = model_key.casefold().replace("-", "_")
+        leanstral_aliases = {
+            "leanstral",
+            "leanstral_local",
+            "labs_leanstral_1_5",
+        }
+        provider = "llama_cpp" if normalized_model in leanstral_aliases else None
+        model_name = None if normalized_model in leanstral_aliases | {"", "auto"} else model_key
+        generated_text = await anyio.to_thread.run_sync(
+            lambda: route_generate_text(
+                prompt.strip(),
+                model_name=model_name,
+                provider=provider,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        )
+        return _normalize_payload(
+            {
+                "prompt": prompt.strip(),
+                "model": model_key,
+                "provider": provider or "auto",
+                "generated_text": generated_text,
+            }
+        )
+    except Exception as exc:
+        logger.debug("generate_text LLM router failed: %s", exc)
 
     return _normalize_payload(
         {

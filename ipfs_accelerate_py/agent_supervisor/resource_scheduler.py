@@ -18,6 +18,7 @@ import os
 import threading
 import time
 import uuid
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
@@ -33,9 +34,16 @@ class ProofResourceClass(str, Enum):
 
     TRANSLATION = "cpu-proof-translate"
     SOLVER = "cpu-proof-solver"
+    SOLVER_PORTFOLIO = "cpu-proof-solver"
     KERNEL = "cpu-proof-kernel"
+    KERNEL_RECONSTRUCTION = "cpu-proof-kernel"
     VALIDATION = "cpu-validation"
+    # Deterministic schema/type acceptance is separately backpressured from
+    # general tests and static validation.
+    TYPE_CHECK = "cpu-proof-type-check"
+    DETERMINISTIC_TYPE_CHECK = "cpu-proof-type-check"
     MODEL_DRAFT = "llm-proof-draft"
+    MODEL_DRAFTING = "llm-proof-draft"
     ARTIFACT = "io-artifact"
 
     @property
@@ -53,7 +61,7 @@ LEGACY_RESOURCE_CLASSES = (
     "cpu-medium",
     "cpu-large",
 )
-# Default hosts advertise the architecture's six distinct work classes.
+# Default hosts advertise the architecture's distinct work classes.
 # Generic bundle classes remain interoperable through the compatibility check
 # in ``_host_reasons`` and can still be advertised explicitly by old workers.
 DEFAULT_RESOURCE_CLASSES = PROOF_RESOURCE_CLASSES
@@ -71,12 +79,79 @@ _RESOURCE_CLASS_ALIASES = {
     "kernel-verify": ProofResourceClass.KERNEL.value,
     "validate": ProofResourceClass.VALIDATION.value,
     "validation": ProofResourceClass.VALIDATION.value,
+    "typecheck": ProofResourceClass.TYPE_CHECK.value,
+    "type-check": ProofResourceClass.TYPE_CHECK.value,
+    "type_check": ProofResourceClass.TYPE_CHECK.value,
+    "deterministic-type-check": ProofResourceClass.TYPE_CHECK.value,
+    "deterministic_type_check": ProofResourceClass.TYPE_CHECK.value,
     "model_draft": ProofResourceClass.MODEL_DRAFT.value,
     "model-draft": ProofResourceClass.MODEL_DRAFT.value,
     "persist": ProofResourceClass.ARTIFACT.value,
     "artifact": ProofResourceClass.ARTIFACT.value,
     "attest": ProofResourceClass.ARTIFACT.value,
 }
+
+
+class ProofWorkKind(str, Enum):
+    """Closed work vocabulary for the goal-development proof runtime."""
+
+    MODEL_DRAFT = "model_draft"
+    MODEL_DRAFTING = "model_draft"
+    TYPE_CHECK = "type_check"
+    DETERMINISTIC_TYPE_CHECK = "type_check"
+    SOLVER_PORTFOLIO = "solver_portfolio"
+    KERNEL_RECONSTRUCTION = "kernel_reconstruction"
+
+    @property
+    def resource_class(self) -> ProofResourceClass:
+        return {
+            ProofWorkKind.MODEL_DRAFT: ProofResourceClass.MODEL_DRAFT,
+            ProofWorkKind.TYPE_CHECK: ProofResourceClass.TYPE_CHECK,
+            ProofWorkKind.SOLVER_PORTFOLIO: ProofResourceClass.SOLVER,
+            ProofWorkKind.KERNEL_RECONSTRUCTION: ProofResourceClass.KERNEL,
+        }[self]
+
+
+_PROOF_WORK_KIND_ALIASES = {
+    "draft": ProofWorkKind.MODEL_DRAFT,
+    "leanstral": ProofWorkKind.MODEL_DRAFT,
+    "model": ProofWorkKind.MODEL_DRAFT,
+    "model-draft": ProofWorkKind.MODEL_DRAFT,
+    "typecheck": ProofWorkKind.TYPE_CHECK,
+    "type-check": ProofWorkKind.TYPE_CHECK,
+    "deterministic-type-check": ProofWorkKind.TYPE_CHECK,
+    "deterministic_type_check": ProofWorkKind.TYPE_CHECK,
+    "solve": ProofWorkKind.SOLVER_PORTFOLIO,
+    "solver": ProofWorkKind.SOLVER_PORTFOLIO,
+    "solver-portfolio": ProofWorkKind.SOLVER_PORTFOLIO,
+    "kernel": ProofWorkKind.KERNEL_RECONSTRUCTION,
+    "kernel-reconstruct": ProofWorkKind.KERNEL_RECONSTRUCTION,
+    "kernel-reconstruction": ProofWorkKind.KERNEL_RECONSTRUCTION,
+}
+
+
+def normalize_proof_work_kind(value: Any) -> ProofWorkKind:
+    """Normalize a public work-kind spelling into the closed runtime enum."""
+
+    if isinstance(value, ProofWorkKind):
+        return value
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    raw = raw.replace(" ", "_")
+    try:
+        return ProofWorkKind(raw)
+    except ValueError:
+        alias = _PROOF_WORK_KIND_ALIASES.get(raw)
+        if alias is None:
+            alias = _PROOF_WORK_KIND_ALIASES.get(raw.replace("_", "-"))
+        if alias is None:
+            raise ValueError(f"unsupported proof work kind: {value!r}") from None
+        return alias
+
+
+def resource_class_for_work_kind(value: Any) -> str:
+    """Return the canonical, independently limitable class for ``value``."""
+
+    return normalize_proof_work_kind(value).resource_class.value
 
 
 def normalize_resource_class(value: Any, *, stage: Any = "") -> str:
@@ -1631,25 +1706,806 @@ class ResourceScheduler:
     schedule_lanes = schedule
 
 
+class ProofWorkStatus(str, Enum):
+    """Observable terminal states of one goal-runtime work request."""
+
+    SUCCEEDED = "succeeded"
+    FALLBACK = "fallback"
+    CANCELLED = "cancelled"
+    BACKPRESSURED = "backpressured"
+    FAILED = "failed"
+
+
+class ProofWorkCancellationToken:
+    """Thread-safe cooperative cancellation with a stable first reason."""
+
+    def __init__(self) -> None:
+        self._event = threading.Event()
+        self._lock = threading.Lock()
+        self._reason = ""
+        self._cancelled_at_ms = 0
+
+    def cancel(self, reason: str = "cancelled") -> bool:
+        """Request cancellation; the first request wins and is retained."""
+
+        normalized = str(reason or "cancelled").strip() or "cancelled"
+        with self._lock:
+            if self._event.is_set():
+                return False
+            self._reason = normalized
+            self._cancelled_at_ms = int(time.time() * 1000)
+            self._event.set()
+            return True
+
+    @property
+    def cancelled(self) -> bool:
+        return self._event.is_set()
+
+    @property
+    def reason(self) -> str:
+        with self._lock:
+            return self._reason
+
+    @property
+    def cancelled_at_ms(self) -> int:
+        with self._lock:
+            return self._cancelled_at_ms
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Wait until cancellation, matching :class:`threading.Event`."""
+
+        return self._event.wait(timeout)
+
+    def is_cancelled(self) -> bool:
+        """Common token spelling used by verifier and subprocess adapters."""
+
+        return self.cancelled
+
+
+@dataclass(frozen=True)
+class ProofWorkRequest:
+    """A bounded unit of model, type-check, solver, or kernel work."""
+
+    work_id: str
+    work_kind: ProofWorkKind
+    provider_id: str = ""
+    required_capabilities: tuple[str, ...] = ()
+    context_tokens: int = 0
+    token_budget: int = 0
+    quota_units: int = 1
+    memory_bytes: int = 0
+    disk_bytes: int = 0
+    max_provider_latency_ms: int = 0
+    process_slots: int = 1
+    max_queue_wait_ms: int = 0
+
+    def __post_init__(self) -> None:
+        work_id = str(self.work_id or "").strip()
+        if not work_id:
+            raise ValueError("work_id must be non-empty")
+        if "\x00" in work_id:
+            raise ValueError("work_id must not contain NUL bytes")
+        object.__setattr__(self, "work_id", work_id)
+        object.__setattr__(
+            self, "work_kind", normalize_proof_work_kind(self.work_kind)
+        )
+        object.__setattr__(
+            self, "provider_id", str(self.provider_id or "").strip().lower()
+        )
+        object.__setattr__(
+            self,
+            "required_capabilities",
+            _strings(self.required_capabilities),
+        )
+        for name in (
+            "context_tokens",
+            "token_budget",
+            "quota_units",
+            "memory_bytes",
+            "disk_bytes",
+            "max_provider_latency_ms",
+            "max_queue_wait_ms",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if (
+            isinstance(self.process_slots, bool)
+            or not isinstance(self.process_slots, int)
+            or self.process_slots <= 0
+        ):
+            raise ValueError("process_slots must be a positive integer")
+
+    @property
+    def resource_class(self) -> str:
+        return resource_class_for_work_kind(self.work_kind)
+
+    @property
+    def requires_provider(self) -> bool:
+        return self.work_kind is ProofWorkKind.MODEL_DRAFT
+
+    def to_requirement(self) -> LaneResourceRequirements:
+        capabilities = self.required_capabilities
+        if self.requires_provider:
+            capabilities = tuple(
+                f"llm:{item.removeprefix('llm:')}"
+                if not item.startswith("host:")
+                else item
+                for item in capabilities
+            )
+        return LaneResourceRequirements(
+            lane_id=self.work_id,
+            resource_class=self.resource_class,
+            required_capabilities=capabilities,
+            provider_id=self.provider_id,
+            requires_provider=self.requires_provider,
+            context_tokens=self.context_tokens,
+            token_budget=self.token_budget,
+            quota_units=self.quota_units,
+            memory_bytes=self.memory_bytes,
+            disk_bytes=self.disk_bytes,
+            max_provider_latency_ms=self.max_provider_latency_ms,
+            process_slots=self.process_slots,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "work_id": self.work_id,
+            "work_kind": self.work_kind.value,
+            "resource_class": self.resource_class,
+            "provider_id": self.provider_id,
+            "required_capabilities": list(self.required_capabilities),
+            "context_tokens": self.context_tokens,
+            "token_budget": self.token_budget,
+            "quota_units": self.quota_units,
+            "memory_bytes": self.memory_bytes,
+            "disk_bytes": self.disk_bytes,
+            "max_provider_latency_ms": self.max_provider_latency_ms,
+            "process_slots": self.process_slots,
+            "max_queue_wait_ms": self.max_queue_wait_ms,
+        }
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "ProofWorkRequest":
+        return cls(
+            work_id=str(
+                _first(value, ("work_id", "task_id", "lane_id", "request_id"), "")
+                or ""
+            ),
+            work_kind=normalize_proof_work_kind(
+                _first(value, ("work_kind", "kind", "stage"), "")
+            ),
+            provider_id=str(
+                _first(value, ("provider_id", "route_id", "provider"), "") or ""
+            ),
+            required_capabilities=_strings(
+                _first(value, ("required_capabilities", "capabilities"), ())
+            ),
+            context_tokens=_integer(
+                _first(value, ("context_tokens", "required_context_tokens"), 0),
+                0,
+                minimum=0,
+            ),
+            token_budget=_integer(
+                _first(value, ("token_budget", "max_new_tokens"), 0),
+                0,
+                minimum=0,
+            ),
+            quota_units=_integer(value.get("quota_units"), 1, minimum=0),
+            memory_bytes=_integer(value.get("memory_bytes"), 0, minimum=0),
+            disk_bytes=_integer(value.get("disk_bytes"), 0, minimum=0),
+            max_provider_latency_ms=_integer(
+                _first(
+                    value,
+                    ("max_provider_latency_ms", "maximum_provider_latency_ms"),
+                    0,
+                ),
+                0,
+                minimum=0,
+            ),
+            process_slots=_integer(
+                _first(value, ("process_slots", "portfolio_width"), 1),
+                1,
+                minimum=1,
+            ),
+            max_queue_wait_ms=_integer(
+                _first(value, ("max_queue_wait_ms", "queue_timeout_ms"), 0),
+                0,
+                minimum=0,
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ProofWorkContext:
+    """Execution context shared with primary and deterministic fallback work."""
+
+    request: ProofWorkRequest
+    cancellation_token: ProofWorkCancellationToken
+    admission: AdmissionDecision | None = None
+    lease: ResourceAdmissionLease | None = None
+    fallback_reason: str = ""
+    reason_codes: tuple[str, ...] = ()
+
+    @property
+    def child_limits(self) -> ChildResourceLimits | None:
+        return self.lease.child_limits if self.lease is not None else None
+
+
+@dataclass(frozen=True)
+class ProofWorkResult:
+    """Structured outcome that never confuses fallback with primary success."""
+
+    request: ProofWorkRequest
+    status: ProofWorkStatus
+    queued_at_ms: int
+    started_at_ms: int
+    completed_at_ms: int
+    value: Any = None
+    admission: AdmissionDecision | None = None
+    used_fallback: bool = False
+    fallback_reason: str = ""
+    reason_codes: tuple[str, ...] = ()
+    error: str = ""
+
+    @property
+    def successful(self) -> bool:
+        """Whether the request returned a usable primary or fallback value.
+
+        This property retains the scheduler's compatibility semantics.  It is
+        not a proof-completion signal; trust-sensitive callers must use
+        :attr:`primary_succeeded`.
+        """
+
+        return self.status in (ProofWorkStatus.SUCCEEDED, ProofWorkStatus.FALLBACK)
+
+    @property
+    def primary_succeeded(self) -> bool:
+        """Whether the resource-leased primary operation itself succeeded."""
+
+        return self.status is ProofWorkStatus.SUCCEEDED
+
+    @property
+    def fallback_succeeded(self) -> bool:
+        """Whether a bounded deterministic fallback produced the value."""
+
+        return self.status is ProofWorkStatus.FALLBACK and self.used_fallback
+
+    @property
+    def queue_latency_ms(self) -> int:
+        boundary = self.started_at_ms or self.completed_at_ms
+        return max(0, boundary - self.queued_at_ms)
+
+    @property
+    def execution_latency_ms(self) -> int:
+        if not self.started_at_ms:
+            return 0
+        return max(0, self.completed_at_ms - self.started_at_ms)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "request": self.request.to_dict(),
+            "status": self.status.value,
+            "successful": self.successful,
+            "primary_succeeded": self.primary_succeeded,
+            "fallback_succeeded": self.fallback_succeeded,
+            "queued_at_ms": self.queued_at_ms,
+            "started_at_ms": self.started_at_ms,
+            "completed_at_ms": self.completed_at_ms,
+            "queue_latency_ms": self.queue_latency_ms,
+            "execution_latency_ms": self.execution_latency_ms,
+            "value": self.value,
+            "admission": self.admission.to_dict() if self.admission else None,
+            "used_fallback": self.used_fallback,
+            "fallback_reason": self.fallback_reason,
+            "reason_codes": list(self.reason_codes),
+            "error": self.error,
+        }
+
+
+ProofWorkCallable = Callable[[ProofWorkContext], Any]
+
+
+class GoalRuntimeResourceScheduler:
+    """Bounded execution facade for route-aware goal-development proof work.
+
+    Execution is synchronous in the caller's thread, making ownership and
+    shutdown explicit.  Multiple callers may enter concurrently.  Waiting
+    requests are FIFO within each resource class, while different classes can
+    progress independently.  The underlying :class:`ResourceScheduler`
+    atomically accounts all running work.
+    """
+
+    def __init__(
+        self,
+        resource_scheduler: ResourceScheduler | None = None,
+        *,
+        policy: ResourcePolicy | Mapping[str, Any] | None = None,
+        budget: ResourceLeaseBudget | None = None,
+        max_queued_tasks: int = 64,
+        max_fallback_concurrency: int = 1,
+        queue_retry_ms: int = 25,
+        host_resource_source: (
+            HostResourceSnapshot
+            | Mapping[str, Any]
+            | Callable[[], HostResourceSnapshot | Mapping[str, Any]]
+            | None
+        ) = None,
+        provider_capacity_source: (
+            Mapping[str, Any]
+            | Iterable[ProviderCapacity | Mapping[str, Any]]
+            | Callable[
+                [],
+                Mapping[str, Any]
+                | Iterable[ProviderCapacity | Mapping[str, Any]]
+                | None,
+            ]
+            | None
+        ) = None,
+        clock_ms: Callable[[], int] | None = None,
+    ) -> None:
+        if resource_scheduler is not None and policy is not None:
+            raise ValueError("pass resource_scheduler or policy, not both")
+        if (
+            isinstance(max_queued_tasks, bool)
+            or not isinstance(max_queued_tasks, int)
+            or max_queued_tasks <= 0
+        ):
+            raise ValueError("max_queued_tasks must be a positive integer")
+        if (
+            isinstance(queue_retry_ms, bool)
+            or not isinstance(queue_retry_ms, int)
+            or queue_retry_ms <= 0
+        ):
+            raise ValueError("queue_retry_ms must be a positive integer")
+        if (
+            isinstance(max_fallback_concurrency, bool)
+            or not isinstance(max_fallback_concurrency, int)
+            or max_fallback_concurrency <= 0
+        ):
+            raise ValueError(
+                "max_fallback_concurrency must be a positive integer"
+            )
+        self.resource_scheduler = resource_scheduler or ResourceScheduler(policy)
+        self.budget = budget
+        self.max_queued_tasks = max_queued_tasks
+        self.max_fallback_concurrency = max_fallback_concurrency
+        self.queue_retry_ms = queue_retry_ms
+        self.host_resource_source = host_resource_source
+        self.provider_capacity_source = provider_capacity_source
+        self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
+        self._state_lock = threading.RLock()
+        self._queues: dict[str, deque[str]] = {}
+        self._tokens: dict[str, ProofWorkCancellationToken] = {}
+        self._running: set[str] = set()
+        self._fallback_running: set[str] = set()
+
+    @staticmethod
+    def _sample(source: Any) -> Any:
+        return source() if callable(source) else source
+
+    @property
+    def queued_count(self) -> int:
+        with self._state_lock:
+            return sum(len(queue) for queue in self._queues.values())
+
+    @property
+    def running_count(self) -> int:
+        with self._state_lock:
+            return len(self._running)
+
+    @property
+    def fallback_running_count(self) -> int:
+        with self._state_lock:
+            return len(self._fallback_running)
+
+    @property
+    def queued_work_ids(self) -> tuple[str, ...]:
+        with self._state_lock:
+            return tuple(
+                work_id
+                for resource_class in sorted(self._queues)
+                for work_id in self._queues[resource_class]
+            )
+
+    @property
+    def running_work_ids(self) -> tuple[str, ...]:
+        with self._state_lock:
+            return tuple(sorted(self._running))
+
+    def cancel(self, work_id: str, reason: str = "operator_cancelled") -> bool:
+        """Cooperatively cancel queued or running work by stable identity."""
+
+        with self._state_lock:
+            token = self._tokens.get(str(work_id))
+        return token.cancel(reason) if token is not None else False
+
+    def _enqueue(
+        self,
+        request: ProofWorkRequest,
+        token: ProofWorkCancellationToken,
+    ) -> bool:
+        with self._state_lock:
+            if request.work_id in self._tokens:
+                raise ValueError(f"work_id is already scheduled: {request.work_id}")
+            queued = sum(len(queue) for queue in self._queues.values())
+            if queued >= self.max_queued_tasks:
+                return False
+            self._tokens[request.work_id] = token
+            self._queues.setdefault(request.resource_class, deque()).append(
+                request.work_id
+            )
+            return True
+
+    def _is_head(self, request: ProofWorkRequest) -> bool:
+        with self._state_lock:
+            queue = self._queues.get(request.resource_class)
+            return bool(queue and queue[0] == request.work_id)
+
+    def _mark_running(self, request: ProofWorkRequest) -> None:
+        with self._state_lock:
+            queue = self._queues.get(request.resource_class)
+            if not queue or queue[0] != request.work_id:
+                raise RuntimeError("resource queue ownership changed unexpectedly")
+            queue.popleft()
+            if not queue:
+                self._queues.pop(request.resource_class, None)
+            self._running.add(request.work_id)
+
+    def _forget(self, request: ProofWorkRequest) -> None:
+        with self._state_lock:
+            queue = self._queues.get(request.resource_class)
+            if queue:
+                try:
+                    queue.remove(request.work_id)
+                except ValueError:
+                    pass
+                if not queue:
+                    self._queues.pop(request.resource_class, None)
+            self._running.discard(request.work_id)
+            self._fallback_running.discard(request.work_id)
+            self._tokens.pop(request.work_id, None)
+
+    def _begin_fallback(
+        self,
+        request: ProofWorkRequest,
+        token: ProofWorkCancellationToken,
+    ) -> bool:
+        """Atomically move a queued/primary request into bounded fallback."""
+
+        with self._state_lock:
+            existing = self._tokens.get(request.work_id)
+            if existing is not None and existing is not token:
+                raise ValueError(
+                    f"work_id is already scheduled: {request.work_id}"
+                )
+            queue = self._queues.get(request.resource_class)
+            if queue:
+                try:
+                    queue.remove(request.work_id)
+                except ValueError:
+                    pass
+                if not queue:
+                    self._queues.pop(request.resource_class, None)
+            if len(self._fallback_running) >= self.max_fallback_concurrency:
+                return False
+            self._tokens[request.work_id] = token
+            self._running.add(request.work_id)
+            self._fallback_running.add(request.work_id)
+            return True
+
+    def _result(
+        self,
+        request: ProofWorkRequest,
+        status: ProofWorkStatus,
+        *,
+        queued_at_ms: int,
+        started_at_ms: int = 0,
+        value: Any = None,
+        admission: AdmissionDecision | None = None,
+        used_fallback: bool = False,
+        fallback_reason: str = "",
+        reason_codes: Iterable[str] = (),
+        error: str = "",
+    ) -> ProofWorkResult:
+        return ProofWorkResult(
+            request=request,
+            status=status,
+            queued_at_ms=queued_at_ms,
+            started_at_ms=started_at_ms,
+            completed_at_ms=max(queued_at_ms, self._clock_ms()),
+            value=value,
+            admission=admission,
+            used_fallback=used_fallback,
+            fallback_reason=fallback_reason,
+            reason_codes=tuple(dict.fromkeys(str(item) for item in reason_codes)),
+            error=str(error)[:4_096],
+        )
+
+    def _run_fallback(
+        self,
+        request: ProofWorkRequest,
+        token: ProofWorkCancellationToken,
+        fallback: ProofWorkCallable | None,
+        *,
+        queued_at_ms: int,
+        reason_codes: tuple[str, ...],
+        admission: AdmissionDecision | None = None,
+        primary_error: str = "",
+    ) -> ProofWorkResult:
+        if token.cancelled:
+            self._forget(request)
+            return self._result(
+                request,
+                ProofWorkStatus.CANCELLED,
+                queued_at_ms=queued_at_ms,
+                admission=admission,
+                fallback_reason=token.reason,
+                reason_codes=("cancelled",),
+            )
+        fallback_reason = reason_codes[0] if reason_codes else "primary_failed"
+        if fallback is None:
+            self._forget(request)
+            status = (
+                ProofWorkStatus.FAILED
+                if primary_error
+                else ProofWorkStatus.BACKPRESSURED
+            )
+            return self._result(
+                request,
+                status,
+                queued_at_ms=queued_at_ms,
+                admission=admission,
+                fallback_reason=fallback_reason,
+                reason_codes=reason_codes,
+                error=primary_error,
+            )
+        if not self._begin_fallback(request, token):
+            self._forget(request)
+            return self._result(
+                request,
+                ProofWorkStatus.BACKPRESSURED,
+                queued_at_ms=queued_at_ms,
+                admission=admission,
+                fallback_reason=fallback_reason,
+                reason_codes=reason_codes + ("fallback_capacity",),
+                error=primary_error,
+            )
+        started_at_ms = max(queued_at_ms, self._clock_ms())
+        context = ProofWorkContext(
+            request=request,
+            cancellation_token=token,
+            admission=admission,
+            fallback_reason=fallback_reason,
+            reason_codes=reason_codes,
+        )
+        try:
+            try:
+                value = fallback(context)
+            except Exception as exc:
+                result = self._result(
+                    request,
+                    ProofWorkStatus.FAILED,
+                    queued_at_ms=queued_at_ms,
+                    started_at_ms=started_at_ms,
+                    admission=admission,
+                    fallback_reason=fallback_reason,
+                    reason_codes=reason_codes + ("fallback_failed",),
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            else:
+                if token.cancelled:
+                    result = self._result(
+                        request,
+                        ProofWorkStatus.CANCELLED,
+                        queued_at_ms=queued_at_ms,
+                        started_at_ms=started_at_ms,
+                        admission=admission,
+                        fallback_reason=token.reason,
+                        reason_codes=("cancelled",),
+                    )
+                else:
+                    result = self._result(
+                        request,
+                        ProofWorkStatus.FALLBACK,
+                        queued_at_ms=queued_at_ms,
+                        started_at_ms=started_at_ms,
+                        value=value,
+                        admission=admission,
+                        used_fallback=True,
+                        fallback_reason=fallback_reason,
+                        reason_codes=reason_codes,
+                        error=primary_error,
+                    )
+        finally:
+            self._forget(request)
+        return result
+
+    def execute(
+        self,
+        request: ProofWorkRequest | Mapping[str, Any],
+        operation: ProofWorkCallable,
+        *,
+        fallback: ProofWorkCallable | None = None,
+        cancellation_token: ProofWorkCancellationToken | None = None,
+    ) -> ProofWorkResult:
+        """Execute one request under bounded admission and deterministic fallback.
+
+        ``max_queue_wait_ms=0`` performs exactly one admission attempt.  A
+        positive limit retries transient live-capacity failures until the
+        bound expires.  Cancellation never invokes fallback.
+        """
+
+        if not callable(operation):
+            raise TypeError("operation must be callable")
+        if fallback is not None and not callable(fallback):
+            raise TypeError("fallback must be callable")
+        work = (
+            request
+            if isinstance(request, ProofWorkRequest)
+            else ProofWorkRequest.from_mapping(request)
+        )
+        token = cancellation_token or ProofWorkCancellationToken()
+        queued_at_ms = self._clock_ms()
+        if token.cancelled:
+            return self._result(
+                work,
+                ProofWorkStatus.CANCELLED,
+                queued_at_ms=queued_at_ms,
+                fallback_reason=token.reason,
+                reason_codes=("cancelled",),
+            )
+        if not self._enqueue(work, token):
+            return self._run_fallback(
+                work,
+                token,
+                fallback,
+                queued_at_ms=queued_at_ms,
+                reason_codes=("queue_capacity",),
+            )
+
+        deadline_ms = queued_at_ms + work.max_queue_wait_ms
+        last_decision: AdmissionDecision | None = None
+        while True:
+            if token.cancelled:
+                self._forget(work)
+                return self._result(
+                    work,
+                    ProofWorkStatus.CANCELLED,
+                    queued_at_ms=queued_at_ms,
+                    admission=last_decision,
+                    fallback_reason=token.reason,
+                    reason_codes=("cancelled",),
+                )
+            now_ms = self._clock_ms()
+            if self._is_head(work):
+                try:
+                    host = self._sample(self.host_resource_source)
+                    providers = self._sample(self.provider_capacity_source)
+                    last_decision, lease = self.resource_scheduler.acquire(
+                        work.to_requirement(),
+                        budget=self.budget,
+                        host=host,
+                        providers=providers,
+                    )
+                except Exception as exc:
+                    return self._run_fallback(
+                        work,
+                        token,
+                        fallback,
+                        queued_at_ms=queued_at_ms,
+                        reason_codes=("resource_telemetry_error",),
+                        primary_error=f"{type(exc).__name__}: {exc}",
+                    )
+                if lease is not None:
+                    self._mark_running(work)
+                    started_at_ms = max(queued_at_ms, self._clock_ms())
+                    context = ProofWorkContext(
+                        request=work,
+                        cancellation_token=token,
+                        admission=last_decision,
+                        lease=lease,
+                    )
+                    try:
+                        value = operation(context)
+                    except Exception as exc:
+                        primary_error = f"{type(exc).__name__}: {exc}"
+                        self.resource_scheduler.release(lease)
+                        return self._run_fallback(
+                            work,
+                            token,
+                            fallback,
+                            queued_at_ms=queued_at_ms,
+                            reason_codes=("primary_execution_failed",),
+                            admission=last_decision,
+                            primary_error=primary_error,
+                        )
+                    finally:
+                        # ``release`` is idempotent for the exception path.
+                        self.resource_scheduler.release(lease)
+                    self._forget(work)
+                    if token.cancelled:
+                        return self._result(
+                            work,
+                            ProofWorkStatus.CANCELLED,
+                            queued_at_ms=queued_at_ms,
+                            started_at_ms=started_at_ms,
+                            admission=last_decision,
+                            fallback_reason=token.reason,
+                            reason_codes=("cancelled",),
+                        )
+                    return self._result(
+                        work,
+                        ProofWorkStatus.SUCCEEDED,
+                        queued_at_ms=queued_at_ms,
+                        started_at_ms=started_at_ms,
+                        value=value,
+                        admission=last_decision,
+                    )
+
+            if work.max_queue_wait_ms == 0 or now_ms >= deadline_ms:
+                reasons = (
+                    last_decision.reasons
+                    if last_decision is not None and last_decision.reasons
+                    else ("queue_wait_timeout",)
+                )
+                return self._run_fallback(
+                    work,
+                    token,
+                    fallback,
+                    queued_at_ms=queued_at_ms,
+                    reason_codes=tuple(reasons),
+                    admission=last_decision,
+                )
+            remaining_ms = max(0, deadline_ms - now_ms)
+            token.wait(min(self.queue_retry_ms, remaining_ms) / 1000)
+
+    # Compatibility-friendly verb used by orchestration callers.
+    run = execute
+    execute_work = execute
+
+
+# Descriptive aliases used by goal-development integrations.
+RouteAwareResourceScheduler = GoalRuntimeResourceScheduler
+FormalVerificationResourceScheduler = GoalRuntimeResourceScheduler
+ResourceCancellationToken = ProofWorkCancellationToken
+ScheduledProofWorkRequest = ProofWorkRequest
+ScheduledProofWorkResult = ProofWorkResult
+
+
 __all__ = [
     "AdmissionDecision",
     "ChildResourceLimits",
     "DEFAULT_RESOURCE_CLASSES",
+    "FormalVerificationResourceScheduler",
+    "GoalRuntimeResourceScheduler",
     "HostResourceSnapshot",
     "LaneResourceRequirements",
     "LEGACY_RESOURCE_CLASSES",
     "PROOF_RESOURCE_CLASSES",
+    "ProofWorkCancellationToken",
+    "ProofWorkContext",
+    "ProofWorkKind",
+    "ProofWorkRequest",
+    "ProofWorkResult",
+    "ProofWorkStatus",
     "ProofResourceClass",
     "ProviderCapacity",
+    "ResourceCancellationToken",
     "ResourceAdmissionLease",
     "ResourceLeaseBudget",
     "ResourcePolicy",
     "ResourceScheduleSnapshot",
     "ResourceScheduler",
+    "RouteAwareResourceScheduler",
+    "ScheduledProofWorkRequest",
+    "ScheduledProofWorkResult",
     "SupervisorResourceLeaseBudget",
     "normalize_provider_capacities",
     "normalize_provider_capacity",
+    "normalize_proof_work_kind",
     "normalize_resource_class",
+    "resource_class_for_work_kind",
     "resource_pool",
     "sample_host_resources",
 ]

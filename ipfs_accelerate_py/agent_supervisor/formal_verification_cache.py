@@ -64,6 +64,12 @@ FORMAL_VERIFICATION_CACHE_SCHEMA: Final = (
 FORMAL_VERIFICATION_CACHE_KEY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-verification-cache-key@1"
 )
+FORMAL_VERIFICATION_DRAFT_CACHE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/formal-verification-draft-cache-entry@1"
+)
+FORMAL_VERIFICATION_DRAFT_CACHE_KEY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/formal-verification-draft-cache-key@1"
+)
 FORMAL_VERIFICATION_FLIGHT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-verification-flight@1"
 )
@@ -76,6 +82,7 @@ FORMAL_VERIFICATION_ATTESTATION_CACHE_SCHEMA: Final = (
 DEFAULT_CACHE_TTL_SECONDS: Final = 24 * 60 * 60
 DEFAULT_LEASE_SECONDS: Final = 5 * 60
 DEFAULT_WAIT_TIMEOUT_SECONDS: Final = 10 * 60
+DEFAULT_MAX_DRAFT_BYTES: Final = 1024 * 1024
 
 
 class CacheLookupStatus(str, Enum):
@@ -104,6 +111,13 @@ class CacheRejectionReason(str, Enum):
     ATTESTATION_BINDING_MISMATCH = "attestation_binding_mismatch"
     ATTESTATION_REPLAY_REQUIRED = "attestation_reverification_required"
     ATTESTATION_VERIFICATION_FAILED = "attestation_reverification_failed"
+    DRAFT_MISS = "draft_cache_miss"
+    DRAFT_MALFORMED = "malformed_draft_cache_entry"
+    DRAFT_POISONED = "poisoned_draft_cache_entry"
+    DRAFT_STALE = "stale_draft_cache_entry"
+    DRAFT_BINDING_MISMATCH = "draft_cache_binding_mismatch"
+    DRAFT_TRUST_CLAIM = "untrusted_draft_claims_authority"
+    DRAFT_TOO_LARGE = "draft_cache_entry_too_large"
 
     # Short compatibility spellings.
     MALFORMED = "malformed_cache_entry"
@@ -304,6 +318,198 @@ FormalVerificationCacheKey = ProofCacheKey
 
 
 @dataclass(frozen=True)
+class DraftCacheKey:
+    """Route-aware identity for an untrusted model draft.
+
+    Draft reuse is safe only when every prompt-, compiler-, and policy-facing
+    input is unchanged.  The model route and the concrete model version are
+    intentionally independent fields: changing an alias to another route, or
+    changing the model served by the same route, invalidates reuse.
+
+    The fields are named ``*_digest`` because callers should pass compact
+    content identities rather than source material.  They accept any
+    canonical JSON identity so existing CID-based contracts remain usable.
+    """
+
+    goal_digest: Any
+    repository_tree_digest: Any
+    vocabulary_digest: Any
+    compiler_digest: Any
+    model_route_digest: Any
+    model_version: Any
+    assumptions_digest: Any
+    bounds_digest: Any
+    policy_digest: Any
+
+    def __post_init__(self) -> None:
+        for name in (
+            "goal_digest",
+            "repository_tree_digest",
+            "vocabulary_digest",
+            "compiler_digest",
+            "model_route_digest",
+            "model_version",
+            "assumptions_digest",
+            "bounds_digest",
+            "policy_digest",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _identity_component(getattr(self, name), field_name=name),
+            )
+
+    @property
+    def tree_digest(self) -> Any:
+        return self.repository_tree_digest
+
+    @property
+    def model_route(self) -> Any:
+        return self.model_route_digest
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": FORMAL_VERIFICATION_DRAFT_CACHE_KEY_SCHEMA,
+            "goal_digest": self.goal_digest,
+            "repository_tree_digest": self.repository_tree_digest,
+            "vocabulary_digest": self.vocabulary_digest,
+            "compiler_digest": self.compiler_digest,
+            "model_route_digest": self.model_route_digest,
+            "model_version": self.model_version,
+            "assumptions_digest": self.assumptions_digest,
+            "bounds_digest": self.bounds_digest,
+            "policy_digest": self.policy_digest,
+        }
+
+    @property
+    def key_id(self) -> str:
+        return f"proof-draft-cache-key:sha256:{_sha256(self.to_dict())}"
+
+    @property
+    def cache_key(self) -> str:
+        return self.key_id
+
+    @property
+    def digest(self) -> str:
+        return self.key_id
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "DraftCacheKey":
+        if not isinstance(value, Mapping):
+            raise ValueError("draft cache key must be an object")
+        schema = value.get("schema_version", value.get("schema"))
+        if schema not in (None, FORMAL_VERIFICATION_DRAFT_CACHE_KEY_SCHEMA):
+            raise ValueError("unsupported formal-verification draft cache-key schema")
+        return cls(
+            goal_digest=value.get("goal_digest", value.get("goal")),
+            repository_tree_digest=value.get(
+                "repository_tree_digest",
+                value.get(
+                    "tree_digest",
+                    value.get("repository_tree_id", value.get("tree")),
+                ),
+            ),
+            vocabulary_digest=value.get(
+                "vocabulary_digest", value.get("vocabulary")
+            ),
+            compiler_digest=value.get("compiler_digest", value.get("compiler")),
+            model_route_digest=value.get(
+                "model_route_digest",
+                value.get("route_digest", value.get("model_route")),
+            ),
+            model_version=value.get(
+                "model_version", value.get("model_route_version")
+            ),
+            assumptions_digest=value.get(
+                "assumptions_digest", value.get("assumptions")
+            ),
+            bounds_digest=value.get("bounds_digest", value.get("bounds")),
+            policy_digest=value.get("policy_digest", value.get("policy")),
+        )
+
+
+def _one_identity(
+    canonical_name: str,
+    *values: Any,
+) -> Any:
+    supplied = [value for value in values if value is not None]
+    if not supplied:
+        return None
+    canonical = canonical_json(
+        _identity_component(supplied[0], field_name=canonical_name)
+    )
+    for value in supplied[1:]:
+        if canonical_json(
+            _identity_component(value, field_name=canonical_name)
+        ) != canonical:
+            raise ValueError(f"{canonical_name} aliases disagree")
+    return supplied[0]
+
+
+def build_draft_cache_key(
+    *,
+    goal_digest: Any = None,
+    goal: Any = None,
+    repository_tree_digest: Any = None,
+    tree_digest: Any = None,
+    repository_tree_id: Any = None,
+    tree: Any = None,
+    vocabulary_digest: Any = None,
+    vocabulary: Any = None,
+    compiler_digest: Any = None,
+    compiler: Any = None,
+    model_route_digest: Any = None,
+    route_digest: Any = None,
+    model_route: Any = None,
+    model_version: Any = None,
+    model_route_version: Any = None,
+    assumptions_digest: Any = None,
+    assumptions: Any = None,
+    bounds_digest: Any = None,
+    bounds: Any = None,
+    policy_digest: Any = None,
+    policy: Any = None,
+) -> DraftCacheKey:
+    """Build a complete route-aware draft key with common identity aliases."""
+
+    return DraftCacheKey(
+        goal_digest=_one_identity("goal_digest", goal_digest, goal),
+        repository_tree_digest=_one_identity(
+            "repository_tree_digest",
+            repository_tree_digest,
+            tree_digest,
+            repository_tree_id,
+            tree,
+        ),
+        vocabulary_digest=_one_identity(
+            "vocabulary_digest", vocabulary_digest, vocabulary
+        ),
+        compiler_digest=_one_identity(
+            "compiler_digest", compiler_digest, compiler
+        ),
+        model_route_digest=_one_identity(
+            "model_route_digest",
+            model_route_digest,
+            route_digest,
+            model_route,
+        ),
+        model_version=_one_identity(
+            "model_version", model_version, model_route_version
+        ),
+        assumptions_digest=_one_identity(
+            "assumptions_digest", assumptions_digest, assumptions
+        ),
+        bounds_digest=_one_identity("bounds_digest", bounds_digest, bounds),
+        policy_digest=_one_identity("policy_digest", policy_digest, policy),
+    )
+
+
+make_draft_cache_key = build_draft_cache_key
+FormalVerificationDraftCacheKey = DraftCacheKey
+ProofDraftCacheKey = DraftCacheKey
+
+
+@dataclass(frozen=True)
 class CacheRequirements:
     required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED
     required_freshness: EvidenceFreshness = EvidenceFreshness.CURRENT
@@ -373,6 +579,284 @@ class ProofCacheEntry:
             complete=complete,
         )
         return cls(**{**entry.__dict__, "entry_digest": entry.computed_digest})
+
+
+_DRAFT_BOOLEAN_TRUST_CLAIMS: Final = frozenset(
+    {
+        "admission_claimed",
+        "admitted",
+        "authoritative",
+        "can_mark_complete",
+        "can_satisfy_completion",
+        "complete",
+        "completion_evidence",
+        "implementation_conformant",
+        "kernel_checked",
+        "proof_success",
+        "trusted",
+        "verified",
+    }
+)
+_DRAFT_ASSURANCE_CLAIMS: Final = frozenset(
+    {
+        "assurance",
+        "assurance_level",
+        "authority",
+        "trust",
+        "trust_level",
+        "verdict",
+    }
+)
+_UNTRUSTED_CLAIM_VALUES: Final = frozenset(
+    {
+        "",
+        "candidate",
+        "draft",
+        "inconclusive",
+        "none",
+        "not_proved",
+        "proposed",
+        "unknown",
+        "untrusted",
+        "unverified",
+    }
+)
+
+
+def _draft_claims_authority(value: Any) -> bool:
+    """Fail closed when any nested draft data claims proof authority."""
+
+    if isinstance(value, Mapping):
+        for raw_name, item in value.items():
+            name = str(raw_name).strip().casefold().replace("-", "_")
+            if name in _DRAFT_BOOLEAN_TRUST_CLAIMS and item not in (
+                False,
+                None,
+                0,
+                "",
+            ):
+                return True
+            if name in _DRAFT_ASSURANCE_CLAIMS:
+                normalized = (
+                    str(getattr(item, "value", item) or "")
+                    .strip()
+                    .casefold()
+                    .replace("-", "_")
+                )
+                if normalized not in _UNTRUSTED_CLAIM_VALUES:
+                    return True
+            if _draft_claims_authority(item):
+                return True
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(_draft_claims_authority(item) for item in value)
+    return False
+
+
+def _coerce_untrusted_draft(value: Any) -> dict[str, Any]:
+    """Create an immutable JSON projection without accepting trust claims."""
+
+    if isinstance(value, ProofReceipt):
+        raise ValueError("proof receipts cannot be stored in the draft cache")
+    converter = getattr(value, "to_dict", None)
+    if callable(converter):
+        value = converter()
+    if not isinstance(value, Mapping):
+        raise ValueError("untrusted draft must be an object")
+    normalized = _json_value(value, field_name="untrusted draft")
+    if not isinstance(normalized, dict):
+        raise ValueError("untrusted draft must be an object")
+    if _draft_claims_authority(normalized):
+        raise PermissionError("untrusted draft claims proof authority")
+    return normalized
+
+
+def _nested_identity_values(value: Any, names: frozenset[str]) -> tuple[Any, ...]:
+    result: list[Any] = []
+    if isinstance(value, Mapping):
+        for raw_name, item in value.items():
+            name = str(raw_name).strip().casefold().replace("-", "_")
+            if name in names:
+                result.append(item)
+            result.extend(_nested_identity_values(item, names))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            result.extend(_nested_identity_values(item, names))
+    return tuple(result)
+
+
+def _identity_matches(expected: Any, candidate: Any) -> bool:
+    try:
+        if canonical_json(expected) == canonical_json(candidate):
+            return True
+        candidate_digest = _sha256(candidate)
+        if isinstance(expected, str):
+            normalized = expected.strip().casefold()
+            return normalized in {
+                candidate_digest,
+                f"sha256:{candidate_digest}",
+            }
+    except (TypeError, ValueError, ContractValidationError):
+        return False
+    return False
+
+
+_DRAFT_BINDING_FIELDS: Final = (
+    ("goal_digest", frozenset({"goal_digest", "root_goal_content_id"})),
+    (
+        "repository_tree_digest",
+        frozenset(
+            {
+                "repository_tree_digest",
+                "repository_tree_id",
+                "candidate_tree_id",
+            }
+        ),
+    ),
+    ("vocabulary_digest", frozenset({"vocabulary_digest"})),
+    (
+        "compiler_digest",
+        frozenset({"compiler_digest", "compiler_identity"}),
+    ),
+    (
+        "model_route_digest",
+        frozenset({"model_route_digest", "route_digest"}),
+    ),
+    ("model_version", frozenset({"model_version", "model"})),
+    ("assumptions_digest", frozenset({"assumptions_digest"})),
+    ("bounds_digest", frozenset({"bounds_digest", "validation_bounds_digest"})),
+    ("policy_digest", frozenset({"policy_digest"})),
+)
+
+
+def _draft_binding_mismatch(key: DraftCacheKey, draft: Mapping[str, Any]) -> bool:
+    """Check every explicit context identity carried by a draft."""
+
+    for key_field, draft_fields in _DRAFT_BINDING_FIELDS:
+        expected = getattr(key, key_field)
+        candidates = _nested_identity_values(draft, draft_fields)
+        if any(not _identity_matches(expected, candidate) for candidate in candidates):
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class UntrustedDraftCacheEntry:
+    """Integrity-protected draft data which can never be proof evidence."""
+
+    key: DraftCacheKey
+    draft: Mapping[str, Any]
+    created_at_ms: int
+    expires_at_ms: int
+    trust: str = "untrusted"
+    entry_digest: str = ""
+
+    def __post_init__(self) -> None:
+        if self.trust != "untrusted":
+            raise ValueError("draft cache entries must be explicitly untrusted")
+        object.__setattr__(self, "draft", _coerce_untrusted_draft(self.draft))
+
+    def _unsigned_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": FORMAL_VERIFICATION_DRAFT_CACHE_SCHEMA,
+            "key_id": self.key.key_id,
+            "key": self.key.to_dict(),
+            "draft": dict(self.draft),
+            "created_at_ms": self.created_at_ms,
+            "expires_at_ms": self.expires_at_ms,
+            "trust": "untrusted",
+            "authoritative": False,
+            "completion_evidence": False,
+        }
+
+    @property
+    def computed_digest(self) -> str:
+        return f"sha256:{_sha256(self._unsigned_dict())}"
+
+    @property
+    def draft_id(self) -> str:
+        candidate = self.draft.get("draft_id", self.draft.get("artifact_id"))
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+        return f"untrusted-draft:sha256:{_sha256(self.draft)}"
+
+    @property
+    def authoritative(self) -> bool:
+        return False
+
+    @property
+    def completion_evidence(self) -> bool:
+        return False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._unsigned_dict(),
+            "entry_digest": self.entry_digest or self.computed_digest,
+        }
+
+    @classmethod
+    def create(
+        cls,
+        key: DraftCacheKey,
+        draft: Mapping[str, Any],
+        *,
+        created_at_ms: int,
+        expires_at_ms: int,
+    ) -> "UntrustedDraftCacheEntry":
+        entry = cls(
+            key=key,
+            draft=draft,
+            created_at_ms=created_at_ms,
+            expires_at_ms=expires_at_ms,
+        )
+        return cls(**{**entry.__dict__, "entry_digest": entry.computed_digest})
+
+
+# Short spelling used by callers whose cache namespace is already explicit.
+DraftCacheEntry = UntrustedDraftCacheEntry
+
+
+@dataclass(frozen=True)
+class DraftCacheLookupResult:
+    status: CacheLookupStatus
+    key: DraftCacheKey
+    entry: UntrustedDraftCacheEntry | None = None
+    reason_codes: tuple[str, ...] = ()
+
+    @property
+    def hit(self) -> bool:
+        return self.status is CacheLookupStatus.HIT
+
+    @property
+    def draft(self) -> Mapping[str, Any] | None:
+        return self.entry.draft if self.entry is not None and self.hit else None
+
+    @property
+    def authoritative(self) -> bool:
+        return False
+
+    @property
+    def completion_evidence(self) -> bool:
+        return False
+
+    @property
+    def reason_code(self) -> str:
+        return self.reason_codes[0] if self.reason_codes else ""
+
+
+@dataclass(frozen=True)
+class DraftCacheStoreResult:
+    stored: bool
+    key: DraftCacheKey
+    entry: UntrustedDraftCacheEntry | None = None
+    reason_codes: tuple[str, ...] = ()
+
+    def __bool__(self) -> bool:
+        return self.stored
+
+    @property
+    def reason_code(self) -> str:
+        return self.reason_codes[0] if self.reason_codes else ""
 
 
 @dataclass(frozen=True)
@@ -595,7 +1079,7 @@ class SingleFlightLease:
     """A fenced lease returned for both leaders and followers."""
 
     cache: "FormalVerificationCache" = field(repr=False, compare=False)
-    key: ProofCacheKey
+    key: ProofCacheKey | DraftCacheKey
     owner_id: str
     token: str
     fencing_token: int
@@ -818,6 +1302,8 @@ class FormalVerificationCache:
         path: str | os.PathLike[str] | None = None,
         *,
         default_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
+        default_draft_ttl_seconds: int | None = None,
+        max_draft_bytes: int = DEFAULT_MAX_DRAFT_BYTES,
         clock: Callable[[], float] = time.time,
         duckdb_timeout_seconds: int = 30,
         sqlite_timeout_seconds: int | None = None,
@@ -825,6 +1311,20 @@ class FormalVerificationCache:
     ) -> None:
         if isinstance(default_ttl_seconds, bool) or default_ttl_seconds <= 0:
             raise ValueError("default_ttl_seconds must be a positive integer")
+        if default_draft_ttl_seconds is not None and (
+            isinstance(default_draft_ttl_seconds, bool)
+            or not isinstance(default_draft_ttl_seconds, int)
+            or default_draft_ttl_seconds <= 0
+        ):
+            raise ValueError(
+                "default_draft_ttl_seconds must be a positive integer or None"
+            )
+        if (
+            isinstance(max_draft_bytes, bool)
+            or not isinstance(max_draft_bytes, int)
+            or max_draft_bytes <= 0
+        ):
+            raise ValueError("max_draft_bytes must be a positive integer")
         timeout_seconds = (
             sqlite_timeout_seconds
             if sqlite_timeout_seconds is not None
@@ -839,6 +1339,12 @@ class FormalVerificationCache:
         )
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.default_ttl_seconds = int(default_ttl_seconds)
+        self.default_draft_ttl_seconds = int(
+            default_ttl_seconds
+            if default_draft_ttl_seconds is None
+            else default_draft_ttl_seconds
+        )
+        self.max_draft_bytes = int(max_draft_bytes)
         self._clock = clock
         self._attestation_verifier = attestation_verifier
         self._duckdb_timeout_seconds = int(timeout_seconds)
@@ -866,6 +1372,7 @@ class FormalVerificationCache:
                 timeout_seconds=self._duckdb_timeout_seconds,
                 table_names=(
                     "proof_cache_entries",
+                    "proof_draft_cache_entries",
                     "proof_attestation_entries",
                     "proof_single_flights",
                     "proof_flight_outcomes",
@@ -880,6 +1387,15 @@ class FormalVerificationCache:
                     );
                     CREATE INDEX IF NOT EXISTS proof_cache_expiry_idx
                         ON proof_cache_entries(expires_at_ms);
+                    CREATE TABLE IF NOT EXISTS proof_draft_cache_entries (
+                        key_id TEXT PRIMARY KEY,
+                        key_json TEXT NOT NULL,
+                        entry_json TEXT NOT NULL,
+                        created_at_ms BIGINT NOT NULL,
+                        expires_at_ms BIGINT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS proof_draft_cache_expiry_idx
+                        ON proof_draft_cache_entries(expires_at_ms);
                     CREATE TABLE IF NOT EXISTS proof_attestation_entries (
                         key_id TEXT PRIMARY KEY,
                         proof_receipt_id TEXT NOT NULL,
@@ -924,6 +1440,251 @@ class FormalVerificationCache:
 
     def _coerce_key(self, key: ProofCacheKey | Mapping[str, Any]) -> ProofCacheKey:
         return key if isinstance(key, ProofCacheKey) else ProofCacheKey.from_dict(key)
+
+    def _coerce_draft_key(
+        self, key: DraftCacheKey | Mapping[str, Any]
+    ) -> DraftCacheKey:
+        return (
+            key
+            if isinstance(key, DraftCacheKey)
+            else DraftCacheKey.from_dict(key)
+        )
+
+    def _coerce_coordination_key(
+        self,
+        key: ProofCacheKey | DraftCacheKey | Mapping[str, Any],
+    ) -> ProofCacheKey | DraftCacheKey:
+        if isinstance(key, (ProofCacheKey, DraftCacheKey)):
+            return key
+        if not isinstance(key, Mapping):
+            raise ValueError("single-flight key must be a cache key or object")
+        schema = key.get("schema_version", key.get("schema"))
+        if (
+            schema == FORMAL_VERIFICATION_DRAFT_CACHE_KEY_SCHEMA
+            or "goal_digest" in key
+            or "model_route_digest" in key
+        ):
+            return DraftCacheKey.from_dict(key)
+        return ProofCacheKey.from_dict(key)
+
+    def put_draft(
+        self,
+        key: DraftCacheKey | Mapping[str, Any],
+        draft: Any,
+        *,
+        ttl_seconds: int | None = None,
+    ) -> DraftCacheStoreResult:
+        """Atomically persist a bounded, explicitly untrusted model draft.
+
+        Drafts use their own table, schema, key prefix, and API.  Supplying a
+        :class:`ProofReceipt` or any nested proof/authority/completion claim
+        fails closed; this method can never populate ``proof_cache_entries``.
+        """
+
+        cache_key = self._coerce_draft_key(key)
+        try:
+            normalized = _coerce_untrusted_draft(draft)
+        except PermissionError:
+            return DraftCacheStoreResult(
+                False,
+                cache_key,
+                reason_codes=(CacheRejectionReason.DRAFT_TRUST_CLAIM.value,),
+            )
+        except (TypeError, ValueError, ContractValidationError):
+            return DraftCacheStoreResult(
+                False,
+                cache_key,
+                reason_codes=(CacheRejectionReason.DRAFT_MALFORMED.value,),
+            )
+        if _draft_binding_mismatch(cache_key, normalized):
+            return DraftCacheStoreResult(
+                False,
+                cache_key,
+                reason_codes=(
+                    CacheRejectionReason.DRAFT_BINDING_MISMATCH.value,
+                ),
+            )
+        encoded_draft = canonical_json(normalized).encode("utf-8")
+        if len(encoded_draft) > self.max_draft_bytes:
+            return DraftCacheStoreResult(
+                False,
+                cache_key,
+                reason_codes=(CacheRejectionReason.DRAFT_TOO_LARGE.value,),
+            )
+        ttl = (
+            self.default_draft_ttl_seconds
+            if ttl_seconds is None
+            else ttl_seconds
+        )
+        if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl <= 0:
+            raise ValueError("ttl_seconds must be a positive integer")
+        now = self._now_ms()
+        entry = UntrustedDraftCacheEntry.create(
+            cache_key,
+            normalized,
+            created_at_ms=now,
+            expires_at_ms=now + ttl * 1000,
+        )
+        key_json = canonical_json(cache_key.to_dict())
+        entry_json = canonical_json(entry.to_dict())
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                INSERT INTO proof_draft_cache_entries(
+                    key_id, key_json, entry_json, created_at_ms, expires_at_ms
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(key_id) DO UPDATE SET
+                    key_json=excluded.key_json,
+                    entry_json=excluded.entry_json,
+                    created_at_ms=excluded.created_at_ms,
+                    expires_at_ms=excluded.expires_at_ms
+                """,
+                (
+                    cache_key.key_id,
+                    key_json,
+                    entry_json,
+                    entry.created_at_ms,
+                    entry.expires_at_ms,
+                ),
+            )
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return DraftCacheStoreResult(True, cache_key, entry=entry)
+
+    store_draft = put_draft
+
+    def _decode_draft_entry(
+        self,
+        key: DraftCacheKey,
+        row: DuckDBRow,
+    ) -> tuple[UntrustedDraftCacheEntry | None, tuple[str, ...]]:
+        try:
+            stored_key_payload = _strict_json_loads(str(row["key_json"]))
+            stored_payload = _strict_json_loads(str(row["entry_json"]))
+            if not isinstance(stored_key_payload, Mapping) or not isinstance(
+                stored_payload, Mapping
+            ):
+                raise ValueError("draft entry envelope must contain objects")
+            stored_key = DraftCacheKey.from_dict(stored_key_payload)
+            draft_payload = stored_payload.get("draft")
+            if not isinstance(draft_payload, Mapping):
+                raise ValueError("draft entry must contain an object")
+            if stored_payload.get("trust") != "untrusted":
+                raise PermissionError("draft entry changed trust")
+            if stored_payload.get("authoritative") is not False:
+                raise PermissionError("draft entry claims authority")
+            if stored_payload.get("completion_evidence") is not False:
+                raise PermissionError("draft entry claims completion evidence")
+            entry = UntrustedDraftCacheEntry(
+                key=stored_key,
+                draft=draft_payload,
+                created_at_ms=int(stored_payload["created_at_ms"]),
+                expires_at_ms=int(stored_payload["expires_at_ms"]),
+                trust=str(stored_payload["trust"]),
+                entry_digest=str(stored_payload["entry_digest"]),
+            )
+        except PermissionError:
+            return None, (CacheRejectionReason.DRAFT_TRUST_CLAIM.value,)
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            ContractValidationError,
+            json.JSONDecodeError,
+        ):
+            return None, (CacheRejectionReason.DRAFT_MALFORMED.value,)
+        poisoned = (
+            stored_key.key_id != key.key_id
+            or canonical_json(stored_key.to_dict()) != canonical_json(key.to_dict())
+            or str(stored_payload.get("key_id")) != key.key_id
+            or entry.entry_digest != entry.computed_digest
+            or str(row["key_id"]) != key.key_id
+            or int(row["created_at_ms"]) != entry.created_at_ms
+            or int(row["expires_at_ms"]) != entry.expires_at_ms
+        )
+        if _draft_binding_mismatch(key, entry.draft):
+            return None, (
+                CacheRejectionReason.DRAFT_BINDING_MISMATCH.value,
+            )
+        if poisoned:
+            return None, (CacheRejectionReason.DRAFT_POISONED.value,)
+        return entry, ()
+
+    def lookup_draft(
+        self,
+        key: DraftCacheKey | Mapping[str, Any],
+        *,
+        max_age_seconds: int | None = None,
+    ) -> DraftCacheLookupResult:
+        """Return only a current, integrity-checked untrusted draft."""
+
+        if max_age_seconds is not None and (
+            isinstance(max_age_seconds, bool)
+            or not isinstance(max_age_seconds, int)
+            or max_age_seconds < 0
+        ):
+            raise ValueError("max_age_seconds must be a nonnegative integer or None")
+        cache_key = self._coerce_draft_key(key)
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM proof_draft_cache_entries WHERE key_id=?",
+                (cache_key.key_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            return DraftCacheLookupResult(
+                CacheLookupStatus.MISS,
+                cache_key,
+                reason_codes=(CacheRejectionReason.DRAFT_MISS.value,),
+            )
+        entry, reasons = self._decode_draft_entry(cache_key, row)
+        if entry is None:
+            return DraftCacheLookupResult(
+                CacheLookupStatus.REJECTED,
+                cache_key,
+                reason_codes=reasons,
+            )
+        now = self._now_ms()
+        if now >= entry.expires_at_ms or (
+            max_age_seconds is not None
+            and now - entry.created_at_ms > max_age_seconds * 1000
+        ):
+            return DraftCacheLookupResult(
+                CacheLookupStatus.REJECTED,
+                cache_key,
+                entry=entry,
+                reason_codes=(CacheRejectionReason.DRAFT_STALE.value,),
+            )
+        return DraftCacheLookupResult(CacheLookupStatus.HIT, cache_key, entry=entry)
+
+    def get_draft(
+        self,
+        key: DraftCacheKey | Mapping[str, Any],
+        **requirements: Any,
+    ) -> Mapping[str, Any] | None:
+        return self.lookup_draft(key, **requirements).draft
+
+    def delete_draft(
+        self, key: DraftCacheKey | Mapping[str, Any]
+    ) -> bool:
+        cache_key = self._coerce_draft_key(key)
+        connection = self._connect()
+        try:
+            cursor = connection.execute(
+                "DELETE FROM proof_draft_cache_entries WHERE key_id=?",
+                (cache_key.key_id,),
+            )
+            return cursor.rowcount > 0
+        finally:
+            connection.close()
 
     def put(
         self,
@@ -1022,6 +1783,8 @@ class FormalVerificationCache:
         return CacheStoreResult(True, cache_key, entry=entry)
 
     store = put
+    put_receipt = put
+    store_receipt = put
 
     def put_attestation(
         self,
@@ -1661,6 +2424,9 @@ class FormalVerificationCache:
 
         return self.lookup(key, **requirements).receipt
 
+    lookup_receipt = lookup
+    get_receipt = get
+
     def delete(self, key: ProofCacheKey | Mapping[str, Any]) -> bool:
         cache_key = self._coerce_key(key)
         connection = self._connect()
@@ -1681,6 +2447,8 @@ class FormalVerificationCache:
             raise
         finally:
             connection.close()
+
+    delete_receipt = delete
 
     def delete_attestation(
         self, key: ProofCacheKey | Mapping[str, Any] | str
@@ -1729,6 +2497,10 @@ class FormalVerificationCache:
             first = connection.execute(
                 "DELETE FROM proof_cache_entries WHERE expires_at_ms<=?", (now,)
             ).rowcount
+            drafts = connection.execute(
+                "DELETE FROM proof_draft_cache_entries WHERE expires_at_ms<=?",
+                (now,),
+            ).rowcount
             connection.execute(
                 "DELETE FROM proof_flight_outcomes WHERE expires_at_ms<=?", (now,)
             )
@@ -1736,7 +2508,7 @@ class FormalVerificationCache:
                 "DELETE FROM proof_single_flights WHERE expires_at_ms<=?", (now,)
             )
             connection.commit()
-            return first
+            return first + drafts
         except BaseException:
             connection.rollback()
             raise
@@ -1745,14 +2517,14 @@ class FormalVerificationCache:
 
     def acquire_lease(
         self,
-        key: ProofCacheKey | Mapping[str, Any],
+        key: ProofCacheKey | DraftCacheKey | Mapping[str, Any],
         *,
         owner_id: str | None = None,
         lease_seconds: int = DEFAULT_LEASE_SECONDS,
     ) -> SingleFlightLease:
         if isinstance(lease_seconds, bool) or lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
-        cache_key = self._coerce_key(key)
+        cache_key = self._coerce_coordination_key(key)
         owner = (owner_id or f"{os.getpid()}:{threading.get_ident()}").strip()
         if not owner:
             raise ValueError("owner_id must not be empty")
@@ -1844,6 +2616,7 @@ class FormalVerificationCache:
             connection.close()
 
     acquire_single_flight = acquire_lease
+    acquire_draft_lease = acquire_lease
 
     def renew_lease(
         self,
@@ -2031,7 +2804,7 @@ class FormalVerificationCache:
 
     def single_flight(
         self,
-        key: ProofCacheKey | Mapping[str, Any],
+        key: ProofCacheKey | DraftCacheKey | Mapping[str, Any],
         execute: Callable[[], T],
         *,
         owner_id: str | None = None,
@@ -2057,7 +2830,7 @@ class FormalVerificationCache:
             raise ValueError(
                 "wait timeout, poll interval, and outcome TTL must be positive"
             )
-        cache_key = self._coerce_key(key)
+        cache_key = self._coerce_coordination_key(key)
         deadline = time.monotonic() + wait_timeout_seconds
         while True:
             lease = self.acquire_lease(
@@ -2164,6 +2937,33 @@ class FormalVerificationCache:
     execute_single_flight = single_flight
     run_single_flight = single_flight
 
+    def single_flight_draft(
+        self,
+        key: DraftCacheKey | Mapping[str, Any],
+        execute: Callable[[], Any],
+        **coordination: Any,
+    ) -> Mapping[str, Any]:
+        """Share one model draft while enforcing the untrusted-draft contract.
+
+        Validation happens inside the leader execution, before its outcome is
+        published.  Consequently, an authority-claiming payload becomes a
+        shared execution failure and can never be returned to either leader
+        or followers as a reusable draft.
+        """
+
+        if not callable(execute):
+            raise ValueError("execute must be callable")
+
+        def execute_checked() -> dict[str, Any]:
+            return _coerce_untrusted_draft(execute())
+
+        value = self.single_flight(key, execute_checked, **coordination)
+        # Revalidate the decoded outcome as defense in depth against database
+        # tampering or callers reaching this method after a process restart.
+        return _coerce_untrusted_draft(value)
+
+    execute_draft_single_flight = single_flight_draft
+
 
 # Concise compatibility name for callers that already operate in the formal
 # verification package.
@@ -2174,18 +2974,28 @@ TrustAwareProofCache = FormalVerificationCache
 __all__ = [
     "FORMAL_VERIFICATION_CACHE_SCHEMA",
     "FORMAL_VERIFICATION_CACHE_KEY_SCHEMA",
+    "FORMAL_VERIFICATION_DRAFT_CACHE_SCHEMA",
+    "FORMAL_VERIFICATION_DRAFT_CACHE_KEY_SCHEMA",
     "FORMAL_VERIFICATION_FLIGHT_SCHEMA",
     "FORMAL_VERIFICATION_ATTESTATION_SCHEMA",
     "FORMAL_VERIFICATION_ATTESTATION_CACHE_SCHEMA",
     "DEFAULT_CACHE_TTL_SECONDS",
     "DEFAULT_LEASE_SECONDS",
     "DEFAULT_WAIT_TIMEOUT_SECONDS",
+    "DEFAULT_MAX_DRAFT_BYTES",
     "CacheLookupStatus",
     "CacheRejectionReason",
     "CacheRequirements",
     "ProofCacheKey",
     "FormalVerificationCacheKey",
+    "DraftCacheKey",
+    "FormalVerificationDraftCacheKey",
+    "ProofDraftCacheKey",
     "ProofCacheEntry",
+    "UntrustedDraftCacheEntry",
+    "DraftCacheEntry",
+    "DraftCacheLookupResult",
+    "DraftCacheStoreResult",
     "AttestationCacheEntry",
     "CacheLookupResult",
     "CacheStoreResult",
@@ -2200,4 +3010,6 @@ __all__ = [
     "TrustAwareProofCache",
     "build_proof_cache_key",
     "make_proof_cache_key",
+    "build_draft_cache_key",
+    "make_draft_cache_key",
 ]

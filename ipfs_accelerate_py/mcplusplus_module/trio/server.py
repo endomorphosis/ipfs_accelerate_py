@@ -31,14 +31,21 @@ For Hypercorn deployment:
 from __future__ import annotations
 
 import json
+import inspect
 import logging
 import os
 import time
+from functools import partial
 from collections import defaultdict
 from typing import Any, Optional
 from dataclasses import dataclass, field
 
 import trio
+
+try:
+    from starlette.requests import Request
+except ImportError:  # pragma: no cover - only used when ASGI extras are absent
+    Request = Any  # type: ignore[misc,assignment]
 
 from ..cid_ucan import compute_cid
 
@@ -368,22 +375,37 @@ class TrioMCPServer:
         logger.info("Registering P2P tools for Trio server")
 
         try:
+            from ipfs_accelerate_py.mcp_server.registration_adapter import LegacyCollectorMCP
+
             register_p2p_taskqueue_tools, register_p2p_workflow_tools = self._resolve_p2p_registrars()
+            collector = LegacyCollectorMCP()
 
             # Register tools based on configuration
             if self.config.enable_taskqueue_tools and self.config.enable_workflow_tools:
-                register_p2p_taskqueue_tools(self.mcp)
-                register_p2p_workflow_tools(self.mcp)
+                register_p2p_taskqueue_tools(collector)
+                register_p2p_workflow_tools(collector)
                 logger.info("Registered all 20 P2P tools")
             else:
                 # Register selectively
                 if self.config.enable_taskqueue_tools:
-                    register_p2p_taskqueue_tools(self.mcp)
+                    register_p2p_taskqueue_tools(collector)
                     logger.info("Registered 14 taskqueue tools")
 
                 if self.config.enable_workflow_tools:
-                    register_p2p_workflow_tools(self.mcp)
+                    register_p2p_workflow_tools(collector)
                     logger.info("Registered 6 workflow tools")
+
+            if self.mcp is None:
+                raise RuntimeError("MCP server not initialized")
+            for record in collector.tools.values():
+                self.mcp.register_tool(
+                    name=record.name,
+                    function=record.function,
+                    description=record.description,
+                    input_schema=record.input_schema,
+                    execution_context=record.execution_context or "server",
+                    tags=record.tags,
+                )
 
         except Exception as e:
             logger.error(f"Error registering P2P tools: {e}")
@@ -1179,7 +1201,16 @@ class TrioMCPServer:
             try:
                 from ..p2p_transport import get_p2p_node
                 node = get_p2p_node()
-                await node.start(self._nursery)
+                p2p_startup_timeout = max(
+                    0.1,
+                    float(os.environ.get("MCPPP_P2P_STARTUP_TIMEOUT_S", "5")),
+                )
+                with trio.move_on_after(p2p_startup_timeout) as startup_scope:
+                    await node.start(self._nursery)
+                if startup_scope.cancelled_caught:
+                    raise TimeoutError(
+                        f"P2P node startup exceeded {p2p_startup_timeout}s"
+                    )
 
                 # Wait briefly for P2P to become operational
                 deadline = time.time() + 5.0
@@ -1194,14 +1225,26 @@ class TrioMCPServer:
                     tools_list = list(self.mcp.tools.keys())
 
                     async def _handle_p2p_tool(method, params):
+                        call_params = dict(params or {})
+                        sender = call_params.pop("_sender_peer_id", "")
                         # Handle service announcements
                         if method == "_mcppp_service_announce":
                             from ..service_registry import get_service_registry
                             registry = get_service_registry()
-                            sender = params.get("_sender_peer_id", "")
-                            return registry.handle_announce(params, sender_peer_id=sender)
+                            return registry.handle_announce(
+                                call_params, sender_peer_id=sender
+                            )
                         if method in self.mcp.tools:
-                            return await self.mcp.tools[method](**params)
+                            entry = self.mcp.tools[method]
+                            tool = entry.get("function") if isinstance(entry, dict) else entry
+                            if not callable(tool):
+                                raise TypeError(f"Tool is not callable: {method}")
+                            if inspect.iscoroutinefunction(tool):
+                                return await tool(**call_params)
+                            result = await _to_thread(lambda: tool(**call_params))
+                            if inspect.isawaitable(result):
+                                return await result
+                            return result
                         raise ValueError(f"Tool not found: {method}")
                     node.set_tool_handler(_handle_p2p_tool)
 
@@ -1209,12 +1252,27 @@ class TrioMCPServer:
                     try:
                         from ..service_registry import get_service_registry, ServiceRecord
                         registry = get_service_registry()
+                        served_models = []
+                        try:
+                            from ...model_manager import get_default_model_manager
+                            served_models = await _to_thread(
+                                lambda: get_default_model_manager().list_served_models()
+                            )
+                        except Exception as model_exc:
+                            logger.debug("Served-model discovery during announce: %s", model_exc)
                         registry.register_local(ServiceRecord(
                             service_name="ipfs-accelerate-mcp",
                             peer_id=node.peer_id or "",
                             multiaddrs=node.multiaddrs or [],
                             tools=tools_list,
-                            metadata={"port": self.config.port, "server": self.config.name},
+                            metadata={
+                                "port": self.config.port,
+                                "server": self.config.name,
+                                "models": [
+                                    model.get("id") for model in served_models if model.get("id")
+                                ],
+                                "served_models": served_models,
+                            },
                         ))
                         # Start service advertise loop
                         self._nursery.start_soon(registry.advertise_loop, node, self._nursery)
@@ -1246,6 +1304,13 @@ class TrioMCPServer:
                     discovered = await node.discover_peers()
                     if discovered:
                         logger.info(f"Discovered {len(discovered)} peers via mDNS")
+                        for peer in discovered:
+                            if peer.peer_id == node.peer_id:
+                                continue
+                            for multiaddr in peer.multiaddrs:
+                                await node._connect_bootstrap(multiaddr)
+                                if peer.peer_id in node._peers:
+                                    break
                         backoff = 5.0  # Reset backoff on success
                 except Exception as e:
                     logger.debug(f"Peer discovery cycle: {e}")
@@ -1428,10 +1493,26 @@ class TrioMCPServer:
                     hconfig = HypercornConfig()
                     hconfig.bind = [f"{self.config.host}:{self.config.port}"]
                     hconfig.worker_class = "trio"
+                    enable_https = os.environ.get("MCP_ENABLE_HTTPS", "").lower() in {
+                        "1", "true", "yes", "on"
+                    }
+                    if enable_https:
+                        certfile = os.environ.get("MCP_SSL_CERTFILE", "").strip()
+                        keyfile = os.environ.get("MCP_SSL_KEYFILE", "").strip()
+                        if not certfile or not keyfile:
+                            raise RuntimeError(
+                                "MCP_ENABLE_HTTPS is set but MCP_SSL_CERTFILE or "
+                                "MCP_SSL_KEYFILE is missing"
+                            )
+                        hconfig.certfile = certfile
+                        hconfig.keyfile = keyfile
 
                     logger.info(
-                        "TrioMCPServer serving via Hypercorn at http://%s:%s%s",
-                        self.config.host, self.config.port, self.config.mount_path,
+                        "TrioMCPServer serving via Hypercorn at %s://%s:%s%s",
+                        "https" if enable_https else "http",
+                        self.config.host,
+                        self.config.port,
+                        self.config.mount_path,
                     )
                     # Signal ready just before serving (Hypercorn binds synchronously)
                     task_status.started()
@@ -1450,8 +1531,11 @@ class TrioMCPServer:
                 logger.info("TrioMCPServer cancelled")
                 raise
             finally:
-                # Run shutdown hook
-                await self._shutdown()
+                # Cancellation of the serving nursery must not interrupt cleanup
+                # before the server's externally visible lifecycle state resets.
+                self._started = False
+                with trio.CancelScope(shield=True):
+                    await self._shutdown()
                 self._nursery = None
 
     async def _serve_jsonrpc_trio(self, nursery: trio.Nursery, task_status=None) -> None:
@@ -1466,7 +1550,7 @@ class TrioMCPServer:
         async def handle_connection(stream: trio.SocketStream) -> None:
             try:
                 data = b""
-                while not data.endswith(b"\r\n\r\n"):
+                while b"\r\n\r\n" not in data:
                     chunk = await stream.receive_some(4096)
                     if not chunk:
                         return
@@ -1529,7 +1613,14 @@ class TrioMCPServer:
                     req = _json.loads(body.decode("utf-8"))
                     async def _exec(m, p):
                         if hasattr(self.mcp, 'tools') and m in self.mcp.tools:
-                            return await self.mcp.tools[m](**p)
+                            entry = self.mcp.tools[m]
+                            tool = entry.get("function") if isinstance(entry, dict) else entry
+                            if not callable(tool):
+                                raise TypeError(f"Tool is not callable: {m}")
+                            result = tool(**p)
+                            if inspect.isawaitable(result):
+                                return await result
+                            return result
                         raise ValueError(f"Tool not found: {m}")
                     envelope = await execute_with_envelope(
                         method=req.get("method", ""), params=req.get("params", {}),
@@ -1558,7 +1649,9 @@ class TrioMCPServer:
                 await stream.aclose()
 
         listeners = await nursery.start(
-            trio.serve_tcp, handle_connection, self.config.port, host=self.config.host
+            partial(trio.serve_tcp, host=self.config.host),
+            handle_connection,
+            self.config.port,
         )
         logger.info(f"Trio TCP server listening on {self.config.host}:{self.config.port}")
         self._started = True
@@ -1651,7 +1744,14 @@ class TrioMCPServer:
                 try:
                     import inspect
                     exec_timeout = float(os.environ.get("MCPPP_EXEC_TIMEOUT_S", "30"))
-                    tool_fn = self.mcp.tools[tool_name]
+                    tool_entry = self.mcp.tools[tool_name]
+                    tool_fn = (
+                        tool_entry.get("function")
+                        if isinstance(tool_entry, dict)
+                        else tool_entry
+                    )
+                    if not callable(tool_fn):
+                        raise TypeError(f"Tool is not callable: {tool_name}")
                     with trio.move_on_after(exec_timeout) as cancel_scope:
                         if inspect.iscoroutinefunction(tool_fn):
                             result = await tool_fn(**arguments)
@@ -1675,7 +1775,14 @@ class TrioMCPServer:
             try:
                 import inspect
                 from ..cid_ucan import execute_with_envelope
-                tool_fn = self.mcp.tools[tool_name]
+                tool_entry = self.mcp.tools[tool_name]
+                tool_fn = (
+                    tool_entry.get("function")
+                    if isinstance(tool_entry, dict)
+                    else tool_entry
+                )
+                if not callable(tool_fn):
+                    raise TypeError(f"Tool is not callable: {tool_name}")
 
                 async def _exec(method_name, p):
                     if inspect.iscoroutinefunction(tool_fn):

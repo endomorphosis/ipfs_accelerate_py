@@ -8,7 +8,10 @@ that any proposition has been proved.
 All optional integrations are inspected through package metadata, executable
 lookup, environment configuration, and bounded filesystem checks.  Provider
 modules are never imported, which keeps importing :mod:`agent_supervisor`
-safe in minimal installations.
+safe in minimal installations.  An embedding application may explicitly
+enable a small, independently bounded inference canary through an injected
+callback; it is disabled by default and can report route health but never
+proof evidence.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.machinery
 import json
+import math
 import os
 import shutil
 import threading
@@ -37,6 +41,300 @@ PROOF_PROVIDER_CAPABILITY_SCHEMA_VERSION = (
 DEFAULT_CAPABILITY_CACHE_TTL_SECONDS = 300.0
 DEFAULT_CAPABILITY_PROBE_TIMEOUT_SECONDS = 2.0
 DEFAULT_CAPABILITY_PROBE_MAX_CHECKS = 96
+DEFAULT_LEANSTRAL_CANARY_TIMEOUT_SECONDS = 0.5
+DEFAULT_LEANSTRAL_CANARY_INPUT_TOKENS = 8
+DEFAULT_LEANSTRAL_CANARY_OUTPUT_TOKENS = 2
+DEFAULT_LEANSTRAL_CANARY_MAX_RESPONSE_BYTES = 4096
+
+
+class LeanstralCapability(str, Enum):
+    """Independently routable surfaces of the Leanstral proof-draft lane."""
+
+    ROUTE_READINESS = "route_readiness"
+    LOCAL_MODEL_EXECUTION = "local_model_execution"
+    LEGAL_LANGUAGE_PREPROCESSING = "legal_language_preprocessing"
+    CODEC_AVAILABILITY = "codec_availability"
+    KERNEL_VERIFICATION = "kernel_verification"
+
+
+_CONTEXT_LIMIT_KEYS = (
+    "context_window_tokens",
+    "context_limit_tokens",
+    "max_context_tokens",
+    "max_prompt_tokens",
+    "context_length",
+    "max_position_embeddings",
+    "max_sequence_length",
+    "n_ctx",
+    "limit",
+)
+
+
+def _context_limit_from(
+    source: int | Mapping[str, Any] | None,
+    *,
+    source_name: str,
+    _depth: int = 0,
+) -> int | None:
+    if source is None:
+        return None
+    if isinstance(source, bool):
+        raise ValueError(f"{source_name} context limit must be a positive integer")
+    if isinstance(source, int):
+        if source <= 0:
+            raise ValueError(f"{source_name} context limit must be a positive integer")
+        return source
+    if not isinstance(source, Mapping):
+        raise ValueError(f"{source_name} context metadata must be an object or integer")
+    if _depth >= 4:
+        return None
+
+    for key in _CONTEXT_LIMIT_KEYS:
+        if key not in source or source[key] is None:
+            continue
+        value = source[key]
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(
+                f"{source_name}.{key} context limit must be a positive integer"
+            )
+        return value
+
+    # Common router responses nest the actual limits one level below the
+    # selected route/model.  Keep traversal bounded and deterministic.
+    for key in ("limits", "capabilities", "metadata", "config"):
+        nested = source.get(key)
+        if isinstance(nested, Mapping):
+            value = _context_limit_from(
+                nested,
+                source_name=f"{source_name}.{key}",
+                _depth=_depth + 1,
+            )
+            if value is not None:
+                return value
+    return None
+
+
+@dataclass(frozen=True)
+class EffectiveContextLimit:
+    """Conservative context budget derived from every configured authority.
+
+    A missing source is represented as ``None`` and is not silently treated as
+    unlimited.  The smallest reported limit wins, after which output reserve
+    and a scheduling safety margin are removed.
+    """
+
+    route_context_limit_tokens: int | None
+    server_context_limit_tokens: int | None
+    model_context_limit_tokens: int | None
+    output_reserve_tokens: int
+    safety_margin_tokens: int
+    raw_context_limit_tokens: int | None
+    effective_context_limit_tokens: int | None
+    limiting_source: str | None
+
+    @property
+    def effective_context_tokens(self) -> int | None:
+        """Compatibility spelling used by scheduler/provider metadata."""
+
+        return self.effective_context_limit_tokens
+
+    @property
+    def available(self) -> bool:
+        return (
+            self.effective_context_limit_tokens is not None
+            and self.effective_context_limit_tokens > 0
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "route_context_limit_tokens": self.route_context_limit_tokens,
+            "server_context_limit_tokens": self.server_context_limit_tokens,
+            "model_context_limit_tokens": self.model_context_limit_tokens,
+            "output_reserve_tokens": self.output_reserve_tokens,
+            "safety_margin_tokens": self.safety_margin_tokens,
+            "raw_context_limit_tokens": self.raw_context_limit_tokens,
+            "effective_context_limit_tokens": self.effective_context_limit_tokens,
+            "limiting_source": self.limiting_source,
+        }
+
+
+def discover_effective_context_limit(
+    *,
+    configured_route: int | Mapping[str, Any] | None = None,
+    server: int | Mapping[str, Any] | None = None,
+    model: int | Mapping[str, Any] | None = None,
+    output_reserve_tokens: int = 0,
+    safety_margin_tokens: int = 0,
+) -> EffectiveContextLimit:
+    """Discover the safe prompt limit for a configured inference route.
+
+    The function is metadata-only and accepts either direct integer limits or
+    the usual route/server/model metadata objects.  It never probes a network
+    endpoint or loads model configuration.
+    """
+
+    for name, value in (
+        ("output_reserve_tokens", output_reserve_tokens),
+        ("safety_margin_tokens", safety_margin_tokens),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{name} must be a non-negative integer")
+
+    limits = {
+        "configured_route": _context_limit_from(
+            configured_route, source_name="configured_route"
+        ),
+        "server": _context_limit_from(server, source_name="server"),
+        "model": _context_limit_from(model, source_name="model"),
+    }
+    present = tuple((name, value) for name, value in limits.items() if value is not None)
+    if not present:
+        raw_limit = None
+        limiting_source = None
+        effective_limit = None
+    else:
+        limiting_source, raw_limit = min(present, key=lambda item: (item[1], item[0]))
+        effective_limit = max(
+            0, raw_limit - output_reserve_tokens - safety_margin_tokens
+        )
+    return EffectiveContextLimit(
+        route_context_limit_tokens=limits["configured_route"],
+        server_context_limit_tokens=limits["server"],
+        model_context_limit_tokens=limits["model"],
+        output_reserve_tokens=output_reserve_tokens,
+        safety_margin_tokens=safety_margin_tokens,
+        raw_context_limit_tokens=raw_limit,
+        effective_context_limit_tokens=effective_limit,
+        limiting_source=limiting_source,
+    )
+
+
+@dataclass(frozen=True)
+class InferenceCanaryRequest:
+    """Minimal bounded request passed to an opt-in route diagnostic."""
+
+    route: str
+    model: str | None
+    input_text: str
+    max_input_tokens: int
+    max_output_tokens: int
+    timeout_seconds: float
+
+    def __post_init__(self) -> None:
+        route = str(self.route).strip()
+        input_text = str(self.input_text)
+        if not route:
+            raise ValueError("inference canary route must not be empty")
+        if not input_text:
+            raise ValueError("inference canary input_text must not be empty")
+        for name in ("max_input_tokens", "max_output_tokens"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"inference canary {name} must be a positive integer")
+        if (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, (int, float))
+            or not math.isfinite(float(self.timeout_seconds))
+            or self.timeout_seconds <= 0
+        ):
+            raise ValueError("inference canary timeout_seconds must be finite and positive")
+        object.__setattr__(self, "route", route)
+        object.__setattr__(self, "model", str(self.model).strip() if self.model else None)
+        object.__setattr__(self, "input_text", input_text)
+        object.__setattr__(self, "timeout_seconds", float(self.timeout_seconds))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "route": self.route,
+            "model": self.model,
+            "input_text": self.input_text,
+            "max_input_tokens": self.max_input_tokens,
+            "max_output_tokens": self.max_output_tokens,
+            "timeout_seconds": self.timeout_seconds,
+        }
+
+
+@dataclass(frozen=True)
+class InferenceCanaryResult:
+    """Normalized health-only result of an optional inference canary."""
+
+    status: CapabilityHealth
+    reason: str
+    duration_seconds: float
+    response_bytes: int = 0
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    proof_attempted: bool = field(default=False, init=False)
+    proof_success: bool = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        status = CapabilityHealth(str(getattr(self.status, "value", self.status)))
+        if status not in {
+            CapabilityHealth.AVAILABLE,
+            CapabilityHealth.DEGRADED,
+            CapabilityHealth.UNAVAILABLE,
+            CapabilityHealth.DISABLED,
+        }:
+            raise ValueError(
+                "inference canary status must be available, degraded, unavailable, "
+                "or disabled"
+            )
+        reason = str(self.reason).strip()
+        if not reason:
+            raise ValueError("inference canary reason must not be empty")
+        if (
+            isinstance(self.duration_seconds, bool)
+            or not isinstance(self.duration_seconds, (int, float))
+            or not math.isfinite(float(self.duration_seconds))
+            or self.duration_seconds < 0
+        ):
+            raise ValueError(
+                "inference canary duration_seconds must be finite and non-negative"
+            )
+        if (
+            isinstance(self.response_bytes, bool)
+            or not isinstance(self.response_bytes, int)
+            or self.response_bytes < 0
+        ):
+            raise ValueError("inference canary response_bytes must be non-negative")
+        try:
+            metadata = json.loads(
+                json.dumps(
+                    dict(self.metadata),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                )
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "inference canary metadata must contain strict JSON values"
+            ) from exc
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "duration_seconds", float(self.duration_seconds))
+        object.__setattr__(self, "metadata", metadata)
+
+    @property
+    def passed(self) -> bool:
+        return self.status in {
+            CapabilityHealth.AVAILABLE,
+            CapabilityHealth.VERIFIED,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status.value,
+            "reason": self.reason,
+            "duration_seconds": self.duration_seconds,
+            "response_bytes": self.response_bytes,
+            "metadata": dict(self.metadata),
+            "proof_attempted": False,
+            "proof_success": False,
+        }
+
+
+InferenceCanary = Callable[[InferenceCanaryRequest], Any]
 
 
 class CapabilityHealth(str, Enum):
@@ -359,12 +657,41 @@ class FormalVerificationProviderCapability:
         provider_checks = self.health_for(CapabilityDimension.PROVIDER)
         if not provider_checks:
             raise ValueError(f"provider {provider_id!r} has no provider health check")
+        if provider_id == "leanstral":
+            tagged = tuple(
+                str(check.metadata["leanstral_capability"])
+                for check in provider_checks
+                if "leanstral_capability" in check.metadata
+            )
+            expected = {capability.value for capability in LeanstralCapability}
+            if len(tagged) != len(expected) or set(tagged) != expected:
+                raise ValueError(
+                    "leanstral provider must report each independent capability "
+                    "exactly once"
+                )
 
     def health_for(
         self, dimension: CapabilityDimension | str
     ) -> tuple[CapabilityHealthCheck, ...]:
         normalized = CapabilityDimension(str(getattr(dimension, "value", dimension)))
         return tuple(check for check in self.checks if check.dimension is normalized)
+
+    def leanstral_capability(
+        self, capability: LeanstralCapability | str
+    ) -> CapabilityHealthCheck:
+        """Return one independent Leanstral surface from the aggregate row."""
+
+        if self.provider_id != "leanstral":
+            raise ValueError(
+                "independent Leanstral capabilities exist only on the leanstral provider"
+            )
+        normalized = LeanstralCapability(
+            str(getattr(capability, "value", capability))
+        )
+        for check in self.provider_health:
+            if check.metadata.get("leanstral_capability") == normalized.value:
+                return check
+        raise KeyError(f"Leanstral capability was not reported: {normalized.value}")
 
     @property
     def provider_health(self) -> tuple[CapabilityHealthCheck, ...]:
@@ -501,6 +828,20 @@ class FormalVerificationProbeConfig:
     max_checks: int = DEFAULT_CAPABILITY_PROBE_MAX_CHECKS
     spacy_model: str = "en_core_web_sm"
     leanstral_model_path: str | None = None
+    leanstral_route: str | Mapping[str, Any] = "leanstral_local"
+    leanstral_server: int | Mapping[str, Any] | None = None
+    leanstral_model: int | Mapping[str, Any] | None = None
+    leanstral_output_reserve_tokens: int = 0
+    leanstral_safety_margin_tokens: int = 0
+    run_leanstral_inference_canary: bool = False
+    leanstral_canary_timeout_seconds: float = (
+        DEFAULT_LEANSTRAL_CANARY_TIMEOUT_SECONDS
+    )
+    leanstral_canary_input_tokens: int = DEFAULT_LEANSTRAL_CANARY_INPUT_TOKENS
+    leanstral_canary_output_tokens: int = DEFAULT_LEANSTRAL_CANARY_OUTPUT_TOKENS
+    leanstral_canary_max_response_bytes: int = (
+        DEFAULT_LEANSTRAL_CANARY_MAX_RESPONSE_BYTES
+    )
     groth16_artifacts_path: str | None = None
     provekit_artifacts_path: str | None = None
 
@@ -513,6 +854,98 @@ class FormalVerificationProbeConfig:
             raise ValueError("max_checks must be positive")
         if not str(self.spacy_model).strip():
             raise ValueError("spacy_model must not be empty")
+        if not isinstance(self.run_leanstral_inference_canary, bool):
+            raise ValueError("run_leanstral_inference_canary must be a boolean")
+        if (
+            isinstance(self.leanstral_canary_timeout_seconds, bool)
+            or not isinstance(self.leanstral_canary_timeout_seconds, (int, float))
+            or not math.isfinite(float(self.leanstral_canary_timeout_seconds))
+            or self.leanstral_canary_timeout_seconds <= 0
+        ):
+            raise ValueError("leanstral_canary_timeout_seconds must be finite and positive")
+        for name in (
+            "leanstral_canary_input_tokens",
+            "leanstral_canary_output_tokens",
+            "leanstral_canary_max_response_bytes",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        discover_effective_context_limit(
+            configured_route=(
+                self.leanstral_route
+                if isinstance(self.leanstral_route, Mapping)
+                else None
+            ),
+            server=self.leanstral_server,
+            model=self.leanstral_model,
+            output_reserve_tokens=self.leanstral_output_reserve_tokens,
+            safety_margin_tokens=self.leanstral_safety_margin_tokens,
+        )
+        if isinstance(self.leanstral_route, str):
+            route = self.leanstral_route.strip()
+            if not route:
+                raise ValueError("leanstral_route must not be empty")
+            object.__setattr__(self, "leanstral_route", route)
+        elif isinstance(self.leanstral_route, Mapping):
+            route_payload = dict(self.leanstral_route)
+            route_id = str(
+                route_payload.get(
+                    "route_id",
+                    route_payload.get(
+                        "provider", route_payload.get("route", "")
+                    ),
+                )
+            ).strip()
+            if not route_id:
+                raise ValueError(
+                    "leanstral_route metadata must identify route_id, provider, or route"
+                )
+            object.__setattr__(self, "leanstral_route", route_payload)
+        else:
+            raise ValueError("leanstral_route must be a route name or object")
+        object.__setattr__(
+            self,
+            "leanstral_canary_timeout_seconds",
+            float(self.leanstral_canary_timeout_seconds),
+        )
+
+    @property
+    def leanstral_route_id(self) -> str:
+        if isinstance(self.leanstral_route, str):
+            return self.leanstral_route
+        return str(
+            self.leanstral_route.get(
+                "route_id",
+                self.leanstral_route.get(
+                    "provider", self.leanstral_route.get("route", "")
+                ),
+            )
+        ).strip()
+
+    @property
+    def leanstral_model_id(self) -> str | None:
+        if not isinstance(self.leanstral_model, Mapping):
+            return None
+        for key in ("model_id", "model", "name"):
+            value = str(self.leanstral_model.get(key, "")).strip()
+            if value:
+                return value
+        return None
+
+    @property
+    def leanstral_context_limit(self) -> EffectiveContextLimit:
+        return discover_effective_context_limit(
+            configured_route=(
+                self.leanstral_route
+                if isinstance(self.leanstral_route, Mapping)
+                else None
+            ),
+            server=self.leanstral_server,
+            model=self.leanstral_model,
+            output_reserve_tokens=self.leanstral_output_reserve_tokens,
+            safety_margin_tokens=self.leanstral_safety_margin_tokens,
+        )
 
 
 PackageFinder = Callable[[str], Any]
@@ -555,6 +988,7 @@ class FormalVerificationCapabilityProbe:
         find_spec: PackageFinder | None = None,
         which: ExecutableFinder | None = None,
         distribution_version: DistributionVersionFinder | None = None,
+        inference_canary: InferenceCanary | None = None,
         environ: Mapping[str, str] | None = None,
         monotonic: Callable[[], float] | None = None,
         wall_clock: Callable[[], float] | None = None,
@@ -565,6 +999,7 @@ class FormalVerificationCapabilityProbe:
         self._distribution_version = (
             distribution_version or importlib.metadata.version
         )
+        self._inference_canary = inference_canary
         self._environ = environ if environ is not None else os.environ
         self._monotonic = monotonic or time.monotonic
         self._wall_clock = wall_clock or time.time
@@ -658,6 +1093,7 @@ class FormalVerificationCapabilityProbe:
         self,
         function: Callable[..., Any],
         *args: Any,
+        timeout_seconds: float | None = None,
     ) -> tuple[bool, Any, BaseException | None]:
         """Run a metadata operation without letting it exceed the report budget.
 
@@ -667,6 +1103,8 @@ class FormalVerificationCapabilityProbe:
         """
 
         remaining = self._deadline - self._monotonic()
+        if timeout_seconds is not None:
+            remaining = min(remaining, timeout_seconds)
         if remaining <= 0:
             return False, None, TimeoutError("capability probe time budget exhausted")
 
@@ -1034,6 +1472,211 @@ class FormalVerificationCapabilityProbe:
             checks=tuple(checks),
         )
 
+    @staticmethod
+    def _leanstral_capability_check(
+        capability: LeanstralCapability,
+        status: CapabilityHealth,
+        reason: str,
+        *,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> CapabilityHealthCheck:
+        names = {
+            LeanstralCapability.ROUTE_READINESS: "Leanstral route readiness",
+            LeanstralCapability.LOCAL_MODEL_EXECUTION: "local model execution",
+            LeanstralCapability.LEGAL_LANGUAGE_PREPROCESSING: (
+                "legal-language preprocessing"
+            ),
+            LeanstralCapability.CODEC_AVAILABILITY: "codec availability",
+            LeanstralCapability.KERNEL_VERIFICATION: "kernel verification",
+        }
+        details = {"leanstral_capability": capability.value}
+        details.update(dict(metadata or {}))
+        return CapabilityHealthCheck(
+            dimension=CapabilityDimension.PROVIDER,
+            name=names[capability],
+            status=status,
+            reason=reason,
+            required=capability is LeanstralCapability.ROUTE_READINESS,
+            metadata=details,
+        )
+
+    def _run_leanstral_inference_canary(self) -> InferenceCanaryResult:
+        """Run the explicitly enabled diagnostic under hard request bounds."""
+
+        if not self.config.run_leanstral_inference_canary:
+            return InferenceCanaryResult(
+                status=CapabilityHealth.DISABLED,
+                reason="bounded inference canary is disabled by configuration",
+                duration_seconds=0.0,
+                metadata={"enabled": False},
+            )
+        if self._inference_canary is None:
+            return InferenceCanaryResult(
+                status=CapabilityHealth.UNAVAILABLE,
+                reason=(
+                    "bounded inference canary was enabled but no diagnostic callback "
+                    "was supplied"
+                ),
+                duration_seconds=0.0,
+                metadata={"enabled": True, "callback_configured": False},
+            )
+        limited = self._budget_reason()
+        if limited is not None:
+            return InferenceCanaryResult(
+                status=CapabilityHealth.UNAVAILABLE,
+                reason=limited,
+                duration_seconds=0.0,
+                metadata={"enabled": True, "probe_limited": True},
+            )
+
+        request = InferenceCanaryRequest(
+            route=self.config.leanstral_route_id,
+            model=self.config.leanstral_model_id,
+            input_text="Reply with OK.",
+            max_input_tokens=self.config.leanstral_canary_input_tokens,
+            max_output_tokens=self.config.leanstral_canary_output_tokens,
+            timeout_seconds=self.config.leanstral_canary_timeout_seconds,
+        )
+        started = self._monotonic()
+        completed, raw_result, error = self._bounded_call(
+            self._inference_canary,
+            request,
+            timeout_seconds=self.config.leanstral_canary_timeout_seconds,
+        )
+        duration = max(0.0, self._monotonic() - started)
+        base_metadata = {
+            "enabled": True,
+            "callback_configured": True,
+            "route": request.route,
+            "model": request.model,
+            "max_input_tokens": request.max_input_tokens,
+            "max_output_tokens": request.max_output_tokens,
+            "timeout_seconds": request.timeout_seconds,
+        }
+        if not completed:
+            return InferenceCanaryResult(
+                status=CapabilityHealth.UNAVAILABLE,
+                reason=f"bounded inference canary timed out safely: {error}",
+                duration_seconds=duration,
+                metadata={**base_metadata, "probe_limited": True},
+            )
+        if error is not None:
+            return InferenceCanaryResult(
+                status=CapabilityHealth.UNAVAILABLE,
+                reason=(
+                    "bounded inference canary failed safely: "
+                    f"{type(error).__name__}: {error}"
+                ),
+                duration_seconds=duration,
+                metadata=base_metadata,
+            )
+        succeeded = False
+        response: Any = None
+        result_metadata: dict[str, Any] = {}
+        supplied_reason: str | None = None
+        supplied_response_bytes: int | None = None
+        if isinstance(raw_result, InferenceCanaryResult):
+            succeeded = raw_result.passed
+            supplied_reason = raw_result.reason
+            supplied_response_bytes = raw_result.response_bytes
+            for key in (
+                "input_tokens",
+                "output_tokens",
+                "status_code",
+                "backend_version",
+            ):
+                value = raw_result.metadata.get(key)
+                if (
+                    key in {"input_tokens", "output_tokens", "status_code"}
+                    and isinstance(value, int)
+                    and not isinstance(value, bool)
+                    and value >= 0
+                ):
+                    result_metadata[key] = value
+                elif key == "backend_version" and isinstance(value, str):
+                    result_metadata[key] = value
+        elif isinstance(raw_result, bool):
+            succeeded = raw_result
+        elif isinstance(raw_result, str):
+            response = raw_result
+            succeeded = bool(raw_result.strip())
+        elif isinstance(raw_result, Mapping):
+            for key in ("ok", "success", "available", "passed"):
+                if key in raw_result:
+                    succeeded = raw_result[key] is True
+                    break
+            response = raw_result.get(
+                "output", raw_result.get("text", raw_result.get("response"))
+            )
+            if not any(
+                key in raw_result
+                for key in ("ok", "success", "available", "passed")
+            ):
+                succeeded = isinstance(response, str) and bool(response.strip())
+            for key in ("input_tokens", "output_tokens", "status_code"):
+                value = raw_result.get(key)
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    result_metadata[key] = value
+
+        token_bounds = (
+            ("input_tokens", request.max_input_tokens),
+            ("output_tokens", request.max_output_tokens),
+        )
+        for token_name, maximum in token_bounds:
+            reported = result_metadata.get(token_name)
+            if isinstance(reported, int) and reported > maximum:
+                return InferenceCanaryResult(
+                    status=CapabilityHealth.UNAVAILABLE,
+                    reason=(
+                        f"bounded inference canary exceeded its {token_name} limit "
+                        f"({reported} > {maximum})"
+                    ),
+                    duration_seconds=duration,
+                    response_bytes=supplied_response_bytes or 0,
+                    metadata={**result_metadata, **base_metadata},
+                )
+
+        if supplied_response_bytes is not None:
+            response_bytes = supplied_response_bytes
+        elif isinstance(response, bytes):
+            response_bytes = len(response)
+        elif response is None:
+            response_bytes = 0
+        else:
+            response_bytes = len(str(response).encode("utf-8"))
+        if response_bytes > self.config.leanstral_canary_max_response_bytes:
+            return InferenceCanaryResult(
+                status=CapabilityHealth.UNAVAILABLE,
+                reason=(
+                    "bounded inference canary exceeded its response-size limit "
+                    f"({response_bytes} > "
+                    f"{self.config.leanstral_canary_max_response_bytes} bytes)"
+                ),
+                duration_seconds=duration,
+                response_bytes=response_bytes,
+                metadata={**result_metadata, **base_metadata},
+            )
+        if not succeeded:
+            return InferenceCanaryResult(
+                status=CapabilityHealth.UNAVAILABLE,
+                reason=supplied_reason
+                or "bounded inference canary returned no successful health response",
+                duration_seconds=duration,
+                response_bytes=response_bytes,
+                metadata={**result_metadata, **base_metadata},
+            )
+        return InferenceCanaryResult(
+            status=CapabilityHealth.AVAILABLE,
+            reason=supplied_reason
+            or (
+                "bounded inference canary accepted a health response; no proof was "
+                "requested or accepted"
+            ),
+            duration_seconds=duration,
+            response_bytes=response_bytes,
+            metadata={**result_metadata, **base_metadata},
+        )
+
     # -- provider families ------------------------------------------------
 
     def _probe_hammer(self) -> FormalVerificationProviderCapability:
@@ -1339,29 +1982,159 @@ class FormalVerificationCapabilityProbe:
                 "a local kernel check"
             ),
         )
-        inference_ready = (
-            adapter.available
-            and model_service.available
-            and package.available
-            and codec.available
-            and spacy.available
-            and spacy_model.available
-            and model.available
+        canary = self._run_leanstral_inference_canary()
+        canary_check = CapabilityHealthCheck(
+            dimension=CapabilityDimension.PROVIDER,
+            name="bounded inference canary",
+            status=canary.status,
+            reason=canary.reason,
+            metadata=canary.to_dict(),
+        )
+
+        context_limit = self.config.leanstral_context_limit
+        context_metadata = context_limit.to_dict()
+        context_metadata["route_id"] = self.config.leanstral_route_id
+
+        if not adapter.available or not model_service.available:
+            route_status = CapabilityHealth.UNAVAILABLE
+            route_reason = (
+                "the supervisor adapter and llm_router model service are both "
+                "required for the configured Leanstral route"
+            )
+        elif (
+            context_limit.effective_context_limit_tokens is not None
+            and context_limit.effective_context_limit_tokens <= 0
+        ):
+            route_status = CapabilityHealth.UNAVAILABLE
+            route_reason = (
+                "the configured route has no usable context after output reserve "
+                "and safety margin"
+            )
+        elif self.config.run_leanstral_inference_canary and not canary.passed:
+            route_status = CapabilityHealth.DEGRADED
+            route_reason = (
+                "the configured Leanstral route is discoverable, but its bounded "
+                "inference canary did not pass"
+            )
+        else:
+            route_status = CapabilityHealth.AVAILABLE
+            route_reason = (
+                "the configured Leanstral route and isolated supervisor adapter "
+                "are discoverable"
+            )
+        route_capability = self._leanstral_capability_check(
+            LeanstralCapability.ROUTE_READINESS,
+            route_status,
+            route_reason,
+            metadata={
+                "context_limit": context_metadata,
+                "inference_canary": canary.to_dict(),
+            },
+        )
+
+        configured_model_states = {
+            CapabilityHealth.CONFIGURED,
+            CapabilityHealth.AVAILABLE,
+            CapabilityHealth.VERIFIED,
+        }
+        if (
+            model.status in configured_model_states
             and transformers.available
             and torch.available
+        ):
+            local_status = CapabilityHealth.AVAILABLE
+            local_reason = (
+                "local Leanstral weights, Transformers, and PyTorch are discoverable"
+            )
+        elif model.status in configured_model_states:
+            local_status = CapabilityHealth.DEGRADED
+            local_reason = (
+                "local Leanstral weights are configured, but one or more model "
+                "runtime packages are unavailable"
+            )
+        else:
+            local_status = CapabilityHealth.UNAVAILABLE
+            local_reason = (
+                "local Leanstral model execution is unavailable; this does not "
+                "disable a separately configured managed route"
+            )
+        local_capability = self._leanstral_capability_check(
+            LeanstralCapability.LOCAL_MODEL_EXECUTION,
+            local_status,
+            local_reason,
         )
-        if inference_ready and lean.available:
+
+        if package.available and spacy.available and spacy_model.available:
+            legal_status = CapabilityHealth.AVAILABLE
+            legal_reason = (
+                "legal-modal integration, spaCy, and configured language model "
+                "are discoverable"
+            )
+        elif package.available:
+            legal_status = CapabilityHealth.DEGRADED
+            legal_reason = (
+                "legal-modal integration is discoverable, but optional legal-language "
+                "preprocessing dependencies are incomplete"
+            )
+        else:
+            legal_status = CapabilityHealth.UNAVAILABLE
+            legal_reason = (
+                "legal-language preprocessing integration is unavailable"
+            )
+        legal_capability = self._leanstral_capability_check(
+            LeanstralCapability.LEGAL_LANGUAGE_PREPROCESSING,
+            legal_status,
+            legal_reason,
+        )
+
+        codec_status = (
+            CapabilityHealth.AVAILABLE
+            if codec.available
+            else CapabilityHealth.UNAVAILABLE
+        )
+        codec_capability = self._leanstral_capability_check(
+            LeanstralCapability.CODEC_AVAILABILITY,
+            codec_status,
+            (
+                "canonical legal-modal codec is discoverable"
+                if codec.available
+                else "canonical legal-modal codec is unavailable"
+            ),
+        )
+        kernel_status = (
+            CapabilityHealth.AVAILABLE
+            if lean.available
+            else CapabilityHealth.UNAVAILABLE
+        )
+        kernel_capability = self._leanstral_capability_check(
+            LeanstralCapability.KERNEL_VERIFICATION,
+            kernel_status,
+            (
+                "independent Lean kernel verification is discoverable"
+                if lean.available
+                else "independent Lean kernel verification is unavailable"
+            ),
+        )
+
+        independent_capabilities = (
+            route_capability,
+            local_capability,
+            legal_capability,
+            codec_capability,
+            kernel_capability,
+        )
+        if all(check.available for check in independent_capabilities):
             status = CapabilityHealth.AVAILABLE
             reason = (
-                "isolated Leanstral inference dependencies and the separate Lean "
-                "kernel-checking toolchain are discoverable"
+                "all independently routed Leanstral draft, preprocessing, codec, "
+                "and kernel capabilities are discoverable"
             )
         else:
             status = CapabilityHealth.DEGRADED
             reason = (
-                "the Leanstral provider is available only as a degraded capability; "
-                "one or more model-service, legal-modal, spaCy, codec, model, or "
-                "separate kernel dependencies are unavailable"
+                "Leanstral sub-capabilities were probed independently; one or more "
+                "route, local inference, preprocessing, codec, or kernel surfaces "
+                "are degraded or unavailable"
             )
         return self._component(
             "leanstral",
@@ -1370,6 +2143,8 @@ class FormalVerificationCapabilityProbe:
             reason,
             (
                 self._provider_check("leanstral", status, reason),
+                *independent_capabilities,
+                canary_check,
                 adapter,
                 model_service,
                 package,
@@ -1680,9 +2455,19 @@ __all__ = [
     "DEFAULT_CAPABILITY_CACHE_TTL_SECONDS",
     "DEFAULT_CAPABILITY_PROBE_TIMEOUT_SECONDS",
     "DEFAULT_CAPABILITY_PROBE_MAX_CHECKS",
+    "DEFAULT_LEANSTRAL_CANARY_TIMEOUT_SECONDS",
+    "DEFAULT_LEANSTRAL_CANARY_INPUT_TOKENS",
+    "DEFAULT_LEANSTRAL_CANARY_OUTPUT_TOKENS",
+    "DEFAULT_LEANSTRAL_CANARY_MAX_RESPONSE_BYTES",
     "CapabilityHealth",
     "CapabilityDimension",
     "CapabilityHealthCheck",
+    "LeanstralCapability",
+    "EffectiveContextLimit",
+    "discover_effective_context_limit",
+    "InferenceCanaryRequest",
+    "InferenceCanaryResult",
+    "InferenceCanary",
     "ProofProviderOperation",
     "ProofProviderIsolation",
     "ProofProviderCapability",

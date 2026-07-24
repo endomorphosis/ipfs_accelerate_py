@@ -17,6 +17,14 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, ClassVar, Dict, Iterable, List, Optional, Tuple, Type, TypeVar
 
+from .formal_logic_vocabulary import (
+    Formula,
+    FormulaOperator,
+    LOGIC_VOCABULARY_VERSION,
+    ReviewedPredicate,
+    TermKind,
+    TermSort,
+)
 from .formal_verification_contracts import (
     AssuranceLevel,
     CanonicalContract,
@@ -109,6 +117,23 @@ class EvidenceRequirementKind(str, Enum):
     CODE_PROOF = "code_proof"
     REVIEW = "review"
     ARTIFACT = "artifact"
+
+
+class RefinementMode(str, Enum):
+    """Logical relationship asserted between a subgoal and its parent.
+
+    ``SUFFICIENT`` records only the safe child-to-parent obligation.  The
+    stronger bidirectional ``EQUIVALENT`` relationship must be selected
+    explicitly and is never inferred from a legacy record.
+    """
+
+    SUFFICIENT = "sufficient"
+    EQUIVALENT = "equivalent"
+
+    # Readable aliases used by callers that name the relationship rather than
+    # its short wire value.  Enum aliases retain one deterministic wire value.
+    SUFFICIENT_REFINEMENT = "sufficient"
+    EQUIVALENCE = "equivalent"
 
 
 class PlanConsistencyLevel(str, Enum):
@@ -328,6 +353,8 @@ class Subgoal(PlanningContract):
     subgoal_id: str
     goal_id: str
     satisfaction_formula_id: str
+    parent_id: str = ""
+    refinement_mode: RefinementMode = RefinementMode.SUFFICIENT
     depends_on: Tuple[str, ...] = ()
     evidence_requirement_ids: Tuple[str, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -337,6 +364,16 @@ class Subgoal(PlanningContract):
             object.__setattr__(
                 self, name, _text(getattr(self, name), field_name=name, required=True)
             )
+        parent_id = _text(self.parent_id, field_name="parent_id")
+        # Version-1 records only carried goal_id and therefore denoted a
+        # direct child of that goal.  Preserve that meaning without upgrading
+        # it to equivalence.
+        object.__setattr__(self, "parent_id", parent_id or self.goal_id)
+        object.__setattr__(
+            self,
+            "refinement_mode",
+            _enum(self.refinement_mode, RefinementMode, field_name="refinement_mode"),
+        )
         object.__setattr__(
             self, "depends_on", _strings(self.depends_on, field_name="depends_on")
         )
@@ -352,12 +389,26 @@ class Subgoal(PlanningContract):
         )
         if self.subgoal_id in self.depends_on:
             raise ContractValidationError("a subgoal cannot depend on itself")
+        if self.subgoal_id == self.parent_id:
+            raise ContractValidationError("a subgoal cannot be its own parent")
+
+    @property
+    def parent_goal_id(self) -> str:
+        """Compatibility view of the root goal for this refinement."""
+
+        return self.goal_id
+
+    @property
+    def is_equivalent_refinement(self) -> bool:
+        return self.refinement_mode is RefinementMode.EQUIVALENT
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
             {
                 "subgoal_id": self.subgoal_id,
                 "goal_id": self.goal_id,
+                "parent_id": self.parent_id,
+                "refinement_mode": self.refinement_mode,
                 "satisfaction_formula_id": self.satisfaction_formula_id,
                 "depends_on": self.depends_on,
                 "evidence_requirement_ids": self.evidence_requirement_ids,
@@ -371,6 +422,10 @@ class Subgoal(PlanningContract):
         result = cls(
             subgoal_id=payload.get("subgoal_id", ""),
             goal_id=payload.get("goal_id", ""),
+            parent_id=payload.get("parent_id", ""),
+            refinement_mode=payload.get(
+                "refinement_mode", RefinementMode.SUFFICIENT
+            ),
             satisfaction_formula_id=payload.get("satisfaction_formula_id", ""),
             depends_on=tuple(payload.get("depends_on") or ()),
             evidence_requirement_ids=tuple(
@@ -1014,6 +1069,50 @@ def _records(
     return tuple(result)
 
 
+def _formula_records(values: Any) -> Tuple[Formula, ...]:
+    if values is None:
+        values = ()
+    if not isinstance(values, Sequence) or isinstance(
+        values, (str, bytes, bytearray)
+    ):
+        raise ContractValidationError("formulas must be a sequence")
+    result: List[Formula] = []
+    for value in values:
+        if isinstance(value, Formula):
+            formula = value
+        elif isinstance(value, Mapping):
+            formula = Formula.from_dict(value)
+        else:
+            raise ContractValidationError(
+                "formulas must contain reviewed Formula records"
+            )
+        result.append(formula)
+    result.sort(key=lambda item: item.formula_id)
+    identifiers = [item.formula_id for item in result]
+    if len(identifiers) != len(set(identifiers)):
+        raise ContractValidationError("formula identifiers must be unique")
+    return tuple(result)
+
+
+def _subgoal_satisfaction_target(formula: Formula) -> Optional[str]:
+    """Return the typed subgoal target, or ``None`` for another formula."""
+
+    candidate = formula
+    if formula.operator is FormulaOperator.GOAL_SATISFACTION:
+        if len(formula.operands) != 1:
+            return None
+        candidate = formula.operands[0]
+    if (
+        candidate.operator is FormulaOperator.ATOM
+        and candidate.predicate is ReviewedPredicate.SUBGOAL_SATISFIED
+        and len(candidate.terms) == 1
+        and candidate.terms[0].sort is TermSort.SUBGOAL
+        and candidate.terms[0].kind is TermKind.CONSTANT
+    ):
+        return str(candidate.terms[0].value)
+    return None
+
+
 def _acyclic(
     nodes: Iterable[str], dependencies: Mapping[str, Tuple[str, ...]], noun: str
 ) -> None:
@@ -1059,6 +1158,7 @@ class FormalWorkPlan(PlanningContract):
     norms: Tuple[Norm, ...]
     temporal_constraints: Tuple[TemporalConstraint, ...]
     evidence_requirements: Tuple[EvidenceRequirement, ...]
+    formulas: Tuple[Formula, ...] = ()
     source_ids: Tuple[str, ...] = ()
     repository_tree_id: str = ""
     trace_bound: int = 1
@@ -1133,6 +1233,7 @@ class FormalWorkPlan(PlanningContract):
                     required=required,
                 ),
             )
+        object.__setattr__(self, "formulas", _formula_records(self.formulas))
         self._validate_references()
 
     def _validate_references(self) -> None:
@@ -1145,9 +1246,19 @@ class FormalWorkPlan(PlanningContract):
         precondition_ids = {item.precondition_id for item in self.preconditions}
         effect_ids = {item.effect_id for item in self.effects}
         requirement_ids = {item.requirement_id for item in self.evidence_requirements}
+        formulas_by_id = {item.formula_id: item for item in self.formulas}
         all_subject_ids = (
             actor_ids | goal_ids | subgoal_ids | task_ids | event_ids | fluent_ids
         )
+        if goal_ids & subgoal_ids:
+            raise ContractValidationError(
+                "goal and subgoal identifiers must occupy distinct typed namespaces"
+            )
+        if self.subgoals and self.vocabulary_version != LOGIC_VOCABULARY_VERSION:
+            raise ContractValidationError(
+                "typed subgoals require reviewed vocabulary version %s"
+                % LOGIC_VOCABULARY_VERSION
+            )
 
         def require(value: str, known: set, context: str) -> None:
             if value and value not in known:
@@ -1161,16 +1272,80 @@ class FormalWorkPlan(PlanningContract):
                 require(value, requirement_ids, "goal %s" % goal.goal_id)
         for subgoal in self.subgoals:
             require(subgoal.goal_id, goal_ids, "subgoal %s" % subgoal.subgoal_id)
+            require(
+                subgoal.parent_id,
+                goal_ids | subgoal_ids,
+                "subgoal %s parent" % subgoal.subgoal_id,
+            )
+            if subgoal.parent_id in goal_ids and subgoal.parent_id != subgoal.goal_id:
+                raise ContractValidationError(
+                    "subgoal %s parent goal does not match goal_id"
+                    % subgoal.subgoal_id
+                )
+            if subgoal.parent_id in subgoal_ids:
+                parent = next(
+                    item
+                    for item in self.subgoals
+                    if item.subgoal_id == subgoal.parent_id
+                )
+                if parent.goal_id != subgoal.goal_id:
+                    raise ContractValidationError(
+                        "subgoal %s parent belongs to a different root goal"
+                        % subgoal.subgoal_id
+                    )
             for value in subgoal.evidence_requirement_ids:
                 require(value, requirement_ids, "subgoal %s" % subgoal.subgoal_id)
+            formula = formulas_by_id.get(subgoal.satisfaction_formula_id)
+            if formula is None:
+                raise ContractValidationError(
+                    "subgoal %s references unknown satisfaction formula %s"
+                    % (subgoal.subgoal_id, subgoal.satisfaction_formula_id)
+                )
+            target = _subgoal_satisfaction_target(formula)
+            if target != subgoal.subgoal_id:
+                raise ContractValidationError(
+                    "subgoal %s satisfaction formula must use the reviewed "
+                    "subgoal_satisfied predicate for that subgoal"
+                    % subgoal.subgoal_id
+                )
         _acyclic(
             subgoal_ids,
             {item.subgoal_id: item.depends_on for item in self.subgoals},
             "subgoal",
         )
+        _acyclic(
+            subgoal_ids,
+            {
+                item.subgoal_id: tuple(
+                    sorted(
+                        {
+                            *item.depends_on,
+                            *(
+                                (item.parent_id,)
+                                if item.parent_id in subgoal_ids
+                                else ()
+                            ),
+                        }
+                    )
+                )
+                for item in self.subgoals
+            },
+            "subgoal parent/dependency graph",
+        )
         for task in self.tasks:
             require(task.goal_id, goal_ids, "task %s" % task.task_id)
             require(task.subgoal_id, subgoal_ids, "task %s" % task.task_id)
+            if task.subgoal_id:
+                subgoal = next(
+                    item
+                    for item in self.subgoals
+                    if item.subgoal_id == task.subgoal_id
+                )
+                if task.goal_id != subgoal.goal_id:
+                    raise ContractValidationError(
+                        "task %s and subgoal %s belong to different goals"
+                        % (task.task_id, task.subgoal_id)
+                    )
             for value in task.actor_ids:
                 require(value, actor_ids, "task %s" % task.task_id)
             for value in task.precondition_ids:
@@ -1257,6 +1432,25 @@ class FormalWorkPlan(PlanningContract):
                     "evidence requirement %s" % requirement.requirement_id,
                 )
 
+        if self.formulas:
+            referenced_formula_ids = {
+                *(item.satisfaction_formula_id for item in self.goals),
+                *(item.satisfaction_formula_id for item in self.subgoals),
+                *(item.formula_id for item in self.preconditions),
+                *(item.formula_id for item in self.temporal_constraints),
+                *(
+                    item.activation_formula_id
+                    for item in self.norms
+                    if item.activation_formula_id
+                ),
+            }
+            unknown_formula_ids = referenced_formula_ids.difference(formulas_by_id)
+            if unknown_formula_ids:
+                raise ContractValidationError(
+                    "plan references unknown formula %s"
+                    % sorted(unknown_formula_ids)[0]
+                )
+
         assignments: Dict[Tuple[str, str], Any] = {}
         for effect in self.effects:
             if effect.operation is EffectOperation.ASSIGN:
@@ -1274,28 +1468,31 @@ class FormalWorkPlan(PlanningContract):
         return self.content_id
 
     def _payload(self) -> Dict[str, Any]:
-        return self._versioned(
-            {
-                "vocabulary_profile_id": self.vocabulary_profile_id,
-                "vocabulary_version": self.vocabulary_version,
-                "source_ids": self.source_ids,
-                "repository_tree_id": self.repository_tree_id,
-                "trace_bound": self.trace_bound,
-                "actors": self.actors,
-                "goals": self.goals,
-                "subgoals": self.subgoals,
-                "tasks": self.tasks,
-                "events": self.events,
-                "fluents": self.fluents,
-                "preconditions": self.preconditions,
-                "effects": self.effects,
-                "norms": self.norms,
-                "temporal_constraints": self.temporal_constraints,
-                "evidence_requirements": self.evidence_requirements,
-                "abstraction_ids": self.abstraction_ids,
-                "metadata": self.metadata,
-            }
-        )
+        payload: Dict[str, Any] = {
+            "vocabulary_profile_id": self.vocabulary_profile_id,
+            "vocabulary_version": self.vocabulary_version,
+            "source_ids": self.source_ids,
+            "repository_tree_id": self.repository_tree_id,
+            "trace_bound": self.trace_bound,
+            "actors": self.actors,
+            "goals": self.goals,
+            "subgoals": self.subgoals,
+            "tasks": self.tasks,
+            "events": self.events,
+            "fluents": self.fluents,
+            "preconditions": self.preconditions,
+            "effects": self.effects,
+            "norms": self.norms,
+            "temporal_constraints": self.temporal_constraints,
+            "evidence_requirements": self.evidence_requirements,
+            "abstraction_ids": self.abstraction_ids,
+            "metadata": self.metadata,
+        }
+        # Omitting an empty registry preserves the canonical identity of
+        # version-1 plans, which had no first-class formula collection.
+        if self.formulas:
+            payload["formulas"] = self.formulas
+        return self._versioned(payload)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "FormalWorkPlan":
@@ -1317,6 +1514,11 @@ class FormalWorkPlan(PlanningContract):
             norms=tuple(payload.get("norms") or ()),
             temporal_constraints=tuple(payload.get("temporal_constraints") or ()),
             evidence_requirements=tuple(payload.get("evidence_requirements") or ()),
+            formulas=tuple(
+                payload.get("formulas")
+                or payload.get("reviewed_formulas")
+                or ()
+            ),
             abstraction_ids=tuple(payload.get("abstraction_ids") or ()),
             metadata=payload.get("metadata") or {},
         )
@@ -1498,6 +1700,7 @@ __all__ = [
     "PlanTask",
     "PlanningContract",
     "Precondition",
+    "RefinementMode",
     "Subgoal",
     "Task",
     "TemporalConstraint",

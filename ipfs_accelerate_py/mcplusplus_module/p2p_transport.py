@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import socket
 import threading
 import time
 from dataclasses import dataclass, field
@@ -170,9 +172,23 @@ class MCPp2pNode:
     """
 
     def __init__(self, listen_addrs: Optional[List[str]] = None,
-                 bootstrap_peers: Optional[List[str]] = None):
-        self._listen_addrs = listen_addrs or ["/ip4/0.0.0.0/tcp/0"]
-        self._bootstrap_peers = bootstrap_peers or DEFAULT_BOOTSTRAP_PEERS
+                 bootstrap_peers: Optional[List[str]] = None,
+                 advertise_addrs: Optional[List[str]] = None):
+        env_listen = self._env_list("MCPPP_P2P_LISTEN_ADDRS")
+        env_bootstrap = self._env_list("MCPPP_P2P_BOOTSTRAP_PEERS", preserve_empty=True)
+        env_advertise = self._env_list("MCPPP_P2P_ADVERTISE_ADDRS")
+        self._listen_addrs = (
+            list(listen_addrs) if listen_addrs is not None
+            else env_listen or ["/ip4/0.0.0.0/tcp/0"]
+        )
+        self._bootstrap_peers = (
+            list(bootstrap_peers) if bootstrap_peers is not None
+            else env_bootstrap if env_bootstrap is not None
+            else list(DEFAULT_BOOTSTRAP_PEERS)
+        )
+        self._advertise_addrs = (
+            list(advertise_addrs) if advertise_addrs is not None else env_advertise or []
+        )
         self._host = None
         self._peers: Dict[str, PeerInfo] = {}
         self._tool_handler: Optional[Callable] = None
@@ -181,6 +197,18 @@ class MCPp2pNode:
         self._concurrent_streams = 0
         self._max_concurrent_streams = 50  # Backpressure limit
         self._nursery = None
+        self._host_stop_event = None
+        self._host_stopped_event = None
+        self._mdns_zeroconf = None
+        self._mdns_service_info = None
+
+    @staticmethod
+    def _env_list(name: str, preserve_empty: bool = False) -> Optional[List[str]]:
+        """Read a comma-separated list while allowing an explicit empty value."""
+        if name not in os.environ:
+            return None
+        values = [item.strip() for item in os.environ[name].split(",") if item.strip()]
+        return values if values or preserve_empty else None
 
     @property
     def peer_id(self) -> str:
@@ -193,8 +221,79 @@ class MCPp2pNode:
     def multiaddrs(self) -> List[str]:
         """Our listening addresses."""
         if self._host:
-            return [str(a) for a in self._host.get_addrs()]
+            bound = [str(a) for a in self._host.get_addrs()]
+            port = ""
+            for address in bound:
+                parts = address.split("/")
+                if "tcp" in parts:
+                    index = parts.index("tcp")
+                    if index + 1 < len(parts):
+                        port = parts[index + 1]
+                        break
+            addresses = self._advertise_addrs or bound
+            if (
+                not self._advertise_addrs
+                and port
+                and any(address.startswith("/ip4/0.0.0.0/") for address in bound)
+            ):
+                local_ips = self._local_ipv4_addresses()
+                if local_ips:
+                    addresses = [f"/ip4/{address}/tcp/{port}" for address in local_ips]
+            result = []
+            for address in addresses:
+                rendered = address.format(peer_id=self.peer_id, port=port)
+                if "/p2p/" not in rendered:
+                    rendered = f"{rendered.rstrip('/')}/p2p/{self.peer_id}"
+                result.append(rendered)
+            return result
         return []
+
+    @staticmethod
+    def _local_ipv4_addresses() -> List[str]:
+        """Return all active, non-loopback IPv4 interface addresses."""
+        addresses = set()
+        try:
+            import psutil
+
+            stats = psutil.net_if_stats()
+            for interface, entries in psutil.net_if_addrs().items():
+                if interface in stats and not stats[interface].isup:
+                    continue
+                for entry in entries:
+                    if entry.family == socket.AF_INET and not entry.address.startswith("127."):
+                        addresses.add(entry.address)
+        except Exception:
+            try:
+                for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                    address = item[4][0]
+                    if not address.startswith("127."):
+                        addresses.add(address)
+            except OSError:
+                pass
+        return sorted(addresses)
+
+    @staticmethod
+    def _load_or_create_key_pair():
+        """Load a persistent secp256k1 identity when configured."""
+        identity_file = os.environ.get("MCPPP_P2P_IDENTITY_FILE", "").strip()
+        if not identity_file:
+            return create_libp2p_key_pair()
+
+        from pathlib import Path
+        from libp2p.crypto.keys import KeyPair
+        from libp2p.crypto.secp256k1 import Secp256k1PrivateKey
+
+        path = Path(identity_file).expanduser()
+        if path.is_file():
+            private_key = Secp256k1PrivateKey.from_bytes(path.read_bytes())
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            private_key = create_libp2p_key_pair().private_key
+            temporary = path.with_suffix(path.suffix + ".tmp")
+            temporary.write_bytes(private_key.to_bytes())
+            os.chmod(temporary, 0o600)
+            temporary.replace(path)
+        return KeyPair(private_key, private_key.get_public_key())
 
     @property
     def connected_peers(self) -> List[PeerInfo]:
@@ -230,7 +329,7 @@ class MCPp2pNode:
 
         try:
             # Generate identity through the canonical MCP++ runtime boundary.
-            key_pair = create_libp2p_key_pair()
+            key_pair = self._load_or_create_key_pair()
 
             # Create libp2p host
             self._host = await new_libp2p_host(key_pair=key_pair)
@@ -239,12 +338,18 @@ class MCPp2pNode:
             for proto_version in MCP_P2P_SUPPORTED_VERSIONS:
                 self._host.set_stream_handler(proto_version, self._handle_stream)
 
-            # Start listening
-            for addr in self._listen_addrs:
-                await self._host.get_network().listen(make_multiaddr(addr))
+            # BasicHost.run starts the network background service before listen().
+            # Calling network.listen() directly deadlocks while waiting for that
+            # service's nursery to exist.
+            listen_addrs = [make_multiaddr(addr) for addr in self._listen_addrs]
+            await nursery.start(self._run_host, listen_addrs)
 
             self._started = True
             self._operational = True
+            if os.environ.get("MCPPP_P2P_MDNS", "1").lower() not in {
+                "0", "false", "no", "off"
+            }:
+                await self._start_mdns_advertisement()
             logger.info(
                 "MCPp2pNode started: peer_id=%s, addrs=%s",
                 self.peer_id, self.multiaddrs
@@ -262,13 +367,107 @@ class MCPp2pNode:
             self._started = True  # Mark as started in stub mode
             self._operational = False
 
+    async def _run_host(self, listen_addrs, *, task_status) -> None:
+        """Keep the libp2p host service alive for the enclosing nursery."""
+        import trio
+
+        self._host_stop_event = trio.Event()
+        self._host_stopped_event = trio.Event()
+        try:
+            async with self._host.run(listen_addrs):
+                task_status.started()
+                await self._host_stop_event.wait()
+        finally:
+            self._operational = False
+            self._host_stopped_event.set()
+
     async def stop(self) -> None:
         """Stop the libp2p node."""
-        if self._host:
-            await self._host.close()
+        import trio
+
+        await self._stop_mdns_advertisement()
+        if self._host_stop_event is not None:
+            self._host_stop_event.set()
+        if self._host_stopped_event is not None:
+            with trio.move_on_after(5.0):
+                await self._host_stopped_event.wait()
         self._started = False
+        self._operational = False
         self._peers.clear()
         logger.info("MCPp2pNode stopped")
+
+    async def _start_mdns_advertisement(self) -> None:
+        """Advertise this MCP++ peer and all local addresses through Zeroconf."""
+        import trio
+
+        def register() -> None:
+            from zeroconf import ServiceInfo, Zeroconf
+
+            addresses = []
+            port = 0
+            for multiaddr in self.multiaddrs:
+                parts = multiaddr.split("/")
+                if "ip4" in parts and "tcp" in parts:
+                    ip_index = parts.index("ip4")
+                    tcp_index = parts.index("tcp")
+                    addresses.append(socket.inet_aton(parts[ip_index + 1]))
+                    port = int(parts[tcp_index + 1])
+            if not addresses or not port:
+                return
+            service_type = "_mcp-accelerate._tcp.local."
+            service_name = f"{self.peer_id}.{service_type}"
+            info = ServiceInfo(
+                service_type,
+                service_name,
+                addresses=addresses,
+                port=port,
+                properties={
+                    b"peer_id": self.peer_id.encode(),
+                    b"protocol": MCP_P2P_PROTOCOL.encode(),
+                },
+                server=f"{self.peer_id}.local.",
+            )
+            zeroconf = Zeroconf()
+            zeroconf.register_service(info)
+            self._mdns_zeroconf = zeroconf
+            self._mdns_service_info = info
+
+        await trio.to_thread.run_sync(register)
+
+    async def _stop_mdns_advertisement(self) -> None:
+        """Remove the Zeroconf advertisement without blocking Trio."""
+        if self._mdns_zeroconf is None:
+            return
+        import trio
+
+        zeroconf = self._mdns_zeroconf
+        info = self._mdns_service_info
+        self._mdns_zeroconf = None
+        self._mdns_service_info = None
+
+        def unregister() -> None:
+            try:
+                if info is not None:
+                    zeroconf.unregister_service(info)
+            finally:
+                zeroconf.close()
+
+        await trio.to_thread.run_sync(unregister)
+
+    @staticmethod
+    async def _read_exact(stream, length: int) -> bytes:
+        """Read exactly *length* bytes from a libp2p stream."""
+        chunks = []
+        remaining = length
+        while remaining:
+            chunk = await stream.read(remaining)
+            if not chunk:
+                raise ConnectionError(
+                    f"Peer closed connection with {remaining} bytes remaining"
+                )
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
 
     async def _connect_bootstrap_with_timeout(self, peer_addr: str) -> None:
         """Connect to a bootstrap peer with a 10-second timeout."""
@@ -320,14 +519,14 @@ class MCPp2pNode:
 
             # Read length-prefixed message with read timeout
             with trio.move_on_after(10.0) as read_scope:
-                length_bytes = await stream.read(4)
-            if read_scope.cancelled_caught or len(length_bytes) < 4:
+                length_bytes = await self._read_exact(stream, 4)
+            if read_scope.cancelled_caught:
                 return
             length = int.from_bytes(length_bytes, "big")
             if length > MAX_P2P_MESSAGE_SIZE:
                 logger.warning("Rejecting oversized P2P message: %d bytes", length)
                 return
-            payload = await stream.read(length)
+            payload = await self._read_exact(stream, length)
 
             msg = P2PMessage.decode(length_bytes + payload)
 
@@ -472,11 +671,13 @@ class MCPp2pNode:
 
             # Read response with timeout
             with trio.move_on_after(timeout) as cancel_scope:
-                length_bytes = await stream.read(4)
-                if len(length_bytes) < 4:
-                    raise ConnectionError("Peer closed connection")
+                length_bytes = await self._read_exact(stream, 4)
                 length = int.from_bytes(length_bytes, "big")
-                payload = await stream.read(length)
+                if length > MAX_P2P_MESSAGE_SIZE:
+                    raise ConnectionError(
+                        f"Peer response exceeds {MAX_P2P_MESSAGE_SIZE} bytes"
+                    )
+                payload = await self._read_exact(stream, length)
                 response = P2PMessage.decode(length_bytes + payload)
 
             if cancel_scope.cancelled_caught:
@@ -513,7 +714,10 @@ class MCPp2pNode:
                     if info:
                         peer = PeerInfo(
                             peer_id=name.split(".")[0],
-                            multiaddrs=[f"/ip4/{info.parsed_addresses()[0]}/tcp/{info.port}"],
+                            multiaddrs=[
+                                f"/ip4/{address}/tcp/{info.port}/p2p/{name.split('.')[0]}"
+                                for address in info.parsed_addresses()
+                            ],
                             protocols=[MCP_P2P_PROTOCOL],
                         )
                         discovered.append(peer)
@@ -553,6 +757,7 @@ class MCPp2pNode:
             "multiaddrs": self.multiaddrs,
             "protocol": MCP_P2P_PROTOCOL,
             "started": self._started,
+            "operational": self._operational,
             "connected_peers": len(self._peers),
             "peers": [p.to_dict() for p in self._peers.values()],
         }

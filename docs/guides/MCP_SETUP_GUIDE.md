@@ -1,159 +1,116 @@
-# IPFS Accelerate MCP Setup Guide
+# MCP Setup
 
-This guide will help you set up and use the IPFS Accelerate MCP (Model Context Protocol) servers with VS Code and the web dashboard.
+The canonical MCP runtime is `ipfs_accelerate_py.mcp_server`. The
+`ipfs_accelerate_py.mcp` package remains a compatibility facade. This guide
+covers local development startup and basic health checks; production
+authentication, policy, and transport choices belong in the MCP++ records.
 
-## Quick Start
-
-### 1. Install Dependencies
-
-```bash
-pip install fastapi uvicorn fastmcp psutil numpy
-```
-
-### 2. Test the Servers
-
-#### JSON-RPC Server with Web Dashboard
-```bash
-cd /path/to/ipfs_accelerate_py
-python mcp_jsonrpc_server.py --port 8003
-```
-
-Then open your browser to: http://localhost:8003
-
-#### VS Code MCP Integration
-```bash
-cd /path/to/ipfs_accelerate_py
-python vscode_mcp_server.py
-```
-
-#### CLI Tools
-```bash
-# Test comprehensive server
-python tools/comprehensive_mcp_server.py --help
-
-# Test standalone server
-python -m ipfs_accelerate_py.mcp.standalone --help
-```
-
-## VS Code Configuration
-
-To use the MCP server with VS Code:
-
-1. Install the MCP extension for VS Code
-2. Add this configuration to your VS Code settings or MCP config file:
-
-```json
-{
-  "mcpServers": {
-    "ipfs-accelerate": {
-      "command": "python",
-      "args": ["/path/to/ipfs_accelerate_py/vscode_mcp_server.py"],
-      "cwd": "/path/to/ipfs_accelerate_py"
-    }
-  }
-}
-```
-
-Replace `/path/to/ipfs_accelerate_py` with the actual path to your repository.
-
-## Web Dashboard Features
-
-The web dashboard provides a comprehensive interface for testing AI models:
-
-- **Text Generation**: Test language model text generation
-- **Text Classification**: Classify text into categories
-- **Text Embeddings**: Generate vector embeddings for text
-- **Audio Processing**: Transcribe audio files
-- **Vision Models**: Image classification and generation
-- **Multimodal**: Visual question answering (coming soon)
-- **Specialized Tools**: Code generation and more
-- **Model Recommendations**: Get AI model suggestions
-- **Model Manager**: Search and manage AI models
-
-## Available CLI Commands
-
-### JSON-RPC Server
-```bash
-python mcp_jsonrpc_server.py --help
-python mcp_jsonrpc_server.py --port 8003 --verbose
-```
-
-### Comprehensive MCP Server
-```bash
-python tools/comprehensive_mcp_server.py --help
-python tools/comprehensive_mcp_server.py --transport stdio  # For VS Code
-python tools/comprehensive_mcp_server.py --transport sse --port 8004  # For HTTP
-```
-
-### Standalone Server
-```bash
-python -m ipfs_accelerate_py.mcp.standalone --help
-python -m ipfs_accelerate_py.mcp.standalone --fastapi --port 8005
-```
-
-## API Testing
-
-You can test the JSON-RPC API directly:
+## Install
 
 ```bash
-curl -X POST http://localhost:8003/jsonrpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "method": "list_models", "id": 1}'
+python -m pip install "ipfs-accelerate-py[mcp]"
 ```
+
+For P2P TaskQueue support, install the `mcp-p2p` extra and configure the
+external queue/service separately.
+
+## Start the server
+
+The product CLI is the normal entry point:
+
+```bash
+ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
+```
+
+Useful options include `--dashboard`, `--open-browser`,
+`--disable-autoscaler`, and `--no-p2p`. Keep development servers on localhost
+unless authentication and network policy are configured.
+
+Check health from another terminal:
+
+```bash
+ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
+```
+
+The exact server process and configured paths can be inspected with:
+
+```bash
+ipfs-accelerate mcp --help
+ipfs-accelerate mcp start --help
+```
+
+## Direct module entry points
+
+Use these when embedding or testing a specific transport:
+
+```bash
+python -m ipfs_accelerate_py.mcp.cli --host 127.0.0.1 --port 9000
+python -m ipfs_accelerate_py.mcp_server.fastapi_service
+```
+
+Programmatic construction uses the canonical package:
+
+```python
+from ipfs_accelerate_py.mcp_server import create_server
+
+server = create_server()
+```
+
+The concrete server object and optional dependency behavior are versioned with
+the package; inspect its module README and tests before embedding private
+attributes.
+
+## Capability and tool inspection
+
+The accelerator capability report includes an MCP manifest when a server is
+available:
+
+```python
+from ipfs_accelerate_py import get_instance
+
+report = get_instance().get_capabilities(detail=True)
+print(report.get("mcp", {}))
+```
+
+The MCP server exposes tool/schema/runtime inspection through its registered
+meta-tools. Do not assume a tool exists merely because an older guide listed
+it; query the manifest or use the server's schema endpoint.
+
+## P2P and remote task workers
+
+P2P operation is optional and should be enabled explicitly. The direct MCP CLI
+may host TaskQueue/libp2p services when the P2P extras and the corresponding
+configuration are present. Use:
+
+```bash
+python -m ipfs_accelerate_py.mcp.cli --help
+```
+
+before copying deployment flags from another environment. Remote networking
+also requires firewall, identity, queue, and authentication configuration.
+
+## VS Code and other clients
+
+Configure a client with the command that is known to work in the target
+environment. For a local checkout, the command is typically `ipfs-accelerate`
+or the direct Python module path above. Use an absolute working directory and
+do not expose credentials in a checked-in client configuration.
 
 ## Troubleshooting
 
-### Common Issues
+| Symptom | Check |
+| --- | --- |
+| `ipfs-accelerate` is missing | Activate the environment and install the package in editable or published mode. |
+| `mcp` extra import fails | Install `ipfs-accelerate-py[mcp]` and inspect the first traceback. |
+| Status cannot connect | Confirm host/port and that the start command is still running. |
+| Tools are missing | Query the runtime manifest; optional categories may be unavailable. |
+| P2P startup fails | Install `mcp-p2p`/`libp2p`, configure the queue, and verify ports/identity. |
+| Browser dashboard fails | Start the server without `--dashboard` first, then inspect the dashboard-specific logs. |
 
-1. **Missing Dependencies**: Install all required packages:
-   ```bash
-   pip install fastapi uvicorn fastmcp psutil numpy
-   ```
+## Related documentation
 
-2. **Port Already in Use**: Change the port number:
-   ```bash
-   python mcp_jsonrpc_server.py --port 8004
-   ```
-
-3. **VS Code Connection Issues**: 
-   - Make sure the MCP extension is installed
-   - Check that the path in the configuration is correct
-   - Try running the server manually first to check for errors
-
-### Verification
-
-To verify everything is working:
-
-1. Start the JSON-RPC server: `python mcp_jsonrpc_server.py --port 8003`
-2. Open http://localhost:8003 in your browser
-3. Test the "Text Generation" tab with a sample prompt
-4. You should see a JSON response with generated text
-
-## Support
-
-If you encounter issues:
-
-1. Check the console/terminal output for error messages
-2. Verify all dependencies are installed
-3. Make sure no other services are using the same ports
-4. Check file paths in configuration files
-
-## Features Status
-
-✅ **Working Features:**
-- JSON-RPC server with web dashboard
-- All API endpoints (28 methods available)
-- Static file serving
-- CLI tools
-- VS Code MCP wrapper
-- Dashboard UI with multiple model categories
-
-⚠️ **Known Limitations:**
-- Some optional dependencies may not be available (DuckDB, IPFS, etc.)
-- Models are currently mock/demo responses
-- Full model integration requires additional setup
-
-🔧 **In Progress:**
-- Multimodal processing features
-- Real model loading and inference
-- Advanced hardware acceleration
+- [Canonical MCP server README](../../ipfs_accelerate_py/mcp_server/README.md)
+- [MCP++ records](../../mcpplusplus/README.md)
+- [Architecture overview](../architecture/overview.md)
+- [Installation](getting-started/installation.md)
+- [Testing](../development/testing.md)

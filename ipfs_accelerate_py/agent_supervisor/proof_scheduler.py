@@ -413,6 +413,12 @@ class ProofNodeSnapshot:
     reason_code: str = ""
     attempt_id: str = ""
     cancellation_requested: bool = False
+    stage: str = ""
+    resource_class: str = ""
+    dependency_step_ids: tuple[str, ...] = ()
+    lease_owner_id: str = ""
+    fencing_token: int = 0
+    lease_expires_at_ms: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -421,6 +427,45 @@ class ProofNodeSnapshot:
             "reason_code": self.reason_code,
             "attempt_id": self.attempt_id,
             "cancellation_requested": self.cancellation_requested,
+            "stage": self.stage,
+            "resource_class": self.resource_class,
+            "dependency_step_ids": list(self.dependency_step_ids),
+            "lease_owner_id": self.lease_owner_id,
+            "fencing_token": self.fencing_token,
+            "lease_expires_at_ms": self.lease_expires_at_ms,
+        }
+
+
+@dataclass(frozen=True)
+class ProofLeaseSnapshot:
+    """Redacted durable ownership record for one proof-plan step.
+
+    Lease bearer tokens are intentionally absent.  Operators can still
+    distinguish a live owner, a fenced predecessor, and a clean release using
+    the monotonically increasing fencing token and timestamps.
+    """
+
+    step_id: str
+    owner_id: str
+    fencing_token: int
+    acquired_at_ms: int
+    heartbeat_at_ms: int
+    expires_at_ms: int
+    active: bool
+    released_at_ms: int = 0
+    release_reason: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "step_id": self.step_id,
+            "owner_id": self.owner_id,
+            "fencing_token": self.fencing_token,
+            "acquired_at_ms": self.acquired_at_ms,
+            "heartbeat_at_ms": self.heartbeat_at_ms,
+            "expires_at_ms": self.expires_at_ms,
+            "active": self.active,
+            "released_at_ms": self.released_at_ms,
+            "release_reason": self.release_reason,
         }
 
 
@@ -432,6 +477,7 @@ class ProofScheduleSnapshot:
     active_leases: int
     attempts: tuple[ProofAttempt, ...]
     receipts: tuple[ProofReceipt, ...]
+    leases: tuple[ProofLeaseSnapshot, ...] = ()
 
     @property
     def complete(self) -> bool:
@@ -451,6 +497,17 @@ class ProofScheduleSnapshot:
             "ready": [item.to_dict() for item in self.ready],
             "attempts": [attempt.to_record() for attempt in self.attempts],
             "receipts": [receipt.to_record() for receipt in self.receipts],
+            "leases": [lease.to_dict() for lease in self.leases],
+            "receipt_lineage": [
+                {
+                    "receipt_id": receipt.receipt_id,
+                    "attempt_id": receipt.attempt_id,
+                    "obligation_id": receipt.obligation_id,
+                    "authoritative_verdict": receipt.authoritative_verdict.value,
+                    "freshness": receipt.freshness.value,
+                }
+                for receipt in self.receipts
+            ],
         }
 
 
@@ -1373,6 +1430,47 @@ class _ProofStateStore:
         finally:
             connection.close()
 
+    def lease_snapshots(self, plan_id: str) -> tuple[ProofLeaseSnapshot, ...]:
+        """Return redacted current and historical lease ownership."""
+
+        connection = self.connect()
+        now = self._now_ms()
+        try:
+            rows = connection.execute(
+                """
+                SELECT step_id, owner_id, fencing_token, acquired_at_ms,
+                       heartbeat_at_ms, expires_at_ms, released_at_ms,
+                       release_reason
+                FROM proof_leases
+                WHERE plan_id=?
+                ORDER BY step_id
+                """,
+                (plan_id,),
+            ).fetchall()
+        finally:
+            connection.close()
+        return tuple(
+            ProofLeaseSnapshot(
+                step_id=str(row["step_id"]),
+                owner_id=str(row["owner_id"]),
+                fencing_token=int(row["fencing_token"]),
+                acquired_at_ms=int(row["acquired_at_ms"]),
+                heartbeat_at_ms=int(row["heartbeat_at_ms"]),
+                expires_at_ms=int(row["expires_at_ms"]),
+                active=(
+                    row["released_at_ms"] is None
+                    and int(row["expires_at_ms"]) > now
+                ),
+                released_at_ms=(
+                    int(row["released_at_ms"])
+                    if row["released_at_ms"] is not None
+                    else 0
+                ),
+                release_reason=str(row["release_reason"] or ""),
+            )
+            for row in rows
+        )
+
 
 class ProofScheduler:
     """Execute and resume one durable :class:`ProofPlan`."""
@@ -1973,6 +2071,11 @@ class ProofScheduler:
 
     def snapshot(self) -> ProofScheduleSnapshot:
         rows = self._store.node_rows(self.plan.plan_id)
+        leases = self._store.lease_snapshots(self.plan.plan_id)
+        active_leases = {
+            lease.step_id: lease for lease in leases if lease.active
+        }
+        steps = {step.step_id: step for step in self.plan.steps}
         nodes = tuple(
             ProofNodeSnapshot(
                 step_id=str(row["step_id"]),
@@ -1980,6 +2083,27 @@ class ProofScheduler:
                 reason_code=str(row["reason_code"]),
                 attempt_id=str(row["attempt_id"]),
                 cancellation_requested=bool(row["cancellation_requested"]),
+                stage=steps[str(row["step_id"])].stage.value,
+                resource_class=normalize_resource_class(
+                    steps[str(row["step_id"])].resource_class,
+                    stage=steps[str(row["step_id"])].stage,
+                ),
+                dependency_step_ids=steps[str(row["step_id"])].depends_on,
+                lease_owner_id=(
+                    active_leases[str(row["step_id"])].owner_id
+                    if str(row["step_id"]) in active_leases
+                    else ""
+                ),
+                fencing_token=(
+                    active_leases[str(row["step_id"])].fencing_token
+                    if str(row["step_id"]) in active_leases
+                    else 0
+                ),
+                lease_expires_at_ms=(
+                    active_leases[str(row["step_id"])].expires_at_ms
+                    if str(row["step_id"]) in active_leases
+                    else 0
+                ),
             )
             for row in rows
         )
@@ -1990,6 +2114,7 @@ class ProofScheduler:
             active_leases=self._store.active_lease_count(self.plan.plan_id),
             attempts=self._store.attempts(self.plan.plan_id),
             receipts=self._store.receipts(self.plan.plan_id),
+            leases=leases,
         )
 
     def cancel(
@@ -2505,9 +2630,27 @@ class ProofScheduler:
                     phase=eligible_phase if enforce_barriers else None,
                 )
                 if selected_stages is not None and not ready and not futures:
+                    # Another process may have claimed a node between the
+                    # snapshot above and this ready query.  Refresh before
+                    # diagnosing a dependency deadlock, and wait when durable
+                    # lease ownership demonstrates legitimate peer progress.
+                    refreshed = self.snapshot()
+                    refreshed_phase = (
+                        self._eligible_phase(refreshed, selected_stages)
+                        if enforce_barriers
+                        else None
+                    )
+                    refreshed_ready = self.ready_steps(
+                        selected_stages,
+                        phase=(
+                            refreshed_phase if enforce_barriers else None
+                        ),
+                    )
+                    if refreshed_ready:
+                        continue
                     selected_unfinished = [
                         node.step_id
-                        for node in snapshot.nodes
+                        for node in refreshed.nodes
                         if not node.state.terminal
                         and next(
                             step.stage
@@ -2516,6 +2659,19 @@ class ProofScheduler:
                         )
                         in selected_stages
                     ]
+                    if selected_unfinished and (
+                        refreshed.active_leases > 0
+                        or self._store.active_lease_count(
+                            self.plan.plan_id
+                        ) > 0
+                        or any(
+                            node.state is ProofNodeState.RUNNING
+                            and node.step_id in selected_unfinished
+                            for node in refreshed.nodes
+                        )
+                    ):
+                        time.sleep(self.config.poll_interval_seconds)
+                        continue
                     if selected_unfinished:
                         raise ContractValidationError(
                             "selected proof stages made no progress; unfinished "
@@ -2738,6 +2894,7 @@ __all__ = [
     "PROOF_SCHEDULER_SCHEMA",
     "STAGED_PROOF_PHASES",
     "ProofExecutionContext",
+    "ProofLeaseSnapshot",
     "ProofNodeSnapshot",
     "ProofNodeState",
     "ProofScheduleResult",

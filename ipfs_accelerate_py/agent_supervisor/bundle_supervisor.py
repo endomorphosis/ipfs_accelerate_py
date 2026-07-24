@@ -867,6 +867,7 @@ def implementation_supervisor_command(
     daemon_interval: float,
     stale_seconds: float,
     check_interval: float,
+    watchdog_startup_grace_seconds: float | None,
     max_restarts: int,
     implementation_timeout: float,
     implementation_command: str = "",
@@ -916,6 +917,13 @@ def implementation_supervisor_command(
         "--no-dependency-guardrail",
         "--no-reconciliation-guardrail",
     ]
+    if watchdog_startup_grace_seconds is not None:
+        command.extend(
+            [
+                "--watchdog-startup-grace-seconds",
+                str(watchdog_startup_grace_seconds),
+            ]
+        )
     for relative in dict.fromkeys(str(path).strip().strip("/") for path in worktree_submodule_paths):
         if relative:
             command.extend(["--worktree-submodule-path", relative])
@@ -958,6 +966,7 @@ def plan_bundle_lanes(
     daemon_interval: float = 300.0,
     stale_seconds: float = 1800.0,
     check_interval: float = 60.0,
+    watchdog_startup_grace_seconds: float | None = None,
     max_restarts: int = 10,
     implementation_timeout: float = 1800.0,
     implementation_command: str = "",
@@ -1040,6 +1049,7 @@ def plan_bundle_lanes(
             daemon_interval=daemon_interval,
             stale_seconds=stale_seconds,
             check_interval=check_interval,
+            watchdog_startup_grace_seconds=watchdog_startup_grace_seconds,
             max_restarts=max_restarts,
             implementation_timeout=implementation_timeout,
             implementation_command=implementation_command,
@@ -1815,6 +1825,29 @@ class DynamicBundleScheduler:
             return "blocked"
         return ""
 
+    def _authoritative_lane_has_open_work(self, lane: BundleLaneSpec) -> bool:
+        """Return whether the shard explicitly reopens this execution slice."""
+
+        if not lane.todo_path.exists() or not lane.task_ids:
+            return False
+        from .todo_daemon.implementation_daemon import parse_task_file
+
+        task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
+        try:
+            tasks = parse_task_file(lane.todo_path, task_prefix)
+        except OSError:
+            return False
+        selected_ids = set(lane.task_ids)
+        selected = [
+            task
+            for task in tasks
+            if str(task.task_id) in selected_ids
+        ]
+        return bool(selected) and any(
+            str(task.status).strip().lower() not in {"complete", "completed", "blocked", "on_hold"}
+            for task in selected
+        )
+
     def _disposition(self, lane: BundleLaneSpec) -> str:
         value = self._lane_disposition(lane)
         if value is True:
@@ -2258,6 +2291,11 @@ class DynamicBundleScheduler:
                 for lane in registered:
                     if lane.task_cid in self._running or self._disposition(lane):
                         continue
+                    if self._authoritative_lane_has_open_work(lane):
+                        coordinator.requeue_completed(
+                            lane.task_cid,
+                            reason="bundle_board_reopened",
+                        )
                     coordinator.requeue_exhausted_blocked(
                         lane.task_cid,
                         reason="bundle_board_reopened",
@@ -2617,6 +2655,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--daemon-interval", type=float, default=300.0)
     parser.add_argument("--stale-seconds", type=float, default=1800.0)
     parser.add_argument("--check-interval", type=float, default=60.0)
+    parser.add_argument("--watchdog-startup-grace-seconds", type=float, default=None)
     parser.add_argument("--max-restarts", type=int, default=0)
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
@@ -2684,6 +2723,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         daemon_interval=args.daemon_interval,
         stale_seconds=args.stale_seconds,
         check_interval=args.check_interval,
+        watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
         max_restarts=args.max_restarts,
         implementation_timeout=args.implementation_timeout,
         implementation_command=args.implementation_command,

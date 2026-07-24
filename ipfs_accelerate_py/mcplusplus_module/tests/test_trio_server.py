@@ -146,6 +146,19 @@ class TestTrioMCPServer:
         server._register_p2p_tools()
         assert calls == ["taskqueue", "workflow"]
 
+    def test_register_p2p_tools_adapts_native_registrars_to_standalone(self):
+        """Hierarchical native registrars should populate the standalone MCP registry."""
+        from ipfs_accelerate_py.mcp_server.server import StandaloneMCP
+
+        server = TrioMCPServer()
+        server.mcp = StandaloneMCP(name="test-mcplusplus")
+
+        server._register_p2p_tools()
+
+        assert "p2p_taskqueue_status" in server.mcp.tools
+        assert "get_p2p_scheduler_status" in server.mcp.tools
+        assert callable(server.mcp.tools["p2p_taskqueue_status"]["function"])
+
     def test_register_p2p_tools_uses_explicit_registrars(self, monkeypatch):
         """Canonical explicit registrars should be called when both feature flags are enabled."""
         from ipfs_accelerate_py.mcp_server.tools.p2p import native_p2p_tools as taskqueue_module

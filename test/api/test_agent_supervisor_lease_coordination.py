@@ -358,6 +358,44 @@ def test_reopened_blocked_bundle_resets_exhausted_attempt_budget(tmp_path: Path)
         assert replacement.fencing_token > failed.fencing_token
 
 
+def test_authoritative_board_can_requeue_completed_bundle(tmp_path: Path) -> None:
+    prerequisite_bundle = {
+        **_bundle(),
+        "tasks": [{"task_id": "SVD-085", "status": "todo"}],
+    }
+
+    with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
+        registered = coordinator.register_bundle(prerequisite_bundle, created_at_ms=1)
+        first = coordinator.claim(registered["task_cid"], "did:web:lane-a.example")
+        coordinator.receipt(first, status="succeeded", output={"commit": "abc123"})
+        assert coordinator.task_state(first.task_cid)["state"] == "completed"
+
+        dependent_bundle = {
+            **_bundle(),
+            "bundle_key": "objective/dependent",
+            "tasks": [{"task_id": "SVD-086", "status": "todo"}],
+            "dependency_task_cids": [first.task_cid],
+        }
+        dependent = coordinator.register_bundle(dependent_bundle, created_at_ms=2)
+        assert coordinator.claimability(dependent["task_cid"])["claimable"] is True
+
+        assert coordinator.requeue_completed(
+            first.task_cid,
+            reason="bundle_board_reopened",
+        )
+        reopened_state = coordinator.task_state(first.task_cid)
+        assert reopened_state["state"] == "ready"
+        assert reopened_state["attempt"] == 0
+        assert reopened_state["release_reason"] == "requeued:bundle_board_reopened"
+        dependency_state = coordinator.claimability(dependent["task_cid"])
+        assert dependency_state["claimable"] is False
+        assert dependency_state["repair_evidence"][0]["lease_state"] == "released"
+
+        replacement = coordinator.claim(first.task_cid, "did:web:lane-b.example")
+        assert replacement.attempt == 1
+        assert replacement.fencing_token > first.fencing_token
+
+
 def test_changed_bundle_revision_cannot_overlap_its_active_execution_scope(
     tmp_path: Path,
 ) -> None:

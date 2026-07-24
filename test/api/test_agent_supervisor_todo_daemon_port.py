@@ -5967,6 +5967,66 @@ def test_implementation_daemon_borrows_ready_work_when_shard_drained(tmp_path):
     assert "task_shard_ready_fallback" in events
 
 
+def test_implementation_daemon_reopens_dependency_block_after_prerequisite_completes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Completed prerequisite
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Transient dependency block
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-001
+
+## ACCEL-003 Explicit operator block
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-001
+- Blocked reason: Awaiting operator approval.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._commit_generated_file_update = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "updated": False,
+        "reason": "test",
+    }
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(repo / "state.json")
+    todo_text = todo_path.read_text(encoding="utf-8")
+
+    assert result["active_task_id"] == "ACCEL-002"
+    assert state.ready_task_ids == ["ACCEL-002"]
+    assert state.blocked_task_ids == ["ACCEL-003"]
+    assert "## ACCEL-002 Transient dependency block\n\n- Status: todo" in todo_text
+    assert "## ACCEL-003 Explicit operator block\n\n- Status: blocked" in todo_text
+    assert "dependency_blocked_tasks_reopened" in (
+        repo / "events.jsonl"
+    ).read_text(encoding="utf-8")
+
+
 def test_implementation_daemon_filters_repo_wide_task_claims(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7776,6 +7836,67 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     loop_config = TodoImplementationSupervisor(config).build_supervisor_loop_config()
 
     assert loop_config.status_static_fields["worktree_no_child_stall_seconds"] == 42
+    assert loop_config.watchdog_startup_grace_seconds == 300
+    assert loop_config.watchdog_stale_after_seconds >= (
+        config.implementation_timeout + max(30.0, config.check_interval * 2.0)
+    )
+
+
+def test_implementation_supervisor_allows_startup_grace_override(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        watchdog_startup_grace_seconds=45,
+    )
+
+    loop_config = TodoImplementationSupervisor(config).build_supervisor_loop_config()
+
+    assert loop_config.watchdog_startup_grace_seconds == 45
+
+
+def test_implementation_supervisor_treats_legal_ir_runs_as_bounded_active_children(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_supervisor as implementation_supervisor_module,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: 1234)
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "cmdline": (
+                    "bash",
+                    "scripts/ops/legal_ir/run_legal_ir_8h_canary.sh",
+                )
+            }
+        ],
+    )
+
+    assert supervisor._active_validation_subprocess_exists() is True
 
 
 def test_implementation_supervisor_repairs_stale_active_state_after_rewrite(tmp_path):
@@ -11943,6 +12064,7 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
         log_dir=repo / "logs",
         task_prefix="ACCEL-",
         implement=True,
+        watchdog_startup_grace_seconds=420,
         implementation_command="codex exec --full-auto",
         llm_merge_resolver_command="python resolver.py",
         generated_dirty_repair_enabled=True,
@@ -11963,6 +12085,9 @@ def test_bundle_supervisor_plans_isolated_lanes(tmp_path):
     assert "--implement" in lanes[0].command
     assert "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor" in lanes[0].command
     assert "--implementation-command" in lanes[0].command
+    assert lanes[0].command[
+        lanes[0].command.index("--watchdog-startup-grace-seconds") + 1
+    ] == "420"
     assert lanes[0].command[lanes[0].command.index("--log-level") + 1] == "DEBUG"
     assert "--no-retry-budget-guardrail" in lanes[0].command
     assert "--no-dependency-guardrail" in lanes[0].command

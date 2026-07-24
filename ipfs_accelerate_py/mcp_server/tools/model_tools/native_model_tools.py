@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+import anyio
+
 logger = logging.getLogger(__name__)
 
 
@@ -166,6 +168,45 @@ async def model_get_stats() -> Dict[str, Any]:
         return _error_result(str(exc))
 
 
+async def model_list_served(
+    endpoint_url: Optional[str] = None,
+    timeout: float = 2.0,
+) -> Dict[str, Any]:
+    """List models that are live on configured inference endpoints."""
+    try:
+        from ipfs_accelerate_py.model_manager import get_default_model_manager
+
+        manager = get_default_model_manager()
+        models = await anyio.to_thread.run_sync(
+            lambda: manager.list_served_models(endpoint_url=endpoint_url, timeout=timeout)
+        )
+        return {"status": "success", "models": models, "count": len(models)}
+    except Exception as exc:
+        return _error_result(str(exc), models=[], count=0)
+
+
+async def model_get_served(
+    model_id: str,
+    endpoint_url: Optional[str] = None,
+    timeout: float = 2.0,
+) -> Dict[str, Any]:
+    """Get live serving information for a model ID."""
+    try:
+        from ipfs_accelerate_py.model_manager import get_default_model_manager
+
+        manager = get_default_model_manager()
+        model = await anyio.to_thread.run_sync(
+            lambda: manager.get_served_model(
+                model_id, endpoint_url=endpoint_url, timeout=timeout
+            )
+        )
+        if model is None:
+            return _error_result(f"Model is not currently served: {model_id}", model_id=model_id)
+        return {"status": "success", "model": model}
+    except Exception as exc:
+        return _error_result(str(exc), model_id=model_id)
+
+
 async def model_list_hf_inference(
     model_kind: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -314,6 +355,39 @@ def register_native_model_tools(manager: Any) -> None:
         input_schema={"type": "object", "properties": {}, "required": []},
         runtime="fastapi",
         tags=["native", "mcpp", "model-tools"],
+    )
+    manager.register_tool(
+        category="model_tools",
+        name="model_list_served",
+        func=model_list_served,
+        description="List models currently exposed by configured inference servers.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "endpoint_url": {"type": "string"},
+                "timeout": {"type": "number", "default": 2.0, "minimum": 0.1},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "model-tools", "serving"],
+    )
+    manager.register_tool(
+        category="model_tools",
+        name="model_get_served",
+        func=model_get_served,
+        description="Get live serving information for a model ID.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model_id": {"type": "string"},
+                "endpoint_url": {"type": "string"},
+                "timeout": {"type": "number", "default": 2.0, "minimum": 0.1},
+            },
+            "required": ["model_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "model-tools", "serving"],
     )
     manager.register_tool(
         category="model_tools",

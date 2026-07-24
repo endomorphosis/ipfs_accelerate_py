@@ -15,7 +15,10 @@ import os
 import sys
 import json
 import logging
+import urllib.error
+import urllib.request
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
 from dataclasses import dataclass, asdict
@@ -1343,6 +1346,95 @@ class ModelManager:
             results.append(metadata)
         
         return results
+
+    @staticmethod
+    def _served_model_endpoints(endpoint_url: Optional[str] = None) -> List[str]:
+        """Return configured OpenAI-compatible inference API base URLs."""
+        if endpoint_url:
+            candidates = [endpoint_url]
+        else:
+            configured = os.getenv("IPFS_ACCELERATE_SERVED_MODEL_ENDPOINTS", "")
+            candidates = [value.strip() for value in configured.split(",") if value.strip()]
+            if not candidates:
+                candidates = [
+                    os.getenv("IPFS_ACCELERATE_LLAMA_CPP_BASE_URL", "").strip()
+                    or os.getenv("IPFS_ACCELERATE_PY_LLAMA_CPP_BASE_URL", "").strip()
+                    or "http://127.0.0.1:8080/v1"
+                ]
+        return [candidate.rstrip("/") for candidate in candidates]
+
+    def list_served_models(
+        self,
+        endpoint_url: Optional[str] = None,
+        timeout: float = 2.0,
+    ) -> List[Dict[str, Any]]:
+        """Discover models currently exposed by OpenAI-compatible servers.
+
+        Unreachable endpoints are skipped so model discovery remains a safe MCP
+        health operation. Configure multiple endpoints with
+        ``IPFS_ACCELERATE_SERVED_MODEL_ENDPOINTS``.
+        """
+        served: List[Dict[str, Any]] = []
+        seen: Set[Tuple[str, str]] = set()
+        for base_url in self._served_model_endpoints(endpoint_url):
+            models_url = (
+                f"{base_url}/models"
+                if base_url.endswith("/v1")
+                else f"{base_url}/v1/models"
+            )
+            try:
+                request = urllib.request.Request(
+                    models_url,
+                    headers={"Accept": "application/json"},
+                )
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+            except (OSError, ValueError, urllib.error.URLError) as exc:
+                logger.debug("Served-model discovery failed for %s: %s", base_url, exc)
+                continue
+
+            records = payload.get("data") or payload.get("models") or []
+            if isinstance(records, dict):
+                records = list(records.values())
+            for raw in records:
+                if isinstance(raw, str):
+                    raw = {"id": raw}
+                if not isinstance(raw, dict):
+                    continue
+                model_id = str(raw.get("id") or raw.get("model") or raw.get("name") or "")
+                if not model_id or (base_url, model_id) in seen:
+                    continue
+                seen.add((base_url, model_id))
+                served.append({
+                    "id": model_id,
+                    "model_id": model_id,
+                    "name": str(raw.get("name") or model_id),
+                    "provider": str(raw.get("owned_by") or "llama_cpp"),
+                    "endpoint": base_url,
+                    "status": "available",
+                    "served": True,
+                    "capabilities": raw.get("capabilities") or ["text-generation"],
+                    "metadata": raw.get("meta") or {},
+                })
+        return served
+
+    def get_served_model(
+        self,
+        model_id: str,
+        endpoint_url: Optional[str] = None,
+        timeout: float = 2.0,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a currently served model by ID or configured Leanstral alias."""
+        aliases = {"leanstral", "leanstral_local", "labs-leanstral-1-5"}
+        models = self.list_served_models(endpoint_url=endpoint_url, timeout=timeout)
+        for model in models:
+            if model["id"] == model_id:
+                return model
+        if model_id.lower() in aliases and len(models) == 1:
+            model = dict(models[0])
+            model["requested_alias"] = model_id
+            return model
+        return None
     
     def search_models(self, query: str) -> List[ModelMetadata]:
         """
@@ -2613,6 +2705,7 @@ def create_model_from_huggingface(model_id: str, hf_config: Dict[str, Any],
     )
 
 
+@lru_cache(maxsize=1)
 def get_default_model_manager() -> ModelManager:
     """Get a default model manager instance."""
     return ModelManager()
