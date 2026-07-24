@@ -1855,7 +1855,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-059 Produce completion evidence for Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: planning
