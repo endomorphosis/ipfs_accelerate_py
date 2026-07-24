@@ -50,7 +50,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-003 Integrate the existing analysis cache, AST index, and retrieval layer
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -2206,3 +2206,91 @@ planner, and refill behavior defaults to shadow mode.
 - Candidate kind: validation_gate
 - Todo vector key: 237e370a4ddea0a3
 - Acceptance: Objective scan filed this gap for ASI-G101. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-064-objective-gap-d16e31809741.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## ASI-065 Produce completion evidence for Prove 189057730455837902155591890661235220962 for Integrated analysis, caching, and ipfs_datasets_py offload
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: analysis
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_cache_coordinator.py
+- Validation: python -m pytest test/api/test_agent_supervisor_analysis_pipeline.py test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py test/api/test_agent_supervisor_cache_coordinator.py -q
+- Bundle: agent-supervisor/self-improvement/analysis
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-analysis.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: ASI-G020
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/analysis
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/cache_coordinator.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_cache_coordinator.py
+- Changed paths: 
+- AST symbols: 189057730455837902155591890661235220962
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G094
+- Canonical task key: task/v1/973b06447c50c364006a101fac33674a6c3fe731a3a251bc447a31c535522056
+- Canonical task CID: baguqeeras45qmrd4kdbwiadkcap2ym3hjjwd7zzruorfdpcepiy4knksebla
+- Missing evidence: Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: The live pipeline composes the existing cache, incremental AST index, bounded multi-signal retrieval, and optional datasets adapter, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.
+- Embedding query: 189057730455837902155591890661235220962
+- AST query: 189057730455837902155591890661235220962
+- Surplus group: ASI-G094
+- Merge key: objective-work/v1/f461f62e36e0f814e0265951be8eed2a9e485801
+- Merge family: ASI-G094
+- Merge role: completion_gate
+- Work item count: 6
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: f461f62e36e0f814
+- Acceptance: Objective scan filed this gap for ASI-G094. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-065-objective-gap-6016ec4c40a3.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: The live pipeline composes the existing cache, incremental AST index, bounded multi-signal retrieval, and optional datasets adapter, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
+
+## ASI-066 Produce completion evidence for Prove 184801846437522667882915494501685213497 for Integrated analysis, caching, and ipfs_datasets_py offload
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: analysis
+- Depends on: 
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery, docs/architecture/agent_supervisor_self_improvement.objectives.md, ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py
+- Validation: python -m pytest test/api/test_agent_supervisor_analysis_pipeline.py test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py test/api/test_agent_supervisor_cache_coordinator.py -q
+- Bundle: agent-supervisor/self-improvement/analysis
+- Bundle shard: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/bundles/agent-supervisor-self-improvement-analysis.todo.md
+- Bundle strategy: bounded_objective_generation
+- Graph parents: ASI-G020
+- Graph depth: 1
+- Parallel lane: agent-supervisor/self-improvement/analysis
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py, test/api/test_agent_supervisor_analysis_pipeline.py, test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py
+- Changed paths: 
+- AST symbols: 184801846437522667882915494501685213497
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: data/agent_supervisor/objective_generation.json
+- Allow concurrent with: 
+- Goal id: ASI-G095
+- Canonical task key: task/v1/563518e44622c3528cb7aba6aa4a3ce77c76a2587321a30111d8e34e8555bfaf
+- Canonical task CID: baguqeeraky2rrzcgelbvfdfxvotkusr4456hnisyomq2gair3dru5bkvx6xq
+- Missing evidence: Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Capability inspection is deterministic and side-effect free, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.
+- Embedding query: 184801846437522667882915494501685213497
+- AST query: 184801846437522667882915494501685213497
+- Surplus group: ASI-G095
+- Merge key: objective-work/v1/97d81e341c97e2791e4f83c01a7107d99609b547
+- Merge family: ASI-G095
+- Merge role: completion_gate
+- Work item count: 6
+- Work scope: bounded_objective_generation
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: generated_task
+- Todo vector key: 97d81e341c97e279
+- Acceptance: Objective scan filed this gap for ASI-G095. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-066-objective-gap-bb9d80e1677b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one., Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree., Produce completion evidence for: Capability inspection is deterministic and side-effect free, Require an explicitly healthy analyzer that is safe for completion reasoning., Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree., Task completion is provisional until every criterion has valid evidence.), and keep the supervisor-fed backlog aligned with the objective heap.  Keep the parent goal actionable until fresh proof receipts satisfy its completion gate.
