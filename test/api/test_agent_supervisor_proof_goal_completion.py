@@ -4,6 +4,14 @@ from datetime import datetime, timezone
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+    ImplementationEvidenceKind,
+    ImplementationObligationSet,
+    ImplementationResultBinding,
+    ImplementationResultEvidence,
+    compile_candidate_proof_scopes,
+    derive_fresh_implementation_obligations,
+)
 from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     AssuranceLevel,
     CodeProofObligation,
@@ -16,9 +24,14 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
+from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+    PlanAssurance,
+    PlanConsistencyLevel,
+)
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
     GoalState,
+    evaluate_code_proof_goal_completion,
     evaluate_completion_gate,
     evaluate_goal_completion,
     validate_completion_evidence,
@@ -397,3 +410,300 @@ def test_formal_completion_reference_uses_authoritative_not_provider_assurance()
     assert reference["authoritative_verdict"] == "inconclusive"
     assert reference["assurance_satisfied"] is False
     assert receipt.satisfies_completion(AssuranceLevel.KERNEL_VERIFIED) is False
+
+
+def _fresh_implementation_manifest(
+    *,
+    repository_tree: str = TREE,
+    assumptions: tuple[str, ...] = ("assumption:lease-owner-is-current",),
+) -> ImplementationObligationSet:
+    scope_set = compile_candidate_proof_scopes(
+        (
+            {
+                "new_path": "src/lease.py",
+                "status": "add",
+                "after_source": """\
+class Lease:
+    def mutate(self, token: int) -> bool:
+        self.token = token
+        return validate_fencing_token(token)
+""",
+            },
+        )
+    )
+    bounds = {
+        "python_versions": ["3.11", "3.12"],
+        "tests": ["test/test_lease.py"],
+        "runtime_scenarios": ["expired_token", "current_token"],
+    }
+    evidence_common = {
+        "accepted_plan_id": "plan:ref-267",
+        "repository_id": REPOSITORY,
+        "repository_tree_id": repository_tree,
+        "scope_ids": scope_set.scope_ids,
+        "passed": True,
+        "observed_at": NOW,
+        "validation_bounds": bounds,
+        "assumption_ids": assumptions,
+    }
+    test_evidence = ImplementationResultEvidence(
+        kind=ImplementationEvidenceKind.TEST,
+        producer_id="pytest:locked",
+        artifact_id="artifact:test-run:lease-fencing",
+        **evidence_common,
+    )
+    runtime_evidence = ImplementationResultEvidence(
+        kind=ImplementationEvidenceKind.RUNTIME,
+        producer_id="runtime-harness:lease-contention",
+        artifact_id="artifact:runtime:lease-contention",
+        **evidence_common,
+    )
+    return derive_fresh_implementation_obligations(
+        scope_set,
+        accepted_plan_id="plan:ref-267",
+        repository_id=REPOSITORY,
+        repository_tree_id=repository_tree,
+        assumption_ids=assumptions,
+        validation_bounds=bounds,
+        test_evidence=(test_evidence,),
+        runtime_evidence=(runtime_evidence,),
+        planned_effect_ids=("effect:reject-stale-fencing-token",),
+        task_id="REF-267",
+    )
+
+
+def _bound_code_receipt(
+    obligation: CodeProofObligation,
+    binding: ImplementationResultBinding,
+    *,
+    freshness: EvidenceFreshness = EvidenceFreshness.CURRENT,
+    contradicted: bool = False,
+) -> ProofReceipt:
+    if contradicted:
+        evidence = (
+            ProofEvidence(
+                kind=EvidenceKind.SOLVER_RESULT,
+                authority=EvidenceAuthority.SOLVER,
+                verdict=EvidenceVerdict.REJECTED,
+                artifact_id="artifact:verified-counterexample",
+                subject_id=obligation.obligation_id,
+                verifier_id="solver:z3@4",
+                independent=True,
+                metadata={"counterexample_verified": True},
+            ),
+        )
+        verdict = ProofVerdict.DISPROVED
+    else:
+        evidence = (_kernel_evidence(obligation),)
+        verdict = ProofVerdict.PROVED
+    return ProofReceipt(
+        obligation_id=obligation.obligation_id,
+        plan_id=binding.accepted_plan_id,
+        attempt_id="attempt:ref-267:fresh-code-proof",
+        repository_id=binding.repository_id,
+        repository_tree_id=binding.repository_tree_id,
+        ast_scope_ids=obligation.ast_scope_ids,
+        premise_ids=obligation.premise_ids,
+        translator_id="translator:python-lean@1",
+        solver_id="solver:z3@4",
+        kernel_id="kernel:lean-4.19",
+        toolchain_id="toolchain:locked",
+        policy_id="policy:critical-proof",
+        resource_budget=ResourceBudget(wall_time_ms=30_000),
+        verdict=verdict,
+        evidence=evidence,
+        freshness=freshness,
+        finished_at=NOW.isoformat(),
+        metadata=binding.receipt_metadata(obligation=obligation),
+    )
+
+
+def test_verified_decomposition_receipt_cannot_be_reused_as_code_proof() -> None:
+    manifest = _fresh_implementation_manifest()
+    binding = manifest.binding
+    obligation = manifest.obligations[0]
+    decomposition_receipt_id = "receipt:verified-decomposition"
+    plan_assurance = PlanAssurance(
+        plan_id=binding.accepted_plan_id,
+        consistency=PlanConsistencyLevel.KERNEL_VERIFIED,
+        consistency_receipt_ids=(decomposition_receipt_id,),
+        bounds={"decomposition_depth": 4},
+    )
+    planning_receipt = {
+        "receipt_id": decomposition_receipt_id,
+        "obligation_id": obligation.obligation_id,
+        "kind": "verified_decomposition",
+        "verdict": "proved",
+        "repository_tree_id": TREE,
+    }
+
+    decision = evaluate_code_proof_goal_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        binding=binding,
+        required_obligations=manifest,
+        receipts=(planning_receipt,),
+        plan_assurance=plan_assurance,
+    )
+
+    assert decision.verified is False
+    assert decision.state is GoalState.PROVISIONALLY_COMPLETE
+    assert decision.satisfied_obligation_ids == ()
+    assert set(decision.unsatisfied_obligation_ids) == set(manifest.obligation_ids)
+    assert "plan_receipt_reused_as_code_proof" in decision.reason_codes
+    assert "code_proof_obligations_unsatisfied" in decision.reason_codes
+
+
+@pytest.mark.parametrize(
+    ("receipt", "claim_kind"),
+    [
+        (
+            {
+                "receipt_id": "receipt:model-self-proof",
+                "kind": "model_generated_proof_claim",
+                "verdict": "proved",
+                "provider_claimed_assurance": "kernel_verified",
+                "passed": True,
+            },
+            "model_generated_proof_claim",
+        ),
+        (
+            {
+                "receipt_id": "receipt:type-check",
+                "kind": "type_check",
+                "verdict": "passed",
+                "passed": True,
+                "errors": 0,
+            },
+            "type_check",
+        ),
+    ],
+)
+def test_noncanonical_model_claim_or_type_check_alone_cannot_prove_code(
+    receipt: dict[str, object],
+    claim_kind: str,
+) -> None:
+    manifest = _fresh_implementation_manifest()
+    binding = manifest.binding
+    obligation = manifest.obligations[0]
+    receipt["obligation_id"] = obligation.obligation_id
+
+    decision = evaluate_code_proof_goal_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        binding=binding,
+        required_obligations=manifest,
+        receipts=(receipt,),
+    )
+
+    assert decision.verified is False, claim_kind
+    assert decision.state is GoalState.PROVISIONALLY_COMPLETE
+    assert set(decision.unsatisfied_obligation_ids) == set(manifest.obligation_ids)
+    assert "invalid_code_proof_receipt" in decision.reason_codes
+    assert "code_proof_obligations_unsatisfied" in decision.reason_codes
+    assert decision.receipt_results[0]["valid"] is False
+
+
+def test_cached_receipt_for_old_tree_cannot_cover_fresh_obligation_set() -> None:
+    manifest = _fresh_implementation_manifest()
+    old_manifest = _fresh_implementation_manifest(repository_tree="git-tree:ref-266")
+    cached_receipts = tuple(
+        _bound_code_receipt(obligation, old_manifest.binding)
+        for obligation in old_manifest.obligations
+    )
+
+    decision = evaluate_code_proof_goal_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        binding=manifest.binding,
+        required_obligations=manifest,
+        receipts=cached_receipts,
+    )
+
+    assert decision.verified is False
+    assert decision.reopened is True
+    assert decision.stale is True
+    assert decision.satisfied_obligation_ids == ()
+    assert "receipt_not_required_by_fresh_obligation_set" in decision.reason_codes
+    assert any(
+        "receipt_not_required_by_fresh_obligation_set"
+        in result["reason_codes"]
+        for result in decision.receipt_results
+    )
+
+
+def test_fresh_fully_bound_code_receipt_verifies_provisional_goal() -> None:
+    manifest = _fresh_implementation_manifest()
+    binding = manifest.binding
+    receipts = tuple(
+        _bound_code_receipt(obligation, binding)
+        for obligation in manifest.obligations
+    )
+
+    decision = evaluate_code_proof_goal_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        binding=binding,
+        required_obligations=manifest,
+        receipts=receipts,
+    )
+
+    assert decision.verified is True
+    assert decision.state is GoalState.VERIFIED_COMPLETE
+    assert decision.binding_id == binding.binding_id
+    assert decision.all_obligations_satisfied is True
+    assert set(decision.satisfied_obligation_ids) == set(manifest.obligation_ids)
+    assert decision.unsatisfied_obligation_ids == ()
+    assert all(result["valid"] is True for result in decision.receipt_results)
+    assert {
+        result["binding_id"] for result in decision.receipt_results
+    } == {binding.binding_id}
+
+
+@pytest.mark.parametrize(
+    "current_state",
+    [GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE],
+)
+@pytest.mark.parametrize(
+    ("receipt_kwargs", "expected_reason", "expected_flag"),
+    [
+        (
+            {"freshness": EvidenceFreshness.STALE},
+            "stale_proof_receipt",
+            "stale",
+        ),
+        (
+            {"contradicted": True},
+            "code_proof_not_proved",
+            "contradictory",
+        ),
+    ],
+)
+def test_completed_goal_reopens_when_required_code_binding_is_stale_or_contradictory(
+    current_state: GoalState,
+    receipt_kwargs: dict[str, object],
+    expected_reason: str,
+    expected_flag: str,
+) -> None:
+    manifest = _fresh_implementation_manifest()
+    binding = manifest.binding
+    target = manifest.obligations[0]
+    receipts = tuple(
+        _bound_code_receipt(
+            obligation,
+            binding,
+            **(receipt_kwargs if obligation is target else {}),
+        )
+        for obligation in manifest.obligations
+    )
+
+    decision = evaluate_code_proof_goal_completion(
+        current_state=current_state,
+        binding=binding,
+        required_obligations=manifest,
+        receipts=receipts,
+    )
+
+    assert decision.state is GoalState.REOPENED
+    assert decision.reopened is True
+    assert decision.verified is False
+    assert decision.unsatisfied_obligation_ids == (target.obligation_id,)
+    assert getattr(decision, expected_flag) is True
+    assert expected_reason in decision.reason_codes
+    assert "code_proof_completion_reopened" in decision.reason_codes
