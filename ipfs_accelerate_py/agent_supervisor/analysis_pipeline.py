@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 from .analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
 from .analysis_cache import (
     ANALYSIS_CACHE_ENTRY_SCHEMA,
+    ANALYSIS_CACHE_KEY_SCHEMA,
     AnalysisCache,
     AnalysisCacheKey,
     AnalysisCacheLookupResult,
@@ -59,9 +60,12 @@ from .analysis_retrieval import (
 )
 from .cache_coordinator import (
     SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
+    CacheAuthority,
     CacheCoordinationResult,
     CacheCoordinationStatus,
+    CacheNamespace,
     SingleFlightCollapseEvidence,
+    namespace_metadata,
 )
 from .ipfs_datasets_analysis_provider import (
     AnalysisProviderPolicy,
@@ -1708,6 +1712,16 @@ def _cache_receipt(
                 for name, value in sorted(retrieval.backend_health.items())
             },
             "retrieval_truncation": retrieval.truncation.to_dict(),
+            "cache_namespace": namespace_metadata(
+                CacheNamespace.ANALYSIS,
+                authority=(
+                    CacheAuthority.AUTHORITATIVE
+                    if successful
+                    else CacheAuthority.DIAGNOSTIC
+                ),
+                key_schema=ANALYSIS_CACHE_KEY_SCHEMA,
+                entry_schema=ANALYSIS_CACHE_ENTRY_SCHEMA,
+            ).to_dict(),
         },
         "artifact_refs": [dict(artifact)],
     }

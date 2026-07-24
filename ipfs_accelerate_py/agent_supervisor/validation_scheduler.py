@@ -14,17 +14,26 @@ import inspect
 import json
 import os
 import subprocess
-import tempfile
 import threading
 import time
 from collections import deque
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .cache_coordinator import (
+    CacheAuthority,
+    CacheNamespace,
+    CacheQuotaPolicy,
+    CacheRecordOutcome,
+    NamespaceCacheCoordinator,
+    SemanticCacheKey,
+    build_namespace_semantic_key,
+)
 from .resource_scheduler import (
     AdmissionDecision,
     HostResourceSnapshot,
@@ -182,15 +191,21 @@ class ValidationCacheKey:
     environment: tuple[tuple[str, str], ...]
     dependency_state: str
     digest: str
+    semantic_key: SemanticCacheKey | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "target_commit": self.target_commit,
             "command": self.command,
             "environment": dict(self.environment),
             "dependency_state": self.dependency_state,
             "digest": self.digest,
         }
+        if self.semantic_key is not None:
+            result["semantic_key"] = self.semantic_key.to_dict()
+        return result
 
 
 def relevant_environment(
@@ -239,92 +254,153 @@ def build_validation_cache_key(
         "environment": environment_subset,
         "dependency_state": dependency_fingerprint,
     }
+    semantic_key = build_namespace_semantic_key(
+        CacheNamespace.VALIDATION,
+        target_commit=payload["target_commit"],
+        # Candidate content is part of dependency_state even when HEAD is
+        # unchanged.  Keep it separately named in the common contract so it
+        # cannot be omitted by another validation adapter.
+        candidate_tree=dependency_fingerprint or payload["target_commit"],
+        command=normalized_command,
+        environment=environment_subset,
+        dependency_state=dependency_fingerprint or "none",
+        toolchain={
+            "python": environment_subset.get("VIRTUAL_ENV", "system"),
+            "path": environment_subset.get("PATH", ""),
+        },
+        policy="successful-exact-result-only@1",
+        schema_version=CACHE_SCHEMA,
+    )
     return ValidationCacheKey(
         target_commit=payload["target_commit"],
         command=normalized_command,
         environment=tuple(environment_subset.items()),
         dependency_state=dependency_fingerprint,
         digest=_sha256_bytes(_canonical_json(payload).encode("utf-8")),
+        semantic_key=semantic_key,
     )
 
 
 class ValidationResultCache:
-    """Process-safe-enough content-addressed cache using atomic entry files.
+    """Integrity-checked validation namespace backed by the common envelope.
 
-    Every key has its own immutable JSON file.  Concurrent writers of the same
-    successful result converge through ``os.replace``; corrupt or incompatible
-    entries are ignored.  Failures are never stored.
+    Only successful, non-timeout command results are authoritative.  Native
+    validation payload validation is rerun on every exact-key lookup; corrupt,
+    stale, future-dated, or trust-poisoned entries are removed and repaired on
+    the next production.  The coordinator supplies process-keyed leases and
+    persistent count/byte/entry bounds without changing the scheduler's legacy
+    report fields.
     """
 
-    def __init__(self, cache_dir: Path | str, *, max_age_seconds: float | None = None) -> None:
+    def __init__(
+        self,
+        cache_dir: Path | str,
+        *,
+        max_age_seconds: float | None = None,
+        max_entries: int = 512,
+        max_bytes: int = 32 * 1024 * 1024,
+        max_entry_bytes: int = 256 * 1024,
+        wait_timeout_seconds: float = 30.0,
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.max_age_seconds = None if max_age_seconds is None else max(0.0, float(max_age_seconds))
-        self._lock = threading.Lock()
+        quota = CacheQuotaPolicy(
+            max_entries=max_entries,
+            max_bytes=max_bytes,
+            max_entry_bytes=max_entry_bytes,
+        )
+        self.coordinator = NamespaceCacheCoordinator(
+            self.cache_dir,
+            quotas={CacheNamespace.VALIDATION: quota},
+            wait_timeout_seconds=wait_timeout_seconds,
+        )
 
     def _path(self, key: ValidationCacheKey | str) -> Path:
-        digest = key.digest if isinstance(key, ValidationCacheKey) else str(key)
-        return self.cache_dir / digest[:2] / f"{digest}.json"
+        if not isinstance(key, ValidationCacheKey) or key.semantic_key is None:
+            digest = str(key)
+            return self.cache_dir / "legacy" / digest[:2] / f"{digest}.json"
+        return self.coordinator._entry_path(key.semantic_key)
+
+    @staticmethod
+    def _valid_result(result: Any) -> bool:
+        if not isinstance(result, Mapping):
+            return False
+        try:
+            return (
+                int(result.get("returncode", 1)) == 0
+                and result.get("timed_out") is not True
+                and not result.get("error")
+            )
+        except (TypeError, ValueError):
+            return False
+
+    def _semantic_key(self, key: ValidationCacheKey | str) -> SemanticCacheKey | None:
+        if isinstance(key, ValidationCacheKey):
+            return key.semantic_key
+        return None
 
     def get(self, key: ValidationCacheKey | str) -> dict[str, Any] | None:
-        path = self._path(key)
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError):
+        semantic_key = self._semantic_key(key)
+        if semantic_key is None:
             return None
-        if not isinstance(payload, dict) or payload.get("schema") != CACHE_SCHEMA:
+        lookup = self.coordinator.lookup(
+            semantic_key,
+            require_completion_evidence=True,
+            payload_validator=self._valid_result,
+        )
+        if not lookup.hit or not isinstance(lookup.payload, Mapping):
             return None
-        expected = key.digest if isinstance(key, ValidationCacheKey) else str(key)
-        if payload.get("cache_key") != expected:
+        if (
+            self.max_age_seconds is not None
+            and lookup.entry is not None
+            and (
+                time.time() - lookup.entry.created_at_ms / 1000
+                > self.max_age_seconds
+            )
+        ):
+            try:
+                self._path(key).unlink()
+            except OSError:
+                pass
             return None
-        if self.max_age_seconds is not None:
-            created_epoch = float(payload.get("created_epoch") or 0.0)
-            if created_epoch <= 0 or time.time() - created_epoch > self.max_age_seconds:
-                return None
-        result = payload.get("result")
-        if not isinstance(result, dict) or int(result.get("returncode", 1)) != 0:
-            return None
-        return dict(result)
+        return dict(lookup.payload)
 
     def put(self, key: ValidationCacheKey, result: Mapping[str, object]) -> bool:
-        if int(result.get("returncode", 1)) != 0 or result.get("timed_out"):
+        if not self._valid_result(result) or key.semantic_key is None:
             return False
-        path = self._path(key)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "schema": CACHE_SCHEMA,
-            "cache_key": key.digest,
-            "key": key.to_dict(),
-            "created_at": utc_now(),
-            "created_epoch": time.time(),
-            "result": _json_safe(dict(result)),
-        }
-        encoded = (_canonical_json(payload) + "\n").encode("utf-8")
-        with self._lock:
-            fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-            try:
-                with os.fdopen(fd, "wb") as handle:
-                    handle.write(encoded)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temporary, path)
-            finally:
-                try:
-                    os.unlink(temporary)
-                except FileNotFoundError:
-                    pass
-        return True
+        entry = self.coordinator.put(
+            key.semantic_key,
+            _json_safe(dict(result)),
+            outcome=CacheRecordOutcome.SUCCESSFUL,
+            authority=CacheAuthority.AUTHORITATIVE,
+            ttl_seconds=(
+                max(1, int(self.max_age_seconds))
+                if self.max_age_seconds is not None
+                else None
+            ),
+            payload_schema=CACHE_SCHEMA,
+            payload_validator=self._valid_result,
+        )
+        return entry is not None
+
+    @contextmanager
+    def single_flight(self, key: ValidationCacheKey) -> Iterable[None]:
+        if key.semantic_key is None:
+            yield
+            return
+        with self.coordinator.lease(key.semantic_key):
+            yield
+
+    def metrics(self):
+        return self.coordinator.metrics(CacheNamespace.VALIDATION)
+
+    stats = metrics
+
+    def prune(self) -> dict[str, int]:
+        return self.coordinator.gc(CacheNamespace.VALIDATION)
 
     def clear(self) -> int:
-        removed = 0
-        if not self.cache_dir.exists():
-            return removed
-        for path in self.cache_dir.glob("*/*.json"):
-            try:
-                path.unlink()
-                removed += 1
-            except OSError:
-                continue
-        return removed
+        return self.coordinator.clear(CacheNamespace.VALIDATION)
 
 
 # Shorter public name used by some embedding callers.
@@ -2380,6 +2456,7 @@ class ValidationScheduler:
         environment: Mapping[str, str],
         dependency_state: Mapping[str, object] | Sequence[object] | str,
         runner: ValidationRunner,
+        _cache_lease_held: bool = False,
     ) -> dict[str, object]:
         cache_key = build_validation_cache_key(
             target_commit=target_commit,
@@ -2403,6 +2480,20 @@ class ValidationScheduler:
                     }
                 )
                 return result
+            if not _cache_lease_held:
+                # Acquire the process-shared key lease before resource
+                # admission.  The recursive call repeats the exact validated
+                # lookup under the lease, closing the lookup-to-execution race.
+                with self.cache.single_flight(cache_key):
+                    return self._execute(
+                        spec,
+                        workspace_path=workspace_path,
+                        target_commit=target_commit,
+                        environment=environment,
+                        dependency_state=dependency_state,
+                        runner=runner,
+                        _cache_lease_held=True,
+                    )
 
         decision, resource_lease = self._acquire_resource(
             spec, workspace_path=workspace_path
