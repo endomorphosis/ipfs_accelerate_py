@@ -22,6 +22,7 @@ from typing import Any, ClassVar, Final
 
 from .context_contracts import (
     ContextBudget,
+    ContextBudgetResolution,
     ContextCapsule,
     ContextContractError,
     ContextDeltaCapsule,
@@ -35,6 +36,36 @@ from .formal_verification_contracts import CanonicalContract
 REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID: Final = (
     "208290439421789408250562066350459701853"
 )
+REQUIRED_CONTEXT_OBJECTIVE_ID: Final = "ASI-G091"
+REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "The compiler derives the effective input limit from the supervisor "
+        "ceiling, provider input/window limits, and reserved output/tool tokens"
+    ),
+    (
+        "counts the complete canonical provider input and never trusts a "
+        "caller-declared reference token hint below the canonical descriptor cost"
+    ),
+    (
+        "preserves the complete invariant core and every required reference "
+        "or rejects compilation"
+    ),
+    "refuses to defer required evidence as an expansion handle",
+    (
+        "orders optional material deterministically with explicit "
+        "inclusion/omission reasons and bounded expansion handles"
+    ),
+    (
+        "and emits the exact requirement ID only in a witness whose repository "
+        "tree, objective, policy, effective budget, required and selected "
+        "fields/references, capsule identity, result, and content digest are "
+        "revalidated against the capsule. End-to-end promotion remains "
+        "ineligible unless capsule-verified compiler results cover the complete "
+        "same terminal accepted task population, exactly reconcile charged "
+        "candidate input tokens, and retain the authoritative required-coverage "
+        "set while the paired 35 percent gate passes."
+    ),
+)
 DELTA_RETRY_EVIDENCE_ID: Final = (
     "306437607356117177048620815571362227127"
 )
@@ -44,14 +75,14 @@ CONTEXT_EVIDENCE_PRODUCERS: Final = {
 }
 
 CONTEXT_COMPILATION_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/context-compilation-receipt@1"
+    "ipfs_accelerate_py/agent-supervisor/context-compilation-receipt@2"
 )
 CONTEXT_DELTA_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/context-delta-receipt@1"
 )
 REQUIRED_CONTEXT_BUDGET_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "required-context-budget-evidence@1"
+    "required-context-budget-evidence@2"
 )
 DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/delta-retry-context-evidence@1"
@@ -462,6 +493,7 @@ class RequiredContextBudgetEvidence(CanonicalContract):
     policy_id: str
     policy_revision: str
     capsule_id: str
+    budget_resolution: ContextBudgetResolution
     effective_input_limit: int
     input_tokens: int
     required_fields: tuple[str, ...]
@@ -493,6 +525,18 @@ class RequiredContextBudgetEvidence(CanonicalContract):
                 minimum=1,
             ),
         )
+        resolution = self.budget_resolution
+        if isinstance(resolution, Mapping):
+            resolution = ContextBudgetResolution.from_dict(resolution)
+        if not isinstance(resolution, ContextBudgetResolution):
+            raise ContextCompilationError(
+                "budget_resolution must be a ContextBudgetResolution"
+            )
+        if resolution.effective_input_limit != self.effective_input_limit:
+            raise ContextCompilationError(
+                "budget resolution does not derive the effective input limit"
+            )
+        object.__setattr__(self, "budget_resolution", resolution)
         object.__setattr__(
             self, "input_tokens", _integer(self.input_tokens, "input_tokens")
         )
@@ -529,6 +573,7 @@ class RequiredContextBudgetEvidence(CanonicalContract):
             "policy_id": self.policy_id,
             "policy_revision": self.policy_revision,
             "capsule_id": self.capsule_id,
+            "budget_resolution": self.budget_resolution,
             "effective_input_limit": self.effective_input_limit,
             "input_tokens": self.input_tokens,
             "required_fields": self.required_fields,
@@ -555,6 +600,7 @@ class RequiredContextBudgetEvidence(CanonicalContract):
                 "policy_id",
                 "policy_revision",
                 "capsule_id",
+                "budget_resolution",
                 "effective_input_limit",
                 "input_tokens",
                 "required_fields",
@@ -572,6 +618,7 @@ class RequiredContextBudgetEvidence(CanonicalContract):
             policy_id=payload.get("policy_id", ""),
             policy_revision=payload.get("policy_revision", ""),
             capsule_id=payload.get("capsule_id", ""),
+            budget_resolution=payload.get("budget_resolution"),
             effective_input_limit=payload.get("effective_input_limit", 0),
             input_tokens=payload.get("input_tokens", 0),
             required_fields=tuple(payload.get("required_fields", ())),
@@ -601,6 +648,7 @@ class ContextCompilationReceipt(CanonicalContract):
     policy_revision: str
     stage: str
     capsule_id: str
+    budget_resolution: ContextBudgetResolution
     effective_input_limit: int
     input_tokens: int
     estimator_name: str
@@ -628,6 +676,18 @@ class ContextCompilationReceipt(CanonicalContract):
             raise ContextCompilationError("receipt input exceeds effective limit")
         if self.estimator_error_bps > MAX_ERROR_BPS:
             raise ContextCompilationError("estimator error exceeds its bound")
+        resolution = self.budget_resolution
+        if isinstance(resolution, Mapping):
+            resolution = ContextBudgetResolution.from_dict(resolution)
+        if not isinstance(resolution, ContextBudgetResolution):
+            raise ContextCompilationError(
+                "budget_resolution must be a ContextBudgetResolution"
+            )
+        if resolution.effective_input_limit != self.effective_input_limit:
+            raise ContextCompilationError(
+                "receipt budget resolution does not derive its effective limit"
+            )
+        object.__setattr__(self, "budget_resolution", resolution)
         decisions: list[EvidenceSelectionDecision] = []
         for raw in self.decisions:
             decisions.append(
@@ -655,6 +715,7 @@ class ContextCompilationReceipt(CanonicalContract):
                 or evidence.policy_id != self.policy_id
                 or evidence.policy_revision != self.policy_revision
                 or evidence.capsule_id != self.capsule_id
+                or evidence.budget_resolution != self.budget_resolution
                 or evidence.input_tokens != self.input_tokens
                 or evidence.effective_input_limit != self.effective_input_limit
             ):
@@ -685,6 +746,7 @@ class ContextCompilationReceipt(CanonicalContract):
             "policy_revision": self.policy_revision,
             "stage": self.stage,
             "capsule_id": self.capsule_id,
+            "budget_resolution": self.budget_resolution,
             "effective_input_limit": self.effective_input_limit,
             "input_tokens": self.input_tokens,
             "estimator_name": self.estimator_name,
@@ -711,6 +773,7 @@ class ContextCompilationReceipt(CanonicalContract):
                 "policy_revision",
                 "stage",
                 "capsule_id",
+                "budget_resolution",
                 "effective_input_limit",
                 "input_tokens",
                 "estimator_name",
@@ -730,6 +793,7 @@ class ContextCompilationReceipt(CanonicalContract):
             policy_revision=payload.get("policy_revision", ""),
             stage=payload.get("stage", ""),
             capsule_id=payload.get("capsule_id", ""),
+            budget_resolution=payload.get("budget_resolution"),
             effective_input_limit=payload.get("effective_input_limit", 0),
             input_tokens=payload.get("input_tokens", 0),
             estimator_name=payload.get("estimator_name", ""),
@@ -1110,6 +1174,7 @@ class ContextCompileResult:
     capsule: ContextCapsule
     receipt: ContextCompilationReceipt
     decisions: tuple[EvidenceSelectionDecision, ...]
+    verifier: Any = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.capsule, ContextCapsule):
@@ -1208,6 +1273,22 @@ class ContextCompileResult:
             raise ContextCompilationError(
                 "required-context evidence artifact digest does not match capsule"
             )
+        resolution = self.receipt.budget_resolution
+        if (
+            self.capsule.budget.reserved_output_tokens
+            != resolution.reserved_output_tokens
+            or self.capsule.budget.reserved_tool_tokens
+            != resolution.reserved_tool_tokens
+        ):
+            raise ContextCompilationError(
+                "capsule reserves do not match its budget resolution"
+            )
+        if self.verifier is not None:
+            if not isinstance(self.verifier, ContextCompiler):
+                raise ContextCompilationError(
+                    "context result verifier must be its ContextCompiler"
+                )
+            self.verifier.verify_compile_result(self)
 
 
 @dataclass(frozen=True)
@@ -1424,18 +1505,25 @@ class ContextCompiler:
             )
         self.budget = budget
         self.estimator = estimator or CalibratedTokenEstimator(tokenizer)
-        self.effective_input_limit = budget.effective_input_limit(
+        self.budget_resolution = budget.resolve_input_limit(
             provider_context_window=provider_context_window,
             provider_max_input_tokens=provider_max_input_tokens,
             reserved_output_tokens=reserved_output_tokens,
             reserved_tool_tokens=reserved_tool_tokens,
+        )
+        self.effective_input_limit = (
+            self.budget_resolution.effective_input_limit
         )
         if self.effective_input_limit < 1:
             raise RequiredContextOverflowError(
                 "provider reserves leave no usable input budget"
             )
         self.effective_budget = budget.for_effective_input_limit(
-            self.effective_input_limit
+            self.effective_input_limit,
+            reserved_output_tokens=(
+                self.budget_resolution.reserved_output_tokens
+            ),
+            reserved_tool_tokens=self.budget_resolution.reserved_tool_tokens,
         )
 
     def _provider_input_tokens(
@@ -1515,6 +1603,31 @@ class ContextCompiler:
             acceptance=capsule.acceptance,
             evidence=capsule.evidence,
         )
+
+    def verify_compile_result(
+        self,
+        result: ContextCompileResult,
+    ) -> ContextCompileResult:
+        """Remeasure one base context against its original provider policy."""
+
+        if not isinstance(result, ContextCompileResult):
+            raise ContextCompilationError(
+                "result must be a ContextCompileResult"
+            )
+        if result.receipt.budget_resolution != self.budget_resolution:
+            raise ContextCompilationError(
+                "context result budget resolution does not match its verifier"
+            )
+        actual = self.estimate_capsule_input(result.capsule)
+        if actual != result.capsule.input_tokens:
+            raise ContextCompilationError(
+                "context provider token accounting is not reproducible"
+            )
+        if actual > self.effective_input_limit:
+            raise ContextCompilationError(
+                "context result exceeds its verified effective input limit"
+            )
+        return result
 
     def verify_delta_result(
         self, result: ContextDeltaResult
@@ -1699,6 +1812,7 @@ class ContextCompiler:
             policy_id=capsule.policy_id,
             policy_revision=capsule.policy_revision,
             capsule_id=capsule.capsule_id,
+            budget_resolution=self.budget_resolution,
             effective_input_limit=self.effective_input_limit,
             input_tokens=capsule.input_tokens,
             required_fields=capsule.required_field_names,
@@ -1714,6 +1828,7 @@ class ContextCompiler:
             policy_revision=capsule.policy_revision,
             stage=capsule.stage,
             capsule_id=capsule.capsule_id,
+            budget_resolution=self.budget_resolution,
             effective_input_limit=self.effective_input_limit,
             input_tokens=capsule.input_tokens,
             estimator_name=self.estimator.name,
@@ -1721,7 +1836,12 @@ class ContextCompiler:
             decisions=ordered_decisions,
             evidence=witness,
         )
-        return ContextCompileResult(capsule, receipt, ordered_decisions)
+        return ContextCompileResult(
+            capsule,
+            receipt,
+            ordered_decisions,
+            self,
+        )
 
     compile_context = compile
 
@@ -2116,8 +2236,10 @@ __all__ = [
     "CONTEXT_EVIDENCE_PRODUCERS",
     "DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA",
     "DELTA_RETRY_EVIDENCE_ID",
+    "REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA",
     "REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID",
     "REQUIRED_CONTEXT_BUDGET_EVIDENCE_SCHEMA",
+    "REQUIRED_CONTEXT_OBJECTIVE_ID",
     "CalibratedTokenEstimator",
     "ContextCompilationError",
     "ContextCompilationReceipt",

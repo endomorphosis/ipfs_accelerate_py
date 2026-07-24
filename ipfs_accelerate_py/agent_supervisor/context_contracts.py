@@ -32,6 +32,9 @@ CONTRACT_VERSION = CONTEXT_CONTRACT_VERSION
 SCHEMA_VERSION = CONTEXT_CONTRACT_VERSION
 
 CONTEXT_BUDGET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/context-budget@1"
+CONTEXT_BUDGET_RESOLUTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/context-budget-resolution@1"
+)
 CONTEXT_REFERENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/context-reference@1"
 )
@@ -351,31 +354,46 @@ class ContextBudget(_ContextCanonicalContract):
         be sent.
         """
 
-        output_reserve = (
-            self.reserved_output_tokens
-            if reserved_output_tokens is None
-            else _nonnegative(reserved_output_tokens, "reserved_output_tokens")
-        )
-        tool_reserve = (
-            self.reserved_tool_tokens
-            if reserved_tool_tokens is None
-            else _nonnegative(reserved_tool_tokens, "reserved_tool_tokens")
-        )
-        limits = [self.max_input_tokens]
-        if provider_context_window is not None:
-            window = _positive(
-                provider_context_window, "provider_context_window"
-            )
-            limits.append(max(0, window - output_reserve - tool_reserve))
-        if provider_max_input_tokens is not None:
-            limits.append(
-                _positive(
-                    provider_max_input_tokens, "provider_max_input_tokens"
-                )
-            )
-        return min(limits)
+        return self.resolve_input_limit(
+            provider_context_window=provider_context_window,
+            provider_max_input_tokens=provider_max_input_tokens,
+            reserved_output_tokens=reserved_output_tokens,
+            reserved_tool_tokens=reserved_tool_tokens,
+        ).effective_input_limit
 
-    def for_effective_input_limit(self, limit: int) -> "ContextBudget":
+    def resolve_input_limit(
+        self,
+        *,
+        provider_context_window: int | None = None,
+        provider_max_input_tokens: int | None = None,
+        reserved_output_tokens: int | None = None,
+        reserved_tool_tokens: int | None = None,
+    ) -> "ContextBudgetResolution":
+        """Return a replayable record of the effective-limit negotiation."""
+
+        return ContextBudgetResolution(
+            supervisor_max_input_tokens=self.max_input_tokens,
+            provider_context_window=provider_context_window,
+            provider_max_input_tokens=provider_max_input_tokens,
+            reserved_output_tokens=(
+                self.reserved_output_tokens
+                if reserved_output_tokens is None
+                else reserved_output_tokens
+            ),
+            reserved_tool_tokens=(
+                self.reserved_tool_tokens
+                if reserved_tool_tokens is None
+                else reserved_tool_tokens
+            ),
+        )
+
+    def for_effective_input_limit(
+        self,
+        limit: int,
+        *,
+        reserved_output_tokens: int | None = None,
+        reserved_tool_tokens: int | None = None,
+    ) -> "ContextBudget":
         """Copy this budget with a previously negotiated input ceiling."""
 
         effective = _positive(limit, "effective_input_limit")
@@ -385,8 +403,22 @@ class ContextBudget(_ContextCanonicalContract):
             )
         return ContextBudget(
             max_input_tokens=effective,
-            reserved_output_tokens=self.reserved_output_tokens,
-            reserved_tool_tokens=self.reserved_tool_tokens,
+            reserved_output_tokens=(
+                self.reserved_output_tokens
+                if reserved_output_tokens is None
+                else _nonnegative(
+                    reserved_output_tokens,
+                    "reserved_output_tokens",
+                )
+            ),
+            reserved_tool_tokens=(
+                self.reserved_tool_tokens
+                if reserved_tool_tokens is None
+                else _nonnegative(
+                    reserved_tool_tokens,
+                    "reserved_tool_tokens",
+                )
+            ),
             max_items=self.max_items,
             max_item_bytes=self.max_item_bytes,
             max_serialized_bytes=self.max_serialized_bytes,
@@ -454,6 +486,125 @@ class ContextBudget(_ContextCanonicalContract):
             ),
         )
         _identity(payload, result.content_id, "context budget")
+        return result
+
+
+@dataclass(frozen=True)
+class ContextBudgetResolution(_ContextCanonicalContract):
+    """Content-addressed derivation of one provider's usable input limit.
+
+    A compiled capsule carries the effective limit, but that number alone
+    cannot prove how it was negotiated.  This record retains every authority
+    input and independently derives the result.  Zero is a valid derivation
+    when reserves consume a provider window; the compiler rejects that result
+    before emitting a context witness.
+    """
+
+    SCHEMA: ClassVar[str] = CONTEXT_BUDGET_RESOLUTION_SCHEMA
+
+    supervisor_max_input_tokens: int
+    reserved_output_tokens: int
+    reserved_tool_tokens: int
+    provider_context_window: int | None = None
+    provider_max_input_tokens: int | None = None
+    effective_input_limit: int | None = None
+
+    def __post_init__(self) -> None:
+        supervisor = _positive(
+            self.supervisor_max_input_tokens,
+            "supervisor_max_input_tokens",
+        )
+        output_reserve = _nonnegative(
+            self.reserved_output_tokens,
+            "reserved_output_tokens",
+        )
+        tool_reserve = _nonnegative(
+            self.reserved_tool_tokens,
+            "reserved_tool_tokens",
+        )
+        provider_window = self.provider_context_window
+        if provider_window is not None:
+            provider_window = _positive(
+                provider_window,
+                "provider_context_window",
+            )
+        provider_input = self.provider_max_input_tokens
+        if provider_input is not None:
+            provider_input = _positive(
+                provider_input,
+                "provider_max_input_tokens",
+            )
+        limits = [supervisor]
+        if provider_window is not None:
+            limits.append(
+                max(0, provider_window - output_reserve - tool_reserve)
+            )
+        if provider_input is not None:
+            limits.append(provider_input)
+        derived = min(limits)
+        claimed = self.effective_input_limit
+        if claimed is not None and _nonnegative(
+            claimed,
+            "effective_input_limit",
+        ) != derived:
+            raise ContextContractError(
+                "effective_input_limit does not match the negotiated limits"
+            )
+        object.__setattr__(self, "supervisor_max_input_tokens", supervisor)
+        object.__setattr__(self, "reserved_output_tokens", output_reserve)
+        object.__setattr__(self, "reserved_tool_tokens", tool_reserve)
+        object.__setattr__(self, "provider_context_window", provider_window)
+        object.__setattr__(self, "provider_max_input_tokens", provider_input)
+        object.__setattr__(self, "effective_input_limit", derived)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTEXT_CONTRACT_VERSION,
+            "supervisor_max_input_tokens": self.supervisor_max_input_tokens,
+            "provider_context_window": self.provider_context_window,
+            "provider_max_input_tokens": self.provider_max_input_tokens,
+            "reserved_output_tokens": self.reserved_output_tokens,
+            "reserved_tool_tokens": self.reserved_tool_tokens,
+            "effective_input_limit": self.effective_input_limit,
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "ContextBudgetResolution":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "supervisor_max_input_tokens",
+                "provider_context_window",
+                "provider_max_input_tokens",
+                "reserved_output_tokens",
+                "reserved_tool_tokens",
+                "effective_input_limit",
+                "content_id",
+            },
+            "context budget resolution",
+        )
+        result = cls(
+            supervisor_max_input_tokens=payload.get(
+                "supervisor_max_input_tokens", 0
+            ),
+            provider_context_window=payload.get("provider_context_window"),
+            provider_max_input_tokens=payload.get(
+                "provider_max_input_tokens"
+            ),
+            reserved_output_tokens=payload.get(
+                "reserved_output_tokens", 0
+            ),
+            reserved_tool_tokens=payload.get("reserved_tool_tokens", 0),
+            effective_input_limit=payload.get("effective_input_limit"),
+        )
+        _identity(payload, result.content_id, "context budget resolution")
         return result
 
 
@@ -1131,6 +1282,7 @@ ContextContractValidationError = ContextContractError
 
 __all__ = [
     "ABSOLUTE_MAX_CONTEXT_BYTES",
+    "CONTEXT_BUDGET_RESOLUTION_SCHEMA",
     "CONTEXT_BUDGET_SCHEMA",
     "CONTEXT_CAPSULE_SCHEMA",
     "CONTEXT_CONTRACT_VERSION",
@@ -1140,6 +1292,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "ContextBoundsError",
     "ContextBudget",
+    "ContextBudgetResolution",
     "ContextCapsule",
     "ContextContractError",
     "ContextContractLimits",
