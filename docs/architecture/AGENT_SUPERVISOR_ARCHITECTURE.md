@@ -170,6 +170,118 @@ The trust vocabulary is deliberately non-linear: `solver_candidate`,
 trace cannot substitute for a theorem, and a bounded model check must retain its
 finite bounds.
 
+### 4a. Leanstral goal-development lifecycle
+
+`leanstral_goal_lifecycle.py` is the reviewed integration boundary for using
+Leanstral to develop a frozen goal into candidate formal work. Construct it
+with `build_configured_leanstral_goal_lifecycle_supervisor`; the factory
+requires an explicit state directory and defaults to **shadow** mode when the
+caller does not select a mode. This default is part of the safety contract, not
+a deployment convention.
+
+The lifecycle is deliberately staged:
+
+```text
+frozen root + bounded context
+              |
+              v
+  one or more untrusted candidate drafts
+              |
+       schema/type/policy gate
+              |
+              v
+   deterministic proposal receipt
+              |
+   independent refinement/proof portfolio
+              |
+              v
+ objective preview or gated materialization
+              |
+   implementation conformance receipts
+              |
+              v
+       goal-completion authority
+```
+
+The stages have separate trust boundaries:
+
+- The model provider is an untrusted proposal source. It cannot issue proof,
+  admission, implementation-conformance, or completion receipts. A malformed
+  response, unavailable provider, wrong return type, or provider exception is
+  converted into a stable fallback result rather than being treated as
+  acceptance.
+- `LeanstralGoalDevelopmentContextBuilder` supplies a bounded, redacted
+  context. It includes only the configured number of templates, gap records,
+  AST summaries, capability records, counterexamples, and reusable receipt
+  summaries. Canonical source, proof bodies, secrets, and unrestricted
+  repository data do not cross the model boundary. The goal root and formal
+  assumptions are frozen inputs and remain frozen during counterexample repair.
+- Contract validators and the deterministic proposal selector decide which
+  draft can advance. Multiple candidates are isolated attempts; the stable
+  selector prefers the greatest valid proposal coverage and then canonical
+  draft identity. Candidate diversity never becomes voting-based proof.
+- Refinement evidence is produced outside the drafting provider. A bounded
+  counterexample may trigger a bounded repair round, but only an independent,
+  authoritative verifier can accept the repaired formal plan. Bounded,
+  assumed, unsupported, and inconclusive evidence retain those statuses.
+- `objective_daemon.materialize_admitted_objective_work` is the only bridge
+  from an admitted proposal to objective work. An admission receipt means that
+  the policy gate allowed materialization; it is not a proof of the goal.
+- `code_proof_obligations.py` binds implementation evidence to the exact goal
+  root, plan, source tree, source paths, tests, and proof receipts.
+  `goal_completion.py` remains the sole completion authority. Receipts bound to
+  an older tree or root are stale and reopen completion instead of being
+  silently reused.
+
+#### Modes and mutation authority
+
+| Mode | Provider and validation behavior | Permitted durable effects |
+| --- | --- | --- |
+| `off` | The route is disabled; no development invocation is valid. | None. |
+| `shadow` (default) | Run bounded candidates, deterministic validation, independent checks supplied by the caller, and an objective materialization preview. | Audit journal, recoverable run state, and proof/operational metrics only. The objective heap, generation ledger, implementation tree, and completion state must remain byte-for-byte unchanged. |
+| `assist` | Produce a reviewed proposal and admission decision for an operator. | Review/generation records allowed by objective policy; no automatic objective mutation or completion. |
+| `repair_only` | Accept only a bounded repair of an existing plan, preserving the frozen goal root and assumptions. | Repair evidence and review records; no autonomous completion. |
+| `auto_safe` | Apply the proposal only after deterministic validation, authoritative proof, freshness, capability, policy, and admission gates all pass. | Objective work may be materialized under the objective daemon's atomic update contract. Completion still requires separately bound implementation evidence. |
+
+`auto_safe` must not be enabled merely because the model generated valid JSON.
+It requires a fresh goal/tree binding, no undeclared assumptions or unsupported
+semantics, healthy required capabilities, independent authoritative receipts,
+and any configured lease/resource checks. Callers should promote through
+shadow and assist using observed receipts before enabling it for a narrowly
+scoped objective class.
+
+#### Capabilities, resources, and controls
+
+Model execution and proof execution use different capability and resource
+classes. Startup should probe the configured model route, legal preprocessing
+and codec support, independent verifier route, kernel checker, and any required
+solver or model-checker. Effective context is the minimum safe budget after
+route, server, and model reserves; a server-advertised maximum is not itself a
+safe prompt budget. Provider time, output, context, concurrency, and network
+limits remain explicit inputs to the bounded provider and scheduler.
+
+The configured lifecycle bounds candidate count to one through eight and
+records every candidate attempt, including fallbacks, in proof metrics. Its
+state directory contains:
+
+- an append-only, fsynced JSONL audit journal;
+- an atomically replaced latest-run state document; and
+- a proof metrics projection with attempt, validation, fallback, acceptance,
+  latency, and availability observations.
+
+Run records are schema-validated and content-addressed. Recovery first validates
+the latest state and then scans the journal backward for the newest valid
+record, so a torn or corrupt projection does not erase the audit trail. In
+shadow mode every record also contains before/after digests and explicit
+`objective_heap_unchanged` and `completion_state_unchanged` assertions. An
+unexpected mutation is a failed run, not an advisory metric.
+
+Receipt stores and caches retain the same separation as the live path:
+proposal validation, bounded counterexamples, independent proof, admission,
+implementation conformance, and completion are distinct schemas and cache
+namespaces. Reuse requires exact schema, provider/version, goal-root, plan,
+source-tree, policy, and capability bindings appropriate to that receipt.
+
 ### 5. Execution daemons and isolated lanes
 
 The `todo_daemon` package contains the reusable implementation loop. Its
