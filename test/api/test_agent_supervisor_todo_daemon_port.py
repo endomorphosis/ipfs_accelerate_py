@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.context_contracts import ContextBudget
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     build_arg_parser,
     discovery_fingerprints,
@@ -10849,7 +10850,7 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     assert '"embedding"' not in prompt
 
 
-def test_implementation_daemon_budgets_todo_vector_context_packet_first(tmp_path):
+def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -10863,29 +10864,54 @@ def test_implementation_daemon_budgets_todo_vector_context_packet_first(tmp_path
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
         task_header_prefix="## ACCEL-",
+        implementation_context_budget=ContextBudget(
+            max_input_tokens=2_000,
+            reserved_output_tokens=300,
+            reserved_tool_tokens=100,
+            max_items=32,
+        ),
+        implementation_context_tokenizer=lambda text: max(
+            1, len(text.encode("utf-8")) // 16
+        ),
+        implementation_provider_context_window=2_400,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Compile implementation context",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="runtime",
+        outputs=["src/context.py"],
+        validation=["pytest tests/test_context.py"],
+        acceptance="Preserve implementation authority.",
+        canonical_task_cid="task:accel-001",
     )
 
-    rendered = daemon._budgeted_todo_vector_context(
-        [
-            "- Index: objective_bundles/todo_vector_index.json",
-            "- Execution packets: execution_packet/runtime/src/abc ids=ACCEL-001,ACCEL-002 w=12 pw=12",
-            "- Goal packet: goal_packet/runtime/src/abc",
-            "- Goal packet work item count: 12",
-        ],
-        [
-            "- AST symbols: " + ", ".join(f"symbol_{index}" for index in range(80)),
-            "- Related tasks: " + " | ".join(f"ACCEL-{index:03d} noisy related task" for index in range(2, 25)),
-            "- Merge candidates: " + " | ".join(f"candidate_{index} active=ACCEL-{index:03d}" for index in range(25)),
-        ],
-        token_budget=36,
-    )
+    result = daemon._compile_implementation_context(task, attempt=2)
 
-    assert "Execution packets: execution_packet/runtime/src/abc" in rendered
-    assert "Goal packet: goal_packet/runtime/src/abc" in rendered
-    assert "Goal packet work item count: 12" in rendered
-    assert "AST symbols:" not in rendered
-    assert "Related tasks:" not in rendered
-    assert "Context budget:" in rendered
+    assert result.capsule.stage == "implementation"
+    assert result.capsule.goal["task_id"] == "ACCEL-001"
+    assert result.capsule.scope["expected_outputs"] == ("src/context.py",)
+    assert result.capsule.acceptance["criteria"] == (
+        "Preserve implementation authority."
+    )
+    resolution = result.receipt.budget_resolution
+    assert resolution.reserved_output_tokens == 300
+    assert resolution.reserved_tool_tokens == 100
+    assert resolution.effective_input_limit == 2_000
+    assert result.receipt.estimator_name == "provider_tokenizer"
+    receipt_path = daemon._persist_implementation_context_receipt(
+        task,
+        attempt=2,
+    )
+    receipt_text = receipt_path.read_text(encoding="utf-8")
+    receipt = json.loads(receipt_text)
+    assert receipt["estimator_name"] == "provider_tokenizer"
+    assert receipt["budget_resolution"]["reserved_output_tokens"] == 300
+    assert "Preserve implementation authority." not in receipt_text
+    assert "raw_prompt" not in receipt_text
+    assert "decoded_output" not in receipt_text
 
 
 def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_path):

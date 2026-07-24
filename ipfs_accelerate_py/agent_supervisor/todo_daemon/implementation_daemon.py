@@ -18,6 +18,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from ..context_compiler import (
+    ContextCompileResult,
+    ContextCompiler,
+    build_text_context_references,
+    render_context_capsule,
+)
+from ..context_contracts import ContextBudget
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
@@ -132,9 +139,9 @@ SHARED_WORKTREE_PATHS = (
     "hallucinate_app/node_modules",
     "hallucinate_app/swissknife/node_modules",
 )
-DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
-    os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "600")
-)
+DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS = 120_000
+DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE = 16_384
+DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
 
@@ -1051,6 +1058,10 @@ class PortalImplementationDaemon:
         worktree_pool_max_entries: int | None = None,
         worktree_pool: WorktreePool | None = None,
         maintenance_interval_seconds: float | None = None,
+        implementation_context_budget: ContextBudget | Mapping[str, Any] | None = None,
+        implementation_context_tokenizer: Any = None,
+        implementation_provider_context_window: int | None = None,
+        implementation_provider_max_input_tokens: int | None = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -1063,6 +1074,15 @@ class PortalImplementationDaemon:
         self.implementation_command = implementation_command
         self.implementation_timeout = implementation_timeout
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
+        self.implementation_context_budget = implementation_context_budget
+        self.implementation_context_tokenizer = implementation_context_tokenizer
+        self.implementation_provider_context_window = (
+            implementation_provider_context_window
+        )
+        self.implementation_provider_max_input_tokens = (
+            implementation_provider_max_input_tokens
+        )
+        self._last_implementation_context: ContextCompileResult | None = None
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
         # The implementation runner executes with the ephemeral worktree as
@@ -2069,6 +2089,7 @@ class PortalImplementationDaemon:
             "reason": "not_run",
         }
         todo_update_result: dict[str, Any] = {}
+        context_receipt_path: Path | None = None
 
         try:
             self._write_lock_metadata(task_claim_fd, task_claim_metadata)
@@ -2093,8 +2114,12 @@ class PortalImplementationDaemon:
             acquired_lock = True
             self._write_lock_metadata(lock_fd, lock_metadata)
             lock_fd = None
+            context_receipt_path = self._persist_implementation_context_receipt(
+                task,
+                attempt,
+            )
             if self.use_ephemeral_worktree:
-                return self._run_implementation_in_ephemeral_worktree(
+                ephemeral_result = self._run_implementation_in_ephemeral_worktree(
                     task=task,
                     state=state,
                     attempt=attempt,
@@ -2102,6 +2127,10 @@ class PortalImplementationDaemon:
                     log_path=log_path,
                     prompt=prompt,
                 )
+                ephemeral_result["context_receipt_path"] = str(
+                    context_receipt_path
+                )
+                return ephemeral_result
             # Some administrative and provider-capacity paths intentionally
             # operate against a not-yet-initialized checkout.  Baseline
             # discovery must not pre-empt the implementation command in those
@@ -2148,7 +2177,7 @@ class PortalImplementationDaemon:
             if completed.returncode != 0:
                 provider_failure = self._provider_capacity_failure_from_log(log_path)
                 if provider_failure.get("exhausted", False):
-                    return self._record_provider_capacity_deferral(
+                    deferral = self._record_provider_capacity_deferral(
                         task=task,
                         state=state,
                         attempt=attempt,
@@ -2157,6 +2186,10 @@ class PortalImplementationDaemon:
                         log_path=log_path,
                         failure=provider_failure,
                     )
+                    deferral["context_receipt_path"] = str(
+                        context_receipt_path
+                    )
+                    return deferral
             if completed.returncode == 0:
                 self._mark_active_phase(
                     state,
@@ -2194,6 +2227,7 @@ class PortalImplementationDaemon:
                 "returncode": effective_returncode,
                 "log_path": str(log_path),
                 "validation_result": validation_result,
+                "context_receipt_path": str(context_receipt_path),
             }
             termination_result = self._implementation_returncode_detail(effective_returncode)
             if termination_result:
@@ -2220,6 +2254,9 @@ class PortalImplementationDaemon:
                 "log_path": str(log_path),
                 "error": "timeout",
                 "termination_result": self._implementation_returncode_detail(124),
+                "context_receipt_path": (
+                    str(context_receipt_path) if context_receipt_path else ""
+                ),
             }
             self._record_implementation_termination(task, attempt, result["termination_result"])
             self._record_event("implementation_finished", result)
@@ -2248,6 +2285,9 @@ class PortalImplementationDaemon:
                 "log_path": str(log_path),
                 "validation_result": validation_result,
                 "exception_result": exception_result,
+                "context_receipt_path": (
+                    str(context_receipt_path) if context_receipt_path else ""
+                ),
             }
             self._record_event(
                 "implementation_exception",
@@ -11295,7 +11335,9 @@ class PortalImplementationDaemon:
                         normalized = str(packet_task_id)
                         if normalized and normalized != task.task_id and normalized not in covered_packet_task_ids:
                             covered_packet_task_ids.append(normalized)
-            related_record_limit = 0 if aggregate_primary and covered_packet_task_ids else 5
+            include_related_records = not (
+                aggregate_primary and covered_packet_task_ids
+            )
 
             return {
                 "index_path": index_path,
@@ -11305,10 +11347,12 @@ class PortalImplementationDaemon:
                     by_task[task_id]
                     for task_id in related_ids
                     if task_id in by_task and task_id not in set(covered_packet_task_ids)
-                ][:related_record_limit],
-                "merge_candidates": merge_candidates[:3],
-                "bundle_contexts": bundle_contexts[:2],
-                "execution_packets": execution_packets[:2],
+                ]
+                if include_related_records
+                else [],
+                "merge_candidates": merge_candidates,
+                "bundle_contexts": bundle_contexts,
+                "execution_packets": execution_packets,
                 "aggregate_primary": aggregate_primary,
                 "covered_packet_task_ids": covered_packet_task_ids,
                 "covered_packet_records": {
@@ -11391,44 +11435,10 @@ class PortalImplementationDaemon:
             items = [str(item).strip() for item in value if str(item).strip()]
         else:
             items = split_csv(str(value or ""))
-        return items[:limit]
-
-    def _estimate_prompt_tokens(self, value: str) -> int:
-        return len(re.findall(r"[A-Za-z0-9_./:-]+", str(value or "")))
-
-    def _budgeted_todo_vector_context(
-        self,
-        required_lines: list[str],
-        optional_lines: list[str],
-        *,
-        token_budget: int = DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET,
-    ) -> str:
-        """Render compact vector context without letting optional details bloat prompts."""
-
-        budget = max(80, int(token_budget or DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET))
-        lines: list[str] = []
-        current_tokens = 0
-        for line in required_lines:
-            if not line:
-                continue
-            lines.append(line)
-            current_tokens += self._estimate_prompt_tokens(line)
-
-        skipped = 0
-        for line in optional_lines:
-            if not line:
-                continue
-            line_tokens = self._estimate_prompt_tokens(line)
-            if current_tokens + line_tokens <= budget:
-                lines.append(line)
-                current_tokens += line_tokens
-            else:
-                skipped += 1
-        if skipped:
-            summary = f"- Context budget: kept {current_tokens}/{budget} estimated tokens; skipped {skipped} lower-priority vector details"
-            if current_tokens + self._estimate_prompt_tokens(summary) <= budget + 24:
-                lines.append(summary)
-        return "\n".join(lines)
+        # Selection belongs to the context compiler.  ``limit`` remains in the
+        # private compatibility signature, but values are no longer silently
+        # discarded before they can receive an inclusion/exclusion decision.
+        return items
 
     def _render_todo_vector_context(self, task: PortalTask) -> str:
         context = self._load_todo_vector_context(task)
@@ -11493,7 +11503,7 @@ class PortalImplementationDaemon:
             *self._compact_value_list(record.get("ast_symbols"), limit=24),
             *self._compact_value_list(cluster.get("ast_symbols") if isinstance(cluster, dict) else [], limit=24),
         ]
-        ast_symbols = sorted({item for item in symbol_candidates if item})[:24]
+        ast_symbols = sorted({item for item in symbol_candidates if item})
         if ast_symbols:
             optional_lines.append(f"- AST symbols: {', '.join(ast_symbols)}")
 
@@ -11609,63 +11619,211 @@ class PortalImplementationDaemon:
         if related_entries:
             optional_lines.append(f"- Related tasks: {' | '.join(related_entries)}")
 
-        return self._budgeted_todo_vector_context(required_lines, optional_lines)
+        # Token selection is performed once, by ``ContextCompiler`` in
+        # ``_compile_implementation_context``.  Returning the complete compact
+        # projection here prevents fixed list/character cuts from hiding
+        # evidence without an auditable omission reason.
+        return "\n".join([*required_lines, *optional_lines])
+
+    def _implementation_repository_and_tree_ids(
+        self, task: PortalTask
+    ) -> tuple[str, str]:
+        common_dir = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        raw_common_dir = str(common_dir.stdout or "").strip()
+        repository_material = str(
+            (
+                Path(raw_common_dir)
+                if Path(raw_common_dir).is_absolute()
+                else self.repo_root / raw_common_dir
+            ).resolve()
+        ) if common_dir.returncode == 0 and raw_common_dir else str(self.repo_root)
+        repository_id = "repository:sha256:" + hashlib.sha256(
+            repository_material.encode("utf-8")
+        ).hexdigest()
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        tree_id = str(head.stdout or "").strip()
+        if head.returncode != 0 or not tree_id:
+            tree_id = "tree:sha256:" + hashlib.sha256(
+                self._canonical_ref(task).encode("utf-8")
+            ).hexdigest()
+        return repository_id, tree_id
+
+    def _compile_implementation_context(
+        self, task: PortalTask, attempt: int
+    ) -> ContextCompileResult:
+        """Compile the provider prompt from immutable task core and evidence."""
+
+        repository_id, tree_id = self._implementation_repository_and_tree_ids(
+            task
+        )
+        rules = (
+            "Read the relevant plan and nearby code before editing.",
+            "Do not revert unrelated local changes.",
+            "Prefer existing repository patterns and implement every expected output without stubs or placeholders.",
+            "When a compact execution or goal packet is present, advance its shared evidence as one cohesive change.",
+            "Run the listed validation commands when practical.",
+            "The daemon commits and merges only after its validation gate passes.",
+            "Leave generated artifacts and shared dependency paths alone.",
+            "Do not mark backlog metadata complete unless the task explicitly requires it.",
+            "The final response must list changed files and validation results.",
+        )
+        if len(task.outputs) > 3:
+            rules = (
+                *rules,
+                "Use sub-agents or parallel execution when useful for independent output files.",
+            )
+        policy_revision = "sha256:" + hashlib.sha256(
+            json.dumps(
+                rules,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        vector_text = self._render_todo_vector_context(task)
+        evidence = ()
+        if vector_text:
+            context = self._load_todo_vector_context(task)
+            index_path = (
+                context.get("index_path")
+                if isinstance(context, Mapping)
+                else None
+            )
+            artifact_path = (
+                self._display_context_path(index_path)
+                if isinstance(index_path, Path)
+                else ""
+            )
+            evidence = build_text_context_references(
+                "Compact todo vector context:\n" + vector_text,
+                reference_prefix="todo-vector",
+                kind="todo-vector-context",
+                path=artifact_path,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                priority=100,
+                chunk_bytes=6_144,
+                coverage_ids=tuple(
+                    self._compact_value_list(
+                        task.metadata.get("missing evidence", "")
+                    )
+                ),
+            )
+        configured_budget = self.implementation_context_budget
+        if configured_budget is None:
+            configured_budget = ContextBudget(
+                max_input_tokens=DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS,
+                reserved_output_tokens=(
+                    DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE
+                ),
+                reserved_tool_tokens=(
+                    DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE
+                ),
+                max_items=256,
+                max_item_bytes=16_384,
+                max_serialized_bytes=1_048_576,
+                max_depth=12,
+                max_text_bytes=8_192,
+            )
+        provider_window = self.implementation_provider_context_window
+        if provider_window is None:
+            raw_window = os.environ.get(
+                _CODEX_CONTEXT_WINDOW_ENV, "200000"
+            ).strip()
+            try:
+                provider_window = int(raw_window)
+            except ValueError:
+                provider_window = 200_000
+        compiler = ContextCompiler(
+            configured_budget,
+            tokenizer=self.implementation_context_tokenizer,
+            provider_context_window=provider_window,
+            provider_max_input_tokens=(
+                self.implementation_provider_max_input_tokens
+            ),
+        )
+        todo_file = self._display_context_path(self.todo_path)
+        result = compiler.compile(
+            repository_id=repository_id,
+            tree_id=tree_id,
+            objective_id=task.task_id,
+            objective_revision=self._canonical_ref(task),
+            policy_id="policy:implementation-daemon",
+            policy_revision=policy_revision,
+            caller="agent-supervisor:implementation-daemon",
+            stage="implementation",
+            goal={
+                "instruction": (
+                    "Implement this backlog task completely and thoroughly as "
+                    "a production-ready change in one pass."
+                ),
+                "task_id": task.task_id,
+                "title": task.title,
+                "priority": task.priority,
+                "track": task.track,
+                "attempt": int(attempt),
+            },
+            authority={
+                "todo_file": todo_file,
+                "source_line": int(task.source_line),
+                "rules": rules,
+                "primary_plan_documents": {
+                    "AGENT-": "docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md",
+                    "PORTAL-": "docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md",
+                },
+                "completion_authoritative": False,
+            },
+            scope={
+                "depends_on": tuple(task.depends_on),
+                "expected_outputs": tuple(task.outputs),
+            },
+            acceptance={
+                "criteria": task.acceptance or "none listed",
+                "validation_commands": tuple(task.validation),
+                "all_expected_outputs_required": True,
+            },
+            evidence=evidence,
+        )
+        self._last_implementation_context = result
+        return result
+
+    def _persist_implementation_context_receipt(
+        self,
+        task: PortalTask,
+        attempt: int,
+    ) -> Path:
+        """Persist the safe compiler receipt immediately before dispatch."""
+
+        result = self._last_implementation_context
+        if result is None:
+            raise RuntimeError("implementation context was not compiled")
+        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+        safe_task_id = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            task.task_id.lower(),
+        ).strip("-") or "task"
+        path = (
+            self.implementation_log_dir
+            / f"{safe_task_id}-attempt-{int(attempt)}-context-receipt.json"
+        )
+        _shared_atomic_write_json(path, result.receipt.to_dict())
+        return path
 
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
-        todo_vector_context = self._render_todo_vector_context(task)
-        todo_vector_context_section = (
-            f"""
-Compact todo vector context:
-{todo_vector_context}
-"""
-            if todo_vector_context
-            else ""
-        )
-        # Build sub-agent guidance when multiple outputs suggest parallelizable work
-        subagent_guidance = ""
-        if len(task.outputs) > 3:
-            subagent_guidance = """
-- This task has many expected outputs. Use sub-agents or parallel execution when possible:
-  decompose into independent file/module implementations and work on them concurrently.
-"""
-        return f"""You are an autonomous implementation agent working in this repository.
-
-Implement this backlog task completely and thoroughly. Produce a full, production-ready implementation
-that covers all expected outputs. Do not artificially limit scope or break the work into smaller pieces —
-deliver the entire task in one pass, touching as many files as needed.
-
-Task:
-- ID: {task.task_id}
-- Title: {task.title}
-- Priority: {task.priority}
-- Track: {task.track}
-- Attempt: {attempt}
-- Todo file: {self.todo_path}
-- Source line: {task.source_line}
-- Depends on: {", ".join(task.depends_on) or "none"}
-- Expected outputs: {", ".join(task.outputs) or "none listed"}
-- Validation commands: {"; ".join(task.validation) or "none listed"}
-- Acceptance: {task.acceptance or "none listed"}
-{todo_vector_context_section}
-
-Primary plan document:
-- docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md when the task ID starts with AGENT-
-- docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md when the task ID starts with PORTAL-
-
-Rules:
-- Read the relevant plan and nearby code before editing.
-- Do not revert unrelated local changes.
-- Prefer existing repo patterns. Implement comprehensively — create all necessary files, classes, functions, tests, and integrations that the task requires.
-- Implement ALL expected outputs for this task in full. Do not leave stubs, placeholders, or TODOs.
-- If a compact execution packet or goal packet is shown, implement a single cohesive change that advances all the shared packet evidence together without making unrelated edits.
-- You may create new files and modify multiple existing files. Larger, complete implementations are preferred over minimal patches.
-{subagent_guidance}- Run the listed validation commands when practical.
-- The daemon will run the listed validation commands and will only commit and merge the worktree if they pass.
-- Leave generated artifacts and shared dependency paths alone; the daemon restores dist, screenshot artifacts, and linked node_modules before commit.
-- If validation cannot be run, record why in your final response.
-- Do not mark the backlog task completed manually unless the task explicitly asks for TODO metadata changes.
-- Final response should list changed files and validation results.
-"""
+        result = self._compile_implementation_context(task, attempt)
+        return render_context_capsule(result.capsule)
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
         actions = [f"Implement outputs for {task.task_id}: {', '.join(task.outputs)}"]
