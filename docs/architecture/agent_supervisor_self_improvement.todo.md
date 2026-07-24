@@ -1547,7 +1547,7 @@ planner, and refill behavior defaults to shadow mode.
 - Blocked reason: Retired by objective-task janitor during launch steering because orphaned_goal_reference.
 ## ASI-050 Close objective gap: Prove 248026856102230635452423769994290240744 for Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -1589,7 +1589,6 @@ planner, and refill behavior defaults to shadow mode.
 - Todo vector key: bb4e4883d0c177ef
 - Acceptance: Objective scan filed this gap for ASI-G129. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/self-improvement-v1/discovery/2026-07-24-asi-050-objective-gap-b2ca6ee61aa5.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (248026856102230635452423769994290240744), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
 
-- Blocked reason: Retired by objective-task janitor during launch steering because orphaned_goal_reference.
 ## ASI-051 Close objective gap: High-quality task generation and conflict-aware bundling
 
 - Status: todo
