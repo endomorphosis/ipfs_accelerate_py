@@ -19,6 +19,7 @@ Usage:
 
 import argparse
 import anyio
+import importlib.util
 import json
 import dataclasses
 import logging
@@ -49,13 +50,35 @@ queue_ops = None
 test_ops = None
 IPFSAccelerateMCPServer = None
 
-# Import AI Inference CLI for unified interface
+# Discover the optional AI CLI without importing it.  In particular, agent
+# supervisor command discovery must not initialize an unrelated provider.
+AIInferenceCLI = None
 try:
-    from ipfs_accelerate_py.ai_inference_cli import AIInferenceCLI
-    HAVE_AI_INFERENCE_CLI = True
-except ImportError:
+    HAVE_AI_INFERENCE_CLI = (
+        importlib.util.find_spec("ipfs_accelerate_py.ai_inference_cli") is not None
+    )
+except (ImportError, AttributeError, ValueError):
     HAVE_AI_INFERENCE_CLI = False
-    logger.warning("AI Inference CLI not available - AI inference commands will be disabled")
+
+
+def _load_ai_inference_cli():
+    """Load the optional AI adapter only when an AI command is dispatched."""
+
+    global AIInferenceCLI, HAVE_AI_INFERENCE_CLI
+    if AIInferenceCLI is not None:
+        return AIInferenceCLI
+    if not HAVE_AI_INFERENCE_CLI:
+        raise ImportError("AI Inference CLI is not available")
+    try:
+        from ipfs_accelerate_py.ai_inference_cli import (
+            AIInferenceCLI as implementation,
+        )
+    except ImportError:
+        HAVE_AI_INFERENCE_CLI = False
+        raise
+    AIInferenceCLI = implementation
+    return implementation
+
 
 def _load_heavy_imports():
     """Load heavy imports only when needed for actual command execution"""
@@ -2857,8 +2880,6 @@ Examples:
             parser.print_help()
             return 0
             
-        cli = IPFSAccelerateCLI()
-
         if args.command == 'agent':
             if not args.agent_command:
                 agent_parser.print_help()
@@ -2869,6 +2890,8 @@ Examples:
                 service=agent_control_service,
                 service_factory=agent_service_factory,
             )
+
+        cli = IPFSAccelerateCLI()
 
         if args.command == 'mcp':
             if args.mcp_command == 'start':
@@ -2956,11 +2979,16 @@ Examples:
             if not HAVE_AI_INFERENCE_CLI:
                 logger.error("AI Inference CLI not available. Please ensure ai_inference_cli.py is present.")
                 return 1
+            try:
+                ai_cli_type = _load_ai_inference_cli()
+            except ImportError:
+                logger.error("AI Inference CLI could not be loaded.")
+                return 1
             
             # Check if user wants AI help
             if hasattr(args, 'ai_help') and args.ai_help:
                 # Show the AI CLI help by invoking it with the category
-                ai_cli = AIInferenceCLI()
+                ai_cli = ai_cli_type()
                 ai_parser = ai_cli.create_parser()
                 # Show help for this specific category
                 print(f"\n=== AI Inference: {args.command.upper()} Commands ===\n")
@@ -2988,7 +3016,7 @@ Examples:
             original_argv_backup = sys.argv
             try:
                 sys.argv = ['ipfs-accelerate'] + ai_argv
-                ai_cli = AIInferenceCLI()
+                ai_cli = ai_cli_type()
                 ai_parser = ai_cli.create_parser()
                 ai_args = ai_parser.parse_args(ai_argv)
                 return ai_cli.run(ai_args)

@@ -6,11 +6,17 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+    CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
     CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlBounds,
     ControlContractError,
+    ControlDiscoveryManifest,
+    ControlDiscoveryObservation,
+    ControlDiscoveryRuntimeState,
+    ControlDiscoverySafetyEvidence,
+    ControlSurface,
     ControlSurfaceParityCase,
     ControlSurfaceParityEvidence,
     EffectKind,
@@ -34,6 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.control_plane import (
     SupervisorClient,
     SupervisorControlService,
     SupervisorTarget,
+    capture_control_discovery_runtime_state,
 )
 
 
@@ -254,6 +261,111 @@ def test_capabilities_are_complete_typed_and_side_effect_free(
         assert capability.authority is operation.authority
         assert capability.requires_idempotency is operation.mutating
         assert capability.requires_authorization is operation.mutating
+
+
+def test_python_discovery_is_cached_deterministic_and_never_dispatches(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    dispatches = 0
+
+    def forbidden(_request: OperationRequest) -> dict[str, Any]:
+        nonlocal dispatches
+        dispatches += 1
+        raise AssertionError("discovery dispatched a backend")
+
+    handlers = {
+        operation: forbidden
+        for operation in Operation
+        if operation not in {Operation.CAPABILITIES, *tuple(READ_OPERATIONS)}
+    }
+    service = _service(repo_root, state_root, handlers=handlers)
+    before = capture_control_discovery_runtime_state()
+
+    first = service.discovery_manifest()
+    report_one = service.capability_report()
+    second = service.discovery_manifest()
+    report_two = service.capability_report()
+    after = capture_control_discovery_runtime_state()
+
+    assert first == second
+    assert report_one is report_two
+    assert first.surface is ControlSurface.PYTHON
+    assert before == after
+    assert dispatches == 0
+
+
+def test_discovery_safety_evidence_is_complete_content_addressed_and_strict(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    handlers = {
+        operation: (lambda _request: {})
+        for operation in Operation
+        if operation not in {
+            Operation.CAPABILITIES,
+            *tuple(READ_OPERATIONS),
+        }
+    }
+    service = _service(repo_root, state_root, handlers=handlers)
+    state = ControlDiscoveryRuntimeState()
+    observations = tuple(
+        ControlDiscoveryObservation(
+            surface=surface,
+            first_manifest=ControlDiscoveryManifest(surface=surface),
+            second_manifest=ControlDiscoveryManifest(surface=surface),
+            before=state,
+            after=state,
+        )
+        for surface in ControlSurface
+    )
+    evidence = ControlDiscoverySafetyEvidence(
+        repository_tree="tree:abc",
+        objective_id="ASI-G105",
+        policy_id="policy:control",
+        policy_revision="policy:1",
+        capability_report=service.capability_report(),
+        observations=observations,
+    )
+
+    assert evidence.proved_requirement_ids == (
+        CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
+    )
+    assert ControlDiscoverySafetyEvidence.from_dict(
+        evidence.to_record()
+    ) == evidence
+
+    changed = state.to_record()
+    changed["process_start_count"] = 1
+    changed.pop("content_id")
+    with pytest.raises(ControlContractError, match="process_start_count"):
+        ControlDiscoveryObservation(
+            surface=ControlSurface.MCP,
+            first_manifest=ControlDiscoveryManifest(
+                surface=ControlSurface.MCP
+            ),
+            second_manifest=ControlDiscoveryManifest(
+                surface=ControlSurface.MCP
+            ),
+            before=state,
+            after=changed,
+        )
+
+    with pytest.raises(ControlContractError, match="Python, CLI, and MCP"):
+        ControlDiscoverySafetyEvidence(
+            repository_tree="tree:abc",
+            objective_id="ASI-G105",
+            policy_id="policy:control",
+            policy_revision="policy:1",
+            capability_report=service.capability_report(),
+            observations=observations[:-1],
+        )
 
 
 def test_read_client_uses_direct_repository_apis_and_bounded_results(

@@ -21,6 +21,8 @@ from .control_contracts import (
     MUTATION_OPERATIONS,
     ControlBounds,
     ControlContractError,
+    ControlDiscoveryManifest,
+    ControlSurface,
     Operation,
     OperationRequest,
     OperationResult,
@@ -212,6 +214,24 @@ def register_agent_cli(
         )
         _add_request_arguments(child, operation)
     return agent
+
+
+def agent_cli_discovery_manifest() -> ControlDiscoveryManifest:
+    """Return the static CLI vocabulary without constructing a service."""
+
+    operations = tuple(
+        sorted(COMMAND_OPERATIONS.values(), key=lambda item: item.value)
+    )
+    if len(operations) != len(set(operations)) or set(operations) != set(
+        Operation
+    ):
+        raise AgentCLIError(
+            "agent CLI discovery does not cover the closed operation vocabulary"
+        )
+    return ControlDiscoveryManifest(
+        surface=ControlSurface.CLI,
+        operations=operations,
+    )
 
 
 def _json_value(raw: str, *, noun: str) -> Any:
@@ -427,6 +447,7 @@ __all__ = [
     "MAX_WATCH_COUNT",
     "MAX_WATCH_INTERVAL_MS",
     "build_agent_request",
+    "agent_cli_discovery_manifest",
     "default_agent_control_service",
     "exit_code_for_result",
     "register_agent_cli",

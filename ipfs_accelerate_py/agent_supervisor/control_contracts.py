@@ -55,6 +55,18 @@ OPERATION_CAPABILITY_SCHEMA = (
 CAPABILITY_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/capability-report@1"
 )
+CONTROL_DISCOVERY_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-discovery-manifest@1"
+)
+CONTROL_DISCOVERY_RUNTIME_STATE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-discovery-runtime-state@1"
+)
+CONTROL_DISCOVERY_OBSERVATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-discovery-observation@1"
+)
+CONTROL_DISCOVERY_SAFETY_EVIDENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/control-discovery-safety-evidence@1"
+)
 LIFECYCLE_COMMAND_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/lifecycle-command@1"
 )
@@ -79,6 +91,14 @@ CONTROL_SURFACE_PARITY_REQUIREMENT_ID: Final[str] = (
 )
 CONTROL_MUTATION_GUARD_REQUIREMENT_ID: Final[str] = (
     "184125100306462690646212311073240043804"
+)
+CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID: Final[str] = (
+    "186773143401179107362964063059661378722"
+)
+# Compatibility spelling for callers which describe this boundary as
+# discovery isolation rather than discovery safety.
+CONTROL_DISCOVERY_ISOLATION_REQUIREMENT_ID: Final[str] = (
+    CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
 )
 
 ABSOLUTE_MAX_CONTROL_BYTES = 1_048_576
@@ -2147,6 +2167,487 @@ class CapabilityReport(_ControlCanonicalContract):
 
 
 @dataclass(frozen=True)
+class ControlDiscoveryManifest(_ControlCanonicalContract):
+    """Canonical contract exposed by one side-effect-free discovery surface.
+
+    Request and result schema identities are derived from the authoritative
+    schema producers.  A transport therefore cannot qualify by advertising a
+    caller-supplied digest or a partial operation vocabulary.
+    """
+
+    SCHEMA: ClassVar[str] = CONTROL_DISCOVERY_MANIFEST_SCHEMA
+
+    surface: ControlSurface
+    operations: tuple[Operation, ...] = tuple(
+        sorted(Operation, key=lambda item: item.value)
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "surface",
+            _enum(self.surface, ControlSurface, "surface"),
+        )
+        operations = tuple(
+            sorted(
+                {_operation(item) for item in self.operations},
+                key=lambda item: item.value,
+            )
+        )
+        expected = tuple(sorted(Operation, key=lambda item: item.value))
+        if operations != expected:
+            raise ControlContractError(
+                "discovery manifest must bind the complete operation vocabulary"
+            )
+        object.__setattr__(self, "operations", operations)
+        _bounded_record(self, "control discovery manifest")
+
+    @property
+    def request_schema_ids(self) -> Mapping[str, str]:
+        return MappingProxyType(
+            {
+                operation.value: content_identity(
+                    operation_request_json_schema(operation)
+                )
+                for operation in self.operations
+            }
+        )
+
+    @property
+    def result_schema_ids(self) -> Mapping[str, str]:
+        return MappingProxyType(
+            {
+                operation.value: content_identity(
+                    operation_result_json_schema(operation)
+                )
+                for operation in self.operations
+            }
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "surface": self.surface,
+            "operations": self.operations,
+            "request_schema_ids": dict(self.request_schema_ids),
+            "result_schema_ids": dict(self.result_schema_ids),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlDiscoveryManifest":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "surface",
+                "operations",
+                "request_schema_ids",
+                "result_schema_ids",
+                "content_id",
+            },
+            "control discovery manifest",
+        )
+        result = cls(
+            surface=payload.get("surface", ""),
+            operations=payload.get("operations", ()),
+        )
+        for name, actual in (
+            ("request_schema_ids", result.request_schema_ids),
+            ("result_schema_ids", result.result_schema_ids),
+        ):
+            claimed = payload.get(name)
+            if claimed not in (None, ""):
+                if not isinstance(claimed, Mapping) or dict(claimed) != dict(
+                    actual
+                ):
+                    raise ControlContractError(
+                        f"discovery manifest {name} does not match shared schemas"
+                    )
+        _identity(payload, result.content_id, "control discovery manifest")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlDiscoveryRuntimeState(_ControlCanonicalContract):
+    """Independently observed state surrounding a discovery-only action.
+
+    The three counters are cumulative instrumentation readings.  Comparing
+    before and after states catches even a provider load or short-lived child
+    process which is absent by the time the final module/process inventory is
+    sampled.
+    """
+
+    SCHEMA: ClassVar[str] = CONTROL_DISCOVERY_RUNTIME_STATE_SCHEMA
+
+    optional_provider_modules: tuple[str, ...] = ()
+    child_process_ids: tuple[int, ...] = ()
+    service_resolution_count: int = 0
+    optional_provider_load_count: int = 0
+    process_start_count: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "optional_provider_modules",
+            _strings(
+                self.optional_provider_modules,
+                "optional_provider_modules",
+            ),
+        )
+        if isinstance(self.child_process_ids, (str, bytes, bytearray)):
+            raise ControlContractError(
+                "child_process_ids must be a sequence of integers"
+            )
+        try:
+            process_ids = tuple(
+                sorted(
+                    {
+                        _positive(item, "child process ID")
+                        for item in self.child_process_ids
+                    }
+                )
+            )
+        except TypeError as exc:
+            raise ControlContractError(
+                "child_process_ids must be a sequence of integers"
+            ) from exc
+        if len(process_ids) > ABSOLUTE_MAX_CONTROL_ITEMS:
+            raise ControlBoundsError(
+                "child_process_ids exceeds its count bound"
+            )
+        object.__setattr__(self, "child_process_ids", process_ids)
+        for name in (
+            "service_resolution_count",
+            "optional_provider_load_count",
+            "process_start_count",
+        ):
+            object.__setattr__(
+                self, name, _nonnegative(getattr(self, name), name)
+            )
+        _bounded_record(self, "control discovery runtime state")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "optional_provider_modules": self.optional_provider_modules,
+            "child_process_ids": self.child_process_ids,
+            "service_resolution_count": self.service_resolution_count,
+            "optional_provider_load_count": self.optional_provider_load_count,
+            "process_start_count": self.process_start_count,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlDiscoveryRuntimeState":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "optional_provider_modules",
+                "child_process_ids",
+                "service_resolution_count",
+                "optional_provider_load_count",
+                "process_start_count",
+                "content_id",
+            },
+            "control discovery runtime state",
+        )
+        result = cls(
+            optional_provider_modules=payload.get(
+                "optional_provider_modules", ()
+            ),
+            child_process_ids=payload.get("child_process_ids", ()),
+            service_resolution_count=payload.get(
+                "service_resolution_count", 0
+            ),
+            optional_provider_load_count=payload.get(
+                "optional_provider_load_count", 0
+            ),
+            process_start_count=payload.get("process_start_count", 0),
+        )
+        _identity(payload, result.content_id, "control discovery runtime state")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlDiscoveryObservation(_ControlCanonicalContract):
+    """A repeated deterministic discovery observed between runtime snapshots."""
+
+    SCHEMA: ClassVar[str] = CONTROL_DISCOVERY_OBSERVATION_SCHEMA
+
+    surface: ControlSurface
+    first_manifest: ControlDiscoveryManifest | Mapping[str, Any]
+    second_manifest: ControlDiscoveryManifest | Mapping[str, Any]
+    before: ControlDiscoveryRuntimeState | Mapping[str, Any]
+    after: ControlDiscoveryRuntimeState | Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        surface = _enum(self.surface, ControlSurface, "surface")
+        object.__setattr__(self, "surface", surface)
+        for name, kind, decoder in (
+            (
+                "first_manifest",
+                ControlDiscoveryManifest,
+                ControlDiscoveryManifest.from_dict,
+            ),
+            (
+                "second_manifest",
+                ControlDiscoveryManifest,
+                ControlDiscoveryManifest.from_dict,
+            ),
+            (
+                "before",
+                ControlDiscoveryRuntimeState,
+                ControlDiscoveryRuntimeState.from_dict,
+            ),
+            (
+                "after",
+                ControlDiscoveryRuntimeState,
+                ControlDiscoveryRuntimeState.from_dict,
+            ),
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, kind):
+                if not isinstance(value, Mapping):
+                    raise ControlContractError(
+                        f"{name} must be a {kind.__name__}"
+                    )
+                value = decoder(value)
+            object.__setattr__(self, name, value)
+        assert isinstance(self.first_manifest, ControlDiscoveryManifest)
+        assert isinstance(self.second_manifest, ControlDiscoveryManifest)
+        assert isinstance(self.before, ControlDiscoveryRuntimeState)
+        assert isinstance(self.after, ControlDiscoveryRuntimeState)
+        if (
+            self.first_manifest.surface is not surface
+            or self.second_manifest.surface is not surface
+        ):
+            raise ControlContractError(
+                "discovery manifest surface does not match its observation"
+            )
+        if (
+            self.first_manifest.to_record()
+            != self.second_manifest.to_record()
+        ):
+            raise ControlContractError(
+                "repeated control discovery is not deterministic"
+            )
+        for name in (
+            "optional_provider_modules",
+            "child_process_ids",
+            "service_resolution_count",
+            "optional_provider_load_count",
+            "process_start_count",
+        ):
+            if getattr(self.before, name) != getattr(self.after, name):
+                raise ControlContractError(
+                    "control discovery changed observed runtime state: " + name
+                )
+        _bounded_record(self, "control discovery observation")
+
+    @property
+    def manifest(self) -> ControlDiscoveryManifest:
+        assert isinstance(self.first_manifest, ControlDiscoveryManifest)
+        return self.first_manifest
+
+    @property
+    def side_effect_free(self) -> bool:
+        return True
+
+    def _payload(self) -> dict[str, Any]:
+        assert isinstance(self.first_manifest, ControlDiscoveryManifest)
+        assert isinstance(self.second_manifest, ControlDiscoveryManifest)
+        assert isinstance(self.before, ControlDiscoveryRuntimeState)
+        assert isinstance(self.after, ControlDiscoveryRuntimeState)
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "surface": self.surface,
+            "side_effect_free": True,
+            "first_manifest": self.first_manifest.to_record(),
+            "second_manifest": self.second_manifest.to_record(),
+            "before": self.before.to_record(),
+            "after": self.after.to_record(),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlDiscoveryObservation":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "surface",
+                "side_effect_free",
+                "first_manifest",
+                "second_manifest",
+                "before",
+                "after",
+                "content_id",
+            },
+            "control discovery observation",
+        )
+        if payload.get("side_effect_free") not in (None, True):
+            raise ControlContractError(
+                "discovery observation cannot claim a failed safety result"
+            )
+        result = cls(
+            surface=payload.get("surface", ""),
+            first_manifest=payload.get("first_manifest") or {},
+            second_manifest=payload.get("second_manifest") or {},
+            before=payload.get("before") or {},
+            after=payload.get("after") or {},
+        )
+        _identity(payload, result.content_id, "control discovery observation")
+        return result
+
+
+@dataclass(frozen=True)
+class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
+    """Tamper-evident proof that discovery is deterministic and isolated."""
+
+    SCHEMA: ClassVar[str] = CONTROL_DISCOVERY_SAFETY_EVIDENCE_SCHEMA
+
+    repository_tree: str
+    objective_id: str
+    policy_id: str
+    policy_revision: str
+    capability_report: CapabilityReport | Mapping[str, Any]
+    observations: tuple[ControlDiscoveryObservation, ...]
+    requirement_id: str = CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_tree",
+            "objective_id",
+            "policy_id",
+            "policy_revision",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        if self.requirement_id != CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID:
+            raise ControlContractError(
+                "discovery evidence requirement_id is not the ASI-G105 requirement"
+            )
+        report = self.capability_report
+        if not isinstance(report, CapabilityReport):
+            if not isinstance(report, Mapping):
+                raise ControlContractError(
+                    "capability_report must be a CapabilityReport"
+                )
+            report = CapabilityReport.from_dict(report)
+        expected_operations = tuple(
+            sorted(Operation, key=lambda item: item.value)
+        )
+        if report.supported_operations != expected_operations:
+            raise ControlContractError(
+                "discovery evidence requires complete capabilities"
+            )
+        if report.optional_providers_loaded or report.processes_started:
+            raise ControlContractError(
+                "capability discovery reports provider or process side effects"
+            )
+        object.__setattr__(self, "capability_report", report)
+        observations = _coerce_tuple(
+            self.observations,
+            ControlDiscoveryObservation,
+            ControlDiscoveryObservation.from_dict,
+            "observations",
+        )
+        surfaces = tuple(
+            sorted(
+                (item.surface for item in observations),
+                key=lambda item: item.value,
+            )
+        )
+        expected_surfaces = tuple(
+            sorted(ControlSurface, key=lambda item: item.value)
+        )
+        if surfaces != expected_surfaces:
+            raise ControlContractError(
+                "discovery evidence requires one Python, CLI, and MCP observation"
+            )
+        object.__setattr__(
+            self,
+            "observations",
+            tuple(sorted(observations, key=lambda item: item.surface.value)),
+        )
+        _bounded_record(
+            self,
+            "control discovery safety evidence",
+            maximum=ABSOLUTE_MAX_CONTROL_BYTES,
+        )
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,)
+
+    def _payload(self) -> dict[str, Any]:
+        assert isinstance(self.capability_report, CapabilityReport)
+        return {
+            "contract_version": CONTROL_CONTRACT_VERSION,
+            "requirement_id": self.requirement_id,
+            "repository_tree": self.repository_tree,
+            "objective_id": self.objective_id,
+            "policy_id": self.policy_id,
+            "policy_revision": self.policy_revision,
+            "capability_report": self.capability_report.to_record(),
+            "observations": tuple(
+                item.to_record() for item in self.observations
+            ),
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ControlDiscoverySafetyEvidence":
+        _schema(payload, cls.SCHEMA)
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "requirement_id",
+                "repository_tree",
+                "objective_id",
+                "policy_id",
+                "policy_revision",
+                "capability_report",
+                "observations",
+                "content_id",
+            },
+            "control discovery safety evidence",
+        )
+        result = cls(
+            requirement_id=payload.get("requirement_id", ""),
+            repository_tree=payload.get("repository_tree", ""),
+            objective_id=payload.get("objective_id", ""),
+            policy_id=payload.get("policy_id", ""),
+            policy_revision=payload.get("policy_revision", ""),
+            capability_report=payload.get("capability_report") or {},
+            observations=payload.get("observations", ()),
+        )
+        _identity(payload, result.content_id, "control discovery safety evidence")
+        return result
+
+
+# Alternate terminology retained for integrations which use "isolation".
+ControlDiscoveryIsolationEvidence = ControlDiscoverySafetyEvidence
+
+
+@dataclass(frozen=True)
 class ControlSurfaceParityCase(_ControlCanonicalContract):
     """One independently invoked Python/CLI/MCP behavior comparison.
 
@@ -3071,6 +3572,12 @@ __all__ = [
     "CONTRACT_VERSION",
     "CONTROL_BOUNDS_SCHEMA",
     "CONTROL_CONTRACT_VERSION",
+    "CONTROL_DISCOVERY_ISOLATION_REQUIREMENT_ID",
+    "CONTROL_DISCOVERY_MANIFEST_SCHEMA",
+    "CONTROL_DISCOVERY_OBSERVATION_SCHEMA",
+    "CONTROL_DISCOVERY_RUNTIME_STATE_SCHEMA",
+    "CONTROL_DISCOVERY_SAFETY_EVIDENCE_SCHEMA",
+    "CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID",
     "CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA",
     "CONTROL_MUTATION_GUARD_REQUIREMENT_ID",
     "CONTROL_SURFACE_PARITY_CASE_SCHEMA",
@@ -3104,6 +3611,11 @@ __all__ = [
     "ControlContractError",
     "ControlContractValidationError",
     "ControlError",
+    "ControlDiscoveryIsolationEvidence",
+    "ControlDiscoveryManifest",
+    "ControlDiscoveryObservation",
+    "ControlDiscoveryRuntimeState",
+    "ControlDiscoverySafetyEvidence",
     "ControlLimits",
     "ControlMutationGuardEvidence",
     "ControlOperation",

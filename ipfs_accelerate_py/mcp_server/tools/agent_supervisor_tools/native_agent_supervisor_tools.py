@@ -14,12 +14,16 @@ from threading import RLock
 from typing import Any
 
 from ....agent_supervisor.control_contracts import (
+    ControlContractError,
+    ControlDiscoveryManifest,
+    ControlSurface,
     Operation,
     OperationRequest,
     operation_request_json_schema,
     operation_result_json_schema,
 )
 from ....agent_supervisor.control_plane import SupervisorControlService
+from ....agent_supervisor.formal_verification_contracts import content_identity
 
 
 AGENT_SUPERVISOR_MCP_CATEGORY = "agent_supervisor"
@@ -33,6 +37,7 @@ ServiceFactory = Callable[[OperationRequest], SupervisorControlService]
 _configuration_lock = RLock()
 _configured_service: SupervisorControlService | None = None
 _configured_factory: ServiceFactory | None = None
+_service_resolution_count = 0
 
 
 class AgentSupervisorMCPConfigurationError(RuntimeError):
@@ -88,7 +93,9 @@ def _environment_service(_request: OperationRequest) -> SupervisorControlService
 
 
 def _resolve_service(request: OperationRequest) -> SupervisorControlService:
+    global _service_resolution_count
     with _configuration_lock:
+        _service_resolution_count += 1
         service = _configured_service
         factory = _configured_factory
     selected = service or (factory or _environment_service)(request)
@@ -156,6 +163,47 @@ def _tool_input_schema(operation: Operation) -> dict[str, Any]:
     }
 
 
+def agent_supervisor_service_resolution_count() -> int:
+    """Return the cumulative invocation-only service resolution count."""
+
+    with _configuration_lock:
+        return _service_resolution_count
+
+
+def agent_supervisor_discovery_manifest() -> ControlDiscoveryManifest:
+    """Validate and return static MCP discovery metadata.
+
+    This path examines only already-constructed callables and canonical schema
+    dictionaries.  It deliberately does not resolve environment policy or a
+    control service.
+    """
+
+    operations = tuple(
+        sorted(AGENT_SUPERVISOR_OPERATION_TOOLS, key=lambda item: item.value)
+    )
+    manifest = ControlDiscoveryManifest(
+        surface=ControlSurface.MCP,
+        operations=operations,
+    )
+    for operation in operations:
+        schema = _tool_input_schema(operation)
+        request_schema = schema["properties"]["request"]
+        result_schema = schema["x-output-schema"]
+        if content_identity(request_schema) != manifest.request_schema_ids[
+            operation.value
+        ]:
+            raise ControlContractError(
+                f"MCP request schema drift for {operation.value}"
+            )
+        if content_identity(result_schema) != manifest.result_schema_ids[
+            operation.value
+        ]:
+            raise ControlContractError(
+                f"MCP result schema drift for {operation.value}"
+            )
+    return manifest
+
+
 def register_native_agent_supervisor_tools(manager: Any) -> None:
     """Register all closed-vocabulary operations without resolving a service."""
 
@@ -185,6 +233,8 @@ __all__ = [
     "AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV",
     "AGENT_SUPERVISOR_STATE_ALLOWLIST_ENV",
     "AgentSupervisorMCPConfigurationError",
+    "agent_supervisor_discovery_manifest",
+    "agent_supervisor_service_resolution_count",
     "agent_supervisor_control",
     "configure_agent_supervisor_control",
     "execute_agent_supervisor_operation",

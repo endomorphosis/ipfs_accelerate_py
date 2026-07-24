@@ -10,9 +10,12 @@ from ipfs_accelerate_py import cli
 from ipfs_accelerate_py.agent_supervisor.control_cli import (
     AGENT_CLI_EXIT_INVALID,
     COMMAND_OPERATIONS,
+    agent_cli_discovery_manifest,
 )
 from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     ControlBounds,
+    ControlDiscoveryObservation,
+    ControlSurface,
     EffectKind,
     ExpectedEffect,
     Operation,
@@ -22,6 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
     InMemoryControlStateStore,
     SupervisorControlService,
+    capture_control_discovery_runtime_state,
 )
 
 
@@ -108,6 +112,59 @@ def _invoke(
 def test_agent_group_covers_the_closed_operation_vocabulary() -> None:
     assert set(COMMAND_OPERATIONS.values()) == set(Operation)
     assert len(COMMAND_OPERATIONS) == len(Operation)
+
+
+def test_cli_discovery_is_repeatable_and_initializes_no_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    service_resolutions = 0
+    process_starts = 0
+    provider_loads = 0
+
+    def forbidden_factory(_request: OperationRequest) -> SupervisorControlService:
+        nonlocal service_resolutions
+        service_resolutions += 1
+        raise AssertionError("CLI discovery resolved a control service")
+
+    def forbidden_runtime() -> None:
+        raise AssertionError("CLI discovery initialized the product runtime")
+
+    def forbidden_process(*_args: Any, **_kwargs: Any) -> None:
+        nonlocal process_starts
+        process_starts += 1
+        raise AssertionError("CLI discovery started a process")
+
+    monkeypatch.setattr(cli, "IPFSAccelerateCLI", forbidden_runtime)
+    monkeypatch.setattr(cli.subprocess, "Popen", forbidden_process)
+    monkeypatch.setattr(cli, "_load_heavy_imports", forbidden_runtime)
+    before = capture_control_discovery_runtime_state(
+        service_resolution_count=service_resolutions,
+        optional_provider_load_count=provider_loads,
+        process_start_count=process_starts,
+    )
+
+    first = agent_cli_discovery_manifest()
+    assert cli.main(
+        ["agent"], agent_service_factory=forbidden_factory
+    ) == 1
+    capsys.readouterr()
+    second = agent_cli_discovery_manifest()
+    after = capture_control_discovery_runtime_state(
+        service_resolution_count=service_resolutions,
+        optional_provider_load_count=provider_loads,
+        process_start_count=process_starts,
+    )
+    observation = ControlDiscoveryObservation(
+        surface=ControlSurface.CLI,
+        first_manifest=first,
+        second_manifest=second,
+        before=before,
+        after=after,
+    )
+
+    assert observation.side_effect_free is True
+    assert service_resolutions == process_starts == provider_loads == 0
 
 
 def test_cli_read_result_is_exactly_the_python_service_record(
