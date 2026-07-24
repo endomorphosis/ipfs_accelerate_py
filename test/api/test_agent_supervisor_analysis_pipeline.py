@@ -628,11 +628,48 @@ def test_optional_provider_degrades_explicitly_without_poisoning_local_result(
     assert imports == ["ipfs_datasets_py"]
     assert result.safe_for_completion_reasoning
     assert result.provider_result.status is AnalysisProviderStatus.UNAVAILABLE
-    assert result.provider_result.proved_requirement_ids == (
+    assert result.provider_request is not None
+    assert result.provider_policy is not None
+    assert result.provider_result.proved_requirement_ids_for(
+        result.provider_request, result.provider_policy
+    ) == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
+    assert result.advisory_evidence_claim_references == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+    assert result.authoritative_evidence_claim_references == ()
+    assert result.evidence_claim_references == ()
+    assert result.all_evidence_claim_references == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+    assert result.to_dict()["advisory_evidence_claim_references"] == [
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID
+    ]
     assert not result.provider_result.safe_for_completion_reasoning
     assert analyzer.contexts[0].provider_result is result.provider_result
+
+
+def test_native_provider_operation_alias_is_validated_canonically(
+    tmp_path: Path,
+) -> None:
+    provider = IpfsDatasetsAnalysisProvider(
+        importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name))
+    )
+    result = AnalysisPipeline(
+        AnalysisCache(tmp_path),
+        _Analyzer(),
+        provider=provider,
+    ).analyze(_request(provider_operation="retrieve"))
+
+    assert result.safe_for_completion_reasoning
+    assert result.provider_result.operation.value == "graph_retrieval"
+    assert result.provider_request is not None
+    assert result.provider_request.operation.value == "graph_retrieval"
+    assert result.advisory_evidence_claim_references == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+    assert result.evidence_claim_references == ()
 
 
 def test_raising_optional_adapter_is_projected_and_local_analysis_continues(
@@ -655,6 +692,9 @@ def test_raising_optional_adapter_is_projected_and_local_analysis_continues(
         result.provider_result.reason_code
         == "optional_provider_invocation_failed"
     )
+    assert result.advisory_evidence_claim_references == ()
+    assert result.evidence_claim_references == ()
+    assert result.all_evidence_claim_references == ()
     assert not result.provider_result.safe_for_completion_reasoning
 
 
@@ -665,12 +705,14 @@ def test_raising_optional_adapter_is_projected_and_local_analysis_continues(
             "repository_id": "repo:other",
             "tree_id": "tree:sha256:111",
             "objective_revision": "objective@1",
+            "operation": "graph_retrieval",
             "safe_for_completion_reasoning": False,
         },
         {
             "repository_id": "repo:fixture",
             "tree_id": "tree:sha256:111",
             "objective_revision": "objective@1",
+            "operation": "graph_retrieval",
             "completion_authority": True,
         },
     ],
@@ -698,5 +740,256 @@ def test_optional_provider_rebinding_or_authority_claim_is_rejected_advisory(
         "optional_provider_identity_mismatch",
         "optional_provider_authority_claim_rejected",
     }
+    assert result.advisory_evidence_claim_references == ()
+    assert result.evidence_claim_references == ()
+    assert result.all_evidence_claim_references == ()
     assert not result.provider_result.safe_for_completion_reasoning
     assert analyzer.contexts[0].provider_result is result.provider_result
+
+
+def test_only_exact_request_and_policy_bound_adapter_evidence_is_projected(
+    tmp_path: Path,
+) -> None:
+    """A typed result alone does not prove the integrated offload boundary."""
+
+    imports = []
+
+    def unavailable(name):
+        imports.append(name)
+        raise ModuleNotFoundError(name)
+
+    real_provider = IpfsDatasetsAnalysisProvider(importer=unavailable)
+    request = _request()
+    detached_request = real_provider.build_request(
+        request.query,
+        operation=request.provider_operation,
+        repository_id=request.repository_id,
+        tree_id=request.tree_id,
+        objective_revision=request.objective_revision,
+        payload=request.provider_payload,
+        limits=AnalysisPipelinePolicy().retrieval_limits,
+    )
+    detached = real_provider.analyze(detached_request)
+    assert detached.proved_requirement_ids_for(
+        detached_request, real_provider.policy
+    ) == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
+
+    class DetachedProvider:
+        def analyze(self, *args, **kwargs):
+            return detached
+
+    analyzer = _Analyzer()
+    pipeline = AnalysisPipeline(
+        AnalysisCache(tmp_path),
+        analyzer,
+        provider=DetachedProvider(),
+    )
+    result = pipeline.analyze(request)
+
+    assert result.safe_for_completion_reasoning
+    assert result.provider_result is detached
+    assert result.advisory_evidence_claim_references == ()
+    assert result.evidence_claim_references == ()
+    assert imports == ["ipfs_datasets_py"]
+
+
+def test_advisory_provider_claim_cannot_be_detached_from_typed_result(
+    tmp_path: Path,
+) -> None:
+    provider = IpfsDatasetsAnalysisProvider(
+        importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name))
+    )
+    result = AnalysisPipeline(
+        AnalysisCache(tmp_path),
+        _Analyzer(),
+        provider=provider,
+    ).analyze(_request())
+
+    with pytest.raises(AnalysisBindingError, match="active-request bound"):
+        replace(
+            result,
+            advisory_evidence_claim_references=("unproved-requirement",),
+        )
+
+
+def test_advisory_provider_claim_cannot_be_replayed_from_another_query(
+    tmp_path: Path,
+) -> None:
+    provider = IpfsDatasetsAnalysisProvider(
+        importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name))
+    )
+    pipeline = AnalysisPipeline(
+        AnalysisCache(tmp_path),
+        _Analyzer(),
+        provider=provider,
+    )
+    result = pipeline.analyze(_request())
+    detached_request = provider.build_request(
+        {"text": "different provider query"},
+        operation=result.request.provider_operation,
+        repository_id=result.request.repository_id,
+        tree_id=result.request.tree_id,
+        objective_revision=result.request.objective_revision,
+        payload=result.request.provider_payload,
+        limits=pipeline.policy.retrieval_limits,
+    )
+    detached_result = provider.analyze(detached_request)
+    assert detached_result.proved_requirement_ids_for(
+        detached_request, provider.policy
+    ) == (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
+
+    with pytest.raises(AnalysisBindingError, match="detached"):
+        replace(
+            result,
+            provider_result=detached_result,
+            provider_request=detached_request,
+        )
+
+
+@pytest.mark.parametrize(
+    ("provider_factory", "expected_reason"),
+    [
+        (
+            lambda: type(
+                "MissingBindingsProvider",
+                (),
+                {"analyze": lambda self, *args, **kwargs: {}},
+            )(),
+            "optional_provider_identity_missing",
+        ),
+        (
+            lambda: type(
+                "MismatchedOperationProvider",
+                (),
+                {
+                    "analyze": lambda self, *args, **kwargs: {
+                        "repository_id": "repo:fixture",
+                        "tree_id": "tree:sha256:111",
+                        "objective_revision": "objective@1",
+                        "operation": "dataset_query",
+                    }
+                },
+            )(),
+            "optional_provider_identity_mismatch",
+        ),
+    ],
+)
+def test_malformed_optional_provider_identity_degrades_locally(
+    tmp_path: Path,
+    provider_factory,
+    expected_reason: str,
+) -> None:
+    result = AnalysisPipeline(
+        AnalysisCache(tmp_path),
+        _Analyzer(),
+        provider=provider_factory(),
+    ).analyze(_request())
+
+    assert result.safe_for_completion_reasoning
+    assert result.provider_result.reason_code == expected_reason
+    assert result.advisory_evidence_claim_references == ()
+
+
+def test_hostile_optional_provider_inspection_never_aborts_local_analysis(
+    tmp_path: Path,
+) -> None:
+    class HostileResult:
+        def to_dict(self):
+            return {
+                "repository_id": "repo:fixture",
+                "tree_id": "tree:sha256:111",
+                "objective_revision": "objective@1",
+                "operation": "graph_retrieval",
+            }
+
+        @property
+        def safe_for_completion_reasoning(self):
+            raise RuntimeError("hostile property")
+
+    class HostileProvider:
+        def analyze(self, *args, **kwargs):
+            return HostileResult()
+
+    result = AnalysisPipeline(
+        AnalysisCache(tmp_path / "property"),
+        _Analyzer(),
+        provider=HostileProvider(),
+    ).analyze(_request())
+
+    class RaisingSerializationResult:
+        def to_dict(self):
+            raise RuntimeError("hostile serialization")
+
+    class RaisingSerializationProvider:
+        def analyze(self, *args, **kwargs):
+            return RaisingSerializationResult()
+
+    serialization_result = AnalysisPipeline(
+        AnalysisCache(tmp_path / "serialization"),
+        _Analyzer(),
+        provider=RaisingSerializationProvider(),
+    ).analyze(_request())
+
+    assert result.safe_for_completion_reasoning
+    assert (
+        result.provider_result.reason_code
+        == "optional_provider_inspection_failed"
+    )
+    assert serialization_result.safe_for_completion_reasoning
+    assert (
+        serialization_result.provider_result.reason_code
+        == "optional_provider_inspection_failed"
+    )
+    assert result.advisory_evidence_claim_references == ()
+    assert serialization_result.advisory_evidence_claim_references == ()
+
+
+def test_callable_authority_claim_and_awaitable_result_degrade_locally(
+    tmp_path: Path,
+) -> None:
+    class CallableAuthorityResult:
+        def to_dict(self):
+            return {
+                "repository_id": "repo:fixture",
+                "tree_id": "tree:sha256:111",
+                "objective_revision": "objective@1",
+                "operation": "graph_retrieval",
+            }
+
+        def safe_for_completion_reasoning(self):
+            return True
+
+    class CallableAuthorityProvider:
+        def analyze(self, *args, **kwargs):
+            return CallableAuthorityResult()
+
+    authority = AnalysisPipeline(
+        AnalysisCache(tmp_path / "authority"),
+        _Analyzer(),
+        provider=CallableAuthorityProvider(),
+    ).analyze(_request())
+
+    class AsyncProvider:
+        async def analyze(self, *args, **kwargs):
+            return None
+
+    awaitable = AnalysisPipeline(
+        AnalysisCache(tmp_path / "awaitable"),
+        _Analyzer(),
+        provider=AsyncProvider(),
+    ).analyze(_request())
+
+    assert (
+        authority.provider_result.reason_code
+        == "optional_provider_authority_claim_rejected"
+    )
+    assert (
+        awaitable.provider_result.reason_code
+        == "optional_provider_async_result_unsupported"
+    )
+    assert authority.safe_for_completion_reasoning
+    assert awaitable.safe_for_completion_reasoning
+    assert authority.advisory_evidence_claim_references == ()
+    assert awaitable.advisory_evidence_claim_references == ()
