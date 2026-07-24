@@ -7,7 +7,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-001 Define bounded goal-development contracts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
