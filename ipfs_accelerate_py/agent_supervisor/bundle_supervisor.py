@@ -910,6 +910,8 @@ def implementation_supervisor_command(
     generated_dirty_repair_paths: Sequence[Path | str] = (),
     worktree_submodule_paths: Sequence[str] = (),
     assumed_completed_task_ids: Sequence[str] = (),
+    execution_slice_task_ids: Sequence[str] = (),
+    execution_slice_task_cids: Sequence[str] = (),
     log_level: str = "INFO",
 ) -> list[str]:
     command = [
@@ -974,6 +976,12 @@ def implementation_supervisor_command(
     for task_id in dict.fromkeys(str(task_id).strip() for task_id in assumed_completed_task_ids):
         if task_id:
             command.extend(["--assume-completed-task-id", task_id])
+    for task_id in dict.fromkeys(str(task_id).strip() for task_id in execution_slice_task_ids):
+        if task_id:
+            command.extend(["--execution-slice-task-id", task_id])
+    for task_cid in dict.fromkeys(str(task_cid).strip() for task_cid in execution_slice_task_cids):
+        if task_cid:
+            command.extend(["--execution-slice-task-cid", task_cid])
     return command
 
 
@@ -1076,6 +1084,15 @@ def plan_bundle_lanes(
                 if isinstance(item, dict) and item.get("task_id")
             ]
         )
+        task_cids = (
+            _string_list(payload.get("execution_slice_task_cids"))
+            if "execution_slice_task_cids" in payload
+            else [
+                str(item.get("canonical_task_cid") or item.get("task_cid"))
+                for item in execution_tasks
+                if str(item.get("canonical_task_cid") or item.get("task_cid") or "")
+            ]
+        )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
         command = implementation_supervisor_command(
@@ -1103,6 +1120,8 @@ def plan_bundle_lanes(
             generated_dirty_repair_paths=generated_dirty_repair_paths,
             worktree_submodule_paths=worktree_submodule_paths,
             assumed_completed_task_ids=assumed_completed_task_ids,
+            execution_slice_task_ids=task_ids,
+            execution_slice_task_cids=task_cids,
             log_level=log_level,
         )
         lanes.append(
@@ -1295,9 +1314,11 @@ def _spawn_accepted_lane(
         lane.llm_provider,
         "--phase-state-path",
         str(lane.state_dir / f"{lane.state_prefix}_task_state.json"),
-        "--",
-        *lane.command,
     ]
+    for task_id in dict.fromkeys(str(task_id).strip() for task_id in lane.task_ids):
+        if task_id:
+            guarded_command.extend(["--expected-task-id", task_id])
+    guarded_command.extend(["--", *lane.command])
     env = os.environ.copy()
     package_root = repo_root / "ipfs_datasets_py" / "ipfs_accelerate_py"
     if package_root.exists():

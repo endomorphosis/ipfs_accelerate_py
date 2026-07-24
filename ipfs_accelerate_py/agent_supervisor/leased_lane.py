@@ -22,6 +22,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -173,6 +174,48 @@ def _active_phase(state_path: Path | None, default: str) -> str:
     return default
 
 
+def _execution_slice_violation(
+    state_path: Path | None,
+    expected_task_ids: frozenset[str],
+    *,
+    started_at_ms: int,
+) -> str:
+    """Return an unauthorized active task from fresh lane state, if any."""
+
+    if state_path is None or not expected_task_ids:
+        return ""
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(state, dict):
+        return ""
+    active_task_id = str(state.get("active_task_id") or "").strip()
+    if not active_task_id or active_task_id in expected_task_ids:
+        return ""
+
+    observed_times_ms: list[int] = []
+    for field_name in (
+        "heartbeat_at",
+        "active_task_started_at",
+        "active_phase_started_at",
+        "last_implementation_started_at",
+    ):
+        raw = str(state.get(field_name) or "").strip()
+        if not raw:
+            continue
+        try:
+            observed_times_ms.append(int(datetime.fromisoformat(raw).timestamp() * 1000))
+        except ValueError:
+            continue
+    # A phase file can survive a clean restart. Give the replacement child a
+    # chance to recover stale state, then enforce the scope as soon as it
+    # writes any fresh heartbeat or execution timestamp.
+    if observed_times_ms and max(observed_times_ms) + 1_000 < started_at_ms:
+        return ""
+    return active_task_id
+
+
 def _terminate_child(process: subprocess.Popen[Any], *, timeout: float = 5.0) -> None:
     """Terminate a child and do not return while it can still execute work."""
 
@@ -225,6 +268,7 @@ def run_leased_lane_result(
     provider_id: str = "",
     resource_sampler: Callable[..., Any] | None = None,
     phase_state_path: Path | None = None,
+    expected_task_ids: Sequence[str] = (),
 ) -> LeasedLaneResult:
     """Run ``command`` and return its fenced, terminal lease disposition.
 
@@ -244,6 +288,11 @@ def run_leased_lane_result(
         raise ValueError("lease_ms must be positive")
 
     started_at_ms = _now_ms()
+    expected_task_id_set = frozenset(
+        str(task_id).strip()
+        for task_id in expected_task_ids
+        if str(task_id).strip()
+    )
     with LeaseCoordinator(coordination_path) as coordinator:
         try:
             grant = coordinator.validate(grant)
@@ -347,6 +396,7 @@ def run_leased_lane_result(
                 )
 
         stopping_signal: int | None = None
+        execution_scope_error = ""
         stop_event = threading.Event()
 
         def stop_child(signum: int, _frame: object) -> None:
@@ -376,6 +426,19 @@ def run_leased_lane_result(
                     _terminate_child(process)
                     break
                 if process.poll() is not None:
+                    break
+                unauthorized_task_id = _execution_slice_violation(
+                    phase_state_path,
+                    expected_task_id_set,
+                    started_at_ms=started_at_ms,
+                )
+                if unauthorized_task_id:
+                    execution_scope_error = (
+                        f"active task {unauthorized_task_id!r} is outside leased "
+                        f"execution slice {sorted(expected_task_id_set)!r}"
+                    )
+                    logger.error("Fencing daemon lane: %s", execution_scope_error)
+                    _terminate_child(process)
                     break
                 try:
                     now = _now_ms()
@@ -438,6 +501,8 @@ def run_leased_lane_result(
             receipt_status = (
                 "cancelled"
                 if stopping_signal is not None
+                else "failed"
+                if execution_scope_error
                 else "succeeded"
                 if child_exit_code == 0
                 else "failed"
@@ -445,6 +510,8 @@ def run_leased_lane_result(
             disposition: LaneDisposition = (
                 "cancelled"
                 if stopping_signal is not None
+                else "failed"
+                if execution_scope_error
                 else "completed"
                 if child_exit_code == 0
                 else "blocked"
@@ -469,9 +536,16 @@ def run_leased_lane_result(
                 receipt = coordinator.receipt(
                     grant,
                     status=receipt_status,
-                    output={"exit_code": child_exit_code, "command": list(command)}
-                    if receipt_status == "succeeded"
-                    else None,
+                    output=(
+                        {"exit_code": child_exit_code, "command": list(command)}
+                        if receipt_status == "succeeded"
+                        else {
+                            "reason": "execution_slice_violation",
+                            "error": execution_scope_error,
+                        }
+                        if execution_scope_error
+                        else None
+                    ),
                     failure_class="none" if receipt_status == "succeeded" else "retryable",
                     started_at_ms=started_at_ms,
                 )
@@ -520,6 +594,7 @@ def run_leased_lane_result(
                 finished_at_ms=_now_ms(),
                 receipt_cid=_receipt_cid(receipt),
                 lease_released=True,
+                error=execution_scope_error,
             )
         finally:
             if handlers_installed:
@@ -539,6 +614,7 @@ def run_leased_lane(
     provider_id: str = "",
     resource_sampler: Callable[..., Any] | None = None,
     phase_state_path: Path | None = None,
+    expected_task_ids: Sequence[str] = (),
 ) -> int:
     """Compatibility wrapper returning the guarded command's lane exit code."""
 
@@ -553,6 +629,7 @@ def run_leased_lane(
         provider_id=provider_id,
         resource_sampler=resource_sampler,
         phase_state_path=phase_state_path,
+        expected_task_ids=expected_task_ids,
     ).exit_code
 
 
@@ -566,6 +643,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--resource-class", default="")
     parser.add_argument("--provider-id", default="")
     parser.add_argument("--phase-state-path", type=Path, default=None)
+    parser.add_argument("--expected-task-id", action="append", default=[])
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
@@ -586,6 +664,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         resource_class=args.resource_class,
         provider_id=args.provider_id,
         phase_state_path=args.phase_state_path,
+        expected_task_ids=args.expected_task_id,
     )
 
 

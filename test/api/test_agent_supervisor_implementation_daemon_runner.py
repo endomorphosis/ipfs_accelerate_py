@@ -32,6 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
 from ipfs_accelerate_py.agent_supervisor.checkout_lock import checkout_lock_owner_is_active
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTaskState,
     default_llm_merge_resolver_command,
     parse_args,
 )
@@ -85,6 +86,84 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
 
     assert config.merge_target_branch == target_branch
     assert command[command.index("--merge-target-branch") + 1] == target_branch
+
+
+def test_supervisor_propagates_execution_slice_task_ids_to_daemon(tmp_path: Path):
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--execution-slice-task-id",
+            "HSSL-BENCH-011",
+        ]
+    )
+
+    config = supervisor_config_from_args(parsed, repo_root=tmp_path)
+    command = PortalImplementationSupervisor(config)._build_daemon_command()
+
+    assert config.execution_slice_task_ids == ("HSSL-BENCH-011",)
+    assert [
+        command[index + 1]
+        for index, value in enumerate(command)
+        if value == "--execution-slice-task-id"
+    ] == ["HSSL-BENCH-011"]
+
+
+def test_daemon_execution_slice_cannot_select_an_earlier_ready_bundle_member(
+    tmp_path: Path,
+):
+    board = tmp_path / "tasks.todo.md"
+    board.write_text(
+        """# HSSL benchmark tasks
+
+## HSSL-BENCH-001 Earlier ready bundle member
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: protocol
+
+## HSSL-BENCH-011 Leased execution-slice member
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: protocol
+""",
+        encoding="utf-8",
+    )
+    parsed = parse_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--task-prefix",
+            "## HSSL-BENCH-",
+            "--task-shard-count",
+            "2",
+            "--task-shard-index",
+            "0",
+            "--execution-slice-task-id",
+            "HSSL-BENCH-011",
+        ]
+    )
+    daemon, _context = build_portal_implementation_daemon_from_args(
+        parsed,
+        repo_root=tmp_path,
+    )
+
+    result = daemon.run_once()
+    state = PortalTaskState.load(Path(result["state_path"]))
+
+    assert set(daemon.execution_slice_task_ids) == {"HSSL-BENCH-011"}
+    assert result["active_task_id"] == "HSSL-BENCH-011"
+    assert state.selectable_ready_task_ids == ["HSSL-BENCH-011"]
+    assert "HSSL-BENCH-001" not in state.selectable_ready_task_ids
 
 
 def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(tmp_path: Path, monkeypatch):

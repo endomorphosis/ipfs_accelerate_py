@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.artifact_store import query_artifact
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
 from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.lease_coordination import LeaseCoordinator
+from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
 from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
 from ipfs_accelerate_py.agent_supervisor.resource_scheduler import HostResourceSnapshot
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
@@ -1477,6 +1478,98 @@ def test_leased_lane_publishes_terminal_and_blocked_projection(tmp_path: Path) -
             eligible_task_cids=(blocked_grant.task_cid,),
             requested_lease_ms=5_000,
         ) is None
+
+
+def test_leased_lane_fails_retryably_when_child_runs_outside_execution_slice(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    coordination = tmp_path / "coordination.sqlite3"
+    phase_state = tmp_path / "phase-state.json"
+    phase_state.write_text(
+        json.dumps(
+            {
+                "active_phase": "implementation",
+                "active_task_id": "HSSL-BENCH-001",
+            }
+        ),
+        encoding="utf-8",
+    )
+    bundle = {
+        "bundle_key": "objective/hssl/protocol",
+        "tasks": [
+            {"task_id": "HSSL-BENCH-001"},
+            {"task_id": "HSSL-BENCH-011"},
+        ],
+        "execution_slice_task_ids": ["HSSL-BENCH-011"],
+    }
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(bundle)
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:slice-worker.example",
+            requested_lease_ms=5_000,
+        )
+    parsed = leased_lane_module.build_parser().parse_args(
+        [
+            "--coordination-path",
+            str(coordination),
+            "--grant-json",
+            json.dumps(grant.to_dict()),
+            "--expected-task-id",
+            "HSSL-BENCH-011",
+            "--",
+            sys.executable,
+            "-c",
+            "pass",
+        ]
+    )
+    assert parsed.expected_task_id == ["HSSL-BENCH-011"]
+
+    class Process:
+        pid = 4321
+        returncode: int | None = None
+        tree_stopped = False
+        poll_calls = 0
+
+        def poll(self):
+            self.poll_calls += 1
+            if self.returncode is None and self.poll_calls > 10:
+                self.returncode = 0
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = Process()
+
+    def stop_tree(candidate, *, timeout=5.0):
+        assert candidate is process
+        candidate.tree_stopped = True
+        candidate.returncode = -signal.SIGTERM
+
+    monkeypatch.setattr(leased_lane_module.subprocess, "Popen", lambda _command: process)
+    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
+
+    result = run_leased_lane_result(
+        coordination_path=coordination,
+        grant=grant,
+        command=(sys.executable, "-c", "pass"),
+        lease_ms=5_000,
+        heartbeat_interval=0.01,
+        phase_state_path=phase_state,
+        expected_task_ids=("HSSL-BENCH-011",),
+    )
+
+    assert process.tree_stopped is True
+    assert result.successful is False
+    assert result.disposition in {"failed", "cancelled"}
+    with LeaseCoordinator(coordination) as coordinator:
+        receipts = coordinator.list_receipts(grant.task_cid)
+    assert len(receipts) == 1
+    assert receipts[0]["receipt"]["status"] in {"failed", "cancelled"}
+    assert receipts[0]["receipt"]["status"] != "succeeded"
+    assert receipts[0]["receipt"]["failure_class"] == "retryable"
 
 
 def test_leased_lane_signal_terminates_detached_descendants(tmp_path: Path) -> None:

@@ -1092,6 +1092,8 @@ def build_portal_implementation_daemon_from_args(
         worktree_submodule_paths=worktree_submodule_paths,
         objective_path=parsed.objective_path or default_objective_path,
         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,
+        execution_slice_task_ids=getattr(parsed, "execution_slice_task_id", ()),
+        execution_slice_task_cids=getattr(parsed, "execution_slice_task_cid", ()),
         llm_merge_resolver_command=parsed.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=parsed.llm_merge_resolver_timeout_seconds,
         merge_reconciliation_max_merges=parsed.merge_reconciliation_max_merges,

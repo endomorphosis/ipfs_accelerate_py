@@ -706,3 +706,72 @@ def test_bundle_launcher_runs_only_an_accepted_lease(monkeypatch: pytest.MonkeyP
     assert second[0]["accepted"] is False
     assert second[0]["code"] == "G_CLAIM_CONFLICT"
     assert len(starts) == 1
+
+
+def test_bundle_launcher_propagates_only_the_leased_execution_slice(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    index = repo / "index.json"
+    index.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: [
+            {
+                "bundle_key": "objective/hssl/protocol",
+                "todo_path": "protocol.todo.md",
+                "tasks": [
+                    {"task_id": "HSSL-BENCH-001"},
+                    {"task_id": "HSSL-BENCH-011"},
+                ],
+                "execution_slice_task_ids": ["HSSL-BENCH-011"],
+            }
+        ],
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+    )
+    assert lanes[0].task_ids == ["HSSL-BENCH-011"]
+
+    starts: list[list[str]] = []
+
+    class Process:
+        pid = 4321
+
+    def fake_popen(command, **_kwargs):
+        starts.append(list(command))
+        return Process()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        fake_popen,
+    )
+    launched = launch_bundle_lanes(
+        lanes,
+        repo_root=repo,
+        coordination_path=repo / "coordination.sqlite3",
+    )
+
+    assert launched[0]["accepted"] is True
+    assert len(starts) == 1
+    guarded_command = starts[0]
+    child_separator = guarded_command.index("--")
+    wrapper_command = guarded_command[:child_separator]
+    supervisor_command = guarded_command[child_separator + 1 :]
+    assert [
+        wrapper_command[index + 1]
+        for index, value in enumerate(wrapper_command)
+        if value == "--expected-task-id"
+    ] == ["HSSL-BENCH-011"]
+    assert [
+        supervisor_command[index + 1]
+        for index, value in enumerate(supervisor_command)
+        if value == "--execution-slice-task-id"
+    ] == ["HSSL-BENCH-011"]

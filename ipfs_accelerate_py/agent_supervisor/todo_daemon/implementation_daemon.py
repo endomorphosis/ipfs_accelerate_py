@@ -1002,6 +1002,8 @@ class PortalImplementationDaemon:
         generated_status_paths: Sequence[Path | str] = (),
         external_reservation_manifest_paths: Sequence[Path | str] = (),
         assumed_completed_task_ids: Sequence[str] = (),
+        execution_slice_task_ids: Sequence[str] = (),
+        execution_slice_task_cids: Sequence[str] = (),
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
         merge_reconciliation_max_merges: int | None = None,
@@ -1073,6 +1075,16 @@ class PortalImplementationDaemon:
             str(task_id).strip()
             for task_id in assumed_completed_task_ids
             if str(task_id).strip()
+        )
+        self.execution_slice_task_ids = frozenset(
+            str(task_id).strip()
+            for task_id in execution_slice_task_ids
+            if str(task_id).strip()
+        )
+        self.execution_slice_task_cids = frozenset(
+            str(task_cid).strip()
+            for task_cid in execution_slice_task_cids
+            if str(task_cid).strip()
         )
         self.llm_merge_resolver_command = (
             default_llm_merge_resolver_command()
@@ -1597,14 +1609,27 @@ class PortalImplementationDaemon:
                 continue
             resolved_statuses[task.task_id] = "ready"
 
-        representative_task_ids = self._canonical_representative_task_ids(tasks, resolved_statuses)
+        execution_tasks = [
+            task
+            for task in tasks
+            if (
+                not self.execution_slice_task_ids
+                and not self.execution_slice_task_cids
+            )
+            or task.task_id in self.execution_slice_task_ids
+            or self._canonical_ref(task) in self.execution_slice_task_cids
+        ]
+        representative_task_ids = self._canonical_representative_task_ids(
+            execution_tasks,
+            resolved_statuses,
+        )
         active_task_claims = self._active_implementation_task_claims(tasks)
         external_task_reservations = self._external_task_reservations(tasks)
         for task_id, reservation in external_task_reservations.items():
             active_task_claims.setdefault(task_id, reservation)
         selectable_tasks = [
             task
-            for task in tasks
+            for task in execution_tasks
             if (
                 task.task_id in representative_task_ids
                 and self._task_belongs_to_shard(task.task_id)
@@ -1616,7 +1641,7 @@ class PortalImplementationDaemon:
         ):
             fallback_tasks = [
                 task
-                for task in tasks
+                for task in execution_tasks
                 if (
                     task.task_id in representative_task_ids
                     and task.task_id not in active_task_claims
@@ -1796,6 +1821,8 @@ class PortalImplementationDaemon:
             "active_task_claims": sorted(active_task_claims),
             "external_reserved_task_ids": sorted(external_task_reservations),
             "assumed_completed_task_ids": sorted(self.assumed_completed_task_ids),
+            "execution_slice_task_ids": sorted(self.execution_slice_task_ids),
+            "execution_slice_task_cids": sorted(self.execution_slice_task_cids),
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
             "shared_completed_task_ids": sorted(shared_completed_task_ids),
             "canonical_task_count": len(aliases_by_cid),
@@ -11315,6 +11342,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Repeatable external dependency task ID already proven complete by the planner.",
     )
     parser.add_argument(
+        "--execution-slice-task-id",
+        action="append",
+        default=[],
+        help="Repeatable task ID this leased bundle lane is authorized to execute.",
+    )
+    parser.add_argument(
+        "--execution-slice-task-cid",
+        action="append",
+        default=[],
+        help="Repeatable canonical task CID this leased bundle lane is authorized to execute.",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -11357,6 +11396,8 @@ def main(argv: list[str] | None = None) -> None:
         generated_status_paths=args.generated_status_path,
         external_reservation_manifest_paths=args.external_reservation_manifest_path,
         assumed_completed_task_ids=args.assume_completed_task_id,
+        execution_slice_task_ids=args.execution_slice_task_id,
+        execution_slice_task_cids=args.execution_slice_task_cid,
         llm_merge_resolver_command=args.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
