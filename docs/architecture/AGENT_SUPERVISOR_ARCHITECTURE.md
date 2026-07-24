@@ -11,8 +11,9 @@ operations, leases, and evidence receipts decide whether work may advance.
 
 ## Current implementation status
 
-The latest supervisor work (23 July 2026) has moved the formal-planning design
-into executable, resumable components. The following commits are now part of
+The latest supervisor work (23-24 July 2026 UTC) has moved the
+formal-planning and Leanstral goal-development designs into executable,
+resumable components. The following formal-planning commits are now part of
 the nested `ipfs_accelerate_py` repository:
 
 | Capability | Implementation | Operational meaning |
@@ -23,6 +24,42 @@ the nested `ipfs_accelerate_py` repository:
 | Counterexample-guided repair | `formal_replanner.py` (`REF-289`) | Typed, bounded repair rules produce content-addressed candidates and compact Codex packets. Retry, refinement, candidate, changed-record, and prompt budgets prevent unbounded replanning. |
 | Proof-carrying execution | `proof_carrying_planner.py` (`REF-293`) | Compile, verify, implement, scope-check, merge, monitor, and repair nodes run as a durable DAG with paired JSON/DuckDB state. The workflow is replayable and only completes when required assurance is present. |
 | Rollout measurement and gates | `formal_planning_metrics.py`, `formal_planning_rollout.py` (`REF-294`) | Cold/warm/parallel benchmark samples measure context reduction, defect detection, proof support, counterexample quality, cache reuse, queue latency, CPU, memory, and throughput before promotion. |
+
+## Delivery update: 24 July 2026 UTC
+
+The Leanstral-assisted goal-development board is complete: **10/10 tasks are
+completed**. The five task commits delivered during the final two-hour
+implementation window are:
+
+| Task commit | Delivered capability | Operational boundary |
+| --- | --- | --- |
+| `c09e0008` (`LEAN-GOAL-006`) | Transactional objective and subgoal materialization | Preview-first; shadow mode cannot mutate the objective heap. |
+| `963b13e2` (`LEAN-GOAL-007`) | Fresh code-conformance obligations | Plan evidence cannot be promoted to generated-code proof. |
+| `117bb601` (`LEAN-GOAL-008`) | Route-aware capabilities, resource scheduling, cache separation, and metrics | Drafts and authoritative receipts use separate cache and trust paths. |
+| `87af152f` (`LEAN-GOAL-009`) | End-to-end shadow lifecycle and restart recovery | Leanstral remains an untrusted proposal source with no completion authority. |
+| `388be1d5` (`LEAN-GOAL-010`) | Paired benchmark reports and fail-closed rollout gates | `auto_safe` remains disabled unless explicitly authorized by policy. |
+
+These changes were reconciled with the upstream formal-planning/prover tranche
+in merge commit `c84802e1` and published together in `c764be51`. The board
+completed on the first implementation attempt for each task, with no blocked
+tasks or supervisor restarts during this tranche.
+
+Validation recorded for the delivery:
+
+- The required paired benchmark suite passed **3 tests**.
+- The lifecycle and contract regression suite passed **37 tests**.
+- The combined analysis, Leanstral, formal-planning, prover-resource,
+  scheduler, and daemon suite passed **730 tests** in parallel; the one
+  subprocess isolation-sensitive fallback test also passed when rerun serially.
+- `compileall`, `git diff --check`, and the combined public-export import check
+  passed.
+
+The checked fixture benchmark reports four of five paired quality wins, zero
+false completions, zero authority-boundary violations, and stable restart
+recovery. These are fixture and policy-gate results, not a claim that arbitrary
+Python execution is formally verified. Live Leanstral inference remains
+optional, shadow is the default, and promotion still requires the independent
+proof, scope, authority, validation, and completion gates described below.
 
 These modules provide the execution surface for the design below; they do not
 make arbitrary Python formally verified. Provider conformance, reviewed
