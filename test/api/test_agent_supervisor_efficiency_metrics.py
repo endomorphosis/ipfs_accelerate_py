@@ -6,6 +6,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+    AnalyzerHealthReport,
+    AnalyzerHealthStatus,
+    AnalyzerHealthThresholds,
+)
 from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     DELTA_RETRY_ACCEPTANCE_CRITERIA,
     DELTA_RETRY_EVIDENCE_ID,
@@ -22,6 +27,15 @@ from ipfs_accelerate_py.agent_supervisor.context_contracts import (
 from ipfs_accelerate_py.agent_supervisor.goal_completion import (
     CompletionEvidence,
     GoalState,
+)
+from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+    AcceptanceCoverage,
+    CoverageStatus,
+    GoalCoverageMap,
+)
+from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+    ExhaustionBinding,
+    evaluate_exhaustion_quorum,
 )
 from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     DELTA_RETRY_CONTEXT_EVIDENCE_ID,
@@ -42,6 +56,7 @@ from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
     MAX_CHANGED_PATHS,
     MAX_DURATION_MS,
     MAX_EVIDENCE_REFERENCES,
+    MAX_SERIALIZED_REPORT_BYTES,
     MAX_STAGES,
     MAX_TEXT_BYTES,
     MAX_TOKENS,
@@ -659,11 +674,35 @@ def test_terminal_accepted_work_evidence_replays_complete_source_populations() -
     )
     assert reordered == evidence
     assert reordered.evidence_id == evidence.evidence_id
+    assert reordered.report_id == evidence.report_id
+    assert (
+        reordered.benchmark_input_digest
+        == evidence.benchmark_input_digest
+    )
+    assert (
+        len(evidence.to_json().encode("utf-8"))
+        <= MAX_SERIALIZED_REPORT_BYTES
+    )
     assert TerminalAcceptedWorkEvidence.from_json(
         evidence.to_json()
     ) == evidence
     identified = evidence.to_dict(include_evidence_id=True)
     assert TerminalAcceptedWorkEvidence.from_dict(identified) == evidence
+
+    substituted_candidate = replace(
+        candidate_terminal,
+        tokens=TokenUsage(input_tokens=2_001, output_tokens=300),
+    )
+    substituted = build_terminal_accepted_work_evidence(
+        (failed_only, baseline_terminal, failed_attempt),
+        (substituted_candidate, failed_only),
+    )
+    assert substituted.report_id != evidence.report_id
+    assert (
+        substituted.benchmark_input_digest
+        != evidence.benchmark_input_digest
+    )
+    assert substituted.evidence_id != evidence.evidence_id
 
 
 def test_terminal_evidence_verifier_requires_the_independent_complete_cohort() -> None:
@@ -711,6 +750,17 @@ def test_terminal_evidence_verifier_requires_the_independent_complete_cohort() -
         verify_terminal_accepted_work_evidence(
             evidence,
             (terminal,),
+            (candidate,),
+            **expected_binding,
+        )
+
+    with pytest.raises(
+        EfficiencyValidationError,
+        match="duplicate receipt identit",
+    ):
+        verify_terminal_accepted_work_evidence(
+            evidence,
+            (failed_attempt, terminal, failed_attempt),
             (candidate,),
             **expected_binding,
         )
@@ -785,7 +835,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
     validations = tuple(
         CompletionEvidence(
             acceptance_criterion=criterion,
-            producing_task_or_scan="ASI-068",
+            producing_task_or_scan="ASI-074",
             producer_kind="task",
             validation_receipt={
                 "status": "passed",
@@ -798,7 +848,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
             repository_tree=terminal.repository_tree_digest,
             freshness={"fresh": True},
             observed_at=now,
-            provenance_cid=f"validation:asi-068:{index}",
+            provenance_cid=f"validation:asi-074:{index}",
             metadata={
                 "evidence_source_policy": {
                     "satisfies": True,
@@ -827,8 +877,14 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
                 "validation": (
                     "test/api/test_agent_supervisor_efficiency_metrics.py"
                 ),
+                "validation_receipt_ids": [
+                    f"validation:asi-074:{index}"
+                ],
             }
-            for criterion in TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA
+            for index, criterion in enumerate(
+                TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
         ],
     }
     analyzer_version = "terminal-accounting-completion@1"
@@ -862,9 +918,9 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
         "binding": binding,
         "members": [
             {
-                "member_id": "asi-068-exhaustive-a",
+                "member_id": "asi-074-exhaustive-a",
                 "evidence_channel": "receipt-population",
-                "receipt_cid": "scan:asi-068:exhaustive-a",
+                "receipt_cid": "scan:asi-074:exhaustive-a",
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -872,9 +928,9 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
                 "finished_at": now.isoformat(),
             },
             {
-                "member_id": "asi-068-exhaustive-b",
+                "member_id": "asi-074-exhaustive-b",
                 "evidence_channel": "accounting-lifecycle",
-                "receipt_cid": "scan:asi-068:exhaustive-b",
+                "receipt_cid": "scan:asi-074:exhaustive-b",
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "healthy": True,
@@ -926,6 +982,92 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
     assert verified.state is GoalState.VERIFIED_COMPLETE
     assert verified.verified
 
+    typed_coverage = GoalCoverageMap(
+        criteria=[
+            AcceptanceCoverage(
+                criterion_id=f"ASI-G093:{index}",
+                goal_id=TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID,
+                criterion=criterion,
+                status=CoverageStatus.VERIFIED,
+                changed_files=[
+                    "ipfs_accelerate_py/agent_supervisor/"
+                    "supervisor_efficiency_metrics.py"
+                ],
+                validation_receipt_ids=[
+                    f"validation:asi-074:{index}"
+                ],
+            )
+            for index, criterion in enumerate(
+                TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA,
+                start=1,
+            )
+        ],
+        edges=[],
+        receipts=[],
+        finding_assignments=[],
+        registered_goal_ids=[TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID],
+        evaluated_at=now.isoformat(),
+        repository_tree=terminal.repository_tree_digest,
+    )
+    typed_health = AnalyzerHealthReport(
+        status=AnalyzerHealthStatus.HEALTHY,
+        reasons=(),
+        thresholds=AnalyzerHealthThresholds(),
+        metrics={
+            "objective_id": TERMINAL_ACCEPTED_WORK_OBJECTIVE_ID,
+            "repository_tree": terminal.repository_tree_digest,
+        },
+    )
+    typed_binding = ExhaustionBinding(
+        repository_id=repository_id,
+        tree_id=terminal.repository_tree_digest,
+        analyzer_version=analyzer_version,
+        configuration_revision=binding["configuration_revision"],
+        objective_revision=objective_revision,
+    )
+    typed_quorum = evaluate_exhaustion_quorum(
+        (
+            {
+                "receipt_cid": "scan:asi-074:typed-population",
+                "terminal_reason": "exhausted",
+                "scan_mode": "exhaustive",
+                "finished_at": now.isoformat(),
+                "metadata": {
+                    "analyzer_health": {"status": "healthy"},
+                    "coverage_complete": True,
+                    "evidence_channel": "typed-receipt-population",
+                },
+            },
+            {
+                "receipt_cid": "scan:asi-074:typed-accounting",
+                "terminal_reason": "exhausted",
+                "scan_mode": "audit",
+                "finished_at": now.isoformat(),
+                "metadata": {
+                    "analyzer_health": {"status": "healthy"},
+                    "coverage_complete": True,
+                    "evidence_channel": "typed-accounting-lifecycle",
+                },
+            },
+        ),
+        binding=typed_binding,
+        required_members=2,
+    )
+    assert typed_quorum.satisfied
+    typed_proof = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{
+            **values,
+            "coverage": typed_coverage,
+            "analyzer_health": typed_health,
+            "exhaustion_quorum": typed_quorum,
+        },
+    )
+    assert typed_proof.state is GoalState.VERIFIED_COMPLETE
+    assert typed_proof.gate is not None and typed_proof.gate.passed
+
     # The completion bridge independently enumerates the cohort; an omitted
     # charged attempt cannot be hidden by an otherwise valid artifact.
     incomplete = terminal_evidence.evaluate_objective_completion(
@@ -945,6 +1087,18 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
     )
     assert reordered.verified
 
+    missing_validation = terminal_evidence.evaluate_objective_completion(
+        baseline_population,
+        candidate_population,
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **{**values, "evidence": validations[:-1]},
+    )
+    assert not missing_validation.verified
+    assert (
+        TERMINAL_ACCEPTED_WORK_ACCEPTANCE_CRITERIA[-1]
+        in missing_validation.missing_criteria
+    )
+
     failed_validation = replace(
         validations[0],
         validation_passed=False,
@@ -953,7 +1107,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
             "tree_id": terminal.repository_tree_digest,
             "command": command,
         },
-        provenance_cid="validation:asi-068:failed",
+        provenance_cid="validation:asi-074:failed",
     )
     rejected_validation = terminal_evidence.evaluate_objective_completion(
         baseline_population,
@@ -970,7 +1124,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
     stale_validation = replace(
         validations[0],
         observed_at=now - timedelta(seconds=301),
-        provenance_cid="validation:asi-068:stale",
+        provenance_cid="validation:asi-074:stale",
     )
     rejected_stale = terminal_evidence.evaluate_objective_completion(
         baseline_population,
@@ -1001,6 +1155,58 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
     )
     assert not unmapped.verified
     assert "coverage_missing" in unmapped.reason_codes
+
+    for invalid_coverage in (
+        {
+            **coverage,
+            "criteria": [
+                {
+                    **coverage["criteria"][0],
+                    "validation_receipt_ids": ["validation:foreign"],
+                },
+                *coverage["criteria"][1:],
+            ],
+        },
+        {
+            **coverage,
+            "criteria": [
+                {
+                    **coverage["criteria"][0],
+                    "validation_receipt_ids": [
+                        "validation:asi-074:2"
+                    ],
+                },
+                *coverage["criteria"][1:],
+            ],
+        },
+        {
+            **coverage,
+            "repository_tree": "sha256:" + "0" * 64,
+        },
+        {
+            **coverage,
+            "evaluated_at": (
+                now - timedelta(seconds=301)
+            ).isoformat(),
+        },
+    ):
+        rejected_coverage = (
+            terminal_evidence.evaluate_objective_completion(
+                baseline_population,
+                candidate_population,
+                current_state=GoalState.PROVISIONALLY_COMPLETE,
+                **{**values, "coverage": invalid_coverage},
+            )
+        )
+        assert not rejected_coverage.verified
+        assert any(
+            code in rejected_coverage.reason_codes
+            for code in (
+                "coverage_unverified",
+                "coverage_tree_mismatch",
+                "coverage_stale",
+            )
+        )
 
     unsafe = terminal_evidence.evaluate_objective_completion(
         baseline_population,
@@ -1033,7 +1239,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
                 quorum["members"][0],
                 {
                     **quorum["members"][1],
-                    "receipt_cid": "scan:asi-068:exhaustive-a",
+                    "receipt_cid": "scan:asi-074:exhaustive-a",
                 },
             ],
         },
@@ -1043,7 +1249,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
                 quorum["members"][0],
                 {
                     **quorum["members"][1],
-                    "member_id": "asi-068-exhaustive-a",
+                    "member_id": "asi-074-exhaustive-a",
                 },
             ],
         },
