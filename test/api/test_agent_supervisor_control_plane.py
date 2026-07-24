@@ -6,9 +6,13 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+    CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlBounds,
+    ControlContractError,
+    ControlSurfaceParityCase,
+    ControlSurfaceParityEvidence,
     EffectKind,
     ErrorCode,
     ExpectedEffect,
@@ -18,6 +22,8 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     OperationAuthority,
     OperationRequest,
     OperationStatus,
+    operation_request_json_schema,
+    operation_result_json_schema,
 )
 from ipfs_accelerate_py.agent_supervisor.control_plane import (
     BackendResponse,
@@ -138,6 +144,84 @@ def _service(
         state_store=state_store or InMemoryControlStateStore(),
         clock_ms=lambda: 1_500,
     )
+
+
+def _parity_service(
+    repo_root: Path,
+    state_root: Path,
+) -> SupervisorControlService:
+    def operation_handler(request: OperationRequest) -> BackendResponse:
+        return BackendResponse(
+            data={"operation": request.operation.value},
+            changed=bool(request.expected_effects),
+            applied_effect_ids=tuple(
+                effect.effect_id for effect in request.expected_effects
+            ),
+        )
+
+    return _service(
+        repo_root,
+        state_root,
+        handlers={
+            operation: operation_handler
+            for operation in Operation
+            if operation not in READ_OPERATIONS
+        }
+        | {Operation.STATUS: operation_handler},
+    )
+
+
+def _parity_cases(
+    service: SupervisorControlService,
+    repo_root: Path,
+    state_root: Path,
+) -> tuple[ControlSurfaceParityCase, ...]:
+    requests = (
+        (
+            "read_success",
+            _read_request(repo_root, state_root, Operation.STATUS),
+        ),
+        (
+            "proposal_success",
+            _mutation_request(
+                repo_root,
+                state_root,
+                Operation.PAUSE,
+                dry_run=True,
+            ),
+        ),
+        (
+            "stable_failure",
+            _read_request(
+                repo_root,
+                state_root,
+                Operation.HEALTH,
+                {"health_path": "missing-health.json"},
+            ),
+        ),
+        (
+            "mutation_success",
+            _mutation_request(
+                repo_root,
+                state_root,
+                Operation.PAUSE,
+                key="parity:mutation",
+            ),
+        ),
+    )
+    cases = []
+    for scenario, request in requests:
+        record = service.execute(request).to_record()
+        cases.append(
+            ControlSurfaceParityCase(
+                scenario=scenario,
+                request=request,
+                python_result=record,
+                cli_result=record,
+                mcp_result=record,
+            )
+        )
+    return tuple(cases)
 
 
 def test_capabilities_are_complete_typed_and_side_effect_free(
@@ -600,3 +684,99 @@ def test_service_calls_registered_python_handler_without_shell_translation(
     assert result.succeeded
     assert seen == [request]
     assert result.data["validation_receipt"] == "receipt:new"
+
+
+def test_shared_wire_schemas_cover_every_operation_and_mutation_guard() -> None:
+    request_schema = operation_request_json_schema()
+    result_schema = operation_result_json_schema()
+
+    assert set(request_schema["properties"]["operation"]["enum"]) == {
+        item.value for item in Operation
+    }
+    assert set(result_schema["properties"]["operation"]["enum"]) == {
+        item.value for item in Operation
+    }
+    pause_schema = operation_request_json_schema(Operation.PAUSE)
+    assert pause_schema["properties"]["operation"]["const"] == "pause"
+    assert {
+        "expected_effects",
+        "idempotency",
+        "authorization",
+        "lease_id",
+        "fencing_epoch",
+    }.issubset(pause_schema["allOf"][0]["then"]["required"])
+
+
+def test_typed_surface_parity_evidence_proves_exact_requirement(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    service = _parity_service(repo_root, state_root)
+    cases = _parity_cases(service, repo_root, state_root)
+    request = cases[0].request
+    assert isinstance(request, OperationRequest)
+    with pytest.raises(ControlContractError, match="complete behavior matrix"):
+        ControlSurfaceParityEvidence(
+            repository_tree=request.tree_id,
+            objective_id=request.objective_id,
+            policy_id=request.policy_id,
+            policy_revision=request.policy_revision,
+            capability_report=service.capability_report(),
+            cases=(cases[0],),
+        )
+    evidence = ControlSurfaceParityEvidence(
+        repository_tree=request.tree_id,
+        objective_id=request.objective_id,
+        policy_id=request.policy_id,
+        policy_revision=request.policy_revision,
+        capability_report=service.capability_report().to_record(),
+        cases=cases,
+    )
+
+    assert evidence.proved_requirement_ids == (
+        CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
+    )
+    assert ControlSurfaceParityEvidence.from_dict(evidence.to_record()) == evidence
+    assert evidence.request_schema_id
+    assert evidence.result_schema_id
+
+
+def test_surface_parity_evidence_rejects_behavior_or_schema_drift(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repo_root.mkdir()
+    state_root.mkdir()
+    service = _parity_service(repo_root, state_root)
+    request = _read_request(repo_root, state_root, Operation.STATUS)
+    record = service.execute(request).to_record()
+    drifted = dict(record)
+    drifted["data"] = {"state": "degraded"}
+    drifted.pop("content_id")
+
+    with pytest.raises(ControlContractError, match="not canonically identical"):
+        ControlSurfaceParityCase(
+            scenario="read_success",
+            request=request,
+            python_result=record,
+            cli_result=drifted,
+            mcp_result=record,
+        )
+
+    cases = _parity_cases(service, repo_root, state_root)
+    evidence = ControlSurfaceParityEvidence(
+        repository_tree=request.tree_id,
+        objective_id=request.objective_id,
+        policy_id=request.policy_id,
+        policy_revision=request.policy_revision,
+        capability_report=service.capability_report(),
+        cases=cases,
+    ).to_record()
+    evidence["request_schema_id"] = "sha256:forged"
+    evidence.pop("content_id")
+    with pytest.raises(ControlContractError, match="request_schema_id"):
+        ControlSurfaceParityEvidence.from_dict(evidence)

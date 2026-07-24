@@ -2533,7 +2533,7 @@ class IPFSAccelerateCLI:
             raise
 
 
-def main():
+def main(argv=None, *, agent_control_service=None, agent_service_factory=None):
     """Main entry point for the CLI"""
     # When running from a repo checkout, a top-level folder can shadow PyPI
     # dependencies via the implicit CWD entry in sys.path (e.g., ./mcp vs PyPI
@@ -2604,6 +2604,12 @@ Examples:
         
         # Create subparsers for different command categories
         subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+        # Agent-supervisor commands are parser-only at discovery time.  The
+        # adapter constructs no service, imports no optional provider, and
+        # starts no process until a command is actually dispatched.
+        from ipfs_accelerate_py.agent_supervisor.control_cli import register_agent_cli
+        agent_parser = register_agent_cli(subparsers)
         
         # MCP commands
         mcp_parser = subparsers.add_parser('mcp', help='MCP server management')
@@ -2839,7 +2845,7 @@ Examples:
         
         
         # Parse arguments
-        args = parser.parse_args()
+        args = parser.parse_args(argv)
         
         # Set debug logging if requested
         if args.debug:
@@ -2852,7 +2858,18 @@ Examples:
             return 0
             
         cli = IPFSAccelerateCLI()
-        
+
+        if args.command == 'agent':
+            if not args.agent_command:
+                agent_parser.print_help()
+                return 1
+            from ipfs_accelerate_py.agent_supervisor.control_cli import run_agent_cli
+            return run_agent_cli(
+                args,
+                service=agent_control_service,
+                service_factory=agent_service_factory,
+            )
+
         if args.command == 'mcp':
             if args.mcp_command == 'start':
                 return cli.run_mcp_start(args)

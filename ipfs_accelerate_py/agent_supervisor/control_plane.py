@@ -42,6 +42,7 @@ from .control_contracts import (
     DryRunPreview,
     EffectClaim,
     ErrorCode,
+    ExpectedEffect,
     LifecycleAction,
     LifecycleCommand,
     Operation,
@@ -982,6 +983,7 @@ class SupervisorTarget:
         parameters: Union[Mapping[str, Any], None] = None,
         bounds: Union[ControlBounds, None] = None,
         dry_run: bool = False,
+        expected_effects: Sequence[ExpectedEffect] = (),
     ) -> OperationRequest:
         selected = operation if isinstance(operation, Operation) else Operation(operation)
         if selected in MUTATION_OPERATIONS and not dry_run:
@@ -1002,6 +1004,7 @@ class SupervisorTarget:
             parameters=dict(parameters or {}),
             bounds=bounds or ControlBounds(),
             dry_run=dry_run,
+            expected_effects=tuple(expected_effects),
         )
 
 
@@ -1677,6 +1680,16 @@ class SupervisorControlService:
             target = str(request.parameters.get("target_id") or "")
             if target != command.target_id:
                 raise ValueError("lifecycle command target does not match request")
+            reason = str(request.parameters.get("reason") or "")
+            if reason != command.reason:
+                raise ValueError("lifecycle command reason does not match request")
+            requested_state = str(
+                request.parameters.get("requested_state") or ""
+            )
+            if requested_state != command.requested_state:
+                raise ValueError(
+                    "lifecycle command requested_state does not match request"
+                )
         if request.operation not in {
             action.operation for action in LifecycleAction
         }:
