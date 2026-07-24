@@ -41,6 +41,7 @@ from .objective_tracker import (
     append_interoperability_goals,
     append_launch_readiness_goals,
     append_refinement_goals,
+    completion_tree_identity,
     deduplicate_interoperability_goals,
     ensure_objective_tracking_document,
     open_goal_ids_from_todo_board,
@@ -1344,6 +1345,41 @@ materialize_objective_generation_admission = materialize_admitted_objective_work
 admit_objective_generation_cycle = materialize_admitted_objective_work
 
 
+def completion_gate_work_terms(decision: Mapping[str, Any]) -> tuple[str, ...]:
+    """Project verbose completion diagnostics onto stable repair dimensions."""
+
+    diagnostics = decision.get("diagnostics")
+    diagnostics = diagnostics if isinstance(diagnostics, Mapping) else {}
+    terms: list[str] = []
+    if diagnostics.get("uncovered_criteria"):
+        terms.append("completion criterion coverage")
+    if diagnostics.get("stale_evidence"):
+        terms.append("completion evidence freshness")
+    analyzer = diagnostics.get("analyzer_health")
+    if isinstance(analyzer, Mapping) and analyzer.get("passed") is not True:
+        terms.append("completion analyzer health")
+    quorum = diagnostics.get("exhaustion_quorum")
+    if isinstance(quorum, Mapping) and quorum.get("satisfied") is not True:
+        terms.append("completion exhaustion quorum")
+    if diagnostics.get("reopen_reasons"):
+        terms.append("completion contradiction repair")
+
+    reason_codes = tuple(
+        dict.fromkeys(
+            str(item).strip().casefold().replace("-", "_").replace(" ", "_")
+            for item in decision.get("reason_codes", ())
+            if str(item).strip()
+        )
+    )
+    if any("task" in reason for reason in reason_codes):
+        terms.append("completion task closure")
+    if any("child" in reason or "descendant" in reason for reason in reason_codes):
+        terms.append("completion child-goal verification")
+    if not terms:
+        terms.extend(f"completion gate {reason}" for reason in reason_codes)
+    return tuple(dict.fromkeys(terms))
+
+
 def objective_generation_proposals(
     *,
     objective_path: Path,
@@ -1416,6 +1452,9 @@ def objective_generation_proposals(
         )
         if not reasons:
             continue
+        work_terms = completion_gate_work_terms(decision)
+        if not work_terms:
+            continue
         fields = goal.fields
         predicted_files = tuple(split_csv([str(fields.get("outputs") or "")]))
         predicted_symbols = tuple(goal.required_evidence)
@@ -1428,7 +1467,7 @@ def objective_generation_proposals(
                 title=f"Produce completion evidence for {goal.title}",
                 parent_goal_id=goal_id,
                 parent_objective_terms=tuple(goal.required_evidence),
-                expected_evidence_delta=reasons,
+                expected_evidence_delta=work_terms,
                 dependencies=tuple(goal.parent_goal_ids),
                 predicted_files=predicted_files,
                 predicted_symbols=predicted_symbols,
@@ -1609,6 +1648,7 @@ def objective_generation_task_findings(
                 predicted_files=outputs,
                 ast_symbols=list(proposal.predicted_symbols),
                 generated_artifacts=[generation_relative],
+                dedupe_key=proposal.semantic_key,
             )
         )
         seen.add(fingerprint)
@@ -2120,6 +2160,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     objective_completed_goal_count = 0
     objective_completion_validation_results: dict[str, Any] = {}
     objective_completion_decisions: dict[str, Any] = {}
+    evidence_repository_tree = ""
     completion_gate_path = getattr(args, "objective_goal_completion_gate_path", None)
     if completion_gate_path is not None and not completion_gate_path.is_absolute():
         completion_gate_path = (repo_root / completion_gate_path).resolve()
@@ -2142,6 +2183,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         objective_completed_goal_count = completion.completed_goal_count
         objective_completion_validation_results = completion.validation_results
         objective_completion_decisions = completion.decisions
+        evidence_repository_tree = completion_tree_identity(
+            repo_root,
+            objective_path=objective_path,
+        ).tree_id
 
     refined_goal_ids: list[str] = []
     if getattr(args, "refine_objective_heap", False) and objective_path.exists():
@@ -2150,6 +2195,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             objective_path=objective_path,
             max_findings=args.max_findings,
             seen_fingerprints=seen_fingerprints,
+            evidence_repository_tree=evidence_repository_tree,
         )
         refinement = append_refinement_goals(
             objective_path,
@@ -2187,6 +2233,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         surplus_min_terms_per_todo=getattr(args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO),
         summary_prefix=getattr(args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX),
         discovery_output_path=getattr(args, "discovery_output_path", DEFAULT_DISCOVERY_OUTPUT_PATH),
+        evidence_repository_tree=evidence_repository_tree,
     )
     plan_evaluation_path = (
         getattr(args, "plan_evaluation_path", None) or state_root / "plan_evaluations.json"

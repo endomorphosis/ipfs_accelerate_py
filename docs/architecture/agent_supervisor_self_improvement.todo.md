@@ -68,7 +68,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-004 Add a capability-negotiated ipfs_datasets_py analysis provider
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: datasets-offload

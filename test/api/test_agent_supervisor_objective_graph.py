@@ -31,13 +31,18 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_goal_completion_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    ObjectiveFinding,
     materialize_task_dependency_dag,
     materialize_task_planning_graph,
     objective_fingerprint,
     objective_finding_conflict_record,
     write_bundle_shards,
 )
+from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+    completion_gate_work_terms,
+)
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+    append_refinement_goals,
     completion_tree_identity,
     migrate_legacy_objective_goals,
     reconcile_objective_goal_completion,
@@ -133,6 +138,171 @@ def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
     assert finding.missing_evidence == ["missing_meta_glasses_contract"]
     assert finding.present_evidence["CapabilityRouter.dispatch_task"] == ["src/runtime_router.py (ast)"]
     assert finding.present_evidence["meta glasses terminal router"][0].startswith("docs/runtime_notes.md (embedding:")
+
+
+def test_objective_scan_assigns_shared_evidence_to_deepest_refinement(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G1 Parent
+- Status: active
+- Evidence: shared-proof-requirement
+- Validation: true
+
+## G1.1 Focused child
+- Status: active
+- Parent: G1
+- Evidence: shared-proof-requirement
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective.md")
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=5,
+    )
+
+    assert [finding.goal_id for finding in findings] == ["G1.1"]
+    assert findings[0].missing_evidence == ["shared-proof-requirement"]
+    assert findings[0].dedupe_key.startswith("objective-evidence-obligation/v1/")
+
+
+def test_objective_scan_does_not_force_provisional_goal_back_to_implementation(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G1 Awaiting completion gate
+- Status: provisionally_complete
+- Evidence: STILL_REQUIRES_TYPED_PROOF
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    proof_path = repo / "src" / "proof.py"
+    proof_path.parent.mkdir()
+    proof_path.write_text(
+        "STILL_REQUIRES_TYPED_PROOF = True\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective.md", "src/proof.py")
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=5,
+        force_goal_ids=["G1"],
+    )
+
+    assert findings == []
+
+
+def test_objective_scan_does_not_share_ownership_between_unrelated_lineages(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G1 First root
+- Status: active
+- Evidence: shared-generic-proof
+- Validation: true
+
+## G2 Second root
+- Status: active
+- Evidence: shared-generic-proof
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective.md")
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=5,
+    )
+
+    assert {finding.goal_id for finding in findings} == {"G1", "G2"}
+
+
+def test_refinement_does_not_repeat_an_ancestor_evidence_obligation(tmp_path):
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G1 Parent
+- Status: active
+- Evidence: shared-proof-requirement
+
+## G1.1 Focused child
+- Status: active
+- Parent: G1
+- Evidence: shared-proof-requirement
+""",
+        encoding="utf-8",
+    )
+    finding = ObjectiveFinding(
+        fingerprint="child-gap",
+        goal_id="G1.1",
+        title="Focused child",
+        summary="Close child gap",
+        priority="P1",
+        track="test",
+        missing_evidence=["shared-proof-requirement"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src"],
+        validation="true",
+    )
+
+    result = append_refinement_goals(objective_path, [finding])
+
+    assert result.appended_goal_ids == []
+    assert objective_path.read_text(encoding="utf-8").count("## G1.1") == 1
+
+
+def test_completion_gate_work_identity_ignores_actionable_prose_churn():
+    diagnostics = {
+        "uncovered_criteria": ["criterion one"],
+        "stale_evidence": [],
+        "analyzer_health": {"passed": False},
+        "exhaustion_quorum": {"satisfied": False},
+        "reopen_reasons": [],
+    }
+    first = {
+        "reason_codes": ["missing_criterion_evidence", "analyzer_health_missing"],
+        "actionable_reasons": ["Write a fresh proof for criterion one."],
+        "diagnostics": diagnostics,
+    }
+    reworded = {
+        **first,
+        "actionable_reasons": ["Criterion one needs current proof."],
+    }
+
+    assert completion_gate_work_terms(first) == completion_gate_work_terms(reworded)
+    assert completion_gate_work_terms(first) == (
+        "completion criterion coverage",
+        "completion analyzer health",
+        "completion exhaustion quorum",
+    )
 
 
 def test_objective_goal_heap_accepts_package_specific_goal_ids():
@@ -971,6 +1141,57 @@ def test_generate_objective_todos_skips_existing_canonical_task(tmp_path):
     assert repeated == []
     assert todo_path.read_text(encoding="utf-8") == original_todo
     assert sorted(discovery_dir.iterdir()) == original_discoveries
+
+
+def test_generate_objective_todos_recognizes_legacy_refinement_obligation(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").rstrip()
+        + """
+
+## ACCEL-002 Legacy refined evidence task
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on:
+- Goal id: VAIOS-G999
+- Graph parents: VAIOS-G000
+- Missing evidence: missing_meta_glasses_contract
+- Candidate kind: aggregate
+- Canonical task key: task/v1/legacy
+- Canonical task CID: baguqeera-legacy
+- Acceptance: Close the inherited evidence obligation.
+""",
+        encoding="utf-8",
+    )
+    original_todo = todo_path.read_text(encoding="utf-8")
+    finding = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+    )[0]
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert records == []
+    assert todo_path.read_text(encoding="utf-8") == original_todo
+    assert not discovery_dir.exists()
 
 
 def test_bundle_regeneration_preserves_projected_task_status(tmp_path):

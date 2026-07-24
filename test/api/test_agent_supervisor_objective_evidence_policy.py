@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -310,6 +311,32 @@ def test_objective_scan_admits_only_current_exact_typed_receipt(
 
     assert stale[0].missing_evidence == [REQUIREMENT_ID]
     assert current == []
+
+
+def test_objective_scan_recognizes_persisted_goal_completion_receipt(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    objective = tmp_path / "objective.md"
+    records = json.dumps([_receipt()], separators=(",", ":"))
+    objective.write_text(
+        "# Goals\n\n"
+        "## G1 Persisted receipt\n\n"
+        "- Status: active\n"
+        f"- Evidence: {REQUIREMENT_ID}\n"
+        f"- Completion evidence records: {records}\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+
+    findings = scan_objective_gaps(
+        tmp_path,
+        objective_path=objective,
+        evidence_repository_tree=TREE_ID,
+        evidence_policy_id=POLICY_ID,
+    )
+
+    assert findings == []
 
 
 def test_evidence_index_returns_ranked_bounded_nominations_separate_from_authority(

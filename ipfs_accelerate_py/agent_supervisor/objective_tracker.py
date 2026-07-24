@@ -353,6 +353,44 @@ def open_goal_ids_from_todo_board(todo_path: Path, task_header_prefix: str = "")
     return {goal_id for goal_id in open_goal_ids if goal_id}
 
 
+def referenced_goal_ids_from_todo_board(
+    todo_path: Path,
+    task_header_prefix: str = "",
+) -> set[str]:
+    """Return every objective goal id referenced by a task of any status."""
+
+    if not todo_path.exists():
+        return set()
+
+    from .todo_daemon.implementation_daemon import TASK_HEADER_PREFIX, parse_task_file
+
+    goal_ids: set[str] = set()
+    for task in parse_task_file(todo_path, task_header_prefix or TASK_HEADER_PREFIX):
+        for key in TASK_GOAL_METADATA_KEYS:
+            goal_ids.update(split_terms(task.metadata.get(key, "")))
+    return {goal_id for goal_id in goal_ids if goal_id}
+
+
+def referenced_goal_ids_from_todo_boards(
+    todo_boards: Sequence[tuple[Path, str]],
+) -> dict[str, list[str]]:
+    """Map every task-linked objective goal to the boards that reference it."""
+
+    goal_ids: dict[str, list[str]] = {}
+    seen_boards: set[tuple[str, str]] = set()
+    for todo_path, task_header_prefix in todo_boards:
+        board_key = (str(todo_path), str(task_header_prefix))
+        if board_key in seen_boards:
+            continue
+        seen_boards.add(board_key)
+        for goal_id in referenced_goal_ids_from_todo_board(
+            todo_path,
+            task_header_prefix,
+        ):
+            goal_ids.setdefault(goal_id, []).append(str(todo_path))
+    return goal_ids
+
+
 def open_goal_ids_from_todo_boards(
     todo_boards: Sequence[tuple[Path, str]],
 ) -> dict[str, list[str]]:
@@ -1695,6 +1733,7 @@ def reconcile_objective_goal_completion(
         completion_boards.append((todo_path, task_header_prefix))
     completion_boards.extend(todo_boards or ())
     open_goal_ids = open_goal_ids_from_todo_boards(completion_boards)
+    referenced_goal_ids = referenced_goal_ids_from_todo_boards(completion_boards)
     hierarchy = goal_graph(goals)
     goals_by_id = {item.goal_id: item for item in goals if item.goal_id}
 
@@ -1720,8 +1759,22 @@ def reconcile_objective_goal_completion(
 
     for goal in candidate_goals:
         current_state = normalize_goal_state(goal.status)
-        tasks_complete = goal.goal_id not in open_goal_ids
         records = persisted_records.get(goal.goal_id, [])
+        source_evidence_complete = bool(goal.required_evidence) and all(
+            discovered_evidence.get(term) for term in goal.required_evidence
+        )
+        tasks_complete = (
+            goal.goal_id not in open_goal_ids
+            and (
+                not completion_boards
+                or goal.goal_id in referenced_goal_ids
+                or bool(records)
+                or source_evidence_complete
+                or is_legacy_completed_goal_state(
+                    str(goal.fields.get("legacy_completion_state") or "")
+                )
+            )
+        )
         gate_record = _goal_completion_gate_record(goal, supplied_gate_records)
         criteria_text = str(
             goal.fields.get("acceptance_criteria")
@@ -1731,12 +1784,20 @@ def reconcile_objective_goal_completion(
         criteria: Sequence[str] | str = criteria_text or goal.required_evidence
 
         if not tasks_complete:
+            referenced_boards = referenced_goal_ids.get(goal.goal_id, [])
             validation_results[goal.goal_id] = {
                 "attempted": False,
                 "passed": False,
                 "returncode": 1,
-                "reason": "open_todo_tasks",
-                "todo_boards": open_goal_ids[goal.goal_id],
+                "reason": (
+                    "open_todo_tasks"
+                    if goal.goal_id in open_goal_ids
+                    else "no_producing_tasks"
+                ),
+                "todo_boards": open_goal_ids.get(
+                    goal.goal_id,
+                    referenced_boards,
+                ),
             }
         elif current_state in {GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE} and records:
             # Receipts supplied by another process remain provenance inputs,
@@ -2783,6 +2844,7 @@ def append_refinement_goals(
     goals = parse_goal_heap(text)
     graph = goal_graph(goals)
     refinement_keys = existing_refinement_keys(goals)
+    goals_by_id = {goal.goal_id: goal for goal in goals}
     appended_blocks: list[str] = []
     appended_goal_ids: list[str] = []
     goal_prefix = goal_prefix or infer_goal_prefix(goals)
@@ -2795,6 +2857,42 @@ def append_refinement_goals(
         next_id = f"{goal_prefix}{number:03d}"
         return current
 
+    def ancestors(goal_id: str) -> set[str]:
+        pending = list(goals_by_id.get(goal_id, ObjectiveGoal(goal_id, "", {})).parent_goal_ids)
+        result: set[str] = set()
+        while pending:
+            ancestor_id = str(pending.pop())
+            if not ancestor_id or ancestor_id in result:
+                continue
+            result.add(ancestor_id)
+            ancestor = goals_by_id.get(ancestor_id)
+            if ancestor is not None:
+                pending.extend(ancestor.parent_goal_ids)
+        return result
+
+    def descendants(goal_id: str) -> set[str]:
+        pending = list(graph.get("children", {}).get(goal_id, ()))
+        result: set[str] = set()
+        while pending:
+            descendant_id = str(pending.pop())
+            if not descendant_id or descendant_id in result:
+                continue
+            result.add(descendant_id)
+            pending.extend(graph.get("children", {}).get(descendant_id, ()))
+        return result
+
+    def lineage_already_owns(goal_id: str, evidence_key: str) -> bool:
+        related_ids = ancestors(goal_id) | descendants(goal_id)
+        return any(
+            evidence_key
+            in {
+                normalize_evidence_key(item)
+                for item in goals_by_id[related_id].required_evidence
+            }
+            for related_id in related_ids
+            if related_id in goals_by_id
+        )
+
     for finding in findings:
         parent_depth = int(graph.get("depths", {}).get(finding.goal_id, finding.graph_depth))
         child_depth = parent_depth + 1
@@ -2802,8 +2900,12 @@ def append_refinement_goals(
             continue
         created_for_parent = 0
         for evidence in finding.missing_evidence:
-            key = (finding.goal_id, normalize_evidence_key(evidence))
-            if key in refinement_keys:
+            evidence_key = normalize_evidence_key(evidence)
+            key = (finding.goal_id, evidence_key)
+            if key in refinement_keys or lineage_already_owns(
+                finding.goal_id,
+                evidence_key,
+            ):
                 continue
             goal_id = allocate_goal_id()
             fields = refinement_fields(

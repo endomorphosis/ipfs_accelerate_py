@@ -11,6 +11,8 @@ from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import 
     IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY,
     MAX_CONCURRENT_PROVIDER_DISPATCHES,
+    PROVIDER_REQUEST_SCHEMA,
+    PROVIDER_RESULT_SCHEMA,
     AnalysisProviderBounds,
     AnalysisProviderCapability,
     AnalysisProviderHealth,
@@ -816,3 +818,224 @@ def test_repeated_timeouts_have_bounded_backend_concurrency() -> None:
         not result.degradation_evidence.import_attempted for result in results
     )
     assert all(result.proved_requirement_ids == () for result in results)
+
+
+def test_schema_and_bound_negotiation_precede_dispatch() -> None:
+    class NegotiatingBackend(_Backend):
+        def __init__(self, capability):
+            super().__init__()
+            self._capability = capability
+
+        def capabilities(self):
+            return self._capability
+
+    incompatible = NegotiatingBackend(
+        {
+            "protocol_versions": [1],
+            "request_schemas": ["vendor/request@9"],
+            "result_schemas": [PROVIDER_RESULT_SCHEMA],
+            "available": True,
+            "operations": ["graph_retrieval"],
+        }
+    )
+    schema_result = IpfsDatasetsAnalysisProvider(
+        backend=incompatible
+    ).analyze(_request())
+
+    assert schema_result.status is AnalysisProviderStatus.UNSUPPORTED
+    assert schema_result.reason_code == "schema_incompatible"
+    assert incompatible.requests == []
+
+    bounded = NegotiatingBackend(
+        {
+            "protocol_versions": [1],
+            "request_schema": PROVIDER_REQUEST_SCHEMA,
+            "result_schema": PROVIDER_RESULT_SCHEMA,
+            "available": True,
+            "operations": ["graph_retrieval"],
+            "bounds": {"max_results": 1},
+        }
+    )
+    bounds_result = IpfsDatasetsAnalysisProvider(backend=bounded).analyze(
+        _request()
+    )
+
+    assert bounds_result.status is AnalysisProviderStatus.UNSUPPORTED
+    assert bounds_result.reason_code == "request_bounds_unsupported"
+    assert bounded.requests == []
+    assert bounds_result.degradation_evidence is not None
+    assert not bounds_result.safe_for_completion_reasoning
+
+
+def test_explicit_cancellation_capability_is_enforced_before_dispatch() -> None:
+    backend = _Backend()
+
+    def capabilities():
+        return {
+            "protocol_versions": [1],
+            "request_schema": PROVIDER_REQUEST_SCHEMA,
+            "result_schema": PROVIDER_RESULT_SCHEMA,
+            "available": True,
+            "operations": ["graph_retrieval"],
+            "supports_cancellation": False,
+        }
+
+    backend.capabilities = capabilities
+    result = IpfsDatasetsAnalysisProvider(backend=backend).analyze(
+        _request(),
+        cancellation_token=type("Token", (), {"cancelled": False})(),
+    )
+
+    assert result.status is AnalysisProviderStatus.UNSUPPORTED
+    assert result.reason_code == "cancellation_not_supported"
+    assert backend.requests == []
+
+
+def test_separate_health_probe_runs_before_operation_dispatch() -> None:
+    events = []
+
+    class HealthBackend(_Backend):
+        def capabilities(self):
+            events.append("capabilities")
+            return {
+                "protocol_versions": [1],
+                "request_schema": PROVIDER_REQUEST_SCHEMA,
+                "response_schema": PROVIDER_RESULT_SCHEMA,
+                "operations": ["graph_retrieval"],
+            }
+
+        def health(self):
+            events.append("health")
+            return {"health": "unavailable", "available": False}
+
+        def retrieve(self, request):
+            events.append("dispatch")
+            return super().retrieve(request)
+
+    result = IpfsDatasetsAnalysisProvider(
+        backend=HealthBackend()
+    ).analyze(_request())
+
+    assert events == ["capabilities", "health"]
+    assert result.status is AnalysisProviderStatus.UNAVAILABLE
+    assert result.reason_code == "backend_unavailable"
+    assert result.backend_health is AnalysisProviderHealth.UNAVAILABLE
+
+
+def test_queries_and_artifacts_cannot_smuggle_heavy_payloads() -> None:
+    provider = IpfsDatasetsAnalysisProvider(backend=_Backend())
+
+    with pytest.raises(
+        IpfsDatasetsAnalysisProviderError,
+        match="query contains forbidden heavy fields",
+    ):
+        provider.build_request(_request(query={"graph": {"nodes": []}}))
+
+    with pytest.raises(
+        IpfsDatasetsAnalysisProviderError,
+        match="artifact reference contains unsupported fields",
+    ):
+        provider.build_request(
+            _request(
+                artifact_references=(
+                    {"artifact_id": "artifact:1", "content": "source body"},
+                )
+            )
+        )
+
+
+def test_related_requests_are_dispatched_as_one_compact_bounded_batch() -> None:
+    class BatchBackend:
+        __version__ = "batch@1"
+
+        def __init__(self):
+            self.requests = []
+
+        def capabilities(self):
+            return {
+                "protocol_versions": [1],
+                "request_schema": PROVIDER_REQUEST_SCHEMA,
+                "result_schema": PROVIDER_RESULT_SCHEMA,
+                "available": True,
+                "operations": ["batch_analysis"],
+                "supports_cancellation": True,
+            }
+
+        def analyze_batch(self, request):
+            self.requests.append(request)
+            children = request["query"]["requests"]
+            return {
+                "status": "completed",
+                "results": [
+                    {
+                        "evidence_id": f"evidence:{index}",
+                        "record_id": child["request_id"],
+                    }
+                    for index, child in enumerate(children)
+                ],
+                "provenance": [
+                    {"artifact_id": "dataset:fixture", "kind": "dataset"}
+                ],
+                "resource_use": {
+                    "batch_requests": len(children),
+                    "input_bytes": 512,
+                },
+            }
+
+    backend = BatchBackend()
+    provider = IpfsDatasetsAnalysisProvider(backend=backend)
+    requests = (
+        provider.build_request(_request(query={"text": "cache authority"})),
+        provider.build_request(
+            _request(
+                operation="premise_selection",
+                query={"requirement_id": "requirement:1"},
+            )
+        ),
+    )
+
+    result = asyncio.run(provider.analyze_batch_async(requests))
+
+    assert result.status is AnalysisProviderStatus.COMPLETED
+    assert result.operation is AnalysisProviderOperation.BATCH_ANALYSIS
+    assert result.resource_use["batch_requests"] == 2
+    assert len(result.evidence_references) == 2
+    assert len(backend.requests) == 1
+    dispatched = backend.requests[0]
+    assert dispatched["payload"] == {"batch_size": 2}
+    assert dispatched["bounds"]["max_batch_requests"] == 2
+    assert {
+        child["operation"] for child in dispatched["query"]["requests"]
+    } == {"graph_retrieval", "premise_selection"}
+    assert all(
+        "repository_id" not in child
+        for child in dispatched["query"]["requests"]
+    )
+    assert not result.safe_for_completion_reasoning
+
+
+def test_batch_rejects_unrelated_or_nested_requests_without_import() -> None:
+    imports = []
+    provider = IpfsDatasetsAnalysisProvider(
+        importer=lambda name: imports.append(name)
+    )
+    related = provider.build_request(_request())
+    unrelated = provider.build_request(
+        _request(tree_id="tree:sha256:different")
+    )
+    nested = provider.build_request(
+        _request(operation="batch_analysis")
+    )
+
+    with pytest.raises(
+        IpfsDatasetsAnalysisProviderError,
+        match="must share repository, tree, and objective",
+    ):
+        provider.analyze_batch((related, unrelated))
+    with pytest.raises(
+        IpfsDatasetsAnalysisProviderError,
+        match="nested batch",
+    ):
+        provider.analyze_batch((nested,))
+
+    assert imports == []

@@ -27,6 +27,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep child goals separated by measurement, analysis, planning, validation, task generation, parallel runtime, control, refill, and rollout so independent work can be scheduled safely.
 - Embedding query: agent supervisor token efficiency planning validation caching parallelism goals task bundles MCP CLI Python self refill
 - AST query: SupervisorControlService SelfImprovementRefillController SupervisorEfficiencyReport
+- Goal completion schema version: 1
+- Completion confidence: 0.083333
+- Uncovered criteria: ["Every child goal has fresh tree-bound evidence","rollout has zero false completion or authority-boundary violations","Python, CLI, and MCP controls agree","a drained board runs bounded evidence-driven refill rather than stopping or creating duplicate busywork."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G010 Token-efficient context and end-to-end measurement
 
@@ -48,6 +55,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Split measurement, base context compilation, and retry deltas when they touch conflicting runtime files.
 - Embedding query: supervisor prompt token budget context capsule progressive disclosure retry delta accepted task cost
 - AST query: DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET build_task_proposal_prompt _build_implementation_prompt
+- Goal completion schema version: 1
+- Completion confidence: 0.083333
+- Uncovered criteria: ["Required goal, authority, scope, and acceptance context is never truncated","optional evidence has deterministic inclusion reasons","retries use changed evidence rather than full replay","paired fixtures reduce median input tokens by at least 35 percent without lowering required evidence coverage or safety."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G020 Integrated analysis, caching, and ipfs_datasets_py offload
 
@@ -69,6 +83,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep local integration, optional provider, and cache coordination in separate lanes until their standalone contracts pass.
 - Embedding query: agent supervisor analysis cache AST GraphRAG retrieval ipfs_datasets provider single flight invalidation
 - AST query: AnalysisCache AnalysisASTIndex retrieve_analysis_evidence IPFSDatasetsLogicProvider
+- Goal completion schema version: 1
+- Completion confidence: 0.083333
+- Uncovered criteria: ["Existing analysis cache, AST index, and retrieval contracts are used in the live objective/planning path","expensive identical misses collapse across lanes","stale or negative records never become completion evidence","optional datasets capabilities degrade explicitly","repeated fixtures achieve at least 70 percent cache reuse with zero stale authoritative hits."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G030 Evidence-aware planning and responsive goal refinement
 
@@ -91,6 +112,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Separate candidate generation from deterministic evaluation and separate root-preserving refinement from objective revision.
 - Embedding query: adaptive plan selection evidence coverage goal refinement counterexample stale validation capability cost
 - AST query: evaluate_plan_branches FormalReplanner LeanstralGoalDevelopmentProvider objective_goal_content_id
+- Goal completion schema version: 1
+- Completion confidence: 0.083333
+- Uncovered criteria: ["Every plan is evaluated for acceptance coverage, assumptions, semantics, dependencies, conflicts, validation/proof feasibility, novelty, and resource/token cost","hard safety failures cannot be traded away","unchanged failures back off","changed evidence can trigger a bounded verified refinement in the next cycle without mutating the frozen root."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G040 Strict output, code, test, semantic, and proof validation
 
@@ -113,6 +141,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep pre-execution proposal checks, impact-selected tests, and semantic/proof checks as separate dependency-ordered tasks.
 - Embedding query: agent implementation output validation patch scope AST impact tests theorem proof merge freshness adversarial
 - AST query: ValidationScheduler CodeProofObligation FormalPlanConformanceResult
+- Goal completion schema version: 1
+- Completion confidence: 0.083333
+- Uncovered criteria: ["Schema, authority, patch, path, AST/interface, impact-test, semantic/proof, merge, and freshness gates are explicit. Validation declarations bind canonical impact targets, DAG dependencies, and downstream authority gates","the receipt covers the complete selected population and schedules only dependency-ready checks under bounded parallelism. No required gate may be omitted, seeded adversarial defects do not escape, and failed output yields bounded typed diagnostics while closing proof, merge, freshness, and completion authority."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G050 High-quality task generation and conflict-aware bundling
 
@@ -133,6 +168,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Separate task admission from bundle optimization and preserve canonical identities through every projection.
 - Embedding query: task generation sizing deduplication bundle optimization context reuse dependency DAG conflict graph merge locality
 - AST query: generate_objective_todos_result build_todo_vector_index BundleSupervisor canonical_task_identity
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Tasks bind one coherent acceptance/effect subset with predicted scope and costs","broad tasks split and compatible tiny tasks coalesce","semantic duplicates are rejected across refills","bundles preserve critical-path width and serialize conflicts","model calls per accepted work item improve without increasing merge conflicts."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G060 Adaptive parallel execution and acceptance throughput
 
@@ -153,6 +195,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Split scheduling, provider batching, and validation/merge throughput into separately benchmarked lanes.
 - Embedding query: adaptive parallelism CPU GPU provider batching validation workers merge queue throughput backpressure fairness
 - AST query: ResourceScheduler BundleSupervisor ValidationScheduler MergeQueue
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Resource pools expose backpressure and fair admission","compatible provider work shares model capacity","independent validation and merge preflight run concurrently","target-branch mutation remains fenced and serialized","paired independent fixtures achieve at least twice single-lane throughput without duplicate execution, stale acceptance, resource overcommit, or merge-conflict regression."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G070 Unified Python, CLI, and MCP supervisor control
 
@@ -174,6 +223,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Implement the Python service first, then independent CLI and MCP adapters, then reconcile lifecycle/events.
 - Embedding query: agent supervisor Python API CLI MCP status health goals tasks bundles lifecycle authorization idempotency
 - AST query: create_server IPFSAccelerateCLI ImplementationSupervisor supervisor_watchdog
+- Goal completion schema version: 1
+- Completion confidence: 0.083333
+- Uncovered criteria: ["Shared operations have schema and behavior parity across Python, CLI, and MCP","read operations are bounded","mutations require authorization, explicit roots, dry-run/preview, idempotency, lease/fencing, and audit receipts","lifecycle state and errors are consistent","tool discovery has no provider or process-start side effects."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G080 Benchmark-driven bounded self-refill
 
@@ -194,6 +250,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep benchmark observation, candidate generation, deterministic admission, and materialization as separately receipted stages.
 - Embedding query: autonomous self improvement objective refill drained task board benchmark regression novelty cooldown exhaustion quorum
 - AST query: record_objective_backlog_findings ObjectiveMaterializationTransactionResult evaluate_exhaustion_quorum
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["A drained board triggers one identity-bound evaluation epoch","measured gaps yield bounded goal proposals that pass quality, refinement, novelty, and policy checks","duplicate/cooldown work is suppressed","identical epochs are idempotent","healthy no-gap epochs persist exhaustion quorum and wait for a meaningful trigger instead of looping."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G090 Paired rollout, stable exports, and operator adoption
 
@@ -214,6 +277,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Refinement: Keep end-to-end measurement separate from public export and documentation changes until promotion passes.
 - Embedding query: agent supervisor paired benchmark rollout shadow assist production smoke exports documentation safety efficiency
 - AST query: evaluate_goal_rollout_promotion agent_supervisor __getattr__ register_native_agent_supervisor_tools
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Paired cold/warm, failure, adversarial, parallel, restart, and refill fixtures satisfy every non-negotiable safety gate and the documented token/cache/planning/throughput gates","optional integrations degrade correctly","stable exports remain lazy","operators have verified smoke and production profiles","failed gates retain shadow mode and produce bounded diagnostics."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G091 Prove 208290439421789408250562066350459701853 for Token-efficient context and end-to-end measurement
 
@@ -239,6 +309,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/context
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `208290439421789408250562066350459701853` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["The compiler derives the effective input limit from the supervisor ceiling, provider input/window limits, and reserved output/tool tokens","counts the complete canonical provider input and never trusts a caller-declared reference token hint below the canonical descriptor cost","preserves the complete invariant core and every required reference or rejects compilation","refuses to defer required evidence as an expansion handle","orders optional material deterministically with explicit inclusion/omission reasons and bounded expansion handles","and emits the exact requirement ID only in a witness whose repository tree, objective, policy, effective budget, required and selected fields/references, capsule identity, result, and content digest are revalidated against the capsule. End-to-end promotion remains ineligible unless capsule-verified compiler results cover the complete same terminal accepted task population, exactly reconcile charged candidate input tokens, and retain the authoritative required-coverage set while the paired 35 percent gate passes."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G092 Prove 306437607356117177048620815571362227127 for Token-efficient context and end-to-end measurement
 
@@ -264,6 +341,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/context
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `306437607356117177048620815571362227127` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["A compact retry references its exact parent capsule without replaying the invariant core and transmits only deterministic changed or newly requested evidence","applying it reconstructs goal, authority, scope, acceptance, deferred expansion handles, omission diagnostics, and all required evidence without loss or requiredness downgrade. Reconstructed input accounting includes the inherited core and every retained or replaced reference and fails closed above the effective budget","changed and requested-but-unchanged references remain distinct","stale parents and forged counts or digests fail closed","and canonical provider-tokenized delta input is smaller than canonical full replay. The exact requirement ID is emitted only in a witness binding the repository tree, policy, parent, delta, and reconstructed identities, changed/requested/retained references, required fields and coverage, token counts, result, and content digest. A population-complete same-task promotion report must consume compiler-backed `ContextDeltaResult` values rather than receipt-only claims, rerun canonical provider-token measurement, retain full required coverage, exactly reconcile every charged lifecycle input token without an unattributed remainder, and meet the 35 percent median per-task input-token reduction gate before promotion."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G093 Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
 
@@ -289,6 +373,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/context
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `248026856102230635452423769994290240744` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["The exact requirement ID is emitted only by a bounded, content-addressed benchmark receipt carrying the complete typed baseline and candidate receipt populations, one frozen goal/tree/policy binding, the independently replayed paired result, source and report identities, a deterministic input digest, and a passing accounting result. A completion gate verifies the artifact against its independently enumerated benchmark cohort, so an omitted, duplicated, reordered, or substituted input is either canonicalized to the same evidence identity or fails closed. The accepted-task population must be non-empty and identical across arms","failed-only tasks never enter its denominator","every supplied failed or retried lifecycle for work that eventually reaches acceptance remains charged","duplicate acceptance, omitted or altered embedded receipts, stale bindings, forged totals or terminal IDs, detached cases, and serialization tampering fail closed. The separate 35 percent token-reduction and full-coverage gate does not redefine the accounting proof, but context and delta promotion require both the accepted-work witness and their own typed compiler evidence."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G094 Prove 189057730455837902155591890661235220962 for Integrated analysis, caching, and ipfs_datasets_py offload
 
@@ -314,10 +405,17 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/analysis
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `189057730455837902155591890661235220962` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["The live pipeline composes the existing cache, incremental AST index, bounded multi-signal retrieval, and optional datasets adapter","persists packet bodies in a digest-addressed artifact store and only compact bindings in AnalysisCache","never treats an attached invalidated entry as authority","revalidates all seven key dimensions and derived completion state","collapses identical in-process lane misses without globally serializing different keys","achieves at least 70 percent reuse on repeated fixtures","and reports zero stale authoritative hits."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G095 Prove 184801846437522667882915494501685213497 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G020
 - Fib priority: 5001
 - Track: analysis
@@ -352,6 +450,16 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/analysis
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `184801846437522667882915494501685213497` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Capability inspection is deterministic and side-effect free","dispatch lazily imports only a supported requested operation","provider policy is a non-expandable resource envelope","capability and result payloads are canonical, bounded, compact, and identity checked","timed-out non-cooperative backends cannot create unbounded dispatch threads","unavailable, unsupported, disabled, unhealthy, timed-out, failed, malformed, and cancelled results state exact reasons and deterministic fallback","and no provider result, including a backend-supplied authority claim, is completion evidence."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
+- State transitioned at: 2026-07-24T13:21:59.231945+00:00
+- State transition reason: Produce completion evidence for: Capability inspection is deterministic and side-effect free; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T13:21:59.231945+00:00
 
 ## ASI-G096 Prove 206259342916458424196977899134352826879 for Integrated analysis, caching, and ipfs_datasets_py offload
 
@@ -377,6 +485,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/analysis
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `206259342916458424196977899134352826879` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Sync, async, and mixed facades share one keyed flight","the full AST/retrieval/provider/analyzer path executes once for identical concurrent misses","unrelated keys are not globally serialized","failed flights clean up before retry","singleton, cache-hit, different-key, non-authoritative, malformed, detached, or replayed results cannot claim the evidence ID."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G097 Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
 
@@ -401,10 +516,17 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/planning
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `173075880069453142914839090434430341799` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Deterministic evaluation covers acceptance evidence, assumptions, semantics, dependencies, conflicts, validation and proof feasibility, novelty, and bounded resource/token cost","authority is a non-compensable gate","an authority-safe branch defeats every cheaper authority-violating branch","hard-gate receipts cannot be replayed after any candidate, formal-plan, or repair-transition change","and the selected-plan receipt binds the exact requirement ID, frozen goal/tree/policy identities, canonical candidate snapshots, a recomputed evaluation, the complete cheaper rejection set, result, and digest. Unsupported persisted planner, evaluator, and formal-replanner versions fail closed."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G098 Prove 003778425160038348524906247302938706902 for Evidence-aware planning and responsive goal refinement
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G030
 - Fib priority: 5001
 - Track: planning
@@ -427,6 +549,16 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/planning
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `003778425160038348524906247302938706902` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["A changed typed counterexample can generate and admit at most one bounded refinement in the next cycle","the frozen root is never mutated","the request and candidate remain on the frozen repository tree","admission is policy gated, the candidate declares the exact bounded changed-goal set, and verification binds the exact candidate plan with a boolean proof result","and the witness binds the exact requirement ID, trigger signal, request and evidence fingerprint, frozen root/tree/policy identities, previous and candidate plans, producer, verification receipt, refinement index, and content digest. Non-counterexample admissions remain non-authoritative for this requirement, and restored objective receipts reject unsupported versions, missing identities, and unknown fields."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
+- State transitioned at: 2026-07-24T13:21:59.231945+00:00
+- State transition reason: Produce completion evidence for: A changed typed counterexample can generate and admit at most one bounded refinement in the next cycle; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-24T13:21:59.231945+00:00
 
 ## ASI-G100 Prove 314133036252270790078901745919131980427 for Strict output, code, test, semantic, and proof validation
 
@@ -452,6 +584,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/validation
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `314133036252270790078901745919131980427` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Proposal admission deterministically checks schema, authority, baseline and candidate identity, non-empty effective change, normalized path safety, and task-owned scope before any expensive validation. Empty or effectless diffs and every out-of-scope path fail closed with bounded typed diagnostics","policy cannot widen task scope","rejected output cannot claim proof, completion, merge eligibility, or authority","and the scheduler cannot be reached through the validated pipeline after preflight rejection. The exact requirement ID is emitted only by a tamper-evident receipt that binds the current tree, objective, policy, proposal, baseline, scope, normalized diff, complete ordered gate trace, failure result, proof that expensive dispatch remained closed, and content digest."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G101 Prove 266404049326363900535699811645710804440 for Strict output, code, test, semantic, and proof validation
 
@@ -477,6 +616,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/validation
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `266404049326363900535699811645710804440` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["The validation DAG is derived from the canonical changed-file and dependency/interface impact graph and validated declarations that explicitly name impact targets, node dependencies, and downstream authority gates. Its receipt contains the complete selected population, includes every mandatory direct and transitive validation exactly once, schedules only dependency-ready nodes under bounded parallelism, records selected, executed, succeeded, failed, blocked, and omitted dispositions deterministically, and identifies the failed prerequisite for every blocked descendant. Missing, stale, cyclic, inconsistent, or population-incomplete impact evidence fails closed before it can grant authority. A seeded upstream defect must select and execute its transitively affected consumer test, whose real failure creates explicit closed records for semantic/proof promotion, merge, freshness, and completion authority. The exact requirement ID is emitted only by a tamper-evident receipt binding the current tree, objective, policy, accepted proposal, change and graph identities, declaration set, affected closure, selected-node population, DAG dependencies, authority-gate closure, impact paths, actual defect-detecting result, fail-fast disposition, and content digest."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G102 Prove 006818797857632260116084792540150258746 for Strict output, code, test, semantic, and proof validation
 
@@ -502,6 +648,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/validation
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `006818797857632260116084792540150258746` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["An accepted proposal and complete passing test DAG remain insufficient for completion. Strict admission requires canonical fresh authoritative code-proof receipts covering the complete implementation-obligation population","a detached positive summary cannot grant authority. A hostile current candidate with a high provider claim is independently projected as candidate/inconclusive, rejected against its exact fresh obligation, and held provisional by a content-addressed completion gate. The exact requirement ID appears only in the fully replayed non-authority witness, all tamper/replay variants fail closed, and genuine independent kernel receipts follow the separate positive proof path."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G103 Prove 031486194157679117987393491870400400279 for Unified Python, CLI, and MCP supervisor control
 
@@ -527,6 +680,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/control
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `031486194157679117987393491870400400279` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["The shared schema describes all operations","every CLI/MCP adapter decodes and dispatches the canonical request directly","canonical records are exactly equal to Python behavior","bounded reads and watches cannot exceed contract limits","unsafe CLI defaults and unconfigured MCP mutation authority fail closed","and the exact requirement ID appears only in a tree/objective/policy-bound parity evidence record that rejects any surface, vocabulary, schema, or behavior drift."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G104 Prove 184125100306462690646212311073240043804 for Unified Python, CLI, and MCP supervisor control
 
@@ -552,6 +712,13 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/control
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `184125100306462690646212311073240043804` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Unauthorized, unscoped, unfenced, stale, path-escaping, or undeclared-effect mutations fail before dispatch on every surface","dry-run stays proposal-only","a permitted current mutation emits a typed applied-effect audit receipt","exact retries and restart replay do not duplicate the backend effect","conflicting reuse fails","and only the complete tamper-evident applied/replayed/rejection matrix emits the exact requirement ID."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []
 
 ## ASI-G105 Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
 
@@ -577,3 +744,10 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Parallel lane: agent-supervisor/self-improvement/control
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `186773143401179107362964063059661378722` with a narrow, verifiable change.
+- Goal completion schema version: 1
+- Completion confidence: 0.166667
+- Uncovered criteria: ["Repeated Python, CLI, and MCP discovery is byte-deterministic and covers the same closed operation/schema population","no backend or configured service factory is called","optional supervisor provider imports and process starts remain independently observed at zero delta","agent CLI discovery does not construct unrelated runtime state","only tool execution can increment MCP service resolution","and only the complete current-tree three-surface evidence emits the exact requirement ID."]
+- Stale evidence: []
+- Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
+- Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
+- Reopen reasons: []

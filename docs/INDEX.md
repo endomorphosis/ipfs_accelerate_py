@@ -44,6 +44,9 @@ context of earlier implementations and are not normative API references.
 - [Formal planning and prover matrix](architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md)
 - [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md)
 - [Leanstral goal development and benchmark](architecture/AGENT_SUPERVISOR_LEANSTRAL_GOAL_DEVELOPMENT.md)
+- [Supervisor self-improvement plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md)
+- [Supervisor self-improvement objective heap](architecture/agent_supervisor_self_improvement.objectives.md)
+- [Supervisor self-improvement task board](architecture/agent_supervisor_self_improvement.todo.md)
 - [Objective graph implementation notes](agent_supervisor_objective_graph.md)
 - [Completed supervisor task records](architecture/)
 

@@ -1095,6 +1095,37 @@ def test_objective_tracker_never_verifies_task_drain_without_evidence(tmp_path) 
     assert "exhaustion_quorum_missing" in result.decisions["G10.S3"]["reason_codes"]
 
 
+def test_objective_tracker_does_not_treat_an_empty_configured_board_as_task_drain(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Goals
+
+## G10.S3 Unstarted evidence-backed goal
+
+- Status: active
+- Acceptance: missing criterion
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Empty task board\n", encoding="utf-8")
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+    )
+
+    assert result.provisional_goal_ids == []
+    assert result.decisions["G10.S3"]["state"] == "active"
+    assert "- Status: active" in objective_path.read_text(encoding="utf-8")
+
+
 def test_objective_tracker_automatically_aggregates_descendant_state(tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

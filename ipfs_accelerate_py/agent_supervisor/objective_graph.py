@@ -1104,6 +1104,7 @@ class ObjectiveFinding:
     submodules: list[str] = field(default_factory=list)
     generated_artifacts: list[str] = field(default_factory=list)
     allow_concurrent_with: list[str] = field(default_factory=list)
+    dedupe_key: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -5799,6 +5800,175 @@ def objective_fingerprint(goal: ObjectiveGoal, missing_terms: Sequence[str]) -> 
     return sha1(payload.encode("utf-8")).hexdigest()
 
 
+def normalize_objective_evidence_requirement(value: str) -> str:
+    """Return the canonical comparison form for one evidence requirement."""
+
+    return " ".join(str(value or "").strip().casefold().split())
+
+
+def objective_evidence_lineage_ids(
+    goal_id: str,
+    requirements: Sequence[str],
+    graph: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Return the earliest ancestors that introduced an evidence obligation.
+
+    Refinement may move the same criterion from a parent into a more focused
+    child.  Those two records need one stable task identity.  Unrelated
+    workstreams that merely use the same generic term must retain independent
+    identities, so ancestry is followed only while every requested criterion
+    is still present.
+    """
+
+    details = graph.get("node_details")
+    details = details if isinstance(details, Mapping) else {}
+    required = {
+        normalized
+        for term in requirements
+        for normalized in [normalize_objective_evidence_requirement(term)]
+        if normalized
+    }
+    if not required:
+        return (str(goal_id),)
+
+    memo: dict[str, tuple[str, ...]] = {}
+
+    def resolve(current: str, seen: frozenset[str] = frozenset()) -> tuple[str, ...]:
+        if current in memo:
+            return memo[current]
+        if not current or current in seen:
+            return (current,) if current else ()
+        detail = details.get(current)
+        detail = detail if isinstance(detail, Mapping) else {}
+        matching_parents: list[str] = []
+        for raw_parent in detail.get("parents", ()):
+            parent = str(raw_parent)
+            parent_detail = details.get(parent)
+            parent_detail = (
+                parent_detail if isinstance(parent_detail, Mapping) else {}
+            )
+            parent_requirements = {
+                normalized
+                for term in parent_detail.get("required_evidence", ())
+                for normalized in [
+                    normalize_objective_evidence_requirement(term)
+                ]
+                if normalized
+            }
+            if required.issubset(parent_requirements):
+                matching_parents.append(parent)
+        result = tuple(
+            sorted(
+                {
+                    ancestor
+                    for parent in matching_parents
+                    for ancestor in resolve(parent, seen | {current})
+                    if ancestor
+                }
+            )
+        )
+        if not result:
+            result = (current,)
+        memo[current] = result
+        return result
+
+    return resolve(str(goal_id))
+
+
+def objective_evidence_obligation_key(
+    goal: ObjectiveGoal,
+    missing_terms: Sequence[str],
+    *,
+    graph: Mapping[str, Any],
+    candidate_kind: str = "aggregate",
+) -> str:
+    """Return a goal-refinement-stable identity for missing evidence work."""
+
+    normalized_kind = (
+        "validation_gate"
+        if candidate_kind == "validation_gate"
+        else "evidence_gap"
+    )
+    material = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/evidence-obligation@1",
+        "kind": normalized_kind,
+        "goal_lineage_ids": list(
+            objective_evidence_lineage_ids(
+                goal.goal_id,
+                missing_terms,
+                graph,
+            )
+        ),
+        "requirements": sorted(
+            {
+                normalized
+                for term in missing_terms
+                for normalized in [normalize_objective_evidence_requirement(term)]
+                if normalized
+            }
+        ),
+    }
+    digest = sha256(
+        json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return f"objective-evidence-obligation/v1/{digest}"
+
+
+def objective_evidence_owner_by_requirement(
+    goals: Sequence[ObjectiveGoal],
+    graph: Mapping[str, Any],
+) -> dict[str, tuple[str, ...]]:
+    """Assign shared requirements to every leaf-most refinement lineage."""
+
+    candidates: dict[str, list[ObjectiveGoal]] = {}
+    for goal in goals:
+        if not goal.is_schedulable:
+            continue
+        for term in goal.required_evidence:
+            key = normalize_objective_evidence_requirement(term)
+            if key:
+                candidates.setdefault(key, []).append(goal)
+
+    children = graph.get("children")
+    children = children if isinstance(children, Mapping) else {}
+    descendant_cache: dict[str, frozenset[str]] = {}
+
+    def descendants(goal_id: str, seen: frozenset[str] = frozenset()) -> frozenset[str]:
+        if goal_id in descendant_cache:
+            return descendant_cache[goal_id]
+        if not goal_id or goal_id in seen:
+            return frozenset()
+        direct = {
+            str(item)
+            for item in children.get(goal_id, ())
+            if str(item) and str(item) != goal_id
+        }
+        result = frozenset(
+            {
+                *direct,
+                *(
+                    descendant
+                    for child in direct
+                    for descendant in descendants(child, seen | {goal_id})
+                ),
+            }
+        )
+        descendant_cache[goal_id] = result
+        return result
+
+    owners: dict[str, tuple[str, ...]] = {}
+    for key, requirement_goals in candidates.items():
+        candidate_ids = {goal.goal_id for goal in requirement_goals}
+        owners[key] = tuple(
+            sorted(
+                goal.goal_id
+                for goal in requirement_goals
+                if not (descendants(goal.goal_id) & candidate_ids)
+            )
+        )
+    return owners
+
+
 def objective_merge_key(goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str = "aggregate") -> str:
     payload = {
         "goal_id": goal.goal_id,
@@ -6067,6 +6237,22 @@ def add_goal_packet_aggregate_findings(
             allow_concurrent_with=_unique_strings(
                 task for finding in sorted_group for task in finding.allow_concurrent_with
             ),
+            dedupe_key=(
+                "objective-evidence-packet/v1/"
+                + sha256(
+                    json.dumps(
+                        {
+                            "packet_key": packet_key,
+                            "requirements": sorted(
+                                normalize_objective_evidence_requirement(term)
+                                for term in missing_terms
+                            ),
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+            ),
         )
         planned.append(aggregate)
         seen.add(fingerprint)
@@ -6308,17 +6494,40 @@ def scan_objective_gaps(
 ) -> list[ObjectiveFinding]:
     if max_findings <= 0 or not objective_path.exists():
         return []
-    goals = [
-        goal
-        for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
-        if goal.is_schedulable
-    ]
+    all_goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    goals = [goal for goal in all_goals if goal.is_schedulable]
     if not goals:
         return []
-    graph = goal_graph(goals)
+    graph = goal_graph(all_goals)
     required_terms: list[str] = []
     for goal in goals:
         required_terms.extend(goal.required_evidence)
+    persisted_receipts = [
+        record
+        for goal in all_goals
+        for record in goal.completion_evidence_records
+    ]
+    receipt_values: list[Mapping[str, Any] | Any] = []
+    receipt_keys: set[str] = set()
+    for receipt in [*typed_evidence_receipts, *persisted_receipts]:
+        if isinstance(receipt, Mapping):
+            projected: Any = dict(receipt)
+        else:
+            converter = getattr(receipt, "to_dict", None)
+            projected = converter() if callable(converter) else receipt
+        try:
+            key = json.dumps(
+                projected,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            )
+        except (TypeError, ValueError):
+            key = repr(projected)
+        if key in receipt_keys:
+            continue
+        receipt_keys.add(key)
+        receipt_values.append(receipt)
     cached_records: list[dict[str, Any]] | None = None
     if dataset_dir is not None:
         artifact = persist_objective_ast_dataset(
@@ -6475,7 +6684,7 @@ def scan_objective_gaps(
         terms=required_terms,
         embedding_min_score=embedding_min_score,
         records=cached_records,
-        typed_receipts=typed_evidence_receipts,
+        typed_receipts=receipt_values,
         source_policy=evidence_source_policy,
         repository_tree=evidence_repository_tree,
         policy_id=evidence_policy_id,
@@ -6490,12 +6699,30 @@ def scan_objective_gaps(
 
     goals_by_id = {goal.goal_id: goal for goal in goals}
     scheduled_goals = [goals_by_id[record.goal_id] for record in objective_heap_schedule(goals) if record.goal_id in goals_by_id]
+    evidence_owners = objective_evidence_owner_by_requirement(goals, graph)
     for goal in scheduled_goals:
+        if goal.lifecycle_state_value == "provisionally_complete":
+            # A provisional goal has left the implementation stage.  Missing
+            # completion proof belongs to the typed completion gate, not an
+            # ordinary implementation refill.
+            continue
         terms = goal.required_evidence
-        missing_terms = [term for term in terms if not evidence.get(term)]
+        all_missing_terms = [term for term in terms if not evidence.get(term)]
+        missing_terms = [
+            term
+            for term in all_missing_terms
+            if goal.goal_id
+            in evidence_owners.get(
+                normalize_objective_evidence_requirement(term),
+                (),
+            )
+        ]
         forced_goal = goal.goal_id in forced_goal_ids
         validation_gap = False
         if not missing_terms:
+            if all_missing_terms:
+                # A more specific child owns the unresolved obligation.
+                continue
             if not forced_goal:
                 continue
             missing_terms = objective_goal_validation_gap_terms(goal)
@@ -6621,6 +6848,12 @@ def scan_objective_gaps(
                     "allow_concurrent_with",
                     "concurrency_overrides",
                 ),
+                dedupe_key=objective_evidence_obligation_key(
+                    goal,
+                    candidate_missing_terms,
+                    graph=graph,
+                    candidate_kind=candidate_kind,
+                ),
             )
             findings.append(finding)
             if not forced_goal:
@@ -6659,6 +6892,83 @@ def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
         for line in todo_text.splitlines()
         if line.startswith(prefix) and line[len(prefix) :].strip()
     }
+
+
+def objective_evidence_obligation_keys_from_todo(
+    todo_text: str,
+    *,
+    goals: Sequence[ObjectiveGoal],
+    graph: Mapping[str, Any],
+) -> set[str]:
+    """Recover stable evidence identities from current and legacy task blocks.
+
+    Boards created before evidence-obligation IDs existed retain useful work.
+    A refinement child may also have been removed while its generated task
+    still names an active graph parent. Reconstructing the key from the exact
+    parent criterion prevents a one-time duplicate refill during migration.
+    """
+
+    blocks: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in todo_text.splitlines():
+        if re.match(r"^##\s+[A-Z][A-Z0-9]*-\d+\b", line):
+            if current is not None:
+                blocks.append(current)
+            current = {}
+            continue
+        if current is None or not line.startswith("- ") or ":" not in line:
+            continue
+        name, value = line[2:].split(":", 1)
+        current[name.strip().casefold()] = value.strip()
+    if current is not None:
+        blocks.append(current)
+
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+    keys: set[str] = set()
+    for fields in blocks:
+        explicit = fields.get("evidence obligation key", "").strip()
+        if explicit:
+            keys.add(explicit)
+            continue
+        missing_text = normalize_objective_evidence_requirement(
+            fields.get("missing evidence", "")
+        )
+        if not missing_text:
+            continue
+        raw_goal_ids = " ".join(
+            fields.get(name, "")
+            for name in (
+                "goal id",
+                "graph parents",
+                "goal packet goals",
+            )
+        )
+        candidate_goal_ids = re.findall(
+            r"\b[A-Z][A-Z0-9]*-G\d+\b",
+            raw_goal_ids,
+        )
+        for goal_id in dict.fromkeys(candidate_goal_ids):
+            goal = goals_by_id.get(goal_id)
+            if goal is None:
+                continue
+            matching_terms = [
+                term
+                for term in goal.required_evidence
+                if normalize_objective_evidence_requirement(term)
+                in missing_text
+            ]
+            if not matching_terms:
+                continue
+            keys.add(
+                objective_evidence_obligation_key(
+                    goal,
+                    matching_terms,
+                    graph=graph,
+                    candidate_kind=fields.get("candidate kind", "aggregate"),
+                )
+            )
+            break
+    return keys
 
 
 def next_task_id(
@@ -6760,7 +7070,10 @@ def objective_finding_task_identity(task_id: str, finding: ObjectiveFinding) -> 
     return canonical_task_identity(
         {
             "task_id": task_id,
-            "dedupe_key": f"objective-finding:{finding.fingerprint}",
+            "dedupe_key": (
+                finding.dedupe_key
+                or f"objective-finding:{finding.fingerprint}"
+            ),
         },
         board_namespace="objective-graph",
         source_path=finding.objective_path,
@@ -6839,6 +7152,7 @@ def render_task_block(
 - Goal id: {finding.goal_id}
 - Canonical task key: {identity.canonical_task_key}
 - Canonical task CID: {identity.canonical_task_cid}
+- Evidence obligation key: {finding.dedupe_key}
 - Missing evidence: {missing}
 - Embedding query: {finding.embedding_query}
 - AST query: {finding.ast_query}
@@ -7061,6 +7375,10 @@ def generate_objective_todos(
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     precomputed_findings: Sequence[ObjectiveFinding] | None = None,
+    typed_evidence_receipts: Sequence[Mapping[str, Any] | Any] = (),
+    evidence_source_policy: EvidenceSourcePolicy | None = None,
+    evidence_repository_tree: str = "",
+    evidence_policy_id: str = "",
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
@@ -7077,12 +7395,25 @@ def generate_objective_todos(
             surplus_min_terms_per_todo=surplus_min_terms_per_todo,
             dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
             dataset_id=f"{task_prefix.rstrip('-').lower()}-objective-ast",
+            typed_evidence_receipts=typed_evidence_receipts,
+            evidence_source_policy=evidence_source_policy,
+            evidence_repository_tree=evidence_repository_tree,
+            evidence_policy_id=evidence_policy_id,
         )
     else:
         findings = list(precomputed_findings)
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
         existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
+        objective_goals = parse_goal_heap(
+            objective_path.read_text(encoding="utf-8")
+        )
+        objective_goal_graph = goal_graph(objective_goals)
+        existing_obligation_keys = objective_evidence_obligation_keys_from_todo(
+            todo_text,
+            goals=objective_goals,
+            graph=objective_goal_graph,
+        )
         reserved_task_ids = task_ids_from_artifact_names(
             discovery_dir,
             task_prefix=task_prefix,
@@ -7094,10 +7425,18 @@ def generate_objective_todos(
                 reserved_task_ids=reserved_task_ids,
             )
             identity = objective_finding_task_identity(task_id, finding)
-            if identity.canonical_task_cid in existing_canonical_task_cids:
+            if (
+                identity.canonical_task_cid in existing_canonical_task_cids
+                or (
+                    finding.dedupe_key
+                    and finding.dedupe_key in existing_obligation_keys
+                )
+            ):
                 continue
             reserved_task_ids.add(task_id)
             existing_canonical_task_cids.add(identity.canonical_task_cid)
+            if finding.dedupe_key:
+                existing_obligation_keys.add(finding.dedupe_key)
             shard_relative = repo_relative_path(
                 repo_root, bundle_path(bundle_dir, finding.bundle_key)
             )
@@ -7239,6 +7578,16 @@ def generate_objective_todos_result(
                     ),
                     surplus_min_terms_per_todo=int(
                         kwargs.get("surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO)
+                    ),
+                    typed_evidence_receipts=tuple(
+                        kwargs.get("typed_evidence_receipts") or ()
+                    ),
+                    evidence_source_policy=kwargs.get("evidence_source_policy"),
+                    evidence_repository_tree=str(
+                        kwargs.get("evidence_repository_tree") or ""
+                    ),
+                    evidence_policy_id=str(
+                        kwargs.get("evidence_policy_id") or ""
                     ),
                 )
             except TimeoutError as exc:

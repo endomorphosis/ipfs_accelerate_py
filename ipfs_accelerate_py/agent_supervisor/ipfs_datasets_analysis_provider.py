@@ -75,6 +75,7 @@ DEFAULT_MAX_QUERY_BYTES: Final = 16 * 1024
 DEFAULT_MAX_REQUEST_BYTES: Final = 64 * 1024
 DEFAULT_MAX_RESPONSE_BYTES: Final = 128 * 1024
 DEFAULT_MAX_RESULTS: Final = 32
+DEFAULT_MAX_BATCH_REQUESTS: Final = 16
 DEFAULT_MAX_REFERENCE_BYTES: Final = 4096
 DEFAULT_TIMEOUT_MS: Final = 30_000
 MAX_CONCURRENT_PROVIDER_DISPATCHES: Final = 4
@@ -210,10 +211,25 @@ _PROVING_DEGRADATION_STATES: Final = MappingProxyType(
             frozenset({False, True}),
             AnalysisProviderHealth.INCOMPATIBLE,
         ),
+        "schema_incompatible": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False, True}),
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
         "backend_unhealthy": (
             AnalysisProviderStatus.UNSUPPORTED,
             frozenset({False, True}),
             AnalysisProviderHealth.DEGRADED,
+        ),
+        "backend_unavailable": (
+            AnalysisProviderStatus.UNAVAILABLE,
+            frozenset({False, True}),
+            AnalysisProviderHealth.UNAVAILABLE,
+        ),
+        "backend_incompatible": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False, True}),
+            AnalysisProviderHealth.INCOMPATIBLE,
         ),
         "no_supported_operations": (
             AnalysisProviderStatus.UNSUPPORTED,
@@ -226,6 +242,16 @@ _PROVING_DEGRADATION_STATES: Final = MappingProxyType(
             AnalysisProviderHealth.INCOMPATIBLE,
         ),
         "operation_dispatch_unavailable": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False, True}),
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
+        "request_bounds_unsupported": (
+            AnalysisProviderStatus.UNSUPPORTED,
+            frozenset({False, True}),
+            AnalysisProviderHealth.INCOMPATIBLE,
+        ),
+        "cancellation_not_supported": (
             AnalysisProviderStatus.UNSUPPORTED,
             frozenset({False, True}),
             AnalysisProviderHealth.INCOMPATIBLE,
@@ -418,6 +444,7 @@ def _resource_use(value: Any) -> dict[str, int]:
 @dataclass(frozen=True)
 class AnalysisProviderBounds:
     max_results: int = DEFAULT_MAX_RESULTS
+    max_batch_requests: int = DEFAULT_MAX_BATCH_REQUESTS
     max_query_bytes: int = DEFAULT_MAX_QUERY_BYTES
     max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES
     max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES
@@ -427,6 +454,7 @@ class AnalysisProviderBounds:
     def __post_init__(self) -> None:
         limits = {
             "max_results": 1000,
+            "max_batch_requests": 256,
             "max_query_bytes": 1024 * 1024,
             "max_request_bytes": 4 * 1024 * 1024,
             "max_response_bytes": 16 * 1024 * 1024,
@@ -451,6 +479,7 @@ class AnalysisProviderBounds:
     def to_dict(self) -> dict[str, int]:
         return {
             "max_results": self.max_results,
+            "max_batch_requests": self.max_batch_requests,
             "max_query_bytes": self.max_query_bytes,
             "max_request_bytes": self.max_request_bytes,
             "max_response_bytes": self.max_response_bytes,
@@ -562,6 +591,10 @@ class AnalysisProviderRequest:
                 self, name, _text(getattr(self, name), name, max_bytes=1024)
             )
         query = _canonical_value(self.query, name="query")
+        if _find_forbidden_fields(query):
+            raise IpfsDatasetsAnalysisProviderError(
+                "query contains forbidden heavy fields"
+            )
         if len(_json_bytes(query, name="query")) > self.bounds.max_query_bytes:
             raise IpfsDatasetsAnalysisProviderError("query exceeds max_query_bytes")
         object.__setattr__(self, "query", query)
@@ -704,6 +737,9 @@ class AnalysisProviderCapability:
     reason_code: str = "lazy_not_probed"
     provider_version: str = "unknown"
     bounds: AnalysisProviderBounds = field(default_factory=AnalysisProviderBounds)
+    request_schema: str = PROVIDER_REQUEST_SCHEMA
+    result_schema: str = PROVIDER_RESULT_SCHEMA
+    cancellation_supported: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.health, AnalysisProviderHealth):
@@ -733,6 +769,22 @@ class AnalysisProviderCapability:
         object.__setattr__(
             self, "bounds", AnalysisProviderBounds.from_value(self.bounds)
         )
+        for name, expected in (
+            ("request_schema", PROVIDER_REQUEST_SCHEMA),
+            ("result_schema", PROVIDER_RESULT_SCHEMA),
+        ):
+            normalized = _text(
+                getattr(self, name), name, required=True, max_bytes=256
+            )
+            if normalized != expected:
+                raise IpfsDatasetsAnalysisProviderError(
+                    f"unsupported negotiated {name}"
+                )
+            object.__setattr__(self, name, normalized)
+        if not isinstance(self.cancellation_supported, bool):
+            raise IpfsDatasetsAnalysisProviderError(
+                "cancellation_supported must be a boolean"
+            )
 
     @property
     def available(self) -> bool:
@@ -769,6 +821,9 @@ class AnalysisProviderCapability:
             "imported": self.imported,
             "operations": [item.value for item in self.operations],
             "bounds": self.bounds.to_dict(),
+            "request_schema": self.request_schema,
+            "result_schema": self.result_schema,
+            "cancellation_supported": self.cancellation_supported,
             "reason_code": self.reason_code,
             "lazy_import": True,
             "non_authoritative": True,
@@ -797,6 +852,9 @@ class AnalysisProviderCapability:
             "imported",
             "operations",
             "bounds",
+            "request_schema",
+            "result_schema",
+            "cancellation_supported",
             "reason_code",
             "lazy_import",
             "non_authoritative",
@@ -823,6 +881,9 @@ class AnalysisProviderCapability:
             reason_code=value.get("reason_code", ""),
             provider_version=value.get("provider_version", "unknown"),
             bounds=AnalysisProviderBounds.from_value(value.get("bounds")),
+            request_schema=value.get("request_schema", PROVIDER_REQUEST_SCHEMA),
+            result_schema=value.get("result_schema", PROVIDER_RESULT_SCHEMA),
+            cancellation_supported=value.get("cancellation_supported", True),
         )
         claimed = value.get("capability_id")
         if claimed != result.capability_id:
@@ -1660,6 +1721,87 @@ class IpfsDatasetsAnalysisProvider:
                     f"request {name} cannot expand provider policy"
                 )
 
+    def _negotiate_bounds(self, value: Any) -> AnalysisProviderBounds:
+        """Intersect backend-advertised maxima with supervisor policy."""
+
+        if value in (None, ""):
+            return self.policy.bounds
+        if not isinstance(value, Mapping):
+            raise IpfsDatasetsAnalysisProviderError(
+                "backend capability bounds must be an object"
+            )
+        unknown = set(value) - set(AnalysisProviderBounds.__dataclass_fields__)
+        if unknown:
+            raise IpfsDatasetsAnalysisProviderError(
+                "backend capability contains unknown bounds: "
+                + ", ".join(sorted(unknown))
+            )
+        maxima = {
+            "max_results": 1000,
+            "max_batch_requests": 256,
+            "max_query_bytes": 1024 * 1024,
+            "max_request_bytes": 4 * 1024 * 1024,
+            "max_response_bytes": 16 * 1024 * 1024,
+            "max_reference_bytes": 256 * 1024,
+            "timeout_ms": 10 * 60 * 1000,
+        }
+        negotiated = self.policy.bounds.to_dict()
+        for name, raw in value.items():
+            advertised = _positive_int(raw, name, maximum=maxima[name])
+            negotiated[name] = min(negotiated[name], advertised)
+        negotiated["max_query_bytes"] = min(
+            negotiated["max_query_bytes"],
+            negotiated["max_request_bytes"],
+        )
+        negotiated["max_reference_bytes"] = min(
+            negotiated["max_reference_bytes"],
+            negotiated["max_response_bytes"],
+        )
+        return AnalysisProviderBounds(**negotiated)
+
+    @staticmethod
+    def _advertised_schemas(
+        raw: Mapping[str, Any],
+        *,
+        singular: str,
+        plural: str,
+        expected: str,
+    ) -> tuple[str, ...]:
+        """Normalize an optional singular/plural schema advertisement."""
+
+        value = raw.get(plural, raw.get(singular))
+        schemas = raw.get("schemas")
+        if value is None and isinstance(schemas, Mapping):
+            key = "request" if singular == "request_schema" else "result"
+            value = schemas.get(key)
+        if value is None:
+            # Protocol v1 made schemas implicit. An omitted advertisement is
+            # therefore the legacy schema, while an explicit mismatch fails.
+            return (expected,)
+        if isinstance(value, str):
+            source: Sequence[Any] = (value,)
+        elif isinstance(value, Sequence) and not isinstance(
+            value, (bytes, bytearray)
+        ):
+            source = value
+        else:
+            raise IpfsDatasetsAnalysisProviderError(
+                f"backend {plural} must be a string or sequence"
+            )
+        return tuple(
+            sorted(
+                {
+                    _text(
+                        item,
+                        f"backend {plural}",
+                        required=True,
+                        max_bytes=256,
+                    )
+                    for item in source
+                }
+            )
+        )
+
     def _negotiate(
         self, backend: Any, *, imported: bool
     ) -> tuple[AnalysisProviderCapability, Any]:
@@ -1669,6 +1811,9 @@ class IpfsDatasetsAnalysisProvider:
         raw = capability_method() if callable(capability_method) else None
         if inspect.isawaitable(raw):
             raw = asyncio.run(raw)
+        converter = getattr(raw, "to_dict", None)
+        if raw is not None and not isinstance(raw, Mapping) and callable(converter):
+            raw = converter()
         if raw is None:
             operations = tuple(
                 operation
@@ -1698,6 +1843,9 @@ class IpfsDatasetsAnalysisProvider:
                     ),
                     provider_version=version,
                     bounds=self.policy.bounds,
+                    request_schema=PROVIDER_REQUEST_SCHEMA,
+                    result_schema=PROVIDER_RESULT_SCHEMA,
+                    cancellation_supported=True,
                 ),
                 backend,
             )
@@ -1719,10 +1867,47 @@ class IpfsDatasetsAnalysisProvider:
             raise IpfsDatasetsAnalysisProviderError(
                 "backend protocol_versions must be a sequence"
             )
-        compatible = self.protocol_version in {
+        protocol_compatible = self.protocol_version in {
             int(item) for item in protocol_versions
             if not isinstance(item, bool) and str(item).isdigit()
         }
+        request_schemas = self._advertised_schemas(
+            raw,
+            singular="request_schema",
+            plural="request_schemas",
+            expected=PROVIDER_REQUEST_SCHEMA,
+        )
+        result_advertisement = raw
+        if (
+            "result_schema" not in raw
+            and "result_schemas" not in raw
+            and (
+                "response_schema" in raw
+                or "response_schemas" in raw
+            )
+        ):
+            result_advertisement = dict(raw)
+            if "response_schemas" in raw:
+                result_advertisement["result_schemas"] = raw[
+                    "response_schemas"
+                ]
+            else:
+                result_advertisement["result_schema"] = raw[
+                    "response_schema"
+                ]
+        result_schemas = self._advertised_schemas(
+            result_advertisement,
+            singular="result_schema",
+            plural="result_schemas",
+            expected=PROVIDER_RESULT_SCHEMA,
+        )
+        schema_compatible = (
+            PROVIDER_REQUEST_SCHEMA in request_schemas
+            and PROVIDER_RESULT_SCHEMA in result_schemas
+        )
+        negotiated_bounds = self._negotiate_bounds(
+            raw.get("bounds", raw.get("limits"))
+        )
         operations_raw = raw.get("operations") or ()
         if isinstance(operations_raw, (str, bytes)) or not isinstance(
             operations_raw, Sequence
@@ -1736,39 +1921,123 @@ class IpfsDatasetsAnalysisProvider:
                 operations.append(_operation(item))
             except IpfsDatasetsAnalysisProviderError:
                 continue
-        available = raw.get("available", raw.get("healthy", True))
+        cancellation_supported = raw.get(
+            "cancellation_supported",
+            raw.get("supports_cancellation", True),
+        )
+        if not isinstance(cancellation_supported, bool):
+            raise IpfsDatasetsAnalysisProviderError(
+                "backend cancellation support must be a boolean"
+            )
+        health_fields: Mapping[str, Any] = raw
+        if not {"health", "available", "healthy"}.intersection(raw):
+            health_method = getattr(backend, "health", None)
+            if not callable(health_method):
+                health_method = getattr(backend, "health_check", None)
+            if callable(health_method):
+                probed_health = health_method()
+                if inspect.isawaitable(probed_health):
+                    probed_health = asyncio.run(probed_health)
+                if isinstance(probed_health, Mapping):
+                    if set(probed_health) - {"health", "available", "healthy"}:
+                        raise IpfsDatasetsAnalysisProviderError(
+                            "backend health probe contains unknown fields"
+                        )
+                    health_fields = {**raw, **probed_health}
+                elif isinstance(probed_health, bool):
+                    health_fields = {**raw, "available": probed_health}
+                elif isinstance(probed_health, (str, AnalysisProviderHealth)):
+                    health_fields = {**raw, "health": probed_health}
+                else:
+                    raise IpfsDatasetsAnalysisProviderError(
+                        "backend health probe returned an unsupported value"
+                    )
+                if (
+                    len(_json_bytes(health_fields, name="backend health"))
+                    > self.policy.bounds.max_response_bytes
+                ):
+                    raise IpfsDatasetsAnalysisProviderError(
+                        "backend health probe exceeds max_response_bytes"
+                    )
+        explicit_health = health_fields.get("health")
+        if explicit_health is not None:
+            normalized_health = str(
+                getattr(explicit_health, "value", explicit_health)
+            ).strip().casefold()
+            health_aliases = {
+                "ok": AnalysisProviderHealth.HEALTHY,
+                "healthy": AnalysisProviderHealth.HEALTHY,
+                "degraded": AnalysisProviderHealth.DEGRADED,
+                "unavailable": AnalysisProviderHealth.UNAVAILABLE,
+                "incompatible": AnalysisProviderHealth.INCOMPATIBLE,
+            }
+            if normalized_health not in health_aliases:
+                raise IpfsDatasetsAnalysisProviderError(
+                    "backend capability health is unsupported"
+                )
+            backend_health = health_aliases[normalized_health]
+        else:
+            backend_health = None
+        available = health_fields.get(
+            "available", health_fields.get("healthy")
+        )
+        if available is None:
+            available = (
+                backend_health is AnalysisProviderHealth.HEALTHY
+                if backend_health is not None
+                else True
+            )
         if not isinstance(available, bool):
             raise IpfsDatasetsAnalysisProviderError(
                 "backend capability available must be a boolean"
             )
-        health = (
-            AnalysisProviderHealth.INCOMPATIBLE
-            if not compatible
-            else (
+        if backend_health is None:
+            backend_health = (
                 AnalysisProviderHealth.HEALTHY
                 if available
                 else AnalysisProviderHealth.DEGRADED
             )
+        if available != (backend_health is AnalysisProviderHealth.HEALTHY):
+            raise IpfsDatasetsAnalysisProviderError(
+                "backend capability health and availability disagree"
+            )
+        negotiated_operations = tuple(
+            operation
+            for operation in operations
+            if operation in self.policy.operations
         )
+        if not protocol_compatible or not schema_compatible:
+            health = AnalysisProviderHealth.INCOMPATIBLE
+        elif not negotiated_operations:
+            health = AnalysisProviderHealth.INCOMPATIBLE
+        else:
+            health = backend_health
+        if not protocol_compatible:
+            reason_code = "protocol_incompatible"
+        elif not schema_compatible:
+            reason_code = "schema_incompatible"
+        elif not negotiated_operations:
+            reason_code = "no_supported_operations"
+        elif health is AnalysisProviderHealth.HEALTHY:
+            reason_code = "capability_negotiated"
+        elif health is AnalysisProviderHealth.UNAVAILABLE:
+            reason_code = "backend_unavailable"
+        elif health is AnalysisProviderHealth.INCOMPATIBLE:
+            reason_code = "backend_incompatible"
+        else:
+            reason_code = "backend_unhealthy"
         capability = AnalysisProviderCapability(
             health=health,
-            operations=tuple(
-                operation
-                for operation in operations
-                if operation in self.policy.operations
-            ),
+            operations=negotiated_operations,
             imported=imported,
-            reason_code=(
-                "capability_negotiated"
-                if health is AnalysisProviderHealth.HEALTHY
-                else (
-                    "protocol_incompatible"
-                    if not compatible
-                    else "backend_unhealthy"
-                )
+            reason_code=reason_code,
+            provider_version=str(
+                raw.get("provider_version") or raw.get("version") or "unknown"
             ),
-            provider_version=str(raw.get("provider_version") or "unknown"),
-            bounds=self.policy.bounds,
+            bounds=negotiated_bounds,
+            request_schema=PROVIDER_REQUEST_SCHEMA,
+            result_schema=PROVIDER_RESULT_SCHEMA,
+            cancellation_supported=cancellation_supported,
         )
         return capability, backend
 
@@ -1983,6 +2252,22 @@ class IpfsDatasetsAnalysisProvider:
                 health=AnalysisProviderHealth.INCOMPATIBLE,
                 provider_version=capability.provider_version,
             )
+        if any(
+            getattr(request.bounds, name) > getattr(capability.bounds, name)
+            for name in AnalysisProviderBounds.__dataclass_fields__
+            if (
+                name != "max_batch_requests"
+                or request.operation is AnalysisProviderOperation.BATCH_ANALYSIS
+            )
+        ):
+            return self._degraded(
+                request,
+                AnalysisProviderStatus.UNSUPPORTED,
+                "request_bounds_unsupported",
+                import_attempted=imported,
+                health=AnalysisProviderHealth.INCOMPATIBLE,
+                provider_version=capability.provider_version,
+            )
         if _cancelled(cancellation_token):
             return self._degraded(
                 request,
@@ -1990,6 +2275,18 @@ class IpfsDatasetsAnalysisProvider:
                 "cancelled_before_dispatch",
                 import_attempted=imported,
                 health=AnalysisProviderHealth.DEGRADED,
+                provider_version=capability.provider_version,
+            )
+        if (
+            cancellation_token is not None
+            and not capability.cancellation_supported
+        ):
+            return self._degraded(
+                request,
+                AnalysisProviderStatus.UNSUPPORTED,
+                "cancellation_not_supported",
+                import_attempted=imported,
+                health=AnalysisProviderHealth.INCOMPATIBLE,
                 provider_version=capability.provider_version,
             )
         dispatcher = self._dispatcher(backend, request.operation)
@@ -2154,6 +2451,89 @@ class IpfsDatasetsAnalysisProvider:
                 health=AnalysisProviderHealth.DEGRADED,
             )
 
+    def analyze_batch(
+        self,
+        requests: Sequence[AnalysisProviderRequest | Mapping[str, Any]],
+        *,
+        cancellation_token: Any = None,
+    ) -> AnalysisProviderResult:
+        """Dispatch one compact batch of requests bound to the same tree."""
+
+        if isinstance(requests, (str, bytes, bytearray)) or not isinstance(
+            requests, Sequence
+        ):
+            raise IpfsDatasetsAnalysisProviderError(
+                "batch requests must be a sequence"
+            )
+        if not requests:
+            raise IpfsDatasetsAnalysisProviderError(
+                "batch requests must not be empty"
+            )
+        if len(requests) > self.policy.bounds.max_batch_requests:
+            raise IpfsDatasetsAnalysisProviderError(
+                "batch requests exceeds max_batch_requests"
+            )
+        normalized = tuple(self.build_request(item) for item in requests)
+        first = normalized[0]
+        relation = (
+            first.repository_id,
+            first.tree_id,
+            first.objective_revision,
+        )
+        for item in normalized:
+            if (
+                item.repository_id,
+                item.tree_id,
+                item.objective_revision,
+            ) != relation:
+                raise IpfsDatasetsAnalysisProviderError(
+                    "batch requests must share repository, tree, and objective identities"
+                )
+            if item.operation is AnalysisProviderOperation.BATCH_ANALYSIS:
+                raise IpfsDatasetsAnalysisProviderError(
+                    "nested batch requests are not supported"
+                )
+            if item.operation not in self.policy.operations:
+                raise IpfsDatasetsAnalysisProviderError(
+                    "batch child operation is not allowlisted: "
+                    + item.operation.value
+                )
+        bound_values = {
+            name: min(getattr(item.bounds, name) for item in normalized)
+            for name in AnalysisProviderBounds.__dataclass_fields__
+        }
+        bound_values["max_batch_requests"] = min(
+            bound_values["max_batch_requests"],
+            len(normalized),
+        )
+        child_requests = [
+            {
+                "request_id": item.request_id,
+                "operation": item.operation.value,
+                "query": item.query,
+                "artifact_references": [
+                    dict(reference) for reference in item.artifact_references
+                ],
+                "payload": dict(item.payload),
+                "bounds": item.bounds.to_dict(),
+            }
+            for item in normalized
+        ]
+        batch_request = self.build_request(
+            operation=AnalysisProviderOperation.BATCH_ANALYSIS,
+            repository_id=first.repository_id,
+            tree_id=first.tree_id,
+            objective_revision=first.objective_revision,
+            query={"requests": child_requests},
+            artifact_references=(),
+            payload={"batch_size": len(child_requests)},
+            bounds=AnalysisProviderBounds(**bound_values),
+        )
+        return self.analyze(
+            batch_request,
+            cancellation_token=cancellation_token,
+        )
+
     async def analyze_async(
         self,
         request: AnalysisProviderRequest | Mapping[str, Any] | Any | None = None,
@@ -2170,8 +2550,23 @@ class IpfsDatasetsAnalysisProvider:
             **request_fields,
         )
 
+    async def analyze_batch_async(
+        self,
+        requests: Sequence[AnalysisProviderRequest | Mapping[str, Any]],
+        *,
+        cancellation_token: Any = None,
+    ) -> AnalysisProviderResult:
+        """Async facade for one related-request provider batch."""
+
+        return await asyncio.to_thread(
+            self.analyze_batch,
+            requests,
+            cancellation_token=cancellation_token,
+        )
+
     dispatch = analyze
     run = analyze
+    batch_related_requests = analyze_batch
 
 
 def _find_forbidden_fields(value: Any) -> tuple[str, ...]:
@@ -2321,6 +2716,7 @@ __all__ = [
     "PROVIDER_REQUEST_SCHEMA",
     "PROVIDER_RESULT_SCHEMA",
     "PROVIDER_DEGRADATION_EVIDENCE_SCHEMA",
+    "DEFAULT_MAX_BATCH_REQUESTS",
     "normalize_analysis_provider_operation",
     "inspect_analysis_provider_capability",
     "AnalysisProviderOperation",

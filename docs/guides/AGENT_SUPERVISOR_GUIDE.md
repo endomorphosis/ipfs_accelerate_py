@@ -10,7 +10,8 @@ The authoritative design description is
 The formal planning and assurance details live in the
 [formal planning/prover matrix](../architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md),
 [formal verification plan](../architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md),
-and [Leanstral goal-development benchmark](../architecture/AGENT_SUPERVISOR_LEANSTRAL_GOAL_DEVELOPMENT.md).
+[Leanstral goal-development benchmark](../architecture/AGENT_SUPERVISOR_LEANSTRAL_GOAL_DEVELOPMENT.md),
+and [supervisor self-improvement plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md).
 
 ## What the supervisor does
 
@@ -208,6 +209,41 @@ The four modes have different evidence sources:
 
 When no mode flag is supplied, the refinery runs all available modes. Generated
 tasks are deduplicated by canonical identity and discovery fingerprint.
+
+## Supervisor self-improvement program
+
+The maintained self-improvement program has separate intent and execution
+artifacts:
+
+- [objective heap](../architecture/agent_supervisor_self_improvement.objectives.md);
+- [executable task board](../architecture/agent_supervisor_self_improvement.todo.md);
+  and
+- [architecture and rollout plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md).
+
+Use task prefix `ASI-` when a daemon reads the board. The implementation
+supervisor can refill it from the objective heap as the initial work drains:
+
+```bash
+ipfs-accelerate-agent-implementation-supervisor \
+  --todo-path docs/architecture/agent_supervisor_self_improvement.todo.md \
+  --task-prefix "ASI-" \
+  --state-dir data/agent_supervisor/self_improvement/state \
+  --worktree-root data/agent_supervisor/self_improvement/worktrees \
+  --objective-refill-scan \
+  --objective-path docs/architecture/agent_supervisor_self_improvement.objectives.md \
+  --objective-graph-path data/agent_supervisor/self_improvement/objective_graph.json \
+  --objective-bundle-dir data/agent_supervisor/self_improvement/bundles \
+  --objective-dataset-dir data/agent_supervisor/self_improvement/datasets \
+  --objective-discovery-dir data/agent_supervisor/self_improvement/discovery \
+  --objective-todo-vector-index-path data/agent_supervisor/self_improvement/bundles/todo_vector_index.json \
+  --once
+```
+
+Run without `--implement` first to inspect reconciliation and refill output.
+The final task tranche adds benchmark-driven successor-goal generation, but it
+still uses the existing transactional objective admission, deduplication,
+cooldown, and exhaustion contracts. A drained board is an observation, not
+completion evidence and not permission to generate unbounded work.
 
 ## Evidence and artifacts
 
