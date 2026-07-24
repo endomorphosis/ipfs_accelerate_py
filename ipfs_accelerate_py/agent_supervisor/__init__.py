@@ -978,6 +978,7 @@ from .plan_evaluator import (
     evaluate_evidence_aware_plans,
     evaluate_objective_work_proposals,
     evaluate_plan_branches,
+    validate_evidence_aware_plan_evaluation,
 )
 from .adaptive_planner import (
     ADAPTIVE_PLAN_SELECTION_SCHEMA,
@@ -993,6 +994,7 @@ from .adaptive_planner import (
     GateProducerKind,
     HardConstraintReceipt,
     HardPlanConstraint,
+    adaptive_plan_candidate_snapshot_id,
     select_adaptive_plan,
 )
 from .adaptive_goal_refiner import (
@@ -1085,6 +1087,8 @@ __all__ = [
     "RefinementSignalKind",
     "ResponsiveReplanDecision",
     "evaluate_evidence_aware_plans",
+    "validate_evidence_aware_plan_evaluation",
+    "adaptive_plan_candidate_snapshot_id",
     "refine_goal_from_evidence",
     "replan_if_changed",
     "select_adaptive_plan",

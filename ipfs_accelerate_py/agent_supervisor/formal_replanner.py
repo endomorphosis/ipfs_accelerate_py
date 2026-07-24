@@ -376,9 +376,62 @@ class RepairTransition:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "RepairTransition":
+        allowed = {
+            "schema",
+            "replanner_version",
+            "transition_id",
+            "semantic_id",
+            "original_plan_id",
+            "repaired_plan_id",
+            "counterexample_id",
+            "repair",
+            "goal_ids",
+            "taskboard_records",
+            "refinement_depth",
+            "progress",
+        }
+        unknown = sorted(str(key) for key in payload if key not in allowed)
+        if unknown:
+            raise ReplannerValidationError(
+                "unknown repair transition fields: " + ", ".join(unknown)
+            )
+        if payload.get("schema") != REPAIR_TRANSITION_SCHEMA:
+            raise ReplannerValidationError(
+                "unsupported repair transition schema"
+            )
+        if payload.get("replanner_version") != FORMAL_REPLANNER_VERSION:
+            raise ReplannerValidationError(
+                "unsupported formal replanner version"
+            )
         progress = payload.get("progress") or {}
         before = progress.get("before") or {}
         after = progress.get("after") or {}
+        progress_unknown = sorted(
+            str(key)
+            for key in progress
+            if key
+            not in {
+                "before",
+                "after",
+                "changed_records",
+                "generated_tasks",
+                "improved",
+            }
+        )
+        before_unknown = sorted(
+            str(key)
+            for key in before
+            if key not in {"open_counterexamples", "validation_findings"}
+        )
+        after_unknown = sorted(
+            str(key)
+            for key in after
+            if key not in {"open_counterexamples", "validation_findings"}
+        )
+        if progress_unknown or before_unknown or after_unknown:
+            raise ReplannerValidationError(
+                "unknown repair transition progress fields"
+            )
         result = cls(
             original_plan_id=str(payload.get("original_plan_id") or ""),
             repaired_plan_id=str(payload.get("repaired_plan_id") or ""),
@@ -396,8 +449,16 @@ class RepairTransition:
                 generated_tasks=progress.get("generated_tasks", 0),
             ),
         )
+        if progress.get("improved") is not result.progress.improved:
+            raise ReplannerValidationError(
+                "repair transition progress projection is inconsistent"
+            )
         claimed = payload.get("transition_id") or payload.get("semantic_id")
-        if claimed and claimed != result.transition_id:
+        if not claimed:
+            raise ReplannerValidationError(
+                "repair transition identity is required"
+            )
+        if claimed != result.transition_id:
             raise ReplannerValidationError("repair transition identity does not match")
         return result
 

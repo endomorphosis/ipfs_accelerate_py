@@ -28,21 +28,26 @@ from .plan_evaluator import (
     EvidenceAwarePlanEvaluation,
     EvidenceAwarePlanPolicy,
     EvaluatedEvidenceAwarePlan,
+    PlanBranchValidationError,
     PlanDimensionAssessment,
     PlanEvaluationDimension,
     evaluate_evidence_aware_plans,
+    validate_evidence_aware_plan_evaluation,
 )
 
 
-ADAPTIVE_PLANNER_VERSION: Final = 1
+ADAPTIVE_PLANNER_VERSION: Final = 2
 ADAPTIVE_PLAN_SELECTION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/adaptive-plan-selection@1"
+    "ipfs_accelerate_py/agent-supervisor/adaptive-plan-selection@2"
 )
 HARD_CONSTRAINT_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/plan-hard-constraint-receipt@1"
+    "ipfs_accelerate_py/agent-supervisor/plan-hard-constraint-receipt@2"
 )
 REQUIREMENT_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/plan-requirement-evidence@1"
+)
+ADAPTIVE_PLAN_CANDIDATE_SNAPSHOT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/adaptive-plan-candidate-snapshot@1"
 )
 
 # ASI-G097: a cheaper authority-violating plan is rejected.
@@ -145,6 +150,63 @@ def _integer(value: Any, field_name: str, *, minimum: int = 0) -> int:
     return value
 
 
+def adaptive_plan_candidate_snapshot_id(
+    plan: EvidenceAwarePlanCandidate,
+    *,
+    goal_content_id: str,
+    repository_tree_id: str,
+    policy_digest: str,
+    formal_plan_id: str = "",
+    repair_transition: RepairTransition | None = None,
+) -> str:
+    """Return the canonical snapshot independently inspected by hard gates.
+
+    A branch identifier is a human/scheduler key and is not a content
+    identity.  Gate receipts therefore bind this digest, which includes the
+    full evaluator declaration, frozen inputs, and optional formal-repair
+    provenance.  Reusing a receipt after changing cost, scope, evidence, or a
+    repair transition consequently fails closed.
+    """
+
+    resolved_plan = (
+        plan
+        if isinstance(plan, EvidenceAwarePlanCandidate)
+        else EvidenceAwarePlanCandidate.from_dict(plan)
+    )
+    resolved_goal = _text(goal_content_id, "goal_content_id")
+    resolved_tree = _text(repository_tree_id, "repository_tree_id")
+    resolved_policy = _text(policy_digest, "policy_digest")
+    resolved_formal_plan_id = str(formal_plan_id or "").strip()
+    if repair_transition is not None:
+        if not isinstance(repair_transition, RepairTransition):
+            raise AdaptivePlannerValidationError(
+                "repair_transition must be a formal RepairTransition"
+            )
+        if not resolved_formal_plan_id:
+            raise AdaptivePlannerValidationError(
+                "a repair transition requires formal_plan_id"
+            )
+        if repair_transition.repaired_plan_id != resolved_formal_plan_id:
+            raise AdaptivePlannerValidationError(
+                "repair transition does not produce formal_plan_id"
+            )
+    return content_identity(
+        {
+            "schema": ADAPTIVE_PLAN_CANDIDATE_SNAPSHOT_SCHEMA,
+            "plan": resolved_plan.to_dict(profile_g=True),
+            "goal_content_id": resolved_goal,
+            "repository_tree_id": resolved_tree,
+            "policy_digest": resolved_policy,
+            "formal_plan_id": resolved_formal_plan_id,
+            "repair_transition": (
+                repair_transition.to_dict()
+                if repair_transition is not None
+                else None
+            ),
+        }
+    )
+
+
 @dataclass(frozen=True)
 class FrozenPlanningGoal:
     """Immutable goal, repository and evaluator policy used by every branch."""
@@ -218,6 +280,7 @@ class HardConstraintReceipt:
 
     constraint: HardPlanConstraint
     candidate_id: str
+    candidate_snapshot_id: str
     goal_content_id: str
     repository_tree_id: str
     policy_digest: str
@@ -232,6 +295,7 @@ class HardConstraintReceipt:
         object.__setattr__(self, "producer_kind", GateProducerKind(self.producer_kind))
         for name in (
             "candidate_id",
+            "candidate_snapshot_id",
             "goal_content_id",
             "repository_tree_id",
             "policy_digest",
@@ -272,6 +336,7 @@ class HardConstraintReceipt:
             "schema": HARD_CONSTRAINT_RECEIPT_SCHEMA,
             "constraint": self.constraint.value,
             "candidate_id": self.candidate_id,
+            "candidate_snapshot_id": self.candidate_snapshot_id,
             "goal_content_id": self.goal_content_id,
             "repository_tree_id": self.repository_tree_id,
             "policy_digest": self.policy_digest,
@@ -292,6 +357,7 @@ class HardConstraintReceipt:
             "receipt_id",
             "constraint",
             "candidate_id",
+            "candidate_snapshot_id",
             "goal_content_id",
             "repository_tree_id",
             "policy_digest",
@@ -313,6 +379,7 @@ class HardConstraintReceipt:
         result = cls(
             constraint=payload.get("constraint", ""),
             candidate_id=payload.get("candidate_id", ""),
+            candidate_snapshot_id=payload.get("candidate_snapshot_id", ""),
             goal_content_id=payload.get("goal_content_id", ""),
             repository_tree_id=payload.get("repository_tree_id", ""),
             policy_digest=payload.get("policy_digest", ""),
@@ -382,11 +449,6 @@ class AdaptivePlanCandidate:
                 raise AdaptivePlannerValidationError(
                     "hard-constraint receipt is not bound to its candidate snapshot"
                 )
-        object.__setattr__(
-            self,
-            "hard_constraint_receipts",
-            tuple(sorted(receipts, key=lambda item: item.constraint.value)),
-        )
         formal_plan_id = str(self.formal_plan_id or "").strip()
         object.__setattr__(self, "formal_plan_id", formal_plan_id)
         if self.repair_transition is not None:
@@ -402,10 +464,43 @@ class AdaptivePlanCandidate:
                 raise AdaptivePlannerValidationError(
                     "repair transition does not produce formal_plan_id"
                 )
+        snapshot_id = adaptive_plan_candidate_snapshot_id(
+            plan,
+            goal_content_id=self.goal_content_id,
+            repository_tree_id=self.repository_tree_id,
+            policy_digest=self.policy_digest,
+            formal_plan_id=formal_plan_id,
+            repair_transition=self.repair_transition,
+        )
+        if any(
+            receipt.candidate_snapshot_id != snapshot_id
+            for receipt in receipts
+        ):
+            raise AdaptivePlannerValidationError(
+                "hard-constraint receipt is not bound to the candidate content"
+            )
+        object.__setattr__(
+            self,
+            "hard_constraint_receipts",
+            tuple(sorted(receipts, key=lambda item: item.constraint.value)),
+        )
 
     @property
     def candidate_id(self) -> str:
         return self.plan.candidate_id
+
+    @property
+    def snapshot_id(self) -> str:
+        """Canonical content identity shared by all gate receipts."""
+
+        return adaptive_plan_candidate_snapshot_id(
+            self.plan,
+            goal_content_id=self.goal_content_id,
+            repository_tree_id=self.repository_tree_id,
+            policy_digest=self.policy_digest,
+            formal_plan_id=self.formal_plan_id,
+            repair_transition=self.repair_transition,
+        )
 
     def receipt_for(self, constraint: HardPlanConstraint) -> HardConstraintReceipt:
         return next(
@@ -417,6 +512,7 @@ class AdaptivePlanCandidate:
     def to_dict(self) -> dict[str, Any]:
         return {
             "candidate_id": self.candidate_id,
+            "candidate_snapshot_id": self.snapshot_id,
             "plan": self.plan.to_dict(profile_g=True),
             "goal_content_id": self.goal_content_id,
             "repository_tree_id": self.repository_tree_id,
@@ -436,6 +532,7 @@ class AdaptivePlanCandidate:
     def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptivePlanCandidate":
         allowed = {
             "candidate_id",
+            "candidate_snapshot_id",
             "plan",
             "goal_content_id",
             "repository_tree_id",
@@ -470,6 +567,11 @@ class AdaptivePlanCandidate:
         if claimed and claimed != result.candidate_id:
             raise AdaptivePlannerValidationError(
                 "adaptive candidate identity does not match plan"
+            )
+        claimed_snapshot = str(payload.get("candidate_snapshot_id") or "")
+        if claimed_snapshot and claimed_snapshot != result.snapshot_id:
+            raise AdaptivePlannerValidationError(
+                "adaptive candidate snapshot identity does not match content"
             )
         return result
 
@@ -673,6 +775,10 @@ class AdaptivePlanSelectionReceipt:
             raise AdaptivePlannerValidationError(
                 "evaluation policy does not match frozen goal"
             )
+        try:
+            validate_evidence_aware_plan_evaluation(self.evaluation)
+        except PlanBranchValidationError as exc:
+            raise AdaptivePlannerValidationError(str(exc)) from exc
         receipts = tuple(self.hard_constraint_receipts)
         evaluated_ids = {item.candidate_id for item in self.evaluation.ranked}
         if {item.candidate_id for item in receipts} != evaluated_ids:
@@ -696,6 +802,17 @@ class AdaptivePlanSelectionReceipt:
                 "selection requires exactly one receipt for every "
                 "candidate/constraint pair"
             )
+        for candidate_id in evaluated_ids:
+            snapshot_ids = {
+                receipt_matrix[
+                    (candidate_id, constraint)
+                ].candidate_snapshot_id
+                for constraint in HardPlanConstraint
+            }
+            if len(snapshot_ids) != 1:
+                raise AdaptivePlannerValidationError(
+                    "hard receipts for a candidate must bind one content snapshot"
+                )
         for receipt in receipts:
             if (
                 receipt.goal_content_id != self.frozen_goal.goal_content_id
@@ -744,6 +861,40 @@ class AdaptivePlanSelectionReceipt:
             ),
         )
         evidence = self.authority_non_compensation_evidence
+        expected_witnesses: tuple[tuple[str, int, str], ...] = ()
+        selected = self.evaluation.selected
+        if selected is not None:
+            selected_cost = _cost_millionths(selected.candidate)
+            expected_witnesses = tuple(
+                (
+                    rejected.candidate_id,
+                    _cost_millionths(rejected.candidate),
+                    receipt_matrix[
+                        (
+                            rejected.candidate_id,
+                            HardPlanConstraint.AUTHORITY,
+                        )
+                    ].receipt_id,
+                )
+                for rejected in sorted(
+                    self.evaluation.rejected,
+                    key=lambda item: item.candidate_id,
+                )
+                if (
+                    not receipt_matrix[
+                        (
+                            rejected.candidate_id,
+                            HardPlanConstraint.AUTHORITY,
+                        )
+                    ].passed
+                    and _cost_millionths(rejected.candidate) < selected_cost
+                )
+            )
+        if bool(evidence) != bool(expected_witnesses):
+            raise AdaptivePlannerValidationError(
+                "authority non-compensation evidence must exactly cover "
+                "all qualifying rejected candidates"
+            )
         if evidence is not None:
             if not isinstance(evidence, AuthorityNonCompensationEvidence):
                 raise AdaptivePlannerValidationError(
@@ -758,7 +909,6 @@ class AdaptivePlanSelectionReceipt:
                 raise AdaptivePlannerValidationError(
                     "requirement evidence does not match frozen bindings"
                 )
-            selected = self.evaluation.selected
             if selected is None or (
                 evidence.selected_candidate_id != selected.candidate_id
             ):
@@ -776,6 +926,17 @@ class AdaptivePlanSelectionReceipt:
             if evidence.selected_cost_millionths != selected_cost:
                 raise AdaptivePlannerValidationError(
                     "requirement evidence selected cost is inconsistent"
+                )
+            actual_witnesses = tuple(
+                zip(
+                    evidence.rejected_candidate_ids,
+                    evidence.rejected_cost_millionths,
+                    evidence.authority_receipt_ids,
+                )
+            )
+            if actual_witnesses != expected_witnesses:
+                raise AdaptivePlannerValidationError(
+                    "authority non-compensation evidence is incomplete or inconsistent"
                 )
             rejected = {
                 item.candidate_id: item for item in self.evaluation.rejected
@@ -879,28 +1040,45 @@ class AdaptivePlanSelectionReceipt:
             raise AdaptivePlannerValidationError(
                 "unsupported adaptive-plan selection schema"
             )
+        if payload.get("planner_version") != ADAPTIVE_PLANNER_VERSION:
+            raise AdaptivePlannerValidationError(
+                "unsupported adaptive planner version"
+            )
+        if (
+            payload.get("evaluator_version")
+            != EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION
+        ):
+            raise AdaptivePlannerValidationError(
+                "unsupported adaptive receipt evaluator version"
+            )
         frozen_goal = FrozenPlanningGoal.from_dict(payload["frozen_goal"])
         policy = frozen_goal.policy
         evaluation_payload = payload["evaluation"]
-        evaluation = EvidenceAwarePlanEvaluation(
-            selected=(
-                _decode_evaluated(evaluation_payload["selected"])
-                if evaluation_payload.get("selected") is not None
-                else None
-            ),
-            admissible=tuple(
-                _decode_evaluated(item)
-                for item in evaluation_payload.get("admissible") or ()
-            ),
-            rejected=tuple(
-                _decode_evaluated(item)
-                for item in evaluation_payload.get("rejected") or ()
-            ),
-            policy=policy,
-            evaluator_version=evaluation_payload.get(
-                "evaluator_version", EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION
-            ),
-        )
+        try:
+            evaluation = EvidenceAwarePlanEvaluation(
+                selected=(
+                    _decode_evaluated(evaluation_payload["selected"])
+                    if evaluation_payload.get("selected") is not None
+                    else None
+                ),
+                admissible=tuple(
+                    _decode_evaluated(item)
+                    for item in evaluation_payload.get("admissible") or ()
+                ),
+                rejected=tuple(
+                    _decode_evaluated(item)
+                    for item in evaluation_payload.get("rejected") or ()
+                ),
+                policy=policy,
+                evaluator_version=evaluation_payload.get(
+                    "evaluator_version",
+                    EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION,
+                ),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AdaptivePlannerValidationError(
+                f"invalid persisted plan evaluation: {exc}"
+            ) from exc
         evidence_payload = payload.get("authority_non_compensation_evidence")
         result = cls(
             frozen_goal=frozen_goal,
@@ -1150,5 +1328,6 @@ __all__ = [
     "GateProducerKind",
     "HardConstraintReceipt",
     "HardPlanConstraint",
+    "adaptive_plan_candidate_snapshot_id",
     "select_adaptive_plan",
 ]

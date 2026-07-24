@@ -1778,6 +1778,10 @@ class EvidenceAwarePlanEvaluation:
     evaluator_version: str = EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION
 
     def __post_init__(self) -> None:
+        if self.evaluator_version != EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION:
+            raise PlanBranchValidationError(
+                "unsupported evidence-aware plan evaluator version"
+            )
         all_items = (*self.admissible, *self.rejected)
         ids = [item.candidate_id for item in all_items]
         if len(ids) != len(set(ids)):
@@ -2155,6 +2159,34 @@ def evaluate_evidence_aware_plans(
         rejected=tuple(rejected),
         policy=resolved_policy,
     )
+
+
+def validate_evidence_aware_plan_evaluation(
+    evaluation: EvidenceAwarePlanEvaluation,
+) -> EvidenceAwarePlanEvaluation:
+    """Recompute and validate a persisted deterministic plan evaluation.
+
+    Dataclass invariants prove that a serialized evaluation is structurally
+    coherent, but structure alone cannot prove its scores, diagnostics, or
+    winner were produced by the current evaluator.  Receipt consumers call
+    this boundary before trusting a restored selection.  The candidate order
+    is intentionally irrelevant because :func:`evaluate_evidence_aware_plans`
+    applies the canonical ranking and tie-break rules.
+    """
+
+    if not isinstance(evaluation, EvidenceAwarePlanEvaluation):
+        raise PlanBranchValidationError(
+            "evaluation must be EvidenceAwarePlanEvaluation"
+        )
+    recomputed = evaluate_evidence_aware_plans(
+        (item.candidate for item in evaluation.ranked),
+        policy=evaluation.policy,
+    )
+    if recomputed != evaluation:
+        raise PlanBranchValidationError(
+            "evidence-aware plan evaluation does not match deterministic recomputation"
+        )
+    return evaluation
 
 
 def evaluate_analysis_proposals(
