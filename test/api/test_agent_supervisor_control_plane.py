@@ -1347,6 +1347,26 @@ def test_shared_wire_schemas_cover_every_operation_and_mutation_guard() -> None:
     assert set(result_schema["properties"]["operation"]["enum"]) == {
         item.value for item in Operation
     }
+    manifest = ControlDiscoveryManifest(surface=ControlSurface.PYTHON)
+    assert set(manifest.request_schema_ids) == {
+        item.value for item in Operation
+    }
+    assert set(manifest.result_schema_ids) == {
+        item.value for item in Operation
+    }
+    for operation in Operation:
+        assert (
+            operation_request_json_schema(operation)["properties"]["operation"][
+                "const"
+            ]
+            == operation.value
+        )
+        assert (
+            operation_result_json_schema(operation)["properties"]["operation"][
+                "const"
+            ]
+            == operation.value
+        )
     pause_schema = operation_request_json_schema(Operation.PAUSE)
     assert pause_schema["properties"]["operation"]["const"] == "pause"
     assert {
@@ -1361,7 +1381,7 @@ def test_shared_wire_schemas_cover_every_operation_and_mutation_guard() -> None:
 def test_python_surface_executes_every_closed_operation_with_canonical_results(
     tmp_path: Path,
 ) -> None:
-    """ASI-067: every advertised operation has one typed Python entry point."""
+    """ASI-078: every advertised operation has one typed Python entry point."""
 
     repo_root = tmp_path / "repo"
     state_root = tmp_path / "state"
@@ -1394,7 +1414,7 @@ def test_python_surface_executes_every_closed_operation_with_canonical_results(
                 repo_root,
                 state_root,
                 operation,
-                key=f"asi-067:{operation.value}",
+                key=f"asi-078:{operation.value}",
             )
         elif operation in PROPOSAL_OPERATIONS:
             request = OperationRequest(
@@ -1485,12 +1505,31 @@ def test_typed_surface_parity_evidence_proves_exact_requirement(
     assert ControlSurfaceParityEvidence.from_dict(evidence.to_record()) == evidence
     assert evidence.request_schema_id
     assert evidence.result_schema_id
+    assert set(evidence.request_schema_ids) == {
+        operation.value for operation in Operation
+    }
+    assert set(evidence.result_schema_ids) == {
+        operation.value for operation in Operation
+    }
+    discovery_population = ControlDiscoveryManifest(
+        surface=ControlSurface.PYTHON
+    )
+    assert dict(evidence.request_schema_ids) == dict(
+        discovery_population.request_schema_ids
+    )
+    assert dict(evidence.result_schema_ids) == dict(
+        discovery_population.result_schema_ids
+    )
+    assert (
+        evidence.schema_population_id
+        == discovery_population.schema_population_id
+    )
 
 
 def test_g103_completion_requires_bound_current_tree_validation_health_and_quorum(
     tmp_path: Path,
 ) -> None:
-    """ASI-067: a parity witness cannot self-certify objective completion."""
+    """ASI-078: a parity witness cannot self-certify objective completion."""
 
     repo_root = tmp_path / "repo"
     state_root = tmp_path / "state"
@@ -1526,14 +1565,14 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
     completion_evidence = tuple(
         CompletionEvidence(
             acceptance_criterion=criterion,
-            producing_task_or_scan="ASI-067",
+            producing_task_or_scan="ASI-078",
             producer_kind="task",
             validation_receipt=validation_binding,
             validation_passed=True,
             repository_tree=operational.repository_tree,
             freshness={"fresh": True},
             observed_at=now,
-            provenance_cid=f"validation:asi-067:{index}",
+            provenance_cid=f"validation:asi-078:{index}",
             metadata={
                 "evidence_source_policy": {
                     "satisfies": True,
@@ -1572,7 +1611,7 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
         receipts=[
             ValidationReceiptCoverage(
                 receipt_id=item.provenance_cid,
-                task_id="ASI-067",
+                task_id="ASI-078",
                 criterion=item.acceptance_criterion,
                 command=command,
                 status=CoverageStatus.VERIFIED,
@@ -1580,7 +1619,7 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
                 repository_tree=operational.repository_tree,
                 observed_at=now.isoformat(),
                 provenance_cid=item.provenance_cid,
-                explanation="fresh passing ASI-067 criterion validation",
+                explanation="fresh passing ASI-078 criterion validation",
                 outcome="passed",
                 reason_code="validation_verified",
                 fresh=True,
@@ -1620,17 +1659,17 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
         required_members=2,
         members=(
             ExhaustionQuorumMember(
-                member_id="asi-067-implementation",
+                member_id="asi-078-implementation",
                 evidence_channel="implementation-validation",
-                receipt_cid="scan:asi-067:implementation",
+                receipt_cid="scan:asi-078:implementation",
                 binding=binding,
                 scan_mode="exhaustive",
                 finished_at=now.isoformat(),
             ),
             ExhaustionQuorumMember(
-                member_id="asi-067-replay",
+                member_id="asi-078-replay",
                 evidence_channel="receipt-replay-audit",
-                receipt_cid="scan:asi-067:replay",
+                receipt_cid="scan:asi-078:replay",
                 binding=binding,
                 scan_mode="exhaustive",
                 finished_at=now.isoformat(),
@@ -1733,11 +1772,54 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
             },
         }
     )
+    foreign_tree_evidence = list(completion_evidence)
+    foreign_tree_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **foreign_tree_evidence[0].to_dict(),
+            "repository_tree": "tree:foreign",
+            "validation_receipt": {
+                **validation_binding,
+                "tree_id": "tree:foreign",
+            },
+        }
+    )
+    foreign_objective_evidence = list(completion_evidence)
+    foreign_objective_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **foreign_objective_evidence[0].to_dict(),
+            "validation_receipt": {
+                **validation_binding,
+                "objective_id": "ASI-G999",
+            },
+        }
+    )
+    foreign_policy_evidence = list(completion_evidence)
+    foreign_policy_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **foreign_policy_evidence[0].to_dict(),
+            "validation_receipt": {
+                **validation_binding,
+                "validation_policy_id": "policy:foreign",
+            },
+        }
+    )
+    wrong_requirement_evidence = list(completion_evidence)
+    wrong_requirement_evidence[0] = CompletionEvidence.from_dict(
+        {
+            **wrong_requirement_evidence[0].to_dict(),
+            "validation_receipt": {
+                **validation_binding,
+                "requirement_id": "requirement:foreign",
+            },
+        }
+    )
     mapping_coverage = coverage.completion_gate_evidence(
         CONTROL_SURFACE_PARITY_OBJECTIVE_ID
     )
     incomplete_coverage = copy.deepcopy(mapping_coverage)
     incomplete_coverage["criteria"] = incomplete_coverage["criteria"][:-1]
+    foreign_tree_coverage = copy.deepcopy(mapping_coverage)
+    foreign_tree_coverage["repository_tree"] = "tree:foreign"
     unsafe_health = {
         "status": "healthy",
         "healthy": True,
@@ -1753,6 +1835,119 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
         "safe_for_completion_reasoning": True,
         "analyzer_version": "asi-g103-objective-validation@stale",
     }
+    mapping_health = {
+        **unsafe_health,
+        "safe_for_completion_reasoning": True,
+    }
+    artifact_binding = {
+        **binding.to_dict(),
+        "objective_id": CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
+        "requirement_id": CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
+        "validation_policy_id": operational.policy_id,
+        "policy_revision": operational.policy_revision,
+        "operational_receipt_id": operational.content_id,
+    }
+    mapping_quorum = {
+        "required_members": 2,
+        "member_count": 2,
+        "satisfied": True,
+        "quorum_met": True,
+        "binding": artifact_binding,
+        "members": [
+            {
+                "member_id": f"asi-078-mapping-{index}",
+                "evidence_channel": channel,
+                "receipt_cid": f"scan:asi-078:mapping:{index}",
+                "binding": artifact_binding,
+                "scan_mode": "exhaustive",
+                "healthy": True,
+                "safe_for_completion_reasoning": True,
+                "finished_at": now.isoformat(),
+            }
+            for index, channel in enumerate(
+                ("implementation-validation", "receipt-replay-audit"),
+                start=1,
+            )
+        ],
+    }
+    mapping_values = {
+        **values,
+        "coverage": mapping_coverage,
+        "analyzer_health": mapping_health,
+        "exhaustion_quorum": mapping_quorum,
+    }
+    assert operational.evaluate_objective_completion(
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+        **mapping_values,
+    ).verified
+
+    unbound_coverage = copy.deepcopy(mapping_coverage)
+    unbound_coverage["criteria"][0]["validation_receipt_ids"] = [
+        "validation:detached"
+    ]
+    missing_implementation_coverage = copy.deepcopy(mapping_coverage)
+    for name in (
+        "implementation",
+        "changed_files",
+        "predicted_files",
+        "ast_symbols",
+        "interfaces",
+    ):
+        missing_implementation_coverage["criteria"][0].pop(name, None)
+    foreign_health = {
+        **mapping_health,
+        "objective_id": "ASI-G999",
+        "repository_tree": "tree:foreign",
+    }
+    duplicate_member_quorum = copy.deepcopy(mapping_quorum)
+    duplicate_member_quorum["members"][1]["member_id"] = (
+        duplicate_member_quorum["members"][0]["member_id"]
+    )
+    duplicate_receipt_quorum = copy.deepcopy(mapping_quorum)
+    duplicate_receipt_quorum["members"][1]["receipt_cid"] = (
+        duplicate_receipt_quorum["members"][0]["receipt_cid"]
+    )
+    duplicate_channel_quorum = copy.deepcopy(mapping_quorum)
+    duplicate_channel_quorum["members"][1]["evidence_channel"] = (
+        duplicate_channel_quorum["members"][0]["evidence_channel"]
+    )
+    insufficient_quorum = copy.deepcopy(mapping_quorum)
+    insufficient_quorum["members"] = insufficient_quorum["members"][:1]
+    insufficient_quorum["member_count"] = 1
+    non_exhaustive_quorum = copy.deepcopy(mapping_quorum)
+    non_exhaustive_quorum["members"][0]["scan_mode"] = "targeted"
+    unhealthy_quorum = copy.deepcopy(mapping_quorum)
+    unhealthy_quorum["members"][0]["healthy"] = False
+    stale_quorum = copy.deepcopy(mapping_quorum)
+    stale_quorum["members"][0]["finished_at"] = (
+        now - timedelta(seconds=301)
+    ).isoformat()
+    foreign_tree_quorum = copy.deepcopy(mapping_quorum)
+    foreign_tree_quorum["binding"]["tree_id"] = "tree:foreign"
+    for member in foreign_tree_quorum["members"]:
+        member["binding"]["tree_id"] = "tree:foreign"
+    wrong_revision_quorum = copy.deepcopy(mapping_quorum)
+    wrong_revision_quorum["binding"]["objective_revision"] = (
+        "ASI-G103@stale"
+    )
+    for member in wrong_revision_quorum["members"]:
+        member["binding"]["objective_revision"] = "ASI-G103@stale"
+    wrong_analyzer_quorum = copy.deepcopy(mapping_quorum)
+    wrong_analyzer_quorum["binding"]["analyzer_version"] = (
+        "asi-g103-objective-validation@stale"
+    )
+    for member in wrong_analyzer_quorum["members"]:
+        member["binding"]["analyzer_version"] = (
+            "asi-g103-objective-validation@stale"
+        )
+    wrong_configuration_quorum = copy.deepcopy(mapping_quorum)
+    wrong_configuration_quorum["binding"]["configuration_revision"] = (
+        "unified-control-surface-parity-completion@stale"
+    )
+    for member in wrong_configuration_quorum["members"]:
+        member["binding"]["configuration_revision"] = (
+            "unified-control-surface-parity-completion@stale"
+        )
     with pytest.raises(ControlContractError, match="cover every quorum"):
         ControlSurfaceParityCompletionQuorumEvidence(
             validation_policy_id=operational.policy_id,
@@ -1781,11 +1976,31 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
         {"evidence": tuple(detached_evidence)},
         {"evidence": tuple(stale_evidence)},
         {"evidence": tuple(failed_evidence)},
+        {"evidence": tuple(foreign_tree_evidence)},
+        {"evidence": tuple(foreign_objective_evidence)},
+        {"evidence": tuple(foreign_policy_evidence)},
+        {"evidence": tuple(wrong_requirement_evidence)},
         {"evidence": completion_evidence[:-1]},
+        {"evidence": completion_evidence + (completion_evidence[0],)},
         {"coverage": incomplete_coverage},
+        {"coverage": foreign_tree_coverage},
+        {"coverage": unbound_coverage},
+        {"coverage": missing_implementation_coverage},
         {"analyzer_health": unsafe_health},
+        {"analyzer_health": foreign_health},
         {"analyzer_health": wrong_analyzer_health},
         {"exhaustion_quorum": generic_quorum},
+        {"exhaustion_quorum": insufficient_quorum},
+        {"exhaustion_quorum": duplicate_member_quorum},
+        {"exhaustion_quorum": duplicate_receipt_quorum},
+        {"exhaustion_quorum": duplicate_channel_quorum},
+        {"exhaustion_quorum": non_exhaustive_quorum},
+        {"exhaustion_quorum": unhealthy_quorum},
+        {"exhaustion_quorum": stale_quorum},
+        {"exhaustion_quorum": foreign_tree_quorum},
+        {"exhaustion_quorum": wrong_revision_quorum},
+        {"exhaustion_quorum": wrong_analyzer_quorum},
+        {"exhaustion_quorum": wrong_configuration_quorum},
         {
             "exhaustion_quorum": ControlSurfaceParityCompletionQuorumEvidence(
                 validation_policy_id="policy:foreign",
@@ -1808,7 +2023,7 @@ def test_g103_completion_requires_bound_current_tree_validation_health_and_quoru
     for replacement in rejected_inputs:
         rejected = operational.evaluate_objective_completion(
             current_state=GoalState.PROVISIONALLY_COMPLETE,
-            **{**values, **replacement},
+            **{**mapping_values, **replacement},
         )
         assert rejected.state is GoalState.PROVISIONALLY_COMPLETE
         assert not rejected.verified
@@ -1860,8 +2075,39 @@ def test_surface_parity_evidence_rejects_behavior_or_schema_drift(
         policy_revision=request.policy_revision,
         capability_report=service.capability_report(),
         cases=cases,
-    ).to_record()
-    evidence["request_schema_id"] = "sha256:forged"
-    evidence.pop("content_id")
+    )
+    forged_generic = evidence.to_record()
+    forged_generic["request_schema_id"] = "sha256:forged"
+    forged_generic.pop("content_id")
     with pytest.raises(ControlContractError, match="request_schema_id"):
-        ControlSurfaceParityEvidence.from_dict(evidence)
+        ControlSurfaceParityEvidence.from_dict(forged_generic)
+
+    forged_operation = evidence.to_record()
+    forged_request_schemas = dict(forged_operation["request_schema_ids"])
+    forged_request_schemas[Operation.STATUS.value] = "sha256:forged"
+    forged_operation["request_schema_ids"] = forged_request_schemas
+    forged_operation.pop("content_id")
+    with pytest.raises(ControlContractError, match="request_schema_ids"):
+        ControlSurfaceParityEvidence.from_dict(forged_operation)
+
+    forged_result_operation = evidence.to_record()
+    forged_result_schemas = dict(
+        forged_result_operation["result_schema_ids"]
+    )
+    forged_result_schemas[Operation.STATUS.value] = "sha256:forged"
+    forged_result_operation["result_schema_ids"] = forged_result_schemas
+    forged_result_operation.pop("content_id")
+    with pytest.raises(ControlContractError, match="result_schema_ids"):
+        ControlSurfaceParityEvidence.from_dict(forged_result_operation)
+
+    forged_population = evidence.to_record()
+    forged_population["schema_population_id"] = "sha256:forged"
+    forged_population.pop("content_id")
+    with pytest.raises(ControlContractError, match="schema_population_id"):
+        ControlSurfaceParityEvidence.from_dict(forged_population)
+
+    missing_population = evidence.to_record()
+    missing_population.pop("schema_population_id")
+    missing_population.pop("content_id")
+    with pytest.raises(ControlContractError, match="schema_population_id"):
+        ControlSurfaceParityEvidence.from_dict(missing_population)
