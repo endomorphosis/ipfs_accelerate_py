@@ -76,6 +76,21 @@ TERMINAL_ACCEPTANCE_SCHEMA = (
 EXACT_RATIO_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/efficiency-exact-ratio@1"
 )
+PAIRED_EFFICIENCY_CASE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/paired-efficiency-case@1"
+)
+PAIRED_EFFICIENCY_REPORT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/paired-efficiency-report@1"
+)
+
+BASIS_POINTS = 10_000
+DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS = 3_500
+# Stable objective evidence term emitted by the accepted-work population gate.
+# Context-budget and retry-delta terms are owned by their respective contracts;
+# this module must not claim them from token receipts alone.
+TERMINAL_ACCEPTED_WORK_EVIDENCE_ID = (
+    "248026856102230635452423769994290240744"
+)
 
 # Absolute construction bounds.  They are intentionally generous enough for a
 # full supervisor run but small enough that a receipt cannot become a hidden
@@ -2292,6 +2307,767 @@ class EfficiencyReport(CanonicalContract):
         return cls.from_dict(_load_json(value, artifact_name="report"))
 
 
+def _median_integer(values: Sequence[int]) -> int:
+    """Return the deterministic integer median, flooring an even midpoint."""
+
+    if not values:
+        return 0
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) // 2
+
+
+@dataclass(frozen=True)
+class PairedEfficiencyCase(CanonicalContract):
+    """One same-task baseline/candidate accepted-work comparison.
+
+    ``*_receipt_ids`` contain every attempt charged to the accepted task, not
+    only the final acceptance receipt.  The separate terminal IDs prove that
+    both arms reached an accepted terminal state.  This keeps retry and failed
+    attempt tokens in the numerator without allowing failed-only tasks into
+    the paired population.
+    """
+
+    SCHEMA: ClassVar[str] = PAIRED_EFFICIENCY_CASE_SCHEMA
+
+    task_reference: str
+    goal_reference: str
+    repository_tree_digest: str
+    policy_digest: str
+    baseline_receipt_ids: tuple[str, ...]
+    candidate_receipt_ids: tuple[str, ...]
+    baseline_terminal_receipt_id: str
+    candidate_terminal_receipt_id: str
+    baseline_input_tokens: int
+    candidate_input_tokens: int
+    required_evidence_references: tuple[str, ...]
+    baseline_covered_evidence_references: tuple[str, ...]
+    candidate_covered_evidence_references: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for name in ("task_reference", "goal_reference"):
+            object.__setattr__(
+                self,
+                name,
+                _text(
+                    getattr(self, name),
+                    field_name=name,
+                    required=True,
+                    max_bytes=MAX_REFERENCE_BYTES,
+                ),
+            )
+        for name in ("repository_tree_digest", "policy_digest"):
+            object.__setattr__(
+                self,
+                name,
+                _digest(getattr(self, name), field_name=name),
+            )
+        for name in ("baseline_receipt_ids", "candidate_receipt_ids"):
+            value = _strings(
+                getattr(self, name),
+                field_name=name,
+                maximum=MAX_RECEIPTS_PER_REPORT,
+                max_item_bytes=MAX_REFERENCE_BYTES,
+            )
+            if not value:
+                raise ContractValidationError(
+                    f"{name} must contain at least one charged attempt"
+                )
+            object.__setattr__(self, name, value)
+        for name, receipt_ids in (
+            ("baseline_terminal_receipt_id", self.baseline_receipt_ids),
+            ("candidate_terminal_receipt_id", self.candidate_receipt_ids),
+        ):
+            value = _text(
+                getattr(self, name),
+                field_name=name,
+                required=True,
+                max_bytes=MAX_REFERENCE_BYTES,
+            )
+            if value not in receipt_ids:
+                raise ContractValidationError(
+                    f"{name} must identify one of its arm's charged receipts"
+                )
+            object.__setattr__(self, name, value)
+        for name in ("baseline_input_tokens", "candidate_input_tokens"):
+            object.__setattr__(
+                self,
+                name,
+                _integer(
+                    getattr(self, name),
+                    field_name=name,
+                    maximum=MAX_TOKENS * MAX_RECEIPTS_PER_REPORT,
+                ),
+            )
+        for name in (
+            "required_evidence_references",
+            "baseline_covered_evidence_references",
+            "candidate_covered_evidence_references",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _strings(
+                    getattr(self, name),
+                    field_name=name,
+                    maximum=MAX_EVIDENCE_REFERENCES,
+                ),
+            )
+        required = set(self.required_evidence_references)
+        if not required:
+            raise ContractValidationError(
+                "paired efficiency cases require authoritative evidence references"
+            )
+        if not set(self.baseline_covered_evidence_references).issubset(required):
+            raise ContractValidationError(
+                "baseline covered evidence must be a subset of required evidence"
+            )
+        if not set(self.candidate_covered_evidence_references).issubset(required):
+            raise ContractValidationError(
+                "candidate covered evidence must be a subset of required evidence"
+            )
+        _record_size(
+            self,
+            maximum=MAX_SERIALIZED_RECEIPT_BYTES,
+            name="paired efficiency case",
+        )
+
+    @property
+    def case_id(self) -> str:
+        return self.content_id
+
+    @property
+    def required_evidence_count(self) -> int:
+        return len(self.required_evidence_references)
+
+    @property
+    def baseline_covered_evidence_count(self) -> int:
+        return len(self.baseline_covered_evidence_references)
+
+    @property
+    def candidate_covered_evidence_count(self) -> int:
+        return len(self.candidate_covered_evidence_references)
+
+    @property
+    def baseline_coverage_bps(self) -> int:
+        if not self.required_evidence_count:
+            return BASIS_POINTS
+        return (
+            self.baseline_covered_evidence_count
+            * BASIS_POINTS
+            // self.required_evidence_count
+        )
+
+    @property
+    def candidate_coverage_bps(self) -> int:
+        if not self.required_evidence_count:
+            return BASIS_POINTS
+        return (
+            self.candidate_covered_evidence_count
+            * BASIS_POINTS
+            // self.required_evidence_count
+        )
+
+    @property
+    def coverage_preserved(self) -> bool:
+        return set(self.baseline_covered_evidence_references).issubset(
+            self.candidate_covered_evidence_references
+        )
+
+    @property
+    def candidate_has_full_required_coverage(self) -> bool:
+        return self.candidate_covered_evidence_count == self.required_evidence_count
+
+    @property
+    def input_token_reduction_bps(self) -> int:
+        if not self.baseline_input_tokens:
+            return 0
+        return (
+            (self.baseline_input_tokens - self.candidate_input_tokens)
+            * BASIS_POINTS
+            // self.baseline_input_tokens
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "task_reference": self.task_reference,
+            "goal_reference": self.goal_reference,
+            "repository_tree_digest": self.repository_tree_digest,
+            "policy_digest": self.policy_digest,
+            "baseline_receipt_ids": self.baseline_receipt_ids,
+            "candidate_receipt_ids": self.candidate_receipt_ids,
+            "baseline_terminal_receipt_id": self.baseline_terminal_receipt_id,
+            "candidate_terminal_receipt_id": self.candidate_terminal_receipt_id,
+            "baseline_input_tokens": self.baseline_input_tokens,
+            "candidate_input_tokens": self.candidate_input_tokens,
+            "required_evidence_references": self.required_evidence_references,
+            "required_evidence_count": self.required_evidence_count,
+            "baseline_covered_evidence_references": (
+                self.baseline_covered_evidence_references
+            ),
+            "baseline_covered_evidence_count": (
+                self.baseline_covered_evidence_count
+            ),
+            "baseline_coverage_bps": self.baseline_coverage_bps,
+            "candidate_covered_evidence_references": (
+                self.candidate_covered_evidence_references
+            ),
+            "candidate_covered_evidence_count": (
+                self.candidate_covered_evidence_count
+            ),
+            "candidate_coverage_bps": self.candidate_coverage_bps,
+            "coverage_preserved": self.coverage_preserved,
+            "candidate_has_full_required_coverage": (
+                self.candidate_has_full_required_coverage
+            ),
+            "input_token_reduction_bps": self.input_token_reduction_bps,
+        }
+
+    def to_dict(self, *, include_case_id: bool = False) -> dict[str, Any]:
+        payload = super().to_dict()
+        if include_case_id:
+            payload["case_id"] = self.case_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PairedEfficiencyCase":
+        _schema(payload, cls.SCHEMA, "paired efficiency case")
+        derived = {
+            "required_evidence_count",
+            "baseline_covered_evidence_count",
+            "baseline_coverage_bps",
+            "candidate_covered_evidence_count",
+            "candidate_coverage_bps",
+            "coverage_preserved",
+            "candidate_has_full_required_coverage",
+            "input_token_reduction_bps",
+        }
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "task_reference",
+                "goal_reference",
+                "repository_tree_digest",
+                "policy_digest",
+                "baseline_receipt_ids",
+                "candidate_receipt_ids",
+                "baseline_terminal_receipt_id",
+                "candidate_terminal_receipt_id",
+                "baseline_input_tokens",
+                "candidate_input_tokens",
+                "required_evidence_references",
+                "baseline_covered_evidence_references",
+                "candidate_covered_evidence_references",
+                "case_id",
+                "content_id",
+                *derived,
+            },
+            artifact_name="paired efficiency case",
+        )
+        result = cls(
+            task_reference=payload.get("task_reference", ""),
+            goal_reference=payload.get("goal_reference", ""),
+            repository_tree_digest=payload.get("repository_tree_digest", ""),
+            policy_digest=payload.get("policy_digest", ""),
+            baseline_receipt_ids=tuple(payload.get("baseline_receipt_ids") or ()),
+            candidate_receipt_ids=tuple(
+                payload.get("candidate_receipt_ids") or ()
+            ),
+            baseline_terminal_receipt_id=payload.get(
+                "baseline_terminal_receipt_id", ""
+            ),
+            candidate_terminal_receipt_id=payload.get(
+                "candidate_terminal_receipt_id", ""
+            ),
+            baseline_input_tokens=payload.get("baseline_input_tokens", 0),
+            candidate_input_tokens=payload.get("candidate_input_tokens", 0),
+            required_evidence_references=tuple(
+                payload.get("required_evidence_references") or ()
+            ),
+            baseline_covered_evidence_references=tuple(
+                payload.get("baseline_covered_evidence_references") or ()
+            ),
+            candidate_covered_evidence_references=tuple(
+                payload.get("candidate_covered_evidence_references") or ()
+            ),
+        )
+        for name in derived:
+            if payload.get(name, getattr(result, name)) != getattr(result, name):
+                raise ContractValidationError(
+                    f"{name} claim does not match paired efficiency case"
+                )
+        _claim(payload, result.case_id, "case_id", "content_id")
+        return result
+
+
+@dataclass(frozen=True)
+class PairedEfficiencyReport(CanonicalContract):
+    """Paired token/coverage gate over terminal accepted work only."""
+
+    SCHEMA: ClassVar[str] = PAIRED_EFFICIENCY_REPORT_SCHEMA
+
+    cases: tuple[PairedEfficiencyCase, ...] = ()
+    baseline_unpaired_accepted_task_references: tuple[str, ...] = ()
+    candidate_unpaired_accepted_task_references: tuple[str, ...] = ()
+    minimum_input_token_reduction_bps: int = (
+        DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS
+    )
+
+    def __post_init__(self) -> None:
+        cases = _coerce_records(
+            self.cases,
+            PairedEfficiencyCase,
+            PairedEfficiencyCase.from_dict,
+            field_name="cases",
+            maximum=MAX_RECEIPTS_PER_REPORT,
+        )
+        cases = tuple(sorted(cases, key=lambda item: item.task_reference))
+        if len({item.task_reference for item in cases}) != len(cases):
+            raise ContractValidationError(
+                "paired efficiency cases must have unique task references"
+            )
+        object.__setattr__(self, "cases", cases)
+        for name in (
+            "baseline_unpaired_accepted_task_references",
+            "candidate_unpaired_accepted_task_references",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _strings(
+                    getattr(self, name),
+                    field_name=name,
+                    maximum=MAX_RECEIPTS_PER_REPORT,
+                ),
+            )
+        paired = {item.task_reference for item in cases}
+        unpaired = set(self.baseline_unpaired_accepted_task_references) | set(
+            self.candidate_unpaired_accepted_task_references
+        )
+        if paired.intersection(unpaired):
+            raise ContractValidationError(
+                "paired tasks cannot also be reported as unpaired"
+            )
+        object.__setattr__(
+            self,
+            "minimum_input_token_reduction_bps",
+            _integer(
+                self.minimum_input_token_reduction_bps,
+                field_name="minimum_input_token_reduction_bps",
+                maximum=BASIS_POINTS,
+            ),
+        )
+        _record_size(
+            self,
+            maximum=MAX_SERIALIZED_REPORT_BYTES,
+            name="paired efficiency report",
+        )
+
+    @property
+    def report_id(self) -> str:
+        return self.content_id
+
+    @property
+    def paired_task_count(self) -> int:
+        return len(self.cases)
+
+    @property
+    def median_baseline_input_tokens(self) -> int:
+        return _median_integer(
+            tuple(item.baseline_input_tokens for item in self.cases)
+        )
+
+    @property
+    def median_candidate_input_tokens(self) -> int:
+        return _median_integer(
+            tuple(item.candidate_input_tokens for item in self.cases)
+        )
+
+    @property
+    def median_input_token_reduction_bps(self) -> int:
+        baseline = self.median_baseline_input_tokens
+        if not baseline:
+            return 0
+        return (
+            (baseline - self.median_candidate_input_tokens)
+            * BASIS_POINTS
+            // baseline
+        )
+
+    @property
+    def coverage_regression_count(self) -> int:
+        return sum(not item.coverage_preserved for item in self.cases)
+
+    @property
+    def candidate_incomplete_coverage_count(self) -> int:
+        return sum(
+            not item.candidate_has_full_required_coverage
+            for item in self.cases
+        )
+
+    @property
+    def population_complete(self) -> bool:
+        return not (
+            self.baseline_unpaired_accepted_task_references
+            or self.candidate_unpaired_accepted_task_references
+        )
+
+    @property
+    def terminal_accepted_work_accounting_proven(self) -> bool:
+        return bool(self.cases) and self.population_complete
+
+    @property
+    def evidence_claim_references(self) -> tuple[str, ...]:
+        if not self.terminal_accepted_work_accounting_proven:
+            return ()
+        return (TERMINAL_ACCEPTED_WORK_EVIDENCE_ID,)
+
+    @property
+    def token_gate_passed(self) -> bool:
+        return (
+            bool(self.cases)
+            and self.median_input_token_reduction_bps
+            >= self.minimum_input_token_reduction_bps
+        )
+
+    @property
+    def coverage_gate_passed(self) -> bool:
+        return (
+            bool(self.cases)
+            and self.coverage_regression_count == 0
+            and self.candidate_incomplete_coverage_count == 0
+        )
+
+    @property
+    def passed(self) -> bool:
+        return (
+            self.population_complete
+            and self.token_gate_passed
+            and self.coverage_gate_passed
+        )
+
+    @property
+    def promotion_eligible(self) -> bool:
+        return self.passed
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": EFFICIENCY_CONTRACT_VERSION,
+            "cases": self.cases,
+            "baseline_unpaired_accepted_task_references": (
+                self.baseline_unpaired_accepted_task_references
+            ),
+            "candidate_unpaired_accepted_task_references": (
+                self.candidate_unpaired_accepted_task_references
+            ),
+            "minimum_input_token_reduction_bps": (
+                self.minimum_input_token_reduction_bps
+            ),
+            "paired_task_count": self.paired_task_count,
+            "median_baseline_input_tokens": (
+                self.median_baseline_input_tokens
+            ),
+            "median_candidate_input_tokens": (
+                self.median_candidate_input_tokens
+            ),
+            "median_input_token_reduction_bps": (
+                self.median_input_token_reduction_bps
+            ),
+            "coverage_regression_count": self.coverage_regression_count,
+            "candidate_incomplete_coverage_count": (
+                self.candidate_incomplete_coverage_count
+            ),
+            "population_complete": self.population_complete,
+            "terminal_accepted_work_accounting_proven": (
+                self.terminal_accepted_work_accounting_proven
+            ),
+            "evidence_claim_references": self.evidence_claim_references,
+            "token_gate_passed": self.token_gate_passed,
+            "coverage_gate_passed": self.coverage_gate_passed,
+            "passed": self.passed,
+        }
+
+    def to_dict(self, *, include_report_id: bool = False) -> dict[str, Any]:
+        payload = super().to_dict()
+        if include_report_id:
+            payload["report_id"] = self.report_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PairedEfficiencyReport":
+        _schema(payload, cls.SCHEMA, "paired efficiency report")
+        derived = {
+            "paired_task_count",
+            "median_baseline_input_tokens",
+            "median_candidate_input_tokens",
+            "median_input_token_reduction_bps",
+            "coverage_regression_count",
+            "candidate_incomplete_coverage_count",
+            "population_complete",
+            "terminal_accepted_work_accounting_proven",
+            "token_gate_passed",
+            "coverage_gate_passed",
+            "passed",
+        }
+        _reject_unknown(
+            payload,
+            {
+                "schema",
+                "schema_version",
+                "contract_version",
+                "cases",
+                "baseline_unpaired_accepted_task_references",
+                "candidate_unpaired_accepted_task_references",
+                "minimum_input_token_reduction_bps",
+                "evidence_claim_references",
+                "report_id",
+                "content_id",
+                *derived,
+            },
+            artifact_name="paired efficiency report",
+        )
+        result = cls(
+            cases=tuple(
+                PairedEfficiencyCase.from_dict(item)
+                for item in payload.get("cases") or ()
+            ),
+            baseline_unpaired_accepted_task_references=tuple(
+                payload.get(
+                    "baseline_unpaired_accepted_task_references"
+                )
+                or ()
+            ),
+            candidate_unpaired_accepted_task_references=tuple(
+                payload.get(
+                    "candidate_unpaired_accepted_task_references"
+                )
+                or ()
+            ),
+            minimum_input_token_reduction_bps=payload.get(
+                "minimum_input_token_reduction_bps",
+                DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS,
+            ),
+        )
+        for name in derived:
+            if payload.get(name, getattr(result, name)) != getattr(result, name):
+                raise ContractValidationError(
+                    f"{name} claim does not match paired efficiency report"
+                )
+        if tuple(
+            payload.get(
+                "evidence_claim_references",
+                result.evidence_claim_references,
+            )
+        ) != result.evidence_claim_references:
+            raise ContractValidationError(
+                "evidence_claim_references claim does not match paired "
+                "efficiency report"
+            )
+        _claim(payload, result.report_id, "report_id", "content_id")
+        return result
+
+    @classmethod
+    def from_json(
+        cls, value: str | bytes | bytearray
+    ) -> "PairedEfficiencyReport":
+        return cls.from_dict(
+            _load_json(value, artifact_name="paired efficiency report")
+        )
+
+
+def _normalize_efficiency_arm(
+    receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
+    *,
+    arm_name: str,
+) -> tuple[
+    dict[str, tuple[EfficiencyReceipt, ...]],
+    dict[str, EfficiencyReceipt],
+]:
+    by_task: dict[str, list[EfficiencyReceipt]] = {}
+    accepted_by_task: dict[str, EfficiencyReceipt] = {}
+    receipt_ids: set[str] = set()
+    for index, value in enumerate(receipts):
+        if index >= MAX_RECEIPTS_PER_REPORT:
+            raise ContractValidationError(
+                f"{arm_name} receipt population exceeds "
+                f"{MAX_RECEIPTS_PER_REPORT} items"
+            )
+        if isinstance(value, EfficiencyReceipt):
+            receipt = value
+        elif isinstance(value, Mapping):
+            receipt = EfficiencyReceipt.from_dict(value)
+        else:
+            raise ContractValidationError(
+                f"{arm_name}_receipts[{index}] must be an EfficiencyReceipt"
+            )
+        if receipt.receipt_id in receipt_ids:
+            raise ContractValidationError(
+                f"duplicate receipt identity in {arm_name} efficiency arm"
+            )
+        receipt_ids.add(receipt.receipt_id)
+        by_task.setdefault(receipt.task_reference, []).append(receipt)
+        if receipt.accepted:
+            if receipt.task_reference in accepted_by_task:
+                raise ContractValidationError(
+                    f"a task may have only one accepted receipt in the "
+                    f"{arm_name} efficiency arm"
+                )
+            accepted_by_task[receipt.task_reference] = receipt
+    return (
+        {
+            task: tuple(sorted(items, key=lambda item: item.receipt_id))
+            for task, items in by_task.items()
+        },
+        accepted_by_task,
+    )
+
+
+def build_paired_efficiency_report(
+    baseline_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
+    candidate_receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
+    *,
+    required_evidence_by_task: Mapping[str, Sequence[str]] | None = None,
+    minimum_input_token_reduction_bps: int = (
+        DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS
+    ),
+) -> PairedEfficiencyReport:
+    """Compare identical terminal accepted tasks for token/coverage regressions.
+
+    Failed-only tasks never enter the paired denominator.  For a task that
+    eventually succeeds, however, all receipts sharing that stable task
+    reference are charged to the arm.  Unpaired accepted tasks are disclosed
+    and fail the report gate rather than being silently dropped.
+
+    When ``required_evidence_by_task`` is omitted, the baseline terminal
+    evidence set is the required set.  An explicit mapping must define every
+    paired task and is useful when the benchmark owns a smaller authoritative
+    requirement set.
+    """
+
+    baseline_by_task, baseline_accepted = _normalize_efficiency_arm(
+        baseline_receipts, arm_name="baseline"
+    )
+    candidate_by_task, candidate_accepted = _normalize_efficiency_arm(
+        candidate_receipts, arm_name="candidate"
+    )
+    baseline_tasks = set(baseline_accepted)
+    candidate_tasks = set(candidate_accepted)
+    paired_tasks = baseline_tasks & candidate_tasks
+
+    if required_evidence_by_task is not None and not isinstance(
+        required_evidence_by_task, Mapping
+    ):
+        raise ContractValidationError(
+            "required_evidence_by_task must be an object"
+        )
+    cases: list[PairedEfficiencyCase] = []
+    for task_reference in sorted(paired_tasks):
+        baseline_terminal = baseline_accepted[task_reference]
+        candidate_terminal = candidate_accepted[task_reference]
+        for name in (
+            "goal_reference",
+            "repository_tree_digest",
+            "policy_digest",
+        ):
+            if getattr(baseline_terminal, name) != getattr(
+                candidate_terminal, name
+            ):
+                raise ContractValidationError(
+                    f"paired receipts must bind the same {name}"
+                )
+        if required_evidence_by_task is None:
+            required = baseline_terminal.evidence.terminal_references
+        else:
+            if task_reference not in required_evidence_by_task:
+                raise ContractValidationError(
+                    "required_evidence_by_task must define every paired task"
+                )
+            required = _strings(
+                required_evidence_by_task[task_reference],
+                field_name=f"required_evidence_by_task.{task_reference}",
+                maximum=MAX_EVIDENCE_REFERENCES,
+            )
+        required_set = set(required)
+        baseline_covered = tuple(
+            sorted(
+                required_set.intersection(
+                    baseline_terminal.evidence.terminal_references
+                )
+            )
+        )
+        candidate_covered = tuple(
+            sorted(
+                required_set.intersection(
+                    candidate_terminal.evidence.terminal_references
+                )
+            )
+        )
+        baseline_attempts = baseline_by_task[task_reference]
+        candidate_attempts = candidate_by_task[task_reference]
+        for arm_name, terminal, attempts in (
+            ("baseline", baseline_terminal, baseline_attempts),
+            ("candidate", candidate_terminal, candidate_attempts),
+        ):
+            for attempt in attempts:
+                if any(
+                    getattr(attempt, name) != getattr(terminal, name)
+                    for name in (
+                        "goal_reference",
+                        "repository_tree_digest",
+                        "policy_digest",
+                    )
+                ):
+                    raise ContractValidationError(
+                        f"all charged {arm_name} attempts must bind the "
+                        "accepted task's frozen goal, repository tree, and policy"
+                    )
+        cases.append(
+            PairedEfficiencyCase(
+                task_reference=task_reference,
+                goal_reference=baseline_terminal.goal_reference,
+                repository_tree_digest=(
+                    baseline_terminal.repository_tree_digest
+                ),
+                policy_digest=baseline_terminal.policy_digest,
+                baseline_receipt_ids=tuple(
+                    item.receipt_id for item in baseline_attempts
+                ),
+                candidate_receipt_ids=tuple(
+                    item.receipt_id for item in candidate_attempts
+                ),
+                baseline_terminal_receipt_id=baseline_terminal.receipt_id,
+                candidate_terminal_receipt_id=candidate_terminal.receipt_id,
+                baseline_input_tokens=sum(
+                    item.input_tokens for item in baseline_attempts
+                ),
+                candidate_input_tokens=sum(
+                    item.input_tokens for item in candidate_attempts
+                ),
+                required_evidence_references=tuple(required),
+                baseline_covered_evidence_references=baseline_covered,
+                candidate_covered_evidence_references=candidate_covered,
+            )
+        )
+    return PairedEfficiencyReport(
+        cases=tuple(cases),
+        baseline_unpaired_accepted_task_references=tuple(
+            baseline_tasks - candidate_tasks
+        ),
+        candidate_unpaired_accepted_task_references=tuple(
+            candidate_tasks - baseline_tasks
+        ),
+        minimum_input_token_reduction_bps=(
+            minimum_input_token_reduction_bps
+        ),
+    )
+
+
 def aggregate_efficiency_receipts(
     receipts: Iterable[EfficiencyReceipt | Mapping[str, Any]],
 ) -> EfficiencyReport:
@@ -2591,12 +3367,16 @@ SupervisorEfficiencyReport = EfficiencyReport
 EfficiencyAggregate = EfficiencyReport
 aggregate_receipts = aggregate_efficiency_receipts
 make_baseline_fixtures = build_efficiency_baseline_fixtures
+compare_paired_efficiency_receipts = build_paired_efficiency_report
+PairedSupervisorEfficiencyCase = PairedEfficiencyCase
+PairedSupervisorEfficiencyReport = PairedEfficiencyReport
 
 
 __all__ = [
     "ARTIFACT_REFERENCE_SCHEMA",
     "CACHE_OBSERVATION_SCHEMA",
     "CHANGED_SCOPE_SCHEMA",
+    "DEFAULT_MINIMUM_INPUT_TOKEN_REDUCTION_BPS",
     "EFFICIENCY_CONTRACT_VERSION",
     "EFFICIENCY_RECEIPT_SCHEMA",
     "EFFICIENCY_REPORT_SCHEMA",
@@ -2614,6 +3394,8 @@ __all__ = [
     "MAX_STAGES",
     "MAX_TEXT_BYTES",
     "MAX_TOKENS",
+    "PAIRED_EFFICIENCY_CASE_SCHEMA",
+    "PAIRED_EFFICIENCY_REPORT_SCHEMA",
     "RETRY_OBSERVATION_SCHEMA",
     "SCHEMA_VERSION",
     "STAGE_TIMING_SCHEMA",
@@ -2636,6 +3418,7 @@ __all__ = [
     "StageTiming",
     "SupervisorEfficiencyReceipt",
     "SupervisorEfficiencyReport",
+    "TERMINAL_ACCEPTED_WORK_EVIDENCE_ID",
     "TerminalAcceptance",
     "TerminalOutcome",
     "TokenUsage",
@@ -2643,6 +3426,12 @@ __all__ = [
     "WorkStatus",
     "aggregate_efficiency_receipts",
     "aggregate_receipts",
+    "build_paired_efficiency_report",
     "build_efficiency_baseline_fixtures",
+    "compare_paired_efficiency_receipts",
     "make_baseline_fixtures",
+    "PairedEfficiencyCase",
+    "PairedEfficiencyReport",
+    "PairedSupervisorEfficiencyCase",
+    "PairedSupervisorEfficiencyReport",
 ]
