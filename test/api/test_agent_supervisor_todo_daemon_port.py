@@ -6590,6 +6590,42 @@ def test_parse_task_file_preserves_quoted_validation_semicolons(tmp_path):
     assert task.validation == [inline_python, "test -f src/config.yml"]
 
 
+def test_parse_task_file_keeps_mixed_lane_metadata_isolated(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text(
+        """# Shared taskboard
+
+## ACCEL-001 Accelerate task
+
+- Status: todo
+- Track: accelerate
+- Validation: python validate.py --track accelerate
+
+## DATA-001 Datasets task
+
+- Status: todo
+- Track: datasets
+- Validation: python validate.py --track datasets
+
+## ACCEL-002 Second accelerate task
+
+- Status: todo
+- Track: accelerate
+- Validation: python validate.py --track accelerate --path README.md
+""",
+        encoding="utf-8",
+    )
+
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+
+    assert [task.task_id for task in tasks] == ["ACCEL-001", "ACCEL-002"]
+    assert tasks[0].track == "accelerate"
+    assert tasks[0].validation == ["python validate.py --track accelerate"]
+    assert tasks[1].validation == [
+        "python validate.py --track accelerate --path README.md"
+    ]
+
+
 def test_implementation_daemon_clears_active_task_when_finished(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

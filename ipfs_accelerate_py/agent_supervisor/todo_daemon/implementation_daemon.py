@@ -977,8 +977,10 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
         block = []
 
     for index, line in enumerate(lines, start=1):
-        if line.startswith(task_header_prefix):
+        if line.startswith("## "):
             flush()
+            if not line.startswith(task_header_prefix):
+                continue
             header = line[3:].strip()
             parts = header.split(" ", 1)
             if len(parts) == 1:
