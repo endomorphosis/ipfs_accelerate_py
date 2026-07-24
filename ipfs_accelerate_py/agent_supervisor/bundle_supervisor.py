@@ -97,6 +97,39 @@ _MANIFEST_PROFILE_G_REFERENCE_FIELDS = frozenset(
 )
 
 
+def bundle_member_completion_event_sources(state_root: Path) -> tuple[Path, ...]:
+    """Return active and rotated member-completion logs in stable order."""
+
+    base_paths: set[Path] = set()
+    for pattern in ("*_events.jsonl*", "*/state/*_events.jsonl*"):
+        for candidate in state_root.glob(pattern):
+            name = candidate.name
+            if name.endswith("_events.jsonl"):
+                pass
+            elif ".jsonl.rotated-" in name:
+                name = name.split(".rotated-", 1)[0]
+                candidate = candidate.with_name(name)
+            else:
+                continue
+            base_paths.add(candidate)
+    return tuple(event_log_sources(sorted(base_paths), include_rotated=True))
+
+
+def bundle_member_completion_source_revision(
+    state_root: Path,
+) -> tuple[tuple[str, int, int], ...]:
+    """Return the dynamic source revision used to fence receipt-plan caching."""
+
+    revisions: list[tuple[str, int, int]] = []
+    for source in bundle_member_completion_event_sources(state_root):
+        try:
+            stat = source.stat()
+        except OSError:
+            continue
+        revisions.append((str(source), stat.st_mtime_ns, stat.st_size))
+    return tuple(revisions)
+
+
 def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, Any]]:
     """Return successful member-task receipts keyed by canonical task CID.
 
@@ -106,14 +139,8 @@ def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, A
     can promote the matching canonical task even after a shard is regenerated.
     """
 
-    event_paths = sorted(
-        {
-            *state_root.glob("*_events.jsonl"),
-            *state_root.glob("*/state/*_events.jsonl"),
-        }
-    )
     receipts: dict[str, dict[str, Any]] = {}
-    for source in event_log_sources(event_paths, include_rotated=True):
+    for source in bundle_member_completion_event_sources(state_root):
         for event in read_jsonl_events(source):
             event_type = str(event.get("type") or "")
             task_id = str(event.get("task_id") or "")
@@ -141,6 +168,7 @@ def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, A
                 "canonical_task_cid": canonical_task_cid,
                 "canonical_task_key": str(event.get("canonical_task_key") or ""),
                 "task_id": task_id,
+                "status": "succeeded",
                 "timestamp": str(event.get("timestamp") or ""),
                 "event_type": event_type,
                 "event_path": str(source),
@@ -977,11 +1005,22 @@ def plan_bundle_lanes(
     worktree_submodule_paths: Sequence[str] = (),
     log_level: str = "INFO",
     max_lanes: int | None = None,
+    completion_receipts: Mapping[str, Any] | None = None,
 ) -> list[BundleLaneSpec]:
     """Return one isolated supervisor command for each objective bundle."""
 
     lanes: list[BundleLaneSpec] = []
-    bundle_payloads = build_bundle_task_payloads(bundle_index_path)
+    if completion_receipts is None:
+        completion_receipts = bundle_member_completion_receipts(state_root)
+    if completion_receipts:
+        bundle_payloads = build_bundle_task_payloads(
+            bundle_index_path,
+            merge_receipts=completion_receipts,
+        )
+    else:
+        # Keep the legacy single-argument call path for integrations which
+        # inject a planner and have no durable receipt overlay to apply.
+        bundle_payloads = build_bundle_task_payloads(bundle_index_path)
     globally_completed_task_ids = {
         str(task.get("task_id") or "")
         for payload in bundle_payloads
@@ -990,6 +1029,11 @@ def plan_bundle_lanes(
         in _TERMINAL_CONFLICT_TASK_STATUSES
         and str(task.get("task_id") or "")
     }
+    globally_completed_task_ids.update(
+        task_id
+        for payload in bundle_payloads
+        for task_id in _string_list(payload.get("completed_member_task_ids"))
+    )
     excluded_bundle_keys = _excluded_bundle_keys(bundle_index_path)
     bundle_payloads = [
         payload
@@ -1453,6 +1497,7 @@ class DynamicBundleScheduler:
         self._plan_cache: tuple[
             tuple[Path, ...],
             tuple[tuple[str, int, int], ...],
+            tuple[tuple[str, int, int], ...],
             tuple[BundleLaneSpec, ...],
         ] | None = None
 
@@ -1612,9 +1657,18 @@ class DynamicBundleScheduler:
 
     def _plan(self) -> list[BundleLaneSpec]:
         base_lanes: list[BundleLaneSpec]
+        receipt_revision = bundle_member_completion_source_revision(self.state_root)
         if self._plan_cache is not None:
-            cached_paths, cached_revision, cached_lanes = self._plan_cache
-            if self._plan_source_revision(cached_paths) == cached_revision:
+            (
+                cached_paths,
+                cached_revision,
+                cached_receipt_revision,
+                cached_lanes,
+            ) = self._plan_cache
+            if (
+                self._plan_source_revision(cached_paths) == cached_revision
+                and receipt_revision == cached_receipt_revision
+            ):
                 base_lanes = list(cached_lanes)
             else:
                 self._plan_cache = None
@@ -1632,15 +1686,37 @@ class DynamicBundleScheduler:
                 "worktree_submodule_paths", "log_level",
             }
             options = {key: value for key, value in self.lane_options.items() if key in allowed}
-            base_lanes = plan_bundle_lanes(
-                bundle_index_path=self.bundle_index_path,
-                repo_root=self.repo_root,
-                state_root=self.state_root,
-                worktree_root=self.worktree_root,
-                log_dir=self.log_dir,
-                max_lanes=None,
-                **options,
-            )
+            # Bind the planned slice and its receipt evidence to the same
+            # stable log revision.  If a completion arrives during the read,
+            # retry instead of caching stale work under the newer revision.
+            for _attempt in range(3):
+                receipt_revision = bundle_member_completion_source_revision(
+                    self.state_root
+                )
+                completion_receipts = bundle_member_completion_receipts(
+                    self.state_root
+                )
+                base_lanes = plan_bundle_lanes(
+                    bundle_index_path=self.bundle_index_path,
+                    repo_root=self.repo_root,
+                    state_root=self.state_root,
+                    worktree_root=self.worktree_root,
+                    log_dir=self.log_dir,
+                    max_lanes=None,
+                    completion_receipts=completion_receipts,
+                    **options,
+                )
+                observed_revision = bundle_member_completion_source_revision(
+                    self.state_root
+                )
+                if receipt_revision == observed_revision:
+                    receipt_revision = observed_revision
+                    break
+            else:
+                # Avoid pinning an unstable snapshot.  It will be re-read on
+                # the next scheduler cycle even if the log is continuously
+                # active.
+                receipt_revision = (("<unstable>", -1, -1),)
             source_paths = tuple(
                 sorted(
                     {
@@ -1654,6 +1730,7 @@ class DynamicBundleScheduler:
             self._plan_cache = (
                 source_paths,
                 self._plan_source_revision(source_paths),
+                receipt_revision,
                 tuple(base_lanes),
             )
 
@@ -1882,6 +1959,147 @@ class DynamicBundleScheduler:
                 failure_class="blocked",
             )
 
+    def _reconcile_untracked_terminal_leases(
+        self,
+        coordinator: LeaseCoordinator,
+        lanes: Sequence[BundleLaneSpec],
+    ) -> dict[str, dict[str, str]]:
+        """Settle durable terminal work whose accepted wrapper predates this scheduler.
+
+        ``_running`` is intentionally process-local and is empty after a
+        scheduler restart.  The accepted lease and lane phase state are durable,
+        however, so a predecessor's wrapper can remain alive and renew forever
+        after its board has drained.  Reuse the same current-board and
+        identity-aware disposition check used for locally owned workers, then
+        publish the terminal receipt through the accepted fencing token.
+
+        The receipt is written before any process is stopped.  A still-running
+        leased wrapper observes the terminal lease on its next heartbeat, fences
+        its child, and exits without manufacturing a competing receipt.
+        Non-terminal accepted workers are never adopted or preempted.
+        """
+
+        lanes_by_bundle_key = {lane.bundle_key: lane for lane in lanes}
+        accepted_tasks = [
+            accepted
+            for accepted in coordinator.list_tasks()
+            if self._projection_state(accepted) == "accepted"
+            and str(accepted.get("task_cid") or "") not in self._running
+        ]
+        if not accepted_tasks:
+            return {}
+        member_receipts = bundle_member_completion_receipts(self.state_root)
+        reconciled: dict[str, dict[str, str]] = {}
+        for accepted in accepted_tasks:
+            task_cid = str(accepted.get("task_cid") or "")
+            if not task_cid:
+                continue
+            payload = accepted.get("bundle")
+            if not isinstance(payload, dict):
+                continue
+            bundle_key = str(
+                payload.get("bundle_key")
+                or accepted.get("bundle_key")
+                or ""
+            )
+            current_lane = lanes_by_bundle_key.get(bundle_key)
+            if current_lane is None:
+                todo_path = resolve_repo_path(
+                    self.repo_root,
+                    str(payload.get("todo_path") or payload.get("shard_path") or ""),
+                )
+                safe_key = safe_bundle_key(bundle_key or task_cid)
+                current_lane = BundleLaneSpec(
+                    bundle_key=bundle_key or task_cid,
+                    parallel_lane=str(payload.get("parallel_lane") or bundle_key or task_cid),
+                    todo_path=todo_path,
+                    state_dir=self.state_root / safe_key / "state",
+                    worktree_root=self.worktree_root / safe_key,
+                    state_prefix=lane_state_prefix(bundle_key or task_cid),
+                    task_ids=[],
+                    conflict_policy=str(payload.get("conflict_policy") or ""),
+                    command=[],
+                    log_path=self.log_dir / f"{safe_key}.log",
+                )
+            tasks = _mapping_list(payload.get("tasks"))
+            execution_tasks = _execution_slice_members(payload, tasks)
+            if (
+                "execution_slice_task_cids" in payload
+                or "execution_slice_task_ids" in payload
+            ) and not execution_tasks:
+                # An accepted lease must describe concrete work.  An empty
+                # current planning slice is not evidence about its predecessor.
+                continue
+            task_ids = [
+                str(task.get("task_id") or "")
+                for task in execution_tasks
+                if str(task.get("task_id") or "")
+            ]
+            recovery_lane = replace(
+                current_lane,
+                task_cid=task_cid,
+                goal_cid=str(accepted.get("goal_cid") or current_lane.goal_cid),
+                subgoal_cid=str(accepted.get("subgoal_cid") or current_lane.subgoal_cid),
+                task_ids=task_ids,
+                queue_payload=dict(payload),
+            )
+            disposition = self._disposition(recovery_lane)
+            if not disposition:
+                continue
+            completed_member_cids = {
+                str(task.get("canonical_task_cid") or task.get("task_cid") or "")
+                for task in execution_tasks
+                if str(task.get("canonical_task_cid") or task.get("task_cid") or "")
+            }
+            if disposition == "completed" and (
+                not completed_member_cids
+                or not completed_member_cids.issubset(member_receipts)
+            ):
+                logger.warning(
+                    "Refusing to reconcile completed lease %s without durable "
+                    "successful receipts for every execution-slice member",
+                    task_cid,
+                )
+                continue
+            try:
+                grant = coordinator.active_lease(task_cid)
+                if grant is None:
+                    continue
+                if disposition == "completed":
+                    coordinator.receipt(
+                        grant,
+                        status="succeeded",
+                        output={
+                            "reason": "reconciled durable terminal execution slice",
+                            "recovery": "untracked_accepted_lease",
+                            "member_receipts": [
+                                member_receipts[cid]
+                                for cid in sorted(completed_member_cids)
+                            ],
+                        },
+                    )
+                else:
+                    self._settle_grant(
+                        coordinator,
+                        grant,
+                        disposition=disposition,
+                    )
+            except LeaseError:
+                # Renewal, takeover, and peer settlement races are resolved by
+                # the coordination store's fencing token.  The next cycle will
+                # observe whichever state won.
+                continue
+            reconciled[task_cid] = {
+                "bundle_key": recovery_lane.bundle_key,
+                "disposition": disposition,
+            }
+            logger.info(
+                "Reconciled terminal accepted lease %s after scheduler restart (%s)",
+                task_cid,
+                disposition,
+            )
+        return reconciled
+
     def _default_launcher(self, lane: BundleLaneSpec, grant: Any) -> subprocess.Popen[bytes]:
         process, _command, _pid_path = _spawn_accepted_lane(
             lane,
@@ -2064,6 +2282,7 @@ class DynamicBundleScheduler:
         task_projection: Sequence[dict[str, Any]],
         launched: Sequence[str],
         reaped: Sequence[str],
+        reconciled: Sequence[str] = (),
         scheduler_state: SchedulerSnapshot | None = None,
         decision_snapshot: SchedulerSnapshot | None = None,
         decisions: Sequence[dict[str, Any]] = (),
@@ -2201,6 +2420,7 @@ class DynamicBundleScheduler:
             "tasks": normalized,
             "launched_task_cids": list(launched),
             "reaped_task_cids": list(reaped),
+            "reconciled_task_cids": list(reconciled),
         }
         if self._last_discovery_error:
             payload["discovery_error"] = self._last_discovery_error
@@ -2233,17 +2453,38 @@ class DynamicBundleScheduler:
 
             launched: list[str] = []
             with LeaseCoordinator(self.coordination_path) as coordinator:
-                registered: list[BundleLaneSpec] = []
-                registration_lanes = [
-                    lane for lane in discovered if lane.queue_payload
-                ]
-                adapted_bundles = coordinator.register_bundles(
-                    lane.queue_payload for lane in registration_lanes
+                # Reap and recover before registration.  Registration refreshes
+                # mutable discovery metadata; doing it first could overwrite
+                # the accepted predecessor's execution-slice payload when the
+                # newly planned slice happens to have the same canonical CID.
+                reaped = self._reap(coordinator)
+                reconciled = self._reconcile_untracked_terminal_leases(
+                    coordinator,
+                    discovered,
                 )
-                for lane, adapted in zip(
-                    registration_lanes,
-                    adapted_bundles,
-                ):
+                accepted_by_task_cid = {
+                    str(item.get("task_cid") or ""): item
+                    for item in coordinator.list_tasks()
+                    if self._projection_state(item) == "accepted"
+                    and str(item.get("task_cid") or "")
+                }
+                registered: list[BundleLaneSpec] = []
+                for lane in (item for item in discovered if item.queue_payload):
+                    accepted = accepted_by_task_cid.get(lane.task_cid)
+                    if accepted is not None:
+                        # Preserve the immutable payload of work that is still
+                        # executing under its accepted fencing token.
+                        registered.append(
+                            replace(
+                                lane,
+                                goal_cid=str(accepted.get("goal_cid") or lane.goal_cid),
+                                subgoal_cid=str(
+                                    accepted.get("subgoal_cid") or lane.subgoal_cid
+                                ),
+                            )
+                        )
+                        continue
+                    adapted = coordinator.register_bundle(lane.queue_payload)
                     registered.append(
                         replace(
                             lane,
@@ -2253,7 +2494,6 @@ class DynamicBundleScheduler:
                         )
                     )
 
-                reaped = self._reap(coordinator)
                 for lane in registered:
                     if lane.task_cid in self._running or self._disposition(lane):
                         continue
@@ -2264,6 +2504,7 @@ class DynamicBundleScheduler:
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),
+                    *reconciled.keys(),
                 }
                 decision_projection = coordinator.list_tasks(
                     task_cids=current_task_cids,
@@ -2282,7 +2523,19 @@ class DynamicBundleScheduler:
                         or registered_by_task_cid[str(item.get("task_cid") or "")].claimable
                     )
                 }
-                decisions: list[dict[str, Any]] = []
+                decisions: list[dict[str, Any]] = [
+                    {
+                        "task_cid": task_cid,
+                        "bundle_key": result["bundle_key"],
+                        "decision": "settled",
+                        "reason": (
+                            f"reconciled_terminal_{result['disposition']}"
+                        ),
+                        "recovery": "untracked_accepted_lease",
+                        "snapshot_id": decision_snapshot.snapshot_id,
+                    }
+                    for task_cid, result in reconciled.items()
+                ]
                 running_by_bundle_key = {
                     running.spec.bundle_key: running
                     for running in self._running.values()
@@ -2334,6 +2587,8 @@ class DynamicBundleScheduler:
                             "reason": "already_active",
                             "snapshot_id": decision_snapshot.snapshot_id,
                         })
+                        continue
+                    if lane.task_cid in reconciled:
                         continue
                     scope_owner = running_by_bundle_key.get(lane.bundle_key)
                     if scope_owner is not None:
@@ -2502,6 +2757,7 @@ class DynamicBundleScheduler:
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),
+                    *reconciled.keys(),
                 }
                 projection = coordinator.list_tasks(
                     task_cids=current_task_cids,
@@ -2524,6 +2780,7 @@ class DynamicBundleScheduler:
                 task_projection=projection,
                 launched=launched,
                 reaped=reaped,
+                reconciled=tuple(reconciled),
                 scheduler_state=current_snapshot,
                 decision_snapshot=decision_snapshot,
                 decisions=decisions,

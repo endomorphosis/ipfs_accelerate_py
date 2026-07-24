@@ -165,6 +165,48 @@ def _reopens_blocked_bundle(previous: Mapping[str, Any], current: Mapping[str, A
     return "blocked" in previous_statuses and bool(current_statuses & READY_BUNDLE_TASK_STATUSES)
 
 
+def _bundle_execution_tasks(bundle: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return only members owned by this bundle execution slice.
+
+    Member aliases are receipt authorities, so a later slice must not remap
+    members completed by an earlier slice. Bundles without slice metadata retain
+    the legacy all-member behavior; an explicit empty slice owns no members.
+    """
+
+    tasks = bundle.get("tasks")
+    members = (
+        [item for item in tasks if isinstance(item, Mapping)]
+        if isinstance(tasks, (list, tuple))
+        else []
+    )
+    if (
+        "execution_slice_task_cids" not in bundle
+        and "execution_slice_task_ids" not in bundle
+    ):
+        return members
+
+    def values(raw: Any) -> set[str]:
+        if isinstance(raw, str):
+            items = raw.split(",")
+        elif isinstance(raw, (list, tuple, set)):
+            items = raw
+        elif raw in (None, ""):
+            items = ()
+        else:
+            items = (raw,)
+        return {str(item).strip() for item in items if str(item).strip()}
+
+    selected_cids = values(bundle.get("execution_slice_task_cids"))
+    selected_ids = values(bundle.get("execution_slice_task_ids"))
+    return [
+        item
+        for item in members
+        if str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
+        in selected_cids
+        or str(item.get("task_id") or "").strip() in selected_ids
+    ]
+
+
 def _dependency_task_cids(bundle: Mapping[str, Any]) -> tuple[list[str], dict[str, list[dict[str, Any]]]]:
     """Return normalized prerequisite CIDs and their bounded source provenance.
 
@@ -761,6 +803,38 @@ class LeaseCoordinator:
             if isinstance(item, Mapping)
         ) or str(bundle.get("bundle_key") or adapted["task_cid"])
         bundle_json = json.dumps(dict(bundle), sort_keys=True)
+        all_member_aliases = {
+            str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
+            for item in (
+                bundle.get("tasks", [])
+                if isinstance(bundle.get("tasks"), (list, tuple))
+                else []
+            )
+            if isinstance(item, Mapping)
+            and str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
+        }
+        execution_member_aliases = {
+            str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
+            for item in _bundle_execution_tasks(bundle)
+            if str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
+        }
+        aliases = {canonical_task_cid, task_spec_cid, *execution_member_aliases}
+
+        def sync_aliases() -> None:
+            # Repair databases written before slice-scoped identities without
+            # deleting an alias now owned by a different, completed slice.
+            for alias in sorted(all_member_aliases - execution_member_aliases):
+                self._connection.execute(
+                    "DELETE FROM task_aliases WHERE alias_task_cid=? AND task_cid=?",
+                    (alias, canonical_task_cid),
+                )
+            for alias in sorted(aliases):
+                if alias:
+                    self._connection.execute(
+                        "INSERT OR REPLACE INTO task_aliases VALUES(?,?)",
+                        (alias, canonical_task_cid),
+                    )
+
         with self._lock, self._connection:
             previous_task = self._connection.execute(
                 "SELECT bundle_json FROM tasks WHERE task_cid=?",
@@ -775,6 +849,7 @@ class LeaseCoordinator:
                 and registration_complete is not None
                 and str(previous_task["bundle_json"]) == bundle_json
             ):
+                sync_aliases()
                 adapted["attempt_budget_reset"] = False
                 return adapted
 
@@ -827,19 +902,10 @@ class LeaseCoordinator:
                 attempt_budget_reset = reset.rowcount > 0
             # A dependency DAG names the immutable work-item CIDs while the
             # coordination lease is bundle-scoped.  Aliases bridge those two
-            # identities so the bundle's successful receipt unlocks its tasks.
-            aliases = {canonical_task_cid, task_spec_cid}
-            for item in bundle.get("tasks", []) if isinstance(bundle.get("tasks"), (list, tuple)) else []:
-                if isinstance(item, Mapping):
-                    alias = str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
-                    if alias:
-                        aliases.add(alias)
-            for alias in sorted(aliases):
-                if alias:
-                    self._connection.execute(
-                        "INSERT OR REPLACE INTO task_aliases VALUES(?,?)",
-                        (alias, canonical_task_cid),
-                    )
+            # identities so the slice's successful receipt unlocks only the
+            # members that it executed. Earlier slice aliases must remain
+            # mapped to their completed receipt authorities.
+            sync_aliases()
             self._connection.execute("DELETE FROM task_dependencies WHERE task_cid=?", (canonical_task_cid,))
             for dependency_task_cid in dependency_task_cids:
                 self._connection.execute(

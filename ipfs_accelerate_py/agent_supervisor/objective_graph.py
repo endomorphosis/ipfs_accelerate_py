@@ -3542,7 +3542,12 @@ def critical_path_schedule(
     records: list[TaskScheduleRecord] = []
     for cid, node in graph.nodes.items():
         blockers = sorted(parent for parent in incoming[cid] if parent not in succeeded)
-        claimable = cid not in invalid and node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES and not blockers
+        claimable = (
+            cid not in invalid
+            and cid not in succeeded
+            and node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            and not blockers
+        )
         critical_length = longest_to_finish.get(cid, 0)
         slack = max(0, project_duration - earliest_start.get(cid, 0) - critical_length)
         unlock_value = len(descendants.get(cid, set()))
@@ -5436,7 +5441,11 @@ def _project_task_conflict_graph(
     }
 
 
-def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
+def build_bundle_task_payloads(
+    bundle_index_path: Path,
+    *,
+    merge_receipts: Mapping[str, Any] | Iterable[Mapping[str, Any]] = (),
+) -> list[dict[str, Any]]:
     """Build dependency-aware task-queue payloads and Profile G adapters."""
 
     # Local import avoids making objective scanning depend on coordination
@@ -5480,17 +5489,51 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         for item in bundle_payload.get("tasks", [])
         if isinstance(item, Mapping)
     ]
-    terminal_receipts = {
-        str(task.get("canonical_task_cid") or task.get("task_cid") or task.get("task_id") or ""): {
-            "status": "succeeded"
+    terminal_receipts: list[dict[str, Any]] = [
+        {
+            "canonical_task_cid": str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or task.get("task_id")
+                or ""
+            ),
+            "status": "succeeded",
         }
         for task in flat_tasks
         if str(task.get("status") or "").strip().lower() in SUCCESSFUL_MERGE_RECEIPT_STATUSES
         and str(task.get("canonical_task_cid") or task.get("task_cid") or task.get("task_id") or "")
-    }
+    ]
+    if isinstance(merge_receipts, Mapping):
+        dynamic_receipt_items: Iterable[tuple[str, Any]] = merge_receipts.items()
+    else:
+        dynamic_receipt_items = (("", receipt) for receipt in merge_receipts)
+    for key, raw_receipt in dynamic_receipt_items:
+        receipt = (
+            dict(raw_receipt)
+            if isinstance(raw_receipt, Mapping)
+            else {"status": raw_receipt}
+        )
+        if not any(
+            str(receipt.get(field) or "").strip()
+            for field in ("canonical_task_cid", "task_cid", "task_id")
+        ):
+            receipt["canonical_task_cid"] = str(key)
+        terminal_receipts.append(receipt)
     graph = materialize_task_dependency_dag(
         flat_tasks,
         merge_receipts=terminal_receipts,
+    )
+    receipt_aliases = {cid: cid for cid in graph.nodes}
+    receipt_aliases.update(
+        {
+            node.task_id: cid
+            for cid, node in graph.nodes.items()
+            if node.task_id
+        }
+    )
+    successful_receipt_cids = _successful_merge_receipt_cids(
+        terminal_receipts,
+        receipt_aliases,
     )
     invalid_task_cids = set(graph.invalid_task_cids)
     schedule_by_cid = {item.task_cid: item for item in graph.schedule}
@@ -5504,17 +5547,18 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
     unresolved_incoming = {
         cid: (
             set()
-            if node.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            if (
+                cid in successful_receipt_cids
+                or node.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            )
             else set(schedule_by_cid.get(cid).blocking_task_cids if cid in schedule_by_cid else incoming.get(cid, set()))
         )
         for cid, node in graph.nodes.items()
     }
 
     member_bundle: dict[str, str] = {}
-    bundle_identity_cids: dict[str, str] = {}
     for bundle_payload in task_payloads:
         bundle_key = str(bundle_payload["bundle_key"])
-        bundle_identity_cids[bundle_key] = canonical_bundle_identity(bundle_payload).canonical_task_cid
         annotated_tasks: list[dict[str, Any]] = []
         for raw_task in bundle_payload.get("tasks", []):
             if not isinstance(raw_task, Mapping):
@@ -5561,7 +5605,10 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
             cid
             for cid in member_cids
             if cid in graph.nodes
-            and graph.nodes[cid].status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            and (
+                cid in successful_receipt_cids
+                or graph.nodes[cid].status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
+            )
         }
         active_member_cids = {
             cid
@@ -5605,13 +5652,23 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
                 if cid in graph.nodes and graph.nodes[cid].task_id
             ]
 
-        dependency_bundle_keys = {
-            member_bundle[source]
-            for target in execution_member_cids
-            for source in unresolved_incoming.get(target, set())
-            if source in member_bundle and member_bundle[source] != bundle_key
-        }
-        dependency_task_cids = sorted(bundle_identity_cids[key] for key in dependency_bundle_keys)
+        execution_slice_task_cids = ordered(execution_member_cids)
+        execution_slice_task_ids = task_ids(execution_member_cids)
+        execution_task_cid = canonical_bundle_identity(
+            {
+                **bundle_payload,
+                "execution_slice_task_cids": execution_slice_task_cids,
+                "execution_slice_task_ids": execution_slice_task_ids,
+            }
+        ).canonical_task_cid
+        dependency_task_cids = sorted(
+            {
+                source
+                for target in execution_member_cids
+                for source in unresolved_incoming.get(target, set())
+                if source in member_bundle and member_bundle[source] != bundle_key
+            }
+        )
         member_schedule = [
             schedule_by_cid[cid]
             for cid in ordered(execution_member_cids)
@@ -5663,7 +5720,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
             )
         external_blockers = sorted(
             {
-                bundle_identity_cids[member_bundle[source]]
+                source
                 for target in execution_member_cids
                 for source in unresolved_incoming.get(target, set())
                 if source in member_bundle and member_bundle[source] != bundle_key
@@ -5695,7 +5752,7 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
         )
         bundle_payload.update(
             {
-                "canonical_task_cid": bundle_identity_cids[bundle_key],
+                "canonical_task_cid": execution_task_cid,
                 "dependency_task_cids": dependency_task_cids,
                 "blocking_task_cids": external_blockers,
                 "claimable": claimable,
@@ -5709,8 +5766,8 @@ def build_bundle_task_payloads(bundle_index_path: Path) -> list[dict[str, Any]]:
                 "active_member_task_ids": task_ids(active_member_cids),
                 "blocked_member_task_cids": ordered(blocked_member_cids),
                 "blocked_member_task_ids": task_ids(blocked_member_cids),
-                "execution_slice_task_cids": ordered(execution_member_cids),
-                "execution_slice_task_ids": task_ids(execution_member_cids),
+                "execution_slice_task_cids": execution_slice_task_cids,
+                "execution_slice_task_ids": execution_slice_task_ids,
                 "critical_path_length": max((item.critical_path_length for item in member_schedule), default=1),
                 "slack": min((item.slack for item in member_schedule), default=0),
                 "downstream_unlock_value": max(

@@ -101,6 +101,101 @@ def test_claimability_evidence_is_bounded_and_aliases_resolve_to_bundle_receipts
         assert coordinator.claimability(dependent_task["task_cid"])["claimable"] is True
 
 
+def test_serial_bundle_slices_preserve_completed_member_receipt_aliases(
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    coordination_path = tmp_path / "leases.duckdb"
+    first_member_cid = profile_g_cid({"member": "SERIAL-A"})
+    second_member_cid = profile_g_cid({"member": "SERIAL-B"})
+    tasks = [
+        {
+            "task_id": "SERIAL-A",
+            "title": "Implement the foundation",
+            "canonical_task_cid": first_member_cid,
+        },
+        {
+            "task_id": "SERIAL-B",
+            "title": "Implement the dependent protocol",
+            "canonical_task_cid": second_member_cid,
+        },
+    ]
+    bundle = {
+        "bundle_key": "objective/serial",
+        "source_todo": "serial.todo.md",
+        "tasks": tasks,
+    }
+    first_slice = {
+        **bundle,
+        "execution_slice_task_cids": [first_member_cid],
+        "execution_slice_task_ids": ["SERIAL-A"],
+    }
+    second_slice = {
+        **bundle,
+        "execution_slice_task_cids": [second_member_cid],
+        "execution_slice_task_ids": ["SERIAL-B"],
+    }
+    terminal_slice = {
+        **bundle,
+        "execution_slice_task_cids": [],
+        "execution_slice_task_ids": [],
+    }
+
+    with LeaseCoordinator(coordination_path) as coordinator:
+        first = coordinator.register_bundle(first_slice, created_at_ms=1)
+        first_grant = coordinator.claim(
+            first["task_cid"],
+            "did:web:first-slice.example",
+        )
+        coordinator.receipt(
+            first_grant,
+            status="succeeded",
+            output={"merge_commit": "first"},
+        )
+
+        # Simulate the pre-slice implementation, which aliased every bundle
+        # member to the first slice. Identical registration must repair this
+        # state even though its task payload is otherwise a no-op.
+        legacy = duckdb.connect(str(coordination_path))
+        try:
+            legacy.execute(
+                "INSERT OR REPLACE INTO task_aliases VALUES(?,?)",
+                (second_member_cid, first["task_cid"]),
+            )
+        finally:
+            legacy.close()
+        coordinator.register_bundle(first_slice, created_at_ms=1)
+        with pytest.raises(KeyError):
+            coordinator.claimability(second_member_cid)
+
+        second = coordinator.register_bundle(second_slice, created_at_ms=2)
+        coordinator.register_bundle(terminal_slice, created_at_ms=3)
+
+        assert first["task_cid"] != second["task_cid"]
+        assert coordinator.claimability(first_member_cid)["task_cid"] == first["task_cid"]
+        assert coordinator.claimability(second_member_cid)["task_cid"] == second["task_cid"]
+
+        depends_on_first = coordinator.register_bundle(
+            {
+                **_named_bundle("AFTER-FIRST"),
+                "dependency_task_cids": [first_member_cid],
+            },
+            created_at_ms=4,
+        )
+        depends_on_second = coordinator.register_bundle(
+            {
+                **_named_bundle("AFTER-SECOND"),
+                "dependency_task_cids": [second_member_cid],
+            },
+            created_at_ms=4,
+        )
+
+        assert coordinator.claimability(depends_on_first["task_cid"])["claimable"] is True
+        second_readiness = coordinator.claimability(depends_on_second["task_cid"])
+        assert second_readiness["claimable"] is False
+        assert second_readiness["blocked_dependency_task_cids"] == [second_member_cid]
+
+
 def test_dependency_cycle_produces_repair_evidence_instead_of_claiming(tmp_path: Path) -> None:
     first = _named_bundle("CYCLE-A")
     second = _named_bundle("CYCLE-B")

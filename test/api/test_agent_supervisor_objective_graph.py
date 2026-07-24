@@ -1522,20 +1522,30 @@ def test_bundle_payload_admits_only_the_dependency_closed_ready_member_slice(tmp
     assert mixed["ready_member_task_ids"] == []
     assert mixed["deferred_member_task_ids"] == ["B"]
     assert mixed["execution_slice_task_ids"] == ["B"]
-    assert mixed["dependency_task_cids"] == [
-        waiting["objective/prerequisite"]["canonical_task_cid"]
-    ]
+    assert mixed["dependency_task_cids"] == ["cid-x"]
 
-    payload["bundles"]["objective/prerequisite"]["tasks"][0]["status"] = "completed"
-    index_path.write_text(json.dumps(payload), encoding="utf-8")
     replenished = {
-        item["bundle_key"]: item for item in build_bundle_task_payloads(index_path)
+        item["bundle_key"]: item
+        for item in build_bundle_task_payloads(
+            index_path,
+            merge_receipts={
+                "cid-x": {
+                    "status": "succeeded",
+                    "receipt_cid": "receipt-x",
+                }
+            },
+        )
     }
     mixed = replenished["objective/mixed"]
     assert mixed["claimable"] is True
     assert mixed["ready_member_task_ids"] == ["B"]
     assert mixed["execution_slice_task_ids"] == ["B"]
     assert mixed["dependency_task_cids"] == []
+    prerequisite = replenished["objective/prerequisite"]
+    assert prerequisite["completed_member_task_ids"] == ["X"]
+    assert prerequisite["ready_member_task_ids"] == []
+    assert prerequisite["execution_slice_task_ids"] == []
+    assert prerequisite["tasks"][0]["claimable"] is False
 
 
 def test_active_member_fences_bundle_slice_from_duplicate_launch(tmp_path):
@@ -1689,7 +1699,9 @@ def test_task_dependency_dag_requires_successful_merge_receipts_and_scores_criti
         merge_receipts={"cid-a": {"status": "succeeded", "receipt_cid": "receipt-a"}},
         now=10_000,
     )
-    assert next(item for item in unblocked.schedule if item.task_cid == "cid-b").claimable is True
+    unblocked_schedule = {item.task_cid: item for item in unblocked.schedule}
+    assert unblocked_schedule["cid-a"].claimable is False
+    assert unblocked_schedule["cid-b"].claimable is True
 
 
 def test_task_dependency_dag_bounds_cycle_and_missing_dependency_repairs_without_deadlock():
