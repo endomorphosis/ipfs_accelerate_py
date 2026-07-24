@@ -6,9 +6,12 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+    StructuredPlanRouterConfig,
     TaskProposalRouterConfig,
     TaskProposalRouterCliConfig,
     TaskProposalRoutePaths,
+    build_analysis_proposal_prompt,
+    build_structured_plan_prompt,
     build_task_proposal_route_paths,
     build_task_proposal_prompt_builder,
     build_task_proposal_prompt,
@@ -237,7 +240,18 @@ def test_task_proposal_router_cli_config_factory_reuses_prompt_builder(tmp_path:
         task_board_option="--todo-path",
         hidden_task_board_options=("--task-board-path",),
         bootstrap=lambda: bootstrap_calls.append("called"),
+        context_max_input_tokens=3_000,
+        context_reserved_tool_tokens=100,
+        provider_context_window=4_000,
+        provider_max_input_tokens=2_500,
+        context_tokenizer=lambda text: max(1, len(text) // 12),
     )
+
+    assert config.router_config.context_max_input_tokens == 3_000
+    assert config.router_config.context_reserved_tool_tokens == 100
+    assert config.router_config.provider_context_window == 4_000
+    assert config.router_config.provider_max_input_tokens == 2_500
+    assert config.router_config.context_tokenizer is not None
 
     result = run_task_proposal_router_cli(
         config,
@@ -254,7 +268,7 @@ def test_task_proposal_router_cli_config_factory_reuses_prompt_builder(tmp_path:
     assert not artifacts.exists()
 
 
-def test_task_proposal_prompt_builder_applies_plan_limit():
+def test_task_proposal_prompt_builder_never_partially_slices_plan_artifact():
     class Task:
         task_id = "TST-001"
         title = "Ready task"
@@ -273,6 +287,147 @@ def test_task_proposal_prompt_builder_applies_plan_limit():
 
     prompt = prompt_builder(Task(), "abcdef")
 
-    assert "abcd" in prompt
-    assert "abcdef" not in prompt
+    assert "abcdef" in prompt
     assert "validation commands" in prompt
+
+
+def test_live_router_compiles_oversized_roadmap_without_character_slicing(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    board = repo / "tasks.todo.md"
+    plan = repo / "plan.md"
+    board.write_text(
+        "\n".join(
+            [
+                "# Tasks",
+                "",
+                "## TST-001 Budgeted task",
+                "- Status: ready",
+                "- Priority: P0",
+                "- Track: runtime",
+                "- Depends on:",
+                "- Outputs: runtime.py",
+                "- Validation: pytest tests/test_runtime.py",
+                "- Acceptance: Preserve this exact acceptance criterion.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan.write_text(
+        "\n\n".join(
+            f"Roadmap section {index}: " + ("bounded evidence " * 80)
+            for index in range(30)
+        ),
+        encoding="utf-8",
+    )
+    builder_plan_values: list[str] = []
+
+    def prompt_builder(task: object, plan_text: str) -> str:
+        builder_plan_values.append(plan_text)
+        return build_task_proposal_prompt(
+            task=task,
+            plan_text=plan_text,
+            intro="Build a strict proposal.",
+            requested_outputs=("exact files to edit", "validation commands"),
+        )
+
+    config = TaskProposalRouterConfig(
+        repo_root=repo,
+        task_board_path=board,
+        task_header_prefix="## TST-",
+        plan_path=plan,
+        artifact_dir=repo / "artifacts",
+        prompt_builder=prompt_builder,
+        plan_char_limit=32,
+        context_max_input_tokens=1_600,
+        context_tokenizer=lambda text: max(
+            1, len(text.encode("utf-8")) // 12
+        ),
+    )
+
+    first = run_task_proposal_router(config)
+    second = run_task_proposal_router(config)
+
+    assert builder_plan_values == ["", ""]
+    assert first["context_capsule_id"] == second["context_capsule_id"]
+    assert first["context_input_tokens"] <= first["context_input_limit"]
+    assert first["context_truncated"] is True
+    decisions = first["context_decisions"]
+    assert decisions
+    assert any(
+        item["included"] and item["reason"] == "ranked_fit"
+        for item in decisions
+    )
+    assert any(
+        not item["included"] and item["reason"] == "token_budget"
+        for item in decisions
+    )
+    assert first["context_estimator"] == "provider_tokenizer"
+
+
+def test_all_planning_prompts_are_canonical_capsules_without_ast_bodies(
+    tmp_path: Path,
+):
+    config = StructuredPlanRouterConfig(
+        repo_root=tmp_path,
+        branch_count=2,
+        max_new_tokens=300,
+        context_max_input_tokens=4_000,
+        context_reserved_tool_tokens=100,
+        provider_context_window=4_500,
+        context_tokenizer=lambda text: max(
+            1, len(text.encode("utf-8")) // 12
+        ),
+    )
+
+    structured = json.loads(
+        build_structured_plan_prompt(
+            {
+                "task_id": "TST-PLAN",
+                "acceptance": "Keep this criterion immutable.",
+                "outputs": ["planner.py"],
+            },
+            branch_count=2,
+            config=config,
+        )
+    )
+    analysis_prompt = build_analysis_proposal_prompt(
+        {"task_id": "TST-ANALYZE", "predicted_files": ["analyzer.py"]},
+        objective_terms=("coverage-a", "coverage-b"),
+        ast_evidence={
+            "healthy": True,
+            "covered_terms": ["coverage-a"],
+            "records": [{"body": "FULL_AST_BODY_MUST_NOT_APPEAR"}],
+            "recursive_graph": {"body": "RECURSIVE_GRAPH_MUST_NOT_APPEAR"},
+            "analysis_pipeline": {
+                "result_id": "analysis-result",
+                "ranked_evidence_references": [
+                    {"body": "DECODED_ARTIFACT_MUST_NOT_APPEAR"}
+                ],
+            },
+        },
+        proposal_count=2,
+        config=config,
+    )
+    analysis = json.loads(analysis_prompt)
+
+    assert structured["stage"] == analysis["stage"] == "planning"
+    assert structured["goal"]["subgoal"]["acceptance"] == (
+        "Keep this criterion immutable."
+    )
+    assert structured["acceptance"]["exact_branch_count"] == 2
+    assert analysis["goal"]["objective_terms"] == [
+        "coverage-a",
+        "coverage-b",
+    ]
+    assert analysis["acceptance"]["proposal_count"] == {
+        "maximum": 2,
+        "minimum": 1,
+    }
+    assert analysis["evidence"]
+    assert "FULL_AST_BODY_MUST_NOT_APPEAR" not in analysis_prompt
+    assert "RECURSIVE_GRAPH_MUST_NOT_APPEAR" not in analysis_prompt
+    assert "DECODED_ARTIFACT_MUST_NOT_APPEAR" not in analysis_prompt

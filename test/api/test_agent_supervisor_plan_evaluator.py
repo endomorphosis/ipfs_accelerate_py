@@ -617,6 +617,11 @@ def test_router_generates_multiple_validated_branches_for_an_eligible_subgoal() 
     assert result.used_fallback is False
     assert not result.router_error
     assert result.raw_response
+    receipt = result.to_dict()
+    assert "raw_response" not in receipt
+    assert "direct" not in json.dumps(receipt["response_sha256"])
+    assert receipt["response_bytes"] > 0
+    assert receipt["response_sha256"].startswith("sha256:")
 
 
 def test_router_failure_uses_deterministic_fallback_without_blocking_ready_work() -> None:

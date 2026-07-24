@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -14,6 +15,13 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .context_compiler import (
+    ContextCompileResult,
+    ContextCompiler,
+    build_text_context_references,
+    render_context_capsule,
+)
+from .context_contracts import ContextBudget
 from .plan_evaluator import (
     ANALYSIS_PROPOSAL_JSON_SCHEMA,
     PLAN_BRANCH_JSON_SCHEMA,
@@ -36,6 +44,8 @@ TASK_PROPOSAL_MAX_RESPONSE_BYTES = 256_000
 TASK_PROPOSAL_MAX_JSON_DEPTH = 12
 TASK_PROPOSAL_MAX_FILES = 256
 TASK_PROPOSAL_OPERATIONS = frozenset({"add", "modify", "delete", "rename"})
+DEFAULT_PLANNING_CONTEXT_INPUT_TOKENS = 12_288
+DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE = 512
 
 TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -131,6 +141,11 @@ class TaskProposalRouterConfig:
     no_open_task_message: str = "No open task found."
     open_statuses: Sequence[str] = field(default_factory=lambda: DEFAULT_OPEN_TASK_STATUSES)
     plan_char_limit: int = 40000
+    context_max_input_tokens: int | None = None
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE
+    provider_context_window: int | None = None
+    provider_max_input_tokens: int | None = None
+    context_tokenizer: Any = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -193,6 +208,11 @@ class TaskProposalRouteSpec:
     runtime_env_var: str = "PYTHONPATH"
     open_statuses: Sequence[str] = field(default_factory=lambda: DEFAULT_OPEN_TASK_STATUSES)
     plan_char_limit: int = 40000
+    context_max_input_tokens: int | None = None
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE
+    provider_context_window: int | None = None
+    provider_max_input_tokens: int | None = None
+    context_tokenizer: Any = field(default=None, repr=False, compare=False)
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER"
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL"
     default_model: str = "gpt-5.3-codex-spark"
@@ -269,7 +289,13 @@ def build_task_proposal_prompt(
     requested_outputs: Sequence[str],
     plan_char_limit: int = 40000,
 ) -> str:
-    """Build a standard proposal prompt with project-specific framing."""
+    """Build project-specific framing without selecting roadmap evidence.
+
+    ``plan_char_limit`` is retained as a compatibility hint for router
+    configuration.  The live router translates it into a token budget; this
+    formatter deliberately keeps the supplied artifact complete so it never
+    creates an unaudited partial roadmap.
+    """
 
     output_lines = [f"{index}. {item}" for index, item in enumerate(requested_outputs, start=1)]
     return "\n".join(
@@ -280,7 +306,7 @@ def build_task_proposal_prompt(
             *task_metadata_lines(task),
             "",
             "Roadmap context:",
-            plan_text[: max(0, plan_char_limit)],
+            plan_text,
             "",
             "Return a concise implementation proposal with:",
             *output_lines,
@@ -341,6 +367,11 @@ def build_task_proposal_router_cli_config(
     bootstrap: BootstrapCallback | None = None,
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -364,6 +395,11 @@ def build_task_proposal_router_cli_config(
             no_open_task_message=no_open_task_message,
             open_statuses=open_statuses,
             plan_char_limit=plan_char_limit,
+            context_max_input_tokens=context_max_input_tokens,
+            context_reserved_tool_tokens=context_reserved_tool_tokens,
+            provider_context_window=provider_context_window,
+            provider_max_input_tokens=provider_max_input_tokens,
+            context_tokenizer=context_tokenizer,
         ),
         description=description,
         task_id_help=task_id_help,
@@ -398,6 +434,11 @@ def run_configured_task_proposal_router_cli(
     bootstrap: BootstrapCallback | None = None,
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -424,6 +465,11 @@ def run_configured_task_proposal_router_cli(
             bootstrap=bootstrap,
             open_statuses=open_statuses,
             plan_char_limit=plan_char_limit,
+            context_max_input_tokens=context_max_input_tokens,
+            context_reserved_tool_tokens=context_reserved_tool_tokens,
+            provider_context_window=provider_context_window,
+            provider_max_input_tokens=provider_max_input_tokens,
+            context_tokenizer=context_tokenizer,
             provider_env=provider_env,
             model_env=model_env,
             default_model=default_model,
@@ -464,6 +510,11 @@ def build_configured_task_proposal_router_runner(
     bootstrap: BootstrapCallback | None = None,
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -490,6 +541,11 @@ def build_configured_task_proposal_router_runner(
             bootstrap=bootstrap,
             open_statuses=open_statuses,
             plan_char_limit=plan_char_limit,
+            context_max_input_tokens=context_max_input_tokens,
+            context_reserved_tool_tokens=context_reserved_tool_tokens,
+            provider_context_window=provider_context_window,
+            provider_max_input_tokens=provider_max_input_tokens,
+            context_tokenizer=context_tokenizer,
             provider_env=provider_env,
             model_env=model_env,
             default_model=default_model,
@@ -521,6 +577,11 @@ def build_repo_task_proposal_router_runner(
     runtime_env_var: str = "PYTHONPATH",
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -558,6 +619,11 @@ def build_repo_task_proposal_router_runner(
         bootstrap=effective_bootstrap,
         open_statuses=open_statuses,
         plan_char_limit=plan_char_limit,
+        context_max_input_tokens=context_max_input_tokens,
+        context_reserved_tool_tokens=context_reserved_tool_tokens,
+        provider_context_window=provider_context_window,
+        provider_max_input_tokens=provider_max_input_tokens,
+        context_tokenizer=context_tokenizer,
         provider_env=provider_env,
         model_env=model_env,
         default_model=default_model,
@@ -596,6 +662,11 @@ def build_repo_task_proposal_route_runner(
     runtime_env_var: str = "PYTHONPATH",
     open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
     plan_char_limit: int = 40000,
+    context_max_input_tokens: int | None = None,
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE,
+    provider_context_window: int | None = None,
+    provider_max_input_tokens: int | None = None,
+    context_tokenizer: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -655,6 +726,11 @@ def build_repo_task_proposal_route_runner(
         runtime_env_var=runtime_env_var,
         open_statuses=open_statuses,
         plan_char_limit=plan_char_limit,
+        context_max_input_tokens=context_max_input_tokens,
+        context_reserved_tool_tokens=context_reserved_tool_tokens,
+        provider_context_window=provider_context_window,
+        provider_max_input_tokens=provider_max_input_tokens,
+        context_tokenizer=context_tokenizer,
         provider_env=provider_env,
         model_env=model_env,
         default_model=default_model,
@@ -700,6 +776,11 @@ def build_repo_task_proposal_route_runner_from_spec(
         runtime_env_var=route_spec.runtime_env_var,
         open_statuses=route_spec.open_statuses,
         plan_char_limit=route_spec.plan_char_limit,
+        context_max_input_tokens=route_spec.context_max_input_tokens,
+        context_reserved_tool_tokens=route_spec.context_reserved_tool_tokens,
+        provider_context_window=route_spec.provider_context_window,
+        provider_max_input_tokens=route_spec.provider_max_input_tokens,
+        context_tokenizer=route_spec.context_tokenizer,
         provider_env=route_spec.provider_env,
         model_env=route_spec.model_env,
         default_model=route_spec.default_model,
@@ -748,11 +829,163 @@ def _router_tree_id(repo_root: Path, *, fallback_material: str) -> str:
     value = str(result.stdout or "").strip()
     if result.returncode == 0 and value:
         return value
-    import hashlib
-
     return "tree:sha256:" + hashlib.sha256(
         fallback_material.encode("utf-8")
     ).hexdigest()
+
+
+def _router_repository_id(repo_root: Path) -> str:
+    """Return a stable, non-secret repository identity for context receipts."""
+
+    resolved = repo_root.resolve()
+    git_dir = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"],
+        cwd=resolved,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    raw_git_dir = str(git_dir.stdout or "").strip()
+    material = str(
+        (
+            Path(raw_git_dir)
+            if Path(raw_git_dir).is_absolute()
+            else resolved / raw_git_dir
+        ).resolve()
+    ) if git_dir.returncode == 0 and raw_git_dir else str(resolved)
+    return "repository:sha256:" + hashlib.sha256(
+        material.encode("utf-8")
+    ).hexdigest()
+
+
+def _context_artifact_path(path: Path, repo_root: Path) -> str:
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        # Absolute paths are never copied into provider references or receipts.
+        return ""
+
+
+def compile_task_proposal_context(
+    config: TaskProposalRouterConfig,
+    *,
+    task: object,
+    plan_text: str,
+    repository_tree_id: str,
+    context_id: str,
+    max_new_tokens: int,
+) -> ContextCompileResult:
+    """Compile one immutable planning core plus ranked roadmap chunks."""
+
+    if not isinstance(plan_text, str):
+        raise TaskProposalRouterError("plan text must be a string")
+    task_id = _task_value(task, "task_id")
+    allowed_paths = tuple(
+        sorted(
+            {
+                _normalize_proposal_path(path)
+                for path in _task_values(task, "outputs")
+            }
+        )
+    )
+    validation_commands = tuple(_task_values(task, "validation"))
+    # Existing wrappers own their domain-specific wording.  Calling them with
+    # no roadmap material captures that policy without allowing the wrapper's
+    # historical character slice to select evidence.
+    planning_policy = config.prompt_builder(task, "").strip()
+    policy_payload = {
+        "instructions": planning_policy,
+        "response_contract": TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
+        "schema": TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA,
+    }
+    policy_revision = "sha256:" + hashlib.sha256(
+        json.dumps(
+            policy_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    repository_id = _router_repository_id(config.repo_root)
+    roadmap_references = build_text_context_references(
+        plan_text,
+        reference_prefix="roadmap",
+        kind="roadmap-chunk",
+        path=_context_artifact_path(config.plan_path, config.repo_root),
+        repository_id=repository_id,
+        tree_id=repository_tree_id,
+        priority=100,
+        chunk_bytes=6_144,
+        coverage_ids=(task_id,),
+    )
+    configured_input = config.context_max_input_tokens
+    if configured_input is None:
+        legacy_hint = max(0, int(config.plan_char_limit))
+        configured_input = max(
+            2_048,
+            min(
+                DEFAULT_PLANNING_CONTEXT_INPUT_TOKENS,
+                (legacy_hint + 3) // 4 + 2_048,
+            ),
+        )
+    budget = ContextBudget(
+        max_input_tokens=max(1, int(configured_input)),
+        reserved_output_tokens=max(0, int(max_new_tokens)),
+        reserved_tool_tokens=max(
+            0, int(config.context_reserved_tool_tokens)
+        ),
+        max_items=256,
+        max_item_bytes=16_384,
+        max_serialized_bytes=262_144,
+        max_depth=12,
+        max_text_bytes=8_192,
+    )
+    compiler = ContextCompiler(
+        budget,
+        tokenizer=config.context_tokenizer,
+        provider_context_window=config.provider_context_window,
+        provider_max_input_tokens=config.provider_max_input_tokens,
+    )
+    return compiler.compile(
+        repository_id=repository_id,
+        tree_id=repository_tree_id,
+        objective_id=task_id,
+        objective_revision=context_id,
+        policy_id="policy:task-proposal-router",
+        policy_revision=policy_revision,
+        caller="agent-supervisor:task-proposal-router",
+        stage="planning",
+        goal={
+            "task_id": task_id,
+            "title": _task_value(task, "title"),
+            "priority": _task_value(task, "priority"),
+            "track": _task_value(task, "track"),
+            "planning_policy": planning_policy,
+        },
+        authority={
+            "repository_tree_id": repository_tree_id,
+            "context_id": context_id,
+            "allowed_paths": allowed_paths,
+            "validation_commands": validation_commands,
+            "validation_commands_only": True,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        },
+        scope={
+            "depends_on": tuple(_task_values(task, "depends_on")),
+            "outputs": allowed_paths,
+        },
+        acceptance={
+            "criteria": _task_value(task, "acceptance") or "none listed",
+            "validation_commands": validation_commands,
+            "response_rules": (
+                "Return exactly one JSON object with no Markdown or extra fields.",
+                "Files and validation commands must exactly match frozen authority.",
+            ),
+            "response_schema": TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA,
+        },
+        evidence=roadmap_references,
+    )
 
 
 def _proposal_json_depth(value: Any, depth: int = 0) -> int:
@@ -1046,8 +1279,7 @@ def run_task_proposal_router(
         open_statuses=config.open_statuses,
         no_open_task_message=config.no_open_task_message,
     )
-    plan_text = config.plan_path.read_text(encoding="utf-8")[: max(0, int(config.plan_char_limit))]
-    base_prompt = config.prompt_builder(selected, plan_text)
+    plan_text = config.plan_path.read_text(encoding="utf-8")
     context_id = str(
         getattr(selected, "canonical_task_cid", "")
         or getattr(selected, "canonical_task_key", "")
@@ -1063,11 +1295,15 @@ def run_task_proposal_router(
             )
         ),
     )
-    prompt = base_prompt + build_task_implementation_proposal_contract(
+    compiled_context = compile_task_proposal_context(
+        config,
         task=selected,
+        plan_text=plan_text,
         repository_tree_id=repository_tree_id,
         context_id=context_id,
+        max_new_tokens=max_new_tokens,
     )
+    prompt = render_context_capsule(compiled_context.capsule)
     payload: dict[str, object] = {
         "task_id": _task_value(selected, "task_id"),
         "title": _task_value(selected, "title"),
@@ -1076,6 +1312,17 @@ def run_task_proposal_router(
         "prompt_chars": len(prompt),
         "generate": bool(generate),
         "llm_router_importable": True,
+        "context_capsule_id": compiled_context.capsule.capsule_id,
+        "context_input_tokens": compiled_context.capsule.input_tokens,
+        "context_input_limit": compiled_context.receipt.effective_input_limit,
+        "context_truncated": compiled_context.capsule.truncated,
+        "context_estimator": compiled_context.receipt.estimator_name,
+        "context_estimator_error_bps": (
+            compiled_context.receipt.estimator_error_bps
+        ),
+        "context_decisions": [
+            decision.to_dict() for decision in compiled_context.decisions
+        ],
     }
     if not generate:
         return payload
@@ -1092,6 +1339,16 @@ def run_task_proposal_router(
     raw_proposal = call_llm_router(prompt, invocation)
     config.artifact_dir.mkdir(parents=True, exist_ok=True)
     task_name = (_task_value(selected, "task_id") or "task").lower()
+    context_receipt_path = (
+        config.artifact_dir / f"{task_name}-context-receipt.json"
+    )
+    context_receipt_path.write_text(
+        compiled_context.receipt.to_json() + "\n",
+        encoding="utf-8",
+    )
+    payload["context_receipt"] = _artifact_relative_path(
+        context_receipt_path, config.repo_root
+    )
     try:
         proposal = parse_task_implementation_proposal(
             raw_proposal,
@@ -1224,6 +1481,11 @@ class StructuredPlanRouterConfig:
     timeout_seconds: int = 300
     allow_local_fallback: bool = False
     temperature: float = 0.1
+    context_max_input_tokens: int = DEFAULT_PLANNING_CONTEXT_INPUT_TOKENS
+    context_reserved_tool_tokens: int = DEFAULT_PLANNING_CONTEXT_TOOL_RESERVE
+    provider_context_window: int | None = None
+    provider_max_input_tokens: int | None = None
+    context_tokenizer: Any = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if int(self.branch_count) < 1:
@@ -1232,6 +1494,10 @@ class StructuredPlanRouterConfig:
             raise ValueError("max_new_tokens must be at least 1")
         if int(self.timeout_seconds) < 1:
             raise ValueError("timeout_seconds must be at least 1")
+        if int(self.context_max_input_tokens) < 1:
+            raise ValueError("context_max_input_tokens must be at least 1")
+        if int(self.context_reserved_tool_tokens) < 0:
+            raise ValueError("context_reserved_tool_tokens must be non-negative")
         if not 0.0 <= float(self.temperature) <= 2.0:
             raise ValueError("temperature must be in [0, 2]")
 
@@ -1255,12 +1521,22 @@ class PlanRoutingResult:
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         encode = PlanBranch.to_profile_g_dict if profile_g else PlanBranch.to_dict
+        response_bytes = (
+            self.raw_response.encode("utf-8", errors="surrogatepass")
+            if self.raw_response is not None
+            else b""
+        )
         return {
             "branches": [encode(branch) for branch in self.branches],
             "used_fallback": self.used_fallback,
             "router_succeeded": self.router_succeeded,
             "router_error": self.router_error,
-            "raw_response": self.raw_response,
+            "response_bytes": len(response_bytes),
+            "response_sha256": (
+                "sha256:" + hashlib.sha256(response_bytes).hexdigest()
+                if self.raw_response is not None
+                else ""
+            ),
         }
 
     def to_profile_g_dict(self) -> dict[str, Any]:
@@ -1297,6 +1573,10 @@ class AnalysisProposalRoutingResult:
         return self.evaluation.rejected
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
+        response_bytes = tuple(
+            item.encode("utf-8", errors="surrogatepass")
+            for item in self.raw_responses
+        )
         return {
             "proposals": [item.to_dict(profile_g=profile_g) for item in self.proposals],
             "evaluation": self.evaluation.to_dict(profile_g=profile_g),
@@ -1312,7 +1592,12 @@ class AnalysisProposalRoutingResult:
             "router_retries": self.router_retries,
             "reserved_tokens": self.reserved_tokens,
             "router_error": self.router_error,
-            "raw_responses": list(self.raw_responses),
+            "response_count": len(response_bytes),
+            "response_bytes": sum(len(item) for item in response_bytes),
+            "response_sha256": [
+                "sha256:" + hashlib.sha256(item).hexdigest()
+                for item in response_bytes
+            ],
             "router_call_timestamps": list(self.router_call_timestamps),
             "limit_reason": self.limit_reason,
         }
@@ -1375,29 +1660,158 @@ def _jsonable_subgoal(subgoal: object) -> dict[str, Any]:
     return {name: source[name] for name in names if name in source}
 
 
-def build_structured_plan_prompt(subgoal: object, branch_count: int = 3) -> str:
-    """Build the strict JSON request used for objective branch generation."""
+def _planning_capsule_prompt(
+    *,
+    config: StructuredPlanRouterConfig,
+    objective_id: str,
+    goal: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    scope: Mapping[str, Any],
+    acceptance: Mapping[str, Any],
+    evidence: Sequence[Any] = (),
+    evidence_text: str = "",
+    evidence_kind: str = "planning-evidence",
+    evidence_coverage_ids: Sequence[str] = (),
+    policy_id: str,
+) -> str:
+    """Compile the canonical provider input shared by planning routes."""
+
+    repository_id = _router_repository_id(config.repo_root)
+    invariant = {
+        "goal": goal,
+        "authority": authority,
+        "scope": scope,
+        "acceptance": acceptance,
+    }
+    revision = "sha256:" + hashlib.sha256(
+        json.dumps(
+            invariant,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    tree_id = _router_tree_id(
+        config.repo_root,
+        fallback_material=revision,
+    )
+    policy_revision = "sha256:" + hashlib.sha256(
+        json.dumps(
+            {
+                "authority": authority,
+                "acceptance": acceptance,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    ranked_evidence = tuple(evidence)
+    if evidence_text:
+        ranked_evidence = (
+            *ranked_evidence,
+            *build_text_context_references(
+                evidence_text,
+                reference_prefix="planning-evidence",
+                kind=evidence_kind,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                priority=100,
+                chunk_bytes=6_144,
+                coverage_ids=evidence_coverage_ids,
+            ),
+        )
+    compiler = ContextCompiler(
+        ContextBudget(
+            max_input_tokens=int(config.context_max_input_tokens),
+            reserved_output_tokens=int(config.max_new_tokens),
+            reserved_tool_tokens=int(config.context_reserved_tool_tokens),
+            max_items=256,
+            max_item_bytes=16_384,
+            max_serialized_bytes=262_144,
+            max_depth=12,
+            max_text_bytes=8_192,
+        ),
+        tokenizer=config.context_tokenizer,
+        provider_context_window=config.provider_context_window,
+        provider_max_input_tokens=config.provider_max_input_tokens,
+    )
+    result = compiler.compile(
+        repository_id=repository_id,
+        tree_id=tree_id,
+        objective_id=objective_id,
+        objective_revision=revision,
+        policy_id=policy_id,
+        policy_revision=policy_revision,
+        caller="agent-supervisor:structured-planning-router",
+        stage="planning",
+        goal=goal,
+        authority=authority,
+        scope=scope,
+        acceptance=acceptance,
+        evidence=ranked_evidence,
+    )
+    return render_context_capsule(result.capsule)
+
+
+def build_structured_plan_prompt(
+    subgoal: object,
+    branch_count: int = 3,
+    *,
+    config: StructuredPlanRouterConfig | None = None,
+) -> str:
+    """Build a token-budgeted strict request for objective branch generation."""
 
     count = int(branch_count)
     if count < 1:
         raise ValueError("branch_count must be at least 1")
     context = _jsonable_subgoal(subgoal)
-    return "\n".join(
-        (
-            "Generate alternative implementation plan branches for this scheduler subgoal.",
-            f"Return exactly {count} materially distinct branches.",
-            "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
-            "All files must be repository-relative. source must be 'llm_router'.",
-            "estimated_cost is a non-negative relative work estimate; risk and "
-            "expected_objective_delta are numbers from 0 through 1.",
-            "validation_proof must state the observable success evidence expected from the commands.",
-            "",
-            "Subgoal:",
-            json.dumps(context, indent=2, sort_keys=True, default=str),
-            "",
-            "Required JSON schema:",
-            json.dumps(PLAN_BRANCH_JSON_SCHEMA, indent=2, sort_keys=True),
-        )
+    objective_id = str(
+        context.get("task_id")
+        or context.get("goal_id")
+        or context.get("subgoal_cid")
+        or "structured-plan"
+    )
+    instructions = (
+        "Generate alternative implementation plan branches for this scheduler subgoal.",
+        f"Return exactly {count} materially distinct branches.",
+        "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
+        "All files must be repository-relative and source must be 'llm_router'.",
+        "estimated_cost is non-negative; risk and expected_objective_delta are in [0, 1].",
+        "validation_proof states observable success evidence expected from the commands.",
+    )
+    return _planning_capsule_prompt(
+        config=config or StructuredPlanRouterConfig(branch_count=count),
+        objective_id=objective_id,
+        policy_id="policy:structured-plan-branch-router",
+        goal={
+            "subgoal": context,
+            "requested_branch_count": count,
+        },
+        authority={
+            "instructions": instructions,
+            "provider_source": "llm_router",
+            "repository_relative_files_only": True,
+            "completion_authoritative": False,
+        },
+        scope={
+            "predicted_files": context.get(
+                "predicted_files", context.get("outputs", ())
+            ),
+            "predicted_symbols": context.get(
+                "predicted_symbols", context.get("ast_symbols", ())
+            ),
+            "dependencies": context.get(
+                "dependencies", context.get("depends_on", ())
+            ),
+        },
+        acceptance={
+            "response_schema": PLAN_BRANCH_JSON_SCHEMA,
+            "exact_branch_count": count,
+            "strict_json_only": True,
+        },
     )
 
 
@@ -1496,14 +1910,74 @@ def parse_structured_plan_branches(text: str) -> tuple[PlanBranch, ...]:
     return branches
 
 
+def _compact_ast_planning_evidence(
+    ast_evidence: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Allowlist bounded AST coverage facts without source or graph bodies."""
+
+    if not isinstance(ast_evidence, Mapping):
+        return {}
+    scalar_fields = (
+        "analyzer_version",
+        "healthy",
+        "complete",
+        "expected_file_count",
+        "scanned_file_count",
+        "parsed_file_count",
+        "reused_file_count",
+        "parse_failure_count",
+        "source_bytes",
+        "ast_truncated_count",
+        "confidence",
+        "novelty",
+        "limit_reason",
+        "elapsed_seconds",
+    )
+    sequence_fields = ("covered_terms", "uncovered_terms", "objective_terms")
+    compact: dict[str, Any] = {
+        name: ast_evidence[name]
+        for name in scalar_fields
+        if isinstance(ast_evidence.get(name), (str, int, float, bool))
+    }
+    for name in sequence_fields:
+        raw = ast_evidence.get(name)
+        if isinstance(raw, Sequence) and not isinstance(
+            raw, (str, bytes, bytearray)
+        ):
+            compact[name] = [
+                str(item) for item in raw if isinstance(item, (str, int, float))
+            ]
+    pipeline = ast_evidence.get("analysis_pipeline")
+    if isinstance(pipeline, Mapping):
+        pipeline_fields = (
+            "status",
+            "reason_code",
+            "error_type",
+            "result_id",
+            "cache_status",
+            "cache_lookup_status",
+            "ast_index_id",
+            "retrieval_response_id",
+            "safe_for_completion_reasoning",
+            "nomination_only",
+        )
+        compact["analysis_pipeline"] = {
+            name: pipeline[name]
+            for name in pipeline_fields
+            if isinstance(pipeline.get(name), (str, int, float, bool))
+        }
+    return compact
+
+
 def build_analysis_proposal_prompt(
     context: object,
     *,
     objective_terms: Sequence[str],
     ast_evidence: Mapping[str, Any] | None = None,
     proposal_count: int = 3,
+    config: StructuredPlanRouterConfig | None = None,
 ) -> str:
-    """Build the schema-constrained goal-directed analysis request."""
+    """Build a token-budgeted, schema-constrained analysis request."""
 
     count = int(proposal_count)
     if count < 1:
@@ -1511,31 +1985,66 @@ def build_analysis_proposal_prompt(
     terms = tuple(dict.fromkeys(str(item).strip() for item in objective_terms if str(item).strip()))
     if not terms:
         raise ValueError("objective_terms must contain at least one term")
-    ast_payload = dict(ast_evidence or {})
-    # Full source/AST blobs can exceed router context and are unnecessary for
-    # the planning boundary. The AST scanner supplies compact coverage fields.
-    ast_payload.pop("records", None)
-    return "\n".join(
-        (
-            "Propose bounded implementation tasks for objective terms that remain uncovered after static and AST analysis.",
-            f"Return between 1 and {count} materially distinct proposals.",
-            "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
-            "Each nested branch source must be 'llm_router'. Confidence and novelty are numbers from 0 through 1.",
-            "Only list objective_terms from the supplied terms and include repository-relative predicted files.",
-            "Do not claim that the objective or repository is exhausted.",
-            "",
-            "Objective terms:",
-            json.dumps(list(terms), indent=2, sort_keys=True),
-            "",
-            "Planning context:",
-            json.dumps(_jsonable_subgoal(context), indent=2, sort_keys=True, default=str),
-            "",
-            "Exhaustive AST coverage summary:",
-            json.dumps(ast_payload, indent=2, sort_keys=True, default=str),
-            "",
-            "Required JSON schema:",
-            json.dumps(ANALYSIS_PROPOSAL_JSON_SCHEMA, indent=2, sort_keys=True),
+    planning_context = _jsonable_subgoal(context)
+    objective_id = str(
+        planning_context.get("task_id")
+        or planning_context.get("goal_id")
+        or planning_context.get("subgoal_cid")
+        or "analysis-proposal"
+    )
+    instructions = (
+        "Propose bounded tasks for objective terms still uncovered after static and AST analysis.",
+        f"Return between 1 and {count} materially distinct proposals.",
+        "Return JSON only: no Markdown fence, prose, comments, NaN, or Infinity.",
+        "Each nested branch source must be 'llm_router'; confidence and novelty are in [0, 1].",
+        "Use only supplied objective terms and repository-relative predicted files.",
+        "Do not claim that the objective or repository is exhausted.",
+    )
+    compact_ast = _compact_ast_planning_evidence(ast_evidence)
+    evidence_text = (
+        json.dumps(
+            compact_ast,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
         )
+        if compact_ast
+        else ""
+    )
+    return _planning_capsule_prompt(
+        config=config or StructuredPlanRouterConfig(branch_count=count),
+        objective_id=objective_id,
+        policy_id="policy:analysis-proposal-router",
+        goal={
+            "planning_context": planning_context,
+            "objective_terms": terms,
+            "maximum_proposal_count": count,
+        },
+        authority={
+            "instructions": instructions,
+            "provider_source": "llm_router",
+            "repository_relative_files_only": True,
+            "completion_authoritative": False,
+            "exhaustion_authoritative": False,
+        },
+        scope={
+            "objective_terms": terms,
+            "predicted_files": planning_context.get(
+                "predicted_files", planning_context.get("outputs", ())
+            ),
+            "predicted_symbols": planning_context.get(
+                "predicted_symbols",
+                planning_context.get("ast_symbols", ()),
+            ),
+        },
+        acceptance={
+            "response_schema": ANALYSIS_PROPOSAL_JSON_SCHEMA,
+            "proposal_count": {"minimum": 1, "maximum": count},
+            "strict_json_only": True,
+        },
+        evidence_text=evidence_text,
+        evidence_kind="ast-coverage-summary",
+        evidence_coverage_ids=terms,
     )
 
 
@@ -1678,7 +2187,11 @@ def generate_structured_plan_branches(
     )
     if count < 1:
         raise ValueError("branch_count must be at least 1")
-    prompt = build_structured_plan_prompt(subgoal, count)
+    prompt = build_structured_plan_prompt(
+        subgoal,
+        count,
+        config=resolved_config,
+    )
     raw_response: str | None = None
     try:
         raw_response = (
@@ -1827,6 +2340,7 @@ def generate_analysis_proposals(
         objective_terms=objective_terms,
         ast_evidence=ast_evidence,
         proposal_count=desired,
+        config=resolved,
     )
     now_epoch = float(time.time() if now is None else now)
     historical_timestamps: list[float] = []

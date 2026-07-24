@@ -279,6 +279,155 @@ def _as_expansion(reference: ContextReference) -> ContextReference:
     )
 
 
+def _utf8_chunks(value: str, *, max_bytes: int) -> tuple[str, ...]:
+    """Split text at semantic boundaries without dropping or corrupting bytes.
+
+    The boundary is a resource limit rather than a prompt slice: every chunk
+    is content addressed and can independently become selected evidence or an
+    on-demand expansion handle.  Newlines are preferred, then other
+    whitespace, with a Unicode code-point boundary as the final fallback.
+    """
+
+    if not isinstance(value, str):
+        raise ContextCompilationError("text must be a string")
+    if "\x00" in value:
+        raise ContextCompilationError("text must not contain NUL")
+    text = value.strip()
+    limit = _integer(max_bytes, "max_bytes", minimum=1)
+    if not text:
+        return ()
+    chunks: list[str] = []
+    remaining = text
+    while len(remaining.encode("utf-8")) > limit:
+        if len(remaining[0].encode("utf-8")) > limit:
+            raise ContextCompilationError(
+                "max_bytes is smaller than one UTF-8 code point"
+            )
+        low = 1
+        high = len(remaining)
+        while low < high:
+            midpoint = (low + high + 1) // 2
+            if len(remaining[:midpoint].encode("utf-8")) <= limit:
+                low = midpoint
+            else:
+                high = midpoint - 1
+        boundary = low
+        prefix = remaining[:boundary]
+        semantic = prefix.rfind("\n")
+        if semantic < 1:
+            semantic = max(prefix.rfind(" "), prefix.rfind("\t"))
+        if semantic >= 1:
+            boundary = semantic + 1
+        chunk = remaining[:boundary].strip()
+        if chunk:
+            chunks.append(chunk)
+        remaining = remaining[boundary:].lstrip()
+    if remaining.strip():
+        chunks.append(remaining.strip())
+    return tuple(chunks)
+
+
+def build_text_context_references(
+    text: str,
+    *,
+    reference_prefix: str,
+    kind: str,
+    path: str = "",
+    repository_id: str = "",
+    tree_id: str = "",
+    tier: ContextTier | str = ContextTier.EVIDENCE,
+    priority: int = 0,
+    required: bool = False,
+    chunk_bytes: int = 6_144,
+    coverage_ids: Iterable[str] = (),
+) -> tuple[ContextReference, ...]:
+    """Build deterministic, independently expandable references for text.
+
+    Bodies are carried only in bounded reference summaries sent to a provider.
+    Receipts retain reference identities and selection decisions, never these
+    summaries.  The digest of the complete artifact binds every chunk without
+    copying the full artifact or a recursive structure into receipt metadata.
+    """
+
+    prefix = _text(reference_prefix, "reference_prefix")
+    reference_kind = _text(kind, "kind")
+    if isinstance(priority, bool) or not isinstance(priority, int):
+        raise ContextCompilationError("priority must be an integer")
+    try:
+        selected_tier = (
+            tier if isinstance(tier, ContextTier) else ContextTier(str(tier))
+        )
+    except ValueError as exc:
+        raise ContextCompilationError("tier is not a supported context tier") from exc
+    if required:
+        selected_tier = ContextTier.INVARIANT
+    chunks = _utf8_chunks(text, max_bytes=chunk_bytes)
+    if len(chunks) > MAX_DECISIONS:
+        raise ContextCompilationError(
+            "text artifact exceeds its context reference-count limit"
+        )
+    artifact_content_id = _canonical_digest({"text": text})
+    normalized_coverage = _strings(
+        coverage_ids, "coverage_ids", maximum=MAX_DECISIONS
+    )
+    result: list[ContextReference] = []
+    for index, chunk in enumerate(chunks):
+        chunk_content_id = "sha256:" + hashlib.sha256(
+            chunk.encode("utf-8")
+        ).hexdigest()
+        result.append(
+            ContextReference(
+                reference_id=f"{prefix}:{index + 1:04d}",
+                kind=reference_kind,
+                tier=selected_tier,
+                referenced_content_id=chunk_content_id,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                path=path,
+                summary=chunk,
+                byte_count=len(chunk.encode("utf-8")),
+                metadata={
+                    "required": bool(required),
+                    "priority": priority,
+                    "chunk_index": index,
+                    "chunk_count": len(chunks),
+                    "artifact_content_id": artifact_content_id,
+                    "coverage_ids": normalized_coverage,
+                },
+            )
+        )
+    return tuple(result)
+
+
+def render_context_capsule(capsule: ContextCapsule) -> str:
+    """Render exactly the canonical provider input measured by the compiler.
+
+    Supervisor-only receipts, omission diagnostics, and deferred bodies are
+    intentionally absent.  This keeps the dispatched prompt deterministic and
+    makes its token count independently reproducible from the capsule.
+    """
+
+    if not isinstance(capsule, ContextCapsule):
+        raise ContextCompilationError("capsule must be a ContextCapsule")
+    return canonical_context_json_bytes(
+        context_provider_input_payload(
+            repository_id=capsule.repository_id,
+            tree_id=capsule.tree_id,
+            objective_id=capsule.objective_id,
+            objective_revision=capsule.objective_revision,
+            policy_id=capsule.policy_id,
+            policy_revision=capsule.policy_revision,
+            caller=capsule.caller,
+            stage=capsule.stage,
+            goal=capsule.goal,
+            authority=capsule.authority,
+            scope=capsule.scope,
+            acceptance=capsule.acceptance,
+            evidence=capsule.evidence,
+        )
+    ).decode("utf-8")
+
+
 @dataclass(frozen=True)
 class EvidenceSelectionDecision:
     """Deterministic selection audit entry for one evidence reference."""
@@ -1720,19 +1869,34 @@ class ContextCompiler:
         references = _coerce_references(evidence)
         required = tuple(item for item in references if item.required)
         optional = tuple(item for item in references if not item.required)
+        normalized = ContextCapsule(
+            repository_id=repository_id,
+            tree_id=tree_id,
+            objective_id=objective_id,
+            objective_revision=objective_revision,
+            policy_id=policy_id,
+            policy_revision=policy_revision,
+            caller=caller,
+            stage=stage,
+            budget=self.effective_budget,
+            goal=goal,
+            authority=authority,
+            scope=scope,
+            acceptance=acceptance,
+        )
         input_arguments = {
-            "repository_id": repository_id,
-            "tree_id": tree_id,
-            "objective_id": objective_id,
-            "objective_revision": objective_revision,
-            "policy_id": policy_id,
-            "policy_revision": policy_revision,
-            "caller": caller,
-            "stage": stage,
-            "goal": goal,
-            "authority": authority,
-            "scope": scope,
-            "acceptance": acceptance,
+            "repository_id": normalized.repository_id,
+            "tree_id": normalized.tree_id,
+            "objective_id": normalized.objective_id,
+            "objective_revision": normalized.objective_revision,
+            "policy_id": normalized.policy_id,
+            "policy_revision": normalized.policy_revision,
+            "caller": normalized.caller,
+            "stage": normalized.stage,
+            "goal": normalized.goal,
+            "authority": normalized.authority,
+            "scope": normalized.scope,
+            "acceptance": normalized.acceptance,
         }
         base_tokens = self._provider_input_tokens(
             **input_arguments,
@@ -2299,12 +2463,14 @@ __all__ = [
     "InclusionReason",
     "RequiredContextBudgetEvidence",
     "RequiredContextOverflowError",
+    "build_text_context_references",
     "build_context_capsule",
     "build_context_delta",
     "compile_context_capsule",
     "compile_context_delta",
     "context_provider_input_payload",
     "expand_context",
+    "render_context_capsule",
     "reconstruct_context",
     "reconstruct_context_capsule",
 ]

@@ -17,7 +17,9 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     InclusionReason,
     RequiredContextBudgetEvidence,
     RequiredContextOverflowError,
+    build_text_context_references,
     compile_context_capsule,
+    render_context_capsule,
 )
 from ipfs_accelerate_py.agent_supervisor.context_contracts import (
     ContextBudget,
@@ -507,3 +509,113 @@ def test_top_level_compiler_wrapper_preserves_contract_and_rejects_bad_inputs() 
                 replace(_reference("duplicate", 10), summary="different"),
             )
         )
+
+
+def test_text_artifact_chunks_are_complete_content_addressed_expansion_units() -> None:
+    text = "\n\n".join(
+        f"Section {index}: " + ("evidence " * 12)
+        for index in range(8)
+    )
+    references = build_text_context_references(
+        text,
+        reference_prefix="roadmap",
+        kind="roadmap-chunk",
+        path="docs/plan.md",
+        repository_id=BINDING["repository_id"],
+        tree_id=BINDING["tree_id"],
+        chunk_bytes=96,
+        priority=25,
+    )
+
+    assert len(references) > 2
+    assert all(item.path == "docs/plan.md" for item in references)
+    assert all(item.byte_count <= 96 for item in references)
+    assert all(
+        item.referenced_content_id
+        == "sha256:"
+        + hashlib.sha256(item.summary.encode("utf-8")).hexdigest()
+        for item in references
+    )
+    assert {
+        item.metadata["artifact_content_id"] for item in references
+    } == {references[0].metadata["artifact_content_id"]}
+
+    result = _compile(
+        budget=_budget(190),
+        evidence=references,
+        provider_context_window=240,
+    )
+    assert result.capsule.expansion_references
+    assert all(
+        item.tier is ContextTier.EXPANSION
+        for item in result.capsule.expansion_references
+    )
+    assert all(
+        item.path == "docs/plan.md"
+        for item in result.capsule.expansion_references
+    )
+    receipt = result.receipt.to_json()
+    assert "Section 0" not in receipt
+    assert "evidence evidence" not in receipt
+    assert all(
+        decision.reason
+        in {
+            InclusionReason.RANKED_FIT,
+            ExclusionReason.TOKEN_BUDGET,
+        }
+        for decision in result.decisions
+    )
+
+
+def test_canonical_capsule_renderer_emits_only_measured_provider_input() -> None:
+    reference = _reference(
+        "selected",
+        12,
+        priority=5,
+        summary="bounded selected evidence",
+    )
+    compiler = ContextCompiler(
+        _budget(),
+        tokenizer=_tokenizer,
+        provider_context_window=270,
+    )
+    result = compiler.compile(
+        **BINDING,
+        **CORE,
+        evidence=(reference,),
+    )
+
+    rendered = render_context_capsule(result.capsule)
+    payload = json.loads(rendered)
+
+    assert payload["goal"] == CORE["goal"]
+    assert payload["authority"] == CORE["authority"]
+    assert payload["scope"] == CORE["scope"]
+    assert payload["acceptance"] == CORE["acceptance"]
+    assert payload["evidence"][0]["reference_id"] == "selected"
+    assert "receipt_id" not in payload
+    assert "decisions" not in payload
+    assert "omissions" not in payload
+    assert compiler.estimator.estimate(rendered) <= result.capsule.input_tokens
+
+
+def test_compiler_normalizes_core_before_measuring_provider_input() -> None:
+    compiler = ContextCompiler(
+        _budget(),
+        provider_context_window=270,
+    )
+    result = compiler.compile(
+        **BINDING,
+        goal={"summary": " goal with caller whitespace \n"},
+        authority={"mode": " proposal "},
+        scope={"paths": ["src/context.py"]},
+        acceptance={"criteria": [" complete exactly \n"]},
+    )
+
+    assert result.capsule.goal["summary"] == "goal with caller whitespace"
+    assert result.capsule.authority["mode"] == "proposal"
+    assert result.capsule.acceptance["criteria"] == ("complete exactly",)
+    assert (
+        compiler.estimate_capsule_input(result.capsule)
+        == result.capsule.input_tokens
+    )
