@@ -176,11 +176,21 @@ def _is_agent_worker_command(cmdline: str) -> bool:
     executable = os.path.basename(tokens[0]).lower()
     lowered = [token.lower() for token in tokens]
     if executable == "codex":
-        return len(lowered) > 1 and lowered[1] == "exec"
+        # Codex accepts global safety/configuration options before the
+        # subcommand (for example ``codex --ask-for-approval never
+        # --disable browser_use -c web_search=\"disabled\" exec ...``).
+        # Requiring ``exec`` to be argv[1] makes the watchdog miss those
+        # workers and recycle a healthy implementation lane.
+        return "exec" in lowered[1:]
     if executable == "copilot":
         return True
     if executable == "node" and len(tokens) > 1:
-        return os.path.basename(tokens[1]).lower() == "copilot"
+        wrapped_executable = os.path.basename(tokens[1]).lower()
+        if wrapped_executable == "copilot":
+            return True
+        if wrapped_executable == "codex":
+            return "exec" in lowered[2:]
+        return False
     if executable in {"bash", "sh"} and len(tokens) > 1:
         return os.path.basename(tokens[1]).lower() == "llm_merge_resolver_fallback.sh"
     if executable == "llm_router_merge_resolver.py":

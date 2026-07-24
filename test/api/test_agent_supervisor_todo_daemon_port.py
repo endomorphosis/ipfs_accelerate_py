@@ -7777,6 +7777,48 @@ def test_supervisor_worker_watchdog_detects_active_merge_resolver_without_worker
     assert status["stalled_without_active_worker"] is True
 
 
+@pytest.mark.parametrize(
+    "cmdline",
+    [
+        (
+            "/usr/local/bin/codex --ask-for-approval never --disable apps "
+            "--disable browser_use -c 'web_search=\"disabled\"' exec "
+            "--ephemeral --sandbox workspace-write -"
+        ),
+        (
+            "node /usr/local/bin/codex --ask-for-approval never --disable apps "
+            "-c 'web_search=\"disabled\"' exec --ephemeral "
+            "--sandbox workspace-write -"
+        ),
+    ],
+)
+def test_supervisor_worker_watchdog_recognizes_codex_exec_with_global_options(
+    monkeypatch,
+    cmdline,
+):
+    now = datetime.now(timezone.utc)
+    old = now - timedelta(minutes=10)
+    monkeypatch.setattr(
+        todo_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [{"pid": 4319, "cmdline": cmdline}],
+    )
+
+    status = worktree_phase_worker_status(
+        {
+            "active_phase": "implementing",
+            "active_phase_started_at": old.isoformat(),
+        },
+        daemon_pid=1234,
+        threshold_seconds=60,
+        now=now,
+    )
+
+    assert status["active_worker_count"] == 1
+    assert status["active_worker_pids"] == [4319]
+    assert status["stalled_without_active_worker"] is False
+
+
 def test_supervisor_worker_watchdog_recognizes_llm_router_merge_resolver(monkeypatch):
     now = datetime.now(timezone.utc)
     old = now - timedelta(minutes=10)
