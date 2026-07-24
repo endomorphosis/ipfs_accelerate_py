@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from contextlib import redirect_stdout
@@ -28,10 +29,93 @@ PromptBuilder = Callable[[object, str], str]
 BootstrapCallback = Callable[[], None]
 DEFAULT_OPEN_TASK_STATUSES = ("to" "do", "ready")
 DEFAULT_TASK_PROPOSAL_TEST_OUTPUT = "tests and fixtures needed"
+TASK_IMPLEMENTATION_PROPOSAL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-implementation-proposal@1"
+)
+TASK_PROPOSAL_MAX_RESPONSE_BYTES = 256_000
+TASK_PROPOSAL_MAX_JSON_DEPTH = 12
+TASK_PROPOSAL_MAX_FILES = 256
+TASK_PROPOSAL_OPERATIONS = frozenset({"add", "modify", "delete", "rename"})
+
+TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "schema",
+        "proposal_version",
+        "task_id",
+        "repository_tree_id",
+        "context_id",
+        "files",
+        "validation_plan",
+        "risks",
+        "authority_claims",
+    ],
+    "properties": {
+        "schema": {"const": TASK_IMPLEMENTATION_PROPOSAL_SCHEMA},
+        "proposal_version": {"const": "1"},
+        "task_id": {"type": "string", "minLength": 1},
+        "repository_tree_id": {"type": "string", "minLength": 1},
+        "context_id": {"type": "string", "minLength": 1},
+        "files": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": TASK_PROPOSAL_MAX_FILES,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["path", "operation", "rationale_references"],
+                "properties": {
+                    "path": {"type": "string", "minLength": 1},
+                    "operation": {
+                        "enum": sorted(TASK_PROPOSAL_OPERATIONS)
+                    },
+                    "rationale_references": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+        },
+        "validation_plan": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+        },
+        "risks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1},
+        },
+        "authority_claims": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "allowed_paths",
+                "validation_commands_only",
+                "proof_authoritative",
+                "completion_authoritative",
+            ],
+            "properties": {
+                "allowed_paths": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "validation_commands_only": {"const": True},
+                "proof_authoritative": {"const": False},
+                "completion_authoritative": {"const": False},
+            },
+        },
+    },
+}
 
 
 class TaskProposalRouterError(RuntimeError):
     """Raised when a task proposal cannot be prepared."""
+
+    def __init__(self, message: str, *, reason_code: str = "proposal_router_error") -> None:
+        super().__init__(message)
+        self.reason_code = str(reason_code or "proposal_router_error")
 
 
 @dataclass(frozen=True)
@@ -653,6 +737,292 @@ def _artifact_relative_path(output_path: Path, repo_root: Path) -> str:
         return str(output_path)
 
 
+def _router_tree_id(repo_root: Path, *, fallback_material: str) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    value = str(result.stdout or "").strip()
+    if result.returncode == 0 and value:
+        return value
+    import hashlib
+
+    return "tree:sha256:" + hashlib.sha256(
+        fallback_material.encode("utf-8")
+    ).hexdigest()
+
+
+def _proposal_json_depth(value: Any, depth: int = 0) -> int:
+    if isinstance(value, Mapping):
+        return max(
+            (depth, *(_proposal_json_depth(item, depth + 1) for item in value.values()))
+        )
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return max(
+            (depth, *(_proposal_json_depth(item, depth + 1) for item in value))
+        )
+    return depth
+
+
+def _normalize_proposal_path(value: Any) -> str:
+    path = str(value or "").strip().replace("\\", "/")
+    while path.startswith("./"):
+        path = path[2:]
+    if (
+        not path
+        or path.startswith("/")
+        or "\0" in path
+        or ".." in Path(path).parts
+        or path == ".git"
+        or path.startswith(".git/")
+    ):
+        raise TaskProposalRouterError(
+            "proposal contains an unsafe path",
+            reason_code="unsafe_path",
+        )
+    return path
+
+
+def parse_task_implementation_proposal(
+    text: str,
+    *,
+    expected_task_id: str,
+    expected_repository_tree_id: str,
+    expected_context_id: str,
+    allowed_paths: Sequence[str],
+    allowed_validation_commands: Sequence[str],
+) -> dict[str, Any]:
+    """Parse and fail-close one provider proposal before artifact persistence."""
+
+    if not isinstance(text, str) or not text.strip():
+        raise TaskProposalRouterError(
+            "llm_router returned an empty proposal",
+            reason_code="invalid_schema",
+        )
+    if len(text.encode("utf-8", errors="surrogatepass")) > TASK_PROPOSAL_MAX_RESPONSE_BYTES:
+        raise TaskProposalRouterError(
+            "llm_router proposal exceeds the output bound",
+            reason_code="output_too_large",
+        )
+
+    def reject_duplicate_fields(
+        pairs: list[tuple[str, Any]],
+    ) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate JSON field {key!r}")
+            value[key] = item
+        return value
+
+    try:
+        payload = json.loads(
+            text,
+            object_pairs_hook=reject_duplicate_fields,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON number {value}")
+            ),
+        )
+    except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+        raise TaskProposalRouterError(
+            "llm_router proposal is not strict JSON",
+            reason_code="invalid_schema",
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise TaskProposalRouterError(
+            "llm_router proposal must be a JSON object",
+            reason_code="invalid_schema",
+        )
+    if _proposal_json_depth(payload) > TASK_PROPOSAL_MAX_JSON_DEPTH:
+        raise TaskProposalRouterError(
+            "llm_router proposal exceeds the nesting bound",
+            reason_code="output_too_deep",
+        )
+    required = set(TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA["required"])
+    fields = {str(key) for key in payload}
+    if fields != required:
+        reason = "missing_required_field" if required - fields else "invalid_schema"
+        raise TaskProposalRouterError(
+            "llm_router proposal fields do not match the versioned schema",
+            reason_code=reason,
+        )
+    if (
+        payload.get("schema") != TASK_IMPLEMENTATION_PROPOSAL_SCHEMA
+        or str(payload.get("proposal_version") or "") != "1"
+    ):
+        raise TaskProposalRouterError(
+            "unsupported task implementation proposal version",
+            reason_code="invalid_schema",
+        )
+    for field_name, expected, reason_code in (
+        ("task_id", expected_task_id, "authority_mismatch"),
+        (
+            "repository_tree_id",
+            expected_repository_tree_id,
+            "stale_baseline",
+        ),
+        ("context_id", expected_context_id, "context_mismatch"),
+    ):
+        if str(payload.get(field_name) or "") != str(expected):
+            raise TaskProposalRouterError(
+                f"proposal {field_name} does not match frozen authority",
+                reason_code=reason_code,
+            )
+
+    normalized_allowed = tuple(
+        sorted({_normalize_proposal_path(path) for path in allowed_paths})
+    )
+    raw_files = payload.get("files")
+    if (
+        not isinstance(raw_files, list)
+        or not raw_files
+        or len(raw_files) > TASK_PROPOSAL_MAX_FILES
+    ):
+        raise TaskProposalRouterError(
+            "proposal files must be a bounded non-empty array",
+            reason_code="missing_required_field",
+        )
+    normalized_files: list[dict[str, Any]] = []
+    for item in raw_files:
+        if not isinstance(item, Mapping) or set(item) != {
+            "path",
+            "operation",
+            "rationale_references",
+        }:
+            raise TaskProposalRouterError(
+                "proposal file operations do not match the schema",
+                reason_code="invalid_schema",
+            )
+        path = _normalize_proposal_path(item.get("path"))
+        operation = str(item.get("operation") or "").strip().lower()
+        references = item.get("rationale_references")
+        if operation not in TASK_PROPOSAL_OPERATIONS:
+            raise TaskProposalRouterError(
+                "proposal contains an unsupported file operation",
+                reason_code="operation_mismatch",
+            )
+        if operation == "delete" and (
+            path.startswith(("test/", "tests/"))
+            or path.rsplit("/", 1)[-1].startswith("test_")
+        ):
+            raise TaskProposalRouterError(
+                "proposal cannot delete tests",
+                reason_code="test_deletion_forbidden",
+            )
+        if (
+            not isinstance(references, list)
+            or not references
+            or any(not isinstance(value, str) or not value.strip() for value in references)
+        ):
+            raise TaskProposalRouterError(
+                "every file operation requires rationale references",
+                reason_code="missing_required_field",
+            )
+        normalized_files.append(
+            {
+                "path": path,
+                "operation": operation,
+                "rationale_references": sorted(
+                    {str(value).strip() for value in references}
+                ),
+            }
+        )
+    proposed_paths = tuple(sorted(item["path"] for item in normalized_files))
+    if len(set(proposed_paths)) != len(proposed_paths) or proposed_paths != normalized_allowed:
+        raise TaskProposalRouterError(
+            "proposal files do not exactly match task-owned outputs",
+            reason_code="path_outside_scope",
+        )
+
+    validation_plan = payload.get("validation_plan")
+    if (
+        not isinstance(validation_plan, list)
+        or any(not isinstance(value, str) or not value.strip() for value in validation_plan)
+        or tuple(str(value).strip() for value in validation_plan)
+        != tuple(str(value).strip() for value in allowed_validation_commands)
+    ):
+        raise TaskProposalRouterError(
+            "proposal validation plan differs from task authority",
+            reason_code="command_forbidden",
+        )
+    risks = payload.get("risks")
+    if (
+        not isinstance(risks, list)
+        or not risks
+        or any(not isinstance(value, str) or not value.strip() for value in risks)
+    ):
+        raise TaskProposalRouterError(
+            "proposal requires a bounded risk assessment",
+            reason_code="missing_required_field",
+        )
+    claims = payload.get("authority_claims")
+    expected_claims = {
+        "allowed_paths": list(normalized_allowed),
+        "validation_commands_only": True,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    if not isinstance(claims, Mapping) or dict(claims) != expected_claims:
+        raise TaskProposalRouterError(
+            "proposal contains detached or forged authority claims",
+            reason_code="forged_authority_claim",
+        )
+    return {
+        "schema": TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
+        "proposal_version": "1",
+        "task_id": expected_task_id,
+        "repository_tree_id": expected_repository_tree_id,
+        "context_id": expected_context_id,
+        "files": sorted(normalized_files, key=lambda item: item["path"]),
+        "validation_plan": list(allowed_validation_commands),
+        "risks": [str(value).strip() for value in risks],
+        "authority_claims": expected_claims,
+    }
+
+
+def build_task_implementation_proposal_contract(
+    *,
+    task: object,
+    repository_tree_id: str,
+    context_id: str,
+) -> str:
+    allowed_paths = tuple(
+        sorted({_normalize_proposal_path(path) for path in _task_values(task, "outputs")})
+    )
+    authority = {
+        "task_id": _task_value(task, "task_id"),
+        "repository_tree_id": repository_tree_id,
+        "context_id": context_id,
+        "allowed_paths": allowed_paths,
+        "validation_commands": _task_values(task, "validation"),
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    return "\n".join(
+        (
+            "",
+            "Strict proposal envelope:",
+            "Return exactly one JSON object. Do not return Markdown, prose, comments, shell wrappers, or extra fields.",
+            "Files must exactly equal the frozen allowed_paths. Every file needs an operation and rationale references.",
+            "validation_plan must exactly equal the frozen validation commands; do not invent or combine commands.",
+            "Authority claims must repeat allowed_paths, set validation_commands_only=true, and set proof_authoritative=false and completion_authoritative=false.",
+            "Frozen authority:",
+            json.dumps(authority, indent=2, sort_keys=True),
+            "Required JSON schema:",
+            json.dumps(
+                TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA,
+                indent=2,
+                sort_keys=True,
+            ),
+        )
+    )
+
+
 def run_task_proposal_router(
     config: TaskProposalRouterConfig,
     *,
@@ -677,7 +1047,27 @@ def run_task_proposal_router(
         no_open_task_message=config.no_open_task_message,
     )
     plan_text = config.plan_path.read_text(encoding="utf-8")[: max(0, int(config.plan_char_limit))]
-    prompt = config.prompt_builder(selected, plan_text)
+    base_prompt = config.prompt_builder(selected, plan_text)
+    context_id = str(
+        getattr(selected, "canonical_task_cid", "")
+        or getattr(selected, "canonical_task_key", "")
+        or _task_value(selected, "task_id")
+    ).strip()
+    repository_tree_id = _router_tree_id(
+        config.repo_root,
+        fallback_material="\0".join(
+            (
+                _task_value(selected, "task_id"),
+                context_id,
+                plan_text,
+            )
+        ),
+    )
+    prompt = base_prompt + build_task_implementation_proposal_contract(
+        task=selected,
+        repository_tree_id=repository_tree_id,
+        context_id=context_id,
+    )
     payload: dict[str, object] = {
         "task_id": _task_value(selected, "task_id"),
         "title": _task_value(selected, "title"),
@@ -699,12 +1089,57 @@ def run_task_proposal_router(
         max_new_tokens=int(max_new_tokens),
         reject_effective_provider_name=None if allow_local_fallback else "local_hf",
     )
-    proposal = call_llm_router(prompt, invocation)
+    raw_proposal = call_llm_router(prompt, invocation)
     config.artifact_dir.mkdir(parents=True, exist_ok=True)
     task_name = (_task_value(selected, "task_id") or "task").lower()
-    output_path = config.artifact_dir / f"{task_name}-proposal.md"
-    output_path.write_text(proposal, encoding="utf-8")
+    try:
+        proposal = parse_task_implementation_proposal(
+            raw_proposal,
+            expected_task_id=_task_value(selected, "task_id"),
+            expected_repository_tree_id=repository_tree_id,
+            expected_context_id=context_id,
+            allowed_paths=_task_values(selected, "outputs"),
+            allowed_validation_commands=_task_values(selected, "validation"),
+        )
+    except TaskProposalRouterError as exc:
+        rejection_path = (
+            config.artifact_dir / f"{task_name}-proposal-rejection.json"
+        )
+        rejection_path.write_text(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "task-proposal-rejection@1"
+                    ),
+                    "accepted": False,
+                    "task_id": _task_value(selected, "task_id"),
+                    "repository_tree_id": repository_tree_id,
+                    "context_id": context_id,
+                    "reason_codes": [exc.reason_code],
+                    "proof_authoritative": False,
+                    "completion_authoritative": False,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        raise TaskProposalRouterError(
+            f"{exc}; compact rejection: "
+            f"{_artifact_relative_path(rejection_path, config.repo_root)}",
+            reason_code=exc.reason_code,
+        ) from exc
+    output_path = config.artifact_dir / f"{task_name}-proposal.json"
+    output_path.write_text(
+        json.dumps(proposal, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     payload["artifact"] = _artifact_relative_path(output_path, config.repo_root)
+    payload["proposal_schema"] = TASK_IMPLEMENTATION_PROPOSAL_SCHEMA
+    payload["repository_tree_id"] = repository_tree_id
+    payload["context_id"] = context_id
     return payload
 
 
