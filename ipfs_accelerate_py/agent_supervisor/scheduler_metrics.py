@@ -33,6 +33,11 @@ GOAL_COMPLETION_DIAGNOSTICS_SCHEMA_VERSION = 1
 GOAL_COMPLETION_DIAGNOSTICS_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.goal-completion-diagnostics@1"
 )
+PROOF_ROLLOUT_QUERY_SCHEMA_VERSION = 1
+PROOF_ROLLOUT_QUERY_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.proof-rollout-query@1"
+)
+MAX_PROOF_ROLLOUT_QUERY_ROWS = 128
 SCHEDULER_PHASES = (
     "ready",
     "active",
@@ -433,6 +438,220 @@ def _diagnostic_list(value: Any) -> list[Any]:
             seen.add(key)
             result.append(normalized)
     return result
+
+
+def _proof_rollout_projection(value: Any) -> dict[str, Any] | None:
+    """Return a validated public proof-rollout projection.
+
+    Supervisor status, daemon events, and scheduler snapshots wrap the same
+    projection under slightly different compatibility keys.  Every read is
+    revalidated at this boundary so an event cannot smuggle a transcript,
+    witness, or provider payload into the operator snapshot.
+    """
+
+    converter = getattr(value, "to_dict", None)
+    if callable(converter):
+        value = converter()
+    if not isinstance(value, Mapping):
+        return None
+
+    candidate: Any = value
+    for key in (
+        "proof_rollout",
+        "proof_rollout_status",
+        "proof_rollout_diagnostics",
+    ):
+        nested = value.get(key)
+        if isinstance(nested, Mapping):
+            candidate = nested
+            break
+    if not isinstance(candidate, Mapping):
+        return None
+
+    # Keep the import local.  The policy module imports proof metrics and the
+    # latter exposes scheduler compatibility aliases at module load time.
+    from .formal_verification_policy import ProofRolloutStatus
+
+    try:
+        return ProofRolloutStatus(candidate).to_dict()
+    except (TypeError, ValueError):
+        return None
+
+
+def _declares_proof_rollout(value: Any) -> bool:
+    """Return whether a record claims to carry a rollout projection."""
+
+    if not isinstance(value, Mapping):
+        return False
+    if str(value.get("schema") or "").endswith("proof-rollout-status@1"):
+        return True
+    return any(
+        key in value
+        for key in (
+            "proof_rollout",
+            "proof_rollout_status",
+            "proof_rollout_diagnostics",
+        )
+    )
+
+
+def proof_rollout_diagnostics(value: Any) -> dict[str, Any] | None:
+    """Expose the validated bounded rollout view from a status or snapshot.
+
+    A detached copy is returned so query clients cannot mutate a scheduler
+    snapshot in place.  Invalid or absent projections are reported as
+    unavailable rather than being converted into an optimistic shadow mode.
+    """
+
+    if isinstance(value, (Path, str)):
+        loaded = read_proof_rollout_status(value)
+        if loaded is None:
+            return None
+        value = loaded
+    projection = _proof_rollout_projection(value)
+    return (
+        json.loads(json.dumps(projection, sort_keys=True))
+        if projection is not None
+        else None
+    )
+
+
+def query_proof_rollout_status(
+    value: Any,
+    *,
+    record_types: Iterable[str] = (),
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Build a bounded, read-only query artifact from rollout diagnostics.
+
+    ``record_types`` selects any of ``protected_scope``, ``capability``,
+    ``active_plan``, ``selection``, ``decision``, ``assurance``, ``failure``,
+    ``fallback``, ``override``, and ``transition``.  An empty selection means
+    all record types.  The underlying proof verdict remains in the decision
+    rows even when a matching override permitted the gate.
+    """
+
+    if isinstance(value, (Path, str)):
+        loaded = read_proof_rollout_status(value)
+        if loaded is None:
+            raise ValueError("a valid proof rollout status is required")
+        value = loaded
+    projection = _proof_rollout_projection(value)
+    if projection is None:
+        raise ValueError("a valid proof rollout status is required")
+
+    supported = (
+        "protected_scope",
+        "capability",
+        "active_plan",
+        "selection",
+        "decision",
+        "assurance",
+        "failure",
+        "fallback",
+        "override",
+        "transition",
+    )
+    raw_record_types = (
+        (record_types,) if isinstance(record_types, str) else record_types
+    )
+    requested = {
+        str(item or "").strip().lower()
+        for item in raw_record_types
+        if str(item or "").strip()
+    }
+    unknown = requested - set(supported)
+    if unknown:
+        raise ValueError(
+            "unsupported proof rollout query record types: "
+            + ", ".join(sorted(unknown))
+        )
+    selected = requested or set(supported)
+    try:
+        row_limit = int(limit)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("proof rollout query limit must be an integer") from exc
+    if isinstance(limit, bool) or row_limit < 1:
+        raise ValueError("proof rollout query limit must be positive")
+    row_limit = min(row_limit, MAX_PROOF_ROLLOUT_QUERY_ROWS)
+
+    rows: list[dict[str, Any]] = []
+
+    def append(record_type: str, record: Mapping[str, Any]) -> None:
+        if record_type in selected:
+            rows.append(
+                {
+                    "record_type": record_type,
+                    "record": json.loads(json.dumps(dict(record), sort_keys=True)),
+                }
+            )
+
+    for scope in projection["protected_scopes"]:
+        append("protected_scope", {"scope": scope})
+    for record in projection["capability_health"]:
+        append("capability", record)
+    for record in projection["active_plans"]:
+        append("active_plan", record)
+    for record in projection["selections"]:
+        append("selection", record)
+    for record in projection["decisions"]:
+        append("decision", record)
+    for assurance, count in sorted(projection["assurance_counts"].items()):
+        append("assurance", {"assurance": assurance, "count": count})
+    for record in projection["failures"]:
+        append("failure", record)
+    for fallback in projection["fallbacks"]:
+        append("fallback", {"validation": fallback})
+    for record in projection["overrides"]:
+        append("override", record)
+    for record in projection["transitions"]:
+        append("transition", record)
+
+    total_rows = len(rows)
+    bounded_rows = rows[:row_limit]
+    material = {
+        "schema": PROOF_ROLLOUT_QUERY_SCHEMA,
+        "schema_version": PROOF_ROLLOUT_QUERY_SCHEMA_VERSION,
+        "status_snapshot_id": projection["snapshot_id"],
+        "policy_id": projection["policy_id"],
+        "rollout_mode": projection["rollout_mode"],
+        "blocking": projection["blocking"],
+        "mode_authority": projection["mode_authority"],
+        "provider_health_can_change_mode": False,
+        "record_types": sorted(selected),
+        "rows": bounded_rows,
+        "row_count": len(bounded_rows),
+        "total_row_count": total_rows,
+        "truncated": total_rows > len(bounded_rows),
+        "limit": row_limit,
+    }
+    query_id = hashlib.sha256(
+        json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return {**material, "query_id": query_id}
+
+
+def write_proof_rollout_query(
+    path: Path | str,
+    status: Any,
+    *,
+    record_types: Iterable[str] = (),
+    limit: int = 50,
+) -> Path:
+    """Atomically publish a portable bounded rollout query artifact."""
+
+    artifact = query_proof_rollout_status(
+        status, record_types=record_types, limit=limit
+    )
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    temporary.write_text(
+        json.dumps(artifact, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, target)
+    return target
 
 
 def _goal_lifecycle_state(value: Any) -> str:
@@ -1246,6 +1465,12 @@ class SchedulerSnapshot(Mapping[str, Any]):
         value = self.payload.get("metrics")
         return value if isinstance(value, Sequence) else ()
 
+    @property
+    def proof_rollout(self) -> Mapping[str, Any] | None:
+        """Validated proof-rollout diagnostics carried by this snapshot."""
+
+        return _proof_rollout_projection(self.payload)
+
     def __getitem__(self, key: str) -> Any:
         return self.payload[key]
 
@@ -1287,6 +1512,15 @@ def scheduler_snapshot(
     completion_diagnostics = project_goal_completion_diagnostics(
         [event for _index, event, _occurred in unique], now=now
     )
+    rollout_projection: dict[str, Any] | None = None
+    for _index, event, _occurred in unique:
+        candidate = _proof_rollout_projection(event)
+        if candidate is None and _declares_proof_rollout(event):
+            raise ValueError(
+                "event contains an invalid proof rollout status projection"
+            )
+        if candidate is not None:
+            rollout_projection = candidate
     diagnostics_by_goal: dict[str, Mapping[str, Any]] = {}
     for goal_id, diagnostic in completion_diagnostics["by_goal_id"].items():
         diagnostics_by_goal[str(goal_id)] = diagnostic
@@ -1304,6 +1538,26 @@ def scheduler_snapshot(
             # A repository scan is supervisor-level evidence, not a scheduler
             # task.  It contributes to scan_metrics but must not manufacture an
             # ``unknown`` idle task or alter a real task's current phase.
+            continue
+        if (
+            _proof_rollout_projection(event) is not None
+            and not any(
+                event.get(key)
+                for key in (
+                    "task_cid",
+                    "canonical_task_cid",
+                    "canonical_task_key",
+                    "task_id",
+                    "lane_id",
+                    "parallel_lane",
+                    "bundle_key",
+                    "state_prefix",
+                )
+            )
+        ):
+            # A supervisor heartbeat containing only rollout diagnostics is
+            # status evidence, not a scheduler task.  It must not create an
+            # ``unknown`` idle row.
             continue
         task_alias = str(
             event.get("task_cid") or event.get("canonical_task_cid")
@@ -1602,6 +1856,7 @@ def scheduler_snapshot(
             for key, value in completion_diagnostics.items()
             if key != "generated_at"
         },
+        "proof_rollout": rollout_projection,
     }
     snapshot_id = hashlib.sha256(
         json.dumps(fingerprint_material, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
@@ -1625,7 +1880,25 @@ def scheduler_snapshot(
         # is used by persisted manifests.  Both are the same versioned view.
         "goal_completion": completion_diagnostics,
         "goal_completion_diagnostics": completion_diagnostics,
+        "proof_rollout": rollout_projection,
+        "proof_rollout_diagnostics": rollout_projection,
     }
+    if rollout_projection is not None:
+        capabilities = rollout_projection["capability_health"]
+        payload.update(
+            {
+                "proof_policy_id": rollout_projection["policy_id"],
+                "proof_rollout_mode": rollout_projection["rollout_mode"],
+                "proof_rollout_blocking": rollout_projection["blocking"],
+                "proof_capability_healthy": bool(capabilities)
+                and all(bool(item["healthy"]) for item in capabilities),
+                "proof_active_plan_count": len(
+                    rollout_projection["active_plans"]
+                ),
+                "proof_override_count": len(rollout_projection["overrides"]),
+                "proof_failure_count": len(rollout_projection["failures"]),
+            }
+        )
     return SchedulerSnapshot(payload)
 
 
@@ -1668,6 +1941,40 @@ def write_scheduler_snapshot(path: Path | str, snapshot: SchedulerSnapshot | Map
 publish_scheduler_snapshot = write_scheduler_snapshot
 
 
+def write_proof_rollout_status(path: Path | str, status: Any) -> Path:
+    """Atomically publish a validated, bounded rollout status artifact."""
+
+    projection = _proof_rollout_projection(status)
+    if projection is None:
+        raise ValueError("a valid proof rollout status is required")
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    temporary.write_text(
+        json.dumps(projection, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, target)
+    return target
+
+
+def read_proof_rollout_status(path: Path | str) -> ProofRolloutStatus | None:
+    """Read a rollout status, rejecting malformed or private projections."""
+
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    projection = _proof_rollout_projection(payload)
+    if projection is None:
+        return None
+    return ProofRolloutStatus(projection)
+
+
+publish_proof_rollout_status = write_proof_rollout_status
+query_proof_rollout_diagnostics = query_proof_rollout_status
+
+
 def read_scheduler_snapshot(path: Path | str) -> SchedulerSnapshot | None:
     """Read current or v1 snapshots, returning ``None`` for invalid files.
 
@@ -1701,6 +2008,46 @@ def read_scheduler_snapshot(path: Path | str) -> SchedulerSnapshot | None:
         diagnostics = alias if isinstance(alias, Mapping) else empty_diagnostics
     payload.setdefault("goal_completion", diagnostics)
     payload.setdefault("goal_completion_diagnostics", diagnostics)
+
+    raw_rollout = payload.get("proof_rollout")
+    if raw_rollout is None:
+        raw_rollout = payload.get("proof_rollout_diagnostics")
+    rollout = (
+        _proof_rollout_projection(raw_rollout)
+        if raw_rollout is not None
+        else None
+    )
+    if raw_rollout is not None and rollout is None:
+        # A malformed rollout section is security-relevant.  Do not return a
+        # snapshot that appears healthy after silently dropping it.
+        return None
+    if rollout is None and any(
+        key in payload
+        for key in (
+            "proof_policy_id",
+            "proof_rollout_mode",
+            "proof_rollout_blocking",
+        )
+    ):
+        # Flat compatibility summaries are never sufficient to establish
+        # policy identity or mode authority on their own.
+        return None
+    payload["proof_rollout"] = rollout
+    payload["proof_rollout_diagnostics"] = rollout
+    if rollout is not None:
+        capabilities = rollout["capability_health"]
+        payload.update(
+            {
+                "proof_policy_id": rollout["policy_id"],
+                "proof_rollout_mode": rollout["rollout_mode"],
+                "proof_rollout_blocking": rollout["blocking"],
+                "proof_capability_healthy": bool(capabilities)
+                and all(bool(item["healthy"]) for item in capabilities),
+                "proof_active_plan_count": len(rollout["active_plans"]),
+                "proof_override_count": len(rollout["overrides"]),
+                "proof_failure_count": len(rollout["failures"]),
+            }
+        )
     return SchedulerSnapshot(payload)
 
 
@@ -1750,12 +2097,21 @@ def ready_task_cids(snapshot: SchedulerSnapshot | Mapping[str, Any]) -> tuple[st
 # Proof observability uses the same operator-facing module as a discovery
 # surface while keeping its stricter public-projection policy isolated.
 from .proof_metrics import (  # noqa: E402  (intentional late compatibility import)
+    PROOF_BENCHMARK_SCHEMA,
     PROOF_METRIC_DIMENSIONS,
     PROOF_METRICS_SCHEMA,
+    ProofBenchmarkReport,
+    ProofBenchmarkThresholds,
     ProofMetricsSnapshot,
+    build_proof_benchmark_report,
     build_proof_metrics,
     build_proof_metrics_snapshot,
     normalize_proof_metric_identity,
+)
+from .formal_verification_policy import (  # noqa: E402
+    PROOF_ROLLOUT_STATUS_SCHEMA,
+    ProofRolloutStatus,
+    build_proof_rollout_status,
 )
 
 
@@ -1763,6 +2119,9 @@ __all__ = [
     "GOAL_COMPLETION_DIAGNOSTICS_SCHEMA",
     "GOAL_COMPLETION_DIAGNOSTICS_SCHEMA_VERSION",
     "LEGACY_SCHEDULER_SNAPSHOT_SCHEMAS",
+    "MAX_PROOF_ROLLOUT_QUERY_ROWS",
+    "PROOF_ROLLOUT_QUERY_SCHEMA",
+    "PROOF_ROLLOUT_QUERY_SCHEMA_VERSION",
     "REFILL_SCAN_FAILED_REASONS",
     "REFILL_SCAN_SKIPPED_REASONS",
     "REFILL_SCAN_SUCCESS_REASONS",
@@ -1773,9 +2132,16 @@ __all__ = [
     "SchedulerSnapshot",
     "PROOF_METRIC_DIMENSIONS",
     "PROOF_METRICS_SCHEMA",
+    "PROOF_BENCHMARK_SCHEMA",
+    "PROOF_ROLLOUT_STATUS_SCHEMA",
+    "ProofBenchmarkReport",
+    "ProofBenchmarkThresholds",
     "ProofMetricsSnapshot",
+    "ProofRolloutStatus",
+    "build_proof_benchmark_report",
     "build_proof_metrics",
     "build_proof_metrics_snapshot",
+    "build_proof_rollout_status",
     "build_scheduler_snapshot",
     "build_scheduler_snapshot_from_paths",
     "derive_scheduler_snapshot",
@@ -1783,11 +2149,18 @@ __all__ = [
     "normalize_metric_identity",
     "normalize_proof_metric_identity",
     "publish_scheduler_snapshot",
+    "publish_proof_rollout_status",
+    "proof_rollout_diagnostics",
     "project_goal_completion_diagnostics",
+    "query_proof_rollout_diagnostics",
+    "query_proof_rollout_status",
+    "read_proof_rollout_status",
     "read_scheduler_snapshot",
     "ready_task_cids",
     "scheduler_metrics_snapshot",
     "scheduler_snapshot",
     "scheduler_state_events",
     "write_scheduler_snapshot",
+    "write_proof_rollout_query",
+    "write_proof_rollout_status",
 ]

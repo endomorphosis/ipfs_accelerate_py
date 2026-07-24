@@ -370,6 +370,123 @@ Before enforcement expands, require:
 - canary tasks demonstrate useful token reduction without unacceptable
   throughput regression.
 
+### Reviewed rollout expansion thresholds
+
+`ProofBenchmarkThresholds` is the versioned, executable review boundary for
+cold, warm, and parallel proof runs. The default gate requires every sample to
+meet all applicable limits and requires all three run modes to be present:
+
+| Signal | Expansion threshold |
+| --- | --- |
+| Raw-to-capsule context reduction | at least 40% by bytes and at least 40% by tokens |
+| Retrieval precision | at least 80% |
+| Model cost per accepted task | at most 1.00 configured cost unit |
+| Accepted-task throughput regression | at most 20% versus the declared baseline |
+| Warm cache reuse | at least 50% of lookups hit |
+| Nested worker oversubscription | zero workers above the shared limit |
+| Parallel cancellation savings | at least 10% of redundant work |
+| Parallel single-flight savings | at least 10% of duplicate requests |
+| Unsupported obligation templates | at most 25% |
+| Low-value attributed templates | at most 25%; each must reduce model tokens by at least 10% |
+| Host use | at most 95% CPU and 2 GiB peak memory |
+| Measurement completeness | all context, phase, cost, resource, cache, and mode-specific fields present |
+
+The benchmark report also records translation, solver, kernel, cache, model,
+validation, and merge latency for every run. It is bounded and excludes
+prompts, proof transcripts, and private witnesses. A failed measurement emits
+a stable reason code and sets `rollout_expansion_allowed` to false; the report
+does not change policy on its own.
+
+### Benchmark protocol
+
+A benchmark matrix uses the same pinned repository tree, task cohort, provider
+identities, toolchain, worker limit, and obligation-template revision in every
+mode. Change one of those inputs only by starting a new matrix. Use at least
+one sample in each mode:
+
+| Mode | Required preparation | Purpose |
+| --- | --- | --- |
+| `cold` | empty the proof receipt/cache namespace for the pinned tree | establish translation, solver, kernel, model, validation, and merge cost without reuse |
+| `warm` | replay the identical cohort against receipts produced by the cold run | measure valid cache reuse and the resulting wall, CPU, and phase-latency reduction |
+| `parallel` | submit duplicate and independent obligations through the shared top-level worker budget | measure single-flight deduplication, cancellation, and nested-pool pressure |
+
+Raw context and capsule context must be byte counts of the exact serialized
+model inputs before transport framing. Token counts must use the production
+model tokenizer (including its normal special-token policy) for both inputs.
+Retrieval precision is `relevant_retrieved_items / retrieved_items`, where
+relevance labels are fixed before the run from task acceptance evidence; do
+not label an item relevant merely because the implementation later used it.
+Model cost is the provider-normalized cost for the sample divided by accepted
+tasks. An accepted task must pass its normal validation and merge gates, not
+only produce a proof candidate.
+
+Measure phase boundaries at the supervisor, not from provider-reported
+durations:
+
+- translation starts with obligation serialization and ends with the
+  provider-ready statement;
+- solver and model cover their respective provider calls;
+- kernel covers local reconstruction/checking;
+- cache covers lookup, trust/freshness validation, and persistence;
+- validation covers deterministic tests and fallback checks; and
+- merge covers gate evaluation through durable merge receipt creation.
+
+Phase durations may overlap in parallel runs and therefore need not sum to
+wall time. `cpu_percent` is host utilization over the run, `cpu_time_ms` is
+user plus system CPU consumed by the proof workflow, and `memory_peak_bytes`
+is peak resident growth for the supervised process tree. Reports expose both
+wall-clock accepted tasks per second and accepted tasks per CPU second. Zero
+defaults never count as measurement evidence: absent required fields emit
+`benchmark_measurement_incomplete`, and absent CPU-time or memory evidence
+also emits `resource_measurement_missing`.
+
+The report's weighted `summary.context` compares the entire matrix rather than
+averaging ratios. `summary.by_mode` gives phase, cache, CPU, memory, and
+throughput totals. `summary.cold_to_warm` reports cache-hit-rate improvement
+and wall, CPU, and per-phase reductions, so cache reuse cannot be inferred
+from a warm label alone.
+
+For parallel samples, `peak_workers` is the maximum top-level active worker
+count and `nested_workers` is additional solver, kernel, test, or model work
+created below those workers. Nested oversubscription is
+`max(0, peak_workers + nested_workers - worker_limit)`. Cancellation savings
+is `(cancelled_work_baseline_ms - cancelled_work_actual_ms) /
+cancelled_work_baseline_ms`. Single-flight savings is
+`(requests - executions) / requests`. The baseline is a control run with the
+same work and worker limit but without the mechanism being evaluated.
+
+### Template support and value decisions
+
+Cohort-level `template_count` and `unsupported_template_count` enforce the
+overall unsupported-rate threshold. Samples should additionally include
+bounded `template_measurements` with only:
+
+- template ID and attempted, accepted, and unsupported task counts; and
+- baseline model tokens versus proof-assisted model tokens.
+
+No obligation statements, source excerpts, prompts, proof terms, witnesses,
+or transcripts belong in benchmark telemetry. The report merges attribution
+across modes into `template_findings` and emits sorted
+`unsupported_template_ids` and `low_value_template_ids`. A template is
+unsupported when any attributed attempt reports unsupported semantics. It is
+low-value when it has no accepted task, lacks a model-work baseline, or reduces
+model tokens by less than 10%. The low-value rate is gated at 25% for each
+attributed sample.
+
+Unsupported templates remain on deterministic fallback validation. Low-value
+templates remain shadow-only unless a later pinned matrix clears the threshold.
+Only findings with `eligible_for_enforcement: true` may be proposed for wider
+enforcement; aggregate success must never be used to promote a specifically
+unsupported or low-value template.
+
+Rollout status is similarly diagnostic, not authoritative. Capability health,
+provider outages, active plans, assurance counts, failures, fallbacks, and
+overrides are projected for operators, while the versioned policy remains the
+only rollout-mode authority. Canary promotion or rollback therefore requires a
+durable transition receipt tied to the policy identity. An outage in an
+enforcement scope fails closed and cannot silently downgrade that scope to
+shadow mode.
+
 ## Implementation Backlog
 
 The root refactor supervisor owns the executable backlog:

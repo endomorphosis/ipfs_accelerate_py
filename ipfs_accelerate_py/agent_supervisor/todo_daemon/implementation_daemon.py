@@ -16,7 +16,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
@@ -31,6 +31,7 @@ from ..merge_conflict_repair import (
 from ..submodule_degradation import DegradationState
 from ..persistent_task_queue import PersistentTaskQueue
 from ..task_identity import TaskIdentity, canonical_task_identity
+from ..taskboard_store import locked_taskboard, replace_locked_taskboard
 from ..git_gc import GitGarbageCollector
 from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge_checkpoint import MergeCheckpoint
@@ -80,6 +81,18 @@ DAEMON_MAINTENANCE_INTERVAL_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MAINTENANCE_INTE
 DEFAULT_DAEMON_MAINTENANCE_INTERVAL_SECONDS = 300.0
 MERGE_RECONCILIATION_MAX_AGE_ENV = "IPFS_ACCELERATE_AGENT_MERGE_RECONCILIATION_MAX_AGE_SECONDS"
 DEFAULT_MERGE_RECONCILIATION_MAX_AGE_SECONDS = 86400
+PROOF_WORKFLOW_OPTION_KEYS = frozenset(
+    {
+        "proof_scheduler",
+        "proof_plan",
+        "proof_executor",
+        "proof_executors",
+        "proof_scheduler_options",
+        "proof_timeout_seconds",
+        "fallback_plans",
+        "fallback_plan",
+    }
+)
 UNSUPPORTED_TYPESCRIPT_VALIDATION_FLAGS = ("--ignoreConfig",)
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
@@ -706,6 +719,7 @@ class PortalTaskState:
     last_implementation_worktree_path: str = ""
     last_implementation_branch: str = ""
     last_implementation_commit: str = ""
+    last_proof_workflow: dict[str, Any] = field(default_factory=dict)
     last_merge_started_at: str = ""
     last_merge_finished_at: str = ""
     last_merge_branch: str = ""
@@ -821,6 +835,11 @@ class PortalTaskState:
                 last_implementation_worktree_path=str(payload.get("last_implementation_worktree_path") or ""),
                 last_implementation_branch=str(payload.get("last_implementation_branch") or ""),
                 last_implementation_commit=str(payload.get("last_implementation_commit") or ""),
+                last_proof_workflow=(
+                    dict(payload.get("last_proof_workflow") or {})
+                    if isinstance(payload.get("last_proof_workflow"), dict)
+                    else {}
+                ),
                 last_merge_started_at=str(payload.get("last_merge_started_at") or ""),
                 last_merge_finished_at=str(payload.get("last_merge_finished_at") or ""),
                 last_merge_branch=str(payload.get("last_merge_branch") or ""),
@@ -891,6 +910,7 @@ def state_file_repair_reason(path: Path) -> str:
         "task_identities",
         "implementation_attempts",
         "implementation_attempts_by_cid",
+        "last_proof_workflow",
     ):
         value = payload.get(field_name)
         if value is not None and not isinstance(value, dict):
@@ -1018,6 +1038,11 @@ class PortalImplementationDaemon:
         formal_verification_policy: Any = None,
         proof_gate: Any = None,
         proof_cache_dir: Path | None = None,
+        proof_workflow: (
+            Mapping[str, Any]
+            | Callable[[PortalTask, Path], Mapping[str, Any] | None]
+            | None
+        ) = None,
         worktree_pool_enabled: bool | None = None,
         worktree_pool_max_entries: int | None = None,
         worktree_pool: WorktreePool | None = None,
@@ -1143,6 +1168,11 @@ class PortalImplementationDaemon:
         self.proof_cache_dir = (
             Path(proof_cache_dir) if proof_cache_dir is not None else None
         )
+        if proof_workflow is not None and not (
+            isinstance(proof_workflow, Mapping) or callable(proof_workflow)
+        ):
+            raise TypeError("proof_workflow must be a mapping, callable, or None")
+        self.proof_workflow = proof_workflow
         configured_submodules = (
             DEFAULT_WORKTREE_SUBMODULE_PATHS
             if worktree_submodule_paths is None
@@ -1568,6 +1598,28 @@ class PortalImplementationDaemon:
             if self._canonical_ref(task) in completed_cids
         )
         dependency_satisfied_task_ids = completed_set | self.assumed_completed_task_ids
+        dependency_reopen_candidates = [
+            task.task_id
+            for task in tasks
+            if (
+                task.status == "blocked"
+                and bool(task.depends_on)
+                and not str(task.metadata.get("blocked reason") or "").strip()
+                and task.task_id not in strategy_blocked_task_ids
+                and all(
+                    dependency in dependency_satisfied_task_ids
+                    for dependency in task.depends_on
+                )
+            )
+        ]
+        dependency_reopen_result = self._mark_tasks_ready_in_todo(
+            dependency_reopen_candidates,
+            reason="dependencies_completed",
+        )
+        dependency_reopened_task_ids = {
+            *dependency_reopen_result.get("updated_task_ids", []),
+            *dependency_reopen_result.get("already_ready_task_ids", []),
+        }
 
         for task in tasks:
             if task.task_id in completed_set:
@@ -1575,7 +1627,10 @@ class PortalImplementationDaemon:
                 if task.task_id not in previous_completed:
                     newly_completed.append(task.task_id)
                 continue
-            if task.task_id in strategy.get("blocked_tasks", []) or task.status == "blocked":
+            if task.task_id in strategy.get("blocked_tasks", []) or (
+                task.status == "blocked"
+                and task.task_id not in dependency_reopened_task_ids
+            ):
                 resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in shared_active_merge_task_ids:
@@ -1696,6 +1751,7 @@ class PortalImplementationDaemon:
         state.last_implementation_worktree_path = previous.last_implementation_worktree_path
         state.last_implementation_branch = previous.last_implementation_branch
         state.last_implementation_commit = previous.last_implementation_commit
+        state.last_proof_workflow = previous.last_proof_workflow
         state.last_merge_started_at = previous.last_merge_started_at
         state.last_merge_finished_at = previous.last_merge_finished_at
         state.last_merge_branch = previous.last_merge_branch
@@ -2069,7 +2125,12 @@ class PortalImplementationDaemon:
                     phase="validating",
                     phase_detail="; ".join(task.validation) if task.validation else "",
                 )
-                validation_result = self._run_validation_commands(workspace_path, task, log_path)
+                validation_result = self._run_validation_commands(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                )
                 if not validation_result.get("passed", False):
                     effective_returncode = int(validation_result.get("returncode") or 1)
             if effective_returncode == 0:
@@ -2171,6 +2232,81 @@ class PortalImplementationDaemon:
                     task_claim_path.unlink()
             except OSError:
                 logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
+
+    def _mark_tasks_ready_in_todo(
+        self,
+        task_ids: Sequence[str],
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Reopen transiently blocked tasks after their dependencies complete."""
+
+        target_task_ids = {
+            str(task_id).strip()
+            for task_id in task_ids
+            if str(task_id).strip()
+        }
+        if not target_task_ids:
+            return {
+                "updated": False,
+                "reason": "no_tasks",
+                "updated_task_ids": [],
+                "already_ready_task_ids": [],
+            }
+
+        try:
+            with locked_taskboard(self.todo_path) as taskboard:
+                lines = taskboard.read().splitlines(keepends=True)
+                current_task_id = ""
+                updated_task_ids: list[str] = []
+                already_ready_task_ids: list[str] = []
+                for index, line in enumerate(lines):
+                    if line.startswith(self.task_header_prefix):
+                        header = line[3:].strip()
+                        current_task_id = header.split(" ", 1)[0] if header else ""
+                        continue
+                    if (
+                        current_task_id not in target_task_ids
+                        or not line.startswith("- Status:")
+                    ):
+                        continue
+                    current_status = normalize_status(line.split(":", 1)[1].strip())
+                    if current_status == "blocked":
+                        newline = "\n" if line.endswith("\n") else ""
+                        lines[index] = f"- Status: todo{newline}"
+                        updated_task_ids.append(current_task_id)
+                    elif current_status in {"todo", "in_progress"}:
+                        already_ready_task_ids.append(current_task_id)
+                    current_task_id = ""
+                if updated_task_ids:
+                    replace_locked_taskboard(taskboard, "".join(lines))
+        except OSError as exc:
+            result = {
+                "updated": False,
+                "reason": "write_failed",
+                "error": str(exc),
+                "updated_task_ids": [],
+                "already_ready_task_ids": [],
+            }
+            self._record_event("dependency_blocked_tasks_reopen_failed", result)
+            return result
+
+        result = {
+            "updated": bool(updated_task_ids),
+            "reason": reason,
+            "updated_task_ids": sorted(updated_task_ids),
+            "already_ready_task_ids": sorted(already_ready_task_ids),
+        }
+        if updated_task_ids:
+            commit_result = self._commit_generated_file_update(
+                self.todo_path,
+                task_id=updated_task_ids[0],
+                subject=f"{updated_task_ids[0]}: reopen dependency-ready tasks",
+            )
+            if commit_result:
+                result["commit_result"] = commit_result
+            self._record_event("dependency_blocked_tasks_reopened", result)
+        return result
 
     def _mark_task_completed_in_todo(self, task_id: str) -> dict[str, Any]:
         return self._mark_tasks_completed_in_todo(
@@ -2854,6 +2990,10 @@ class PortalImplementationDaemon:
                     validation_result.get("fallbacks") or [],
                     field_name="fallbacks",
                 ),
+                "operator_state": _bounded_merge_proof_value(
+                    validation_result.get("proof_operator_state") or {},
+                    field_name="proof_operator_state",
+                ),
                 "cache_hits": int(validation_result.get("cache_hits") or 0),
                 "cache_misses": int(validation_result.get("cache_misses") or 0),
             }
@@ -3457,7 +3597,12 @@ class PortalImplementationDaemon:
                     cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
                     self._prepare_worktree_for_validation(worktree_path, task=task, branch_name=branch_name)
-                    validation_result = self._run_validation_commands(worktree_path, task, log_path)
+                    validation_result = self._run_validation_commands(
+                        worktree_path,
+                        task,
+                        log_path,
+                        state=state,
+                    )
                 if validation_result.get("passed", False):
                     commit_result = self._commit_worktree_changes(worktree_path, task, attempt)
                     implementation_commit = str(commit_result.get("commit", ""))
@@ -3529,6 +3674,7 @@ class PortalImplementationDaemon:
                         worktree_path,
                         task,
                         log_path,
+                        state=state,
                     )
                     can_promote = bool(
                         validation_result.get("attempted")
@@ -5054,11 +5200,175 @@ class PortalImplementationDaemon:
             return False
         return any(line == relative or line.startswith(f"{relative.rstrip('/')}/") for line in result.stdout.splitlines())
 
-    def _run_validation_commands(self, workspace_path: Path, task: PortalTask, log_path: Path) -> dict[str, Any]:
+    def _proof_workflow_options(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Resolve one bounded staged-proof packet for an implementation lane.
+
+        A callable is resolved for every candidate so plans can bind to the
+        candidate's exact tree.  Its keys intentionally mirror the proof-only
+        arguments accepted by :class:`ValidationScheduler`; arbitrary
+        scheduler arguments and command/environment overrides are rejected.
+        """
+
+        configured = self.proof_workflow
+        if configured is None:
+            return {}
+        raw = (
+            configured(task, workspace_path)
+            if callable(configured)
+            else configured
+        )
+        if raw is None:
+            return {}
+        if not isinstance(raw, Mapping):
+            raise TypeError("proof_workflow must resolve to a mapping or None")
+        options = {str(key): value for key, value in raw.items()}
+        unknown = sorted(set(options) - PROOF_WORKFLOW_OPTION_KEYS)
+        if unknown:
+            raise ValueError(
+                "unsupported proof_workflow options: " + ", ".join(unknown)
+            )
+        if options.get("proof_plan") is not None and options.get(
+            "proof_scheduler"
+        ) is None:
+            raw_scheduler_options = options.get("proof_scheduler_options")
+            if raw_scheduler_options is not None and not isinstance(
+                raw_scheduler_options, Mapping
+            ):
+                raise TypeError("proof_scheduler_options must be a mapping")
+            scheduler_options = dict(raw_scheduler_options or {})
+            if "state_path" not in scheduler_options and "store_path" not in scheduler_options:
+                plan = options["proof_plan"]
+                plan_id = str(
+                    getattr(plan, "plan_id", "")
+                    or (
+                        plan.get("plan_id", "")
+                        if isinstance(plan, Mapping)
+                        else ""
+                    )
+                )
+                identity = self._identity_for_task(task)
+                plan_fragment = hashlib.sha256(
+                    (plan_id or task.task_id).encode("utf-8")
+                ).hexdigest()[:20]
+                scheduler_options["state_path"] = (
+                    checkout_mutation_lock_path(self.repo_root).parent
+                    / "agent-proof-workflows"
+                    / identity.short_id
+                    / plan_fragment
+                )
+            options["proof_scheduler_options"] = scheduler_options
+        return options
+
+    @staticmethod
+    def _proof_operator_state(
+        validation_result: Mapping[str, Any],
+        *,
+        state_path: str = "",
+    ) -> dict[str, Any]:
+        """Project a restart-safe, witness-free proof status for operators."""
+
+        proof = validation_result.get("proof")
+        if not isinstance(proof, Mapping):
+            return {}
+        nodes = proof.get("nodes")
+        node_states = []
+        dependencies: dict[str, list[str]] = {}
+        if isinstance(nodes, Sequence) and not isinstance(
+            nodes, (str, bytes, bytearray)
+        ):
+            for item in nodes[:MAX_MERGE_PROOF_METADATA_ITEMS]:
+                if not isinstance(item, Mapping):
+                    continue
+                step_id = str(item.get("step_id") or "")
+                if not step_id:
+                    continue
+                node_states.append(
+                    {
+                        "step_id": step_id,
+                        "stage": str(item.get("stage") or ""),
+                        "state": str(item.get("state") or ""),
+                        "reason_code": str(item.get("reason_code") or "")[:200],
+                        "attempt_id": str(item.get("attempt_id") or ""),
+                        "lease_owner_id": str(item.get("lease_owner_id") or ""),
+                        "fencing_token": int(item.get("fencing_token") or 0),
+                    }
+                )
+                raw_dependencies = item.get("dependency_step_ids")
+                if isinstance(raw_dependencies, Sequence) and not isinstance(
+                    raw_dependencies, (str, bytes, bytearray)
+                ):
+                    dependencies[step_id] = [
+                        str(value)
+                        for value in raw_dependencies[
+                            :MAX_MERGE_PROOF_METADATA_ITEMS
+                        ]
+                    ]
+        raw_lineage = proof.get("receipt_lineage")
+        receipt_lineage = []
+        if isinstance(raw_lineage, Sequence) and not isinstance(
+            raw_lineage, (str, bytes, bytearray)
+        ):
+            receipt_lineage = [
+                {
+                    key: str(item.get(key) or "")
+                    for key in (
+                        "receipt_id",
+                        "attempt_id",
+                        "obligation_id",
+                        "authoritative_verdict",
+                        "freshness",
+                    )
+                }
+                for item in raw_lineage[:MAX_MERGE_PROOF_METADATA_ITEMS]
+                if isinstance(item, Mapping)
+            ]
+        authoritative_ids = proof.get("authoritative_receipt_ids")
+        if not isinstance(authoritative_ids, Sequence) or isinstance(
+            authoritative_ids, (str, bytes, bytearray)
+        ):
+            authoritative_ids = ()
+        return {
+            "schema": "ipfs_accelerate_py/agent-supervisor/proof-workflow-operator-state@1",
+            "recorded_at": utc_now(),
+            "attempted": bool(validation_result.get("attempted")),
+            "passed": bool(validation_result.get("passed")),
+            "plan_id": str(proof.get("plan_id") or ""),
+            "complete": bool(proof.get("complete")),
+            "succeeded": bool(proof.get("succeeded")),
+            "active_leases": int(proof.get("active_leases") or 0),
+            "state_path": state_path,
+            "node_states": node_states,
+            "dependencies": dependencies,
+            "receipt_lineage": receipt_lineage,
+            "authoritative_receipt_ids": [
+                str(value)
+                for value in authoritative_ids[:MAX_MERGE_PROOF_METADATA_ITEMS]
+            ],
+            "shared_resource_scheduler": bool(
+                validation_result.get("shared_resource_scheduler")
+            ),
+            "shared_resource_lease_budget": bool(
+                validation_result.get("shared_resource_lease_budget")
+            ),
+        }
+
+    def _run_validation_commands(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        log_path: Path,
+        *,
+        state: PortalTaskState | None = None,
+    ) -> dict[str, Any]:
         if not workspace_path.exists():
             return self._missing_validation_workspace_result(workspace_path, task=task, log_path=log_path)
 
-        if not task.validation:
+        proof_options = self._proof_workflow_options(workspace_path, task)
+        if not task.validation and not proof_options:
             return {
                 "attempted": False,
                 "passed": True,
@@ -5084,7 +5394,34 @@ class PortalImplementationDaemon:
             require_full_validation=True,
             scope="pre_merge",
             runner=self._validation_command_runner,
+            **proof_options,
         )
+
+        scheduler_options = proof_options.get("proof_scheduler_options")
+        proof_state_path = ""
+        if isinstance(scheduler_options, Mapping):
+            proof_state_path = str(
+                scheduler_options.get("state_path")
+                or scheduler_options.get("store_path")
+                or ""
+            )
+        operator_state = self._proof_operator_state(
+            result,
+            state_path=proof_state_path,
+        )
+        if operator_state:
+            result["proof_operator_state"] = operator_state
+            current_state = state or PortalTaskState.load(self.state_path)
+            current_state.last_proof_workflow = operator_state
+            current_state.heartbeat_at = utc_now()
+            current_state.save(self.state_path)
+            self._record_event(
+                "proof_workflow_finished",
+                {
+                    "task_id": task.task_id,
+                    **operator_state,
+                },
+            )
 
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as log_fh:
@@ -5097,6 +5434,14 @@ class PortalImplementationDaemon:
                     "[validation selection] "
                     f"scope={selection.get('scope')} changed={selection.get('changed_files', [])} "
                     f"escalated={selection.get('escalated', False)}\n"
+                )
+            if operator_state:
+                log_fh.write(
+                    "[proof workflow] "
+                    f"plan={operator_state['plan_id']} "
+                    f"complete={operator_state['complete']} "
+                    f"succeeded={operator_state['succeeded']} "
+                    f"active_leases={operator_state['active_leases']}\n"
                 )
             for command_result in result.get("results", []):
                 if not isinstance(command_result, dict):

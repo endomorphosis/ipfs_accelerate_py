@@ -9,6 +9,26 @@ The package is intentionally broader than an LLM wrapper. Models propose plans
 and edits, but deterministic parsers, policy checks, validation commands, Git
 operations, leases, and evidence receipts decide whether work may advance.
 
+## Current implementation status
+
+The latest supervisor work (23 July 2026) has moved the formal-planning design
+into executable, resumable components. The following commits are now part of
+the nested `ipfs_accelerate_py` repository:
+
+| Capability | Implementation | Operational meaning |
+| --- | --- | --- |
+| Shared prover admission | `multi_prover_resources.py` (`REF-291`) | SMT, ATP, kernel, model-checker, protocol, hyperproperty, runtime, validation, model, and artifact-I/O work share one bounded top-level lease. Child processes inherit limits and release capacity on cancellation. |
+| Adversarial evidence admission | `formal_planning_adversarial.py` (`REF-292`) | Plan identity, provider boundary evidence, cache freshness, conformance, public-output leakage, and property-specific assurance are checked together. Unknown, forged, stale, or insufficient evidence is rejected. |
+| Plan conformance and completion | `formal_plan_conformance.py` (`REF-290`) | Canonical execution events are compared with the accepted plan; unauthorized, reordered, skipped, failed, overridden, or superseded transitions are retained as findings. Completion requires fresh evidence and can reopen a goal. |
+| Counterexample-guided repair | `formal_replanner.py` (`REF-289`) | Typed, bounded repair rules produce content-addressed candidates and compact Codex packets. Retry, refinement, candidate, changed-record, and prompt budgets prevent unbounded replanning. |
+| Proof-carrying execution | `proof_carrying_planner.py` (`REF-293`) | Compile, verify, implement, scope-check, merge, monitor, and repair nodes run as a durable DAG with paired JSON/DuckDB state. The workflow is replayable and only completes when required assurance is present. |
+| Rollout measurement and gates | `formal_planning_metrics.py`, `formal_planning_rollout.py` (`REF-294`) | Cold/warm/parallel benchmark samples measure context reduction, defect detection, proof support, counterexample quality, cache reuse, queue latency, CPU, memory, and throughput before promotion. |
+
+These modules provide the execution surface for the design below; they do not
+make arbitrary Python formally verified. Provider conformance, reviewed
+obligation templates, exact tree and policy identities, and the configured
+assurance threshold remain prerequisites for enforcement.
+
 This document is an orientation guide to the implementation. The more detailed
 objective scanner description is in
 [`agent_supervisor_objective_graph.md`](../agent_supervisor_objective_graph.md),
@@ -163,6 +183,16 @@ attempt. Supporting components include:
 - `prover_evidence_store.py`, `formal_verification_cache.py`,
   `proof_attestation.py`, and `proof_metrics.py` for durable receipts,
   freshness, cache identity, and reporting.
+
+The current planning rollout adds two gates around this layer. The adversarial
+gate evaluates evidence at the property boundary and derives the authoritative
+assurance from typed evidence rather than accepting a provider-declared level.
+The rollout gate then compares a benchmark report with the reviewed policy in
+one of three modes: `shadow` records diagnostics without changing dispatch,
+`canary` allows a limited lane when thresholds pass, and `enforcement` requires
+the configured minimum assurance. An expiring, content-addressed override may
+waive one exact lane, but it is itself recorded as evidence and cannot weaken
+the underlying trust rules.
 
 The trust vocabulary is deliberately non-linear: `solver_candidate`,
 `bounded_model_checked`, `runtime_checked`, `protocol_checked`,
@@ -342,6 +372,15 @@ worktrees or branches only under explicit, scoped policy.
 and `scheduler_metrics.py` observe the live system. They report freshness,
 capacity, deadlines, retries, proof invalidation, and terminal outcomes; they do
 not silently mark work complete.
+
+The proof-carrying planner composes these pieces into a durable workflow. Its
+terminal result is `completed` only when plan compilation and bounded plan
+validation pass, all implementation scopes and merges are accepted, the
+runtime trace is accepted, and the required authoritative assurance is present.
+Otherwise it returns a rejected, failed, or blocked result with replayable
+decisions and evidence. A runtime counterexample is eligible for bounded repair
+before finalization, and repaired counterexamples remain linked to the original
+finding.
 
 ## Typical operating sequence
 

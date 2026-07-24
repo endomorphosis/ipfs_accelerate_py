@@ -662,6 +662,37 @@ def test_settled_boards_release_capacity_without_starting_workers(tmp_path: Path
     assert launcher.starts[-1][1].attempt == 1
 
 
+def test_completed_bundle_reopens_when_authoritative_board_has_work(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    shard = repo / "bundles" / "t-1.todo.md"
+    shard.parent.mkdir(parents=True)
+    shard.write_text(
+        "## T-1 Reopenable work\n\n"
+        "- Status: completed\n",
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    completed = scheduler.reconcile_once()
+    assert completed["counts"]["completed"] == 1
+    assert not launcher.starts
+
+    shard.write_text(
+        "## T-1 Reopenable work\n\n"
+        "- Status: todo\n",
+        encoding="utf-8",
+    )
+    reopened = scheduler.reconcile_once()
+
+    assert reopened["counts"]["completed"] == 0
+    assert reopened["counts"]["active"] == 1
+    assert launcher.starts[0][0].task_ids == ["T-1"]
+    assert launcher.starts[0][1].attempt == 1
+
+
 def test_explicit_terminal_status_uses_the_configured_task_prefix(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"

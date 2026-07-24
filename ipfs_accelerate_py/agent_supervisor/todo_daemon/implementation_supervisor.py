@@ -87,6 +87,103 @@ class CodebaseRefillTimeoutError(TimeoutError):
 OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
 CODEBASE_REFILL_ANALYZER_VERSION = "codebase-scan-v1"
 
+# Fields derived exclusively from a validated ``ProofRolloutStatus``.  Keeping
+# the set explicit lets a long-running supervisor replace the whole projection
+# when a durable policy configuration changes, instead of accidentally mixing
+# fields from two policy identities.
+PROOF_ROLLOUT_PROJECTION_FIELDS = frozenset(
+    {
+        "proof_rollout",
+        "proof_rollout_snapshot_id",
+        "proof_policy_id",
+        "proof_rollout_mode",
+        "proof_rollout_blocking",
+        "proof_provider_health_can_change_mode",
+        "proof_capability_healthy",
+        "proof_protected_scope_count",
+        "proof_active_plan_count",
+        "proof_override_count",
+        "proof_active_override_count",
+        "proof_failure_count",
+        "proof_fallback_count",
+        "proof_assurance_counts",
+    }
+)
+
+
+def apply_proof_rollout_projection(
+    payload: Mapping[str, Any],
+    rollout_status: Mapping[str, Any] | Any,
+) -> dict[str, Any]:
+    """Attach the bounded proof-rollout view to a supervisor status payload.
+
+    The detailed snapshot remains nested so future fields do not collide with
+    the daemon heartbeat schema.  A few stable operator fields are projected
+    at the top level for health checks and older status consumers.
+    """
+
+    from ..formal_verification_policy import (
+        PROOF_ROLLOUT_STATUS_SCHEMA,
+        ProofRolloutStatus,
+    )
+
+    converter = getattr(rollout_status, "to_dict", None)
+    raw = converter() if callable(converter) else rollout_status
+    if not isinstance(raw, Mapping):
+        raise TypeError("rollout_status must be a mapping or expose to_dict()")
+    normalized = (
+        rollout_status
+        if isinstance(rollout_status, ProofRolloutStatus)
+        else ProofRolloutStatus(raw)
+    )
+    projected = normalized.to_dict()
+    if projected.get("schema") != PROOF_ROLLOUT_STATUS_SCHEMA:
+        raise ValueError("unsupported proof rollout status schema")
+    result = dict(payload)
+    result["proof_rollout"] = projected
+    result["proof_rollout_snapshot_id"] = str(
+        projected.get("snapshot_id") or ""
+    )
+    result["proof_policy_id"] = str(projected.get("policy_id") or "")
+    result["proof_rollout_mode"] = str(projected.get("rollout_mode") or "")
+    result["proof_rollout_blocking"] = bool(projected.get("blocking"))
+    # This is intentionally copied from the validated snapshot rather than
+    # inferred from provider health.  An outage is diagnostic input and never
+    # an authority to weaken an enforcement policy.
+    result["proof_provider_health_can_change_mode"] = bool(
+        projected.get("provider_health_can_change_mode")
+    )
+    capabilities = [
+        item
+        for item in projected.get("capability_health", ())
+        if isinstance(item, Mapping)
+    ]
+    result["proof_capability_healthy"] = bool(capabilities) and all(
+        bool(item.get("healthy"))
+        for item in capabilities
+    )
+    result["proof_protected_scope_count"] = len(
+        projected.get("protected_scopes") or ()
+    )
+    result["proof_active_plan_count"] = len(projected.get("active_plans") or ())
+    overrides = [
+        item
+        for item in projected.get("overrides", ())
+        if isinstance(item, Mapping)
+    ]
+    result["proof_override_count"] = len(overrides)
+    result["proof_active_override_count"] = sum(
+        str(item.get("state") or "") == "active"
+        and item.get("applicable_to_policy_mode", True) is True
+        for item in overrides
+    )
+    result["proof_failure_count"] = len(projected.get("failures") or ())
+    result["proof_fallback_count"] = len(projected.get("fallbacks") or ())
+    result["proof_assurance_counts"] = dict(
+        projected.get("assurance_counts") or {}
+    )
+    return result
+
 
 def _scan_skip_reason(mode: str) -> ScanTerminalReason:
     """Translate the backlog threshold decision into an explicit terminal reason."""
@@ -115,6 +212,7 @@ class PortalSupervisorConfig:
     state_dir: Path
     stale_seconds: float = 1800.0
     check_interval: float = 60.0
+    watchdog_startup_grace_seconds: float | None = None
     max_restarts: int = 10
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
@@ -295,6 +393,50 @@ class PortalImplementationSupervisor:
             300.0,
         )
 
+    def _watchdog_startup_grace_seconds(self) -> float:
+        configured = self.config.watchdog_startup_grace_seconds
+        if configured is not None:
+            return max(0.0, float(configured))
+        return max(300.0, float(self.config.check_interval) * 2.0)
+
+    def _proof_rollout_status_fields(
+        self,
+        strategy: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Load and validate the durable proof-rollout status projection.
+
+        Strategy state is the supervisor-owned configuration/query artifact.
+        Returning an empty mapping is reserved for a strategy which has never
+        configured proof rollout.  A present but malformed snapshot raises
+        instead of silently presenting enforcement work as advisory or absent.
+        """
+
+        current = (
+            dict(strategy)
+            if strategy is not None
+            else (load_json_dict(self.config.strategy_path) or {})
+        )
+        if "proof_rollout" not in current:
+            return {}
+        return apply_proof_rollout_projection({}, current["proof_rollout"])
+
+    def _refresh_loop_proof_rollout_status(
+        self,
+        loop: SupervisorLoop | None,
+    ) -> None:
+        """Refresh rollout diagnostics used by ordinary loop heartbeats."""
+
+        loop_config = getattr(loop, "config", None)
+        fields = getattr(loop_config, "status_extra_fields", None)
+        if not isinstance(fields, dict):
+            # ``build_supervisor_loop_config`` always supplies a mutable dict,
+            # but test hooks and custom loop implementations may not.
+            return
+        projected = self._proof_rollout_status_fields()
+        for key in PROOF_ROLLOUT_PROJECTION_FIELDS:
+            fields.pop(key, None)
+        fields.update(projected)
+
     def _write_supervisor_maintenance_status(
         self,
         phase: str,
@@ -340,10 +482,7 @@ class PortalImplementationSupervisor:
                 "agentic_timeout_seconds": timeout_seconds,
                 "agentic_stuck_maintenance_timeout_seconds": timeout_seconds,
                 "watchdog_stale_after_seconds": float(self.config.stale_seconds),
-                "watchdog_startup_grace_seconds": max(
-                    30.0,
-                    float(self.config.check_interval) * 2.0,
-                ),
+                "watchdog_startup_grace_seconds": self._watchdog_startup_grace_seconds(),
                 "supervisor_heartbeat_seconds": max(0.01, float(self.config.check_interval)),
             }
         )
@@ -372,6 +511,10 @@ class PortalImplementationSupervisor:
         ):
             if key in strategy:
                 payload[key] = strategy[key]
+        rollout_fields = self._proof_rollout_status_fields(strategy)
+        for key in PROOF_ROLLOUT_PROJECTION_FIELDS:
+            payload.pop(key, None)
+        payload.update(rollout_fields)
         write_json_atomic(status_path, payload)
 
     def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
@@ -840,6 +983,7 @@ class PortalImplementationSupervisor:
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
+        proof_rollout_status_fields = self._proof_rollout_status_fields()
         # The managed daemon blocks while an implementation command is active,
         # so its task-state heartbeat may legitimately remain unchanged for the
         # full command timeout. Let the implementation-aware watchdog below
@@ -882,7 +1026,7 @@ class PortalImplementationSupervisor:
             heartbeat_seconds=max(0.01, float(self.config.check_interval)),
             poll_seconds=min(1.0, max(0.01, float(self.config.check_interval))),
             watchdog_stale_after_seconds=watchdog_stale_after_seconds,
-            watchdog_startup_grace_seconds=max(30.0, float(self.config.check_interval) * 2.0),
+            watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
             status_static_fields={
@@ -895,6 +1039,11 @@ class PortalImplementationSupervisor:
                     float(self.config.implementation_log_stall_seconds),
                 ),
             },
+            # The watchdog refreshes this mutable projection from durable
+            # strategy state.  SupervisorLoop applies extra fields after its
+            # static heartbeat fields, so policy transitions become visible
+            # without restarting the managed daemon.
+            status_extra_fields=dict(proof_rollout_status_fields),
         )
 
     def _supervisor_loop_watchdog_decision(
@@ -903,6 +1052,7 @@ class PortalImplementationSupervisor:
         _child: Any,
         _current_status: dict[str, Any],
     ) -> SupervisorLoopDecision:
+        self._refresh_loop_proof_rollout_status(_loop)
         now_monotonic = time.monotonic()
         min_interval = max(1.0, float(self.config.check_interval))
         if now_monotonic - self._last_supervisor_maintenance_at < min_interval:
@@ -5576,6 +5726,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--stale-seconds", type=float, default=1800.0)
     parser.add_argument("--check-interval", type=float, default=60.0)
+    parser.add_argument(
+        "--watchdog-startup-grace-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Delay stale-heartbeat enforcement while a new daemon performs startup maintenance. "
+            "Defaults to at least 300 seconds; set explicitly to override."
+        ),
+    )
     parser.add_argument("--max-restarts", type=int, default=10)
     parser.add_argument("--daemon-interval", type=float, default=300.0)
     parser.add_argument(
@@ -6164,6 +6323,7 @@ def supervisor_config_from_args(
         state_dir=args.state_dir,
         stale_seconds=args.stale_seconds,
         check_interval=args.check_interval,
+        watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
         max_restarts=args.max_restarts,
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,

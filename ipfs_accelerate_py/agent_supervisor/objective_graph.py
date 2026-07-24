@@ -5645,6 +5645,17 @@ def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX
     return ids
 
 
+def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
+    """Return canonical task identities already materialized on a board."""
+
+    prefix = "- Canonical task CID:"
+    return {
+        line[len(prefix) :].strip()
+        for line in todo_text.splitlines()
+        if line.startswith(prefix) and line[len(prefix) :].strip()
+    }
+
+
 def next_task_id(
     todo_text: str,
     *,
@@ -5927,7 +5938,8 @@ def write_bundle_shards(
         for record in bundle_records:
             identity = objective_finding_task_identity(record.task_id, record.finding)
             schedule_record = generated_schedule.get(identity.canonical_task_cid)
-            task_map[record.task_id] = {
+            existing_task = task_map.get(record.task_id, {})
+            task_payload = {
                 **objective_finding_conflict_record(record.task_id, record.finding),
                 "task_id": record.task_id,
                 "canonical_task_key": identity.canonical_task_key,
@@ -5957,6 +5969,10 @@ def write_bundle_shards(
                 "downstream_unlock_value": schedule_record.downstream_unlock_value if schedule_record else 0,
                 "objective_priority": schedule_record.objective_priority if schedule_record else 0,
             }
+            existing_status = str(existing_task.get("status") or "").strip()
+            if existing_status:
+                task_payload["status"] = existing_status
+            task_map[record.task_id] = task_payload
         bundles[key] = {
             "bundle_key": key,
             "shard_path": repo_relative_path(repo_root, bundle_path(bundle_dir, key)),
@@ -6061,6 +6077,7 @@ def generate_objective_todos(
         findings = list(precomputed_findings)
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
+        existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
         reserved_task_ids = task_ids_from_artifact_names(
             discovery_dir,
             task_prefix=task_prefix,
@@ -6071,7 +6088,11 @@ def generate_objective_todos(
                 task_prefix=task_prefix,
                 reserved_task_ids=reserved_task_ids,
             )
+            identity = objective_finding_task_identity(task_id, finding)
+            if identity.canonical_task_cid in existing_canonical_task_cids:
+                continue
             reserved_task_ids.add(task_id)
+            existing_canonical_task_cids.add(identity.canonical_task_cid)
             shard_relative = repo_relative_path(
                 repo_root, bundle_path(bundle_dir, finding.bundle_key)
             )
