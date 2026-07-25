@@ -836,8 +836,8 @@ deviceRecovery.onDeviceLost((info) => {
 
 ## Related Documentation
 
-- [WebGPU Streaming Documentation](WEBGPU_STREAMING_DOCUMENTATION.md)
-- [Configuration Validation Guide](CONFIGURATION_VALIDATION_GUIDE.md)
+- [WebGPU Streaming Documentation](../WEBGPU_STREAMING_DOCUMENTATION.md)
+- [Configuration Validation Guide](../CONFIGURATION_VALIDATION_GUIDE.md)
 - [Browser-Specific Optimizations](browser_specific_optimizations.md)
 - [WebSocket Protocol Specification](websocket_protocol_spec.md)
 - [Unified Framework API Reference](unified_framework_api.md)
