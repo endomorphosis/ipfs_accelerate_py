@@ -374,7 +374,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-021 Unify lifecycle, health, events, and idempotent control
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: control
