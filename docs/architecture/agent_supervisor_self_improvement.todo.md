@@ -3148,7 +3148,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-088 Produce completion evidence for Token-efficient context and end-to-end measurement
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
