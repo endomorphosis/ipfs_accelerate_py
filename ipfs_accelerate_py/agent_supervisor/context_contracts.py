@@ -12,6 +12,7 @@ after enforcing node-count, UTF-8 byte, and nesting-depth limits.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -931,6 +932,30 @@ class ContextCapsule(_ContextCanonicalContract):
             normalized = _text(item, "omission")
             if normalized not in omissions:
                 omissions.append(normalized)
+        omitted_ids: set[str] = set()
+        for omission in omissions:
+            reference_id, separator, reason = omission.rpartition(":")
+            if (
+                not separator
+                or not reference_id
+                or reason not in {"item_limit", "token_budget"}
+            ):
+                raise ContextContractError(
+                    "omissions must use '<reference_id>:item_limit' or "
+                    "'<reference_id>:token_budget'"
+                )
+            if reference_id in self.required_field_names:
+                raise ContextContractError(
+                    "invariant context fields cannot be recorded as omissions"
+                )
+            omitted_ids.add(reference_id)
+        expansion_ids = {
+            item.reference_id for item in self.expansion_references
+        }
+        if omitted_ids != expansion_ids or len(omitted_ids) != len(omissions):
+            raise ContextContractError(
+                "omissions must describe every expansion reference exactly once"
+            )
         if bool(omissions) != self.truncated:
             raise ContextContractError(
                 "truncated must be true exactly when omissions are recorded"
@@ -965,6 +990,22 @@ class ContextCapsule(_ContextCanonicalContract):
                 "scope": self.scope,
                 "acceptance": self.acceptance,
             }
+        )
+
+    @property
+    def invariant_core_id(self) -> str:
+        """Content identity of the complete, non-truncatable context core."""
+
+        return "sha256:" + hashlib.sha256(
+            canonical_json_bytes(self.invariant_core)
+        ).hexdigest()
+
+    @property
+    def omitted_reference_ids(self) -> tuple[str, ...]:
+        """Reference IDs omitted from provider input, never core-field names."""
+
+        return tuple(
+            sorted(omission.rpartition(":")[0] for omission in self.omissions)
         )
 
     @property

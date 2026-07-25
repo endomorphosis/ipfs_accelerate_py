@@ -825,3 +825,22 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
     assert repeated.receipt_id == diagnostic.receipt_id
     with pytest.raises(ImplementationRetryDeferred, match="backoff"):
         restarted._build_implementation_prompt(task, attempt=3)
+
+
+def test_delta_result_exposes_exact_invariant_core_preservation() -> None:
+    compiler, parent, required, optional = _parent()
+    changed = replace(
+        optional,
+        referenced_content_id="sha256:changed-diagnostic",
+    )
+    result = compiler.compile_delta(
+        parent,
+        evidence=(required, changed),
+    )
+
+    assert result.invariant_core_preserved
+    assert (
+        result.parent_capsule.invariant_core_id
+        == result.reconstructed_capsule.invariant_core_id
+    )
+    assert result.reconstructed_capsule.invariant_core == parent.invariant_core

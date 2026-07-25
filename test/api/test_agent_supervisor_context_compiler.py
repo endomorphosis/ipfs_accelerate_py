@@ -619,3 +619,27 @@ def test_compiler_normalizes_core_before_measuring_provider_input() -> None:
         compiler.estimate_capsule_input(result.capsule)
         == result.capsule.input_tokens
     )
+
+
+def test_invariant_core_identity_cannot_be_described_as_truncated() -> None:
+    optional = _reference(
+        "large-optional",
+        20_000,
+        priority=1,
+        summary="optional evidence that must be deferred",
+    )
+    result = _compile(evidence=(optional,))
+    capsule = result.capsule
+
+    assert result.required_context_preserved
+    assert capsule.truncated
+    assert capsule.omitted_reference_ids == ("large-optional",)
+    assert capsule.invariant_core_id == type(capsule).from_dict(
+        capsule.to_dict()
+    ).invariant_core_id
+
+    with pytest.raises(
+        ContextContractError,
+        match="invariant context fields|every expansion reference",
+    ):
+        replace(capsule, omissions=("goal:token_budget",))
