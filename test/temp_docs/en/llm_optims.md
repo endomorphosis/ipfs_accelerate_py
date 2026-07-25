@@ -24,9 +24,9 @@ This guide will show you how to optimize LLM inference to accelerate generation 
 
 LLMs compute key-value (kv) values for each input token, and it performs the same kv computation each time because the generated output becomes part of the input. However, performing the same kv computation every time is not very efficient.
 
-A *kv-cache* stores the past keys and values instead of recomputing them each time. As a result, the kv-cache is dynamic and it grows with each generation step which prevents you from taking advantage of [torch.compile](./perf_torch_compile), a powerful optimization method that fuses PyTorch code into optimized kernels.
+A *kv-cache* stores the past keys and values instead of recomputing them each time. As a result, the kv-cache is dynamic and it grows with each generation step which prevents you from taking advantage of [torch.compile](./perf_torch_compile.md), a powerful optimization method that fuses PyTorch code into optimized kernels.
 
-The *static kv-cache* solves this issue by pre-allocating the kv-cache size to a maximum value, so you can combine it with [torch.compile](./perf_torch_compile) for up to a 4x speed up. Your speed up may vary depending on the model size (larger models have a smaller speed up) and hardware.
+The *static kv-cache* solves this issue by pre-allocating the kv-cache size to a maximum value, so you can combine it with [torch.compile](./perf_torch_compile.md) for up to a 4x speed up. Your speed up may vary depending on the model size (larger models have a smaller speed up) and hardware.
 
 > [!WARNING]
 > Follow this [issue](https://github.com/huggingface/transformers/issues/28981) to track which models (Llama, Gemma, Mistral, etc.) support a static kv-cache and torch.compile.
@@ -44,7 +44,7 @@ Depending on your task, there are several ways you can use the static kv-cache.
 <hfoption id="1. cache_implementation">
 
 1. Set the [cache_implementation](https://hf.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig.cache_implementation) to `"static"` in a models [`GenerationConfig`].
-2. Call [torch.compile](./perf_torch_compile) to compile the forward pass with the static kv-cache.
+2. Call [torch.compile](./perf_torch_compile.md) to compile the forward pass with the static kv-cache.
 
 ```py
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -66,7 +66,7 @@ print(tokenizer.batch_decode(outputs, skip_special_tokens=True))
 ['The theory of special relativity states 1. The speed of light is constant in all inertial reference']
 ```
 
-Under the hood, [`~GenerationMixin.generate`] attempts to reuse the same cache object to avoid recompilation at each call, which is critical to get the most out of [torch.compile](./perf_torch_compile). Be aware of the following to avoid triggering recompilation or if generation is slower than expected.
+Under the hood, [`~GenerationMixin.generate`] attempts to reuse the same cache object to avoid recompilation at each call, which is critical to get the most out of [torch.compile](./perf_torch_compile.md). Be aware of the following to avoid triggering recompilation or if generation is slower than expected.
 
 1. If the batch size changes or the maximum output length increases between calls, the cache is reinitialized and recompiled.
 2. The first several calls of the compiled function are slower because it is being compiled.
@@ -147,10 +147,10 @@ def decode_one_tokens(model, cur_token, input_pos, cache_position, past_key_valu
     return new_token
 ```
 
-To enable static kv-cache and [torch.compile](./perf_torch_compile) with [`StaticCache`], follow the steps below.
+To enable static kv-cache and [torch.compile](./perf_torch_compile.md) with [`StaticCache`], follow the steps below.
 
 1. Initialize [`StaticCache`] before using the model for inference to configure parameters like the maximum batch size and sequence length.
-2. Call [torch.compile](./perf_torch_compile) on the model to compile the forward pass with the static kv-cache.
+2. Call [torch.compile](./perf_torch_compile.md) on the model to compile the forward pass with the static kv-cache.
 3. se SDPBackend.MATH in the [torch.nn.attention.sdpa_kernel](https://pytorch.org/docs/stable/generated/torch.nn.attention.sdpa_kernel.html) context manager to enable the native PyTorch C++ implementation of scaled dot product attention to speed up inference even more.
 
 ```py
@@ -339,7 +339,7 @@ A known issue with transformer models is that the self-attention mechanism grows
 
 ### FlashAttention-2
 
-FlashAttention and [FlashAttention-2](./perf_infer_gpu_one#flashattention-2) break up the attention computation into smaller chunks and reduces the number of intermediate read/write operations to the GPU memory to speed up inference. FlashAttention-2 improves on the original FlashAttention algorithm by also parallelizing over sequence length dimension and better partitioning work on the hardware to reduce synchronization and communication overhead.
+FlashAttention and [FlashAttention-2](./perf_infer_gpu_one.md#flashattention) break up the attention computation into smaller chunks and reduces the number of intermediate read/write operations to the GPU memory to speed up inference. FlashAttention-2 improves on the original FlashAttention algorithm by also parallelizing over sequence length dimension and better partitioning work on the hardware to reduce synchronization and communication overhead.
 
 To use FlashAttention-2, set [attn_implementation](https://hf.co/docs/transformers/main/en/main_classes/text_generation#transformers.PreTrainedModel.from_pretrained.attn_implementation) to `"flash_attention_2"` in [`~PreTrainedModel.from_pretrained`].
 
