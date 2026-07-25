@@ -5,11 +5,17 @@ import copy
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.bundle_optimizer import (
+    CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
     PACKET_COMPLETION_BINDING_REQUIREMENT_ID,
     BundleOptimizationPolicy,
+    CriticalPathWidthEvidence,
     PacketCompletionBindingEvidence,
     optimize_task_bundles,
+    prove_critical_path_width,
     propagate_goal_packet_completion,
+)
+from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+    EvidenceSourcePolicy,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
     TodoIndexRecord,
@@ -566,6 +572,113 @@ def test_conflict_coloring_preserves_independent_width_for_path_graph():
     )
 
 
+def test_critical_path_width_evidence_proves_independent_path_endpoints():
+    left = _task(
+        "WIDTH-A",
+        context_paths=[],
+        validation_commands=[],
+        conflicts=["edge-ab"],
+    )
+    middle = _task(
+        "WIDTH-B",
+        outputs=["src/width-b.py"],
+        predicted_paths=["src/width-b.py"],
+        predicted_symbols=["WidthB.run"],
+        context_paths=[],
+        validation_commands=[],
+        conflicts=["edge-ab", "edge-bc"],
+    )
+    right = _task(
+        "WIDTH-C",
+        outputs=["src/width-c.py"],
+        predicted_paths=["src/width-c.py"],
+        predicted_symbols=["WidthC.run"],
+        context_paths=[],
+        validation_commands=[],
+        conflicts=["edge-bc"],
+    )
+    policy = BundleOptimizationPolicy(max_tasks_per_bundle=1)
+
+    evidence = prove_critical_path_width(
+        (right, left, middle),
+        policy=policy,
+        repository_tree="git-tree-asi-034",
+    )
+    repeated = prove_critical_path_width(
+        (middle, right, left),
+        policy=policy,
+        repository_tree="git-tree-asi-034",
+    )
+
+    assert evidence.verify_integrity()
+    assert evidence.evidence_id == repeated.evidence_id
+    assert evidence.proved_requirement_ids == (
+        CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
+    )
+    assert evidence.independent_width_by_dependency_wave == {"0": 2}
+    assert evidence.effective_task_waves[left["canonical_task_cid"]] == (
+        evidence.effective_task_waves[right["canonical_task_cid"]]
+    )
+    assert evidence.effective_task_waves[middle["canonical_task_cid"]] != (
+        evidence.effective_task_waves[left["canonical_task_cid"]]
+    )
+    assert all(
+        evidence.effective_task_waves[left_cid]
+        != evidence.effective_task_waves[right_cid]
+        for left_cid, right_cid in evidence.blocking_conflict_pairs
+    )
+
+    decision = EvidenceSourcePolicy().validate_completion_evidence(
+        CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
+        evidence,
+        repository_tree="git-tree-asi-034",
+        policy_id=policy.policy_id,
+    )
+    assert decision.satisfies is True
+
+
+def test_critical_path_width_evidence_fails_closed_without_width_or_authority():
+    first = _task("SERIAL-A", conflicts=["only-edge"])
+    second = _task(
+        "SERIAL-B",
+        outputs=["src/serial-b.py"],
+        predicted_paths=["src/serial-b.py"],
+        predicted_symbols=["SerialB.run"],
+        conflicts=["only-edge"],
+    )
+    no_independent_width = CriticalPathWidthEvidence.create(
+        (first, second),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
+        repository_tree="git-tree-asi-034",
+    )
+    independent = CriticalPathWidthEvidence.create(
+        (
+            _task("PARALLEL-A"),
+            _task(
+                "PARALLEL-B",
+                outputs=["src/parallel-b.py"],
+                predicted_paths=["src/parallel-b.py"],
+                predicted_symbols=["ParallelB.run"],
+            ),
+        ),
+        policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
+        repository_tree="git-tree-asi-034",
+    )
+
+    assert no_independent_width.verify_integrity()
+    assert no_independent_width.proved_requirement_ids == ()
+    assert independent.proved_requirement_ids
+    restored = CriticalPathWidthEvidence.from_dict(independent.to_dict())
+    assert restored.verify_integrity()
+    assert restored.proved_requirement_ids == ()
+
+    tampered = copy.deepcopy(independent.to_dict())
+    cid = tampered["task_population"][0]["canonical_task_cid"]
+    tampered["planned_task_waves"][cid] = 99
+    with pytest.raises(ValueError, match="digest mismatch"):
+        CriticalPathWidthEvidence.from_dict(tampered)
+
+
 def test_optimizer_serializes_global_ast_conflicts_across_disjoint_files():
     first = _task(
         "AST-A",
@@ -765,6 +878,8 @@ def test_vector_packet_marks_conflicting_editors_for_serial_execution():
         "cid-vector-a",
         "cid-vector-b",
     }
+    assert packet["independent_width_by_dependency_wave"] == {"0": 1}
+    assert packet["conflict_width_projections"][0]["color_count"] == 2
 
 
 def test_bundle_supervisor_projects_optimizer_slices_and_comparison():

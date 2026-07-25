@@ -1136,6 +1136,21 @@ class TaskConflictGraph:
     def colors(self) -> dict[str, int]:
         return {assignment.task_cid: assignment.color for assignment in self.assignments}
 
+    @property
+    def canonical_lanes(self) -> tuple[tuple[str, ...], ...]:
+        """Return conflict-free lanes ordered by color and canonical task CID."""
+
+        return tuple(
+            tuple(sorted(self.lanes[color]))
+            for color in sorted(self.lanes)
+        )
+
+    @property
+    def independent_width(self) -> int:
+        """Return the largest conflict-free task population in one lane."""
+
+        return max((len(lane) for lane in self.canonical_lanes), default=0)
+
     def edge_for(self, left: str, right: str) -> ConflictEdge | None:
         pair = _pair_key(left, right)
         return next(
@@ -1156,12 +1171,113 @@ class TaskConflictGraph:
             "assignments": [assignment.to_dict() for assignment in self.assignments],
             "decisions": [decision.to_dict() for decision in self.decisions],
             "lanes": {str(key): list(value) for key, value in sorted(self.lanes.items())},
+            "canonical_lanes": [list(lane) for lane in self.canonical_lanes],
+            "independent_width": self.independent_width,
             "history": self.history.to_dict(),
         }
 
 
 # A concise alias used by callers that do not need the task qualifier.
 ConflictGraph = TaskConflictGraph
+
+
+@dataclass(frozen=True)
+class ConflictWaveProjection:
+    """Deterministic conflict coloring for one dependency-ready task wave."""
+
+    dependency_wave: int
+    task_cids: tuple[str, ...]
+    blocking_conflict_pairs: tuple[tuple[str, str], ...]
+    color_by_task_cid: Mapping[str, int]
+    independent_lanes: tuple[tuple[str, ...], ...]
+
+    @property
+    def independent_width(self) -> int:
+        return max((len(lane) for lane in self.independent_lanes), default=0)
+
+    @property
+    def color_count(self) -> int:
+        return len(self.independent_lanes)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "dependency_wave": self.dependency_wave,
+            "task_cids": list(self.task_cids),
+            "blocking_conflict_pairs": [
+                list(pair) for pair in self.blocking_conflict_pairs
+            ],
+            "color_by_task_cid": dict(sorted(self.color_by_task_cid.items())),
+            "independent_lanes": [
+                list(lane) for lane in self.independent_lanes
+            ],
+            "independent_width": self.independent_width,
+            "color_count": self.color_count,
+        }
+
+
+def project_conflict_free_wave(
+    task_cids: Iterable[str],
+    blocking_conflict_pairs: Iterable[Iterable[str]],
+    *,
+    dependency_wave: int = 0,
+) -> ConflictWaveProjection:
+    """Color one ready wave without inventing ordering between independent work.
+
+    The highest-degree-first coloring is deliberately local to a dependency
+    wave.  Orienting blocking edges by these colors lets a scheduler serialize
+    true conflicts while tasks in the same lane retain their original
+    critical-path width.
+    """
+
+    nodes = tuple(sorted({str(value) for value in task_cids if str(value)}))
+    node_set = set(nodes)
+    pairs: set[tuple[str, str]] = set()
+    for raw_pair in blocking_conflict_pairs:
+        values = tuple(sorted({str(value) for value in raw_pair if str(value)}))
+        if len(values) != 2:
+            raise ValueError("blocking conflict pairs must contain two task CIDs")
+        if not set(values).issubset(node_set):
+            raise ValueError(
+                "blocking conflict pairs must remain inside one dependency wave"
+            )
+        pairs.add((values[0], values[1]))
+
+    adjacency = {
+        cid: {
+            peer
+            for pair in pairs
+            if cid in pair
+            for peer in pair
+            if peer != cid
+        }
+        for cid in nodes
+    }
+    colors: dict[str, int] = {}
+    for cid in sorted(nodes, key=lambda item: (-len(adjacency[item]), item)):
+        unavailable = {
+            colors[peer] for peer in adjacency[cid] if peer in colors
+        }
+        color = 0
+        while color in unavailable:
+            color += 1
+        colors[cid] = color
+
+    lanes = tuple(
+        tuple(sorted(cid for cid, assigned in colors.items() if assigned == color))
+        for color in range(max(colors.values(), default=-1) + 1)
+    )
+    if any(
+        colors[left] == colors[right]
+        for left, right in pairs
+    ):
+        raise RuntimeError("conflict coloring placed a blocking edge in one lane")
+    return ConflictWaveProjection(
+        dependency_wave=max(0, int(dependency_wave)),
+        task_cids=nodes,
+        blocking_conflict_pairs=tuple(sorted(pairs)),
+        color_by_task_cid=dict(sorted(colors.items())),
+        independent_lanes=lanes,
+    )
 
 
 @dataclass(frozen=True)
@@ -2216,6 +2332,7 @@ __all__ = [
     "ConflictEdge",
     "ConflictGraph",
     "ConflictSurface",
+    "ConflictWaveProjection",
     "ConflictWeightHistory",
     "LaneAssignment",
     "LaneDecision",
@@ -2234,5 +2351,6 @@ __all__ = [
     "index_ast_blob_records",
     "materialize_task_conflict_graph",
     "normalize_repo_path",
+    "project_conflict_free_wave",
     "update_conflict_weights",
 ]

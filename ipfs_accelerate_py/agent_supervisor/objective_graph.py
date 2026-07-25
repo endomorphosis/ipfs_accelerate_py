@@ -50,6 +50,38 @@ DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX = os.environ.get(
     "Close objective gap",
 )
 
+TASK_GENERATION_EVIDENCE_PRODUCER_BINDINGS: dict[str, str] = {
+    "127990245919649912156052660092678945998": (
+        "task_quality.prove_task_split_refill:"
+        "TaskSplitRefillEvidence"
+    ),
+    "061582446926920746660485801841658333166": (
+        "bundle_optimizer.prove_critical_path_width:"
+        "CriticalPathWidthEvidence"
+    ),
+    "187052702852200236079602798955260586139": (
+        "bundle_optimizer.propagate_goal_packet_completion:"
+        "PacketCompletionBindingEvidence"
+    ),
+}
+
+
+def task_generation_evidence_producer_bindings(
+    requirements: Iterable[str],
+) -> dict[str, str]:
+    """Return explicit producer routing for known task-generation evidence."""
+
+    values: Iterable[str] = (
+        (requirements,) if isinstance(requirements, str) else requirements
+    )
+    return {
+        requirement: TASK_GENERATION_EVIDENCE_PRODUCER_BINDINGS[requirement]
+        for requirement in sorted(
+            {str(value).strip() for value in values if str(value).strip()}
+        )
+        if requirement in TASK_GENERATION_EVIDENCE_PRODUCER_BINDINGS
+    }
+
 
 def parse_python_ast_quietly(text: str) -> ast.AST:
     """Parse Python source without surfacing scanner-only syntax warnings."""
@@ -1193,6 +1225,11 @@ class ObjectiveFinding:
         }
         payload["completion_task_bindings"] = sorted(
             {str(identity) for identity in self.completion_task_bindings if str(identity)}
+        )
+        payload["evidence_producer_bindings"] = (
+            task_generation_evidence_producer_bindings(
+                self.evidence_subset or self.missing_evidence
+            )
         )
         return payload
 
@@ -3676,6 +3713,13 @@ class TaskPlanningGraph:
     def to_dict(self) -> dict[str, Any]:
         dependency = self.dependency_graph.to_dict()
         conflict = self.conflict_graph.to_dict()
+        canonical_lanes = [
+            list(lane)
+            for lane in getattr(self.conflict_graph, "canonical_lanes", ())
+        ]
+        independent_width = int(
+            getattr(self.conflict_graph, "independent_width", 0)
+        )
         return {
             "task_dependency_graph": dependency,
             "dependency_dag": dependency,
@@ -3683,6 +3727,8 @@ class TaskPlanningGraph:
             "conflict_graph": conflict,
             "claimable_task_cids": self.claimable_task_cids,
             "lanes": conflict.get("lanes", {}),
+            "canonical_conflict_free_lanes": canonical_lanes,
+            "independent_conflict_free_width": independent_width,
             "lane_assignments": conflict.get("assignments", []),
             "planning_decisions": conflict.get("decisions", []),
         }

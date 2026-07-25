@@ -20,9 +20,13 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
-from typing import Any
+from typing import Any, Final
 
-from .task_identity import canonical_json_bytes, canonical_task_identity
+from .task_identity import (
+    canonical_content_cid,
+    canonical_json_bytes,
+    canonical_task_identity,
+)
 
 
 TASK_QUALITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-quality@1"
@@ -30,6 +34,13 @@ TASK_SEMANTIC_IDENTITY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-semantic-identity@1"
 )
 TASK_QUALITY_EVALUATOR_VERSION = "task-quality/v1"
+TASK_SPLIT_REFILL_REQUIREMENT_ID: Final = (
+    "127990245919649912156052660092678945998"
+)
+TASK_SPLIT_REFILL_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/task-split-refill-evidence@1"
+)
+_TASK_SPLIT_REFILL_EVIDENCE_SEAL: Final = object()
 
 RESOURCE_CLASSES = frozenset(
     {
@@ -120,6 +131,31 @@ def _finite_ratio(value: Any, name: str) -> float:
     if not math.isfinite(parsed) or not 0.0 <= parsed <= 1.0:
         raise ValueError(f"{name} must be a number between zero and one")
     return parsed
+
+
+def _evidence_hash_material(value: Any) -> Any:
+    """Project finite floats to stable strings for canonical receipt hashing."""
+
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("task-quality evidence cannot contain non-finite floats")
+        return {"$finite_float": format(value, ".17g")}
+    if isinstance(value, Mapping):
+        return {
+            str(key): _evidence_hash_material(child)
+            for key, child in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_evidence_hash_material(child) for child in value]
+    return value
+
+
+def _task_quality_evidence_bytes(value: Any) -> bytes:
+    return canonical_json_bytes(_evidence_hash_material(value))
+
+
+def _task_quality_evidence_cid(value: Any) -> str:
+    return canonical_content_cid(_evidence_hash_material(value))
 
 
 def _semantic_material(value: "TaskCandidate | Mapping[str, Any]") -> dict[str, Any]:
@@ -551,6 +587,15 @@ class TaskQualityPolicy:
             raise ValueError("task breadth limits must be positive")
         if self.max_new_work > self.max_open_work:
             object.__setattr__(self, "max_new_work", self.max_open_work)
+
+    @property
+    def policy_id(self) -> str:
+        """Return the content identity of every sizing and admission threshold."""
+
+        digest = hashlib.sha256(
+            _task_quality_evidence_bytes(asdict(self))
+        ).hexdigest()
+        return f"task-quality-policy/v1/{digest}"
 
 
 @dataclass(frozen=True)
@@ -1448,6 +1493,325 @@ def refine_task_candidates(
     )
 
 
+def _task_split_refill_material(
+    *,
+    source_candidate: TaskCandidate,
+    policy: TaskQualityPolicy,
+    initial_open_work: int,
+    first_admission: TaskAdmissionResult,
+    refill_admission: TaskAdmissionResult,
+    repository_tree: str,
+) -> dict[str, Any]:
+    return {
+        "schema": TASK_SPLIT_REFILL_EVIDENCE_SCHEMA,
+        "requirement_id": TASK_SPLIT_REFILL_REQUIREMENT_ID,
+        "repository_tree": str(repository_tree),
+        "policy_id": policy.policy_id,
+        "policy": asdict(policy),
+        "source_candidate": source_candidate.to_dict(),
+        "initial_open_work": initial_open_work,
+        "first_admission": first_admission.to_dict(),
+        "refill_admission": refill_admission.to_dict(),
+    }
+
+
+def _task_split_refill_qualifies(material: Mapping[str, Any]) -> bool:
+    """Independently reproduce the complete split-then-refill obligation."""
+
+    try:
+        source_payload = material.get("source_candidate")
+        policy_payload = material.get("policy")
+        first_payload = material.get("first_admission")
+        refill_payload = material.get("refill_admission")
+        if not all(
+            isinstance(value, Mapping)
+            for value in (
+                source_payload,
+                policy_payload,
+                first_payload,
+                refill_payload,
+            )
+        ):
+            return False
+        repository_tree = str(material.get("repository_tree") or "").strip()
+        if not repository_tree:
+            return False
+        source = TaskCandidate.from_dict(source_payload)
+        policy = TaskQualityPolicy(**dict(policy_payload))
+        if str(material.get("policy_id") or "") != policy.policy_id:
+            return False
+        initial_open_work = _non_negative_int(
+            material.get("initial_open_work"), "initial_open_work"
+        )
+        if not is_over_broad(source, policy):
+            return False
+        expected_children = split_task_candidate(source, policy=policy)
+        if len(expected_children) < 2 or any(
+            is_over_broad(child, policy) for child in expected_children
+        ):
+            return False
+        expected_semantic_ids = tuple(
+            sorted(child.semantic_identity for child in expected_children)
+        )
+        expected_task_cids = tuple(
+            sorted(child.canonical_task_cid for child in expected_children)
+        )
+        if (
+            len(set(expected_semantic_ids)) != len(expected_semantic_ids)
+            or len(set(expected_task_cids)) != len(expected_task_cids)
+        ):
+            return False
+
+        first = refine_task_candidates(
+            (source,),
+            policy=policy,
+            current_open_work=initial_open_work,
+        )
+        refill = refine_task_candidates(
+            (source,),
+            policy=policy,
+            existing_tasks=first.accepted,
+            current_open_work=first.final_open_work,
+        )
+        if first.to_dict() != dict(first_payload):
+            return False
+        if refill.to_dict() != dict(refill_payload):
+            return False
+
+        admitted_semantic_ids = tuple(
+            sorted(candidate.semantic_identity for candidate in first.accepted)
+        )
+        admitted_task_cids = tuple(
+            sorted(candidate.canonical_task_cid for candidate in first.accepted)
+        )
+        if (
+            admitted_semantic_ids != expected_semantic_ids
+            or admitted_task_cids != expected_task_cids
+            or any(
+                decision.status is not TaskAdmissionStatus.SPLIT
+                or decision.source_identities != (source.semantic_identity,)
+                for decision in first.decisions
+            )
+        ):
+            return False
+        if first.final_open_work != initial_open_work + len(expected_children):
+            return False
+
+        # Splitting must cover the complete work surface and retain external
+        # prerequisites without creating sibling dependencies.
+        if {
+            value for child in expected_children for value in child.acceptance
+        } != set(source.acceptance):
+            return False
+        if {
+            value for child in expected_children for value in child.effects
+        } != set(source.effects):
+            return False
+        if {
+            value for child in expected_children for value in child.evidence_subset
+        } != set(source.evidence_subset):
+            return False
+        if {
+            value for child in expected_children for value in child.predicted_paths
+        } != set(source.outputs) | set(source.predicted_paths):
+            return False
+        if {
+            value for child in expected_children for value in child.predicted_symbols
+        } != set(source.predicted_symbols):
+            return False
+        if {
+            value for child in expected_children for value in child.context_paths
+        } != set(source.context_paths):
+            return False
+        if any(
+            child.goal_id != source.goal_id
+            or child.preconditions != source.preconditions
+            or child.dependencies != source.dependencies
+            or child.conflicts != source.conflicts
+            or child.resources != source.resources
+            or child.resource_class != source.resource_class
+            or child.token_class != source.token_class
+            or child.validation_commands != source.validation_commands
+            or child.merge_fate != source.merge_fate
+            for child in expected_children
+        ):
+            return False
+
+        replay_semantic_ids = tuple(
+            sorted(decision.candidate.semantic_identity for decision in refill.decisions)
+        )
+        duplicate_codes = {
+            "duplicate_semantic_identity",
+            "historical_duplicate",
+        }
+        return (
+            not refill.accepted
+            and replay_semantic_ids == expected_semantic_ids
+            and refill.initial_open_work == first.final_open_work
+            and refill.final_open_work == first.final_open_work
+            and refill.bounded
+            and all(
+                duplicate_codes.intersection(decision.rejection_reasons)
+                for decision in refill.decisions
+            )
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+@dataclass(frozen=True)
+class TaskSplitRefillEvidence:
+    """Content-addressed proof that broad work cannot duplicate on refill."""
+
+    repository_tree: str
+    policy_id: str
+    policy: Mapping[str, Any]
+    source_candidate: Mapping[str, Any]
+    initial_open_work: int
+    first_admission: Mapping[str, Any]
+    refill_admission: Mapping[str, Any]
+    evidence_id: str
+    integrity_digest: str
+    _producer_seal: Any = field(default=None, compare=False, repr=False)
+
+    @classmethod
+    def create(
+        cls,
+        source_candidate: TaskCandidate | Mapping[str, Any],
+        *,
+        policy: TaskQualityPolicy | None = None,
+        initial_open_work: int = 0,
+        repository_tree: str = "in-memory",
+    ) -> "TaskSplitRefillEvidence":
+        """Execute both admission cycles and bind their exact canonical result."""
+
+        source = (
+            source_candidate
+            if isinstance(source_candidate, TaskCandidate)
+            else TaskCandidate.from_mapping(source_candidate)
+        )
+        selected = policy or TaskQualityPolicy()
+        open_work = _non_negative_int(initial_open_work, "initial_open_work")
+        first = refine_task_candidates(
+            (source,),
+            policy=selected,
+            current_open_work=open_work,
+        )
+        refill = refine_task_candidates(
+            (source,),
+            policy=selected,
+            existing_tasks=first.accepted,
+            current_open_work=first.final_open_work,
+        )
+        material = _task_split_refill_material(
+            source_candidate=source,
+            policy=selected,
+            initial_open_work=open_work,
+            first_admission=first,
+            refill_admission=refill,
+            repository_tree=repository_tree,
+        )
+        digest = hashlib.sha256(_task_quality_evidence_bytes(material)).hexdigest()
+        return cls(
+            repository_tree=str(repository_tree),
+            policy_id=selected.policy_id,
+            policy=dict(material["policy"]),
+            source_candidate=dict(material["source_candidate"]),
+            initial_open_work=open_work,
+            first_admission=dict(material["first_admission"]),
+            refill_admission=dict(material["refill_admission"]),
+            evidence_id=_task_quality_evidence_cid(material),
+            integrity_digest=digest,
+            _producer_seal=_TASK_SPLIT_REFILL_EVIDENCE_SEAL,
+        )
+
+    def _material(self) -> dict[str, Any]:
+        return {
+            "schema": TASK_SPLIT_REFILL_EVIDENCE_SCHEMA,
+            "requirement_id": TASK_SPLIT_REFILL_REQUIREMENT_ID,
+            "repository_tree": self.repository_tree,
+            "policy_id": self.policy_id,
+            "policy": dict(self.policy),
+            "source_candidate": dict(self.source_candidate),
+            "initial_open_work": self.initial_open_work,
+            "first_admission": dict(self.first_admission),
+            "refill_admission": dict(self.refill_admission),
+        }
+
+    def verify_integrity(self) -> bool:
+        material = self._material()
+        return (
+            self.integrity_digest
+            == hashlib.sha256(_task_quality_evidence_bytes(material)).hexdigest()
+            and self.evidence_id == _task_quality_evidence_cid(material)
+        )
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        if (
+            self._producer_seal is _TASK_SPLIT_REFILL_EVIDENCE_SEAL
+            and self.verify_integrity()
+            and _task_split_refill_qualifies(self._material())
+        ):
+            return (TASK_SPLIT_REFILL_REQUIREMENT_ID,)
+        return ()
+
+    def to_dict(self) -> dict[str, Any]:
+        material = self._material()
+        qualifies = bool(self.proved_requirement_ids)
+        material.update(
+            {
+                "evidence_id": self.evidence_id,
+                "integrity_digest": self.integrity_digest,
+                "proved_requirement_ids": list(self.proved_requirement_ids),
+                "status": "passed" if qualifies else "diagnostic",
+                "complete": qualifies,
+                "coverage_complete": qualifies,
+                "source_tier": "validation",
+            }
+        )
+        return material
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TaskSplitRefillEvidence":
+        """Restore integrity-checked diagnostics without producer authority."""
+
+        evidence = cls(
+            repository_tree=str(payload.get("repository_tree") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            policy=dict(payload.get("policy") or {}),
+            source_candidate=dict(payload.get("source_candidate") or {}),
+            initial_open_work=_non_negative_int(
+                payload.get("initial_open_work"), "initial_open_work"
+            ),
+            first_admission=dict(payload.get("first_admission") or {}),
+            refill_admission=dict(payload.get("refill_admission") or {}),
+            evidence_id=str(payload.get("evidence_id") or ""),
+            integrity_digest=str(payload.get("integrity_digest") or ""),
+            _producer_seal=None,
+        )
+        if not evidence.verify_integrity():
+            raise ValueError("task split/refill evidence digest mismatch")
+        return evidence
+
+
+def prove_task_split_refill(
+    source_candidate: TaskCandidate | Mapping[str, Any],
+    *,
+    policy: TaskQualityPolicy | None = None,
+    initial_open_work: int = 0,
+    repository_tree: str = "in-memory",
+) -> TaskSplitRefillEvidence:
+    """Produce the authoritative two-cycle split/refill validation receipt."""
+
+    return TaskSplitRefillEvidence.create(
+        source_candidate,
+        policy=policy,
+        initial_open_work=initial_open_work,
+        repository_tree=repository_tree,
+    )
+
+
 # Compatibility spellings used by existing proposal evaluators and early ASI
 # design notes.
 TaskQualityResult = TaskAdmissionResult
@@ -1461,6 +1825,8 @@ evaluate_task_candidates = refine_task_candidates
 
 __all__ = [
     "RESOURCE_CLASSES",
+    "TASK_SPLIT_REFILL_EVIDENCE_SCHEMA",
+    "TASK_SPLIT_REFILL_REQUIREMENT_ID",
     "TASK_QUALITY_EVALUATOR_VERSION",
     "TASK_QUALITY_SCHEMA",
     "TASK_SEMANTIC_IDENTITY_SCHEMA",
@@ -1477,6 +1843,7 @@ __all__ = [
     "TaskQualityScore",
     "TaskRefinementResult",
     "TaskRejection",
+    "TaskSplitRefillEvidence",
     "admit_task_candidate",
     "can_coalesce_tasks",
     "canonical_semantic_identity",
@@ -1486,6 +1853,7 @@ __all__ = [
     "evaluate_task_candidates",
     "is_over_broad",
     "is_tiny",
+    "prove_task_split_refill",
     "refine_task_candidates",
     "score_task_candidate",
     "split_over_broad_candidate",
