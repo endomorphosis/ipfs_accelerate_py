@@ -434,8 +434,8 @@ python -m time_series_performance report --days 30 --format html --output weekly
 
 For more information, see:
 
-- [Benchmark Database Guide](../BENCHMARK_DATABASE_GUIDE.md)
+- [Benchmark Database Guide](../../data/benchmarks/BENCHMARK_DATABASE_GUIDE.md)
 - [Visualization Guide](VISUALIZATION_GUIDE.md)
 - [Benchmark Visualization Guide](benchmark_visualization.md)
-- [CI/CD Integration Guide](CI_CD_INTEGRATION_GUIDE.md)
+- [CI/CD Integration Guide](CICD_INTEGRATION_GUIDE.md)
 - [Performance Dashboard Specification](../PERFORMANCE_DASHBOARD_SPECIFICATION.md)
