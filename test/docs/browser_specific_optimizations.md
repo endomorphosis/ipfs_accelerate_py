@@ -586,8 +586,8 @@ Relative performance of different browsers across model types (normalized to Chr
 
 ## Related Documentation
 
-- [WebGPU Streaming Documentation](WEBGPU_STREAMING_DOCUMENTATION.md)
-- [Configuration Validation Guide](CONFIGURATION_VALIDATION_GUIDE.md)
+- [WebGPU Streaming Documentation](../WEBGPU_STREAMING_DOCUMENTATION.md)
+- [Configuration Validation Guide](../CONFIGURATION_VALIDATION_GUIDE.md)
 - [Web Platform Integration Guide](WEB_PLATFORM_INTEGRATION_GUIDE.md)
 - [Error Handling Guide](ERROR_HANDLING_GUIDE.md)
 - [Model-Specific Optimization Guides](model_specific_optimizations/)
