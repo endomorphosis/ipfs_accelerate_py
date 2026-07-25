@@ -52,7 +52,7 @@ receipt instead of accepting textual or embedding similarity as completion.
 
 ## ASI-G010 Token-efficient context and end-to-end measurement
 
-- Status: active
+- Status: provisionally_complete
 - Parent: ASI-G000
 - Fib priority: 2
 - Track: token-efficiency
@@ -77,6 +77,9 @@ receipt instead of accepting textual or embedding similarity as completion.
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+- State transitioned at: 2026-07-25T03:28:08.707674+00:00
+- State transition reason: Produce completion evidence for: Required goal, authority, scope, and acceptance context is never truncated; Map every mandatory acceptance criterion to fresh, verified implementation and validation proof bound to the current tree.; Every submitted validation proof must be fresh and passing, and every mandatory criterion must have one.; Require an explicitly healthy analyzer that is safe for completion reasoning.; Require the configured number of independent, fresh, healthy exhaustive receipts bound to the current repository tree.; Every descendant must remain verified with all proof requirements fresh, conclusive, uncontradicted, and satisfied.; Task completion is provisional until every criterion has valid evidence.
+- Provisional at: 2026-07-25T03:28:08.707674+00:00
 
 ## ASI-G020 Integrated analysis, caching, and ipfs_datasets_py offload
 
