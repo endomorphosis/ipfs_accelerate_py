@@ -36,19 +36,69 @@ Additional optional providers (opt-in by selecting provider):
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import hashlib
 import logging
+import math
+import threading
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Callable, Dict, Iterable, List, Optional, Protocol, runtime_checkable
+from typing import Callable, Dict, Iterable, List, Optional, Protocol, Sequence, runtime_checkable
 
 from .router_deps import RouterDeps, get_default_router_deps
 
 logger = logging.getLogger(__name__)
+
+
+class EmbeddingsRouterError(RuntimeError):
+    """Raised when a provider violates the embeddings router contract."""
+
+
+_LAST_EMBEDDING_TRACE = threading.local()
+_EMBEDDING_PROGRESS_LOCK = threading.Lock()
+_LAST_EMBEDDING_PROGRESS: Dict[str, object] = {
+    "stage": "",
+    "total_items": 0,
+    "completed_items": 0,
+    "total_batches": 0,
+    "completed_batches": 0,
+}
+
+
+def _set_last_embedding_trace(**values: object) -> None:
+    _LAST_EMBEDDING_TRACE.payload = dict(values)
+
+
+def get_last_embedding_trace() -> Dict[str, object]:
+    """Return a copy of the most recent embedding-call trace for this thread."""
+
+    payload = getattr(_LAST_EMBEDDING_TRACE, "payload", None)
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _update_embedding_progress(**values: object) -> Dict[str, object]:
+    with _EMBEDDING_PROGRESS_LOCK:
+        _LAST_EMBEDDING_PROGRESS.update(values)
+        return dict(_LAST_EMBEDDING_PROGRESS)
+
+
+def _reset_embedding_progress(**values: object) -> Dict[str, object]:
+    with _EMBEDDING_PROGRESS_LOCK:
+        _LAST_EMBEDDING_PROGRESS.clear()
+        _LAST_EMBEDDING_PROGRESS.update(values)
+        return dict(_LAST_EMBEDDING_PROGRESS)
+
+
+def get_embedding_progress() -> Dict[str, object]:
+    """Return a thread-safe snapshot of the current bounded batch."""
+
+    with _EMBEDDING_PROGRESS_LOCK:
+        return dict(_LAST_EMBEDDING_PROGRESS)
 
 
 def _truthy(value: Optional[str]) -> bool:
@@ -187,7 +237,70 @@ def register_embeddings_provider(name: str, factory: ProviderFactory) -> None:
 
     if not name or not name.strip():
         raise ValueError("Provider name must be non-empty")
-    _PROVIDER_REGISTRY[name] = ProviderInfo(name=name, factory=factory)
+    normalized = name.strip().lower()
+    _PROVIDER_REGISTRY[normalized] = ProviderInfo(name=normalized, factory=factory)
+
+
+def _provider_name(
+    provider: EmbeddingsProvider,
+    *,
+    requested: Optional[str] = None,
+) -> str:
+    explicit = str(requested or "").strip().lower()
+    if explicit:
+        return explicit
+    tagged = str(getattr(provider, "router_provider_name", "") or "").strip().lower()
+    if tagged:
+        return tagged
+    return provider.__class__.__name__.strip("_").lower() or "custom"
+
+
+def _normalize_embedding_vectors(
+    value: object,
+    *,
+    expected_count: int,
+) -> List[List[float]]:
+    """Validate provider output and normalize it to finite float vectors."""
+
+    if hasattr(value, "tolist") and callable(getattr(value, "tolist")):
+        value = value.tolist()
+    if not isinstance(value, (list, tuple)):
+        raise EmbeddingsRouterError("embeddings provider must return a sequence")
+    if len(value) != expected_count:
+        raise EmbeddingsRouterError(
+            "embeddings provider returned "
+            f"{len(value)} vectors for {expected_count} inputs"
+        )
+    if expected_count == 0:
+        return []
+
+    vectors: List[List[float]] = []
+    dimension: Optional[int] = None
+    for row in value:
+        if hasattr(row, "tolist") and callable(getattr(row, "tolist")):
+            row = row.tolist()
+        if not isinstance(row, (list, tuple)) or not row:
+            raise EmbeddingsRouterError(
+                "each embedding must be a non-empty numeric sequence"
+            )
+        try:
+            vector = [float(item) for item in row]
+        except (TypeError, ValueError) as exc:
+            raise EmbeddingsRouterError(
+                "embedding values must be numeric"
+            ) from exc
+        if not all(math.isfinite(item) for item in vector):
+            raise EmbeddingsRouterError(
+                "embedding values must all be finite"
+            )
+        if dimension is None:
+            dimension = len(vector)
+        elif len(vector) != dimension:
+            raise EmbeddingsRouterError(
+                "embeddings provider returned inconsistent dimensions"
+            )
+        vectors.append(vector)
+    return vectors
 
 
 def _coalesce_env(*names: str) -> str:
@@ -209,6 +322,8 @@ def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
     app_title = os.getenv("OPENROUTER_APP_TITLE")
 
     class _OpenRouterEmbeddingsProvider:
+        router_provider_name = "openrouter"
+
         def embed_texts(
             self,
             texts: Iterable[str],
@@ -291,6 +406,8 @@ def _get_xai_embeddings_provider() -> Optional[EmbeddingsProvider]:
     base_url = os.getenv("ipfs_accelerate_py_XAI_BASE_URL", "https://api.x.ai/v1").rstrip("/")
 
     class _XAIEmbeddingsProvider:
+        router_provider_name = "xai"
+
         def embed_texts(
             self,
             texts: Iterable[str],
@@ -364,6 +481,8 @@ def _get_meta_ai_embeddings_provider() -> Optional[EmbeddingsProvider]:
     base_url = os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "https://api.llamameta.net/v1").rstrip("/")
 
     class _MetaAIEmbeddingsProvider:
+        router_provider_name = "meta_ai"
+
         def embed_texts(
             self,
             texts: Iterable[str],
@@ -433,6 +552,8 @@ def _get_gemini_cli_provider() -> Optional[EmbeddingsProvider]:
         return None
 
     class _GeminiCLIEmbeddingsProvider:
+        router_provider_name = "gemini_cli"
+
         def __init__(self):
             self._client = None
 
@@ -484,6 +605,8 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
         return None
 
     class _HuggingFaceEmbeddingsProvider:
+        router_provider_name = "huggingface"
+
         def __init__(self):
             self._models = {}
 
@@ -520,7 +643,21 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
             
             # Use SentenceTransformer if available
             if hasattr(model_obj, 'encode'):
-                embeddings = model_obj.encode(inputs, convert_to_numpy=True)
+                encode_options = {
+                    key: kwargs[key]
+                    for key in (
+                        "batch_size",
+                        "show_progress_bar",
+                        "normalize_embeddings",
+                        "precision",
+                    )
+                    if key in kwargs
+                }
+                embeddings = model_obj.encode(
+                    inputs,
+                    convert_to_numpy=True,
+                    **encode_options,
+                )
                 return [emb.tolist() for emb in embeddings]
             
             # Otherwise use transformers directly
@@ -559,6 +696,8 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[EmbeddingsProvid
             return None
 
         class _BackendManagerEmbeddingsProvider:
+            router_provider_name = "backend_manager"
+
             def embed_texts(
                 self,
                 texts: Iterable[str],
@@ -657,16 +796,21 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[Embedding
 
 def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) -> EmbeddingsProvider:
     if preferred:
-        info = _PROVIDER_REGISTRY.get(preferred)
+        preferred_key = preferred.strip().lower()
+        info = _PROVIDER_REGISTRY.get(preferred_key)
         if info is not None:
             return info.factory()
-        builtin = _builtin_provider_by_name(preferred, deps=deps)
+        builtin = _builtin_provider_by_name(preferred_key, deps=deps)
         if builtin is not None:
             return builtin
         raise ValueError(f"Unknown embeddings provider: {preferred}")
 
     # 1) Registered providers can opt-in via env ordering if desired.
-    preferred_env = os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_PROVIDER", "").strip()
+    preferred_env = (
+        os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_PROVIDER", "")
+        .strip()
+        .lower()
+    )
     if preferred_env:
         info = _PROVIDER_REGISTRY.get(preferred_env)
         if info is not None:
@@ -731,126 +875,478 @@ def embed_texts(
     deps: Optional[RouterDeps] = None,
     **kwargs: object,
 ) -> List[List[float]]:
-    """Generate embeddings for multiple texts.
-    
-    Args:
-        texts: Iterable of strings to embed
-        model_name: Optional model name to use
-        device: Optional device (cpu/cuda)
-        provider: Optional provider name
-        provider_instance: Optional pre-created provider instance
-        deps: Optional RouterDeps for dependency injection
-        **kwargs: Additional arguments passed to the provider
-        
-    Returns:
-        List of embedding vectors (one per input text)
-    """
+    """Generate validated embeddings while preserving input order."""
 
+    started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
     inputs = list(texts)
+    if any(not isinstance(text, str) for text in inputs):
+        raise TypeError("texts must contain only strings")
+    if not inputs:
+        _set_last_embedding_trace(
+            status="ok",
+            provider_requested=str(provider or ""),
+            provider_used="",
+            model_name=str(model_name or ""),
+            device=str(device or ""),
+            input_count=0,
+            output_count=0,
+            dimension=0,
+            cache_hits=0,
+            cache_misses=0,
+            fallback_used=False,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+        )
+        return []
 
-    if _response_cache_enabled() and inputs:
-        try:
-            cached_vectors: list[list[float] | None] = [None] * len(inputs)
-            missing_texts: list[str] = []
-            missing_indices: list[int] = []
+    try:
+        backend = provider_instance or get_embeddings_provider(
+            provider,
+            deps=resolved_deps,
+        )
+    except Exception as exc:
+        _set_last_embedding_trace(
+            status="error",
+            provider_requested=str(provider or ""),
+            provider_used="",
+            model_name=str(model_name or ""),
+            device=str(device or ""),
+            input_count=len(inputs),
+            output_count=0,
+            dimension=0,
+            cache_hits=0,
+            cache_misses=len(inputs),
+            fallback_used=False,
+            error_type=type(exc).__name__,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+        )
+        raise
 
-            for idx, text in enumerate(inputs):
+    provider_used = _provider_name(backend, requested=provider)
+    cache_enabled = _response_cache_enabled()
+    cached_vectors: List[Optional[List[float]]] = [None] * len(inputs)
+    missing_indices: List[int] = []
+
+    if cache_enabled:
+        for index, text in enumerate(inputs):
+            try:
                 cache_key = _response_cache_key(
-                    provider=provider,
+                    provider=provider_used,
                     model_name=model_name,
                     device=device,
                     text=text,
                     kwargs=dict(kwargs),
                 )
                 getter = getattr(resolved_deps, "get_cached_or_remote", None)
-                cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
-                if isinstance(cached, list) and all(isinstance(x, (int, float)) for x in cached):
-                    cached_vectors[idx] = [float(x) for x in cached]
+                cached = (
+                    getter(cache_key)
+                    if callable(getter)
+                    else resolved_deps.get_cached(cache_key)
+                )
+                cached_vectors[index] = _normalize_embedding_vectors(
+                    [cached],
+                    expected_count=1,
+                )[0]
+            except Exception:
+                missing_indices.append(index)
+    else:
+        missing_indices = list(range(len(inputs)))
+
+    cache_hits = len(inputs) - len(missing_indices)
+    fallback_used = False
+
+    def _cache_vectors(
+        source_texts: Sequence[str],
+        vectors: Sequence[Sequence[float]],
+        *,
+        cache_provider: str,
+    ) -> None:
+        if not cache_enabled:
+            return
+        for text, vector in zip(source_texts, vectors):
+            try:
+                cache_key = _response_cache_key(
+                    provider=cache_provider,
+                    model_name=model_name,
+                    device=device,
+                    text=text,
+                    kwargs=dict(kwargs),
+                )
+                value = [float(item) for item in vector]
+                setter = getattr(resolved_deps, "set_cached_and_remote", None)
+                if callable(setter):
+                    setter(cache_key, value)
                 else:
-                    missing_indices.append(idx)
-                    missing_texts.append(text)
+                    resolved_deps.set_cached(cache_key, value)
+            except Exception:
+                continue
 
-            if not missing_texts:
-                return [v if v is not None else [] for v in cached_vectors]
+    def _generate(
+        active_backend: EmbeddingsProvider,
+        source_texts: Sequence[str],
+    ) -> List[List[float]]:
+        raw = active_backend.embed_texts(
+            source_texts,
+            model_name=model_name,
+            device=device,
+            **kwargs,
+        )
+        return _normalize_embedding_vectors(
+            raw,
+            expected_count=len(source_texts),
+        )
 
-            backend = provider_instance or get_embeddings_provider(provider, deps=resolved_deps)
-            generated = backend.embed_texts(missing_texts, model_name=model_name, device=device, **kwargs)
-            for out_idx, vec in enumerate(generated):
-                input_idx = missing_indices[out_idx]
-                cached_vectors[input_idx] = vec
-                try:
-                    cache_key = _response_cache_key(
-                        provider=provider,
-                        model_name=model_name,
-                        device=device,
-                        text=inputs[input_idx],
-                        kwargs=dict(kwargs),
-                    )
-                    setter = getattr(resolved_deps, "set_cached_and_remote", None)
-                    if callable(setter):
-                        setter(cache_key, vec)
-                    else:
-                        resolved_deps.set_cached(cache_key, vec)
-                except Exception:
-                    pass
-
-            return [v if v is not None else [] for v in cached_vectors]
-        except Exception:
-            pass
-
-    backend = provider_instance or get_embeddings_provider(provider, deps=resolved_deps)
     try:
-        result = backend.embed_texts(inputs, model_name=model_name, device=device, **kwargs)
-        if _response_cache_enabled() and inputs:
-            for text, vec in zip(inputs, result):
-                try:
-                    cache_key = _response_cache_key(
-                        provider=provider,
-                        model_name=model_name,
-                        device=device,
-                        text=text,
-                        kwargs=dict(kwargs),
-                    )
-                    setter = getattr(resolved_deps, "set_cached_and_remote", None)
-                    if callable(setter):
-                        setter(cache_key, vec)
-                    else:
-                        resolved_deps.set_cached(cache_key, vec)
-                except Exception:
-                    pass
-        return result
+        if missing_indices:
+            missing_texts = [inputs[index] for index in missing_indices]
+            generated = _generate(backend, missing_texts)
+            for index, vector in zip(missing_indices, generated):
+                cached_vectors[index] = vector
+            _cache_vectors(
+                missing_texts,
+                generated,
+                cache_provider=provider_used,
+            )
+
+        try:
+            result = _normalize_embedding_vectors(
+                cached_vectors,
+                expected_count=len(inputs),
+            )
+        except EmbeddingsRouterError:
+            # A stale or externally supplied response-cache entry may have a
+            # different dimension. Recompute the complete homogeneous batch.
+            if cache_hits <= 0:
+                raise
+            result = _generate(backend, inputs)
+            cache_hits = 0
+            missing_indices = list(range(len(inputs)))
+            _cache_vectors(inputs, result, cache_provider=provider_used)
     except Exception as primary_error:
-        logger.debug(f"Primary embeddings provider failed: {primary_error}")
-        # If an optional provider fails, fall back to local HuggingFace.
-        if provider is None:
-            hf_provider = _get_huggingface_provider()
-            if hf_provider is not None and backend is not hf_provider:
-                result = hf_provider.embed_texts(inputs, model_name=model_name, device=device, **kwargs)
-                if _response_cache_enabled() and inputs:
-                    for text, vec in zip(inputs, result):
-                        try:
-                            cache_key = _response_cache_key(
-                                provider=provider,
-                                model_name=model_name,
-                                device=device,
-                                text=text,
-                                kwargs=dict(kwargs),
-                            )
-                            setter = getattr(resolved_deps, "set_cached_and_remote", None)
-                            if callable(setter):
-                                setter(cache_key, vec)
-                            else:
-                                resolved_deps.set_cached(cache_key, vec)
-                        except Exception:
-                            pass
-                return result
+        logger.debug("Primary embeddings provider failed: %s", primary_error)
+        if (
+            provider is None
+            and provider_instance is None
+            and provider_used != "huggingface"
+        ):
+            try:
+                fallback = get_embeddings_provider(
+                    "huggingface",
+                    deps=resolved_deps,
+                )
+            except Exception:
+                fallback = None
+            if fallback is not None:
+                try:
+                    result = _generate(fallback, inputs)
+                    provider_used = "huggingface"
+                    fallback_used = True
+                    cache_hits = 0
+                    missing_indices = list(range(len(inputs)))
+                    _cache_vectors(inputs, result, cache_provider=provider_used)
+                except Exception:
+                    _set_last_embedding_trace(
+                        status="error",
+                        provider_requested="",
+                        provider_used=provider_used,
+                        model_name=str(model_name or ""),
+                        device=str(device or ""),
+                        input_count=len(inputs),
+                        output_count=0,
+                        dimension=0,
+                        cache_hits=cache_hits,
+                        cache_misses=len(missing_indices),
+                        fallback_used=True,
+                        error_type=type(primary_error).__name__,
+                        elapsed_ms=round(
+                            (time.perf_counter() - started) * 1000,
+                            3,
+                        ),
+                    )
+                    raise primary_error
+            else:
+                _set_last_embedding_trace(
+                    status="error",
+                    provider_requested="",
+                    provider_used=provider_used,
+                    model_name=str(model_name or ""),
+                    device=str(device or ""),
+                    input_count=len(inputs),
+                    output_count=0,
+                    dimension=0,
+                    cache_hits=cache_hits,
+                    cache_misses=len(missing_indices),
+                    fallback_used=False,
+                    error_type=type(primary_error).__name__,
+                    elapsed_ms=round(
+                        (time.perf_counter() - started) * 1000,
+                        3,
+                    ),
+                )
+                raise
+        else:
+            _set_last_embedding_trace(
+                status="error",
+                provider_requested=str(provider or ""),
+                provider_used=provider_used,
+                model_name=str(model_name or ""),
+                device=str(device or ""),
+                input_count=len(inputs),
+                output_count=0,
+                dimension=0,
+                cache_hits=cache_hits,
+                cache_misses=len(missing_indices),
+                fallback_used=False,
+                error_type=type(primary_error).__name__,
+                elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+            )
+            raise
+
+    dimension = len(result[0]) if result else 0
+    _set_last_embedding_trace(
+        status="ok",
+        provider_requested=str(provider or ""),
+        provider_used=provider_used,
+        model_name=str(model_name or ""),
+        device=str(device or ""),
+        input_count=len(inputs),
+        output_count=len(result),
+        dimension=dimension,
+        cache_hits=cache_hits,
+        cache_misses=len(missing_indices),
+        fallback_used=fallback_used,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+    )
+    return result
+
+
+def _embedding_batch_worker_count(
+    *,
+    size: int,
+    max_workers: Optional[int],
+    device: Optional[str],
+) -> int:
+    if size <= 1:
+        return 1
+    if max_workers is not None:
+        try:
+            requested = max(1, min(int(max_workers), size))
+        except (TypeError, ValueError):
+            requested = 1
+    else:
+        raw = _coalesce_env(
+            "IPFS_ACCELERATE_EMBEDDINGS_ROUTER_BATCH_WORKERS",
+            "IPFS_ACCELERATE_PY_EMBEDDINGS_ROUTER_BATCH_WORKERS",
+        )
+        try:
+            requested = max(1, min(int(raw), size)) if raw else 1
+        except (TypeError, ValueError):
+            requested = 1
+    if str(device or "").strip().lower().startswith("cuda"):
+        return 1
+    return requested
+
+
+def embed_texts_batched(
+    texts: Iterable[str],
+    *,
+    batch_size: int = 128,
+    model_name: Optional[str] = None,
+    device: Optional[str] = None,
+    provider: Optional[str] = None,
+    provider_instance: Optional[EmbeddingsProvider] = None,
+    deps: Optional[RouterDeps] = None,
+    max_workers: Optional[int] = None,
+    progress_callback: Optional[Callable[[Dict[str, object]], object]] = None,
+    **kwargs: object,
+) -> List[List[float]]:
+    """Embed a bounded, ordered batch while reusing one provider instance."""
+
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+        raise ValueError("batch_size must be a positive integer")
+    items = list(texts)
+    if any(not isinstance(text, str) for text in items):
+        raise TypeError("texts must contain only strings")
+
+    total_batches = (
+        (len(items) + batch_size - 1) // batch_size if items else 0
+    )
+
+    def _report(**values: object) -> None:
+        snapshot = _update_embedding_progress(**values)
+        if progress_callback is not None:
+            try:
+                progress_callback(snapshot)
+            except Exception:
+                logger.debug("Embedding progress callback failed", exc_info=True)
+
+    start_snapshot = _reset_embedding_progress(
+        stage="start",
+        total_items=len(items),
+        completed_items=0,
+        total_batches=total_batches,
+        completed_batches=0,
+        dimension=0,
+    )
+    if progress_callback is not None:
+        try:
+            progress_callback(start_snapshot)
+        except Exception:
+            logger.debug("Embedding progress callback failed", exc_info=True)
+    if not items:
+        _report(stage="done")
+        _set_last_embedding_trace(
+            status="ok",
+            provider_requested=str(provider or ""),
+            provider_used="",
+            model_name=str(model_name or ""),
+            device=str(device or ""),
+            input_count=0,
+            output_count=0,
+            dimension=0,
+            cache_hits=0,
+            cache_misses=0,
+            fallback_used=False,
+            batch_count=0,
+            elapsed_ms=0.0,
+        )
+        return []
+
+    started = time.perf_counter()
+    resolved_deps = deps or get_default_router_deps()
+    backend = provider_instance or get_embeddings_provider(
+        provider,
+        deps=resolved_deps,
+    )
+    ranges = list(range(0, len(items), batch_size))
+    workers = _embedding_batch_worker_count(
+        size=len(ranges),
+        max_workers=max_workers,
+        device=device,
+    )
+
+    def _embed_batch(start: int) -> tuple[List[List[float]], Dict[str, object]]:
+        batch = items[start : start + batch_size]
+        vectors = embed_texts(
+            batch,
+            model_name=model_name,
+            device=device,
+            provider=provider,
+            provider_instance=backend,
+            deps=resolved_deps,
+            **kwargs,
+        )
+        return vectors, get_last_embedding_trace()
+
+    batch_results: Dict[int, List[List[float]]] = {}
+    traces: List[Dict[str, object]] = []
+    completed_items = 0
+    try:
+        if workers <= 1:
+            for completed_batches, start in enumerate(ranges, start=1):
+                vectors, trace = _embed_batch(start)
+                batch_results[start] = vectors
+                traces.append(trace)
+                completed_items += len(vectors)
+                _report(
+                    stage="running",
+                    completed_items=completed_items,
+                    completed_batches=completed_batches,
+                    dimension=len(vectors[0]) if vectors else 0,
+                )
+        else:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=workers
+            ) as executor:
+                futures = {
+                    executor.submit(_embed_batch, start): start
+                    for start in ranges
+                }
+                completed_batches = 0
+                for future in concurrent.futures.as_completed(futures):
+                    start = futures[future]
+                    vectors, trace = future.result()
+                    batch_results[start] = vectors
+                    traces.append(trace)
+                    completed_batches += 1
+                    completed_items += len(vectors)
+                    _report(
+                        stage="running",
+                        completed_items=completed_items,
+                        completed_batches=completed_batches,
+                        dimension=len(vectors[0]) if vectors else 0,
+                    )
+    except Exception as exc:
+        _report(stage="error", error_type=type(exc).__name__)
+        _set_last_embedding_trace(
+            status="error",
+            provider_requested=str(provider or ""),
+            provider_used=_provider_name(backend, requested=provider),
+            model_name=str(model_name or ""),
+            device=str(device or ""),
+            input_count=len(items),
+            output_count=completed_items,
+            dimension=0,
+            cache_hits=sum(int(trace.get("cache_hits", 0)) for trace in traces),
+            cache_misses=sum(int(trace.get("cache_misses", 0)) for trace in traces),
+            fallback_used=any(bool(trace.get("fallback_used")) for trace in traces),
+            batch_count=len(traces),
+            error_type=type(exc).__name__,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+        )
         raise
+
+    ordered = [
+        vector
+        for start in ranges
+        for vector in batch_results[start]
+    ]
+    result = _normalize_embedding_vectors(ordered, expected_count=len(items))
+    dimension = len(result[0]) if result else 0
+    provider_used = next(
+        (
+            str(trace.get("provider_used") or "")
+            for trace in traces
+            if trace.get("provider_used")
+        ),
+        _provider_name(backend, requested=provider),
+    )
+    _report(
+        stage="done",
+        completed_items=len(result),
+        completed_batches=total_batches,
+        dimension=dimension,
+    )
+    _set_last_embedding_trace(
+        status="ok",
+        provider_requested=str(provider or ""),
+        provider_used=provider_used,
+        model_name=str(model_name or ""),
+        device=str(device or ""),
+        input_count=len(items),
+        output_count=len(result),
+        dimension=dimension,
+        cache_hits=sum(int(trace.get("cache_hits", 0)) for trace in traces),
+        cache_misses=sum(int(trace.get("cache_misses", 0)) for trace in traces),
+        fallback_used=any(bool(trace.get("fallback_used")) for trace in traces),
+        batch_count=total_batches,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+    )
+    return result
 
 
 def clear_embeddings_router_caches() -> None:
     """Clear internal provider caches (useful for tests)."""
     _resolve_provider_cached.cache_clear()
+    _set_last_embedding_trace()
+    _reset_embedding_progress(
+        stage="",
+        total_items=0,
+        completed_items=0,
+        total_batches=0,
+        completed_batches=0,
+        dimension=0,
+    )
 
 
 def embed_text(
