@@ -410,7 +410,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-023 Build the paired end-to-end self-improvement rollout gate
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: rollout
