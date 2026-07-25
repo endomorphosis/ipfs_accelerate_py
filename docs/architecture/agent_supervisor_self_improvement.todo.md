@@ -392,7 +392,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-022 Implement benchmark-driven bounded self-refill
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: self-refill
