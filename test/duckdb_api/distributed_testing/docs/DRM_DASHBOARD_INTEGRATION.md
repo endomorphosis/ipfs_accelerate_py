@@ -199,7 +199,7 @@ Future enhancements planned for the DRM Dashboard Integration:
 
 ## References
 
-- [Dynamic Resource Management Documentation](DYNAMIC_RESOURCE_MANAGEMENT.md)
+- [Dynamic Resource Management Documentation](../DYNAMIC_RESOURCE_MANAGEMENT.md)
 - [DRM Visualization README](../DRM_VISUALIZATION_README.md)
 - [Visualization Guide](VISUALIZATION_GUIDE.md)
 - [Monitoring Dashboard Guide](../MONITORING_DASHBOARD_GUIDE.md)
