@@ -198,7 +198,7 @@ If the framework itself is failing:
 ## References
 
 - [CLAUDE.md](CLAUDE.md) - Project status and current focus areas
-- [Model Documentation README](/scripts/generators/model_documentation/README.md) - Documentation format and purpose
-- [End-to-End Testing Framework README](/scripts/generators/runners/end_to_end/README.md) - Detailed framework documentation
-- [Expected Results README](/scripts/generators/expected_results/README.md) - Expected results format and usage
-- [Collected Results README](/scripts/generators/collected_results/README.md) - Test result format and interpretation
+- [Model Documentation README](generators/model_documentation/README.md) - Documentation format and purpose
+- [End-to-End Testing Framework README](generators/runners/end_to_end/README.md) - Detailed framework documentation
+- [Expected Results README](generators/expected_results/README.md) - Expected results format and usage
+- [Collected Results README](generators/collected_results/README.md) - Test result format and interpretation
