@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -36,6 +37,8 @@ from ..scan_receipts import (
 from .core import ManagedDaemonSpec, terminate_pid_tree
 from .implementation_daemon import (
     DEFAULT_TRACKS,
+    IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
+    IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
     TASK_HEADER_PREFIX,
     PortalImplementationDaemon,
@@ -44,6 +47,7 @@ from .implementation_daemon import (
     consume_stale_active_attempt,
     load_json_dict,
     normalize_focus_tracks,
+    normalize_implementation_protected_paths,
     normalize_relative_path_list,
     parse_timestamp,
     process_command_line,
@@ -83,6 +87,10 @@ class ObjectiveRefillTimeoutError(TimeoutError):
 
 class CodebaseRefillTimeoutError(TimeoutError):
     """Raised when supervisor-owned codebase refill exceeds its local budget."""
+
+
+class ObjectiveCompletionArtifactRefreshError(RuntimeError):
+    """Raised when the configured completion-artifact producer cannot refresh."""
 
 
 OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
@@ -230,6 +238,7 @@ class PortalSupervisorConfig:
     worktree_root: Path | None = None
     merge_target_branch: str = ""
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
+    implementation_protected_paths: tuple[str, ...] = field(default_factory=tuple)
     worktree_reconciliation_enabled: bool = True
     worktree_reconciliation_max_merges: int = 1
     worktree_reconciliation_dry_run: bool = False
@@ -300,6 +309,10 @@ class PortalSupervisorConfig:
     objective_refine_goals: bool = True
     objective_reconcile_goal_completion: bool = True
     objective_goal_completion_todo_boards: tuple[str, ...] = field(default_factory=tuple)
+    objective_goal_completion_gate_path: Path | None = None
+    objective_goal_completion_evidence_path: Path | None = None
+    objective_goal_completion_artifact_refresh_command: str = ""
+    objective_goal_completion_artifact_refresh_timeout_seconds: float = 300.0
     objective_goal_migration_enabled: bool = True
     objective_goal_migration_preview: bool = False
     objective_goal_migration_batch_size: int = 100
@@ -583,6 +596,39 @@ class PortalImplementationSupervisor:
             if not failed:
                 finish_maintenance("completed")
 
+    def _implementation_protected_maintenance_guard(self) -> dict[str, Any]:
+        """Block supervisor mutations while an agent fence is active/latched."""
+
+        active_path = (
+            self.config.state_dir
+            / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+        )
+        incident_path = (
+            self.config.state_dir
+            / IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME
+        )
+        active_exists = active_path.exists()
+        incident_exists = incident_path.exists()
+        if not active_exists and not incident_exists:
+            return {"blocked": False, "reason": "no_protected_path_guard"}
+        payload = {
+            "blocked": True,
+            "reason": (
+                "implementation_protected_path_incident_latched"
+                if incident_exists
+                else "implementation_protected_path_attempt_active"
+            ),
+            "active_snapshot_path": str(active_path),
+            "active_snapshot_exists": active_exists,
+            "incident_path": str(incident_path),
+            "incident_exists": incident_exists,
+        }
+        self._record_event(
+            "supervisor_maintenance_protected_path_blocked",
+            payload,
+        )
+        return payload
+
     def _run_once_with_maintenance(
         self,
         update_maintenance_phase,
@@ -593,6 +639,17 @@ class PortalImplementationSupervisor:
         event_log_repair = self.ensure_event_log_file()
         update_maintenance_phase("state_file_repair")
         state_file_repair = self.ensure_state_file()
+        update_maintenance_phase("implementation_protected_path_guard")
+        protected_path_guard = self._implementation_protected_maintenance_guard()
+        if protected_path_guard.get("blocked", False):
+            return {
+                "stuck": False,
+                "maintenance_blocked": True,
+                "reason": str(protected_path_guard.get("reason") or ""),
+                "event_log_repair": event_log_repair,
+                "state_file_repair": state_file_repair,
+                "protected_path_guard": protected_path_guard,
+            }
         update_maintenance_phase("stale_worktree_detection")
         stale_worktree_detection = self.detect_stale_worktrees()
         update_maintenance_phase("stale_active_state_repair")
@@ -3745,6 +3802,196 @@ class PortalImplementationSupervisor:
             callback=lambda: run_objective_daemon(args),
         )
 
+    def _refresh_objective_goal_completion_artifacts(self) -> dict[str, Any]:
+        """Run an explicitly configured artifact producer as bounded argv.
+
+        The command is operator configuration, never data loaded from either
+        artifact.  ``shell=False`` prevents artifact text or shell metacharacters
+        from becoming executable input.
+        """
+
+        protected_path_guard = self._implementation_protected_maintenance_guard()
+        if protected_path_guard.get("blocked", False):
+            raise CompletionArtifactRefreshError(
+                "completion-artifact refresh blocked by active or latched "
+                "implementation protected-path fence"
+            )
+        command_text = str(
+            self.config.objective_goal_completion_artifact_refresh_command or ""
+        ).strip()
+        if not command_text:
+            return {"attempted": False, "reason": "not_configured"}
+        repo_root = self.config.repo_root.resolve()
+
+        def resolve_from_repo(path: Path) -> Path:
+            return (
+                path.resolve()
+                if path.is_absolute()
+                else (repo_root / path).resolve()
+            )
+
+        gate_path = (
+            resolve_from_repo(self.config.objective_goal_completion_gate_path)
+            if self.config.objective_goal_completion_gate_path is not None
+            else None
+        )
+        evidence_path = (
+            resolve_from_repo(self.config.objective_goal_completion_evidence_path)
+            if self.config.objective_goal_completion_evidence_path is not None
+            else None
+        )
+        artifact_paths = [
+            path for path in (gate_path, evidence_path) if path is not None
+        ]
+        if not artifact_paths:
+            raise ObjectiveCompletionArtifactRefreshError(
+                "completion-artifact refresh requires a configured gate or evidence path"
+            )
+        try:
+            command = shlex.split(command_text)
+        except ValueError as exc:
+            raise ObjectiveCompletionArtifactRefreshError(
+                f"invalid completion-artifact refresh argv: {exc}"
+            ) from exc
+        if not command:
+            raise ObjectiveCompletionArtifactRefreshError(
+                "completion-artifact refresh command is empty"
+            )
+        timeout_seconds = float(
+            self.config.objective_goal_completion_artifact_refresh_timeout_seconds
+        )
+        if timeout_seconds <= 0.0:
+            raise ObjectiveCompletionArtifactRefreshError(
+                "completion-artifact refresh timeout must be greater than zero"
+            )
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "IPFS_ACCELERATE_COMPLETION_REPO_ROOT": str(repo_root),
+                "IPFS_ACCELERATE_COMPLETION_OBJECTIVE_PATH": str(
+                    resolve_from_repo(self.config.objective_path)
+                    if self.config.objective_path
+                    else ""
+                ),
+                "IPFS_ACCELERATE_COMPLETION_GATE_PATH": str(
+                    gate_path if gate_path is not None else ""
+                ),
+                "IPFS_ACCELERATE_COMPLETION_EVIDENCE_PATH": str(
+                    evidence_path if evidence_path is not None else ""
+                ),
+            }
+        )
+        started_at = utc_now()
+        try:
+            result = subprocess.run(
+                command,
+                cwd=repo_root,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+                shell=False,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ObjectiveCompletionArtifactRefreshError(
+                f"completion-artifact refresh timed out after {timeout_seconds:.3f}s"
+            ) from exc
+        except OSError as exc:
+            raise ObjectiveCompletionArtifactRefreshError(
+                f"completion-artifact refresh could not start: {exc}"
+            ) from exc
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            if len(detail) > 2000:
+                detail = detail[-2000:]
+            raise ObjectiveCompletionArtifactRefreshError(
+                "completion-artifact refresh failed with exit code "
+                f"{result.returncode}" + (f": {detail}" if detail else "")
+            )
+        payload = {
+            "attempted": True,
+            "passed": True,
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "command": command,
+            "timeout_seconds": timeout_seconds,
+            "artifact_paths": [str(path) for path in artifact_paths],
+        }
+        self._record_event("objective_completion_artifacts_refreshed", payload)
+        return payload
+
+    def _reconcile_objective_goal_completion_artifacts(
+        self,
+        *,
+        objective_path: Path,
+    ) -> dict[str, Any]:
+        """Reconcile completion state without authorizing a refill scan."""
+
+        if not self.config.objective_reconcile_goal_completion:
+            return {"attempted": False, "reason": "disabled"}
+        if not objective_path.is_file():
+            return {"attempted": False, "reason": "objective_path_missing"}
+
+        from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+            completion_evidence_records_from_gate_records,
+            load_goal_completion_evidence_records,
+            load_goal_completion_gate_records,
+            parse_goal_completion_todo_boards,
+        )
+        from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+            reconcile_objective_goal_completion,
+        )
+
+        repo_root = self.config.repo_root.resolve()
+
+        def resolve(path: Path | None) -> Path | None:
+            if path is None:
+                return None
+            return path.resolve() if path.is_absolute() else (repo_root / path).resolve()
+
+        gate_path = resolve(self.config.objective_goal_completion_gate_path)
+        evidence_path = resolve(self.config.objective_goal_completion_evidence_path)
+        gate_records = load_goal_completion_gate_records(
+            gate_path,
+            repo_root=repo_root,
+        )
+        embedded_evidence = completion_evidence_records_from_gate_records(gate_records)
+        separate_evidence = load_goal_completion_evidence_records(evidence_path)
+        duplicate_goal_ids = sorted(set(embedded_evidence) & set(separate_evidence))
+        if duplicate_goal_ids:
+            raise ValueError(
+                "completion evidence is supplied by both gate and evidence artifacts "
+                "for goals: " + ", ".join(duplicate_goal_ids)
+            )
+        evidence_records = {**embedded_evidence, **separate_evidence}
+        todo_boards = parse_goal_completion_todo_boards(
+            self.config.objective_goal_completion_todo_boards,
+            repo_root=repo_root,
+            default_task_prefix=self.config.task_prefix,
+        )
+        control_paths = [
+            path for path in (gate_path, evidence_path) if path is not None
+        ]
+        result = reconcile_objective_goal_completion(
+            repo_root=repo_root,
+            objective_path=objective_path.resolve(),
+            todo_path=self.config.todo_path.resolve(),
+            task_header_prefix=self.config.task_prefix,
+            todo_boards=todo_boards,
+            completion_evidence_records=evidence_records,
+            completion_gate_records=gate_records,
+            completion_control_paths=control_paths,
+            require_artifact_binding=bool(control_paths),
+        )
+        return {
+            "attempted": True,
+            "completed_goal_ids": list(result.completed_goal_ids),
+            "completed_goal_count": int(result.completed_goal_count),
+            "validation_results": dict(result.validation_results),
+            "decisions": dict(result.decisions),
+        }
+
     def _run_codebase_refill_with_timeout(self, callback) -> Any:
         return self._run_supervisor_call_with_timeout(
             phase="codebase refill",
@@ -4700,12 +4947,62 @@ class PortalImplementationSupervisor:
             force=bool(force_goal_ids),
         )
         if not should_scan:
+            try:
+                artifact_refresh = (
+                    self._refresh_objective_goal_completion_artifacts()
+                )
+                completion_reconciliation = (
+                    self._reconcile_objective_goal_completion_artifacts(
+                        objective_path=objective_path,
+                    )
+                )
+            except (
+                ObjectiveCompletionArtifactRefreshError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                self._record_event(
+                    "objective_completion_reconciliation_failed",
+                    {
+                        "error": str(exc),
+                        "scan_mode": mode,
+                        "objective_path": str(objective_path),
+                    },
+                )
+                return self._terminal_refill_result(
+                    ScanTerminalReason.FAILED,
+                    scan_mode=f"{mode}_completion_reconciliation",
+                    analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                    started_at=started_at,
+                    error=str(exc),
+                    metadata={
+                        "current_open": current_open,
+                        "task_count": task_count,
+                    },
+                )
+            strategy["last_objective_completed_goal_ids"] = list(
+                completion_reconciliation.get("completed_goal_ids") or []
+            )
+            strategy["last_objective_completion_validation_results"] = dict(
+                completion_reconciliation.get("validation_results") or {}
+            )
+            strategy["last_objective_completion_decisions"] = dict(
+                completion_reconciliation.get("decisions") or {}
+            )
+            write_json(self.config.strategy_path, strategy)
             return self._terminal_refill_result(
                 _scan_skip_reason(mode),
                 scan_mode=mode,
                 analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
                 started_at=started_at,
-                metadata={"current_open": current_open, "task_count": task_count},
+                metadata={
+                    "current_open": current_open,
+                    "task_count": task_count,
+                    "completion_artifact_refresh": artifact_refresh,
+                    "completion_reconciliation": completion_reconciliation,
+                },
             )
 
         state_root = self.config.state_dir.parent
@@ -4734,6 +5031,7 @@ class PortalImplementationSupervisor:
             bundle_dir=bundle_dir,
             dataset_dir=dataset_dir,
             graph_path=graph_path,
+            objective_generation_path=state_root / "objective_generation.json",
             task_prefix=task_prefix,
             objective_summary_prefix=(
                 self.config.objective_summary_prefix or DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
@@ -4744,6 +5042,9 @@ class PortalImplementationSupervisor:
             force_goal_id=sorted(set(force_goal_ids)),
             repeat_existing=False,
             max_findings=self.config.objective_scan_max_findings,
+            objective_generation_max_new_work=(
+                self.config.objective_scan_max_findings
+            ),
             ensure_tracking_document=self.config.objective_ensure_tracking_document,
             ultimate_goal=self.config.objective_ultimate_goal or DEFAULT_ULTIMATE_GOAL,
             root_evidence=list(self.config.objective_root_evidence),
@@ -4757,6 +5058,12 @@ class PortalImplementationSupervisor:
             no_reconcile_goal_completion=not self.config.objective_reconcile_goal_completion,
             objective_goal_completion_todo_board=list(
                 self.config.objective_goal_completion_todo_boards
+            ),
+            objective_goal_completion_gate_path=(
+                self.config.objective_goal_completion_gate_path
+            ),
+            objective_goal_completion_evidence_path=(
+                self.config.objective_goal_completion_evidence_path
             ),
             seed_interoperability_goals=self.config.objective_seed_interoperability_goals,
             seed_launch_readiness_goals=self.config.objective_seed_launch_readiness_goals,
@@ -4780,6 +5087,37 @@ class PortalImplementationSupervisor:
             queue_model_name="codex",
             log_level="INFO",
         )
+        try:
+            artifact_refresh = (
+                self._refresh_objective_goal_completion_artifacts()
+            )
+        except ObjectiveCompletionArtifactRefreshError as exc:
+            self._record_event(
+                "objective_completion_artifact_refresh_failed",
+                {
+                    "error": str(exc),
+                    "gate_path": str(
+                        self.config.objective_goal_completion_gate_path or ""
+                    ),
+                    "evidence_path": str(
+                        self.config.objective_goal_completion_evidence_path or ""
+                    ),
+                },
+            )
+            return self._terminal_refill_result(
+                ScanTerminalReason.FAILED,
+                scan_mode=mode,
+                analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error=str(exc),
+                metadata={
+                    "completion_artifact_refresh": {
+                        "attempted": True,
+                        "passed": False,
+                        "error": str(exc),
+                    }
+                },
+            )
         try:
             payload = self._run_objective_refill_with_timeout(run_objective_daemon, objective_args)
         except ObjectiveRefillTimeoutError as exc:
@@ -4822,6 +5160,7 @@ class PortalImplementationSupervisor:
                 metadata=payload,
             )
 
+        payload["completion_artifact_refresh"] = artifact_refresh
         result = self._adapt_legacy_objective_result(
             payload,
             scan_mode=mode,
@@ -5406,6 +5745,8 @@ class PortalImplementationSupervisor:
         )
         for path in self.config.generated_dirty_repair_paths:
             command.extend(["--generated-status-path", str(path)])
+        for relative in self.config.implementation_protected_paths:
+            command.extend(["--implementation-protected-path", relative])
         if self.config.implement:
             command.append("--implement")
             command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
@@ -5817,6 +6158,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--implementation-command",
         default="",
         help="Command used by the daemon for implementation. Defaults to codex exec --full-auto.",
+    )
+    parser.add_argument(
+        "--implementation-protected-path",
+        action="append",
+        default=[],
+        help=(
+            "Exact repo-relative file that managed implementation agents must treat as "
+            "read-only. May be repeated or comma-separated."
+        ),
     )
     parser.add_argument(
         "--llm-merge-resolver-command",
@@ -6238,6 +6588,38 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--objective-goal-completion-gate-path",
+        type=Path,
+        default=None,
+        help=(
+            "External per-goal completion-gate artifact forwarded to the "
+            "objective reconciler."
+        ),
+    )
+    parser.add_argument(
+        "--objective-goal-completion-evidence-path",
+        type=Path,
+        default=None,
+        help=(
+            "External canonical per-goal CompletionEvidence artifact forwarded "
+            "to the objective reconciler."
+        ),
+    )
+    parser.add_argument(
+        "--objective-goal-completion-artifact-refresh-command",
+        default="",
+        help=(
+            "Explicit argv command run with shell disabled immediately before "
+            "completion reconciliation to refresh configured proof artifacts."
+        ),
+    )
+    parser.add_argument(
+        "--objective-goal-completion-artifact-refresh-timeout-seconds",
+        type=float,
+        default=300.0,
+        help="Positive timeout for the configured completion-artifact refresh command.",
+    )
+    parser.add_argument(
         "--no-objective-goal-migration",
         dest="objective_goal_migration_enabled",
         action="store_false",
@@ -6373,6 +6755,7 @@ def supervisor_config_from_args(
     daemon_script_path: Path | None = None,
     supervisor_script_path: Path | None = None,
     worktree_submodule_paths: Any = None,
+    implementation_protected_paths: Any = None,
     state_path: Path | None = None,
     strategy_path: Path | None = None,
     events_path: Path | None = None,
@@ -6382,6 +6765,12 @@ def supervisor_config_from_args(
     resolved_worktree_submodule_paths = (
         args.worktree_submodule_path if worktree_submodule_paths is None else worktree_submodule_paths
     )
+    resolved_implementation_protected_paths = (
+        args.implementation_protected_path
+        if implementation_protected_paths is None
+        else implementation_protected_paths
+    )
+    effective_repo_root = (repo_root or REPO_ROOT).resolve()
     reconciliation_only = bool(args.reconciliation_only)
     implement = bool(args.implement and not reconciliation_only)
     llm_merge_resolver_command = args.llm_merge_resolver_command
@@ -6412,6 +6801,10 @@ def supervisor_config_from_args(
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
         worktree_submodule_paths=normalize_relative_path_list(resolved_worktree_submodule_paths),
+        implementation_protected_paths=normalize_implementation_protected_paths(
+            resolved_implementation_protected_paths,
+            repo_root=effective_repo_root,
+        ),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
         worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,
@@ -6486,6 +6879,16 @@ def supervisor_config_from_args(
         objective_refine_goals=args.objective_refine_goals,
         objective_reconcile_goal_completion=args.objective_reconcile_goal_completion,
         objective_goal_completion_todo_boards=tuple(args.objective_goal_completion_todo_board),
+        objective_goal_completion_gate_path=args.objective_goal_completion_gate_path,
+        objective_goal_completion_evidence_path=(
+            args.objective_goal_completion_evidence_path
+        ),
+        objective_goal_completion_artifact_refresh_command=(
+            args.objective_goal_completion_artifact_refresh_command
+        ),
+        objective_goal_completion_artifact_refresh_timeout_seconds=(
+            args.objective_goal_completion_artifact_refresh_timeout_seconds
+        ),
         objective_goal_migration_enabled=(
             args.objective_goal_migration_enabled and not reconciliation_only
         ),
@@ -6518,7 +6921,7 @@ def supervisor_config_from_args(
         objective_todo_vector_index_path=args.objective_todo_vector_index_path,
         objective_surplus_findings_per_goal=args.objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=args.objective_surplus_min_terms_per_todo,
-        repo_root=repo_root or REPO_ROOT,
+        repo_root=effective_repo_root,
         daemon_script_path=daemon_script_path if daemon_script_path is not None else args.daemon_script_path,
         supervisor_script_path=supervisor_script_path
         if supervisor_script_path is not None

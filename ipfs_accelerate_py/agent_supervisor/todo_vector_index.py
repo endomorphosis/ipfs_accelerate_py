@@ -31,6 +31,7 @@ from .objective_graph import (
     symbol_terms,
     text_embedding,
 )
+from .task_identity import canonical_task_identity
 from .validation_commands import split_validation_commands
 
 
@@ -86,6 +87,8 @@ class TodoIndexRecord:
     embedding: list[float] = field(default_factory=list)
     ast_symbols: list[str] = field(default_factory=list)
     related_task_ids: list[str] = field(default_factory=list)
+    canonical_task_key: str = ""
+    canonical_task_cid: str = ""
     task_cid: str = ""
     predicted_files: list[str] = field(default_factory=list)
     changed_paths: list[str] = field(default_factory=list)
@@ -676,6 +679,17 @@ def parse_todo_vector_records(
         vector_key = str(fields.get("todo_vector_key") or "").strip() or sha1(
             f"{task_id}\0{merge_key}".encode("utf-8")
         ).hexdigest()[:16]
+        task_identity = canonical_task_identity(
+            {
+                "task_id": task_id,
+                "title": title,
+                "outputs": outputs,
+                "acceptance": acceptance,
+                "metadata": fields,
+            },
+            board_namespace=str(fields.get("board_namespace") or "").strip() or todo_path.name,
+            source_path=todo_path,
+        )
         base_record = TodoIndexRecord(
             task_id=task_id,
             title=title,
@@ -715,7 +729,9 @@ def parse_todo_vector_records(
             ast_symbols=sorted_unique(
                 [*split_csv(fields.get("ast_symbols", "")), *collect_output_symbols(repo_root, outputs)]
             ),
-            task_cid=str(fields.get("canonical_task_cid") or fields.get("task_cid") or "").strip(),
+            canonical_task_key=task_identity.canonical_task_key,
+            canonical_task_cid=task_identity.canonical_task_cid,
+            task_cid=task_identity.canonical_task_cid,
             predicted_files=sorted_unique(
                 [*_first_csv(fields, "predicted_files", "files"), *outputs]
             ),

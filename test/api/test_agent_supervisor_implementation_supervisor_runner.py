@@ -81,6 +81,10 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
             objective_todo_vector_index_path=tmp_path / "bundles" / "todo_vector_index.json",
             objective_surplus_findings_per_goal=4,
             objective_surplus_min_terms_per_todo=2,
+            objective_goal_completion_gate_path=tmp_path / "completion-gate.json",
+            objective_goal_completion_evidence_path=tmp_path / "completion-evidence.json",
+            objective_goal_completion_artifact_refresh_command="python refresh.py",
+            objective_goal_completion_artifact_refresh_timeout_seconds=45,
             objective_interoperability_focus=("hallucinate_app",),
             objective_goal_migration_preview=True,
             objective_goal_migration_batch_size=7,
@@ -113,6 +117,16 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert parsed.objective_scan_max_findings == 99
     assert parsed.objective_goal_migration_preview is True
     assert parsed.objective_goal_migration_batch_size == 7
+    assert parsed.objective_goal_completion_gate_path == tmp_path / "completion-gate.json"
+    assert (
+        parsed.objective_goal_completion_evidence_path
+        == tmp_path / "completion-evidence.json"
+    )
+    assert (
+        parsed.objective_goal_completion_artifact_refresh_command
+        == "python refresh.py"
+    )
+    assert parsed.objective_goal_completion_artifact_refresh_timeout_seconds == 45
     assert parsed.codebase_scan_cooldown_seconds == 120
     assert parsed.allow_unscoped_codebase_refill is True
     assert parsed.generated_dirty_repair_enabled is True
@@ -129,6 +143,8 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
         "dataset_dir": tmp_path / "datasets",
         "discovery_dir": tmp_path / "discovery",
         "todo_vector_index_path": tmp_path / "bundles" / "todo_vector_index.json",
+        "completion_gate_path": tmp_path / "completion-gate.json",
+        "completion_evidence_path": tmp_path / "completion-evidence.json",
     }
 
     objective_factory = build_objective_refill_defaults_factory(
@@ -139,6 +155,10 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
         objective_discovery_dir_key="discovery_dir",
         objective_discovery_output_path_factory=lambda resolved: f"out/{Path(resolved['discovery_dir']).name}",
         objective_todo_vector_index_path_key="todo_vector_index_path",
+        objective_goal_completion_gate_path_key="completion_gate_path",
+        objective_goal_completion_evidence_path_key="completion_evidence_path",
+        objective_goal_completion_artifact_refresh_command="python refresh.py",
+        objective_goal_completion_artifact_refresh_timeout_seconds=60,
         objective_interoperability_focus=("hallucinate_app",),
         objective_scan_max_findings=11,
         seed_interoperability_goals=True,
@@ -159,6 +179,13 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
     assert objective.objective_dataset_dir == paths["dataset_dir"]
     assert objective.objective_discovery_output_path == "out/discovery"
     assert objective.objective_todo_vector_index_path == paths["todo_vector_index_path"]
+    assert objective.objective_goal_completion_gate_path == paths["completion_gate_path"]
+    assert (
+        objective.objective_goal_completion_evidence_path
+        == paths["completion_evidence_path"]
+    )
+    assert objective.objective_goal_completion_artifact_refresh_command == "python refresh.py"
+    assert objective.objective_goal_completion_artifact_refresh_timeout_seconds == 60
     assert objective.objective_interoperability_focus == ("hallucinate_app",)
     assert objective.objective_scan_max_findings == 11
     assert objective.seed_interoperability_goals is True

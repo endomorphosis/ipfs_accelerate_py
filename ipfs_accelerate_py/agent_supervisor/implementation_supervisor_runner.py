@@ -1156,6 +1156,10 @@ class ObjectiveRefillDefaults:
     objective_surplus_findings_per_goal: int | None = None
     objective_surplus_min_terms_per_todo: int | None = None
     objective_goal_completion_todo_boards: Sequence[str] = ()
+    objective_goal_completion_gate_path: Path | None = None
+    objective_goal_completion_evidence_path: Path | None = None
+    objective_goal_completion_artifact_refresh_command: str = ""
+    objective_goal_completion_artifact_refresh_timeout_seconds: float | None = None
     objective_goal_migration_enabled: bool = True
     objective_goal_migration_preview: bool = False
     objective_goal_migration_batch_size: int | None = None
@@ -1206,6 +1210,12 @@ def build_objective_refill_defaults_from_paths(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_goal_completion_todo_boards: Sequence[str] = (),
+    objective_goal_completion_gate_path_key: str | None = None,
+    objective_goal_completion_gate_path: Path | str | None = None,
+    objective_goal_completion_evidence_path_key: str | None = None,
+    objective_goal_completion_evidence_path: Path | str | None = None,
+    objective_goal_completion_artifact_refresh_command: str = "",
+    objective_goal_completion_artifact_refresh_timeout_seconds: float | None = None,
     objective_goal_migration_enabled: bool = True,
     objective_goal_migration_preview: bool = False,
     objective_goal_migration_batch_size: int | None = None,
@@ -1254,6 +1264,22 @@ def build_objective_refill_defaults_from_paths(
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
         objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
+        objective_goal_completion_gate_path=_optional_path_from_mapping(
+            paths,
+            key=objective_goal_completion_gate_path_key,
+            value=objective_goal_completion_gate_path,
+        ),
+        objective_goal_completion_evidence_path=_optional_path_from_mapping(
+            paths,
+            key=objective_goal_completion_evidence_path_key,
+            value=objective_goal_completion_evidence_path,
+        ),
+        objective_goal_completion_artifact_refresh_command=(
+            objective_goal_completion_artifact_refresh_command
+        ),
+        objective_goal_completion_artifact_refresh_timeout_seconds=(
+            objective_goal_completion_artifact_refresh_timeout_seconds
+        ),
         objective_goal_migration_enabled=objective_goal_migration_enabled,
         objective_goal_migration_preview=objective_goal_migration_preview,
         objective_goal_migration_batch_size=objective_goal_migration_batch_size,
@@ -1346,6 +1372,12 @@ def build_objective_refill_defaults_factory(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_goal_completion_todo_boards: Sequence[str] = (),
+    objective_goal_completion_gate_path_key: str | None = None,
+    objective_goal_completion_gate_path: Path | str | None = None,
+    objective_goal_completion_evidence_path_key: str | None = None,
+    objective_goal_completion_evidence_path: Path | str | None = None,
+    objective_goal_completion_artifact_refresh_command: str = "",
+    objective_goal_completion_artifact_refresh_timeout_seconds: float | None = None,
     objective_goal_migration_enabled: bool = True,
     objective_goal_migration_preview: bool = False,
     objective_goal_migration_batch_size: int | None = None,
@@ -1386,6 +1418,22 @@ def build_objective_refill_defaults_factory(
             objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
             objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
             objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
+            objective_goal_completion_gate_path_key=(
+                objective_goal_completion_gate_path_key
+            ),
+            objective_goal_completion_gate_path=objective_goal_completion_gate_path,
+            objective_goal_completion_evidence_path_key=(
+                objective_goal_completion_evidence_path_key
+            ),
+            objective_goal_completion_evidence_path=(
+                objective_goal_completion_evidence_path
+            ),
+            objective_goal_completion_artifact_refresh_command=(
+                objective_goal_completion_artifact_refresh_command
+            ),
+            objective_goal_completion_artifact_refresh_timeout_seconds=(
+                objective_goal_completion_artifact_refresh_timeout_seconds
+            ),
             objective_goal_migration_enabled=objective_goal_migration_enabled,
             objective_goal_migration_preview=objective_goal_migration_preview,
             objective_goal_migration_batch_size=objective_goal_migration_batch_size,
@@ -1454,6 +1502,10 @@ def build_namespace_objective_refill_defaults_factory(
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
     objective_goal_completion_todo_boards: Sequence[str] = (),
+    objective_goal_completion_gate_path: Path | str | None = None,
+    objective_goal_completion_evidence_path: Path | str | None = None,
+    objective_goal_completion_artifact_refresh_command: str = "",
+    objective_goal_completion_artifact_refresh_timeout_seconds: float | None = None,
     objective_goal_migration_enabled: bool = True,
     objective_goal_migration_preview: bool = False,
     objective_goal_migration_batch_size: int | None = None,
@@ -1496,6 +1548,14 @@ def build_namespace_objective_refill_defaults_factory(
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
         objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
+        objective_goal_completion_gate_path=objective_goal_completion_gate_path,
+        objective_goal_completion_evidence_path=objective_goal_completion_evidence_path,
+        objective_goal_completion_artifact_refresh_command=(
+            objective_goal_completion_artifact_refresh_command
+        ),
+        objective_goal_completion_artifact_refresh_timeout_seconds=(
+            objective_goal_completion_artifact_refresh_timeout_seconds
+        ),
         objective_goal_migration_enabled=objective_goal_migration_enabled,
         objective_goal_migration_preview=objective_goal_migration_preview,
         objective_goal_migration_batch_size=objective_goal_migration_batch_size,
@@ -1670,6 +1730,27 @@ def apply_portal_implementation_supervisor_defaults(
                 "--objective-goal-completion-todo-board",
                 objective.objective_goal_completion_todo_boards,
             )
+        args = _with_optional_default(
+            args,
+            "--objective-goal-completion-gate-path",
+            objective.objective_goal_completion_gate_path,
+        )
+        args = _with_optional_default(
+            args,
+            "--objective-goal-completion-evidence-path",
+            objective.objective_goal_completion_evidence_path,
+        )
+        if objective.objective_goal_completion_artifact_refresh_command:
+            args = with_default(
+                args,
+                "--objective-goal-completion-artifact-refresh-command",
+                objective.objective_goal_completion_artifact_refresh_command,
+            )
+        args = _with_optional_default(
+            args,
+            "--objective-goal-completion-artifact-refresh-timeout-seconds",
+            objective.objective_goal_completion_artifact_refresh_timeout_seconds,
+        )
         if not objective.objective_goal_migration_enabled:
             args = with_flag_default(args, "--no-objective-goal-migration")
         if objective.objective_goal_migration_preview:

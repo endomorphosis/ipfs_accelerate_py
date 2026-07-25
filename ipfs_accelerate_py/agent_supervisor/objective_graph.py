@@ -80,6 +80,7 @@ DEFAULT_SCAN_OVERSAMPLE_MULTIPLIER = int(
 )
 DEFAULT_TASK_PREFIX = "AUTO-"
 OBJECTIVE_SCAN_ANALYZER_VERSION = "objective-gap-analyzer/v1"
+COMPLETION_GAP_MANUAL_REVIEW_SOURCE = "completion_gate_gap_manual_review"
 DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
 AST_DATASET_RECORD_SCHEMA_VERSION = 2
 LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
@@ -1526,6 +1527,11 @@ def semantic_objective_work_key(value: Any) -> str:
     """Return a stable semantic key which ignores display IDs and ordering."""
 
     payload = value.to_dict() if isinstance(value, ObjectiveWorkProposal) else _task_record_mapping(value)
+    family_key = str(payload.get("family_key") or "").strip()
+    if family_key:
+        if not family_key.startswith("objective-family/v1/"):
+            raise ValueError("family_key must use the objective-family/v1 namespace")
+        return family_key
     material = {
         "kind": str(_objective_work_value(payload, "kind", "work_kind") or "task").casefold(),
         "parent_goal_id": _objective_work_normalized_text(
@@ -1604,6 +1610,50 @@ def canonical_objective_work_identity(value: Any) -> str:
             _objective_work_value(payload, "estimated_tokens", "token_cost") or 0
         ),
     }
+    family_key = str(payload.get("family_key") or "").strip()
+    instance_key = str(payload.get("instance_key") or "").strip()
+    if family_key:
+        # Typed completion gaps deliberately deduplicate by their stable family
+        # while retaining an independently versioned diagnostic instance.  The
+        # execution surfaces remain canonical content so a resolved/reappeared
+        # family may render an updated focused task without identity conflict.
+        material["instance_key"] = instance_key
+        material["typed_execution"] = {
+            "evidence_delta": sorted(
+                _objective_work_normalized_text(item)
+                for item in _objective_work_strings(
+                    _objective_work_value(
+                        payload,
+                        "expected_evidence_delta",
+                        "missing_evidence",
+                        "evidence_delta",
+                    )
+                )
+            ),
+            "files": sorted(
+                str(item).strip().replace("\\", "/").casefold()
+                for item in _objective_work_strings(
+                    _objective_work_value(payload, "predicted_files", "outputs", "files")
+                )
+            ),
+            "symbols": sorted(
+                _objective_work_normalized_text(item)
+                for item in _objective_work_strings(
+                    _objective_work_value(
+                        payload,
+                        "predicted_symbols",
+                        "ast_symbols",
+                        "symbols",
+                    )
+                )
+            ),
+            "validation": sorted(
+                _objective_work_normalized_text(item)
+                for item in _objective_work_strings(
+                    _objective_work_value(payload, "validation_commands", "validation")
+                )
+            ),
+        }
     return "objective-work:" + sha256(
         json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -1631,6 +1681,8 @@ class ObjectiveWorkProposal:
     source: str = "deterministic"
     source_id: str = ""
     rationale: str = ""
+    family_key: str = ""
+    instance_key: str = ""
     semantic_key: str = ""
     canonical_id: str = ""
 
@@ -1677,6 +1729,18 @@ class ObjectiveWorkProposal:
             " ".join(str(self.source_id or "").split()),
         )
         object.__setattr__(self, "rationale", " ".join(str(self.rationale or "").split()))
+        family_key = str(self.family_key or "").strip()
+        instance_key = str(self.instance_key or "").strip()
+        if family_key and not family_key.startswith("objective-family/v1/"):
+            raise ValueError("family_key must use the objective-family/v1 namespace")
+        if instance_key and not instance_key.startswith("objective-instance/v1/"):
+            raise ValueError("instance_key must use the objective-instance/v1 namespace")
+        if instance_key and not family_key:
+            raise ValueError("instance_key requires family_key")
+        if family_key and not instance_key:
+            raise ValueError("typed objective work requires instance_key")
+        object.__setattr__(self, "family_key", family_key)
+        object.__setattr__(self, "instance_key", instance_key)
         for name in (
             "parent_objective_terms",
             "expected_evidence_delta",
@@ -1737,6 +1801,8 @@ class ObjectiveWorkProposal:
             source=_objective_work_value(payload, "source", "proposal_source") or "deterministic",
             source_id=_objective_work_value(payload, "source_id", "criterion_id", "finding_id", "receipt_id"),
             rationale=_objective_work_value(payload, "rationale", "explanation", "reason"),
+            family_key=str(payload.get("family_key") or ""),
+            instance_key=str(payload.get("instance_key") or ""),
             semantic_key=str(payload.get("semantic_key") or ""),
             canonical_id=str(payload.get("canonical_id") or payload.get("work_id") or ""),
         )
@@ -1759,6 +1825,9 @@ class ObjectiveWorkProposal:
         payload["cost"] = self.estimated_cost
         payload["validation"] = list(self.validation_commands)
         payload["parent_objective_id"] = self.parent_goal_id
+        if not self.family_key:
+            payload.pop("family_key", None)
+            payload.pop("instance_key", None)
         return payload
 
 
@@ -7301,6 +7370,9 @@ def _objective_finding_task_contract(finding: ObjectiveFinding) -> dict[str, Any
             }
         )
 
+    status, is_schedulable, review_only = objective_finding_execution_state(
+        finding
+    )
     return {
         "schema": "ipfs_accelerate_py/agent-supervisor/objective-finding-task-contract@1",
         "finding_fingerprint": text(finding.fingerprint),
@@ -7319,9 +7391,9 @@ def _objective_finding_task_contract(finding: ObjectiveFinding) -> dict[str, Any
         "generated_artifacts": paths(finding.generated_artifacts),
         "conflict_policy": text(finding.conflict_policy),
         "allow_concurrent_with": texts(finding.allow_concurrent_with),
-        "status": text(finding.status),
-        "is_schedulable": bool(finding.is_schedulable),
-        "review_only": bool(finding.review_only),
+        "status": text(status),
+        "is_schedulable": is_schedulable,
+        "review_only": review_only,
     }
 
 
@@ -7352,6 +7424,9 @@ def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -
     """Return the canonical conflict-surface fields for a generated finding."""
 
     identity = objective_finding_task_identity(task_id, finding)
+    status, is_schedulable, review_only = objective_finding_execution_state(
+        finding
+    )
     predicted_files = _unique_strings([*(finding.predicted_files or finding.outputs), *finding.outputs])
     return {
         "task_id": task_id,
@@ -7367,10 +7442,78 @@ def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -
         "generated_artifacts": _unique_strings(finding.generated_artifacts),
         "allow_concurrent_with": _unique_strings(finding.allow_concurrent_with),
         "conflict_policy": finding.conflict_policy,
-        "status": finding.status,
-        "is_schedulable": finding.is_schedulable,
-        "review_only": finding.review_only,
+        "status": status,
+        "is_schedulable": is_schedulable,
+        "review_only": review_only,
     }
+
+
+def objective_finding_requires_manual_review(finding: ObjectiveFinding) -> bool:
+    """Return whether a generated finding must remain non-executable.
+
+    Completion-gate diagnostics with no precise edit target are useful review
+    records, but they are not implementation instructions.  The generation
+    adapter preserves the proposal source in ``evidence_methods`` and
+    ``merge_role``; require that explicit provenance as well as an empty edit
+    surface so ordinary objective findings retain their existing behavior.
+    """
+
+    sources = {
+        *(str(item).strip() for item in finding.evidence_methods),
+        str(finding.merge_role or "").strip(),
+    }
+    has_precise_edit_target = bool(
+        [
+            value
+            for value in (*finding.predicted_files, *finding.outputs)
+            if str(value).strip()
+        ]
+    )
+    return (
+        COMPLETION_GAP_MANUAL_REVIEW_SOURCE in sources
+        and not has_precise_edit_target
+    )
+
+
+def objective_finding_execution_state(
+    finding: ObjectiveFinding,
+) -> tuple[str, bool, bool]:
+    """Return the effective status and scheduling policy for one finding.
+
+    Origin/main owns the typed status, schedulability, and review-only fields.
+    Completion-gap hardening adds one narrower rule: an unscoped manual-review
+    diagnostic may be visible, but it may not become executable work.
+    """
+
+    if objective_finding_requires_manual_review(finding):
+        return ("blocked", False, True)
+    return (
+        str(finding.status or "todo"),
+        bool(finding.is_schedulable),
+        bool(finding.review_only),
+    )
+
+
+def apply_objective_finding_execution_policy(
+    finding: ObjectiveFinding,
+) -> ObjectiveFinding:
+    """Project completion-gap review policy into origin/main's typed fields."""
+
+    status, is_schedulable, review_only = objective_finding_execution_state(
+        finding
+    )
+    if (
+        finding.status == status
+        and finding.is_schedulable is is_schedulable
+        and finding.review_only is review_only
+    ):
+        return finding
+    return replace(
+        finding,
+        status=status,
+        is_schedulable=is_schedulable,
+        review_only=review_only,
+    )
 
 
 def render_task_block(
@@ -7382,6 +7525,15 @@ def render_task_block(
     bundle_shard: str = "",
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
+    manual_review_required = objective_finding_requires_manual_review(finding)
+    task_status, task_is_schedulable, task_review_only = (
+        objective_finding_execution_state(finding)
+    )
+    blocked_reason = (
+        "\n- Blocked reason: manual review required because no precise edit targets were authorized"
+        if manual_review_required
+        else ""
+    )
     outputs = [discovery_output_path, finding.objective_path]
     outputs.extend(str(item) for item in finding.outputs if str(item).strip())
     unique_outputs = list(dict.fromkeys(outputs))
@@ -7397,12 +7549,28 @@ def render_task_block(
     )
     identity = objective_finding_task_identity(task_id, finding)
     bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
-    return f"""## {task_id} {finding.summary}
+    acceptance = (
+        (
+            f"Objective scan filed this review gap for {finding.goal_id}. "
+            f"Inspect the evidence in {discovery_path}; either resolve the "
+            "diagnostic without an implementation change or authorize precise "
+            "repository-relative edit targets before changing the task status."
+        )
+        if manual_review_required
+        else (
+            f"Objective scan filed this gap for {finding.goal_id}. Use evidence "
+            f"in {discovery_path}, add code/tests/docs or child goals that prove "
+            f"the missing evidence terms are covered ({missing}), and keep the "
+            "supervisor-fed backlog aligned with the objective heap. "
+            f"{packet_acceptance} {refinement}"
+        )
+    )
+    block = f"""## {task_id} {finding.summary}
 
-- Status: {finding.status}
+- Status: {task_status}{blocked_reason}
 - Completion: manual
-- Is schedulable: {str(finding.is_schedulable).lower()}
-- Review only: {str(finding.review_only).lower()}
+- Is schedulable: {str(task_is_schedulable).lower()}
+- Review only: {str(task_review_only).lower()}
 - Priority: {finding.priority}
 - Track: {finding.track}
 - Depends on: {", ".join(depends_on)}
@@ -7443,8 +7611,13 @@ def render_task_block(
 - Goal packet work item count: {finding.goal_packet_work_item_count}
 - Candidate kind: {finding.candidate_kind}
 - Todo vector key: {finding.todo_vector_key}
-- Acceptance: Objective scan filed this gap for {finding.goal_id}. Use evidence in {discovery_path}, add code/tests/docs or child goals that prove the missing evidence terms are covered ({missing}), and keep the supervisor-fed backlog aligned with the objective heap. {packet_acceptance} {refinement}
+- Acceptance: {acceptance}
 """
+    # Empty optional metadata must not make every generated task fail its
+    # mandatory ``git diff --check`` validation.  Normalize the complete block
+    # rather than relying on every future interpolated field to special-case
+    # an empty value.
+    return "\n".join(line.rstrip() for line in block.splitlines()) + "\n"
 
 
 def write_bundle_shards(
@@ -7474,9 +7647,9 @@ def write_bundle_shards(
                 "objective_heap_index": record.finding.objective_heap_index,
                 "outputs": record.finding.outputs,
                 "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
-                "status": record.finding.status,
-                "is_schedulable": record.finding.is_schedulable,
-                "review_only": record.finding.review_only,
+                "status": objective_finding_execution_state(record.finding)[0],
+                "is_schedulable": objective_finding_execution_state(record.finding)[1],
+                "review_only": objective_finding_execution_state(record.finding)[2],
             }
             for record in records
         ]
@@ -7566,8 +7739,13 @@ def write_bundle_shards(
                 "downstream_unlock_value": schedule_record.downstream_unlock_value if schedule_record else 0,
                 "objective_priority": schedule_record.objective_priority if schedule_record else 0,
             }
+            manual_review_required = objective_finding_requires_manual_review(
+                record.finding
+            )
             existing_status = str(existing_task.get("status") or "").strip()
-            if existing_status and record.finding.is_schedulable:
+            if manual_review_required:
+                task_payload["status"] = "blocked"
+            elif existing_status and task_payload.get("is_schedulable") is True:
                 task_payload["status"] = existing_status
             task_map[record.task_id] = task_payload
         indexed_tasks = [task_map[task_id] for task_id in sorted(task_map)]
@@ -7689,6 +7867,10 @@ def generate_objective_todos(
         )
     else:
         findings = list(precomputed_findings)
+    findings = [
+        apply_objective_finding_execution_policy(finding)
+        for finding in findings
+    ]
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
         existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)

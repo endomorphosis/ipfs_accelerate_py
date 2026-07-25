@@ -127,10 +127,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoTaskState,
     TodoImplementationDaemon,
+    normalize_implementation_protected_paths,
     parse_task_file,
     parse_args as parse_implementation_daemon_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    ObjectiveCompletionArtifactRefreshError,
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
     parse_args as parse_implementation_supervisor_args,
@@ -10220,6 +10222,225 @@ def test_implementation_supervisor_runs_codebase_scan_after_objective_refill_tim
     assert any(event["type"] == "objective_refill_timeout" for event in events)
 
 
+def test_implementation_supervisor_forwards_completion_paths_and_generation_cap(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        "## G1 Goal\n\n- Status: active\n- Acceptance: criterion\n",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Drained board\n", encoding="utf-8")
+    state_dir = repo / "state"
+    gate_path = state_dir / "completion-gate.json"
+    evidence_path = state_dir / "completion-evidence.json"
+    captured = {}
+
+    def capture_objective_daemon(args):
+        captured["gate_path"] = args.objective_goal_completion_gate_path
+        captured["evidence_path"] = args.objective_goal_completion_evidence_path
+        captured["generation_path"] = args.objective_generation_path
+        captured["generation_max_new_work"] = (
+            args.objective_generation_max_new_work
+        )
+        return {"generated_count": 0, "task_ids": []}
+
+    monkeypatch.setattr(
+        objective_daemon,
+        "run_objective_daemon",
+        capture_objective_daemon,
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            objective_refill_enabled=True,
+            objective_path=objective_path,
+            objective_scan_min_open_tasks=0,
+            objective_scan_max_findings=6,
+            objective_goal_completion_gate_path=gate_path,
+            objective_goal_completion_evidence_path=evidence_path,
+            objective_persist_ast_dataset=False,
+        )
+    )
+
+    supervisor.refill_objective_backlog()
+
+    assert captured == {
+        "gate_path": gate_path,
+        "evidence_path": evidence_path,
+        "generation_path": state_dir.parent / "objective_generation.json",
+        "generation_max_new_work": 6,
+    }
+
+
+def test_completion_reconciliation_runs_when_refill_is_skipped_by_threshold(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        "## G1 Goal\n\n- Status: provisionally_complete\n- Acceptance: criterion\n",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Board
+
+## AUTO-001 Active work
+
+- Status: todo
+- Goal id: G1
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            task_prefix="## AUTO-",
+            objective_refill_enabled=True,
+            objective_path=objective_path,
+            objective_scan_min_open_tasks=0,
+            objective_persist_ast_dataset=False,
+        )
+    )
+    calls = []
+    monkeypatch.setattr(
+        supervisor,
+        "_refresh_objective_goal_completion_artifacts",
+        lambda: calls.append("refresh") or {"attempted": False},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_reconcile_objective_goal_completion_artifacts",
+        lambda **_kwargs: calls.append("reconcile")
+        or {
+            "attempted": True,
+            "completed_goal_ids": [],
+            "validation_results": {"G1": {"passed": False}},
+            "decisions": {"G1": {"state": "provisionally_complete"}},
+        },
+    )
+    monkeypatch.setattr(
+        objective_daemon,
+        "run_objective_daemon",
+        lambda _args: pytest.fail("refill generation must remain cooldown-controlled"),
+    )
+
+    result = supervisor.refill_objective_backlog()
+
+    assert calls == ["refresh", "reconcile"]
+    assert result.metadata["current_open"] == 1
+    assert result.metadata["completion_reconciliation"]["attempted"] is True
+    strategy = json.loads(
+        (state_dir / "strategy.json").read_text(encoding="utf-8")
+    )
+    assert strategy["last_objective_completion_decisions"]["G1"]["state"] == (
+        "provisionally_complete"
+    )
+
+
+def test_completion_artifact_refresh_is_explicit_argv_without_shell(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            objective_goal_completion_gate_path=Path("state/gate.json"),
+            objective_goal_completion_evidence_path=Path("state/evidence.json"),
+            objective_goal_completion_artifact_refresh_command=(
+                "python refresh_completion.py --mode docs"
+            ),
+            objective_goal_completion_artifact_refresh_timeout_seconds=17,
+        )
+    )
+
+    result = supervisor._refresh_objective_goal_completion_artifacts()
+
+    assert result["passed"] is True
+    assert captured["command"] == [
+        "python",
+        "refresh_completion.py",
+        "--mode",
+        "docs",
+    ]
+    assert captured["kwargs"]["shell"] is False
+    assert captured["kwargs"]["timeout"] == 17
+    assert (
+        captured["kwargs"]["env"]["IPFS_ACCELERATE_COMPLETION_GATE_PATH"]
+        == str((state_dir / "gate.json").resolve())
+    )
+    assert (
+        captured["kwargs"]["env"]["IPFS_ACCELERATE_COMPLETION_EVIDENCE_PATH"]
+        == str((state_dir / "evidence.json").resolve())
+    )
+
+
+def test_completion_artifact_refresh_wraps_launch_failure(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def fail_to_start(*_args, **_kwargs):
+        raise FileNotFoundError("missing-verifier")
+
+    monkeypatch.setattr(subprocess, "run", fail_to_start)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+            objective_goal_completion_gate_path=Path("state/gate.json"),
+            objective_goal_completion_artifact_refresh_command="missing-verifier",
+        )
+    )
+
+    with pytest.raises(
+        ObjectiveCompletionArtifactRefreshError,
+        match="could not start",
+    ):
+        supervisor._refresh_objective_goal_completion_artifacts()
+
+
 def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor import backlog_refinery
 
@@ -10984,8 +11205,12 @@ def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
         task_header_prefix="## ACCEL-",
     )
     records = parse_todo_vector_records(repo_root=repo, todo_path=todo_path, task_header_prefix="## ACCEL-")
+    task = parse_task_file(todo_path, task_header_prefix="## ACCEL-")[0]
 
     assert payload["task_count"] == 2
+    assert records[0].canonical_task_key == task.canonical_task_key
+    assert records[0].canonical_task_cid == task.canonical_task_cid
+    assert records[0].task_cid == task.canonical_task_cid
     assert len(payload["clusters"]) == 1
     assert payload["clusters"][0]["task_ids"] == ["ACCEL-001", "ACCEL-002"]
     assert payload["merge_candidates"][0]["confidence"] == "high"
@@ -11141,6 +11366,423 @@ def test_implementation_prompt_can_disable_unavailable_subagents(monkeypatch, tm
 
     assert "Do not invoke collaboration or sub-agent tools" in prompt
     assert "Use sub-agents or parallel execution" not in prompt
+
+
+def test_todo_vector_context_binds_reused_display_id_to_canonical_identity(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## DCS-185 Automate current documentation verification
+
+- Status: todo
+- Priority: P1
+- Track: docs
+- Outputs: docs/verification.md
+- Goal id: DCS-G060
+- Merge key: dcs-g060-verification
+- Acceptance: Automate verification for the current documentation goal.
+""",
+        encoding="utf-8",
+    )
+    historical_todo_path = repo / "historical-todo.md"
+    historical_todo_path.write_text(
+        """# Historical Todos
+
+## DCS-185 Document the old supervisor workflow
+
+- Status: completed
+- Priority: P1
+- Track: docs
+- Outputs: docs/supervisor.md
+- Goal id: DCS-G030
+- Merge key: dcs-g030-supervisor
+- Acceptance: Document the historical supervisor workflow.
+""",
+        encoding="utf-8",
+    )
+    current_task = parse_task_file(todo_path, task_header_prefix="## DCS-")[0]
+    historical_task = parse_task_file(
+        historical_todo_path,
+        task_header_prefix="## DCS-",
+    )[0]
+    assert current_task.task_id == historical_task.task_id == "DCS-185"
+    assert current_task.canonical_task_cid != historical_task.canonical_task_cid
+
+    index_path = repo / "objective_bundles" / "todo_vector_index.json"
+    index_path.parent.mkdir(parents=True)
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "last_objective_todo_vector_index_path": (
+                    "objective_bundles/todo_vector_index.json"
+                )
+            }
+        ),
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=strategy_path,
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## DCS-",
+    )
+
+    identityless_record = {
+        "task_id": "DCS-185",
+        "title": current_task.title,
+        "goal_id": "DCS-G060",
+        "merge_key": "dcs-g060-verification",
+    }
+    index_path.write_text(
+        json.dumps({"records": [identityless_record]}),
+        encoding="utf-8",
+    )
+    assert daemon._load_todo_vector_context(current_task) is None
+
+    historical_record = {
+        "task_id": "DCS-185",
+        "title": historical_task.title,
+        "goal_id": "DCS-G030",
+        "merge_key": "dcs-g030-supervisor",
+        "canonical_task_key": historical_task.canonical_task_key,
+        "canonical_task_cid": historical_task.canonical_task_cid,
+        "task_cid": historical_task.canonical_task_cid,
+    }
+    index_path.write_text(
+        json.dumps({"records": [historical_record]}),
+        encoding="utf-8",
+    )
+    assert daemon._load_todo_vector_context(current_task) is None
+    stale_prompt = daemon._build_implementation_prompt(current_task, attempt=1)
+    assert "Compact todo vector context:" not in stale_prompt
+    assert "DCS-G030" not in stale_prompt
+
+    current_record = {
+        "task_id": "DCS-185",
+        "title": current_task.title,
+        "goal_id": "DCS-G060",
+        "merge_key": "dcs-g060-verification",
+        "canonical_task_key": current_task.canonical_task_key,
+        "canonical_task_cid": current_task.canonical_task_cid,
+        "task_cid": current_task.canonical_task_cid,
+    }
+    index_path.write_text(
+        json.dumps({"records": [current_record, historical_record]}),
+        encoding="utf-8",
+    )
+    assert daemon._load_todo_vector_context(current_task) is None
+
+    index_path.write_text(
+        json.dumps({"records": [current_record]}),
+        encoding="utf-8",
+    )
+    context = daemon._load_todo_vector_context(current_task)
+    assert context is not None
+    assert context["record"]["goal_id"] == "DCS-G060"
+    rendered = daemon._render_todo_vector_context(current_task)
+    assert "- Goal id: DCS-G060" in rendered
+    assert "DCS-G030" not in rendered
+
+
+@pytest.mark.parametrize(
+    ("metadata_key", "role"),
+    [
+        ("merge role", "completion_gate_gap"),
+        ("merge role", "completion_gate_gap_retry"),
+        ("merge role", "completion_gate_gap_review"),
+        ("source", "completion_gate_gap"),
+    ],
+)
+def test_completion_gap_prompt_authorizes_only_exact_predicted_files(
+    tmp_path,
+    metadata_key,
+    role,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "docs").mkdir()
+    (repo / "src").mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Align completion evidence",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="docs",
+        outputs=[
+            "data/agent_supervisor/discovery/accel-001.md",
+            "objective-heap.md",
+            "docs/runtime.md",
+            "src/completion_check.py",
+        ],
+        validation=["git diff --check"],
+        metadata={
+            metadata_key: role,
+            "predicted files": "docs/runtime.md, src/completion_check.py",
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=1)
+
+    assert (
+        "Strict completion-gap edit authorization "
+        "(overrides every general breadth or output instruction):"
+    ) in prompt
+    assert (
+        "ONLY these exact repository-relative files:\n"
+        "- docs/runtime.md\n"
+        "- src/completion_check.py"
+    ) in prompt
+    assert "These are exact file paths, not directory prefixes." in prompt
+    assert (
+        "Task outputs outside that allowlist are control/evidence references and "
+        "are read-only: data/agent_supervisor/discovery/accel-001.md, "
+        "objective-heap.md"
+    ) in prompt
+    assert "do not edit the task board, objective heap, discovery records" in prompt
+
+
+def test_completion_gap_without_precise_targets_is_not_executed(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Review completion evidence",
+        status="blocked",
+        completion="manual",
+        priority="P1",
+        track="docs",
+        outputs=["objective-heap.md"],
+        metadata={
+            "merge role": "completion_gate_gap_manual_review",
+            "predicted files": "",
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_command="must-not-run",
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result == {
+        "skipped": True,
+        "reason": "completion_gap_missing_precise_edit_targets",
+        "task_id": "ACCEL-001",
+        "attempt": 1,
+    }
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["type"] == "implementation_skipped"
+    assert events[-1]["reason"] == "completion_gap_missing_precise_edit_targets"
+
+
+def test_general_task_prompt_is_not_narrowed_by_completion_gap_guard(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="General implementation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+        outputs=["src/runtime.py"],
+        metadata={
+            "merge role": "generated_task",
+            "predicted files": "src/runtime.py",
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=1)
+
+    assert "Strict completion-gap edit authorization" not in prompt
+    assert "touching as many files as needed" in prompt
+
+
+def test_implementation_protected_paths_are_normalized_and_unsafe_values_rejected(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    protected = repo / "policy.json"
+    protected.write_text("{}\n", encoding="utf-8")
+
+    assert normalize_implementation_protected_paths(
+        ["policy.json, nested/review.json", "policy.json"],
+        repo_root=repo,
+    ) == ("policy.json", "nested/review.json")
+
+    for unsafe in (
+        "/tmp/policy.json",
+        "../policy.json",
+        "nested/",
+        r"C:\policy.json",
+    ):
+        with pytest.raises(ValueError, match="protected path"):
+            normalize_implementation_protected_paths([unsafe], repo_root=repo)
+
+
+def test_general_task_prompt_marks_operator_protected_files_read_only(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    policy = repo / "implementation_plan" / "policies" / "approval.json"
+    policy.parent.mkdir(parents=True)
+    policy.write_text("{}\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="General implementation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+        outputs=["src/runtime.py"],
+        metadata={"predicted files": "src/runtime.py"},
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=[
+            "implementation_plan/policies/approval.json"
+        ],
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=1)
+
+    assert "Operator-protected repository files" in prompt
+    assert "- implementation_plan/policies/approval.json" in prompt
+    assert "Never create, modify, rename, delete, replace, or regenerate" in prompt
+
+
+def test_task_declaring_operator_protected_file_is_skipped_before_launch(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    policy = repo / "implementation_plan" / "policies" / "approval.json"
+    policy.parent.mkdir(parents=True)
+    policy.write_text("{}\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Rewrite approval policy",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="docs",
+        outputs=["implementation_plan/policies/approval.json"],
+        metadata={
+            "predicted files": "implementation_plan/policies/approval.json"
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_command="must-not-run",
+        implementation_protected_paths=[
+            "implementation_plan/policies/approval.json"
+        ],
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result == {
+        "skipped": True,
+        "reason": "implementation_protected_path_declared",
+        "task_id": "ACCEL-001",
+        "attempt": 1,
+        "protected_paths": ["implementation_plan/policies/approval.json"],
+    }
+
+
+def test_supervisor_protected_paths_reach_managed_daemon_command(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    policy = repo / "implementation_plan" / "policies" / "approval.json"
+    policy.parent.mkdir(parents=True)
+    policy.write_text("{}\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(state_dir),
+            "--implementation-protected-path",
+            "implementation_plan/policies/approval.json",
+        ]
+    )
+    config = supervisor_config_from_args(args, repo_root=repo)
+
+    assert config.implementation_protected_paths == (
+        "implementation_plan/policies/approval.json",
+    )
+    command = TodoImplementationSupervisor(config)._build_daemon_command()
+    index = command.index("--implementation-protected-path")
+    assert command[index + 1] == "implementation_plan/policies/approval.json"
+
+    daemon_args = parse_implementation_daemon_args(
+        [
+            "--implementation-protected-path",
+            "implementation_plan/policies/approval.json",
+        ]
+    )
+    assert daemon_args.implementation_protected_path == [
+        "implementation_plan/policies/approval.json"
+    ]
 
 
 def test_implementation_daemon_budgets_todo_vector_context_packet_first(tmp_path):
@@ -11461,6 +12103,11 @@ def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(
     )
     index_path = repo / "objective_bundles" / "todo_vector_index.json"
     index_path.parent.mkdir(parents=True)
+    aggregate_identity = next(
+        task
+        for task in parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+        if task.task_id == "ACCEL-003"
+    )
     index_path.write_text(
         json.dumps(
             {
@@ -11499,6 +12146,9 @@ def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(
                         "goal_packet_goal_ids": ["VAIOS-G101", "VAIOS-G102"],
                         "goal_packet_work_item_count": 6,
                         "work_item_count": 6,
+                        "canonical_task_key": aggregate_identity.canonical_task_key,
+                        "canonical_task_cid": aggregate_identity.canonical_task_cid,
+                        "task_cid": aggregate_identity.canonical_task_cid,
                     },
                     {
                         "task_id": "ACCEL-004",
@@ -12037,9 +12687,18 @@ def test_objective_daemon_materializes_completion_proof_work_without_receipts(tm
     assert "- Status: provisionally_complete" in objective_text
     assert "- Completion evidence:" not in objective_text
     todo_text = todo_path.read_text(encoding="utf-8")
-    assert "## ACCEL-001 Produce completion evidence for Completed runtime proof" in todo_text
+    assert (
+        "## ACCEL-001 Review completion-evidence alignment for "
+        "Completed runtime proof"
+    ) in todo_text
     assert "- Goal id: VAIOS-G001" in todo_text
-    assert "- Validation: test -f src/proof.py" in todo_text
+    assert "- Predicted files:\n" in todo_text
+    assert "- Validation: git diff --check; test -f src/proof.py" in todo_text
+    generated_work = payload["objective_generation"]["generated_work"]
+    assert len(generated_work) == 1
+    assert generated_work[0]["source"] == "completion_gate_gap_manual_review"
+    assert generated_work[0]["family_key"]
+    assert generated_work[0]["instance_key"]
 
     replay = run_objective_daemon(args)
 
@@ -12107,8 +12766,19 @@ def test_objective_daemon_materializes_validation_repair_instead_of_completing(t
     assert "- Status: provisionally_complete" in objective_text
     assert "Completion evidence:" not in objective_text
     todo_text = todo_path.read_text(encoding="utf-8")
-    assert "## ACCEL-001 Produce completion evidence for Runtime proof with failing validation" in todo_text
-    assert "- Validation: test -f missing-validation-proof.txt" in todo_text
+    assert (
+        "## ACCEL-001 Review completion-evidence alignment for "
+        "Runtime proof with failing validation"
+    ) in todo_text
+    generated_work = payload["objective_generation"]["generated_work"]
+    assert len(generated_work) == 1
+    assert generated_work[0]["source"] == "completion_gate_gap_manual_review"
+    assert generated_work[0]["family_key"]
+    assert generated_work[0]["instance_key"]
+    assert (
+        "- Validation: git diff --check; "
+        "test -f missing-validation-proof.txt"
+    ) in todo_text
 
 
 def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path):
@@ -12639,6 +13309,10 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
 """,
         encoding="utf-8",
     )
+    indexed_tasks = {
+        task.task_id: task
+        for task in parse_task_file(todo_path, task_header_prefix="## T-")
+    }
     vector_index = repo / "objective_bundles" / "todo_vector_index.json"
     vector_index.parent.mkdir(parents=True)
     vector_index.write_text(
@@ -12648,6 +13322,9 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
                     {
                         "task_id": task_id,
                         "title": task_id,
+                        "canonical_task_key": indexed_tasks[task_id].canonical_task_key,
+                        "canonical_task_cid": indexed_tasks[task_id].canonical_task_cid,
+                        "task_cid": indexed_tasks[task_id].canonical_task_cid,
                         "bundle_key": "objective/aggregate",
                         "candidate_kind": candidate_kind,
                         "merge_family": "goal_packet/runtime/shared",

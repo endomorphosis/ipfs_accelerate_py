@@ -6,7 +6,10 @@ from dataclasses import replace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+    OBJECTIVE_COMPLETION_EVIDENCE_ARTIFACT_SCHEMA,
     completion_gate_receipts_from_decisions,
+    completion_evidence_records_from_gate_records,
+    load_goal_completion_evidence_records,
     load_goal_completion_gate_records,
 )
 from ipfs_accelerate_py.agent_supervisor.goal_completion import ContradictionEvidence
@@ -480,6 +483,185 @@ def test_gate_artifact_loader_rejects_malformed_per_goal_record(tmp_path):
 
     with pytest.raises(ValueError, match="record for 'G1' must be an object"):
         load_goal_completion_gate_records(artifact)
+
+
+def test_external_completion_evidence_loader_returns_typed_bound_records(tmp_path):
+    artifact = tmp_path / "completion-evidence.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "schema": OBJECTIVE_COMPLETION_EVIDENCE_ARTIFACT_SCHEMA,
+                "binding": {
+                    "repository_id": "/repo/.git",
+                    "tree_id": "sha256:tree",
+                    "objective_revision": "bafy-objective",
+                    "analyzer_version": "docs-verifier/v1",
+                    "configuration_revision": "sha256:config",
+                },
+                "goals": {
+                    "G1": [
+                        {
+                            "acceptance_criterion": "criterion one",
+                            "producing_task_or_scan": "verify-docs",
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    records = load_goal_completion_evidence_records(artifact)
+
+    assert records["G1"][0].objective_revision == "bafy-objective"
+    assert records["G1"][0].analyzer_version == "docs-verifier/v1"
+    assert records["G1"][0].configuration_revision == "sha256:config"
+    assert records["G1"][0].repository_tree == "sha256:tree"
+
+
+def test_external_completion_evidence_loader_supports_per_goal_revisions(tmp_path):
+    artifact = tmp_path / "completion-evidence.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "schema": OBJECTIVE_COMPLETION_EVIDENCE_ARTIFACT_SCHEMA,
+                "binding": {
+                    "repository_id": "/repo/.git",
+                    "tree_id": "sha256:tree",
+                },
+                "goals": {
+                    "G1": {
+                        "binding": {
+                            "objective_revision": "bafy-objective-one",
+                            "analyzer_version": "docs-verifier/v1",
+                            "configuration_revision": "sha256:config-one",
+                        },
+                        "completion_evidence_records": [
+                            {
+                                "acceptance_criterion": "criterion one",
+                                "producing_task_or_scan": "verify-docs-one",
+                            }
+                        ],
+                    },
+                    "G2": {
+                        "binding": {
+                            "objective_revision": "bafy-objective-two",
+                            "analyzer_version": "docs-verifier/v2",
+                            "configuration_revision": "sha256:config-two",
+                        },
+                        "records": [
+                            {
+                                "acceptance_criterion": "criterion two",
+                                "producing_task_or_scan": "verify-docs-two",
+                            }
+                        ],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    records = load_goal_completion_evidence_records(artifact)
+
+    assert records["G1"][0].objective_revision == "bafy-objective-one"
+    assert records["G1"][0].analyzer_version == "docs-verifier/v1"
+    assert records["G2"][0].objective_revision == "bafy-objective-two"
+    assert records["G2"][0].configuration_revision == "sha256:config-two"
+    assert {records["G1"][0].repository_tree, records["G2"][0].repository_tree} == {
+        "sha256:tree"
+    }
+
+
+def test_combined_gate_bundle_exposes_embedded_typed_completion_evidence() -> None:
+    binding = {
+        "repository_id": "/repo/.git",
+        "tree_id": "sha256:tree",
+        "objective_revision": "bafy-objective",
+        "analyzer_version": "docs-verifier/v1",
+        "configuration_revision": "sha256:config",
+    }
+    records = completion_evidence_records_from_gate_records(
+        {
+            "G1": {
+                "binding": binding,
+                "completion_evidence_records": [
+                    {
+                        "acceptance_criterion": "criterion one",
+                        "producing_task_or_scan": "verify-docs",
+                    }
+                ],
+            }
+        }
+    )
+
+    assert records["G1"][0].objective_revision == "bafy-objective"
+    assert records["G1"][0].analyzer_version == "docs-verifier/v1"
+    assert records["G1"][0].configuration_revision == "sha256:config"
+
+
+def test_external_completion_artifact_loaders_fail_closed_on_missing_or_bad_inputs(
+    tmp_path,
+):
+    with pytest.raises(FileNotFoundError):
+        load_goal_completion_gate_records(tmp_path / "missing-gate.json")
+    with pytest.raises(FileNotFoundError):
+        load_goal_completion_evidence_records(tmp_path / "missing-evidence.json")
+
+    artifact = tmp_path / "completion-evidence.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "binding": {
+                    "repository_id": "/repo/.git",
+                    "tree_id": "sha256:tree",
+                    "objective_revision": "bafy-objective",
+                    "analyzer_version": "docs-verifier/v1",
+                    "configuration_revision": "sha256:config",
+                },
+                "goals": {"G1": {"not": "a list"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="must contain a binding object"):
+        load_goal_completion_evidence_records(artifact)
+
+
+def test_external_completion_evidence_loader_rejects_conflicting_tree_aliases(
+    tmp_path,
+):
+    artifact = tmp_path / "completion-evidence.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "binding": {
+                    "repository_id": "/repo/.git",
+                    "tree_id": "sha256:current-tree",
+                    "objective_revision": "bafy-objective",
+                    "analyzer_version": "docs-verifier/v1",
+                    "configuration_revision": "sha256:config",
+                },
+                "goals": {
+                    "G1": [
+                        {
+                            "acceptance_criterion": "criterion one",
+                            "producing_task_or_scan": "verify-docs",
+                            "repository_tree": "sha256:current-tree",
+                            "tree_id": "sha256:other-tree",
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="conflicting repository_tree and tree_id",
+    ):
+        load_goal_completion_evidence_records(artifact)
 
 
 def test_daemon_gate_receipt_rechecks_internal_checks_and_preserves_exact_evidence():

@@ -722,7 +722,12 @@ def _truthful_completion_gate(identity, *, criterion: str, observed_at: str) -> 
             "evaluated_at": observed_at,
             "criteria": [{"criterion": criterion, "status": "verified"}],
         },
-        "analyzer_health": {"status": "healthy"},
+        "analyzer_health": {
+            "status": "healthy",
+            "healthy": True,
+            "safe_for_completion_reasoning": True,
+            "exhaustive": True,
+        },
         "exhaustion_quorum": {
             "satisfied": True,
             "required_members": 2,
@@ -733,6 +738,14 @@ def _truthful_completion_gate(identity, *, criterion: str, observed_at: str) -> 
                     "member_id": "normal-scan",
                     "evidence_channel": "exhaustive",
                     "receipt_cid": "bafy-normal-scan",
+                    "scan_mode": "exhaustive",
+                    "analyzer_version": "objective-graph/v1",
+                    "passed": True,
+                    "analyzer_health": {"status": "healthy", "healthy": True},
+                    "exhaustive": True,
+                    "safe_for_completion_reasoning": True,
+                    "conclusive": True,
+                    "contradicted": False,
                     "finished_at": observed_at,
                     "binding": binding,
                 },
@@ -740,6 +753,14 @@ def _truthful_completion_gate(identity, *, criterion: str, observed_at: str) -> 
                     "member_id": "independent-audit",
                     "evidence_channel": "audit",
                     "receipt_cid": "bafy-independent-audit",
+                    "scan_mode": "audit",
+                    "analyzer_version": "objective-graph/v1",
+                    "passed": True,
+                    "analyzer_health": {"status": "healthy", "healthy": True},
+                    "exhaustive": True,
+                    "safe_for_completion_reasoning": True,
+                    "conclusive": True,
+                    "contradicted": False,
                     "finished_at": observed_at,
                     "binding": binding,
                 },
@@ -871,7 +892,12 @@ def test_restart_after_legacy_migration_preserves_lineage_quorum_and_dependencie
     assert operator_row["confidence"] == 1.0
     assert operator_row["analyzer_health"]["status"] == "healthy"
     assert operator_row["analyzer_health"]["passed"] is True
-    assert operator_row["analyzer_health"]["evidence"] == {"status": "healthy"}
+    assert operator_row["analyzer_health"]["evidence"] == {
+        "status": "healthy",
+        "healthy": True,
+        "safe_for_completion_reasoning": True,
+        "exhaustive": True,
+    }
     assert operator_row["exhaustion_quorum"] == persisted_quorum
     assert operator_row["uncovered_criteria"] == []
     assert operator_row["stale_evidence"] == []
@@ -1720,6 +1746,129 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert task_ids == ["queued-1"]
     assert submitted[0]["task_type"] == "codex.todo_bundle"
     assert submitted[0]["payload"]["bundle_key"] == "objective/ops/root"
+
+
+def test_manual_review_finding_without_edit_targets_is_visible_but_not_executable(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    common = {
+        "goal_id": "VAIOS-G010",
+        "title": "Virtual AI operating system",
+        "priority": "P1",
+        "track": "ops",
+        "present_evidence": {},
+        "objective_path": "objective-heap.md",
+        "validation": "git diff --check",
+        "goal": "Keep objective evidence current.",
+        "parent_goal_ids": [],
+        "graph_depth": 1,
+        "bundle_key": "objective/ops/review",
+        "parallel_lane": "objective/ops/review",
+        "bundle_strategy": "bounded_objective_generation",
+        "candidate_kind": "generated_task",
+        "surplus_group": "VAIOS-G010",
+        "work_scope": "bounded_objective_generation",
+    }
+    manual_review = ObjectiveFinding(
+        **common,
+        fingerprint="manual-review-no-edit-target",
+        summary="Review completion evidence",
+        missing_evidence=["independent completion proof"],
+        evidence_methods=[
+            "bounded_objective_generation",
+            "completion_gate_gap_manual_review",
+        ],
+        outputs=[],
+        merge_key="objective-family/v1/manual-review",
+        merge_family="VAIOS-G010",
+        merge_role="completion_gate_gap_manual_review",
+        predicted_files=[],
+    )
+    actionable = ObjectiveFinding(
+        **common,
+        fingerprint="actionable-typed-gap",
+        summary="Align completion evidence",
+        missing_evidence=["documentation validator proof"],
+        evidence_methods=[
+            "bounded_objective_generation",
+            "completion_gate_gap",
+        ],
+        outputs=["docs/runtime_notes.md"],
+        merge_key="objective-family/v1/actionable-gap",
+        merge_family="VAIOS-G010",
+        merge_role="completion_gate_gap",
+        predicted_files=["docs/runtime_notes.md"],
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[manual_review, actionable],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert [record.task_id for record in records] == ["ACCEL-002", "ACCEL-003"]
+    todo_text = todo_path.read_text(encoding="utf-8")
+    manual_block, actionable_block = todo_text.split("## ACCEL-002 ", 1)[1].split(
+        "## ACCEL-003 ", 1
+    )
+    assert "- Status: blocked" in manual_block
+    assert (
+        "- Blocked reason: manual review required because no precise edit "
+        "targets were authorized"
+    ) in manual_block
+    assert "authorize precise repository-relative edit targets" in manual_block
+    assert "- Status: todo" in actionable_block
+    assert "- Blocked reason:" not in actionable_block
+    assert all(
+        line == line.rstrip()
+        for line in (manual_block + actionable_block).splitlines()
+    )
+
+    index_path = bundle_dir / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    indexed = {
+        task["task_id"]: task
+        for task in index["bundles"]["objective/ops/review"]["tasks"]
+    }
+    assert indexed["ACCEL-002"]["status"] == "blocked"
+    assert indexed["ACCEL-003"].get("status", "todo") == "todo"
+
+    bundle = build_bundle_task_payloads(index_path)[0]
+    assert bundle["blocked_member_task_ids"] == ["ACCEL-002"]
+    assert bundle["ready_member_task_ids"] == ["ACCEL-003"]
+    assert bundle["execution_slice_task_ids"] == ["ACCEL-003"]
+    assert bundle["claimable"] is True
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        TodoImplementationDaemon,
+    )
+
+    state_dir = repo / "data" / "implementation"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    state = daemon.run_once()
+    persisted_state = json.loads(Path(state["state_path"]).read_text(encoding="utf-8"))
+    assert state["blocked_count"] == 1
+    assert state["ready_count"] == 1
+    assert state["active_task_id"] == "ACCEL-003"
+    assert persisted_state["blocked_task_ids"] == ["ACCEL-002"]
+    assert persisted_state["ready_task_ids"] == ["ACCEL-003"]
+    assert persisted_state["recommended_task_id"] == "ACCEL-003"
 
 
 def test_generate_objective_todos_skips_existing_canonical_task(tmp_path):

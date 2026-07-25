@@ -182,6 +182,19 @@ semantic terms from the finding itself, excluding its path. Admission
 rejections such as `no_goal_lineage`, `invalid_goal_record`,
 `dangling_goal_parent`, `cyclic_goal_lineage`, and `admission_limit` are
 preserved in the scan-details artifact instead of being silently discarded.
+Completion-gate refill uses stable goal/criterion/producer-channel families.
+Only explicit workspace-relative implementation, affected-document, or
+validator-source files become edit targets; absolute paths, traversal, NUL
+bytes, directory scopes, and symlink escapes fail closed. Receipt and report
+paths remain read-only diagnostics. A legacy decision without a precise safe
+file becomes a blocked, non-executable manual review instead of inheriting a
+broad goal output. A reviewer must authorize exact repository-relative edit
+targets before the implementation daemon can select it.
+
+The configured objective `max_findings` also caps bounded generated work for
+that supervisor pass. A changed diagnostic updates the unresolved family's
+latest observation but cannot spend a retry by itself; a retry or the single
+manual-review escalation requires a new completed or blocked board outcome.
 
 ## Implementation Worktrees
 
